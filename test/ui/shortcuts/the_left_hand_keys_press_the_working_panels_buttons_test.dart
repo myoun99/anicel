@@ -137,10 +137,20 @@ void main() {
     }
   });
 
-  testWidgets('Shift+Z goes where 「처음으로」 of the panel being worked in '
-      'goes — the timeline to its cut\'s frame 0, the storyboard to the '
-      'track\'s first frame', (tester) async {
+  testWidgets('the key of 「처음으로」 goes where the button of the panel being '
+      'worked in goes — the timeline to its cut\'s frame 0, the storyboard '
+      'to the track\'s first frame', (tester) async {
     final session = await _pump(tester, _twoCuts());
+    // The key the preset in use ships it with: under Clip Studio, TVPaint's
+    // Shift+Home since F-417 (↩️anicel's Shift+Z before).
+    final toStart = EditorShortcutScope.peek(
+      tester.element(find.byType(EditorCanvasArea)),
+    )!.primaryActivatorFor(EditorActionIds.playbackToStart)!;
+    expect(
+      [toStart.control, toStart.alt, toStart.meta],
+      [false, false, false],
+      reason: '⛔전제: a key _press can make',
+    );
     for (final (panel, cut) in const [
       (WorkingPanel.timeline, CutId('cut-2')),
       (WorkingPanel.storyboard, CutId('cut-1')),
@@ -156,9 +166,9 @@ void main() {
       expect(session.currentFrameIndex, 0);
 
       await _standInCutTwo(tester, session);
-      await _press(tester, LogicalKeyboardKey.keyZ, shift: true);
+      await _press(tester, toStart.trigger, shift: toStart.shift);
       await tester.pumpAndSettle();
-      expect(session.activeCutOrNull?.id, cut, reason: 'A on the $panel');
+      expect(session.activeCutOrNull?.id, cut, reason: 'its key on the $panel');
       expect(session.currentFrameIndex, 0);
     }
   });

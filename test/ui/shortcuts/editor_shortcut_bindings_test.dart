@@ -137,10 +137,12 @@ void main() {
       isTrue,
     );
 
-    // Setting the exact defaults back clears the override entirely.
+    // Setting the exact defaults back clears the override entirely — the
+    // preset's, which are the registry's only where neither program names
+    // the row (F-417).
     bindings.setActivators(
       EditorActionIds.frameNext,
-      bindings.definitionFor(EditorActionIds.frameNext)!.defaultActivators,
+      bindings.defaultActivatorsFor(EditorActionIds.frameNext),
     );
     expect(bindings.isOverridden(EditorActionIds.frameNext), isFalse);
 
