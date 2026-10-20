@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/text/text_measure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
@@ -45,38 +48,52 @@ void main() {
     frames: const [],
   );
 
-  Widget row(Layer layer) => TimelineLayerControlsRow(
-    layer: layer,
-    active: false,
-    metrics: TimelineGridMetrics.defaults,
-    onSelectLayer: (_) {},
-    onToggleLayerVisibility: (_) {},
-    onLayerOpacityChanged: (_, _) {},
-    onToggleLayerTimesheet: (_) {},
-    onLayerMarkSelected: (_, _) {},
-    onOpenLayerMixer: (_, _) {},
-    onLayerBlendModeSelected: (_, _) {},
-  );
+  Widget row(Layer layer, TimelineGridMetrics metrics) =>
+      TimelineLayerControlsRow(
+        layer: layer,
+        active: false,
+        metrics: metrics,
+        onSelectLayer: (_) {},
+        onToggleLayerVisibility: (_) {},
+        onLayerOpacityChanged: (_, _) {},
+        onToggleLayerTimesheet: (_) {},
+        onLayerMarkSelected: (_, _) {},
+        onOpenLayerMixer: (_, _) {},
+        onLayerBlendModeSelected: (_, _) {},
+      );
 
-  Future<void> pumpRail(WidgetTester tester) async {
+  /// The legend over a picture's row and a sound's, laid with the columns
+  /// the rail takes at [scale] — as a host lays them.
+  Future<void> pumpRail(WidgetTester tester, {double scale = 1}) async {
     await tester.binding.setSurfaceSize(const Size(900, 300));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.platformDispatcher.textScaleFactorTestValue = scale;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
         home: Material(
           child: Align(
             alignment: Alignment.topLeft,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const TimelineLayerControlsHeader(
-                  metrics: TimelineGridMetrics.defaults,
-                  optionalColumns: (onion: false, blend: true),
-                ),
-                row(picture),
-                row(sound),
-              ],
+            child: Builder(
+              builder: (context) {
+                final columns = layerRailColumnWidthsIn(context);
+                final metrics = TimelineGridMetrics.defaults.copyWith(
+                  layerControlsWidth: timelineLayerControlsWidthFor(columns),
+                  railColumns: columns,
+                );
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TimelineLayerControlsHeader(
+                      metrics: metrics,
+                      optionalColumns: (onion: false, blend: true),
+                    ),
+                    row(picture, metrics),
+                    row(sound, metrics),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -133,20 +150,64 @@ void main() {
     );
   });
 
-  testWidgets('the bar is as wide as 「100」 between its insets, with less '
-      'than a point to spare', (tester) async {
-    await pumpRail(tester);
-    final bar = part(tester, 'opacity', picture);
-    final hundred = TextMeasure(
-      tester.element(find.byType(TimelineLayerControlsRow).first),
-      FieldSlider.valueStyleIn(
-        tester.element(find.byType(TimelineLayerControlsRow).first),
-      ),
-    ).size('100').width;
-    final room = bar.width - 2 * FieldSlider.inset;
+  for (final scale in [1.0, 1.5, 2.0]) {
+    testWidgets('at $scale× the bar is as wide as 「100」 between its insets, '
+        'with less than a point to spare', (tester) async {
+      await pumpRail(tester, scale: scale);
+      final bar = part(tester, 'opacity', picture);
+      final where = tester.element(find.byType(TimelineLayerControlsRow).first);
+      final hundred = TextMeasure(
+        where,
+        FieldSlider.valueStyleIn(where),
+      ).size('100').width;
+      final room = bar.width - 2 * FieldSlider.inset;
 
-    expect(hundred, greaterThan(20), reason: 'measured in the app\'s face');
-    expect(hundred, lessThanOrEqualTo(room), reason: 'it fits');
-    expect(room - hundred, lessThan(1), reason: 'and no more than that');
+      expect(hundred, greaterThan(20), reason: 'measured in the app\'s face');
+      expect(hundred, lessThanOrEqualTo(room), reason: 'it fits');
+      expect(room - hundred, lessThan(1), reason: 'and no more than that');
+    });
+  }
+
+  testWidgets('a member lane stands its navigator right after the section '
+      'band (「이거 다 왼쪽정렬로 왼쪽에 붙어있도록」)', (tester) async {
+    final lane = PropertyLaneRow(
+      laneId: 'position',
+      label: 'Position',
+      keyMarks: const {0: KeyMark.linear},
+      valueLabel: (_) => '0, 0',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Material(
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: TimelineLaneControlsRow(
+              layer: picture,
+              lane: lane,
+              metrics: TimelineGridMetrics.defaults,
+              width: TimelineGridMetrics.defaults.layerControlsWidth,
+              height: TimelineGridMetrics.defaults.layerRowHeight,
+              leadingInset: layerSectionLabelSlotWidth,
+              laneEdit: PropertyLaneEditCallbacks(
+                onToggleKeyAt: (_, _, _) {},
+                onSetValue: (_, _, _, _) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final cell = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-lane-label-pic-position')),
+    );
+    final previous = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-lane-prev-key-pic-position')),
+    );
+    // The cell's half-pixel hairline, then the section band.
+    expect(
+      previous.left,
+      closeTo(cell.left + 0.5 + layerSectionLabelSlotWidth, 0.01),
+    );
   });
 }

@@ -140,6 +140,11 @@ void main() {
       badge('ref').right,
       closeTo(tester.getRect(button('ref')).left, 0.01),
     );
+    expect(
+      badge('ref').size,
+      tester.getSize(button('ref')),
+      reason: 'one box for a name\'s buttons (F-409)',
+    );
   });
 
   testWidgets('a rail column presses it on the DOWN, once, and it hands over '
