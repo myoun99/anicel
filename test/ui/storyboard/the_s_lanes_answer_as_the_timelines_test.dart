@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -10,6 +9,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 
 import '../../helpers/named_finders.dart';
@@ -96,6 +96,30 @@ void main() {
 
     expect(s.editingGlobalFrame, 6);
     expect(seRow(s, se).transformTrack.keyedFrames, {6});
+  });
+
+  testWidgets('a lane cell holding a key opens the key\'s window', (
+    tester,
+  ) async {
+    final (s, se) = await pumpSeLanes(
+      tester,
+      rowOf: (row) => row.copyWith(
+        transformTrack: TransformTrack(
+          keyframes: {6: TransformPose(center: CanvasPoint(x: 9, y: 9))},
+        ),
+      ),
+    );
+    s.standOnRow(
+      LaneRowAddress(se, 'position'),
+      panel: WorkingPanel.storyboard,
+      globalFrameIndex: 6,
+    );
+    await tester.pumpAndSettle();
+
+    strip(tester, se).laneRange!.onActivateAt!(se, 'position', 6);
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppText.strings.renameKeyTitle), findsOneWidget);
   });
 
   testWidgets('a lane\'s strip shows a key slid in flight where its label '
