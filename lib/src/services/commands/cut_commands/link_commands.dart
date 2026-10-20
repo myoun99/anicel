@@ -187,6 +187,7 @@ class _LinkCommands {
         insertionIndex: insertionIndex,
         layerIdMap: plan.layerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
+        siblings: plan.siblings,
       ),
     );
     return plan.layerIdMap[layerId]!;

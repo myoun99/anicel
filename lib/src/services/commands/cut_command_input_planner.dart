@@ -19,6 +19,7 @@ import '../project_repository.dart';
 import 'add_layer_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'folder_mirror.dart';
+import 'link_duplicate_layer_command.dart' show LinkDuplicateUse;
 import 'link_mirror.dart';
 
 class PasteLayerCommandInputPlan {
@@ -196,7 +197,8 @@ class CreateLinkedCutCommandInputPlan {
 }
 
 /// A fresh layer id and a fresh link-group id for each of [sources],
-/// minted against what [project] and [ids] already hold.
+/// minted against what [ids] already holds — one [ids] for every cut a
+/// step mints in, so no two of its copies or groups share an id.
 ///
 /// ⛔THE TWO MAPS MUST BE KEYED BY THE SAME SOURCES. The command reads one
 /// to build the copy and the other to register the link, so a planner that
@@ -205,25 +207,14 @@ class CreateLinkedCutCommandInputPlan {
 /// Both link planners did exactly that walk.
 ({Map<LayerId, LayerId> layerIdMap, Map<LayerId, String> newGroupIdBySource})
 _mintLinkIds(
-  Project project,
   _ProjectIdSnapshot ids,
   Iterable<Layer> sources,
 ) {
-  final usedGroupIds = <String>{
-    for (final group in project.linkRegistry.groups) group.id,
-  };
   final layerIdMap = <LayerId, LayerId>{};
   final newGroupIdBySource = <LayerId, String>{};
   for (final source in sources) {
-    final copyId = LayerId(
-      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
-    );
-    ids.layerIds.add(copyId.value);
-    layerIdMap[source.id] = copyId;
-
-    final groupId = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
-    usedGroupIds.add(groupId);
-    newGroupIdBySource[source.id] = groupId;
+    layerIdMap[source.id] = ids.nextLayerId();
+    newGroupIdBySource[source.id] = ids.nextLinkGroupId();
   }
   return (layerIdMap: layerIdMap, newGroupIdBySource: newGroupIdBySource);
 }
@@ -240,7 +231,7 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
   final ids = _ProjectIdSnapshot.fromProject(project);
   final newCutId = mintCutId();
 
-  final minted = _mintLinkIds(project, ids, [
+  final minted = _mintLinkIds(ids, [
     for (final layer in sourceCut.layers)
       if (layer.kind.linksIntoLinkedCut) layer,
   ]);
@@ -364,6 +355,7 @@ class LinkDuplicateLayerCommandInputPlan {
   const LinkDuplicateLayerCommandInputPlan({
     required this.layerIdMap,
     required this.newGroupIdBySource,
+    this.siblings = const [],
   });
 
   /// Source member id → its copy's id, over the whole attach group.
@@ -372,23 +364,63 @@ class LinkDuplicateLayerCommandInputPlan {
   /// Planned registry group id per source member (used only for members
   /// that are not in a link group yet).
   final Map<LayerId, String> newGroupIdBySource;
+
+  /// Each 겸용 sibling holding a row of the source: that row's group, its
+  /// copies' ids planned the same way (F-398).
+  final List<LinkDuplicateUse> siblings;
 }
 
 /// Plans a 링크 복제 (L2): one copy id per member of [sourceLayerId]'s
 /// attach group, plus fresh registry group ids. FrameIds are NOT mapped —
 /// keeping them identical IS the link.
+///
+/// 🗣️F-398 (유저 2026-10-18): 「관련 링크안되는것들 다른것도 조사 법 통일」 —
+/// a link paste in a 겸용 cut is an added row there too: each sibling
+/// holding a row of the source copies ITS row's group, planned the same
+/// way. ↩️Only the one cut got the copies.
 LinkDuplicateLayerCommandInputPlan planLinkDuplicateLayerCommandInput({
   required Project project,
   required Cut cut,
   required LayerId sourceLayerId,
 }) {
   final ids = _ProjectIdSnapshot.fromProject(project);
-  final source = cut.layers.firstWhere((layer) => layer.id == sourceLayerId);
-  final members = attachedGroupSlice(attachBaseIdOf(source), cut.layers);
-
-  final minted = _mintLinkIds(project, ids, members);
-
+  final own = _linkDuplicateShare(ids, cut, sourceLayerId);
   return LinkDuplicateLayerCommandInputPlan(
+    layerIdMap: own.layerIdMap,
+    newGroupIdBySource: own.newGroupIdBySource,
+    siblings: [
+      for (final sibling in linkedCutSiblings(project, cutId: cut.id))
+        if (linkCounterpartIn(
+              project,
+              cutId: cut.id,
+              layerId: sourceLayerId,
+              targetCutId: sibling,
+            )
+            case final there?)
+          _linkDuplicateShare(
+            ids,
+            requireCut(project, sibling),
+            there,
+          ),
+    ],
+  );
+}
+
+/// [cut]'s share of a 링크 복제 of its row [sourceLayerId]: that row's
+/// attach group, each member given a copy id and a group id from [ids].
+LinkDuplicateUse _linkDuplicateShare(
+  _ProjectIdSnapshot ids,
+  Cut cut,
+  LayerId sourceLayerId,
+) {
+  final source = cut.layers.firstWhere((layer) => layer.id == sourceLayerId);
+  final minted = _mintLinkIds(
+    ids,
+    attachedGroupSlice(attachBaseIdOf(source), cut.layers),
+  );
+  return (
+    cutId: cut.id,
+    sourceLayerId: sourceLayerId,
     layerIdMap: minted.layerIdMap,
     newGroupIdBySource: minted.newGroupIdBySource,
   );
