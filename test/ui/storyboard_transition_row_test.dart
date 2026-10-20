@@ -10,11 +10,11 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart'
     show InstructionEventDialog;
-import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/transitions.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
     show timelineDragPreviewGlobalLayerFor;
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart'
@@ -649,7 +649,7 @@ void main() {
     ) async {
       await _openStoryboard(tester);
       final session = tester
-          .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+          .widget<StoryboardTabHost>(find.byType(StoryboardTabHost))
           .session;
       session.selectGlobalFrame(5);
       session.transitions.createTransitionSpanAtPlayhead();
@@ -687,7 +687,7 @@ void main() {
       // 「통일 — 편집 버튼은 빈 칸에서 꺼진다」.
       await _openStoryboard(tester);
       final session = tester
-          .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+          .widget<StoryboardTabHost>(find.byType(StoryboardTabHost))
           .session;
       session.selectGlobalFrame(7);
       session.selectRow(
