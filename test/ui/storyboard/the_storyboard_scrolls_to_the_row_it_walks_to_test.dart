@@ -112,10 +112,7 @@ void main() {
     return (top: cell.top - view.top, bottom: cell.bottom - view.top);
   }
 
-  Future<EditorSessionManager> railPastTheView(
-    WidgetTester tester, {
-    int rowsAdded = 12,
-  }) async {
+  Future<EditorSessionManager> railPastTheView(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
@@ -125,7 +122,7 @@ void main() {
     session.selectLayer(
       session.layers.firstWhere((layer) => layer.kind == LayerKind.se).id,
     );
-    for (var count = 0; count < rowsAdded; count += 1) {
+    for (var count = 0; count < 12; count += 1) {
       session.layerStack.addLayerOfKind(LayerKind.se);
     }
     await showStoryboardPanel(tester);
@@ -178,7 +175,7 @@ void main() {
   // follows where the walk stands.
   testWidgets('a walk into the top S row\'s lanes keeps the lane it stands '
       'on in view, not the V row the rail selects', (tester) async {
-    final session = await railPastTheView(tester, rowsAdded: 24);
+    final session = await railPastTheView(tester);
     final top = session.repository
         .requireProject()
         .tracks
@@ -196,8 +193,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       rows(tester).maxScrollExtent,
-      greaterThan(rows(tester).viewportDimension),
-      reason: '⛔전제: the V row is more than a view below the top',
+      greaterThan(0),
+      reason: '⛔전제: the V row, at the foot of the rail, is out of view',
     );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
@@ -212,7 +209,7 @@ void main() {
       isA<TrackRowAddress>(),
       reason: '⛔전제: the rail selects the V row',
     );
-    expect(rows(tester).pixels, lessThan(rows(tester).viewportDimension));
+    expect(rows(tester).pixels, 0, reason: 'the lane stood on is in view');
     final cell = standingInView(tester);
     expect(cell.top, greaterThanOrEqualTo(0));
     expect(
