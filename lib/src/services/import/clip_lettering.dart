@@ -468,20 +468,12 @@ final class _ClipTextFrame {
           in corners ?? [0, 0, width, 0, width, height, 0, height])
         value / 100,
     ];
-    final (topX, topY, sideX, sideY) = (bx - ax, by - ay, dx - ax, dy - ay);
-    // How far the left edge stands to the right of the top one, as a box's
-    // does — to its left where the frame is mirrored — and how far it runs
-    // along it as it goes: a lean, none where the two stand square.
-    final cross = topX * sideY - topY * sideX;
-    final flipped = cross < 0;
-    final mirror = flipped ? -1.0 : 1.0;
-    final lean = cross == 0 || _isSquare(topX, topY, sideX, sideY)
-        ? 0.0
-        : (topX * sideX + topY * sideY) / cross.abs();
-    final degrees = math.atan2(mirror * topY, mirror * topX) * 180 / math.pi;
-    // The lean runs a point along the lines as it goes DOWN, and a text's
-    // skew as it goes up ([CelTextFrame]).
-    final skewDegrees = lean == 0 ? 0.0 : -math.atan(lean) * 180 / math.pi;
+    final a = Offset(ax, ay);
+    final (:degrees, :skewDegrees, :flipped, :distorted) = _standOf(
+      top: Offset(bx, by) - a,
+      side: Offset(dx, dy) - a,
+      far: Offset(cx, cy) - a,
+    );
     final upright = degrees == 0 && skewDegrees == 0 && !flipped;
     final shape = CelTextFrame.set(
       anchor: Offset.zero,
@@ -490,19 +482,9 @@ final class _ClipTextFrame {
       flipped: flipped,
     );
     // The box's top-left in the frame, set back upright.
-    final topLeft = shape.inFrame(Offset(ax, ay));
+    final topLeft = shape.inFrame(a);
     final corner = (x: topLeft.dx.round(), y: topLeft.dy.round());
-    // Where the origin stood upright, and where setting the frame takes it.
-    final stood = Offset(
-      (box.x0 - corner.x).toDouble(),
-      (box.y0 - corner.y).toDouble(),
-    );
-    final pivot = Offset(
-      (box.x0 + box.x1) / 2 + _pivotRight,
-      (box.y0 + box.y1) / 2,
-    );
-    final set = pivot + shape.onCanvas(stood - pivot);
-    final origin = (x: set.dx.round(), y: set.dy.round());
+    final origin = _originSet(box, corner: corner, shape: shape);
     final picture = switch (offset) {
       [final x, final y] => (x: x, y: y),
       // Upright, its picture stands at its box (wamsoft `clipparse`: 「この
@@ -522,11 +504,61 @@ final class _ClipTextFrame {
       pictureAt: picture == null
           ? null
           : (x: origin.x - picture.x, y: origin.y - picture.y),
+      distorted: distorted,
+    );
+  }
+
+  /// How a frame stands on corners whose top edge runs [top], whose left
+  /// edge runs [side] and whose far corner stands at [far], each from the
+  /// first: mirrored where the side stands to the top's left — a box's
+  /// stands to its right — turned as the top then runs, and leaned as far
+  /// as the side runs along the top as it goes down, none where the two
+  /// stand square. It is [distorted] where no frame sets the four: the two
+  /// edges lie along one line, or the far corner stands off where they meet
+  /// again.
+  static ({double degrees, double skewDegrees, bool flipped, bool distorted})
+  _standOf({
+    required Offset top,
+    required Offset side,
+    required Offset far,
+  }) {
+    final cross = top.dx * side.dy - top.dy * side.dx;
+    final flipped = cross < 0;
+    final mirror = flipped ? -1.0 : 1.0;
+    final lean = cross == 0 || _isSquare(cross, top: top, side: side)
+        ? 0.0
+        : (top.dx * side.dx + top.dy * side.dy) / cross.abs();
+    return (
+      degrees: math.atan2(mirror * top.dy, mirror * top.dx) * 180 / math.pi,
+      // The lean runs a point along the lines as it goes DOWN, and a text's
+      // skew as it goes up ([CelTextFrame]).
+      skewDegrees: lean == 0 ? 0.0 : -math.atan(lean) * 180 / math.pi,
+      flipped: flipped,
       distorted:
           cross == 0 ||
-          (cx - (bx + dx - ax)).abs() > _cornerSlack ||
-          (cy - (by + dy - ay)).abs() > _cornerSlack,
+          (far.dx - top.dx - side.dx).abs() > _cornerSlack ||
+          (far.dy - top.dy - side.dy).abs() > _cornerSlack,
     );
+  }
+
+  /// Where the origin of [box]'s frame stands on the layer once [shape]
+  /// sets it: upright, it stood the box's top-left less [corner] — the
+  /// top-left in the frame — and the frame is set about [_pivotRight].
+  static ({int x, int y}) _originSet(
+    ({int x0, int y0, int x1, int y1}) box, {
+    required ({int x, int y}) corner,
+    required CelTextFrame shape,
+  }) {
+    final stood = Offset(
+      (box.x0 - corner.x).toDouble(),
+      (box.y0 - corner.y).toDouble(),
+    );
+    final pivot = Offset(
+      (box.x0 + box.x1) / 2 + _pivotRight,
+      (box.y0 + box.y1) / 2,
+    );
+    final set = pivot + shape.onCanvas(stood - pivot);
+    return (x: set.dx.round(), y: set.dy.round());
   }
 
   /// Where the frame's origin stands on the layer.
@@ -585,17 +617,12 @@ const int _columnsPast = 1;
 /// by 0.002 at most.
 const double _squareTurn = 0.01;
 
-/// Whether a frame whose top edge runs ([topX], [topY]) and whose left edge
-/// runs ([sideX], [sideY]) is square: its left edge its top one turned a
-/// right angle — clockwise, or back where the frame is mirrored — to within
-/// [_squareTurn].
-bool _isSquare(double topX, double topY, double sideX, double sideY) {
-  final lengths =
-      math.sqrt(topX * topX + topY * topY) *
-      math.sqrt(sideX * sideX + sideY * sideY);
-  return lengths > 0 &&
-      (topX * sideY - topY * sideX).abs() / lengths >= math.cos(_squareTurn);
-}
+/// Whether a frame whose top edge runs [top] and whose left edge runs
+/// [side], their [cross] not nought, is square: its left edge its top one
+/// turned a right angle — clockwise, or back where the frame is mirrored —
+/// to within [_squareTurn].
+bool _isSquare(double cross, {required Offset top, required Offset side}) =>
+    cross.abs() / (top.distance * side.distance) >= math.cos(_squareTurn);
 
 /// How far a frame's fourth corner may stand from where its other three put
 /// it, either way, and the four still stand on a parallelogram: the floored
