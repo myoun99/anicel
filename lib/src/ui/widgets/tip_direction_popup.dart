@@ -127,7 +127,7 @@ Future<void> showTipDirectionPopup(
   required ValueChanged<TipDirection> onChanged,
 }) => showAnchoredPopup<void>(
   anchor,
-  label: 'tip-direction-popup',
+  label: AppText.strings.brTipRotation,
   width: SettingSourceButton.windowWidth,
   height: _windowHeight,
   builder: (context, _) =>
@@ -185,14 +185,10 @@ class _TipDirectionEditorState extends State<_TipDirectionEditor> {
         const SizedBox(height: _sectionGap),
         SizedBox(
           height: _rowHeight,
-          child: FieldSlider(
+          child: FieldSlider.opacity(
             key: const ValueKey<String>('brush-tool-angle-jitter-slider'),
             label: AppText.strings.curveSourceRandom,
             value: _draft.random,
-            min: 0,
-            max: 1,
-            unit: '%',
-            displayScale: 100,
             onChanged: (value) => _set((base: _draft.base, random: value)),
           ),
         ),
