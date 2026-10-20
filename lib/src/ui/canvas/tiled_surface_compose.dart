@@ -952,7 +952,14 @@ composePositionedSurfaceImageSync(
 /// the pixels. Halved on the CPU through the table the engine's own
 /// halving gave, it is the raster's picture byte for byte; an engine whose
 /// halving is not the sum's has no table, and its level is rastered as it
-/// always was.
+/// always was. 🔬Measured on the Windows app (Surface Pro 11, profile
+/// build, 2026-10-21, a throwaway probe), an A3 600dpi scan laid whole
+/// (7040×9984), its level 3520×4992: from its bytes 0.45–1.04 s at +170 MB
+/// (peak 0.8 GB), rastered 0.67–2.2 s at +1.0–1.5 GB (peak 2.4–2.6 GB), 0
+/// bytes apart; made now 0.31–0.34 s in the call, the raster 0.43–0.50 s.
+/// (Read back with `toByteData` the instant it is made, the picture made
+/// now is not there yet — 「Image was null」, as the full-size one made now
+/// — and drawn, or a frame on, it is the raster's.)
 Future<ui.Image?> composeHalvedSurfaceImage(
   BitmapSurface surface, {
   bool Function()? shouldAbort,
