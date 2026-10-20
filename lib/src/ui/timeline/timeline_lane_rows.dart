@@ -50,7 +50,7 @@ import 'lane_graph_toggle.dart';
 import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
-import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
+import 'transform_lane_policy.dart' show laneSelectionPicksKey;
 import 'timeline_block_word.dart';
 import '../repaint_props.dart';
 import 'timeline_cell_style.dart'
@@ -75,6 +75,12 @@ import 'memo_token.dart' show ByList;
 /// (UI-R23 #4): two-thirds of the old 2px so the ring reads as a hairline,
 /// not a second block edge.
 const double _selectedLaneKeyBorderWidth = 4 / 3;
+
+/// The ring a key inside the live lane selection wears — every key mark
+/// on the frame axis that shows one: a lane's row's, and a header graph's
+/// (I-3), where its keys are pressed and carried.
+({Color color, double width}) get selectedLaneKeyRing =>
+    (color: AppColors.accent, width: _selectedLaneKeyBorderWidth);
 
 /// How short a stood-up lane label may get before its column sheds a
 /// control instead — two frame rows of vertical writing, the same floor the
@@ -1412,12 +1418,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
     );
   }
 
-  /// R26 #3: the header row washes when the selection spans its WHOLE
-  /// member group — the SAME predicate the gesture uses to decide
-  /// move-vs-select, so what looks selected is what a drag grabs.
-  bool _selectionCoversRow(TimelineLaneSelection? selection) =>
-      laneSelectionCoversBandRow(selection, layer.id, lane.laneId);
-
   /// The band-wide LANE gesture (UI-R23 #3 part 2), UNDER the markers: pans
   /// on the band select THIS lane; marker drags keep their arena priority
   /// above. The GROUP HEADER band selects too (R26 #3): its anchor spans
@@ -1490,10 +1490,12 @@ class TimelineLaneFrameRow extends StatelessWidget {
         axis: axis,
         markerSize: _markerSize,
         color: layerMarkColor(layer.mark),
-        selected:
-            selection != null &&
-            _selectionCoversRow(selection) &&
-            selection.contains(frame),
+        selected: laneSelectionPicksKey(
+          selection,
+          layer.id,
+          lane.laneId,
+          frame,
+        ),
       ),
     );
   }
@@ -2275,9 +2277,7 @@ class TimelineLaneKeyMarker extends StatelessWidget {
             // 회색 존재하는거같은데 삭제. 그냥 심플하게 바탕색만 남겨서」). The
             // one ring left is the SELECTION's, in ACCENT 1 (UI-R23 #4) —
             // colour alone, the selection rule.
-            ring: selected
-                ? (color: AppColors.accent, width: _selectedLaneKeyBorderWidth)
-                : null,
+            ring: selected ? selectedLaneKeyRing : null,
           ),
         ),
       ),

@@ -33,9 +33,11 @@ typedef _SeatedLane = ({
 /// How [_StoryboardRailRows._laneFrameSide] draws a carrier's lanes: each
 /// lane's [strip] at its extent — and, in an open graph, each lane as the
 /// lines [linesOf] reads its row as now (a projection row's, one a cut),
-/// their handles written through [laneEdit].
+/// their handles written through [laneEdit] and their keys picked and
+/// carried by [laneRange], the lane selection the strips take (I-3).
 typedef _LanesDrawn = ({
   PropertyLaneEditCallbacks? laneEdit,
+  TimelineLaneRangeCallbacks? laneRange,
   Iterable<LaneGraphLine> Function(TimelineDisplayRow row) linesOf,
   Widget Function(TimelineDisplayRow row, double height) strip,
 });
@@ -2259,7 +2261,7 @@ class _StoryboardRailRows {
     List<PropertyLaneRow> lanes,
     _LanesDrawn drawn,
   ) {
-    final (:laneEdit, :linesOf, :strip) = drawn;
+    final (:laneEdit, :laneRange, :linesOf, :strip) = drawn;
     final seating = _laneSeating;
     final first = lanes.isEmpty
         ? null
@@ -2282,6 +2284,7 @@ class _StoryboardRailRows {
       keyPrefix: 'storyboard',
       verbs: _laneGraphVerbs,
       laneEdit: laneEdit,
+      laneRange: laneRange,
     );
     List<Widget> laid(List<TimelineDisplayRow> rows) => laneGraphFrameSide(
       (
@@ -2692,6 +2695,7 @@ class _StoryboardRailRows {
       // is: the lane verbs read and write the cut holding the row
       // (I-89-Q23, 유저: 「강제로 서있게해서 고치는건 … 불편함」).
       laneEdit: _state.widget.cutLaneEdit,
+      laneRange: laneRange,
       linesOf: (row) =>
           _projectionLines(projection, strip.reaches, row.lane!.laneId),
       strip: (row, height) => _StoryboardProjectionLaneRow(
@@ -2850,8 +2854,10 @@ class _StoryboardRailRows {
     // The fx chain's strips, row for row with its labels — the rail and the
     // strips share no scaffolding, so the two lists are built from the SAME
     // lane list to keep them in lockstep.
+    final laneRange = _laneGestureCallbacksFor(track);
     return _laneFrameSide(carrier.id, _trackEffectLanes(track), (
       laneEdit: laneEdit,
+      laneRange: laneRange,
       linesOf: (row) => [
         (
           layer: carrier,
@@ -2878,7 +2884,7 @@ class _StoryboardRailRows {
           timelineScale: scale,
           projectFrameRate: _state.widget.projectFrameRate,
           laneEdit: laneEdit,
-          laneRange: _laneGestureCallbacksFor(track),
+          laneRange: laneRange,
         ),
       ),
     ));
@@ -2919,8 +2925,14 @@ class _StoryboardRailRows {
       return const [];
     }
     final preview = _state.widget.dragPreview;
+    // The S row's lanes take the range gesture too (R5 ③b). Their keys are
+    // the TRACK's, on the global axis this rail already draws — so the span
+    // is stated where it lives, and the cut panel is the one that has a
+    // window to fit it into.
+    final laneRange = _laneGestureCallbacksFor(track);
     return _laneFrameSide(layer.id, _seLanes(track, slot), (
       laneEdit: _state.widget.layerLaneEdit,
+      laneRange: laneRange,
       linesOf: (row) {
         final shown =
             timelineDragPreviewGlobalLayerFor(preview?.value, row.layer.id) ??
@@ -2952,11 +2964,7 @@ class _StoryboardRailRows {
         height: height,
         timelineScale: scale,
         projectFrameRate: _state.widget.projectFrameRate,
-        // The S row's lanes take the range gesture too (R5 ③b). Their
-        // keys are the TRACK's, on the global axis this rail already
-        // draws — so the span is stated where it lives, and the cut
-        // panel is the one that has a window to fit it into.
-        laneRange: _laneGestureCallbacksFor(track),
+        laneRange: laneRange,
         audioLane: _state.widget.audioLane,
         audioPeaksFor: _state.widget.audioPeaksFor,
       ),

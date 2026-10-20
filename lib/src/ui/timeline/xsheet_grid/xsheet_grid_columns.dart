@@ -147,6 +147,7 @@ class _XSheetGridColumns {
         (rows: entries, first: 0, edges: edges),
         grid,
         cells: (entry) => _gatedColumn(entry, plan, grid),
+        laneRange: _state._laneRange,
       ),
     );
   }

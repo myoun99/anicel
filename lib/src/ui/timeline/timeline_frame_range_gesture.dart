@@ -22,7 +22,7 @@ import 'timeline_frame_coordinate_policy.dart' show frameAtVisibleX;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
-import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
+import 'transform_lane_policy.dart' show laneSelectionPicksKey;
 
 /// A range drag that finished under the finger: tell the session how it
 /// ended, and hand the grip back.
@@ -829,16 +829,16 @@ class _TimelineLaneRangeGestureLayerState
   TimelineRowAddress get _rowAddress =>
       LaneRowAddress(widget.layer.id, widget.laneId);
 
+  // R26 #3 follow-up: the HEADER band counts as inside a whole-group
+  // selection, so one drag on it grabs every member lane's keys (user rule:
+  // "한번에 잡아 이동" — the shared band-row predicate).
   @override
-  bool _pressedInSelection(int frame) {
-    final selection = widget.callbacks.selection.value;
-    // R26 #3 follow-up: the HEADER band counts as inside a whole-group
-    // selection, so one drag on it grabs every member lane's keys (user
-    // rule: "한번에 잡아 이동" — the shared band-row predicate).
-    return selection != null &&
-        laneSelectionCoversBandRow(selection, widget.layer.id, widget.laneId) &&
-        selection.contains(frame);
-  }
+  bool _pressedInSelection(int frame) => laneSelectionPicksKey(
+    widget.callbacks.selection.value,
+    widget.layer.id,
+    widget.laneId,
+    frame,
+  );
 
   @override
   Axis get _dragAxis => widget.axis;

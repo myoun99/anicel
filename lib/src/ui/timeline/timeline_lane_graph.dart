@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart'
-    show DragGestureRecognizer, DragStartBehavior;
+    show DragDownDetails, DragGestureRecognizer, DragStartBehavior;
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart';
 
@@ -15,7 +15,9 @@ import '../../models/key_side.dart'
         keyHandleAt,
         keyHandleInfluenceAt,
         keyHandlePoint;
-import '../../models/timeline_row_address.dart' show TimelineRowAddress;
+import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
+import '../../models/timeline_row_address.dart'
+    show LaneRowAddress, TimelineRowAddress;
 import '../dashed_path.dart' show DashPattern, dashesAlong;
 import '../input/hit_gate.dart' show HitGate;
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
@@ -42,12 +44,21 @@ import 'layer_label_controls.dart' show layerMarkColor;
 import 'property_lane_model.dart';
 import 'timeline_cells_row_facts.dart' show TimelineCellsRowGrid;
 import 'timeline_drag_preview.dart' show timelineDragPreviewLayerFor;
+import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
+import 'timeline_exposure_comma_drag_policy.dart' show commaDragFrameDelta;
 import 'timeline_frame_geometry.dart';
+import 'timeline_frame_range_gesture.dart'
+    show
+        TimelineLaneRangeCallbacks,
+        reportRangeDragFinished,
+        retireRangeDragOnUnmount;
 import 'timeline_frame_window.dart'
     show frameWindowContains, visibleFrameWindowFor;
 import 'timeline_grid_hooks.dart' show TimelineGridHooks;
-import 'timeline_lane_rows.dart' show timelineLaneKeyMarkerSize;
+import 'timeline_lane_rows.dart'
+    show selectedLaneKeyRing, timelineLaneKeyMarkerSize;
 import 'timeline_row_edges.dart';
+import 'transform_lane_policy.dart' show laneSelectionPicksKey;
 
 /// Rows as a grid lays them: [rows] are its rows from [first] on, and
 /// [edges] where every one of its rows sits.
@@ -63,9 +74,10 @@ List<Widget> timelineFrameSide(
   TimelineLaidRows laid,
   TimelineCellsRowGrid grid, {
   required Widget Function(TimelineDisplayRow row) cells,
+  required TimelineLaneRangeCallbacks? laneRange,
 }) => laneGraphFrameSide(
   laid,
-  laneGraphGridOf(grid),
+  laneGraphGridOf(grid, laneRange: laneRange),
   lines: (seat, lanes) => timelineLaneGraphLines(seat, lanes, grid.hooks),
   cells: cells,
 );
@@ -136,8 +148,9 @@ typedef LaneGraphFrames = ({
 
 /// What a header graph reads of the grid it is drawn in (I-89 ③): its
 /// [LaneGraphFrames], the scrollable its corners stand still in, its key
-/// prefix, the lane edits its handles write through and the buttons its
-/// tools and its grip tell.
+/// prefix, the lane edits its handles write through, the buttons its
+/// tools and its grip tell, and the lane selection its keys are picked
+/// and carried by — the one its lanes' rows take (I-3).
 ///
 /// ⛔Not the grid's whole hook bundle ([TimelineCellsRowGrid]): a graph
 /// reads these and nothing else of it. The timeline's and the sheet's
@@ -149,10 +162,15 @@ typedef LaneGraphGrid = ({
   String keyPrefix,
   LaneGraphVerbs? verbs,
   PropertyLaneEditCallbacks? laneEdit,
+  TimelineLaneRangeCallbacks? laneRange,
 });
 
-/// [grid] as a header graph drawn in it reads it.
-LaneGraphGrid laneGraphGridOf(TimelineCellsRowGrid grid) => (
+/// [grid] as a header graph drawn in it reads it, its keys picked and
+/// carried by [laneRange] — what the grid's lane rows take.
+LaneGraphGrid laneGraphGridOf(
+  TimelineCellsRowGrid grid, {
+  required TimelineLaneRangeCallbacks? laneRange,
+}) => (
   frameAxis: (
     geometry: grid.geometry,
     windowBucket: grid.windowBucket,
@@ -164,6 +182,7 @@ LaneGraphGrid laneGraphGridOf(TimelineCellsRowGrid grid) => (
   keyPrefix: grid.keyPrefix,
   verbs: grid.hooks.laneGraphVerbs,
   laneEdit: grid.hooks.laneEdit,
+  laneRange: laneRange,
 );
 
 /// What a header graph draws (I-89 ③): its own lines and its guests as
@@ -309,6 +328,7 @@ class TimelineLaneGraph extends StatelessWidget {
                 guests: lines.guests(),
                 frameAxis: grid.frameAxis,
                 edits: grid.laneEdit,
+                lanes: grid.laneRange,
                 mode: seat.graph.mode,
               ),
             ),
@@ -402,8 +422,14 @@ class TimelineLaneGraph extends StatelessWidget {
 /// written where it is let go, through the lane edits the rows take
 /// ([PropertyLaneEditCallbacks.onSetKeySides]) — the key window's write.
 ///
-/// While a handle is in hand the picture is held to what its lines were
-/// fitted to when it was taken ([TimelineLaneGraphPainter.held]).
+/// And its KEYS (I-3, AE's graph editor): a press on one picks it in the
+/// lane selection its lanes' rows take, and a drag carries the selection
+/// along the frames by their move ([TimelineLaneRangeCallbacks]) — the
+/// lanes' own law (2026-08-08: a key is moved by moving the selection that
+/// holds it), so a key carried here lands where its row would have put it.
+///
+/// While a handle or a key is in hand the picture is held to what its
+/// lines were fitted to when it was taken ([TimelineLaneGraphPainter.held]).
 class LaneGraphPicture extends StatefulWidget {
   const LaneGraphPicture({
     super.key,
@@ -411,6 +437,7 @@ class LaneGraphPicture extends StatefulWidget {
     required this.guests,
     required this.frameAxis,
     required this.edits,
+    required this.lanes,
     required this.mode,
   });
 
@@ -423,6 +450,10 @@ class LaneGraphPicture extends StatefulWidget {
   /// What a handle let go of writes through; null where the host takes no
   /// lane edits, and a pull shows and writes nothing.
   final PropertyLaneEditCallbacks? edits;
+
+  /// The lane selection its keys are picked and carried by — its lanes'
+  /// rows'; null where the host takes none, and a key takes no press.
+  final TimelineLaneRangeCallbacks? lanes;
   final LaneGraphMode mode;
 
   @override
@@ -440,8 +471,27 @@ class _HandleInHand {
   KeySidesEdit? edit;
 }
 
+/// A KEY in hand (I-3): the key the press went down on, where, what the
+/// picture is held to meanwhile, and how far the selection's move has
+/// carried it — none until the hand moves, and none where there was
+/// nothing to move.
+class _KeyInHand {
+  _KeyInHand(this.key, this.press, this.fits);
+
+  final LaneGraphKey key;
+  final Offset press;
+  final Map<String, LaneGraphFit> fits;
+  bool moving = false;
+  int frames = 0;
+
+  /// The row the key is on — what a grid holds built while it is carried.
+  TimelineRowAddress get row =>
+      LaneRowAddress(key.line.layer.id, key.line.lane.laneId);
+}
+
 class _LaneGraphPictureState extends State<LaneGraphPicture> {
   _HandleInHand? _inHand;
+  _KeyInHand? _keyInHand;
 
   /// The painter the last build drew with — what a press is asked of.
   late TimelineLaneGraphPainter _painter;
@@ -455,16 +505,25 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       guests: widget.guests,
       frameAxis: widget.frameAxis,
       mode: widget.mode,
-      held: _inHand?.fits ?? const {},
+      selection: widget.lanes?.selection,
+      held: _inHand?.fits ?? _keyInHand?.fits ?? const {},
     );
     return HitGate(
-      admits: (position) => painter.handleAt(position, context.size!) != null,
+      admits: _takesPressAt,
       child: OwningAxisGrip(
         axis: null,
         configure: _configure,
         child: CustomPaint(painter: painter, child: const SizedBox.expand()),
       ),
     );
+  }
+
+  /// Whether a press at [position] is the picture's: on a handle, or on a
+  /// key where a key takes a press.
+  bool _takesPressAt(Offset position) {
+    final size = context.size!;
+    return _painter.handleAt(position, size) != null ||
+        (widget.lanes != null && _painter.keyAt(position, size) != null);
   }
 
   // A drag the platform cancels once it has started ends as a release does
@@ -474,12 +533,109 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     recognizer
       // A handle is small: it is the one the press went down on.
       ..dragStartBehavior = DragStartBehavior.down
+      ..onDown = _pick
       ..onStart = _take
       ..onUpdate = _pull
+      ..onCancel = _cancelled
       ..onEnd = (_) => _drop();
   }
 
+  /// Let go of before it moved: a key picked stays picked, as AE's click
+  /// leaves it.
+  void _cancelled() => _letTheKeyGo(widget.lanes?.onMoveCancel);
+
+  /// A press on a key PICKS it (I-3, AE's graph editor: a click selects the
+  /// key) — the key's cell, as the lane selection its row's band makes —
+  /// unless the selection holds it already: then it stands, and the drag
+  /// carries all of it, as a drag begun inside a band's selection does.
+  ///
+  /// ⚠️Mine: the press does not stand the playhead on the key, as a press
+  /// on a band does. AE's click on a key leaves the current time where it
+  /// is — and a lane stood on is what a graph draws when its group has
+  /// none picked ([laneGraphDrawnLanes]): the lines beside it would go.
+  void _pick(DragDownDetails details) {
+    final lanes = widget.lanes;
+    final position = details.localPosition;
+    final size = context.size!;
+    final key = lanes == null || _painter.handleAt(position, size) != null
+        ? null
+        : _painter.keyAt(position, size);
+    if (lanes == null || key == null) {
+      return;
+    }
+    final (:line, :frame, part: _, at: _, mark: _) = key;
+    if (!laneSelectionPicksKey(
+      lanes.selection.value,
+      line.layer.id,
+      line.lane.laneId,
+      frame,
+    )) {
+      lanes.onSelectUpdate(line.layer.id, line.lane.laneId, frame, frame, 0);
+    }
+    setState(() => _keyInHand = _KeyInHand(key, position, _painter.fits));
+  }
+
+  /// The hand moved off the key it picked: the selection's move begins —
+  /// nothing, where the selection holds nothing to move.
+  void _carry(_KeyInHand inHand) {
+    final lanes = widget.lanes!;
+    if (!lanes.onMoveBegin()) {
+      return;
+    }
+    inHand.moving = true;
+    lanes.onGripTaken?.call(inHand.row);
+  }
+
+  /// The selection goes along the frames as far as the hand has, by whole
+  /// frames — the band's own step ([commaDragFrameDelta]) — and the view
+  /// pans where the hand reaches its edge, as under a band's drag (D42).
+  void _carryTo(_KeyInHand inHand, DragUpdateDetails details) {
+    if (!inHand.moving) {
+      return;
+    }
+    final axis = widget.frameAxis.axis;
+    edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: axis,
+    );
+    final frames = commaDragFrameDelta(
+      accumulatedDelta: partAlong(axis, details.localPosition - inHand.press),
+      frameCellExtent: widget.frameAxis.geometry.value.frameCellExtent,
+    );
+    if (frames == inHand.frames) {
+      return;
+    }
+    inHand.frames = frames;
+    widget.lanes!.onMoveUpdate(frames);
+  }
+
+  /// The key let go of: the move it carried ends by [finished] — landed on
+  /// a release, put back on a cancel — and the row it held is let go.
+  void _letTheKeyGo(VoidCallback? finished) {
+    final inHand = _keyInHand;
+    final lanes = widget.lanes;
+    if (inHand == null) {
+      return;
+    }
+    setState(() => _keyInHand = null);
+    if (lanes == null || finished == null) {
+      return;
+    }
+    reportRangeDragFinished(
+      dragging: inHand.moving,
+      moving: inHand.moving,
+      onMoveFinished: finished,
+      releaseGrip: () => lanes.onGripReleased?.call(inHand.row),
+    );
+  }
+
   void _take(DragStartDetails details) {
+    final key = _keyInHand;
+    if (key != null) {
+      _carry(key);
+      return;
+    }
     final handle = _painter.handleAt(details.localPosition, context.size!);
     if (handle != null) {
       setState(
@@ -492,8 +648,14 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     }
   }
 
-  /// The handle follows the hand by as far as the hand has gone.
+  /// The handle follows the hand by as far as the hand has gone — and a key
+  /// in hand carries the selection that far.
   void _pull(DragUpdateDetails details) {
+    final key = _keyInHand;
+    if (key != null) {
+      _carryTo(key, details);
+      return;
+    }
     final inHand = _inHand;
     if (inHand == null) {
       return;
@@ -514,8 +676,12 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   }
 
   /// Let go of: written where it was pulled to — nothing, where it never
-  /// moved.
+  /// moved; a key's move lands where it was carried.
   void _drop() {
+    if (_keyInHand != null) {
+      _letTheKeyGo(widget.lanes?.onMoveEnd);
+      return;
+    }
     final inHand = _inHand;
     if (inHand == null) {
       return;
@@ -541,6 +707,18 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final end = _edits?.onEndPreview;
     if (_inHand?.edit != null && end != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => end());
+    }
+    // A key carried lands as a band's drag does when its row is taken
+    // away — the move it carried is never left open.
+    final key = _keyInHand;
+    final lanes = widget.lanes;
+    if (key != null && lanes != null) {
+      retireRangeDragOnUnmount(
+        dragging: key.moving,
+        moving: key.moving,
+        onMoveEnd: lanes.onMoveEnd,
+        releaseGrip: () => lanes.onGripReleased?.call(key.row),
+      );
     }
     super.dispose();
   }
@@ -1170,8 +1348,16 @@ typedef _LaneGraphPass = ({
   double extent,
 });
 
-/// A key's mark, held back until every line is drawn.
-typedef _LaneGraphMark = ({Offset at, KeyMark mark, Color color});
+/// A KEY a value graph marks (I-89 ③), and a press picks (I-3): [line]'s
+/// key on [frame] — the line's own — marked [at] on the line of its
+/// [part]-th number, as [mark] says it is.
+typedef LaneGraphKey = ({
+  LaneGraphLine line,
+  int frame,
+  int part,
+  Offset at,
+  KeyMark mark,
+});
 
 /// What a line is fitted to across its graph: its keyed frames in order
 /// and each number's range — in a speed graph its one speed's.
@@ -1250,18 +1436,21 @@ KeySidesEdit laneGraphPull(
 /// its own range, as [mode] plots it — its values, with a mark on every
 /// key, or how fast they change — over the frames its grid lays, only
 /// those its window shows, as its rows of cells draw them
-/// ([visibleFrameWindowFor]); and over them, its handles.
+/// ([visibleFrameWindowFor]); and over them, its handles. A key the lane
+/// [selection] picks wears its ring, as on its lane's row.
 class TimelineLaneGraphPainter extends CustomPainter {
   TimelineLaneGraphPainter({
     required this.own,
     required this.guests,
     required this.frameAxis,
     this.mode = LaneGraphMode.value,
+    this.selection,
     this.held = const {},
   }) : super(
          repaint: Listenable.merge([
            frameAxis.geometry,
            ?frameAxis.windowBucket,
+           ?selection,
          ]),
        );
 
@@ -1272,8 +1461,14 @@ class TimelineLaneGraphPainter extends CustomPainter {
   final LaneGraphFrames frameAxis;
   final LaneGraphMode mode;
 
-  /// What a handle in hand holds its lines to, by line ([laneGroupKey]):
-  /// what they were fitted to when it was taken ([fits]).
+  /// The live lane selection its keys are picked by — null where none is
+  /// kept, and no key wears a ring.
+  final ValueListenable<TimelineLaneSelection?>? selection;
+
+  /// What a handle or a key in hand holds its lines to, by line
+  /// ([laneGroupKey]): the ranges they were fitted to when it was taken
+  /// ([fits]). Their keys are read as they stand — a key carried moves
+  /// under the hand that carries it.
   final Map<String, LaneGraphFit> held;
 
   Axis get axis => frameAxis.axis;
@@ -1298,14 +1493,16 @@ class TimelineLaneGraphPainter extends CustomPainter {
   static String _lineKey(LaneGraphLine line) =>
       laneGroupKey(line.layer.id, line.lane.laneId);
 
-  /// The handles [handlesIn] last read, and where they were read for.
+  /// The handles and the keys [_readIn] last read, and where they were
+  /// read for.
   ({
     Size size,
     TimelineFrameGeometry frames,
     ({int startIndex, int endIndexExclusive}) window,
     List<LaneGraphHandle> handles,
+    List<LaneGraphKey> keys,
   })?
-  _handled;
+  _read;
 
   /// How far [line]'s own frames stand from the frames its graph is laid
   /// along: a cut's lane's on its track's ([LaneGraphReach]), none for a
@@ -1321,22 +1518,29 @@ class TimelineLaneGraphPainter extends CustomPainter {
   };
 
   LaneGraphFit? _fitOf(LaneGraphLine line) {
-    if (held[_lineKey(line)] case final fit?) {
-      return fit;
-    }
     final curve = line.lane.curve;
     final keyed = [...line.lane.keyedFrames]..sort();
     if (curve == null || keyed.isEmpty) {
       return null;
     }
-    final drawn = _fittedFramesOf(line, keyed);
     return (
       keyed: keyed,
-      ranges: switch (mode) {
-        LaneGraphMode.value => laneGraphRanges(curve, drawn),
-        LaneGraphMode.speed => [laneGraphSpeedRange(curve, drawn)],
-      },
+      ranges: held[_lineKey(line)]?.ranges ?? _rangesOf(line, curve, keyed),
     );
+  }
+
+  /// Each number's range [line] is fitted to across its graph, read off
+  /// its [keyed] frames as they stand.
+  List<LaneGraphRange> _rangesOf(
+    LaneGraphLine line,
+    LaneCurve curve,
+    List<int> keyed,
+  ) {
+    final drawn = _fittedFramesOf(line, keyed);
+    return switch (mode) {
+      LaneGraphMode.value => laneGraphRanges(curve, drawn),
+      LaneGraphMode.speed => [laneGraphSpeedRange(curve, drawn)],
+    };
   }
 
   /// The frames [line]'s fit is read between ([laneGraphRanges]): its
@@ -1382,30 +1586,34 @@ class TimelineLaneGraphPainter extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
     // The marks go on last, over every line and the handles' stems — and
     // the handles over them (the mock's, 5판).
-    final marks = [for (final plot in _plots) ..._drawLine(pass, plot)];
-    final handles = handlesIn(size);
+    for (final plot in _plots) {
+      _drawLine(pass, plot);
+    }
+    final (:handles, :keys) = _readIn(size);
     final stem = Paint()
       ..strokeWidth = _laneGraphStemStroke
       ..color = AppColors.textDim;
     for (final handle in handles) {
       canvas.drawLine(handle.key, handle.at, stem);
     }
-    // A key's mark is its member lane's — every line is one, a cell and a
-    // lane's row wide at this zoom (🗣️F-367-Q3, 유저 2026-10-17: 「레인 멤버
-    // 키와 같은 크기」). ↩️The mock's 11px (5판), drawn larger than a lane's
-    // were then, and the smaller once a lane's filled its cell (F-367).
-    final keySize = timelineLaneKeyMarkerSize(
-      frameAxis.laneExtent,
-      frameCellExtent: frames.frameCellExtent,
-    );
-    for (final (:at, :mark, :color) in marks) {
+    final picked = selection?.value;
+    for (final (:line, :frame, part: _, :at, :mark) in keys) {
       paintKeyMark(
         canvas,
         mark,
         center: at,
-        box: keySize,
+        box: _keySize,
         standing: axis == Axis.vertical,
-        color: color,
+        color: layerMarkColor(line.layer.mark),
+        ring:
+            laneSelectionPicksKey(
+              picked,
+              line.layer.id,
+              line.lane.laneId,
+              frame,
+            )
+            ? selectedLaneKeyRing
+            : null,
       );
     }
     final fill = Paint()..color = AppColors.surface;
@@ -1434,25 +1642,73 @@ class TimelineLaneGraphPainter extends CustomPainter {
     return null;
   }
 
-  /// Every handle a picture [size] big shows, in the order they are drawn —
-  /// read once for where the grid lays its window, since a mouse asks
-  /// [handleAt] on every move it makes over the picture. The probe surface
-  /// for the handles' tests, as [visibleFrameWindow] is for the window's.
-  List<LaneGraphHandle> handlesIn(Size size) {
+  /// The key a press at [position] picks on a picture [size] big (I-3):
+  /// the one marked last over it, in the box its mark is drawn in — stood
+  /// a quarter turn on the X-sheet, as [paintKeyMark] stands it — and
+  /// nowhere round it, as a handle is (F-262). Null where there is none.
+  LaneGraphKey? keyAt(Offset position, Size size) {
+    final box = axis == Axis.vertical ? _keySize.flipped : _keySize;
+    for (final key in keysIn(size).reversed) {
+      if (Rect.fromCenter(
+        center: key.at,
+        width: box.width,
+        height: box.height,
+      ).contains(position)) {
+        return key;
+      }
+    }
+    return null;
+  }
+
+  /// How big a key's mark is: its member lane's — every line is one, a cell
+  /// and a lane's row wide at this zoom (🗣️F-367-Q3, 유저 2026-10-17: 「레인
+  /// 멤버 키와 같은 크기」). ↩️The mock's 11px (5판), drawn larger than a
+  /// lane's were then, and the smaller once a lane's filled its cell
+  /// (F-367).
+  Size get _keySize => timelineLaneKeyMarkerSize(
+    frameAxis.laneExtent,
+    frameCellExtent: frameAxis.geometry.value.frameCellExtent,
+  );
+
+  /// Every handle a picture [size] big shows, in the order they are drawn.
+  /// The probe surface for the handles' tests, as [visibleFrameWindow] is
+  /// for the window's.
+  List<LaneGraphHandle> handlesIn(Size size) => _readIn(size).handles;
+
+  /// Every key a picture [size] big marks, in the order they are marked —
+  /// none in a speed graph (the mock's, 5판). The probe surface for the
+  /// keys' tests.
+  List<LaneGraphKey> keysIn(Size size) => _readIn(size).keys;
+
+  /// The handles and the keys a picture [size] big shows — read once for
+  /// where the grid lays its window, since a mouse asks [handleAt] and
+  /// [keyAt] on every move it makes over the picture.
+  ({List<LaneGraphHandle> handles, List<LaneGraphKey> keys}) _readIn(
+    Size size,
+  ) {
     final frames = frameAxis.geometry.value;
     final window = visibleFrameWindow();
-    if (_handled case final last?
+    if (_read case final last?
         when last.size == size &&
             last.frames == frames &&
             last.window == window) {
-      return last.handles;
+      return (handles: last.handles, keys: last.keys);
     }
     final extent = extentAcross(axis, size);
     final handles = [
       for (final plot in _plots) ..._handlesOf(plot, frames, window, extent),
     ];
-    _handled = (size: size, frames: frames, window: window, handles: handles);
-    return handles;
+    final keys = [
+      for (final plot in _plots) ..._keysOf(plot, frames, window, extent),
+    ];
+    _read = (
+      size: size,
+      frames: frames,
+      window: window,
+      handles: handles,
+      keys: keys,
+    );
+    return (handles: handles, keys: keys);
   }
 
   /// The handles [plot]'s line takes (the mock's, 5판): one on each side of
@@ -1605,25 +1861,69 @@ class TimelineLaneGraphPainter extends CustomPainter {
       (side: side, leaving: false),
   ];
 
-  /// Draws [plot]'s line through [pass] — every number it holds, or in a
-  /// speed graph the one speed they move at (I-89-Q5 B) — in dashes for a
-  /// guest, and gives back the marks its keys in the window take — none in
-  /// a speed graph (the mock's, 5판).
-  List<_LaneGraphMark> _drawLine(_LaneGraphPass pass, _LaneGraphPlot plot) {
-    final (:line, :dashed, :fit) = plot;
-    final curve = line.lane.curve;
-    if (curve == null || fit == null) {
-      return const [];
-    }
-    final (:keyed, :ranges) = fit;
-    final (:canvas, :frames, :window, :times, :extent) = pass;
+  /// Where [line]'s numbers stand on a graph [extent] across, laid along
+  /// [frames] and fitted to [ranges]: its [part]-th number at its own
+  /// [time] — laid where the graph's frames put it.
+  Offset Function(double time, double number, int part) _placerOf(
+    LaneGraphLine line,
+    List<LaneGraphRange> ranges,
+    TimelineFrameGeometry frames,
+    double extent,
+  ) {
     final shift = _shiftOf(line);
-    // [time] is the line's own: laid where the graph's frames put it.
-    Offset at(double time, double number, int part) => offsetAlong(
+    return (time, number, part) => offsetAlong(
       axis,
       along: laneGraphAlong(time + shift, frames),
       across: laneGraphAcross(number, ranges[part], extent, axis),
     );
+  }
+
+  /// The keys [plot]'s line marks in [window] on a graph [extent] across —
+  /// a mark on each of its numbers' lines at every key it draws; none in a
+  /// speed graph (the mock's, 5판).
+  Iterable<LaneGraphKey> _keysOf(
+    _LaneGraphPlot plot,
+    TimelineFrameGeometry frames,
+    ({int startIndex, int endIndexExclusive}) window,
+    double extent,
+  ) sync* {
+    final (:line, dashed: _, :fit) = plot;
+    final curve = line.lane.curve;
+    if (curve == null || fit == null || mode == LaneGraphMode.speed) {
+      return;
+    }
+    final at = _placerOf(line, fit.ranges, frames, extent);
+    final shift = _shiftOf(line);
+    for (final frame in fit.keyed) {
+      if (!_reaches(line, frame) ||
+          !frameWindowContains(window, frame + shift)) {
+        continue;
+      }
+      for (final (part, number) in curve.at(frame.toDouble()).indexed) {
+        yield (
+          line: line,
+          frame: frame,
+          part: part,
+          at: at(frame.toDouble(), number, part),
+          mark: line.lane.keyMarkAt(frame),
+        );
+      }
+    }
+  }
+
+  /// Draws [plot]'s line through [pass] — every number it holds, or in a
+  /// speed graph the one speed they move at (I-89-Q5 B) — in dashes for a
+  /// guest.
+  void _drawLine(_LaneGraphPass pass, _LaneGraphPlot plot) {
+    final (:line, :dashed, :fit) = plot;
+    final curve = line.lane.curve;
+    if (curve == null || fit == null) {
+      return;
+    }
+    final (:keyed, :ranges) = fit;
+    final (:canvas, :frames, window: _, :times, :extent) = pass;
+    final shift = _shiftOf(line);
+    final at = _placerOf(line, ranges, frames, extent);
     // The times it is drawn at, its own.
     final own = [
       for (final time in times)
@@ -1653,21 +1953,6 @@ class TimelineLaneGraphPainter extends CustomPainter {
         dashed: dashed,
       );
     }
-    if (mode == LaneGraphMode.speed) {
-      return const [];
-    }
-    final color = layerMarkColor(line.layer.mark);
-    return [
-      for (final frame in keyed)
-        if (_reaches(line, frame) &&
-            frameWindowContains(window, frame + shift))
-          for (final (part, number) in curve.at(frame.toDouble()).indexed)
-            (
-              at: at(frame.toDouble(), number, part),
-              mark: line.lane.keyMarkAt(frame),
-              color: color,
-            ),
-    ];
   }
 
   @override
@@ -1676,5 +1961,6 @@ class TimelineLaneGraphPainter extends CustomPainter {
       oldDelegate.guests != guests ||
       oldDelegate.frameAxis != frameAxis ||
       oldDelegate.mode != mode ||
+      oldDelegate.selection != selection ||
       oldDelegate.held != held;
 }

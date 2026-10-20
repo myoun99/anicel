@@ -276,6 +276,7 @@ class _TimelineFrameRowsScrollBodyState
     (rows: widget.rows, first: widget.firstRowIndex, edges: widget.edges),
     _cellsRowGrid,
     cells: _buildRow,
+    laneRange: widget.laneRange,
   );
 
   @override

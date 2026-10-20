@@ -385,6 +385,21 @@ bool laneSelectionCoversBandRow(
   return selection.coversLane(layerId, laneId);
 }
 
+/// Whether the lane selection holds [laneId]'s key cell at [frame] on
+/// [layerId] ([laneSelectionCoversBandRow]): what a lane's band takes a
+/// press there to MOVE rather than select, what its key mark rings for,
+/// and what a header graph's key does both by (I-3) — so what reads as
+/// picked is what a drag carries, wherever the key is drawn.
+bool laneSelectionPicksKey(
+  TimelineLaneSelection? selection,
+  LayerId layerId,
+  String laneId,
+  int frame,
+) =>
+    selection != null &&
+    laneSelectionCoversBandRow(selection, layerId, laneId) &&
+    selection.contains(frame);
+
 // A folder's FX lanes used to carry a `folder-fx:<folderId>:<base>`
 // ADDRESS in the lane id, so the one laneEdit callback set could route
 // commits into a folder table the layer path could not reach. A folder is
