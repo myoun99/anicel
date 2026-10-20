@@ -1524,6 +1524,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // F-80: with no cut armed nothing here can act on a press, so it
       // moves the page instead — and a sheet's answer while it draws.
       runsTheSelectedTool: drawing || tool != null,
+      // ⚠️THE SECOND OF ITS KIND: [SheetCanvasPanel] answers its drawingOn
+      // with these same answers — the finger, the press, the brush, the
+      // hold, and the let-go after the frame in [build]. Two, so not shared
+      // yet (the rule of three); a third host taking ink lifts them into one.
       contentStrokeActive: drawing ? _strokeHold : null,
       // F-179 (유저 2026-09-25: 「타임시트패널등 캔버스 베이스 패널엔
       // 페이스트보드가 없다는 뜻임」): the viewer is one of those panels —

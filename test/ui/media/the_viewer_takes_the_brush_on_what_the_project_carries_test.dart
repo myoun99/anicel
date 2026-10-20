@@ -269,11 +269,15 @@ void main() {
     final rect = window.screenRect(overlay.viewport);
     final view0 = slot.viewport.value;
 
-    Future<void> drag(Offset from, PointerDeviceKind kind) async {
+    Future<void> drag(
+      Offset from,
+      PointerDeviceKind kind, {
+      Offset step = const Offset(6, 4),
+    }) async {
       final gesture = await tester.startGesture(from, kind: kind);
       await tester.pump();
-      for (var step = 1; step <= 4; step += 1) {
-        await gesture.moveTo(from + Offset(step * 6.0, step * 4.0));
+      for (var at = 1; at <= 4; at += 1) {
+        await gesture.moveTo(from + step * at.toDouble());
         await tester.pump();
       }
       await gesture.up();
@@ -291,6 +295,20 @@ void main() {
     await drag(origin + rect.center, PointerDeviceKind.touch);
     expect(ink.hasInkFor(plane, window.key), isTrue, reason: 'the finger drew');
     expect(slot.viewport.value, view0, reason: 'and moved no view');
+
+    // Beside the page there is no ink to take — and still no pan, as beside
+    // a sheet's page: the panel runs the tool, so neither a plain press nor
+    // one finger is the view's.
+    final across = rect.left >= rect.top;
+    final room = (across ? rect.left : rect.top) / 2;
+    expect(room * 0.8, greaterThan(40), reason: '⛔전제: past any slop');
+    final beside = across
+        ? (at: Offset(room, rect.center.dy), away: Offset(-room / 5, 0))
+        : (at: Offset(rect.center.dx, room), away: Offset(0, -room / 5));
+    await drag(origin + beside.at, PointerDeviceKind.mouse, step: beside.away);
+    expect(slot.viewport.value, view0, reason: 'a mouse beside the page');
+    await drag(origin + beside.at, PointerDeviceKind.touch, step: beside.away);
+    expect(slot.viewport.value, view0, reason: 'a finger beside the page');
 
     final pen = await tester.startGesture(origin + rect.center, pointer: 9);
     await tester.pump();
