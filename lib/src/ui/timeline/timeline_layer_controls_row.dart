@@ -770,24 +770,41 @@ class TimelineLayerControlsRow extends StatelessWidget {
     iconSize: 15,
   );
 
+  /// One of the buttons at the end of the name, `layer-[slug]` in
+  /// [_nameButtonBox] — pressed under its own context, so a popover it
+  /// opens lands on it.
+  Widget _nameButton({
+    required String slug,
+    required String tooltip,
+    required RailGlyph glyph,
+    required void Function(BuildContext context)? onPressed,
+    bool danger = false,
+  }) => Builder(
+    builder: (context) => RailGlyphButton(
+      name: '$keyPrefix-layer-$slug-${layer.id}',
+      tooltip: tooltip,
+      size: _nameButtonBox,
+      glyph: glyph,
+      danger: danger,
+      onPressed: onPressed == null ? null : () => onPressed(context),
+    ),
+  );
+
   /// 🗣️I-25 (유저 2026-09-14): 「레이어도 똑같이 버튼누르면 링크 대상 리스트
   /// 표시」 — the badge is the entrance to the link window, a rail button
   /// like the reference button beside it.
   Widget? _linkBadge(ColorScheme colorScheme) {
     if (linkPartners.isEmpty) return null;
     final onOpen = onOpenLayerLinks;
-    return Builder(
-      builder: (context) => RailGlyphButton(
-        name: '$keyPrefix-layer-link-badge-${layer.id}',
-        tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
-        size: _nameButtonBox,
-        // The link reads in the accent whatever the button's own rest
-        // colour: it says the row is linked before anything is pressed.
-        glyph: RailIconGlyph(Icons.link, color: colorScheme.primary),
-        onPressed: onOpen == null
-            ? null
-            : () => onOpen(context, layerIdNow(context, layer.id)),
-      ),
+    return _nameButton(
+      slug: 'link-badge',
+      tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
+      // The link reads in the accent whatever the button's own rest
+      // colour: it says the row is linked before anything is pressed.
+      glyph: RailIconGlyph(Icons.link, color: colorScheme.primary),
+      onPressed: onOpen == null
+          ? null
+          : (context) => onOpen(context, layerIdNow(context, layer.id)),
     );
   }
 
@@ -812,16 +829,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (layer.mediaReference == null || onOpen == null) {
       return null;
     }
-    return Builder(
-      builder: (context) => RailGlyphButton(
-        name: '$keyPrefix-layer-reference-${layer.id}',
-        tooltip: AppText.strings.tlLayerReference,
-        size: _nameButtonBox,
-        glyph: const RailIconGlyph(Icons.insert_drive_file_outlined),
-        danger: isReferenceSourceShort,
-        // The popover lands on the button: it opens under THIS context.
-        onPressed: () => onOpen(context, layerIdNow(context, layer.id)),
-      ),
+    return _nameButton(
+      slug: 'reference',
+      tooltip: AppText.strings.tlLayerReference,
+      glyph: const RailIconGlyph(Icons.insert_drive_file_outlined),
+      danger: isReferenceSourceShort,
+      onPressed: (context) => onOpen(context, layerIdNow(context, layer.id)),
     );
   }
 
@@ -837,14 +850,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (!layer.kind.carriesCameraPath || onOpen == null) {
       return null;
     }
-    return Builder(
-      builder: (context) => RailGlyphButton(
-        name: '$keyPrefix-layer-camera-path-${layer.id}',
-        tooltip: AppText.strings.cameraPath,
-        size: _nameButtonBox,
-        glyph: const RailIconGlyph(Icons.route),
-        onPressed: () => onOpen(context),
-      ),
+    return _nameButton(
+      slug: 'camera-path',
+      tooltip: AppText.strings.cameraPath,
+      glyph: const RailIconGlyph(Icons.route),
+      onPressed: onOpen,
     );
   }
 
