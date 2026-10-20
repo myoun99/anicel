@@ -42,18 +42,8 @@ class SheetSources {
         for (final layer in cut.layers)
           if (layerTakesSheetCelColumn(layer)) layer,
       ],
-      // Each block's books among its own rows — the rows of the other
-      // block are not there for a book to lie between (F-406-Q1).
-      actionBooks: sheetBooksOf([
-        for (final layer in cut.layers)
-          if (!layerTakesSheetCelColumn(layer) || !layerMarkedInbetween(layer))
-            layer,
-      ]),
-      cellBooks: sheetBooksOf([
-        for (final layer in cut.layers)
-          if (!layerTakesSheetCelColumn(layer) || layerMarkedInbetween(layer))
-            layer,
-      ]),
+      actionBooks: sheetBooksOf(_blockRows(cut.layers, inbetween: false)),
+      cellBooks: sheetBooksOf(_blockRows(cut.layers, inbetween: true)),
       seLayers: [
         for (final layer in cut.layers)
           if (layer.kind == LayerKind.se && layer.onTimesheet)
@@ -87,6 +77,20 @@ class SheetSources {
       ],
     );
   }
+
+  /// The rows a block's books lie among: every row that takes no cel
+  /// column, and that block's own cel rows — the 動画 ones for the CELL
+  /// block, the others for the ACTION block. The other block's rows are not
+  /// there for a book to lie between (F-406-Q1).
+  static List<Layer> _blockRows(
+    List<Layer> layers, {
+    required bool inbetween,
+  }) => [
+    for (final layer in layers)
+      if (!layerTakesSheetCelColumn(layer) ||
+          layerMarkedInbetween(layer) == inbetween)
+        layer,
+  ];
 
   /// The cut's length in rows the sheet must show, never less than 1.
   final int playbackFrameCount;
