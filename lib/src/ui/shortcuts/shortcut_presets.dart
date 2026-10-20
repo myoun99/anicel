@@ -16,11 +16,11 @@ import 'shortcut_activator_codec.dart';
 /// words named a 「일반」 preset (「범용적으로 쓰기 쉬운 일반적인 프리셋」);
 /// the two programs' layouts are what it became.
 ///
-/// ★A PRESET HOLDS ONLY THE KEYS ITS PROGRAM NAMES ([_programKeys]). Every
+/// ★A PRESET HOLDS ONLY THE KEYS ITS PROGRAMS NAME ([_programsOf]). Every
 /// other action keeps the registry's key, so a default that moves in the
-/// registry moves in every preset that did not name it — and the rule for a
-/// key two actions would share is said once ([presetActivators]), not listed
-/// per loser.
+/// registry moves in every preset no program of it named — and the rule for
+/// a key two actions would share is said once ([presetActivators]), not
+/// listed per loser.
 ///
 /// 🗣️I-88 (유저 2026-10-09): 「이런 키는 물론 클튜나 tvp 알아서 그거에맞춰서
 /// 기록. 앞으로 단축키 관련은 그게 기본임. 내가 제안하는건 다 anicel용」 — a
@@ -31,10 +31,10 @@ enum ShortcutPreset {
   /// The registry's own keys.
   anicel('Anicel'),
 
-  /// CLIP STUDIO PAINT's default keys.
+  /// CLIP STUDIO PAINT's default keys, then TVPaint's.
   clipStudio('Clip Studio based'),
 
-  /// TVPaint Animation's default keys.
+  /// TVPaint Animation's default keys, then CLIP STUDIO PAINT's.
   tvpaint('TVPaint based');
 
   const ShortcutPreset(this.label);
@@ -55,42 +55,96 @@ enum ShortcutPreset {
 /// 「초안대로 — 그 프로그램을 최대한 닮게」 = 「공식 키가 있는 줄은 그
 /// 프로그램의 키로(「비슷한 명령」 줄 포함), 없는 줄은 anicel 의 키 그대로.
 /// 키가 부딪히면 그 프로그램의 뜻을 따른다」. So an action the program names
-/// takes the program's keys AND NO OTHER, and an action it does not name
-/// keeps the registry's — less any key the program gave to something else.
+/// takes the program's keys AND NO OTHER, less a key a program before it
+/// gave to something else.
+///
+/// ↩️🗣️F-417 (유저 2026-10-20) turned the rows the program does not name:
+/// 「A나 D로 플립하는건 내가 생각한 anicel기반임. 그러니 클튜기반에서
+/// 그런식으로 클튜에서 확인안된것들은 tvp기반, tvp에서 확인안된건
+/// 클튜기반으로 우선 그렇게 지정. anicel은 내가 혼자 쓰려고 생각한거라
+/// 범용적이지 않기때문」. Such a row takes the OTHER program's keys, as that
+/// program names them; only a row neither program names keeps the
+/// registry's — less any key either program gave to something else.
+/// ⚠️That last tail is the old answer's, kept where the new words say
+/// nothing — asked on the board (F-417-Q1).
+/// ⚠️MY READING, not said: a row whose every key a program before took is
+/// as one the program does not name — Clip Studio's hand holds Space, which
+/// is TVPaint's play, so under Clip Studio the play keeps anicel's Shift+X
+/// rather than no key.
 List<SingleActivator> presetActivators(
   ShortcutPreset preset,
   EditorActionDefinition definition,
 ) {
-  final named = _programKeys[preset]![definition.id];
-  if (named != null) {
-    return named;
+  final takenThrough = _takenThrough[preset]!;
+  for (final (index, program) in _programsOf[preset]!.indexed) {
+    final named = program[definition.id];
+    if (named != null) {
+      final shipped = _without(
+        named,
+        index == 0 ? const {} : takenThrough[index - 1],
+      );
+      if (shipped.isNotEmpty) {
+        return shipped;
+      }
+    }
   }
-  final taken = _takenKeys[preset]!;
-  return [
-    for (final activator in definition.defaultActivators)
-      if (!taken.contains(activatorKey(activator))) activator,
-  ];
+  return _without(
+    definition.defaultActivators,
+    takenThrough.lastOrNull ?? const {},
+  );
 }
 
-/// Every action id [preset] names a key for — what a test holds against the
-/// registry, so an action renamed there cannot fall out of a preset unseen.
+List<SingleActivator> _without(
+  List<SingleActivator> activators,
+  Set<String> taken,
+) => [
+  for (final activator in activators)
+    if (!taken.contains(activatorKey(activator))) activator,
+];
+
+/// Every action id [preset]'s own program names a key for — what a test
+/// holds against the registry, so an action renamed there cannot fall out
+/// of a preset unseen.
 Iterable<String> presetNamedActionIds(ShortcutPreset preset) =>
-    _programKeys[preset]!.keys;
+    _programsOf[preset]!.firstOrNull?.keys ?? const [];
 
-final Map<ShortcutPreset, Map<String, List<SingleActivator>>> _programKeys = {
-  ShortcutPreset.anicel: const {},
-  ShortcutPreset.clipStudio: _clipStudioKeys,
-  ShortcutPreset.tvpaint: _tvpaintKeys,
+/// The programs each preset reads its keys from, first to last (F-417).
+final Map<ShortcutPreset, List<Map<String, List<SingleActivator>>>>
+_programsOf = {
+  ShortcutPreset.anicel: const [],
+  ShortcutPreset.clipStudio: [_clipStudioKeys, _tvpaintKeys],
+  ShortcutPreset.tvpaint: [_tvpaintKeys, _clipStudioKeys],
 };
 
-/// The keys each preset's program holds, as [activatorKey] spells them.
-final Map<ShortcutPreset, Set<String>> _takenKeys = {
-  for (final MapEntry(key: preset, value: keys) in _programKeys.entries)
-    preset: {
-      for (final activators in keys.values)
-        for (final activator in activators) activatorKey(activator),
-    },
+/// The keys each preset ships through each of its programs, as
+/// [activatorKey] spells them: after its first program, after its second
+/// one too — the rows each program ships keys on, as [presetActivators]
+/// reads them, and no row twice.
+final Map<ShortcutPreset, List<Set<String>>> _takenThrough = {
+  for (final MapEntry(key: preset, value: programs) in _programsOf.entries)
+    preset: _takenByEach(programs),
 };
+
+List<Set<String>> _takenByEach(
+  List<Map<String, List<SingleActivator>>> programs,
+) {
+  final shipped = <String>{};
+  var taken = <String>{};
+  final through = <Set<String>>[];
+  for (final program in programs) {
+    final before = taken;
+    taken = {...before};
+    for (final MapEntry(key: id, value: activators) in program.entries) {
+      final keys = _without(activators, before);
+      if (!shipped.contains(id) && keys.isNotEmpty) {
+        shipped.add(id);
+        taken.addAll(keys.map(activatorKey));
+      }
+    }
+    through.add(taken);
+  }
+  return through;
+}
 
 /// CLIP STUDIO PAINT's default key for each action it has one for — the
 /// 클립 스튜디오 column of the table the user answered (I-63-Q3), row for
@@ -99,7 +153,7 @@ final Map<ShortcutPreset, Set<String>> _takenKeys = {
 ///
 /// ⚠️Its ANIMATION commands have no default key at all — the official list
 /// has no animation section — so the moves along the film, the playback and
-/// the timeline's verbs are not named here and keep the registry's.
+/// the timeline's verbs are not named here: they take TVPaint's (F-417).
 ///
 /// ⚠️`-` · `^` · `;` are where a JAPANESE keyboard has them; the program
 /// prints the same three in every language's edition. Another layout reaches
@@ -284,8 +338,8 @@ final Map<String, List<SingleActivator>> _clipStudioKeys = {
 /// ⚠️`Space` plays (「再生 / 一時停止」), so the pan held on it has no key
 /// under this preset. The program pans on Alt and turns the view on
 /// Ctrl+Alt, each held while dragging (its 「Rotate, pan, zoom」 page) — a
-/// modifier alone, which no key binding can hold — so the turn keeps
-/// anicel's key here (I-88).
+/// modifier alone, which no key binding can hold — so the turn takes
+/// CLIP STUDIO PAINT's Shift+Space here (F-417), anicel's too (I-88).
 /// ⚠️MY READINGS, each the nearest command, not one the user named: `Del`
 /// is the program's second Cut (「選択範囲をカット (設定で定義した)」, the
 /// timeline's, as Ctrl+X is), so it cuts here rather than clearing pixels;
