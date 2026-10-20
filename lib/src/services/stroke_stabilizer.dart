@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../models/canvas_point.dart';
 import 'input/pen_readings.dart';
+import 'stroke_corners.dart';
 
 /// Clip Studio's 손떨림 보정 (手ブレ補正): the line runs a little behind the
 /// pen and closes the same share of the distance left in the same time —
@@ -24,19 +25,28 @@ import 'input/pen_readings.dart';
 /// pixels the pen dragged the brush on, which never moved while the pen was
 /// within a rope of it, and a line that ended where the brush stood (H45).
 ///
+/// A brush that keeps its corners (角をとがらせる, [StrokeCorners]) takes the
+/// way through each corner the pen turned that the line has yet to reach,
+/// and closes the same share of that way — with none, the way is straight
+/// for the pen, as above.
+///
 /// Times are the PEN's: a sample's [follow] carries the event's time, and
 /// a frame's [lookAtFrame] is counted from the first frame after the last
 /// sample — the two clocks are never compared.
+///
+/// Each move answers the way the line went: every corner it went through,
+/// and then where it got to.
 class StrokeStabilizer {
   StrokeStabilizer({
     required this.lagAt,
-    required CanvasPoint start,
-    required PenReadings readings,
+    required PenPoint start,
     required Duration at,
-  }) : _brush = (position: start, readings: readings),
-       _pen = (position: start, readings: readings),
+    bool keepsCorners = false,
+  }) : _brush = start,
+       _pen = start,
        _brushAt = at,
-       _sampleAt = at;
+       _sampleAt = at,
+       _corners = keepsCorners ? (StrokeCorners()..add(start)) : null;
 
   /// How far behind the pen the line runs while the pen moves at a speed
   /// (normalised, as the pen's readings carry it) — the time it takes to
@@ -49,6 +59,11 @@ class StrokeStabilizer {
 
   PenPoint _brush;
   PenPoint _pen;
+
+  /// The pen's corners, for a brush that keeps them — and those the line
+  /// has yet to go through, in order.
+  final StrokeCorners? _corners;
+  final List<PenPoint> _ahead = [];
 
   /// The pen time the brush stands at.
   Duration _brushAt;
@@ -65,61 +80,115 @@ class StrokeStabilizer {
   bool get settled => _brush == _pen;
 
   /// The pen at [pen], reading [readings], at its time [at]; the brush
-  /// closes on it for the time since it last moved. Answers the brush.
-  PenPoint follow(
+  /// closes on it for the time since it last moved.
+  List<PenPoint> follow(
     CanvasPoint pen,
     PenReadings readings, {
     required Duration at,
   }) {
     _pen = (position: pen, readings: readings);
+    _goThrough(_corners?.add(_pen) ?? const []);
     _sampleAt = at;
     _firstFrameAfterSample = null;
-    _closeTo(at);
-    return _brush;
+    return [..._closeTo(at), _brush];
   }
 
   /// A frame at [frameAt] on the frame clock: the brush keeps closing on
-  /// the pen while it rests. Answers the brush where it moved, or null when
-  /// this frame moved it nowhere — the first frame after a sample only
-  /// marks where the pen's time stands on the frame clock.
-  PenPoint? lookAtFrame(Duration frameAt) {
+  /// the pen while it rests. Answers nothing when this frame moved it
+  /// nowhere — the first frame after a sample only marks where the pen's
+  /// time stands on the frame clock.
+  List<PenPoint> lookAtFrame(Duration frameAt) {
     if (settled) {
-      return null;
+      return const [];
     }
     final firstFrame = _firstFrameAfterSample;
     if (firstFrame == null) {
       _firstFrameAfterSample = frameAt;
-      return null;
+      return const [];
     }
     final before = _brush;
-    _closeTo(_sampleAt + (frameAt - firstFrame));
-    return _brush == before ? null : _brush;
+    final through = _closeTo(_sampleAt + (frameAt - firstFrame));
+    return _brush == before ? const [] : [...through, _brush];
   }
 
   /// The pen lifted: the line goes straight to where it was, reading what
-  /// it read there. Answers that, or null when the line was already there.
-  PenPoint? finish() {
+  /// it read there — through the corners it had yet to reach. Answers
+  /// nothing when the line was already there.
+  List<PenPoint> finish() {
+    _goThrough(_corners?.end() ?? const []);
     if (settled) {
-      return null;
+      return const [];
     }
-    return _brush = _pen;
+    final way = [..._ahead, _pen];
+    _ahead.clear();
+    _brush = _pen;
+    return way;
   }
 
-  void _closeTo(Duration at) {
+  /// The line will go through [corners] — those it has not already cut
+  /// past: a corner known only once the pen is on past it can be behind a
+  /// line that runs close behind the pen.
+  void _goThrough(List<StrokeCorner> corners) {
+    for (final (at: _, :point) in corners) {
+      if (_brush.position.distanceTo(_pen.position) >
+          point.position.distanceTo(_pen.position)) {
+        _ahead.add(point);
+      }
+    }
+  }
+
+  /// Closes the share of the way left that the time to [at] closes;
+  /// answers the corners the line went through on it.
+  List<PenPoint> _closeTo(Duration at) {
     final elapsed = at - _brushAt;
     if (elapsed <= Duration.zero) {
-      return;
+      return const [];
     }
     _brushAt = at;
     final lag = lagAt(_pen.readings.speed);
     final share =
         1 - math.exp(-elapsed.inMicroseconds / lag.inMicroseconds);
-    final position = CanvasPoint.lerp(_brush.position, _pen.position, share);
-    _brush = position.distanceTo(_pen.position) < _settlesWithin
+    if (_ahead.isEmpty) {
+      _moveTo(_brush, _pen, share);
+      return const [];
+    }
+    var go = share * _wayLeft();
+    final through = <PenPoint>[];
+    var from = _brush;
+    while (_ahead.isNotEmpty &&
+        from.position.distanceTo(_ahead.first.position) <= go) {
+      go -= from.position.distanceTo(_ahead.first.position);
+      from = _ahead.removeAt(0);
+      through.add(from);
+    }
+    final to = _ahead.isEmpty ? _pen : _ahead.first;
+    final leg = from.position.distanceTo(to.position);
+    _moveTo(from, to, leg == 0 ? 1.0 : math.min(1.0, go / leg));
+    return through;
+  }
+
+  /// The length of the way from the brush through the corners ahead to the
+  /// pen.
+  double _wayLeft() {
+    var way = 0.0;
+    var from = _brush.position;
+    for (final point in [..._ahead, _pen]) {
+      way += from.distanceTo(point.position);
+      from = point.position;
+    }
+    return way;
+  }
+
+  /// The brush [share] of the way from [from] to [to] — on the pen, once
+  /// it is that close to it with nothing left to go through.
+  void _moveTo(PenPoint from, PenPoint to, double share) {
+    final position = CanvasPoint.lerp(from.position, to.position, share);
+    _brush =
+        _ahead.isEmpty && position.distanceTo(_pen.position) < _settlesWithin
         ? _pen
         : (
             position: position,
-            readings: readingsBetween(_brush.readings, _pen.readings, share),
+            readings: readingsBetween(from.readings, to.readings, share),
           );
   }
 }

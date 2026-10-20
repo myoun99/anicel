@@ -634,6 +634,15 @@ void main() {
       BrushCorrection.none,
       reason: 'nothing steadied, nothing taken out: nothing to bend',
     );
+    // 角をとがらせる sits under no switch in Clip Studio's group: it is
+    // never dim (F-418-Q11).
+    await tap('brush-tool-sharpen-corners');
+    expect(
+      read().correction,
+      BrushCorrection.none.copyWith(sharpenCorners: true),
+    );
+    await tap('brush-tool-sharpen-corners');
+    expect(read().correction, BrushCorrection.none, reason: 'and off again');
 
     read = await _pumpPanel(
       tester,
@@ -641,6 +650,7 @@ void main() {
         correction: const BrushCorrection(postStrength: 20),
       ),
     );
+    await tap('brush-tool-sharpen-corners');
     await tap('brush-tool-steadying-by-speed-fast');
     for (final key in toggles) {
       await tap(key);
@@ -648,6 +658,7 @@ void main() {
     expect(
       read().correction,
       const BrushCorrection(
+        sharpenCorners: true,
         steadyingBySpeed: BrushSteadyingBySpeed.fast,
         postStrength: 20,
         postBySpeed: false,

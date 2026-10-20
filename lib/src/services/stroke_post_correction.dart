@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../models/canvas_point.dart';
 import 'input/pen_readings.dart';
+import 'stroke_corners.dart';
 
 /// Clip Studio's 後補正: once the line is drawn, its wobble is taken out
 /// and it is laid again along a smooth curve (F-418, 유저 2026-10-20 Q5
@@ -16,6 +17,10 @@ import 'input/pen_readings.dart';
 /// spline through them. Each point carries what the pen read at the same
 /// share of the way along [drawn].
 ///
+/// With [keepCorners] (角をとがらせる), the line is laid again in sections
+/// that meet at its corners ([StrokeCorners]), each smoothed on its own — so
+/// the smoothing goes into a corner and out of it, never round it.
+///
 /// ⚠️How Clip Studio takes the wobble out is not published; this is a
 /// Douglas–Peucker pass at [within] — what is left of the line once every
 /// bend smaller than that is straightened.
@@ -23,17 +28,26 @@ List<PenPoint> postCorrected(
   List<PenPoint> drawn, {
   required double within,
   required bool bezier,
+  bool keepCorners = false,
 }) {
   if (drawn.length < 3 || within <= 0) {
     return drawn;
   }
   final along = _distancesAlong(drawn);
-  final kept = _standing(drawn, within);
-  final points = [for (final i in kept) drawn[i].position];
-  final places = [for (final i in kept) along[i]];
-  final pieces = bezier
-      ? _quadraticChain(points, places)
-      : _spline(points, places);
+  final ends = [
+    0,
+    if (keepCorners) ...StrokeCorners.of(drawn),
+    drawn.length - 1,
+  ];
+  final pieces = <_Piece>[];
+  for (var i = 1; i < ends.length; i += 1) {
+    final kept = _standing(drawn, within, from: ends[i - 1], to: ends[i]);
+    final points = [for (final k in kept) drawn[k].position];
+    final places = [for (final k in kept) along[k]];
+    pieces.addAll(
+      bezier ? _quadraticChain(points, places) : _spline(points, places),
+    );
+  }
   return [
     drawn.first,
     for (final piece in pieces)
@@ -55,20 +69,24 @@ List<double> _distancesAlong(List<PenPoint> line) {
   return along;
 }
 
-/// The indices of [line] that bends of [within] or less leave standing —
-/// its first and last always.
-List<int> _standing(List<PenPoint> line, double within) {
+/// The indices of [line] from [from] to [to] that bends of [within] or less
+/// leave standing — [from] and [to] always.
+List<int> _standing(
+  List<PenPoint> line,
+  double within, {
+  required int from,
+  required int to,
+}) {
   final stands = List<bool>.filled(line.length, false);
-  stands[0] = true;
-  stands[line.length - 1] = true;
-  final spans = [(0, line.length - 1)];
+  stands[from] = true;
+  stands[to] = true;
+  final spans = [(from, to)];
   while (spans.isNotEmpty) {
     final (from, to) = spans.removeLast();
     var farthest = -1;
     var farthestBy = within;
     for (var i = from + 1; i < to; i += 1) {
-      final by = _offLine(
-        line[i].position,
+      final by = line[i].position.distanceToSegment(
         line[from].position,
         line[to].position,
       );
@@ -85,15 +103,9 @@ List<int> _standing(List<PenPoint> line, double within) {
     }
   }
   return [
-    for (var i = 0; i < line.length; i += 1)
+    for (var i = from; i <= to; i += 1)
       if (stands[i]) i,
   ];
-}
-
-/// How far [point] is from the segment [a]–[b].
-double _offLine(CanvasPoint point, CanvasPoint a, CanvasPoint b) {
-  final t = CanvasPoint.inverseLerp(a, b, point).clamp(0.0, 1.0);
-  return point.distanceTo(CanvasPoint.lerp(a, b, t));
 }
 
 /// One piece of the curve: a Bézier on [controls], and where along the

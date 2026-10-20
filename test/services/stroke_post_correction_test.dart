@@ -103,6 +103,32 @@ void main() {
     expect(nearest, greaterThan(5));
   });
 
+  test('keeping its corners (角をとがらせる), either lays the line into the '
+      'corner and out of it along its two sides (F-418-Q11)', () {
+    final corner = CanvasPoint(x: 60, y: 0);
+    double offTheSides(List<PenPoint> line) => line
+        .map(
+          (p) => [
+            p.position.distanceToSegment(CanvasPoint(x: 0, y: 0), corner),
+            p.position.distanceToSegment(corner, CanvasPoint(x: 60, y: 60)),
+          ].reduce((a, b) => a < b ? a : b),
+        )
+        .reduce((a, b) => a > b ? a : b);
+    for (final bezier in [false, true]) {
+      final kept = postCorrected(
+        _corner(),
+        within: 2,
+        bezier: bezier,
+        keepCorners: true,
+      );
+      expect(kept.map((p) => p.position), contains(corner));
+      expect(offTheSides(kept), lessThan(1e-9), reason: 'bezier $bezier');
+
+      final rounded = postCorrected(_corner(), within: 2, bezier: bezier);
+      expect(offTheSides(rounded), greaterThan(1), reason: 'bezier $bezier');
+    }
+  });
+
   test('nothing to take out, nothing changes', () {
     final drawn = _wobbly(1.5);
     expect(postCorrected(drawn, within: 0, bezier: true), same(drawn));

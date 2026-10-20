@@ -8,6 +8,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -260,6 +261,65 @@ void main() {
     expect(await wobbleAt(const Duration(milliseconds: 400)), greaterThan(1));
   });
 
+  testWidgets('a brush that keeps its corners draws a V to its point; one '
+      'that does not cuts across it (角をとがらせる, F-418-Q11)', (
+    tester,
+  ) async {
+    const v = [
+      Offset(20, 4),
+      Offset(30, 14),
+      Offset(40, 24),
+      Offset(50, 34),
+      Offset(60, 24),
+      Offset(70, 14),
+      Offset(80, 4),
+    ];
+    final point = CanvasPoint(x: 50, y: 34);
+    double nearest(List<BrushDab> dabs) =>
+        dabs.map((dab) => dab.center.distanceTo(point)).reduce(math.min);
+
+    final kept = await _draw(
+      tester,
+      v,
+      stabilization: 100,
+      sharpenCorners: true,
+    );
+    expect(nearest(kept.committed), lessThan(1.5));
+
+    final cut = await _draw(tester, v, stabilization: 100);
+    expect(nearest(cut.committed), greaterThan(5));
+  });
+
+  testWidgets('the 後補正 keeps them too: a V shallower than it straightens '
+      'is laid again to its point, each side smoothed on its own — and '
+      'flattened by a brush that does not keep them (角をとがらせる)', (
+    tester,
+  ) async {
+    // 20 deep, under the 25 that 後補正 100 straightens.
+    const v = [
+      Offset(30, 4),
+      Offset(40, 14),
+      Offset(50, 24),
+      Offset(60, 14),
+      Offset(70, 4),
+    ];
+    final point = CanvasPoint(x: 50, y: 24);
+    double nearest(List<BrushDab> dabs) =>
+        dabs.map((dab) => dab.center.distanceTo(point)).reduce(math.min);
+
+    final kept = await _draw(
+      tester,
+      v,
+      stabilization: 0,
+      postStrength: 100,
+      sharpenCorners: true,
+    );
+    expect(nearest(kept.committed), lessThan(1.5));
+
+    final cut = await _draw(tester, v, stabilization: 0, postStrength: 100);
+    expect(nearest(cut.committed), greaterThan(15));
+  });
+
   testWidgets('by the view, a wobble is measured on the screen: zoomed in, '
       'the same wobble on the canvas is a bigger one and stays '
       '(表示倍率による調整)', (tester) async {
@@ -328,6 +388,7 @@ Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
   double postStrength = 0,
   bool postBySpeed = false,
   bool postByViewScale = true,
+  bool sharpenCorners = false,
   double scatter = 0,
   double zoom = 1,
   Duration step = const Duration(milliseconds: 8),
@@ -361,6 +422,7 @@ Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
                 postStrength: postStrength,
                 postBySpeed: postBySpeed,
                 postByViewScale: postByViewScale,
+                sharpenCorners: sharpenCorners,
               ),
             ),
             overlayModel: overlay,

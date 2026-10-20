@@ -532,6 +532,16 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
                         onChanged(state.copyWith(textureContrast: value)),
             ),
             ToolSettingsGroupHeader(AppText.strings.brGroupCorrection),
+            // 角をとがらせる, first as in Clip Studio's group: the steadied
+            // line and the 後補正 both keep the corners the pen turned
+            // (F-418-Q11).
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('brush-tool-sharpen-corners'),
+              label: AppText.strings.brSharpenCorners,
+              value: state.correction.sharpenCorners,
+              onChanged: (on) =>
+                  _correct(state.correction.copyWith(sharpenCorners: on)),
+            ),
             // The brush's own, kept in its preset as Clip Studio keeps it
             // (F-418-Q6). ↩️It was the pull string's rope, a hand-feel
             // setting kept out of presets (P7).

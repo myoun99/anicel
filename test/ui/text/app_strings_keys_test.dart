@@ -774,6 +774,7 @@ void main() {
     'brPostBySpeed': (s) => s.brPostBySpeed,
     'brPostByViewScale': (s) => s.brPostByViewScale,
     'brPostBezier': (s) => s.brPostBezier,
+    'brSharpenCorners': (s) => s.brSharpenCorners,
     'brGroupInk': (s) => s.brGroupInk,
     'brGroupTip': (s) => s.brGroupTip,
     'brGroupMixing': (s) => s.brGroupMixing,

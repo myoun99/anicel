@@ -41,6 +41,12 @@ class CanvasPoint {
         : ((value.x - a.x) * dx + (value.y - a.y) * dy) / length;
   }
 
+  /// How far this point is from the segment [a]–[b] — the 後補正's measure
+  /// of a wobble, and the measure of which point of a turn is its corner
+  /// (F-418).
+  double distanceToSegment(CanvasPoint a, CanvasPoint b) =>
+      distanceTo(lerp(a, b, inverseLerp(a, b, this).clamp(0.0, 1.0)));
+
   Map<String, dynamic> toJson() => {'x': x, 'y': y};
 
   factory CanvasPoint.fromJson(Map<String, dynamic> json) {

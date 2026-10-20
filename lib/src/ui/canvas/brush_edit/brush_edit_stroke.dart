@@ -298,9 +298,9 @@ class _BrushEditStroke {
     _state._stabilizer = correction.steadies
         ? StrokeStabilizer(
             lagAt: correction.lagAt,
-            start: at,
-            readings: _readings,
+            start: (position: at, readings: _readings),
             at: startedAt,
+            keepsCorners: correction.sharpenCorners,
           )
         : null;
   }
@@ -330,11 +330,15 @@ class _BrushEditStroke {
     _state._currentSpeed = readings.speed;
   }
 
-  /// Lays the line to where it has got to, with what it reads there.
-  void _paintSteadied(PenPoint brush) => paintReading(
-    brush.readings,
-    () => advanceStrokeThroughGuides(brush.position),
-  );
+  /// Lays the line the [way] it went, with what it reads along it.
+  void _paintSteadied(List<PenPoint> way) {
+    for (final point in way) {
+      paintReading(
+        point.readings,
+        () => advanceStrokeThroughGuides(point.position),
+      );
+    }
+  }
 
   /// While the line has not reached the pen, frames move it on — Clip
   /// Studio's line keeps going while the pen rests (F-418).
@@ -353,7 +357,7 @@ class _BrushEditStroke {
       return;
     }
     final moved = stabilizer.lookAtFrame(frameAt);
-    if (moved != null) {
+    if (moved.isNotEmpty) {
       _paintSteadied(moved);
       // On screen THIS frame: the queue's own flush may have run already.
       _state._overlay.flushPendingOverlayDabs();
@@ -363,10 +367,7 @@ class _BrushEditStroke {
 
   /// The pen lifted: the line goes straight to where it was (F-418-Q2).
   void finishSteadying() {
-    final rest = _state._stabilizer?.finish();
-    if (rest != null) {
-      _paintSteadied(rest);
-    }
+    _paintSteadied(_state._stabilizer?.finish() ?? const []);
   }
 
   /// 後補正: the line the pen drew, its wobble taken out, laid again as this
@@ -402,6 +403,7 @@ class _BrushEditStroke {
       drawn,
       within: within,
       bezier: correction.postBezier,
+      keepCorners: correction.sharpenCorners,
     );
     if (identical(line, drawn)) {
       return;

@@ -1633,6 +1633,7 @@ enum AppStrings {
   String get brPostBySpeed => _s('brPostBySpeed');
   String get brPostByViewScale => _s('brPostByViewScale');
   String get brPostBezier => _s('brPostBezier');
+  String get brSharpenCorners => _s('brSharpenCorners');
   String get brGroupInk => _s('brGroupInk');
   String get brGroupTip => _s('brGroupTip');
   String get brGroupMixing => _s('brGroupMixing');
@@ -2787,6 +2788,7 @@ enum AppStrings {
     'brPostBySpeed': 'Adjust by speed',
     'brPostByViewScale': 'Adjust by zoom',
     'brPostBezier': 'Bezier curve',
+    'brSharpenCorners': 'Sharpen corners',
     'brGroupInk': 'Ink',
     'brGroupTip': 'Brush tip',
     'brGroupMixing': 'Mixing',
@@ -4267,6 +4269,7 @@ enum AppStrings {
     'brPostBySpeed': '速度で調整',
     'brPostByViewScale': '表示倍率で調整',
     'brPostBezier': 'ベジェ曲線',
+    'brSharpenCorners': '角をとがらせる',
     'brGroupInk': 'インク',
     'brGroupTip': 'ブラシ先端',
     'brGroupMixing': '混色',
@@ -5845,6 +5848,7 @@ enum AppStrings {
     'brPostBySpeed': '속도로 조정',
     'brPostByViewScale': '배율로 조정',
     'brPostBezier': '베지어 곡선',
+    'brSharpenCorners': '각 날카롭게',
     'brGroupInk': '잉크',
     'brGroupTip': '브러시 끝',
     'brGroupMixing': '혼색',
@@ -7567,6 +7571,7 @@ enum AppStrings {
     'brPostBySpeed': 'Ajuster à la vitesse',
     'brPostByViewScale': 'Ajuster au zoom',
     'brPostBezier': 'Courbe de Bézier',
+    'brSharpenCorners': 'Angles vifs',
     'brGroupInk': 'Encre',
     'brGroupTip': 'Pointe',
     'brGroupMixing': 'Mélange',
@@ -9083,6 +9088,7 @@ enum AppStrings {
     'brPostBySpeed': '按速度调整',
     'brPostByViewScale': '按缩放调整',
     'brPostBezier': '贝塞尔曲线',
+    'brSharpenCorners': '锐化拐角',
     'brGroupInk': '墨水',
     'brGroupTip': '笔尖',
     'brGroupMixing': '混色',

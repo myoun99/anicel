@@ -14,11 +14,13 @@ StrokeStabilizer _from(
   CanvasPoint start, {
   Duration at = Duration.zero,
   PenReadings readings = _rest,
+  Duration lag = _lag,
+  bool keepsCorners = false,
 }) => StrokeStabilizer(
-  lagAt: (_) => _lag,
-  start: start,
-  readings: readings,
+  lagAt: (_) => lag,
+  start: (position: start, readings: readings),
   at: at,
+  keepsCorners: keepsCorners,
 );
 
 Duration _ms(int ms) => Duration(milliseconds: ms);
@@ -30,7 +32,7 @@ void main() {
       CanvasPoint(x: 100, y: 0),
       _rest,
       at: _ms(10),
-    );
+    ).last;
     expect(brush.position.x, closeTo(100 * _oneLag, 1e-9));
     expect(brush.position.y, 0);
     expect(stabilizer.settled, isFalse);
@@ -41,9 +43,10 @@ void main() {
     final stabilizer = _from(CanvasPoint(x: 0, y: 0));
     final before = stabilizer
         .follow(CanvasPoint(x: 100, y: 0), _rest, at: _ms(10))
+        .last
         .position;
     final pen = CanvasPoint(x: 100, y: 100);
-    final after = stabilizer.follow(pen, _rest, at: _ms(20)).position;
+    final after = stabilizer.follow(pen, _rest, at: _ms(20)).last.position;
     // On the straight line from where it was to the pen, a share of the way.
     expect(after.x, closeTo(before.x + (pen.x - before.x) * _oneLag, 1e-9));
     expect(after.y, closeTo(before.y + (pen.y - before.y) * _oneLag, 1e-9));
@@ -62,7 +65,7 @@ void main() {
       pressure: 1.0,
       lean: (azimuthDegrees: 180.0, altitude: 1.0),
       speed: 0.6,
-    ), at: _ms(10));
+    ), at: _ms(10)).last;
     final readings = brush.readings;
     expect(readings.pressure, closeTo(0.2 + 0.8 * _oneLag, 1e-9));
     expect(readings.speed, closeTo(0.6 * _oneLag, 1e-9));
@@ -85,6 +88,7 @@ void main() {
           lean: (azimuthDegrees: 10.0, altitude: 0.5),
           speed: 0.0,
         ), at: _ms(10))
+        .last
         .readings
         .lean!;
     expect(lean.azimuthDegrees, closeTo((350 + 20 * _oneLag) % 360, 1e-9));
@@ -97,24 +101,24 @@ void main() {
       pressure: 0.5,
       lean: measured,
       speed: 0.0,
-    ), at: _ms(10));
+    ), at: _ms(10)).last;
     expect(brush.readings.lean, measured);
     final lost = stabilizer.follow(
       CanvasPoint(x: 100, y: 0),
       _rest,
       at: _ms(20),
-    );
+    ).last;
     expect(lost.readings.lean, isNull);
   });
 
   test('a sample at no later time moves nothing', () {
     final stabilizer = _from(CanvasPoint(x: 0, y: 0), at: _ms(50));
-    final brush = stabilizer.follow(
+    final way = stabilizer.follow(
       CanvasPoint(x: 100, y: 0),
       _rest,
       at: _ms(40),
     );
-    expect(brush.position, CanvasPoint(x: 0, y: 0));
+    expect(way.single.position, CanvasPoint(x: 0, y: 0));
   });
 
   test('while the pen rests, frames keep closing on it — the first frame '
@@ -122,10 +126,10 @@ void main() {
     final stabilizer = _from(CanvasPoint(x: 0, y: 0));
     stabilizer.follow(CanvasPoint(x: 100, y: 0), _rest, at: Duration.zero);
     // The frame clock starts wherever it likes; only its steps count.
-    expect(stabilizer.lookAtFrame(_ms(7000)), isNull);
+    expect(stabilizer.lookAtFrame(_ms(7000)), isEmpty);
     final moved = stabilizer.lookAtFrame(_ms(7010));
-    expect(moved!.position.x, closeTo(100 * _oneLag, 1e-9));
-    expect(stabilizer.lookAtFrame(_ms(7010)), isNull, reason: 'no time');
+    expect(moved.single.position.x, closeTo(100 * _oneLag, 1e-9));
+    expect(stabilizer.lookAtFrame(_ms(7010)), isEmpty, reason: 'no time');
   });
 
   test('a sample after frames starts the frame count over from it', () {
@@ -139,8 +143,8 @@ void main() {
       at: _ms(10),
     );
     // The frames already brought the brush to the sample's time.
-    expect(atSample.position.x, closeTo(100 * _oneLag, 1e-9));
-    expect(stabilizer.lookAtFrame(_ms(520)), isNull, reason: 'marks only');
+    expect(atSample.single.position.x, closeTo(100 * _oneLag, 1e-9));
+    expect(stabilizer.lookAtFrame(_ms(520)), isEmpty, reason: 'marks only');
   });
 
   test('the line settles exactly on a resting pen, readings and all, and '
@@ -158,7 +162,7 @@ void main() {
     expect(stabilizer.settled, isTrue);
     expect(stabilizer.brush, (position: pen, readings: pressed));
     expect(frame, lessThan(200), reason: 'ln(100 / 0.01) lags is ~92 ms');
-    expect(stabilizer.lookAtFrame(_ms(frame + 16)), isNull);
+    expect(stabilizer.lookAtFrame(_ms(frame + 16)), isEmpty);
   });
 
   test('the pen lifts and the line goes straight to where it was, reading '
@@ -167,16 +171,16 @@ void main() {
     final pen = CanvasPoint(x: 100, y: 40);
     const lifting = (pressure: 0.1, lean: null, speed: 0.8);
     stabilizer.follow(pen, lifting, at: _ms(10));
-    expect(stabilizer.finish(), (position: pen, readings: lifting));
+    expect(stabilizer.finish(), [(position: pen, readings: lifting)]);
     expect(stabilizer.brush.position, pen);
-    expect(stabilizer.finish(), isNull, reason: 'already there');
+    expect(stabilizer.finish(), isEmpty, reason: 'already there');
   });
 
   test('a pen that never left the start finishes with nothing to draw', () {
     final stabilizer = _from(CanvasPoint(x: 5, y: 5));
     expect(stabilizer.settled, isTrue);
-    expect(stabilizer.finish(), isNull);
-    expect(stabilizer.lookAtFrame(_ms(16)), isNull);
+    expect(stabilizer.finish(), isEmpty);
+    expect(stabilizer.lookAtFrame(_ms(16)), isEmpty);
   });
 
   test('how far behind the line runs is asked at the speed the pen moves '
@@ -187,8 +191,7 @@ void main() {
         asked.add(speed);
         return speed > 0.5 ? _ms(100) : _lag;
       },
-      start: CanvasPoint(x: 0, y: 0),
-      readings: _rest,
+      start: (position: CanvasPoint(x: 0, y: 0), readings: _rest),
       at: Duration.zero,
     );
     const quick = (pressure: 0.5, lean: null, speed: 0.9);
@@ -196,8 +199,94 @@ void main() {
       CanvasPoint(x: 100, y: 0),
       quick,
       at: _ms(10),
-    );
+    ).last;
     expect(asked, [0.9]);
     expect(brush.position.x, closeTo(100 * (1 - math.exp(-0.1)), 1e-9));
   });
+
+  group('角をとがらせる (F-418-Q11)', () {
+    final corner = CanvasPoint(x: 100, y: 0);
+
+    test('a brush that keeps its corners goes through the corner the pen '
+        'turned, reading what the pen read there', () {
+      final way = _right(_from(CanvasPoint(x: 0, y: 0), keepsCorners: true));
+      final there = way.where((point) => point.position == corner);
+      expect(there, isNotEmpty);
+      expect(there.first.readings, _pressing(0.3));
+    });
+
+    test('one that does not cuts across it', () {
+      final way = _right(_from(CanvasPoint(x: 0, y: 0)));
+      expect(
+        way.map((point) => point.position.distanceTo(corner)).reduce(math.min),
+        greaterThan(3),
+      );
+    });
+
+    test('a corner the line has already cut past is not gone back for', () {
+      final way = _right(
+        _from(CanvasPoint(x: 0, y: 0), lag: _ms(1), keepsCorners: true),
+      );
+      for (var i = 1; i < way.length; i += 1) {
+        expect(
+          way[i].position.y,
+          greaterThanOrEqualTo(way[i - 1].position.y),
+          reason: 'step $i',
+        );
+      }
+    });
+
+    test('the lift goes through the corners the line had yet to reach — '
+        'and the one the pen was still turning', () {
+      final stabilizer = _from(CanvasPoint(x: 0, y: 0), keepsCorners: true);
+      _right(stabilizer, downTo: 12, lift: false);
+      expect(
+        stabilizer.finish().map((point) => point.position),
+        [corner, CanvasPoint(x: 100, y: 12)],
+      );
+
+      final turning = _from(CanvasPoint(x: 0, y: 0), keepsCorners: true);
+      _right(turning, downTo: 8, lift: false);
+      expect(
+        turning.finish().map((point) => point.position),
+        [corner, CanvasPoint(x: 100, y: 8)],
+      );
+    });
+  });
+}
+
+PenReadings _pressing(double pressure) =>
+    (pressure: pressure, lean: null, speed: 0.0);
+
+/// A pen that goes right along y = 0 to x = 100, pressing 0.3, and turns
+/// down to y = [downTo], pressing 0.9 — a sample every millisecond, 4 px
+/// apart: the way the line went, to the lift when it [lift]s.
+List<PenPoint> _right(
+  StrokeStabilizer stabilizer, {
+  int downTo = 100,
+  bool lift = true,
+}) {
+  final way = <PenPoint>[];
+  var ms = 0;
+  void sample(double x, double y, double pressure) {
+    ms += 1;
+    way.addAll(
+      stabilizer.follow(
+        CanvasPoint(x: x, y: y),
+        _pressing(pressure),
+        at: _ms(ms),
+      ),
+    );
+  }
+
+  for (var x = 4; x <= 100; x += 4) {
+    sample(x.toDouble(), 0, 0.3);
+  }
+  for (var y = 4; y <= downTo; y += 4) {
+    sample(100, y.toDouble(), 0.9);
+  }
+  if (lift) {
+    way.addAll(stabilizer.finish());
+  }
+  return way;
 }
