@@ -333,8 +333,10 @@ void main() {
       await tester.pump();
       expect(
         heard.selects.toSet(),
-        {(6, 6), (6, 7)},
-        reason: '↩️nothing until 18px, and then the head was already 8',
+        {(6, 7)},
+        reason: '↩️nothing until 18px, and then the head was already 8 — '
+            'and the band is shown from the step that left the cell, the '
+            'pressed cell alone never (F-316)',
       );
       expect(
         heard.settled,
@@ -343,6 +345,41 @@ void main() {
             'travel read as one, and the tap dropped what it had selected',
       );
     });
+
+    for (final kind in [PointerDeviceKind.stylus, PointerDeviceKind.mouse]) {
+      testWidgets('🚨F-316: a ${kind.name} trembling on the cell it pressed '
+          'shows no band — its pan won, and its release is the tap it was', (
+        tester,
+      ) async {
+        final (heard, inside) = await mountSelected(tester);
+
+        // The middle of cell 6, outside the selection.
+        final gesture = await tester.startGesture(
+          inside + const Offset(cell * 5, 0),
+          kind: kind,
+        );
+        // Three pixels each way, seven times: 21px of path, past a pen's
+        // 18px slop, never off the cell nor 12px from the press.
+        for (var shake = 0; shake < 7; shake += 1) {
+          await creep(tester, gesture, shake.isEven ? 3 : -3);
+        }
+        expect(
+          heard.selects,
+          isEmpty,
+          reason: '🗣️「선택범위 작동했는데 취소되는게 더 짜증남. '
+              '작동하면 작동하도록」 — nothing is shown to be taken back',
+        );
+        await gesture.up();
+        await tester.pump();
+
+        expect(heard.selects, isEmpty);
+        expect(
+          heard.settled,
+          1,
+          reason: 'a click that wobbles is still a click (H24)',
+        );
+      });
+    }
 
     for (final (way, dy) in [('up', -1.0), ('down', 1.0)]) {
       testWidgets('🚨a select that leaves a LOW row ($way) inside a tap\'s '
@@ -556,13 +593,37 @@ void main() {
       await creep(tester, gesture, 3);
       await gesture.up();
       await tester.pump();
-      expect(heard.selects.toSet(), {(1, 1), (1, 2)});
+      expect(
+        heard.selects.toSet(),
+        {(1, 2)},
+        reason: 'shown from the step that left the cell (F-316)',
+      );
       expect(
         heard.clears,
         0,
         reason: '🚨a select that left its cell is no tap — the band cleared '
             'on the release that had just selected',
       );
+    });
+
+    testWidgets('🚨F-316: a pen trembling on the band\'s cell it pressed '
+        'shows no band, and its release is the tap it was', (tester) async {
+      final (heard, middle) = await mountBand(tester);
+
+      final gesture = await tester.startGesture(
+        middle,
+        kind: PointerDeviceKind.stylus,
+      );
+      // 21px of path, never off the cell nor 12px from the press.
+      for (var shake = 0; shake < 7; shake += 1) {
+        await creep(tester, gesture, shake.isEven ? 3 : -3);
+      }
+      expect(heard.selects, isEmpty, reason: 'nothing to take back');
+      await gesture.up();
+      await tester.pump();
+
+      expect(heard.selects, isEmpty);
+      expect(heard.clears, 1, reason: 'H18: a click on the band clears');
     });
   });
 

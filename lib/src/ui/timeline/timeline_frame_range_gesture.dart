@@ -399,9 +399,9 @@ class _TimelineFrameRangeGestureLayerState
     _anchorIndex = frame;
     // A SELECT holds its row too: the cross-axis auto-pan can slide the
     // window past the anchor, and an unpinned anchor's recognizer would
-    // dispose and freeze the drag mid-sweep.
+    // dispose and freeze the drag mid-sweep. Its band waits for its first
+    // step ([_selectHeadStepped]).
     widget.callbacks.onGripTaken?.call(row);
-    widget.callbacks.onSelectUpdate(row, frame, frame, 0);
   }
 
   /// The pointer's cross-axis offset from THIS row's top (Excel cross-row
@@ -445,13 +445,12 @@ class _TimelineFrameRangeGestureLayerState
               along: _scrolledMain,
               across: _scrolledCross,
             );
-        _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
-        widget.callbacks.onSelectUpdate(
-          _dragRow,
-          _anchorIndex,
-          _frameAt(local),
-          _crossOffsetAt(local),
-        );
+        final head = _frameAt(local);
+        final cross = _crossOffsetAt(local);
+        if (!_selectHeadStepped(_anchorIndex, head, cross)) {
+          return;
+        }
+        widget.callbacks.onSelectUpdate(_dragRow, _anchorIndex, head, cross);
       case _RangeDragMode.move:
         // MOVE accumulates deltas, so only THIS step's applied pan joins —
         // details.delta is stated in the global frame and never sees the
@@ -864,13 +863,6 @@ class _TimelineLaneRangeGestureLayerState
     _mode = _RangeDragMode.select;
     _anchorIndex = frame;
     widget.callbacks.onGripTaken?.call(_rowAddress);
-    widget.callbacks.onSelectUpdate(
-      widget.layer.id,
-      widget.laneId,
-      frame,
-      frame,
-      0,
-    );
   }
 
   /// The pointer's cross-axis offset from THIS lane row's top (R26 #3
@@ -908,13 +900,17 @@ class _TimelineLaneRangeGestureLayerState
               along: _scrolledMain,
               across: _scrolledCross,
             );
-        _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
+        final head = _frameAt(local);
+        final cross = _crossOffsetAt(local);
+        if (!_selectHeadStepped(_anchorIndex, head, cross)) {
+          return;
+        }
         widget.callbacks.onSelectUpdate(
           widget.layer.id,
           widget.laneId,
           _anchorIndex,
-          _frameAt(local),
-          _crossOffsetAt(local),
+          head,
+          cross,
         );
       case _RangeDragMode.move:
         _mainDelta += partAlong(widget.axis, details.delta);
@@ -1007,14 +1003,14 @@ class _TimelineLaneRangeGestureLayerState
         // 안한흔적**」
         //
         // ⛔THE CELLS FAMILY HAD THIS RULE AND THIS ONE DID NOT. Both layers
-        // publish the ANCHOR span the moment the eager pan starts
-        // (`onSelectUpdate(frame, frame)`) — that is what makes a drag paint
-        // from its first pixel. The cells layer then clears it on the
-        // RELEASE when the press turns out to be a tap
-        // (`TimelineFrameRangeCallbacks.onTapClear`, T10: 「클릭하고 떼면 뭐든
-        // 비우게」). The lane band never got that half, so every click left a
-        // one-cell band behind: the same gesture, two grammars, decided by
-        // whether you happened to press an fx row.
+        // published the ANCHOR span the moment the eager pan started, and
+        // the cells layer cleared it on the RELEASE when the press turned
+        // out to be a tap (`TimelineFrameRangeCallbacks.onTapClear`, T10:
+        // 「클릭하고 떼면 뭐든 비우게」). The lane band never got that half,
+        // so every click left a one-cell band behind: the same gesture, two
+        // grammars, decided by whether you happened to press an fx row.
+        // (F-316: neither shows a band before its first step now —
+        // [_selectHeadStepped].)
         //
         // A real drag never settles into a tap, so select drags are
         // untouched; a press INSIDE the selection is the MOVE's (see
@@ -1114,11 +1110,21 @@ mixin _RangeDragFirstStep {
   bool _dragStepped = false;
 
   /// A SELECT whose head stands on [head], [cross] across its row: stepped
-  /// once that is not the cell it was pressed on ([anchor], this row).
-  void _noteSelectHead(int anchor, int head, double cross) {
+  /// once that is not the cell it was pressed on ([anchor], this row) — and
+  /// shown from that step on, never before it.
+  ///
+  /// 🗣️F-316 (유저 2026-10-08): 「어느정도 움직여서 선택범위 ui
+  /// 작동했는데 취소될때가 많음 … 작동하면 작동하도록」. ↩️The band was
+  /// shown as soon as the pan won — a mouse's at one pixel, a pen's at 18px
+  /// of tremble — while the release asked this step whether the press had
+  /// been a tap, and a tap clears (T10, H24): what had been shown went. One
+  /// question answers both now — a press that has not stepped shows
+  /// nothing, and one that has is no tap.
+  bool _selectHeadStepped(int anchor, int head, double cross) {
     if (head != anchor || cross < 0 || cross >= _dragRowExtent) {
       _dragStepped = true;
     }
+    return _dragStepped;
   }
 
   /// A MOVE now [frames] and [rows] from where it began: stepped once
