@@ -120,6 +120,7 @@ import '../widgets/app_scrollbar.dart';
 import '../canvas/canvas_capsule.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/page_turn_bar.dart';
+import '../widgets/tick_layer.dart';
 import '../text/readout_text.dart' show readoutText;
 import '../widgets/panel_flyout.dart';
 import '../shortcuts/editor_action_registry.dart';
