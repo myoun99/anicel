@@ -256,11 +256,12 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
 
   // ── presses ─────────────────────────────────────────────────────────
 
-  void _pointerDown(PointerDownEvent event) {
+  /// Whether [event] is a press this layer takes.
+  bool _takesPress(PointerDownEvent event) {
     // A press that landed on a control floating over the canvas is that
     // control's (`control_press_claim.dart`, 유저 2026-09-22).
     if (controlOwnsTap(event.pointer)) {
-      return;
+      return false;
     }
     if (_following != null) {
       // A second finger is the view's: what the first was doing goes back
@@ -268,18 +269,22 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       if (event.kind == PointerDeviceKind.touch) {
         _cancelPress();
       }
-      return;
+      return false;
     }
     // The two doors every tool's layer asks, as the selection layer asks
     // them: a finger drives a tool only while the one-finger slot says draw
     // (TS9), and the press is the tool's own — the plain primary contact,
     // not a mapped button's and not a pen's tail (no pen's tail holds the
     // text tool).
-    if (!AppInput.toolAcceptsPointer(
+    return AppInput.toolAcceptsPointer(
           event.kind,
           oneFinger: widget.oneFingerAction,
-        ) ||
-        !canvasPressIsTheTools(event, tailsToolInHand: (_) => false)) {
+        ) &&
+        canvasPressIsTheTools(event, tailsToolInHand: (_) => false);
+  }
+
+  void _pointerDown(PointerDownEvent event) {
+    if (!_takesPress(event)) {
       return;
     }
     final artwork = widget.stage.artworkAt(event.localPosition);
