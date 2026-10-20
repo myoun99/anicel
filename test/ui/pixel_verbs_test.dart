@@ -17,6 +17,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/pixel_clipboard_verb.dart';
 import 'package:anicel/src/models/pixel_verb_subject.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -683,6 +684,11 @@ void main() {
         PixelVerbSubject.nothing,
         reason: 'the eye is the one the file keeps (F-153) — the solo '
             'changes nothing an edit reaches, either way',
+      );
+      expect(
+        session.pixelVerbs.canRunPixelClipboardVerb(PixelClipboardVerb.copy),
+        isFalse,
+        reason: 'nor the cel you stand on, which 픽셀 복사 reads',
       );
     });
   });
