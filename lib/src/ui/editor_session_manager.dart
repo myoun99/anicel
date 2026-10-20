@@ -1887,6 +1887,8 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     activeCut: _activeCutEdits,
+    laneGroupShown: (row, laneId) => activeCutControllers.layerController
+        .laneGroupShownCommand(row, laneId),
   );
 
   // `activeCutCanvasPoseSample` retired with the V row's transform: there is

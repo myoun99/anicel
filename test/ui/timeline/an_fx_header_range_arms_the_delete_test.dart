@@ -65,10 +65,9 @@ void main() {
             .single;
         final headerLane = effectGroupLaneId(effect.id);
 
+        // The add shows the row's lanes, its header open (F-396).
         final laneToggle = find.named('timeline-lane-toggle-${layer.id.value}');
         await tester.ensureVisible(laneToggle);
-        await tester.pumpAndSettle();
-        await tester.tap(laneToggle);
         await tester.pumpAndSettle();
 
         Finder headerBand() => find.byKey(
@@ -183,11 +182,8 @@ void main() {
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     await tester.pumpAndSettle();
     final effect = session.commitLayerById(layer.id)!.effects.single;
+    // The add shows the row's lanes, its header open (F-396).
     final headerLane = effectGroupLaneId(effect.id);
-    await tester.tap(
-      find.named('timeline-lane-toggle-${layer.id.value}'),
-    );
-    await tester.pumpAndSettle();
     final band = find.byKey(
       ValueKey<String>(
         'timeline-lane-range-layer-${layer.id.value}-$headerLane',
@@ -243,10 +239,9 @@ void main() {
       final effect = session.commitLayerById(layer.id)!.effects.single;
       final headerLane = effectGroupLaneId(effect.id);
 
+      // The add shows the row's lanes, its header open (F-396).
       final laneToggle = find.named('timeline-lane-toggle-${layer.id.value}');
       await tester.ensureVisible(laneToggle);
-      await tester.pumpAndSettle();
-      await tester.tap(laneToggle);
       await tester.pumpAndSettle();
       final band = find.byKey(
         ValueKey<String>(

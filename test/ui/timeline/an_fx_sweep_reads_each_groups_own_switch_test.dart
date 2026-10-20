@@ -52,15 +52,12 @@ void main() {
     expect(upper, isNot(lower), reason: 'the new row is the active one');
     final blur = _rowOf(session, upper).effects.single.id;
 
-    for (final twirl in [
-      'timeline-lane-toggle-$upper',
-      'timeline-lane-group-toggle-$upper-${effectGroupLaneId(blur)}',
-    ]) {
-      await tester.ensureVisible(find.named(twirl));
-      await tester.pumpAndSettle();
-      await tester.tap(find.named(twirl));
-      await tester.pumpAndSettle();
-    }
+    // The add shows the row's lanes, its header open (F-396).
+    final header = effectGroupLaneId(blur);
+    await tester.ensureVisible(
+      find.named('timeline-lane-group-toggle-$upper-$header'),
+    );
+    await tester.pumpAndSettle();
     return (session: session, upper: upper, lower: lower, blur: blur);
   }
 

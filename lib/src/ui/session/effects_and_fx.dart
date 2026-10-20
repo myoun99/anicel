@@ -8,8 +8,10 @@ import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_layer_transform_enabled_command.dart';
+import '../../services/commands/update_track_effects_command.dart';
 import '../timeline/effect_lane_editing.dart'
     show effectsWithAdded, effectsWithEnabledToggled, effectsWithGroupReset;
+import '../timeline/effect_lane_policy.dart' show effectGroupLaneId;
 import 'active_cut_edits.dart';
 import 'row_written_by_id.dart';
 import 'session_roles.dart';
@@ -27,12 +29,18 @@ class EffectsAndFx {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutEdits activeCut,
+    required Command? Function(LayerId row, String laneId) laneGroupShown,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _activeCut = activeCut;
+       _activeCut = activeCut,
+       _laneGroupShown = laneGroupShown;
 
   final ActiveCutEdits _activeCut;
+
+  /// The step that shows a row's lane group — its lanes twirled down and
+  /// the group open among them; null where it already shows (F-396).
+  final Command? Function(LayerId row, String laneId) _laneGroupShown;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -78,7 +86,9 @@ class EffectsAndFx {
   }
 
   /// Appends a fresh effect of [kind] (every parameter at its default, so
-  /// adding one changes nothing until a value moves) to the active row.
+  /// adding one changes nothing until a value moves) to the active row —
+  /// and shows it: the row's lanes twirled down and the effect's header
+  /// open, in the same undo step ([_laneGroupShown], F-396).
   ///
   /// ⚠️Built from the row that HOLDS the chain, not from the active row: an
   /// SE row's active row is its cut's projection, whose keys sit on the
@@ -100,10 +110,18 @@ class EffectsAndFx {
       ),
       kind: kind,
     );
-    updateLayerEffects(
+    final description = 'Add ${kind.label}';
+    _activeCut.onCutOfRowQuietly(
       layer.id,
-      effectsWithAdded(layer.effects, effect),
-      description: 'Add ${kind.label}',
+      (cutId) => _project.historyManager.executeAsOneStep(description, [
+        ..._project.cutCommandCoordinator.layerEffectsCommands(
+          cutId: cutId,
+          layerId: layer.id,
+          effects: effectsWithAdded(layer.effects, effect),
+          description: description,
+        ),
+        ?_laneGroupShown(layer.id, effectGroupLaneId(effect.id)),
+      ]),
     );
   }
 
@@ -319,6 +337,8 @@ class EffectsAndFx {
   /// Adds an effect to the V row's chain. Ids are minted the way a layer's
   /// are (the lane address embeds them, so two adds in one session must not
   /// collide) — off the TRACK id, since that is what carries the chain.
+  /// Shown as a layer's is: the row's lanes — its lane carrier's — and
+  /// the effect's header open in the same undo step (F-396).
   void addEffectToTrack(TrackId trackId, EffectKind kind) {
     final track = _project.trackById(trackId);
     if (track == null) {
@@ -332,11 +352,21 @@ class EffectsAndFx {
       ),
       kind: kind,
     );
-    updateTrackEffects(
-      trackId,
-      effectsWithAdded(track.effects, effect),
-      description: 'Add ${kind.label}',
-    );
+    final description = 'Add ${kind.label}';
+    _project.historyManager.executeAsOneStep(description, [
+      UpdateTrackEffectsCommand(
+        repository: _project.repository,
+        trackId: trackId,
+        effects: effectsWithAdded(track.effects, effect),
+        description: description,
+      ),
+      ?_laneGroupShown(
+        trackTransformLaneCarrierId(trackId),
+        effectGroupLaneId(effect.id),
+      ),
+    ]);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// Runs one `effectsWith*` transform over [trackId]'s chain and banks it

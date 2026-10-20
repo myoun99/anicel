@@ -528,10 +528,7 @@ void main() {
     final before = chain();
     expect(before.length, 2);
 
-    await tester.tap(
-      find.named('timeline-lane-toggle-b'),
-    );
-    await tester.pumpAndSettle();
+    // The add shows the row's lanes, its header open (F-396).
 
     final firstId = session.requireActiveCut.layers
         .firstWhere((layer) => layer.id == const LayerId('b'))

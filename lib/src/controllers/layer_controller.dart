@@ -478,7 +478,7 @@ class LayerController {
   /// own row — an S row, the V row by its lane carrier ([trackRowTwirlsOf])
   /// — on its track, as [onItsTrack] turns it
   /// ([UpdateTrackRowTwirlsCommand]); a row a cut holds on its head, by
-  /// [inItsCut] ([_executeInItsCut]).
+  /// [inItsCut], in its own cut ([_cutOfRow]).
   ///
   /// ⚠️A track's own row not through [_executeInItsCut]: no cut holds it,
   /// and in a gap there is none to address it in — the storyboard, which
@@ -488,17 +488,69 @@ class LayerController {
     required RowTwirls Function(RowTwirls was) onItsTrack,
     required Command Function(CutId cutId) inItsCut,
   }) {
+    final command = _twirlCommand(
+      rowId,
+      onItsTrack: onItsTrack,
+      inItsCut: inItsCut,
+    );
+    if (command != null) {
+      _historyManager.execute(command);
+    }
+  }
+
+  /// [_twirled]'s step, unrun — null for a track's own row in a gap, which
+  /// no cut addresses.
+  Command? _twirlCommand(
+    LayerId rowId, {
+    required RowTwirls Function(RowTwirls was) onItsTrack,
+    required Command Function(CutId cutId) inItsCut,
+  }) {
     final was = trackRowTwirlsOf(_repository.requireProject(), rowId);
     if (was == null) {
-      _executeInItsCut(rowId, inItsCut);
-      return;
+      final cutId = _cutOfRow(rowId);
+      return cutId == null ? null : inItsCut(cutId);
     }
-    _historyManager.execute(
-      UpdateTrackRowTwirlsCommand(
-        repository: _repository,
-        rowId: rowId,
-        twirls: onItsTrack(was),
+    return UpdateTrackRowTwirlsCommand(
+      repository: _repository,
+      rowId: rowId,
+      twirls: onItsTrack(was),
+    );
+  }
+
+  /// The step that leaves [laneId]'s group SHOWN on [rowId]: the row's
+  /// lanes twirled down and the group open among them, by the twirls'
+  /// own commands ([_twirlCommand]). Null where both already stand open.
+  ///
+  /// 🗣️F-396 (유저 2026-10-18): 「레이어 fx펼침 접은상태에서 fx추가하면
+  /// 펼치고 해당 fx헤더도 펼치도록. 그래야 처음 사용하는 입장에서
+  /// 알기쉬움」 — an add runs it in its own undo step.
+  Command? laneGroupShownCommand(LayerId rowId, String laneId) {
+    final was = rowTwirlsOf(_repository.requireProject(), rowId);
+    if (was == null ||
+        (was.lanesExpanded && was.expandedLaneGroups.contains(laneId))) {
+      return null;
+    }
+    return _twirlCommand(
+      rowId,
+      onItsTrack: (was) => (
+        lanesExpanded: true,
+        expandedLaneGroups: {...was.expandedLaneGroups, laneId},
       ),
+      inItsCut: (cutId) => oneStepOf('Show lane group', [
+        UpdateLayerLanesExpandedCommand(
+          repository: _repository,
+          cutId: cutId,
+          layerId: rowId,
+          expanded: true,
+        ),
+        UpdateLayerLaneGroupExpandedCommand(
+          repository: _repository,
+          cutId: cutId,
+          layerId: rowId,
+          laneId: laneId,
+          expanded: true,
+        ),
+      ])!,
     );
   }
 
