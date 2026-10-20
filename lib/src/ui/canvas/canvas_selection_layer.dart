@@ -231,7 +231,11 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// inside the event that lifts the pen and takes the block made for it
   /// into its own step of undo; asked at the release, the block would be
   /// settled as a step of its own before the shape could claim it.
-  final bool Function()? onPressNeedsCel;
+  ///
+  /// [at] is the press on the canvas: where the content is not one cel, it
+  /// says WHICH cel the press draws on — a sheet's, the window the press
+  /// lands in (F-420).
+  final bool Function(CanvasPoint at)? onPressNeedsCel;
 
   /// The cut's guides, in CANVAS coordinates — an outline drawn here is
   /// copied by the acting symmetry, and a lasso traced here is locked by
@@ -2427,7 +2431,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // ([CanvasSelectionLayer.onPressNeedsCel]). A press refused traces
       // nothing: the host has said why, and there is nowhere to draw.
       if (widget.tool == CanvasSelectionTool.drawShape &&
-          !(widget.onPressNeedsCel?.call() ?? true)) {
+          !(widget.onPressNeedsCel?.call(canvasPoint) ?? true)) {
         return;
       }
       _confirmMoveSession();

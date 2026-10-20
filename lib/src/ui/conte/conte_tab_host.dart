@@ -542,6 +542,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
       viewLimit: pages.isEmpty ? null : stack.paper,
       book: pages.isEmpty ? null : book,
       drawingOn: _drawing && pages.isNotEmpty,
+      brushToolState: widget.brushToolState,
       strokeHold: _strokeHold,
       content: (context, viewport) => LayoutBuilder(
         builder: (context, box) =>

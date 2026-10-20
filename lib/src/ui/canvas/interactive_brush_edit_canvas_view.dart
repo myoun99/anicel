@@ -125,6 +125,14 @@ abstract interface class ShapeShow {
   void drop();
 }
 
+/// The view a shape lands in where the content is not one cel — a sheet's
+/// window (F-420): its [show], and a point on the screen ([Offset] global)
+/// on the cel that view draws, or null where it maps to none.
+typedef ContentShapeTarget = ({
+  ShapeShow show,
+  CanvasPoint? Function(Offset global) onTheCel,
+});
+
 class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// The commitment distance (the engine's lock slop — one number keeps
   /// the engine's navigate-lock and this view's cancel window agreeing).

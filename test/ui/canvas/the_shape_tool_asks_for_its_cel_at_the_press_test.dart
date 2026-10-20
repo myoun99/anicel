@@ -60,7 +60,7 @@ void main() {
                 },
                 onPressNeedsCel: celAnswer == null
                     ? null
-                    : () {
+                    : (_) {
                         log.add('asked');
                         return celAnswer;
                       },

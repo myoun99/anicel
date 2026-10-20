@@ -259,6 +259,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.interactiveContentPose,
     this.activeSourceEffects = const <ResolvedLayerEffect>[],
     this.contentOverride,
+    this.contentShapeTargetAt,
     this.fitFocusRect,
     this.floorCover = EdgeInsets.zero,
     this.floorRightRailBand,
@@ -691,6 +692,13 @@ class BrushCanvasPanel extends StatefulWidget {
   /// placeholder render through this. Receives the live viewport.
   final Widget Function(BuildContext context, CanvasViewport viewport)?
   contentOverride;
+
+  /// The view a shape tool's press at [global] (a point on the screen)
+  /// lands its shape in, where [contentOverride] is not one cel — a
+  /// sheet's window (F-420): the shape is the same drag and the same
+  /// landing as on the canvas, on the cel that content draws there. Null
+  /// at a point where nothing takes it — the press then traces nothing.
+  final ContentShapeTarget? Function(Offset global)? contentShapeTargetAt;
 
   /// Canvas-space rectangle the Fit button frames instead of the whole
   /// canvas (e.g. the camera frame's bounds while the camera layer is
@@ -1938,11 +1946,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // frame with no cel this layer asks in the standing-down
               // view's stead; where a cel IS there and its row takes no
               // marks, or nothing stands here at all, the host's own
-              // listener speaks.
-              onPressNeedsCel:
-                  widget.coordinator != null && !widget.celEditable
-                  ? widget.onPressNeedsCel
-                  : null,
+              // listener speaks. Content that is not one cel answers with
+              // the cel under the press (F-420).
+              onPressNeedsCel: _shapePressNeedsCel(context),
               // CANVAS space,
               // unmapped: this
               // layer never
@@ -2506,6 +2512,49 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// ([_showTracedShape], [_drawTracedShape]).
   ShapeShow? _shapeShow;
 
+  /// Where the shape being dragged lands on content that is not one cel
+  /// ([BrushCanvasPanel.contentShapeTargetAt]) — taken at the press, gone
+  /// with the drag: the show of the view under the press, and a canvas
+  /// point on that view's cel.
+  ({ShapeShow show, CanvasPoint? Function(CanvasPoint point) onTheCel})?
+  _contentShape;
+
+  /// The shape tool's question at its press
+  /// ([CanvasSelectionLayer.onPressNeedsCel]), [layer] being the context of
+  /// the layer that asks — the box the canvas is laid in. On a frame with
+  /// no cel it is the shell's 「make one, or say why not」; on content that
+  /// is not one cel, the view under the press (F-420), which is the cel the
+  /// shape lands on wherever the drag goes after — as a stroke is the
+  /// window's it starts in (H49).
+  bool Function(CanvasPoint at)? _shapePressNeedsCel(BuildContext layer) {
+    final targetAt = widget.contentShapeTargetAt;
+    if (targetAt == null) {
+      final needsCel = widget.onPressNeedsCel;
+      return widget.coordinator != null &&
+              !widget.celEditable &&
+              needsCel != null
+          ? (_) => needsCel()
+          : null;
+    }
+    Offset onTheScreen(CanvasPoint point) {
+      final local = _viewportState._viewport.canvasToViewport(point);
+      final box = layer.findRenderObject()! as RenderBox;
+      return box.localToGlobal(Offset(local.x, local.y));
+    }
+
+    return (at) {
+      final target = targetAt(onTheScreen(at));
+      _contentShape = switch (target) {
+        null => null,
+        (:final show, :final onTheCel) => (
+          show: show,
+          onTheCel: (point) => onTheCel(onTheScreen(point)),
+        ),
+      };
+      return target != null;
+    };
+  }
+
   /// Draw a finished shape-tool drag (I-69) — [copies], the traced path
   /// and every copy the symmetry guide made of it, the original first — as
   /// the tool is set to lay it, and as the drag showed it (Q4ⓒ):
@@ -2522,11 +2571,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   ///   is covered once (유저 답 I-69-Q6: 「따른다 — 도형 채우기도 같이
   ///   맞춘다」).
   void _drawTracedShape(List<DrawnShapePath> copies) {
-    final show = _shapeShow;
+    final show = _contentShape?.show ?? _shapeShow;
+    final onTheRow = _onTheRow(copies);
+    _contentShape = null;
     if (show == null) {
       return;
     }
-    final onTheRow = _onTheRow(copies);
     if (onTheRow == null) {
       show.drop();
       return;
@@ -2543,7 +2593,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// land, or taken back when there is none (유저 답 I-69-Q4ⓒ: 「윤곽선은 손을
   /// 따라오고, 실제 결과는 따라 그린다」).
   void _showTracedShape(List<DrawnShapePath>? copies) {
-    final show = _shapeShow;
+    final show = _contentShape?.show ?? _shapeShow;
+    if (copies == null) {
+      // The drag is over without a shape: what its press took goes too.
+      _contentShape = null;
+    }
     if (show == null) {
       return;
     }
@@ -2568,14 +2622,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   /// [copies] where the row shows them: traced on the canvas, drawn in the
-  /// row's own artwork (a-marquee-on-a-posed-row). Null when there is
+  /// row's own artwork (a-marquee-on-a-posed-row) — or on the cel the
+  /// press took on content that is not one cel (F-420). Null when there is
   /// nothing to draw on — no copy, or a placement that collapsed the row.
   List<DrawnShapePath>? _onTheRow(List<DrawnShapePath> copies) {
+    final onTheCel =
+        _contentShape?.onTheCel ?? _selectionSeat.pointOnTheRow;
     final onTheRow = <DrawnShapePath>[];
     for (final path in copies) {
       final points = <CanvasPoint>[];
       for (final point in path.points) {
-        final there = _selectionSeat.pointOnTheRow(point);
+        final there = onTheCel(point);
         if (there == null) {
           return null;
         }

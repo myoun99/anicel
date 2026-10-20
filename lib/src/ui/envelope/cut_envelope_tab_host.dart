@@ -195,6 +195,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
       fitFocusRect: paper.canvasRect,
       viewLimit: paper.canvasRect,
       drawingOn: inking,
+      brushToolState: brushToolState,
       strokeHold: _strokeHold,
       content: (context, viewport) => LayoutBuilder(
         builder: (context, constraints) {

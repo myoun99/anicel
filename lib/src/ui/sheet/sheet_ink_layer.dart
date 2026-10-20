@@ -10,6 +10,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cel_photo.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
+import '../../models/viewport_point.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/canvas_selection_paint_clip.dart';
@@ -40,6 +41,7 @@ import '../widgets/cursor_notice.dart' show cursorNotices;
 import 'sheet_image_cache.dart' show SheetImageLookup;
 import 'sheet_photo_boxes.dart';
 import 'sheet_photos.dart' show SheetPhotosPainter;
+import 'sheet_shape_targets.dart';
 
 /// A window the sheet's brush draws through: where it sits on the paper,
 /// how the brush sees its surface, and which of that surface's pixels it
@@ -774,6 +776,100 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// The history as it stood before the stroke's first landing.
   HistoryMark? _strokeStart;
 
+  /// Each window's view's hand for a shape (F-420), and how many of its
+  /// views have one up: a view built anew comes up before the one it
+  /// replaces goes down, and the one going down must not take the new
+  /// one's away.
+  final Map<String, ({ShapeShow show, int up})> _shapeShows = {};
+
+  /// Where the sheet's panel asks what takes a shape (F-420).
+  SheetShapeTargets? _shapeTargets;
+
+  /// The answer this layer gives it — one closure, so the layer takes back
+  /// the answer it gave and no other.
+  late final ContentShapeTarget? Function(Offset global) _shapeAnswer =
+      _shapeTargetAt;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final targets = SheetShapeScope.maybeOf(context);
+    if (!identical(targets, _shapeTargets)) {
+      _shapeTargets?.stopAnswering(_shapeAnswer);
+      _shapeTargets = targets?..answerWith(_shapeAnswer);
+    }
+  }
+
+  @override
+  void dispose() {
+    _shapeTargets?.stopAnswering(_shapeAnswer);
+    super.dispose();
+  }
+
+  /// Whether the tool in hand lays strokes in the windows — the painting
+  /// tools (F-420). Under the shape tool the canvas's own drag takes the
+  /// press; under any other the press moves the sheet, and no window may
+  /// lay the brush's stroke for a tool that is not the brush.
+  bool get _takesStrokes =>
+      canvasToolPaints(widget.brushToolState.value.tool);
+
+  void _shapeShowOf(String id, ShapeShow? show) {
+    final was = _shapeShows[id];
+    final up = (was?.up ?? 0) + (show == null ? -1 : 1);
+    final now = show ?? was?.show;
+    if (up <= 0 || now == null) {
+      _shapeShows.remove(id);
+    } else {
+      _shapeShows[id] = (show: now, up: up);
+    }
+  }
+
+  /// What takes a shape whose press lands at [global]: the view of the
+  /// window on top there, as it would take a stroke started there (H49),
+  /// and a point on the screen on its cel. Null off every window, and on a
+  /// window that refuses the pen — which says why, as it does to a stroke.
+  ContentShapeTarget? _shapeTargetAt(Offset global) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) {
+      return null;
+    }
+    final at = box.globalToLocal(global);
+    final window = sheetInkOwnerAt(widget.windows, _paperOf(at));
+    if (window == null) {
+      return null;
+    }
+    if (window.refusal != null) {
+      _refuseAt(at);
+      return null;
+    }
+    final show = _shapeShows[window.id]?.show;
+    return show == null
+        ? null
+        : (
+            show: show,
+            onTheCel: (global) =>
+                _onTheCel(window, box.globalToLocal(global)),
+          );
+  }
+
+  /// [position], a point of this layer, on [window]'s cel — the way a
+  /// press there reaches its view: back through the view's laying
+  /// ([SheetWindow.viewLaidBy]) and its viewport. Null where the laying
+  /// has no way back.
+  CanvasPoint? _onTheCel(SheetWindow window, Offset position) {
+    var inView = position;
+    if (window.viewLaidBy(widget.viewport) case final laid?) {
+      final back = Matrix4.tryInvert(laid);
+      if (back == null) {
+        return null;
+      }
+      inView = MatrixUtils.transformPoint(back, position);
+    }
+    return window
+        .inkViewport(widget.viewport)
+        .viewportToCanvas(ViewportPoint(x: inView.dx, y: inView.dy));
+  }
+
   void _windowStroking(String id, {required bool active}) {
     final wasDown = _stroking.isNotEmpty;
     if (active) {
@@ -902,7 +998,11 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     // where that window refuses the pen, says why, as the canvas does.
     final layer = Listener(
       behavior: HitTestBehavior.opaque,
-      onPointerDown: (event) => _refuseAt(event.localPosition),
+      onPointerDown: (event) {
+        if (_takesStrokes) {
+          _refuseAt(event.localPosition);
+        }
+      },
       child: Stack(
         children: [
           for (final (:index, window: _, :region) in keeping)
@@ -956,8 +1056,9 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     return _InkWindowFrame(
       shows: shown.shows,
       // The press is its own where it is the window on top, and the stroke
-      // with it wherever the pen goes after (H49).
-      owns: (position) => _owns(window, position),
+      // with it wherever the pen goes after (H49) — a press of a tool that
+      // lays strokes (F-420).
+      owns: (position) => _takesStrokes && _owns(window, position),
       yieldsTo: shown.yieldsTo,
       // Its photos under its ink (I-97), each on a boundary of its own: a
       // stroke repaints the view and not them. ⛔Both always — a child that
@@ -1003,6 +1104,8 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       // composite leaves its view input only.
       overlayModel: window.overlay,
       paintsContent: window.overlay == null,
+      // F-420: the shape tool's drag lands what it traced in this view.
+      onShapeShowChanged: (show) => _shapeShowOf(window.id, show),
       onActiveStrokeChanged: (active) =>
           _windowStroking(window.id, active: active),
       onSourceStrokeCommitted: (strokeData) =>

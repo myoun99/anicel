@@ -504,6 +504,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     viewLimit: layout.paper,
                     book: book,
                     drawingOn: ink != null,
+                    brushToolState: widget.brushToolState,
                     strokeHold: _strokeHold,
                     content: (context, viewport) {
                       return Stack(
