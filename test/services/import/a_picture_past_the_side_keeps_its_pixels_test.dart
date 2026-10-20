@@ -452,33 +452,34 @@ void main() {
         'picture whole is mipped on — 🔬up to 95/255 apart on the Surface '
         'where it was not', (tester) async {
       await tester.runAsync(() async {
-        const width = 2048;
-        const height = 256;
-        final rgba = patterned(width, height);
         debugLayRasterSide = 1024;
         debugLayFilterQuality = ui.FilterQuality.medium;
-        final engine = await engineOf(rgba, width, height);
-        for (final shrink in [0.096, 0.24, 0.3, 0.6]) {
-          final placement = GuideTransform(shrink, 0, 0, shrink, 13, 7);
-          debugLayRasters = 0;
-          final theirs = await laid(engine, placement);
-          final blocks = debugLayRasters;
-          debugLayRasters = 0;
-          expectSameCel(
-            await laid(
-              PixelsPicture(rgba, width: width, height: height),
-              placement,
-            ),
-            theirs,
-            colourSlack: 1,
-          );
-          expect(
-            debugLayRasters,
-            greaterThan(blocks),
-            reason: 'in parts at $shrink',
-          );
+        // Wide, it is cut in parts across; tall, down.
+        for (final (width, height) in [(2048, 256), (256, 2048)]) {
+          final rgba = patterned(width, height);
+          final engine = await engineOf(rgba, width, height);
+          for (final shrink in [0.096, 0.24, 0.3, 0.6]) {
+            final placement = GuideTransform(shrink, 0, 0, shrink, 13, 7);
+            debugLayRasters = 0;
+            final theirs = await laid(engine, placement);
+            final blocks = debugLayRasters;
+            debugLayRasters = 0;
+            expectSameCel(
+              await laid(
+                PixelsPicture(rgba, width: width, height: height),
+                placement,
+              ),
+              theirs,
+              colourSlack: 1,
+            );
+            expect(
+              debugLayRasters,
+              greaterThan(blocks),
+              reason: 'in parts at $shrink, ${width}x$height',
+            );
+          }
+          engine.dispose();
         }
-        engine.dispose();
       });
     });
   });
