@@ -99,6 +99,7 @@ class BrushStrokeDynamics {
           BrushTipRotationMode.fixed => null,
           BrushTipRotationMode.direction => directionDegrees,
           BrushTipRotationMode.penTilt => penDirectionDegrees(dab),
+          BrushTipRotationMode.penTwist => penTwistDegrees(dab),
         };
         if (turn != null) {
           angle += turn;
@@ -189,4 +190,17 @@ double? penDirectionDegrees(BrushDab dab) {
     return null;
   }
   return -dab.tiltAzimuthDegrees;
+}
+
+/// How far the pen is turned about its barrel, as a dab angle — or `null`
+/// when the device reported no turn ([BrushDab.twistDegrees]).
+///
+/// 🚨THE SIGN FLIPS, as for [penDirectionDegrees]: a pen's twist runs
+/// CLOCKWISE and a dab's angle counterclockwise, so a pen turned clockwise
+/// turns its tip clockwise on the canvas.
+///
+/// 유저 2026-10-21 (F-176-Q9): 「클튜처럼 — 방향의 기준 「펜 축 회전」 하나」.
+double? penTwistDegrees(BrushDab dab) {
+  final twist = dab.twistDegrees;
+  return twist == null ? null : -twist;
 }

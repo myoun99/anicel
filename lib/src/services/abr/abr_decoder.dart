@@ -370,9 +370,13 @@ BrushPreset? _presetFromBrushDescriptor(
     final angleControl = _controlOf(angleVariance);
     // Photoshop's control list runs Off · Fade · Pen Pressure · Pen Tilt ·
     // Stylus Wheel · Rotation · Initial Direction · Direction, so 3 is the
-    // pen's lean — Clip Studio's ペンの方向 (F-176-Q1).
+    // pen's lean — Clip Studio's ペンの方向 (F-176-Q1) — and 5 its turn
+    // about the barrel, ペン軸の回転 (F-176-Q9).
     if (angleControl == 3) {
       rotationMode = BrushTipRotationMode.penTilt;
+    }
+    if (angleControl == 5) {
+      rotationMode = BrushTipRotationMode.penTwist;
     }
     if (angleControl == 6 || angleControl == 7) {
       rotationMode = BrushTipRotationMode.direction;

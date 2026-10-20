@@ -324,6 +324,7 @@ class _BrushEditStroke {
   PenReadings get _readings => (
     pressure: _state._currentPressure,
     lean: _state._currentTilt,
+    twist: _state._currentTwist,
     speed: _state._currentSpeed,
   );
 
@@ -342,6 +343,7 @@ class _BrushEditStroke {
   void _read(PenReadings readings) {
     _state._currentPressure = readings.pressure;
     _state._currentTilt = readings.lean;
+    _state._currentTwist = readings.twist;
     _state._currentSpeed = readings.speed;
   }
 

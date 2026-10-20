@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../models/brush_dab.dart';
 import '../models/canvas_point.dart';
+import 'input/pen_readings.dart';
 
 /// Lightweight Brush T2 dab spacing/interpolation.
 ///
@@ -46,6 +47,8 @@ class BrushDabInterpolator {
     final altitudeDelta = (previousAltitude == null || nextAltitude == null)
         ? null
         : nextAltitude - previousAltitude;
+    final previousTwist = previous.twistDegrees;
+    final nextTwist = nextRaw.twistDegrees;
     return List<BrushDab>.generate(stepCount, (index) {
       final fraction = (index + 1) / stepCount;
       return nextRaw.copyWith(
@@ -62,15 +65,25 @@ class BrushDabInterpolator {
         // so was watching `brushInputSamplesToBrushDabs` — an offline
         // placement path nothing in `lib/` called, since DELETED (`c7fff282`).
         //
-        // ⛔Azimuth is deliberately left riding along from `nextRaw`: nothing
-        // reads it yet, and its lerp has to go the SHORT way round the circle
-        // (350° to 10° is twenty degrees forward, not 340 back). ⚠️There is
-        // no helper to reuse — the only wrap-safe lerp in the repo went out
-        // with that offline path — so the round that gives azimuth a reader
-        // writes the wrap itself, here, rather than lerping it raw.
+        //
+        // The azimuth and the twist ramp too, the SHORT way round the circle
+        // ([turnedBetween]): each turns a tip now — 向き's ペンの方向 and
+        // ペン軸の回転 (F-176-Q4 · Q9) — and riding along from `nextRaw`
+        // they turned it in steps. ↩️The azimuth rode along while nothing
+        // read it, and kept riding when ペンの方向 gave it a reader.
         tiltAltitude: altitudeDelta == null
             ? nextAltitude
             : previousAltitude! + altitudeDelta * fraction,
+        tiltAzimuthDegrees: altitudeDelta == null
+            ? nextRaw.tiltAzimuthDegrees
+            : turnedBetween(
+                previous.tiltAzimuthDegrees,
+                nextRaw.tiltAzimuthDegrees,
+                fraction,
+              ),
+        twistDegrees: previousTwist == null || nextTwist == null
+            ? nextTwist
+            : turnedBetween(previousTwist, nextTwist, fraction),
         // ⛔SPEED IS DELIBERATELY NOT INTERPOLATED, and it is not an
         // oversight to fix: it rides along from `nextRaw` because it is a
         // property of the MOVE this call is subdividing. Every dab here was

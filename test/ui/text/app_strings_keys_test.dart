@@ -841,6 +841,7 @@ void main() {
     'brRotationFixed': (s) => s.brRotationFixed,
     'brRotationDirection': (s) => s.brRotationDirection,
     'brRotationPenTilt': (s) => s.brRotationPenTilt,
+    'brRotationPenTwist': (s) => s.brRotationPenTwist,
     'brDualTip': (s) => s.brDualTip,
     'brTexture': (s) => s.brTexture,
     'brTextureDensity': (s) => s.brTextureDensity,

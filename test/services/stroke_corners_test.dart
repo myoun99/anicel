@@ -109,4 +109,4 @@ List<CanvasPoint> _cornersOf(List<CanvasPoint> vertices) {
   return [for (final at in StrokeCorners.of(line)) line[at].position];
 }
 
-const PenReadings _reads = (pressure: 1.0, lean: null, speed: 0.0);
+const PenReadings _reads = (pressure: 1.0, lean: null, twist: null, speed: 0.0);

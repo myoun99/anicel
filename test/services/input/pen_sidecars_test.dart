@@ -193,6 +193,51 @@ void main() {
     );
   });
 
+  test('the twist comes from HID first, then Wintab\'s, once round, and from '
+      'nothing when neither has one (F-176-Q9)', () {
+    final hid = RawPenInputService.instance;
+    addTearDown(hid.debugReset);
+    RawPenInputService.debugClockOverride = () => DateTime(2024);
+    QaPenRawState? report;
+    hid.debugPollOverride = () => report;
+    hid.start();
+    final wintab = WintabPenService.instance;
+    WintabPenService.debugClockOverride = () => DateTime(2024);
+    wintab.debugPollOverride = () => const [];
+    wintab.start();
+
+    expect(PenSidecars.freshTwist(), isNull, reason: 'nothing speaks');
+
+    wintab.debugInjectPacket(
+      const QaTabletPacket(
+        pressure: 0,
+        twistDegrees: 360,
+        timeMs: 1,
+        buttons: 0,
+      ),
+    );
+    expect(PenSidecars.freshTwist(), 0, reason: 'a full turn is none');
+
+    report = const QaPenRawState(flags: 0, sequence: 1, twistDegrees: 135);
+    expect(PenSidecars.freshTwist(), 135, reason: 'HID outranks it');
+
+    report = const QaPenRawState(flags: 0, sequence: 2);
+    expect(
+      PenSidecars.freshTwist(),
+      0,
+      reason: 'a report with no twist leaves it to Wintab',
+    );
+
+    wintab.debugInjectPacket(
+      const QaTabletPacket(pressure: 0, timeMs: 2, buttons: 0),
+    );
+    expect(
+      PenSidecars.freshTwist(),
+      isNull,
+      reason: 'a device with no twist axis is not a pen turned to 0°',
+    );
+  });
+
   /// 🗣️THE PEN LAW (tool-settings-panel-tidy, 유저 2026-10-10): 「우선 1번
   /// 제일 확실한방법 좋아. 앞으로의 펜 작동 기준으로 삼으면 좋을거같고」 —
   /// the driver says the pen is touching, so it is the pen, whatever the OS

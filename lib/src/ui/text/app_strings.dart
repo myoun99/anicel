@@ -1664,6 +1664,7 @@ enum AppStrings {
   String get brRotationFixed => _s('brRotationFixed');
   String get brRotationDirection => _s('brRotationDirection');
   String get brRotationPenTilt => _s('brRotationPenTilt');
+  String get brRotationPenTwist => _s('brRotationPenTwist');
   String get brTipOrder => _s('brTipOrder');
   String get brTipOrderRepeat => _s('brTipOrderRepeat');
   String get brTipOrderPingPong => _s('brTipOrderPingPong');
@@ -2838,6 +2839,7 @@ enum AppStrings {
     'brRotationFixed': 'None',
     'brRotationDirection': 'Line Direction',
     'brRotationPenTilt': 'Pen Direction',
+    'brRotationPenTwist': 'Barrel Rotation',
     'brTipOrder': 'Repeat Method',
     'brTipOrderRepeat': 'Repeat',
     'brTipOrderPingPong': 'Back and Forth',
@@ -4348,6 +4350,7 @@ enum AppStrings {
     'brRotationFixed': 'なし',
     'brRotationDirection': '線の方向',
     'brRotationPenTilt': 'ペンの方向',
+    'brRotationPenTwist': 'ペン軸の回転',
     'brTipOrder': '繰り返し方法',
     'brTipOrderRepeat': '繰り返し',
     'brTipOrderPingPong': '折り返し',
@@ -5961,6 +5964,7 @@ enum AppStrings {
     'brRotationFixed': '없음',
     'brRotationDirection': '선 방향',
     'brRotationPenTilt': '펜 방향',
+    'brRotationPenTwist': '펜 축 회전',
     'brTipOrder': '반복 방법',
     'brTipOrderRepeat': '반복',
     'brTipOrderPingPong': '왕복',
@@ -7714,6 +7718,7 @@ enum AppStrings {
     'brRotationFixed': 'Aucune',
     'brRotationDirection': 'Sens du trait',
     'brRotationPenTilt': 'Sens du stylet',
+    'brRotationPenTwist': 'Rotation du stylet',
     'brTipOrder': 'Méthode de répétition',
     'brTipOrderRepeat': 'Répéter',
     'brTipOrderPingPong': 'Aller-retour',
@@ -9263,6 +9268,7 @@ enum AppStrings {
     'brRotationFixed': '无',
     'brRotationDirection': '线条方向',
     'brRotationPenTilt': '笔的方向',
+    'brRotationPenTwist': '笔杆旋转',
     'brTipOrder': '重复方法',
     'brTipOrderRepeat': '重复',
     'brTipOrderPingPong': '往返',

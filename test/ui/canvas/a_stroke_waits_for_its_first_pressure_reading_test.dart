@@ -909,6 +909,79 @@ void main() {
     );
 
     testWidgets(
+      'on Windows the twist is the driver\'s too — the HID report\'s first, '
+      'Wintab\'s where the report has none, and none where neither does '
+      '(F-176-Q9)',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _tiltBrush, results);
+        final hid = RawPenInputService.instance;
+        final wintab = WintabPenService.instance;
+        RawPenInputService.debugClockOverride = () => DateTime(2024);
+        WintabPenService.debugClockOverride = () => DateTime(2024);
+        double? hidTwist = 90;
+        var sequence = 0;
+        hid.debugPollOverride = () {
+          sequence += 1;
+          return QaPenRawState(
+            flags: 0x01,
+            sequence: sequence,
+            twistDegrees: hidTwist,
+          );
+        };
+        hid.start();
+        wintab.debugPollOverride = () => const [];
+        wintab.start();
+        wintab.debugInjectPacket(
+          const QaTabletPacket(
+            pressure: 0.5,
+            twistDegrees: 180,
+            timeMs: 1,
+            buttons: 1,
+          ),
+        );
+
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 8), 0.5, 0),
+            _s(const Offset(40, 8), 0.5, 8),
+          ]),
+        );
+        hidTwist = null;
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 16), 0.5, 100),
+            _s(const Offset(40, 16), 0.5, 108),
+          ]),
+        );
+        wintab.debugInjectPacket(
+          const QaTabletPacket(pressure: 0.5, timeMs: 2, buttons: 1),
+        );
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 24), 0.5, 200),
+            _s(const Offset(40, 24), 0.5, 208),
+          ]),
+        );
+
+        expect(results, hasLength(3));
+        expect(results[0].map((dab) => dab.twistDegrees), everyElement(90));
+        expect(results[1].map((dab) => dab.twistDegrees), everyElement(180));
+        expect(
+          results[2].map((dab) => dab.twistDegrees),
+          everyElement(isNull),
+          reason: 'a device that declares no twist is not a pen turned to 0°',
+        );
+        hid.debugReset();
+        wintab.debugReset();
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+
+    testWidgets(
       'the stroke puts how its samples leaned on the inspector\'s lean line',
       (tester) async {
         InputInspector.visible.value = true;

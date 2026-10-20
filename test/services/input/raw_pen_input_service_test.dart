@@ -150,4 +150,27 @@ void main() {
     ).add(RawPenInputService.freshWindow + const Duration(milliseconds: 1));
     expect(service.freshTilt(now: stale), isNull);
   });
+
+  test('the report\'s twist speaks while it is fresh — and only a report '
+      'that carries one (F-176-Q9)', () {
+    final service = RawPenInputService.instance;
+    RawPenInputService.debugClockOverride = () => DateTime(2024);
+    QaPenRawState? next;
+    service.debugPollOverride = () => next;
+    service.start();
+
+    expect(service.freshTwist(), isNull, reason: 'nothing reported yet');
+
+    next = const QaPenRawState(flags: 0, sequence: 1, twistDegrees: 90);
+    expect(service.freshTwist(), 90);
+
+    next = const QaPenRawState(flags: 0x01, sequence: 2);
+    expect(service.freshTwist(), isNull, reason: 'a report with no twist');
+
+    next = const QaPenRawState(flags: 0x01, sequence: 3, twistDegrees: 45);
+    final stale = DateTime(
+      2024,
+    ).add(RawPenInputService.freshWindow + const Duration(milliseconds: 1));
+    expect(service.freshTwist(now: stale), isNull);
+  });
 }

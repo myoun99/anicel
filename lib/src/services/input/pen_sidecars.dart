@@ -140,6 +140,20 @@ abstract final class PenSidecars {
     return null;
   }
 
+  /// How far the pen is turned about its own barrel as the freshest
+  /// driver-side stream says, in degrees 0..360 clockwise — null when none
+  /// speaks for this moment or the device declares no twist. Windows only
+  /// (F-176-Q9): Flutter's embedder reads POINTER_PEN_INFO's rotation and
+  /// leaves it off the pointer event.
+  ///
+  /// Raw Input first, as for the lean; both speak clockwise degrees.
+  static double? freshTwist({DateTime? now}) {
+    final twist =
+        RawPenInputService.instance.freshTwist(now: now) ??
+        WintabPenService.instance.freshPacket(now: now)?.twistDegrees;
+    return twist == null ? null : twist % 360.0;
+  }
+
   /// The freshest driver-side BUTTON state, as FLUTTER button bits; null =
   /// no sidecar speaks for this moment (use the pointer event's own).
   ///

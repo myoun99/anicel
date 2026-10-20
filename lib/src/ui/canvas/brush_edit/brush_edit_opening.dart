@@ -196,7 +196,7 @@ class _BrushEditOpening {
     }
   }
 
-  /// Paints every sample that waited, each with its own lean and the
+  /// Paints every sample that waited, each with its own lean and twist and the
   /// pressure and speed it waited for ([_WaitingSample]), and leaves the
   /// current readings as they were.
   ///
@@ -215,6 +215,7 @@ class _BrushEditOpening {
             ? null
             : _state._pressure.recordedTilt(sample.at, tilt.azimuthDegrees) ??
                   tilt,
+        twist: sample.twist,
         speed: sample.speed,
       ), sample.paint);
     }
@@ -231,15 +232,16 @@ class _BrushEditOpening {
     pressure: _state._currentPressure,
     speed: _state._currentSpeed,
     tilt: _state._currentTilt,
+    twist: _state._currentTwist,
     paint: paint,
   );
 }
 
 /// One sample a stroke holds while it waits for its first readings
-/// ([_BrushEditOpening._waiting]): its own lean and what it paints, and the
-/// pressure and speed it will be painted with — its own, the first reading
-/// that came after it ([_BrushEditOpening._fillWaiting]), or, when none
-/// came, what the device reported in the reading's place.
+/// ([_BrushEditOpening._waiting]): its own lean and twist and what it paints,
+/// and the pressure and speed it will be painted with — its own, the first
+/// reading that came after it ([_BrushEditOpening._fillWaiting]), or, when
+/// none came, what the device reported in the reading's place.
 class _WaitingSample {
   _WaitingSample({
     required this.at,
@@ -247,6 +249,7 @@ class _WaitingSample {
     required this.pressure,
     required this.speed,
     required this.tilt,
+    required this.twist,
     required this.paint,
   });
 
@@ -259,5 +262,6 @@ class _WaitingSample {
   double pressure;
   double speed;
   final PenLean? tilt;
+  final double? twist;
   final void Function() paint;
 }

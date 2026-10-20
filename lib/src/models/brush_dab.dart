@@ -19,6 +19,7 @@ class BrushDab {
     required this.sequence,
     this.tiltAzimuthDegrees = 0.0,
     this.tiltAltitude,
+    this.twistDegrees,
     this.speed = 0.0,
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
@@ -63,6 +64,7 @@ class BrushDab {
     _validateUnitIntervalFinite(pressure, 'pressure');
     _validateFinite(tiltAzimuthDegrees, 'tiltAzimuthDegrees');
     _validateTilt(tiltAltitude, tiltAzimuthDegrees);
+    _validateTwist(twistDegrees);
     _validateUnitIntervalFinite(speed, 'speed');
     _validateRoundness(roundness);
     _validateFinite(angleDegrees, 'angleDegrees');
@@ -116,6 +118,13 @@ class BrushDab {
   /// `brushInputFactor` skips a source it cannot answer for — the
   /// contribution is exactly 1.0 and the brush draws at its base.
   final double? tiltAltitude;
+
+  /// How far the pen was turned about its own barrel, in degrees 0..360
+  /// clockwise — the roll a Wacom Art Pen reports (F-176-Q9, Clip Studio's
+  /// ペン軸の回転) — or NULL when the device reported none, which is every
+  /// pen whose barrel does not turn. Null is not 0°, as [tiltAltitude]'s
+  /// null is not upright.
+  final double? twistDegrees;
 
   final int sequence;
 
@@ -226,6 +235,7 @@ class BrushDab {
     int? sequence,
     double? tiltAzimuthDegrees,
     double? tiltAltitude,
+    double? twistDegrees,
     double? speed,
     double? roundness,
     double? angleDegrees,
@@ -256,6 +266,7 @@ class BrushDab {
       sequence: sequence ?? this.sequence,
       tiltAzimuthDegrees: tiltAzimuthDegrees ?? this.tiltAzimuthDegrees,
       tiltAltitude: tiltAltitude ?? this.tiltAltitude,
+      twistDegrees: twistDegrees ?? this.twistDegrees,
       speed: speed ?? this.speed,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
@@ -293,6 +304,7 @@ class BrushDab {
     // recorded before tilt existed reads back — the key is simply not there.
     if (tiltAltitude != null) 'tiltAltitude': tiltAltitude,
     if (tiltAzimuthDegrees != 0.0) 'tiltAzimuthDegrees': tiltAzimuthDegrees,
+    if (twistDegrees != null) 'twistDegrees': twistDegrees,
     if (speed != 0.0) 'speed': speed,
     'roundness': roundness,
     'angleDegrees': angleDegrees,
@@ -328,6 +340,7 @@ class BrushDab {
       tiltAzimuthDegrees:
           (json['tiltAzimuthDegrees'] as num?)?.toDouble() ?? 0.0,
       tiltAltitude: (json['tiltAltitude'] as num?)?.toDouble(),
+      twistDegrees: (json['twistDegrees'] as num?)?.toDouble(),
       speed: (json['speed'] as num?)?.toDouble() ?? 0.0,
       roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
       angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
@@ -377,6 +390,7 @@ class BrushDab {
           other.sequence == sequence &&
           other.tiltAzimuthDegrees == tiltAzimuthDegrees &&
           other.tiltAltitude == tiltAltitude &&
+          other.twistDegrees == twistDegrees &&
           other.speed == speed &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
@@ -408,6 +422,7 @@ class BrushDab {
     sequence,
     tiltAzimuthDegrees,
     tiltAltitude,
+    twistDegrees,
     speed,
     roundness,
     angleDegrees,
@@ -474,6 +489,18 @@ void _validateTilt(double? altitude, double azimuthDegrees) {
     return;
   }
   _validateUnitIntervalFinite(altitude, 'tiltAltitude');
+}
+
+/// A twist is once round, so it has one spelling of each turn.
+void _validateTwist(double? degrees) {
+  if (degrees != null &&
+      (!degrees.isFinite || degrees < 0.0 || degrees >= 360.0)) {
+    throw ArgumentError.value(
+      degrees,
+      'twistDegrees',
+      'BrushDab.twistDegrees must be within [0, 360).',
+    );
+  }
 }
 
 void _validateUnitIntervalFinite(double value, String fieldName) {

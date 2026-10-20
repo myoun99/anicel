@@ -328,6 +328,17 @@ void main() {
       expect(chalk.settings.rotationMode, BrushTipRotationMode.penTilt);
     });
 
+    test('the Rotation angle control turns the tip as the pen turns about '
+        'its barrel', () {
+      // 5 is Photoshop's Rotation — Clip Studio's ペン軸の回転 (F-176-Q9).
+      final result = decodeAbrBrushFile(
+        _fixtureAbr(angleControl: 5),
+        sourceName: 'fixture',
+      );
+      final chalk = result.presets.firstWhere((p) => p.name == 'Fancy Chalk');
+      expect(chalk.settings.rotationMode, BrushTipRotationMode.penTwist);
+    });
+
     test('imports sampled and computed brushes with their parameters', () {
       final result = decodeAbrBrushFile(_fixtureAbr(), sourceName: 'fixture');
 

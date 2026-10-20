@@ -200,6 +200,35 @@ void main() {
     });
   });
 
+  group('ペン軸の回転 — the tip turns as the pen turns about its barrel '
+      '(F-176-Q9)', () {
+    final dynamics = BrushStrokeDynamics(
+      settings: BrushEditCanvasInputSettings(
+        rotationMode: BrushTipRotationMode.penTwist,
+      ),
+      random: math.Random(1),
+    );
+
+    test('a turned pen adds its turn, clockwise turned counterclockwise', () {
+      final [dab] = dynamics.apply(
+        [_dab().copyWith(twistDegrees: 50)],
+        firstSequence: 0,
+      );
+      // base 30, turned 50° clockwise = −50° as a dab angle.
+      expect(dab.angleDegrees, closeTo(340.0, 1e-9));
+    });
+
+    test('a pen that reports no turn leaves the base angle, as 없음 does — '
+        'and its lean turns nothing here', () {
+      final [dab] = dynamics.apply(
+        [_dab().copyWith(tiltAltitude: 0.4, tiltAzimuthDegrees: 70)],
+        firstSequence: 0,
+      );
+      expect(dab.angleDegrees, 30.0);
+      expect(dynamics.readsDirection, isFalse);
+    });
+  });
+
   test('same seed reproduces the same emission', () {
     final settings = BrushEditCanvasInputSettings(
       scatterRadiusRatio: 1.0,

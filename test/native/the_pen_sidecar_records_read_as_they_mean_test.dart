@@ -80,54 +80,74 @@ void main() {
   }, skip: dllSkip);
 
   test('a Wintab record says how the pen leans only when the device is '
-      'oriented', () {
+      'oriented, and how it is turned only when it declares a twist', () {
     final oriented = QaTabletBridge.packetFrom(
-      Float32List.fromList([0.25, 135, 0.5, 1000, 1, 1]),
+      Float32List.fromList([0.25, 135, 0.5, 1000, 1, 1, 0, 0]),
       0,
     );
     expect(oriented.pressure, 0.25);
     expect(oriented.orientation, (bearing: 135.0, altitude: 0.5));
     expect(oriented.timeMs, 1000);
     expect(oriented.buttons, 1);
+    expect(
+      oriented.twistDegrees,
+      isNull,
+      reason: 'a device with no twist axis: not a pen turned to 0°',
+    );
 
     expect(
       QaTabletBridge.packetFrom(
-        Float32List.fromList([0.25, 0, 0, 1000, 1, 0]),
+        Float32List.fromList([0.25, 0, 0, 1000, 1, 0, 0, 0]),
         0,
       ).orientation,
       isNull,
       reason: 'a device with no orientation axes: not a pen lying flat',
     );
 
-    // Records follow one another six floats apart.
+    // Records follow one another eight floats apart.
     final second = QaTabletBridge.packetFrom(
-      Float32List.fromList([0, 0, 0, 0, 0, 0, 0.75, 10, 1, 2, 0, 1]),
-      6,
+      Float32List.fromList([
+        ...[0, 0, 0, 0, 0, 0, 0, 0],
+        ...[0.75, 10, 1, 2, 0, 1, 270, 1],
+      ]),
+      8,
     );
     expect(second.pressure, 0.75);
     expect(second.orientation, (bearing: 10.0, altitude: 1.0));
+    expect(second.twistDegrees, 270);
   });
 
-  test('a Raw Input record says the tilt only from a v2 observer, and only '
-      'when the report carried one', () {
-    final tilted = Float32List.fromList([1, 7, 12.5, -30, 1]);
-    final state = QaTabletBridge.rawStateFrom(tilted, tilts: true);
+  test('a Raw Input record says the tilt only from a v2 observer and the '
+      'twist only from a v3 one, each only when the report carried it', () {
+    final posed = Float32List.fromList([1, 7, 12.5, -30, 1, 135, 1]);
+    final state = QaTabletBridge.rawStateFrom(posed);
     expect(state.flags, 1);
     expect(state.sequence, 7);
     expect(state.tilt, (x: 12.5, y: -30.0));
+    expect(state.twistDegrees, 135);
 
     expect(
-      QaTabletBridge.rawStateFrom(tilted, tilts: false).tilt,
+      QaTabletBridge.rawStateFrom(Float32List.sublistView(posed, 0, 2)).tilt,
       isNull,
       reason: 'a v1 observer never wrote one',
     );
+    final v2 = QaTabletBridge.rawStateFrom(
+      Float32List.sublistView(posed, 0, 5),
+    );
+    expect(v2.tilt, (x: 12.5, y: -30.0));
+    expect(v2.twistDegrees, isNull, reason: 'a v2 observer never wrote one');
+    final bare = QaTabletBridge.rawStateFrom(
+      Float32List.fromList([1, 8, 0, 0, 0, 0, 0]),
+    );
     expect(
-      QaTabletBridge.rawStateFrom(
-        Float32List.fromList([1, 8, 0, 0, 0]),
-        tilts: true,
-      ).tilt,
+      bare.tilt,
       isNull,
       reason: 'a report with no tilt is not an upright pen',
+    );
+    expect(
+      bare.twistDegrees,
+      isNull,
+      reason: 'a report with no twist is not a pen turned to 0°',
     );
   });
 }

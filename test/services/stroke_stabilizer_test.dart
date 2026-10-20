@@ -8,7 +8,7 @@ import 'package:anicel/src/services/stroke_stabilizer.dart';
 const _lag = Duration(milliseconds: 10);
 final _oneLag = 1 - math.exp(-1);
 
-const PenReadings _rest = (pressure: 0.5, lean: null, speed: 0.0);
+const PenReadings _rest = (pressure: 0.5, lean: null, twist: null, speed: 0.0);
 
 StrokeStabilizer _from(
   CanvasPoint start, {
@@ -61,12 +61,14 @@ void main() {
       readings: (
         pressure: 0.2,
         lean: (azimuthDegrees: 90.0, altitude: 0.5),
+        twist: 90.0,
         speed: 0.0,
       ),
     );
     final brush = stabilizer.follow(CanvasPoint(x: 100, y: 0), (
       pressure: 1.0,
       lean: (azimuthDegrees: 180.0, altitude: 1.0),
+      twist: 180.0,
       speed: 0.6,
     ), at: _ms(10)).last;
     final readings = brush.readings;
@@ -74,6 +76,7 @@ void main() {
     expect(readings.speed, closeTo(0.6 * _oneLag, 1e-9));
     expect(readings.lean!.azimuthDegrees, closeTo(90 + 90 * _oneLag, 1e-9));
     expect(readings.lean!.altitude, closeTo(0.5 + 0.5 * _oneLag, 1e-9));
+    expect(readings.twist, closeTo(90 + 90 * _oneLag, 1e-9));
   });
 
   test('a lean turns the shorter way round, across 0°', () {
@@ -82,6 +85,7 @@ void main() {
       readings: (
         pressure: 1.0,
         lean: (azimuthDegrees: 350.0, altitude: 0.5),
+        twist: null,
         speed: 0.0,
       ),
     );
@@ -89,6 +93,7 @@ void main() {
         .follow(CanvasPoint(x: 100, y: 0), (
           pressure: 1.0,
           lean: (azimuthDegrees: 10.0, altitude: 0.5),
+          twist: null,
           speed: 0.0,
         ), at: _ms(10))
         .last
@@ -103,6 +108,7 @@ void main() {
     final brush = stabilizer.follow(CanvasPoint(x: 100, y: 0), (
       pressure: 0.5,
       lean: measured,
+      twist: null,
       speed: 0.0,
     ), at: _ms(10)).last;
     expect(brush.readings.lean, measured);
@@ -154,7 +160,7 @@ void main() {
       'then nothing moves it', () {
     final stabilizer = _from(CanvasPoint(x: 0, y: 0));
     final pen = CanvasPoint(x: 100, y: 0);
-    const pressed = (pressure: 0.9, lean: null, speed: 0.3);
+    const pressed = (pressure: 0.9, lean: null, twist: null, speed: 0.3);
     stabilizer.follow(pen, pressed, at: Duration.zero);
     stabilizer.lookAtFrame(Duration.zero);
     var frame = 0;
@@ -172,7 +178,7 @@ void main() {
       'what it read there (F-418-Q2)', () {
     final stabilizer = _from(CanvasPoint(x: 0, y: 0));
     final pen = CanvasPoint(x: 100, y: 40);
-    const lifting = (pressure: 0.1, lean: null, speed: 0.8);
+    const lifting = (pressure: 0.1, lean: null, twist: null, speed: 0.8);
     stabilizer.follow(pen, lifting, at: _ms(10));
     expect(stabilizer.finish(), [(position: pen, readings: lifting)]);
     expect(stabilizer.brush.position, pen);
@@ -197,7 +203,7 @@ void main() {
       start: (position: CanvasPoint(x: 0, y: 0), readings: _rest),
       at: Duration.zero,
     );
-    const quick = (pressure: 0.5, lean: null, speed: 0.9);
+    const quick = (pressure: 0.5, lean: null, twist: null, speed: 0.9);
     final brush = stabilizer.follow(
       CanvasPoint(x: 100, y: 0),
       quick,
@@ -326,7 +332,7 @@ void main() {
 }
 
 PenReadings _pressing(double pressure) =>
-    (pressure: pressure, lean: null, speed: 0.0);
+    (pressure: pressure, lean: null, twist: null, speed: 0.0);
 
 /// A pen that goes right along y = 0 to x = 100, pressing 0.3, and turns
 /// down to y = [downTo], pressing 0.9 — a sample every millisecond, 4 px

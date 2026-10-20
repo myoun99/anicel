@@ -429,6 +429,11 @@ class _InteractiveBrushEditCanvasViewState
   /// `brush-tilt-no-device-Q1` 답 1).
   PenLean? _currentTilt;
 
+  /// How far the pen was turned about its barrel at the latest sample, in
+  /// degrees clockwise — null when nothing measured one, which is NOT a pen
+  /// turned to 0° (F-176-Q9).
+  double? _currentTwist;
+
   /// How fast the pen travelled into the latest sample, 0..1 against the
   /// user's reference speed. A pen that has just landed — and every stroke's
   /// first dab — rests at 0.0.
@@ -773,6 +778,7 @@ class _InteractiveBrushEditCanvasViewState
       sequence: sequence,
       tiltAzimuthDegrees: _currentTilt?.azimuthDegrees ?? 0.0,
       tiltAltitude: _currentTilt?.altitude,
+      twistDegrees: _currentTwist,
       speed: _currentSpeed,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,

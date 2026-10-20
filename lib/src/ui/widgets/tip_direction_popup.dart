@@ -82,13 +82,14 @@ class _DialPainter extends CustomPainter with RepaintOnProps {
 }
 
 /// The bases in the order Clip Studio lists them: なし · ペンの向き ·
-/// 線の方向.
+/// ペン軸の回転 · 線の方向.
 ///
 /// ⚠️Every base is here — `the_tip_direction_window_test` fails on one left
 /// out, so a base added to [BrushTipRotationMode] cannot go unoffered.
 const List<BrushTipRotationMode> tipDirectionBases = [
   BrushTipRotationMode.fixed,
   BrushTipRotationMode.penTilt,
+  BrushTipRotationMode.penTwist,
   BrushTipRotationMode.direction,
 ];
 
@@ -97,6 +98,7 @@ String tipDirectionBaseName(BrushTipRotationMode base) => switch (base) {
   BrushTipRotationMode.fixed => AppText.strings.brRotationFixed,
   BrushTipRotationMode.direction => AppText.strings.brRotationDirection,
   BrushTipRotationMode.penTilt => AppText.strings.brRotationPenTilt,
+  BrushTipRotationMode.penTwist => AppText.strings.brRotationPenTwist,
 };
 
 const double _headerHeight = 24;

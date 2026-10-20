@@ -326,6 +326,7 @@ class _BrushEditPressure {
     // outright. The same shape as `_travelled` below, and for the same reason.
     final lean = tiltOf(event);
     _state._currentTilt = lean;
+    _state._currentTwist = penTwist();
     final tally = _leanTally;
     _leanTally = lean == null
         ? (
@@ -435,6 +436,19 @@ class _BrushEditPressure {
   /// a pen held upright — the invented reading `brush-tilt-no-device-Q1`
   /// ruled out. Only iOS (UITouch's altitude) and Android (AXIS_TILT) carry
   /// the lean; everywhere else [penTilt] asks the platform's own record.
+  /// How far the pen is turned about its own barrel, in degrees 0..360
+  /// clockwise — null where nothing measured one (F-176-Q9, Clip Studio's
+  /// ペン軸の回転).
+  ///
+  /// Only Windows' driver-side streams carry it ([PenSidecars.freshTwist]).
+  /// Flutter's pointer has no field for it on any platform — the Windows
+  /// embedder reads POINTER_PEN_INFO's rotation into a pan-zoom field that
+  /// a pen's event never shows — and the macOS pen ledger records no
+  /// rotation yet, so everywhere else this is null: the twist base turns
+  /// nothing there, as 없음 does.
+  double? penTwist() =>
+      _pointerCarriesTilt ? null : PenSidecars.freshTwist();
+
   static bool get _pointerCarriesTilt =>
       defaultTargetPlatform == TargetPlatform.iOS ||
       defaultTargetPlatform == TargetPlatform.android;
