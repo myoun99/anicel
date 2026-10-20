@@ -90,20 +90,11 @@ class _WorkspaceFlipHud {
     final onlyCurrent = axis == FlipHudAxis.frame;
     final hudRows = <FlipHudRow>[
       for (var index = 0; index < rows.length; index += 1)
-        if (rows[index].lane case final lane?)
-          flipHudLaneRow(
-            lane,
-            kind: rows[index].layer.kind,
-            withRuns: !onlyCurrent || index == rowIndex,
-          )
-        else
-          flipHudLayerRow(
-            rows[index].layer,
-            withRuns: !onlyCurrent || index == rowIndex,
-            celNameAt: session.frameVerbs.frameNameForLayer,
-            // The lookup the storyboard's transition row draws its terms with.
-            spanDefById: session.camera.cameraInstructionSet.defById,
-          ),
+        _hudRowOf(
+          rows[index],
+          session,
+          withRuns: !onlyCurrent || index == rowIndex,
+        ),
     ];
     return FlipHudSnapshot(
       rows: hudRows,
@@ -115,6 +106,32 @@ class _WorkspaceFlipHud {
       // the one you are on.
       frameCount: math.max(cut.duration, session.currentFrameIndex + 1),
       playbackFrameCount: cut.duration,
+    );
+  }
+
+  /// [row]'s line in the timeline's window.
+  FlipHudRow _hudRowOf(
+    TimelineDisplayRow row,
+    EditorSessionManager session, {
+    required bool withRuns,
+  }) {
+    if (row.lane case final lane?) {
+      return flipHudLaneRow(lane, kind: row.layer.kind, withRuns: withRuns);
+    }
+    // The union the camera row's band draws (B4).
+    final union = withRuns
+        ? timelineCameraUnionLane(layer: row.layer, session: session)
+        : null;
+    return flipHudLayerRow(
+      row.layer,
+      withRuns: withRuns,
+      celNameAt: session.frameVerbs.frameNameForLayer,
+      // The lookup the storyboard's transition row draws its terms with.
+      spanDefById: session.camera.cameraInstructionSet.defById,
+      unionKeys: [
+        if (union != null)
+          for (final frame in union.keyedFrames) flipHudKeyRun(union, frame),
+      ],
     );
   }
 

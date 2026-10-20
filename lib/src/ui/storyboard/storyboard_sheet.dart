@@ -121,10 +121,10 @@ class _StoryboardSheet {
         final slot = _seSlotOf(track, layerId);
         return flipHudLayerRow(
           // The conte row as this rail draws it — the cuts' conte layers on
-          // the track's axis; the camera row as the walks see it (keys, no
-          // blocks — the timeline's camera row's window is empty too); the S
-          // row as this rail draws it (a take in flight stands in for its
-          // lane); else the one other layer row a track group has.
+          // the track's axis; the camera row as the walks see it (no
+          // blocks — its keys come as its strip draws them, [_cameraKeys]);
+          // the S row as this rail draws it (a take in flight stands in for
+          // its lane); else the one other layer row a track group has.
           trackConteRowOf(layerId) != null
               ? trackConteRowShown(
                   track.id,
@@ -148,6 +148,9 @@ class _StoryboardSheet {
           // The strip's own writing on its blocks: the cel each opens with.
           celNameAt: timelineOwnCelNameAt,
           spanDefById: _state.widget.transitionDefById,
+          unionKeys: withRuns && trackIdOfCameraRow(layerId) != null
+              ? _cameraKeys(track)
+              : const [],
         );
       case LaneRowAddress(:final layerId, :final laneId):
         final carried = trackIdOfTransformLaneCarrier(layerId) != null;
@@ -165,6 +168,26 @@ class _StoryboardSheet {
           withRuns: withRuns,
         );
     }
+  }
+
+  /// The camera row's keys as its strip lays them on [track]: each cut's
+  /// union ([cameraUnionHeader]) where the cut's own frames reach.
+  List<FlipHudRun> _cameraKeys(Track track) => [
+    for (final reach in _state._railRows._reachesNow(track))
+      if (reach.entry.cut.layers.cameraLayer != null)
+        ..._cutCameraKeys(reach),
+  ];
+
+  List<FlipHudRun> _cutCameraKeys(CameraRowReach reach) {
+    final union = cameraUnionHeader(
+      reach.entry.cut.camera.track,
+      defById: _state.widget.project.cameraInstructions.defById,
+    );
+    return [
+      for (final frame in union.keyedFrames)
+        if (reach.reaches(reach.trackFrameOf(frame)))
+          flipHudKeyRun(union, frame, at: reach.trackFrameOf(frame)),
+    ];
   }
 
   int _seSlotOf(Track track, LayerId layerId) {
