@@ -469,8 +469,9 @@ void main() {
       'its pin whole, and the tools their enlarge button', (tester) async {
     // 1040 → 680 (I-89 Q1, 2026-10-12): the rail is 519 again, and a
     // window's region never opens narrower than 640 by itself — so a
-    // window under that.
-    final s = await _pump(tester, frames: 600, width: 680);
+    // window under that. 680 → 622 (F-409, 2026-10-20): the names gave a
+    // third up and the rail is 461, so the view kept its forty.
+    final s = await _pump(tester, frames: 600, width: 622);
     await _pinTheBlur(tester, s);
 
     final view = tester.getRect(

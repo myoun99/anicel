@@ -5,6 +5,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizeAlong;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
@@ -77,9 +78,7 @@ void main() {
       expect(lit(), isFalse);
       expect(
         tester.getSize(button),
-        orientation == TimelineOrientation.horizontal
-            ? const Size(22, 26)
-            : const Size(26, 22),
+        sizeAlong(orientation.axis, along: 22, across: 26),
         reason: 'the box a name\'s buttons stand in, turned with the rail',
       );
 

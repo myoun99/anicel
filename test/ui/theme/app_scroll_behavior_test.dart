@@ -230,7 +230,7 @@ void main() {
                         ),
                       )
                       .decoration!
-                  as BoxDecoration)
+                  as ShapeDecoration)
               .color!;
 
       final atRest = thumbSize();

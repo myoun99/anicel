@@ -332,7 +332,9 @@ void main() {
 
     final held = await pickUp(
       tester,
-      railRow('cam'),
+      // Its name's letters: the middle of a camera's name area is its path
+      // button since the names gave a third up (F-409).
+      find.descendant(of: railRow('cam'), matching: find.text('Camera')),
       select: const Offset(30, 0),
       nudge: const Offset(0, 12),
     );
