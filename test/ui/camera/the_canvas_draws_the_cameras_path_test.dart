@@ -765,14 +765,17 @@ void main() {
       );
       final track = camera.activeCutCameraTrack;
       final canvas = s.requireActiveCut.canvasSize;
+      // About its middle, by even steps: the picture moves as far as the
+      // middle does, so an unkeyed camera stays on it with no key put down
+      // (F-362 — from any other anchor, one is).
       s.cutVerbs.resizeActiveCutCanvas(
         CanvasSize(width: canvas.width + 200, height: canvas.height + 100),
-        anchor: CanvasResizeAnchor.topLeft,
+        anchor: CanvasResizeAnchor.center,
       );
       expect(
         camera.activeCutCameraTrack,
         same(track),
-        reason: '⛔전제: a canvas grown from its top-left moves no key',
+        reason: '⛔전제: a canvas grown about its middle moves no key',
       );
       expect(
         camera.activeCutCameraPath(size)!.keys.first.corners,
