@@ -69,6 +69,7 @@ void main() {
       caches.conteInkRowStore,
       caches.envelopeInkStore,
       caches.timesheetInkStore,
+      caches.viewerInkStore,
     ];
     for (final (index, store) in stores.indexed) {
       store.storeBakedSurface(key('ink-$index'), inked());

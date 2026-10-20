@@ -15,6 +15,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
+import '../../models/viewer_ink_keys.dart' show viewerInksOn;
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
@@ -34,10 +35,13 @@ import '../brush/canvas_selection_commands.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/cut_into_the_hand.dart';
+import '../brush/sheet_canvas_panel.dart'
+    show SheetStrokeHold, sheetBrushSwitch;
 import '../editor_session_manager.dart';
 import '../input/os_file_drop.dart';
 import '../playback/playback_transport.dart';
 import '../session/media_file_views.dart';
+import '../sheet/sheet_ink_layer.dart' show SheetInkWindow;
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -49,6 +53,7 @@ import 'page_rasters.dart';
 import 'viewer_page_loading.dart';
 import 'viewer_pages_and_run.dart';
 import 'viewer_render_tier.dart';
+import 'viewer_ink.dart';
 import 'viewer_sound.dart';
 import 'waveform_marks_painter.dart';
 import '../widgets/app_icon_button.dart';
@@ -120,6 +125,14 @@ class MediaViewerSlot {
   final ValueNotifier<ViewerLoudness> loudness = ValueNotifier(
     const ViewerLoudness(),
   );
+
+  /// This viewer's brush switch ([MediaViewerTabHost.brushAllowed]) — off
+  /// to begin with, as every sheet's (I-114: 「다른 캔버스 베이스패널의
+  /// 브러시 허용이랑 똑같은」), and up here for the reason the page is.
+  ///
+  /// ⚠️The viewer's, not the file's: a swap trades the files and leaves
+  /// each viewer its own switch ([swapWith]), as its loudness.
+  final ValueNotifier<bool> brushAllowed = ValueNotifier(false);
 
   /// Points this viewer at a document — at the page that FILE was last seen
   /// at, in either viewer, or its first when it never was turned (F-382,
@@ -203,6 +216,7 @@ class MediaViewerSlot {
     viewport.dispose();
     framedFor.dispose();
     loudness.dispose();
+    brushAllowed.dispose();
   }
 }
 
@@ -241,6 +255,9 @@ class MediaViewerTabHost extends StatefulWidget {
     this.sound,
     this.brushTool,
     this.cutPieceSlot,
+    this.inkController,
+    this.brushAllowed = false,
+    this.onBrushAllowedChanged,
   });
 
   /// WHICH viewer this is — the panel's tab id, and the prefix every
@@ -357,6 +374,8 @@ class MediaViewerTabHost extends StatefulWidget {
   /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널의 잘라내기툴 사용 가능하도록」 —
   /// and the viewer has no drawing (「뷰어패널은 기본적으로 드로잉모드
   /// 존재안하니」), so the cut is the one tool with anything to do here.
+  /// ↩️I-114 gave it one — [brushAllowed], on a file the project carries —
+  /// and while it is on the brush reaches the page's ink as on a sheet.
   final ValueListenable<BrushToolState>? brushTool;
 
   /// Where a cut from this viewer lands — the cut tool's one held piece,
@@ -365,6 +384,24 @@ class MediaViewerTabHost extends StatefulWidget {
   /// ⛔Not handed to the panel below: a mounted canvas panel installs its
   /// paste-at-origin into the slot, and the viewer has no cel to paste on.
   final CutPieceSlot? cutPieceSlot;
+
+  /// The ink the viewers write on the files the project carries. Null
+  /// writes on none.
+  final ViewerInkController? inkController;
+
+  /// THE VIEWER'S BRUSH SWITCH — the sheets' 「브러시 허용」
+  /// ([sheetBrushSwitch]), off by default as theirs is.
+  ///
+  /// 🗣️I-114 (유저 2026-10-21): 「뷰어패널(서브던 메인이던) 새 기능. 다른
+  /// 캔버스 베이스패널의 브러시 허용이랑 똑같은 직접 그릴수있는기능 법
+  /// 통일해서 구현. 물론 그리는게 가능한 파일만 대응 … 오디오파일처럼
+  /// 못그리는건 대응불가하도록」 — and I-114-Q1: 「품은 파일만」. On any
+  /// other file the switch keeps its place, off ([viewerInksOn]).
+  final bool brushAllowed;
+
+  /// Flips [brushAllowed]. Null shows no switch — a viewer with nowhere to
+  /// keep the answer.
+  final ValueChanged<bool>? onBrushAllowedChanged;
 
   @override
   State<MediaViewerTabHost> createState() => _MediaViewerTabHostState();
@@ -423,15 +460,30 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
       BrushEditCacheInvalidationSink();
 
+  /// The page ink's live-stroke hold — a sheet's ([SheetStrokeHold]).
+  late final SheetStrokeHold _strokeHold = SheetStrokeHold(
+    brushInput: (live) => widget.session.setBrushInputActive(live),
+  );
+
+  /// Whether the last build mounted the page ink: drawing going off — the
+  /// switch, another file — unmounts it under a pen that will never be
+  /// lifted there.
+  bool _drawingOn = false;
+
   MediaViewerRequest? get _currentRequest => widget.request.value;
 
   /// The open file's name as the pool shows it NOW (F-376) — a rename while
   /// it is open reaches the plate — or null with nothing open.
   String? get _shownName => switch (_currentRequest) {
-    final request? => mediaFileShownName(
-      widget.session.repository.currentProject?.mediaAssetByPath(request.path),
-      request.path,
-    ),
+    final request? => mediaFileShownName(_shownAsset, request.path),
+    null => null,
+  };
+
+  /// The open file as the pool holds it NOW — null with nothing open, or a
+  /// file the pool does not hold.
+  MediaAsset? get _shownAsset => switch (_currentRequest) {
+    final request? => widget.session.repository.currentProject
+        ?.mediaAssetByPath(request.path),
     null => null,
   };
 
@@ -439,8 +491,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// edit, and only one that changes this name redraws the viewer.
   String? _drawnName;
 
+  /// What the open file was carried as when last drawn — whether its page
+  /// takes ink (I-114): a file carried or let go while it is open redraws
+  /// the viewer, as a rename does.
+  String? _drawnCarry;
+
   void _onSessionChanged() {
-    if (mounted && _shownName != _drawnName) {
+    if (mounted &&
+        (_shownName != _drawnName ||
+            _shownAsset?.carriedAs != _drawnCarry)) {
       setState(() {});
     }
   }
@@ -632,6 +691,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     );
     _run.dispose();
     _ownSelection?.dispose();
+    _strokeHold.dispose();
     super.dispose();
   }
 
@@ -1271,7 +1331,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// white flashes 유저 2026-08-31 reported (「첫 재생때 … 흰 화면이
   /// 엄청나게 깜빡이면서 재생됨」) by making the picture lie; the playhead
   /// does not reach a frame that is not there instead.
-  List<({Rect rect, ui.Image? image})> _pagesShown(
+  List<({int page, Rect rect, ui.Image? image})> _pagesShown(
     BuildContext context,
     CanvasViewport viewport,
     Size box, {
@@ -1311,7 +1371,30 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     return [
       for (final entry in shown)
-        (rect: entry.rect, image: _rasters.imageOf(entry.page)),
+        (
+          page: entry.page,
+          rect: entry.rect,
+          image: _rasters.imageOf(entry.page),
+        ),
+    ];
+  }
+
+  /// The ink windows of [pages] — each page's whole picture, of the file the
+  /// project carries as [carry].
+  List<SheetInkWindow> _inkWindowsOf(
+    List<({int page, Rect rect, ui.Image? image})> pages, {
+    required String carry,
+    required bool drawnAtAnySize,
+  }) {
+    final scale = viewerInkScale(drawnAtAnySize: drawnAtAnySize);
+    return [
+      for (final shown in pages)
+        viewerInkWindow(
+          carry: carry,
+          page: shown.page,
+          rect: shown.rect,
+          scale: scale,
+        ),
     ];
   }
 
@@ -1322,6 +1405,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final pageCount = _pageCount;
     final pageIndex = _pageShown;
     _drawnName = _shownName;
+    final carry = _shownAsset;
+    _drawnCarry = carry?.carriedAs;
 
     // Document space: the page/frame being shown. ONE answer now — the
     // document knows its own page size, whether that is PDF points, image
@@ -1393,6 +1478,17 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final floor = CanvasFloorInsets.maybeOf(context);
     final transport = _transport(context, pageIndex, pageCount);
 
+    // I-114: the brush writes on the page of a file the project carries
+    // while the switch is on — a sheet's drawing ([SheetStrokeHold] and all).
+    final ink = widget.inkController;
+    final inkTool = widget.brushTool;
+    final inkable = ink != null && inkTool != null && viewerInksOn(carry);
+    final drawing = inkable && widget.brushAllowed;
+    if (_drawingOn && !drawing) {
+      _strokeHold.releaseAfterFrame();
+    }
+    _drawingOn = drawing;
+
     BrushCanvasPanel panelWith(ValueListenable<BrushToolState>? tool) =>
         BrushCanvasPanel(
       floorCover: floor?.insets ?? EdgeInsets.zero,
@@ -1411,19 +1507,24 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // Paper rule: the viewer never rotates the view.
       allowViewRotation: false,
       // Read-only host: a brush-tip cursor over undrawable content is a
-      // false affordance.
-      toolCursorsEnabled: false,
+      // false affordance. ↩️Drawable while the page takes ink (I-114).
+      toolCursorsEnabled: drawing,
       // F-77 (유저: 「뷰어패널 열린거 없으면 확대나 스크롤바같은 조작 버튼
       // 비활성화」): with no file open there is no view to operate.
       hasContentToView: request != null,
       // 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드
       // 존재안하니 한손가락 핑거시 팬」 — whatever the one-finger slot says,
       // and so a finger drives no tool here: the cut takes a pen or a mouse.
-      oneFingerAction: CanvasTouchDragAction.navigate,
-      brushToolState: tool,
+      // ↩️While the page takes ink (I-114) the finger is a sheet's: the
+      // slot's own answer.
+      oneFingerAction: drawing ? null : CanvasTouchDragAction.navigate,
+      // While the page takes ink the brush is the ink's, as on a sheet: the
+      // panel holds none of the workspace's ([SheetCanvasPanel]).
+      brushToolState: drawing ? null : tool,
       // F-80: with no cut armed nothing here can act on a press, so it
-      // moves the page instead.
-      runsTheSelectedTool: tool != null,
+      // moves the page instead — and a sheet's answer while it draws.
+      runsTheSelectedTool: drawing || tool != null,
+      contentStrokeActive: drawing ? _strokeHold : null,
       // F-179 (유저 2026-09-25: 「타임시트패널등 캔버스 베이스 패널엔
       // 페이스트보드가 없다는 뜻임」): the viewer is one of those panels —
       // F-201 names it one.
@@ -1442,6 +1543,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // 🗣️I-83-Q1 (유저 2026-10-09): 「알약의 「파일 열기」 옆」 — closing
       // stands beside opening, at that cost; off while nothing is open.
       bottomBarLeading: [
+        // At the head of the bar, as on every sheet; off on a file it cannot
+        // write on (I-114), in its place.
+        if (widget.onBrushAllowedChanged case final flip?)
+          sheetBrushSwitch(
+            allowed: drawing,
+            onChanged: inkable ? flip : null,
+            keyPrefix: widget.viewerId,
+          ),
         if (widget.onRequestPicked != null)
           AppIconButton(
             keyValue: _key('open-file-button'),
@@ -1486,7 +1595,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // this one in the pool" can change. ⚠️It has to: the list captures
       // the entries when the BAR is built, not when the list opens. So
       // does whether a file is open: the close button is off without one.
-      bottomBarHostToken: (pageIndex, pageCount, _canRegister, request != null),
+      // And the brush switch's two answers.
+      bottomBarHostToken: (
+        pageIndex,
+        pageCount,
+        _canRegister,
+        request != null,
+        drawing,
+        inkable,
+      ),
       // A book's Fit frames the page read — the panel's to know.
       fitFocusRect: book == null ? paper : null,
       viewLimit: paper,
@@ -1510,12 +1627,24 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             Positioned.fill(
               child: LayoutBuilder(
                 builder: (context, box) {
+                  final ratio = EffectiveDevicePixelRatio.of(context);
+                  // Snapped ONCE, as a sheet's view is (P8): the pages and
+                  // the ink over them land on one device grid.
+                  final snapped = renderSnappedViewport(viewport, ratio);
                   final pages = _pagesShown(
                     context,
-                    viewport,
+                    snapped,
                     box.biggest,
                     asking: !framingPending,
                   );
+                  final carried = carry?.carriedAs;
+                  final inkWindows = ink == null || carried == null
+                      ? const <SheetInkWindow>[]
+                      : _inkWindowsOf(
+                          pages,
+                          carry: carried,
+                          drawnAtAnySize: document?.drawnAtAnySize ?? false,
+                        );
                   return Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1529,21 +1658,54 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                         child: CustomPaint(
                           key: ValueKey<String>(_key('page')),
                           painter: ViewportPagesPainter(
-                            pages: pages,
+                            pages: [
+                              for (final shown in pages)
+                                (rect: shown.rect, image: shown.image),
+                            ],
                             // PDF paper is opaque white; a transparent
                             // image shows the checker-free paper too — the
                             // viewer is a light table, not a compositor.
                             ground: document != null
                                 ? ViewportPageGround.paper
                                 : ViewportPageGround.none,
-                            viewport: viewport,
-                            effectiveRatio: EffectiveDevicePixelRatio.of(
-                              context,
-                            ),
+                            viewport: snapped,
+                            effectiveRatio: ratio,
                           ),
                           child: const SizedBox.expand(),
                         ),
                       ),
+                      // The page's saved ink, over it (I-114) — but where a
+                      // live window draws it.
+                      if (ink != null && inkWindows.isNotEmpty)
+                        RepaintBoundary(
+                          child: CustomPaint(
+                            key: ValueKey<String>(_key('ink')),
+                            painter: ViewerInkPainter(
+                              windows: inkWindows,
+                              viewport: snapped,
+                              effectiveRatio: ratio,
+                              inkSurfaceFor: ink.surfaceOf,
+                              liveInkKeys: {
+                                if (drawing)
+                                  for (final window in inkWindows) window.key,
+                              },
+                              repaint: ink,
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      if (drawing)
+                        ViewerInkOverlay(
+                          key: ValueKey<String>(_key('ink-layer')),
+                          keyPrefix: widget.viewerId,
+                          controller: ink,
+                          windows: inkWindows,
+                          brushToolState: inkTool,
+                          historyManager: widget.session.historyManager,
+                          viewport: snapped,
+                          strokeActive: _strokeHold,
+                          cacheInvalidationSink: _cacheInvalidationSink,
+                        ),
                       // The file still opening, or a page on screen not
                       // drawn yet (F-315).
                       if (document == null ||

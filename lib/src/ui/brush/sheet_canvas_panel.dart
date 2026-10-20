@@ -214,13 +214,10 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
     final brush = widget.brushSwitch;
     return [
       if (brush != null)
-        AppIconButton(
-          keyValue: '${brush.keyPrefix}-brush-toggle-button',
-          tooltip: AppText.strings.sheetBrushAllow,
-          icon: const Icon(Icons.brush),
-          isSelected: brush.allowed,
-          size: AppIconButtonSize.strip,
-          onPressed: () => brush.onChanged(!brush.allowed),
+        sheetBrushSwitch(
+          allowed: brush.allowed,
+          onChanged: brush.onChanged,
+          keyPrefix: brush.keyPrefix,
         ),
       ...widget.bottomBarLeading,
     ];
@@ -276,6 +273,24 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
     );
   }
 }
+
+/// THE BRUSH SWITCH — 「브러시 허용」 ([SheetCanvasPanel.brushSwitch]): one
+/// button, one word, on every panel that writes on what it shows — the
+/// sheets and the viewers (I-114: 「다른 캔버스 베이스패널의 브러시
+/// 허용이랑 똑같은」). Null [onChanged] stands it off: a viewer showing a
+/// file it cannot write on keeps its place on the bar.
+Widget sheetBrushSwitch({
+  required bool allowed,
+  required ValueChanged<bool>? onChanged,
+  required String keyPrefix,
+}) => AppIconButton(
+  keyValue: '$keyPrefix-brush-toggle-button',
+  tooltip: AppText.strings.sheetBrushAllow,
+  icon: const Icon(Icons.brush),
+  isSelected: allowed,
+  size: AppIconButtonSize.strip,
+  onPressed: onChanged == null ? null : () => onChanged(!allowed),
+);
 
 /// A sheet's LIVE-STROKE HOLD: raised while the pen is down on the sheet's
 /// ink. The panel holds navigation on it, and [brushInput] carries it to the

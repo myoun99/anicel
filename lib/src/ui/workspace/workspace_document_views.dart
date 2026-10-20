@@ -100,6 +100,9 @@ class _WorkspaceDocumentViews {
 
   late CutEnvelopeInkController _envelopeInk;
 
+  /// The ink both viewers write on the files the project carries (I-114).
+  late ViewerInkController _viewerInk;
+
   /// Makes the ink controllers over [session]'s stores, and the sheets'
   /// images over its media — the workspace's door for the project coming
   /// on screen.
@@ -109,6 +112,7 @@ class _WorkspaceDocumentViews {
     _conteInk = ConteInkController(rowStore: caches.conteInkRowStore);
     _contePictures = ContePictureInkController(cels: caches.brushFrameStore);
     _envelopeInk = CutEnvelopeInkController(store: caches.envelopeInkStore);
+    _viewerInk = ViewerInkController(store: caches.viewerInkStore);
     final hold = session.projectFile.holdMediaBytes;
     _sheetImages = SheetImageCache(
       read: (path, width) => readSheetImage(hold, path, width),
@@ -127,6 +131,7 @@ class _WorkspaceDocumentViews {
     _conteInk.dispose();
     _contePictures.dispose();
     _envelopeInk.dispose();
+    _viewerInk.dispose();
     session.memoryPressureTicks.removeListener(
       _sheetImages.respondToMemoryPressure,
     );

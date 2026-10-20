@@ -11,12 +11,14 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/viewer_ink_keys.dart';
 import 'package:anicel/src/services/persistence/cel_places.dart';
 
 /// 🚨★★★A SAVE THAT COULD NOT CARRY PICTURES SAYS WHICH (C-save-percent).
@@ -117,6 +119,7 @@ void main() {
       'conte row $cutName/$celName',
     EnvelopeInkPlace(:final cutName) => 'envelope $cutName',
     TimesheetInkPlace(:final cutName) => 'timesheet $cutName',
+    ViewerInkPlace(:final fileName) => 'viewer $fileName',
     GoneCelPlace() => 'gone',
   };
 
@@ -277,6 +280,48 @@ void main() {
         timesheetInkPageKey(const CutId('c1'), 0),
       ]),
       ['envelope 2', 'timesheet 1', 'timesheet 1', 'timesheet 2'],
+    );
+  });
+
+  test('viewer ink (I-114): by the file as the pool names it, once for every '
+      'page — after the sheets, in the pool\'s order; a carry the pool no '
+      'longer holds is gone', () {
+    final layout = MediaAsset(
+      path: 'C:/work/layout.png',
+      name: 'Layout',
+      kind: MediaAssetKind.image,
+      carriedAs: 'carry-layout',
+    );
+    final conte = MediaAsset(
+      path: 'C:/work/conte.pdf',
+      name: 'Conte',
+      kind: MediaAssetKind.pdf,
+      carriedAs: 'carry-conte',
+    );
+    final pointedAt = MediaAsset(
+      path: 'C:/work/loose.png',
+      name: 'Loose',
+      kind: MediaAssetKind.image,
+    );
+    final pooled = project.copyWith(mediaAssets: [layout, pointedAt, conte]);
+    expect(
+      [
+        for (final place in celPlacesOf(pooled, [
+          viewerInkPageKey('carry-conte', 2),
+          viewerInkPageKey('carry-gone', 0),
+          viewerInkPageKey('carry-layout', 0),
+          timesheetInkPageKey(const CutId('c1'), 0),
+          viewerInkPageKey('carry-conte', 0),
+        ]))
+          said(place),
+      ],
+      [
+        'timesheet 1',
+        'viewer Layout',
+        'viewer Conte',
+        'viewer Conte',
+        'gone',
+      ],
     );
   });
 

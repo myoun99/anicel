@@ -88,6 +88,7 @@ import 'media/media_drop_verdict.dart';
 import 'media/media_pool_panel.dart';
 import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
+import 'media/viewer_ink.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import '../services/audio/conform_wav_export.dart';

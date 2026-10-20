@@ -20,6 +20,7 @@ import '../../models/cut_id.dart';
 import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/playback_mode.dart' show defaultPlaybackMode;
 import '../../models/project.dart';
+import '../../models/viewer_ink_keys.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/media/media_byte_source.dart';
@@ -1342,18 +1343,25 @@ _sortLoadedCels(AnicelOpenResult result, RenderCaches caches) {
 /// is the cells' alone (H44) — holds nothing. An envelope's and a timesheet's
 /// belong to the cut the sheet describes — which box or band a stroke sits
 /// in is never pruned: swapping the envelope's form back has to bring the
-/// writing back with it.
+/// writing back with it. A viewer's belongs to the carry of the file it is
+/// written on (I-114): a file the pool no longer carries takes it along.
 class _InkOwners {
   _InkOwners(this._project);
 
   final Project _project;
   late final Set<CutId> _cuts = _everyCutId(_project);
   late final Set<(CutId, String)> _blocks = writtenConteBlocks(_project);
+  late final Set<String> _carries = {
+    for (final asset in _project.mediaAssets) ?asset.carriedAs,
+  };
 
   bool stillHold(BrushFrameKey key) {
     if (isConteInkKey(key)) {
       final inkId = conteInkRowIdOf(key);
       return inkId != null && _blocks.contains((key.cutId, inkId));
+    }
+    if (isViewerInkKey(key)) {
+      return _carries.contains(viewerInkCarryOf(key));
     }
     return _cuts.contains(key.cutId);
   }

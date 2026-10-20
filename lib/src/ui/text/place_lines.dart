@@ -58,6 +58,8 @@ String celPlaceLine(CelPlace place, {required FramePlaceLabel framePlace}) {
     EnvelopeInkPlace(:final cutName) => '${strings.panelEnvelope} · $cutName',
     TimesheetInkPlace(:final cutName) =>
       '${strings.panelTimesheet} · $cutName',
+    ViewerInkPlace(:final fileName) =>
+      '${strings.panelMediaViewer} · $fileName',
     GoneCelPlace() => strings.saveCelsLostGone,
   };
 }

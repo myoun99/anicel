@@ -5,10 +5,12 @@ import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/timesheet_ink_keys.dart';
+import '../../models/viewer_ink_keys.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/media_asset.dart' show mediaFileShownName;
 import '../../models/project.dart';
 import '../../models/track.dart';
 import '../project_lookup.dart' show projectLayersWithOwners;
@@ -110,6 +112,14 @@ final class TimesheetInkPlace extends CelPlace {
   final String cutName;
 }
 
+/// Ink on a page of a file the project carries, written in a viewer
+/// (I-114) — named by the file, as the pool names it.
+final class ViewerInkPlace extends CelPlace {
+  const ViewerInkPlace(this.fileName);
+
+  final String fileName;
+}
+
 /// A picture the project holds no place for any more: its drawing, its row
 /// or its cut is gone.
 final class GoneCelPlace extends CelPlace {
@@ -121,7 +131,8 @@ final class GoneCelPlace extends CelPlace {
 ///
 /// In the order a person meets them: drawings as the project holds its rows
 /// ([projectLayersWithOwners]), then the ink over storyboard drawings, in
-/// envelopes and on timesheets by cut — and last, what holds no place.
+/// envelopes and on timesheets by cut, on the files the viewers wrote on —
+/// and last, what holds no place.
 List<CelPlace> celPlacesOf(Project project, Iterable<BrushFrameKey> keys) => [
   for (final (_, place) in celPlacesByKey(project, keys)) place,
 ];
@@ -140,7 +151,7 @@ List<(BrushFrameKey, CelPlace)> celPlacesByKey(
   return [for (final (key, entry) in found) (key, entry.place)];
 }
 
-enum _Plane { drawing, conteRow, envelope, timesheet, gone }
+enum _Plane { drawing, conteRow, envelope, timesheet, viewer, gone }
 
 typedef _Found = ({_Plane plane, int position, CelPlace place});
 
@@ -148,6 +159,15 @@ typedef _Found = ({_Plane plane, int position, CelPlace place});
 /// carries — one walk of the project.
 class _CelPlaceIndex {
   _CelPlaceIndex(Project project) {
+    for (final asset in project.mediaAssets) {
+      if (asset.carriedAs case final carry?) {
+        _viewers[carry] = (
+          plane: _Plane.viewer,
+          position: _viewers.length,
+          place: ViewerInkPlace(mediaFileShownName(asset, asset.path)),
+        );
+      }
+    }
     for (final owned in projectLayersWithOwners(project)) {
       final cut = owned.cut;
       if (cut != null) {
@@ -197,6 +217,7 @@ class _CelPlaceIndex {
   final _rows = <(CutId, String), _Found>{};
   final _envelopes = <CutId, _Found>{};
   final _timesheets = <CutId, _Found>{};
+  final _viewers = <String, _Found>{};
 
   _Found placeOf(BrushFrameKey key) {
     final found = isConteInkRowKey(key)
@@ -205,6 +226,8 @@ class _CelPlaceIndex {
         ? _envelopes[key.cutId]
         : isTimesheetInkKey(key)
         ? _timesheets[key.cutId]
+        : isViewerInkKey(key)
+        ? _viewers[viewerInkCarryOf(key)]
         : _drawings[(key.layerId, key.frameId)];
     return found ??
         (plane: _Plane.gone, position: 0, place: const GoneCelPlace());

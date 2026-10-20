@@ -182,8 +182,11 @@ class _WorkspaceTabs {
       builder: (context) => ListenableBuilder(
         // The request, the position and the viewport are the HOST's own
         // subscriptions (the page read moves with the view, F-201) — so
-        // nothing here rebuilds it for them.
-        listenable: _state.widget.session.languageSettings,
+        // nothing here rebuilds it for them. The brush switch is the slot's.
+        listenable: Listenable.merge([
+          _state.widget.session.languageSettings,
+          slot.brushAllowed,
+        ]),
         builder: (context, _) => MediaViewerTabHost(
           viewerId: tabId,
           session: _state.widget.session,
@@ -201,6 +204,10 @@ class _WorkspaceTabs {
           // the piece the canvas's cuts fill.
           brushTool: _state._brushTool,
           cutPieceSlot: _state._cutPieceSlot,
+          // I-114: the brush writes on a file the project carries.
+          inkController: _state._views._viewerInk,
+          brushAllowed: slot.brushAllowed.value,
+          onBrushAllowedChanged: (allowed) => slot.brushAllowed.value = allowed,
           // 유저 확정 ⑱: the promote button calls the SAME import every
           // other entrance calls — a viewer-only policy here would be a
           // third import surface nobody remembers to fix. Since F-282-Q4
