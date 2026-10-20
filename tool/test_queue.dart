@@ -74,6 +74,14 @@ const kMachineSuites = 10;
 /// reads it again: a line is measured at twelve, fourteen, sixteen while
 /// its runs go on, and a machine with fewer cores keeps its own.
 /// ⚠️A run of a tool from before this file holds to ten whatever it says.
+///
+/// 📏THE MAIN PC SAYS 18 (measured 10-21 01:45–08:08, Best performance
+/// power plan, half-hour blocks of 10 · 14 · 16 · 18 · 20 in turn, the
+/// first six minutes of each left out). Suites truly at work — those held
+/// over how much slower each file ran than its own record — were 10.0 at
+/// ten (four blocks), 10.9 at fourteen, 12.9 at sixteen, 14.5 at eighteen
+/// and 12.2 at twenty, where each file ran 16% slower; no file went flaky
+/// at any of them. Other machines keep ten until they are measured.
 const kSuitesFile = 'suites';
 
 /// The suites [line] holds between its runs: what its [kSuitesFile] says,
