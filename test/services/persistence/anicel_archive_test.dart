@@ -265,6 +265,15 @@ void main() {
     );
   });
 
+  // anchor-walks-a-path (format 27): an anchor's key may rove now, and a
+  // v26 build turns the whole file away at one — 「A key roves on a lane
+  // walking no path」 — in words nobody could act on. A file this build
+  // writes says a number a v26 build refuses as a newer Anicel's.
+  test('🚨a file that may hold a roving anchor key says a format a v26 '
+      'build refuses as newer', () {
+    expect(anicelFormatVersion, greaterThan(26));
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),
