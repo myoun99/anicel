@@ -7,6 +7,7 @@ import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/brush_settings.dart';
+import '../../models/brush_settings_group.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_order.dart';
@@ -424,6 +425,7 @@ class BrushToolState {
     this.cutStampOpacity = 1.0,
     this.cutDeletesSource = false,
     this.presetId,
+    this.folded = const {},
   });
 
   /// Builds tool state from a loose [BrushShape] and the values that still
@@ -449,6 +451,7 @@ class BrushToolState {
     double fillOpacity = 1.0,
     bool cutDeletesSource = false,
     double cutStampOpacity = 1.0,
+    Set<BrushSettingsGroup> folded = const {},
   }) {
     return BrushToolState._raw(
       shape: _clampShape(shape),
@@ -464,6 +467,7 @@ class BrushToolState {
       fillOpacity: clampOpacity(fillOpacity),
       cutDeletesSource: cutDeletesSource,
       cutStampOpacity: clampOpacity(cutStampOpacity),
+      folded: folded,
     );
   }
 
@@ -753,6 +757,11 @@ class BrushToolState {
   /// the shape when a paint tool is restored, everything else carries it.
   final BrushPresetId? presetId;
 
+  /// The groups of the brush's settings folded in the panel — the brush's
+  /// own, moving with it as [presetId] does, and remembered with what the
+  /// hand changed on it ([BrushSettings.folded], F-418-Q10).
+  final Set<BrushSettingsGroup> folded;
+
   /// The outline SELECT drags out, remembered separately from the one CUT
   /// drags (유저 확정: 도형은 동사별로 기억). "The shape vocabulary is
   /// shared" is not "the shape value is shared" — wanting the lasso for
@@ -1010,7 +1019,7 @@ class BrushToolState {
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
   factory BrushToolState.fromBrushSettings(BrushSettings settings) =>
-      BrushToolState.fromShape(settings.shape);
+      BrushToolState.fromShape(settings.shape, folded: settings.folded);
 
   /// This state after [preset] is applied, on [tool] — its shape, and the
   /// preset itself as the brush the state now holds ([presetId]).
@@ -1068,14 +1077,15 @@ class BrushToolState {
     required CanvasTool tool,
     BrushSettings? held,
   }) {
-    final applied = copyWith(
-      shape: (held ?? preset.settings).shape,
-      tool: tool,
-      color: color,
-    );
+    final brush = held ?? preset.settings;
+    final applied = copyWith(shape: brush.shape, tool: tool, color: color);
     // ONE assignment carries the values and the brush they belong to — see
     // [presetId] for what two of them did.
-    return applied._rebuilt(shape: applied.shape, presetId: preset.id);
+    return applied._rebuilt(
+      shape: applied.shape,
+      presetId: preset.id,
+      folded: brush.folded,
+    );
   }
 
   /// This state holding [stored]'s BRUSH — its shape and the preset it came
@@ -1088,12 +1098,17 @@ class BrushToolState {
   /// brush tool's name — two facts about one brush, disagreeing.
   BrushToolState carryingBrushOf(BrushToolState stored) {
     final carried = copyWith(shape: stored.shape, color: color);
-    return carried._rebuilt(shape: carried.shape, presetId: stored.presetId);
+    return carried._rebuilt(
+      shape: carried.shape,
+      presetId: stored.presetId,
+      folded: stored.folded,
+    );
   }
 
   /// Snapshot of this tool state as the model-layer [BrushSettings] — the
   /// payload brush presets store.
-  BrushSettings toBrushSettings() => BrushSettings.fromShape(shape);
+  BrushSettings toBrushSettings() =>
+      BrushSettings.fromShape(shape, folded: folded);
 
   BrushEditCanvasInputSettings toInputSettings() {
     return BrushEditCanvasInputSettings.fromShape(
@@ -1175,6 +1190,7 @@ class BrushToolState {
     double? fillOpacity,
     bool? cutDeletesSource,
     double? cutStampOpacity,
+    Set<BrushSettingsGroup>? folded,
   }) {
     // The base is the caller's shape when it gave one; the named arguments
     // then land on TOP of it, so "this brush, but at my size" is one call.
@@ -1244,6 +1260,7 @@ class BrushToolState {
       cutDeletesSource: cutDeletesSource ?? this.cutDeletesSource,
       cutStampOpacity: clampOpacity(cutStampOpacity ?? this.cutStampOpacity),
       presetId: presetId,
+      folded: folded ?? this.folded,
     );
   }
 
@@ -1279,13 +1296,15 @@ class BrushToolState {
 
   /// [shape] replaced, every hand setting carried through untouched.
   BrushToolState _withShape(BrushShape next) =>
-      _rebuilt(shape: next, presetId: presetId);
+      _rebuilt(shape: next, presetId: presetId, folded: folded);
 
-  /// [shape] and [presetId] as given, every other field exactly as it is —
-  /// the one list of the fields outside the shape besides [copyWith]'s.
+  /// [shape], [presetId] and [folded] — the brush — as given, every other
+  /// field exactly as it is: the one list of the fields outside the shape
+  /// besides [copyWith]'s.
   BrushToolState _rebuilt({
     required BrushShape shape,
     required BrushPresetId? presetId,
+    required Set<BrushSettingsGroup> folded,
   }) => BrushToolState._raw(
     shape: _clampShape(shape),
     tool: tool,
@@ -1301,6 +1320,7 @@ class BrushToolState {
     cutDeletesSource: cutDeletesSource,
     cutStampOpacity: cutStampOpacity,
     presetId: presetId,
+    folded: folded,
   );
 
   /// Replaces (or CLEARS, with null) one setting's pressure curve —
@@ -1439,7 +1459,9 @@ class BrushToolState {
           other.cutDeletesSource == cutDeletesSource &&
           // H25-again: which brush a state holds is part of the state — two
           // states wearing one shape under two names are not the same state.
-          other.presetId == presetId;
+          other.presetId == presetId &&
+          other.folded.length == folded.length &&
+          other.folded.containsAll(folded);
 
   @override
   int get hashCode => Object.hash(
@@ -1457,5 +1479,6 @@ class BrushToolState {
     cutDeletesSource,
     cutStampOpacity,
     presetId,
+    Object.hashAllUnordered(folded),
   );
 }

@@ -79,21 +79,32 @@ class TextToolSettings extends StatelessWidget {
       currentColorOf: currentColorOf,
     );
     final strings = AppText.strings;
-    final section = ToolSettingsSection(
-      tool: 'text',
-      title: strings.toolText,
-      children: [
-        _TextInHandRow(reading: reading),
-        ToolSettingsGroupHeader(strings.textToolLetters),
-        _LetterRows(
-          reading: reading,
-          currentColorOf: currentColorOf,
-          fonts: fonts,
-        ),
-        ToolSettingsGroupHeader(strings.textToolBox),
-        _BoxRows(reading: reading, currentColorOf: currentColorOf),
-        _IntoDrawingButton(reading: reading),
-      ],
+    final section = ToolSettingsFolds.listen(
+      'text',
+      (foldOf) => ToolSettingsSection(
+        tool: 'text',
+        title: strings.toolText,
+        children: [
+          _TextInHandRow(reading: reading),
+          ...toolSettingsGroup(
+            strings.textToolLetters,
+            fold: foldOf('letters'),
+            rows: [
+              _LetterRows(
+                reading: reading,
+                currentColorOf: currentColorOf,
+                fonts: fonts,
+              ),
+            ],
+          ),
+          ...toolSettingsGroup(
+            strings.textToolBox,
+            fold: foldOf('box'),
+            rows: [_BoxRows(reading: reading, currentColorOf: currentColorOf)],
+          ),
+          _IntoDrawingButton(reading: reading),
+        ],
+      ),
     );
     // A key presses the 🗑, the two centrings and 래스터라이즈 as the text
     // tool's settings (I-40) — bound again when any of them comes to have

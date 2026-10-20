@@ -479,13 +479,16 @@ class GuideSettings extends StatelessWidget {
     // 느낌 나도록」). ↩️It was a list of its own: its rows flush to the
     // panel's edge, each vanishing point a two-line list tile, and the add
     // button gone once there were three.
-    final section = ToolSettingsSection(
-      tool: 'guide-${guide.id.value}',
-      title: guide.name,
-      children: switch (shape) {
-        SymmetryShape() => _symmetryFields(guide, shape),
-        PerspectiveShape() => _perspectiveFields(guide, shape),
-      },
+    final section = ToolSettingsFolds.listen(
+      'guide',
+      (foldOf) => ToolSettingsSection(
+        tool: 'guide-${guide.id.value}',
+        title: guide.name,
+        children: switch (shape) {
+          SymmetryShape() => _symmetryFields(guide, shape),
+          PerspectiveShape() => _perspectiveFields(guide, shape, foldOf),
+        },
+      ),
     );
     // A key presses the perspective's ＋ and 래스터라이즈 as the guide tool's
     // settings (I-40), while a perspective guide is the one picked.
@@ -544,7 +547,11 @@ class GuideSettings extends StatelessWidget {
     ];
   }
 
-  List<Widget> _perspectiveFields(DrawingGuide guide, PerspectiveShape shape) {
+  List<Widget> _perspectiveFields(
+    DrawingGuide guide,
+    PerspectiveShape shape,
+    ToolSettingsFold Function(String group) foldOf,
+  ) {
     final strings = AppText.strings;
     final points = shape.vanishingPoints;
     return [
@@ -594,29 +601,34 @@ class GuideSettings extends StatelessWidget {
           ),
         ),
       ),
-      ToolSettingsGroupHeader(strings.guideVanishingPoint),
-      for (var index = 0; index < points.length; index += 1)
-        _VanishingPointRow(
-          index: index,
-          point: points[index],
-          onParallelToggled: _parallelToggled(guide, shape, index),
-          // The angle cell and the canvas's direction handle write the one
-          // value (vanishing-point-types-Q3): shown while it moves,
-          // committed once it is let go.
-          onTurned: (degrees) => onGuidesPreview(
-            _withShape(guide, _turned(shape, index, degrees)),
-          ),
-          onTurnEnded: (degrees) =>
-              _replaceShape(guide, _turned(shape, index, degrees)),
-          onRemoved: points.length > 1
-              ? () => _replaceShape(
-                  guide,
-                  shape.copyWith(
-                    vanishingPoints: [...points]..removeAt(index),
-                  ),
-                )
-              : null,
-        ),
+      ...toolSettingsGroup(
+        strings.guideVanishingPoint,
+        fold: foldOf('vanishing-points'),
+        rows: [
+          for (var index = 0; index < points.length; index += 1)
+            _VanishingPointRow(
+              index: index,
+              point: points[index],
+              onParallelToggled: _parallelToggled(guide, shape, index),
+              // The angle cell and the canvas's direction handle write the one
+              // value (vanishing-point-types-Q3): shown while it moves,
+              // committed once it is let go.
+              onTurned: (degrees) => onGuidesPreview(
+                _withShape(guide, _turned(shape, index, degrees)),
+              ),
+              onTurnEnded: (degrees) =>
+                  _replaceShape(guide, _turned(shape, index, degrees)),
+              onRemoved: points.length > 1
+                  ? () => _replaceShape(
+                      guide,
+                      shape.copyWith(
+                        vanishingPoints: [...points]..removeAt(index),
+                      ),
+                    )
+                  : null,
+            ),
+        ],
+      ),
       ToolSettingActions(
         lines: [
           [

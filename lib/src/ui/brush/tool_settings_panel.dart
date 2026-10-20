@@ -1173,228 +1173,236 @@ class _MoveSettingsState extends State<_MoveSettings> {
         ? () => commands?.flipTransform(horizontal: false)
         : null;
     final reset = canEdit ? () => commands?.resetTransform() : null;
-    final section = ToolSettingsSection(
-      tool: 'move',
-      title: strings.toolTransform,
-      children: [
-        ToolSettingRow.bar(
-          label: strings.trPosition,
-          bar: _valueBox(
-            keyValue: 'move-x-field',
-            name: 'X',
-            value: _BoxValue(
-              read: (values) => values.tx,
-              write: (now, tx) => now.copyWith(tx: tx),
-            ),
-          ),
-        ),
-        ToolSettingRow.bar(
-          label: '',
-          bar: _valueBox(
-            keyValue: 'move-y-field',
-            name: 'Y',
-            value: _BoxValue(
-              read: (values) => values.ty,
-              write: (now, ty) => now.copyWith(ty: ty),
-            ),
-          ),
-        ),
-        // 🚨★★★**A SCALE PER AXIS, EACH WITH ITS SIGN** (F-256 · F-265).
-        // 🗣️유저 2026-10-01: 「가로에 대한 단독배율변경같은게 저장안됨.
-        // 가로세로 통합으로서 … 기록됨」 — and 10-03: 「반전을 숫자로서
-        // 표현못하는게 원인인거같으니 구조적으로 해결」. The box has always
-        // held two; this row showed the horizontal one as 「배율」 and
-        // wrote it to both. An edge middle's stretch reads on its own
-        // box now, and a mirror reads as the minus it is.
-        //
-        // 🗣️F-256-Q2 (유저 2026-10-06): 「연동 스위치(AE 의 사슬) — 켜면 한
-        // 칸을 바꿀 때 다른 칸도 같은 비율로」. Each box still names its own
-        // axis; linked, the write carries the other along by the same
-        // ratio and leaves its sign alone (`TransformValues.withScaleX`).
-        ToolSettingRow.bar(
-          label: strings.trScale,
-          labelEnd: ScaleChainButton(
-            keyValue: 'move-scale-link-switch',
-            isOn: options.scaleLinked,
-            onPressed: onOptions == null
-                ? null
-                : () => onOptions(
-                    options.copyWith(scaleLinked: !options.scaleLinked),
-                  ),
-          ),
-          bar: _valueBox(
-            keyValue: 'move-scale-x-field',
-            name: 'X',
-            value: _BoxValue(
-              read: (values) => values.sx,
-              write: (now, sx) => _linkedWithin(
-                now.withScaleX(
-                  _scaleWithin(sx),
-                  linked: options.scaleLinked,
-                ),
+    final section = ToolSettingsFolds.listen(
+      'move',
+      (foldOf) => ToolSettingsSection(
+        tool: 'move',
+        title: strings.toolTransform,
+        children: [
+          ToolSettingRow.bar(
+            label: strings.trPosition,
+            bar: _valueBox(
+              keyValue: 'move-x-field',
+              name: 'X',
+              value: _BoxValue(
+                read: (values) => values.tx,
+                write: (now, tx) => now.copyWith(tx: tx),
               ),
-              unit: '%',
-              perUnit: 0.01,
             ),
           ),
-        ),
-        ToolSettingRow.bar(
-          label: '',
-          bar: _valueBox(
-            keyValue: 'move-scale-y-field',
-            name: 'Y',
-            value: _BoxValue(
-              read: (values) => values.sy,
-              write: (now, sy) => _linkedWithin(
-                now.withScaleY(
-                  _scaleWithin(sy),
-                  linked: options.scaleLinked,
-                ),
+          ToolSettingRow.bar(
+            label: '',
+            bar: _valueBox(
+              keyValue: 'move-y-field',
+              name: 'Y',
+              value: _BoxValue(
+                read: (values) => values.ty,
+                write: (now, ty) => now.copyWith(ty: ty),
               ),
-              unit: '%',
-              perUnit: 0.01,
             ),
           ),
-        ),
-        ToolSettingRow.bar(
-          label: strings.trRotation,
-          bar: _valueBox(
-            keyValue: 'move-angle-field',
-            value: _BoxValue(
-              read: (values) => values.rotationDegrees,
-              write: (now, degrees) =>
-                  now.copyWith(rotationDegrees: degrees),
-              unit: '°',
+          // 🚨★★★**A SCALE PER AXIS, EACH WITH ITS SIGN** (F-256 · F-265).
+          // 🗣️유저 2026-10-01: 「가로에 대한 단독배율변경같은게 저장안됨.
+          // 가로세로 통합으로서 … 기록됨」 — and 10-03: 「반전을 숫자로서
+          // 표현못하는게 원인인거같으니 구조적으로 해결」. The box has always
+          // held two; this row showed the horizontal one as 「배율」 and
+          // wrote it to both. An edge middle's stretch reads on its own
+          // box now, and a mirror reads as the minus it is.
+          //
+          // 🗣️F-256-Q2 (유저 2026-10-06): 「연동 스위치(AE 의 사슬) — 켜면 한
+          // 칸을 바꿀 때 다른 칸도 같은 비율로」. Each box still names its own
+          // axis; linked, the write carries the other along by the same
+          // ratio and leaves its sign alone (`TransformValues.withScaleX`).
+          ToolSettingRow.bar(
+            label: strings.trScale,
+            labelEnd: ScaleChainButton(
+              keyValue: 'move-scale-link-switch',
+              isOn: options.scaleLinked,
+              onPressed: onOptions == null
+                  ? null
+                  : () => onOptions(
+                      options.copyWith(scaleLinked: !options.scaleLinked),
+                    ),
             ),
-          ),
-        ),
-        // ↩️유저 08-13 put them in a row of their own, in this order:
-        // 좌우반전 · 상하반전 · 리셋 · 적용. The two flips turn the box the
-        // way the angle does, so they stand under it — in the view pill's
-        // own glyphs, half the control column each (유저 2026-10-10).
-        ToolSettingRow.pair(
-          label: '',
-          first: ToolSettingAction.glyph(
-            keyValue: 'move-flip-horizontal-button',
-            label: strings.trFlipHorizontal,
-            glyph: const Icon(Icons.flip),
-            shortcuts: const [EditorActionIds.transformFlipHorizontal],
-            onPressed: flipHorizontal,
-          ),
-          second: ToolSettingAction.glyph(
-            keyValue: 'move-flip-vertical-button',
-            label: strings.trFlipVertical,
-            glyph: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
-            shortcuts: const [EditorActionIds.transformFlipVertical],
-            onPressed: flipVertical,
-          ),
-        ),
-        // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
-        // beside the other digits, and written the way they are: each
-        // box names its own value and restates none ([_write]).
-        //
-        // ⚠️Always here, never mode-gated: the rotation the anchor
-        // serves works in every mode (outside the box is the rotation),
-        // so a row that appeared and vanished would be inventing a rule
-        // the rotation does not have — and 「없다가 생기는 UI 금지」
-        // besides.
-        ToolSettingRow.bar(
-          label: strings.trAnchorPoint,
-          bar: _valueBox(
-            keyValue: 'move-anchor-x-field',
-            name: 'X',
-            value: _BoxValue(
-              read: (values) => values.anchorX,
-              write: (now, anchorX) => now.copyWith(anchorX: anchorX),
-            ),
-          ),
-        ),
-        ToolSettingRow.bar(
-          label: '',
-          bar: _valueBox(
-            keyValue: 'move-anchor-y-field',
-            name: 'Y',
-            value: _BoxValue(
-              read: (values) => values.anchorY,
-              write: (now, anchorY) => now.copyWith(anchorY: anchorY),
-            ),
-          ),
-        ),
-        ToolSettingRow.bar(
-          label: strings.trMesh,
-          bar: _meshBox(
-            keyValue: 'move-mesh-columns-field',
-            name: strings.trMeshColumns,
-            value: options.meshColumns,
-            live: meshLive,
-            onChanged: (cells) =>
-                meshHandler?.call(options.copyWith(meshColumns: cells)),
-          ),
-        ),
-        ToolSettingRow.bar(
-          label: '',
-          bar: _meshBox(
-            keyValue: 'move-mesh-rows-field',
-            name: strings.trMeshRows,
-            value: options.meshRows,
-            live: meshLive,
-            onChanged: (cells) =>
-                meshHandler?.call(options.copyWith(meshRows: cells)),
-          ),
-        ),
-        ToolSettingsGroupHeader(strings.trFinish),
-        // AA, and nothing else.
-        //
-        // It was "Preserve original colours" over a paragraph about
-        // in-between shades, which is the same switch described from the
-        // far side: the argmax preserves the source words BECAUSE it
-        // refuses to blend, and the blend anti-aliases BECAUSE it does.
-        // 유저 08-13 asked for the polarity that goes with it — on is the
-        // smoothing default, off is the two-value copy.
-        //
-        // ↩️And for the two letters, 「AA」 — the one tool whose switch did
-        // not say what every other tool's did. 🗣️유저 2026-10-10: 「안티앨리어스는
-        // 왜 변형도구만 이름 다른건지도 모르겠고. 안티앨리어스로 이름 다 통일」.
-        SettingsSwitchRow(
-          tileKey: const ValueKey<String>('move-antialias-switch'),
-          label: strings.brAntiAlias,
-          value: options.resampleMode == ResampleMode.blend,
-          onChanged: onOptions == null
-              ? null
-              : (value) => onOptions(
-                  options.copyWith(
-                    resampleMode: value
-                        ? ResampleMode.blend
-                        : ResampleMode.pick,
+            bar: _valueBox(
+              keyValue: 'move-scale-x-field',
+              name: 'X',
+              value: _BoxValue(
+                read: (values) => values.sx,
+                write: (now, sx) => _linkedWithin(
+                  now.withScaleX(
+                    _scaleWithin(sx),
+                    linked: options.scaleLinked,
                   ),
                 ),
-        ),
-        ToolSettingActions(
-          lines: [
-            [
-              ToolSettingAction(
-                keyValue: 'move-reset-button',
-                label: strings.commonReset,
-                shortcuts: const [EditorActionIds.transformReset],
-                onPressed: reset,
+                unit: '%',
+                perUnit: 0.01,
               ),
-              // 적용 is 확정's transform half (confirm-button) — grey when it
-              // has nothing to do, like the rail's ↵ and the box's ✓,
-              // because all three ask the one verb — so it names 확정, as
-              // they do (I-40).
-              ToolSettingAction(
-                keyValue: 'move-apply-button',
-                label: strings.commonApply,
-                decides: true,
-                shortcuts: const [EditorActionIds.confirm],
-                onPressed: commands?.canApplyTransform ?? false
-                    ? () => commands?.applyTransform()
-                    : null,
+            ),
+          ),
+          ToolSettingRow.bar(
+            label: '',
+            bar: _valueBox(
+              keyValue: 'move-scale-y-field',
+              name: 'Y',
+              value: _BoxValue(
+                read: (values) => values.sy,
+                write: (now, sy) => _linkedWithin(
+                  now.withScaleY(
+                    _scaleWithin(sy),
+                    linked: options.scaleLinked,
+                  ),
+                ),
+                unit: '%',
+                perUnit: 0.01,
+              ),
+            ),
+          ),
+          ToolSettingRow.bar(
+            label: strings.trRotation,
+            bar: _valueBox(
+              keyValue: 'move-angle-field',
+              value: _BoxValue(
+                read: (values) => values.rotationDegrees,
+                write: (now, degrees) =>
+                    now.copyWith(rotationDegrees: degrees),
+                unit: '°',
+              ),
+            ),
+          ),
+          // ↩️유저 08-13 put them in a row of their own, in this order:
+          // 좌우반전 · 상하반전 · 리셋 · 적용. The two flips turn the box the
+          // way the angle does, so they stand under it — in the view pill's
+          // own glyphs, half the control column each (유저 2026-10-10).
+          ToolSettingRow.pair(
+            label: '',
+            first: ToolSettingAction.glyph(
+              keyValue: 'move-flip-horizontal-button',
+              label: strings.trFlipHorizontal,
+              glyph: const Icon(Icons.flip),
+              shortcuts: const [EditorActionIds.transformFlipHorizontal],
+              onPressed: flipHorizontal,
+            ),
+            second: ToolSettingAction.glyph(
+              keyValue: 'move-flip-vertical-button',
+              label: strings.trFlipVertical,
+              glyph: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
+              shortcuts: const [EditorActionIds.transformFlipVertical],
+              onPressed: flipVertical,
+            ),
+          ),
+          // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
+          // beside the other digits, and written the way they are: each
+          // box names its own value and restates none ([_write]).
+          //
+          // ⚠️Always here, never mode-gated: the rotation the anchor
+          // serves works in every mode (outside the box is the rotation),
+          // so a row that appeared and vanished would be inventing a rule
+          // the rotation does not have — and 「없다가 생기는 UI 금지」
+          // besides.
+          ToolSettingRow.bar(
+            label: strings.trAnchorPoint,
+            bar: _valueBox(
+              keyValue: 'move-anchor-x-field',
+              name: 'X',
+              value: _BoxValue(
+                read: (values) => values.anchorX,
+                write: (now, anchorX) => now.copyWith(anchorX: anchorX),
+              ),
+            ),
+          ),
+          ToolSettingRow.bar(
+            label: '',
+            bar: _valueBox(
+              keyValue: 'move-anchor-y-field',
+              name: 'Y',
+              value: _BoxValue(
+                read: (values) => values.anchorY,
+                write: (now, anchorY) => now.copyWith(anchorY: anchorY),
+              ),
+            ),
+          ),
+          ToolSettingRow.bar(
+            label: strings.trMesh,
+            bar: _meshBox(
+              keyValue: 'move-mesh-columns-field',
+              name: strings.trMeshColumns,
+              value: options.meshColumns,
+              live: meshLive,
+              onChanged: (cells) =>
+                  meshHandler?.call(options.copyWith(meshColumns: cells)),
+            ),
+          ),
+          ToolSettingRow.bar(
+            label: '',
+            bar: _meshBox(
+              keyValue: 'move-mesh-rows-field',
+              name: strings.trMeshRows,
+              value: options.meshRows,
+              live: meshLive,
+              onChanged: (cells) =>
+                  meshHandler?.call(options.copyWith(meshRows: cells)),
+            ),
+          ),
+          ...toolSettingsGroup(
+            strings.trFinish,
+            fold: foldOf('finish'),
+            rows: [
+              // AA, and nothing else.
+              //
+              // It was "Preserve original colours" over a paragraph about
+              // in-between shades, which is the same switch described from the
+              // far side: the argmax preserves the source words BECAUSE it
+              // refuses to blend, and the blend anti-aliases BECAUSE it does.
+              // 유저 08-13 asked for the polarity that goes with it — on is the
+              // smoothing default, off is the two-value copy.
+              //
+              // ↩️And for the two letters, 「AA」 — the one tool whose switch did
+              // not say what every other tool's did. 🗣️유저 2026-10-10: 「안티앨리어스는
+              // 왜 변형도구만 이름 다른건지도 모르겠고. 안티앨리어스로 이름 다 통일」.
+              SettingsSwitchRow(
+                tileKey: const ValueKey<String>('move-antialias-switch'),
+                label: strings.brAntiAlias,
+                value: options.resampleMode == ResampleMode.blend,
+                onChanged: onOptions == null
+                    ? null
+                    : (value) => onOptions(
+                        options.copyWith(
+                          resampleMode: value
+                              ? ResampleMode.blend
+                              : ResampleMode.pick,
+                        ),
+                      ),
               ),
             ],
-          ],
-        ),
-      ],
+          ),
+          ToolSettingActions(
+            lines: [
+              [
+                ToolSettingAction(
+                  keyValue: 'move-reset-button',
+                  label: strings.commonReset,
+                  shortcuts: const [EditorActionIds.transformReset],
+                  onPressed: reset,
+                ),
+                // 적용 is 확정's transform half (confirm-button) — grey when it
+                // has nothing to do, like the rail's ↵ and the box's ✓,
+                // because all three ask the one verb — so it names 확정, as
+                // they do (I-40).
+                ToolSettingAction(
+                  keyValue: 'move-apply-button',
+                  label: strings.commonApply,
+                  decides: true,
+                  shortcuts: const [EditorActionIds.confirm],
+                  onPressed: commands?.canApplyTransform ?? false
+                      ? () => commands?.applyTransform()
+                      : null,
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
     );
     // A key presses the flips and 초기화 as the Transform tool's settings
     // (I-40); 적용 is 확정's, whose key reaches it anywhere.

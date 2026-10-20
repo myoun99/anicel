@@ -4,6 +4,7 @@ import 'brush_correction.dart';
 import 'separable_blend_mode.dart';
 import 'brush_input_source.dart';
 import 'brush_pressure_curve.dart';
+import 'brush_settings_group.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_order.dart';
@@ -52,6 +53,7 @@ class BrushSettings {
     double paintDensity = 1.0,
     double colorStretch = 0.0,
     BrushCorrection correction = const BrushCorrection(),
+    this.folded = const {},
   }) : shape = BrushShape(
          color: color,
          size: size,
@@ -102,13 +104,18 @@ class BrushSettings {
   /// back through the flat parameter list — the wholesale hop the stroke
   /// chain's converters take (D4). Values are re-validated so an illegal
   /// shape still throws here rather than downstream.
-  BrushSettings.fromShape(this.shape) {
+  BrushSettings.fromShape(this.shape, {this.folded = const {}}) {
     _validateShape(shape);
   }
 
   /// The shared 26-parameter spine; every field below forwards to it, and the
   /// stroke chain moves presets across as a whole [shape] (see [BrushShape]).
   final BrushShape shape;
+
+  /// The groups of this brush's settings that are folded in the panel —
+  /// the one thing a brush keeps that is not how it paints, so it stands
+  /// beside [shape] rather than in it (F-418-Q10).
+  final Set<BrushSettingsGroup> folded;
 
   int get color => shape.color;
   double get size => shape.size;
@@ -219,6 +226,7 @@ class BrushSettings {
     double? paintDensity,
     double? colorStretch,
     BrushCorrection? correction,
+    Set<BrushSettingsGroup>? folded,
   }) {
     return BrushSettings(
       color: color ?? this.color,
@@ -268,6 +276,7 @@ class BrushSettings {
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
       correction: correction ?? this.correction,
+      folded: folded ?? this.folded,
     );
   }
 
@@ -338,6 +347,12 @@ class BrushSettings {
     // before the brush held its correction round-trips byte-identically.
     if (correction != const BrushCorrection())
       'correction': correction.toJson(),
+    // Written only when a group is folded, for the same reason.
+    if (folded.isNotEmpty)
+      'folded': [
+        for (final group in BrushSettingsGroup.values)
+          if (folded.contains(group)) group.name,
+      ],
   };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
@@ -415,18 +430,29 @@ class BrushSettings {
       paintDensity: (json['paintDensity'] as num?)?.toDouble() ?? 1.0,
       colorStretch: (json['colorStretch'] as num?)?.toDouble() ?? 0.0,
       correction: BrushCorrection.fromJson(json['correction']),
+      folded: {
+        for (final name in json['folded'] as List<dynamic>? ?? const [])
+          ?BrushSettingsGroup.values.asNameMap()[name],
+      },
     );
   }
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || other is BrushSettings && other.shape == shape;
+      identical(this, other) ||
+      other is BrushSettings &&
+          other.shape == shape &&
+          other.folded.length == folded.length &&
+          other.folded.containsAll(folded);
 
   @override
-  int get hashCode => shape.hashCode;
+  int get hashCode => Object.hash(
+    shape,
+    Object.hashAllUnordered(folded),
+  );
 
   @override
-  String toString() => 'BrushSettings(shape: $shape)';
+  String toString() => 'BrushSettings(shape: $shape, folded: $folded)';
 }
 
 /// Throws [ArgumentError] if any parameter in [shape] is outside the model's
