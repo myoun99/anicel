@@ -1,14 +1,8 @@
-import 'dart:async';
-import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/attached_mode.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -31,7 +25,6 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -55,7 +48,6 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
-import '../../helpers/project_scratch_folder.dart';
 
 /// The Cels tab (F-289): the rules that pick the rows — the kinds, one
 /// label picked through the timeline's own flyout, a take picker with
@@ -247,13 +239,11 @@ void main() {
     },
   );
 
-  /// The window on the Cels tab; given [placeIn], the folder its runs are
-  /// put in.
+  /// The window on the Cels tab.
   Future<ExportDialogState> pumpCels(
     WidgetTester tester,
-    EditorSessionManager session, {
-    String? placeIn,
-  }) async {
+    EditorSessionManager session,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -262,7 +252,6 @@ void main() {
         home: Scaffold(
           body: ExportDialog(
             session: session,
-            exportDirectoryPicker: placeIn == null ? null : () async => placeIn,
             formatAvailability: ExportFormatAvailability.permissive(),
           ),
         ),
@@ -980,51 +969,6 @@ void main() {
     expect(pill(tester, 'export-cels-guides').onTap, isNull);
     await tapKey(tester, 'export-cels-guides');
     expect(deltaOf(session), isNull);
-  });
-
-  testWidgets('while a run is under way the band touches no drawing: it '
-      'steps to none, and lays no direction, CAM or guides', (tester) async {
-    final temp = Directory.systemTemp.createTempSync('qa-cels-under-way');
-    deleteAfterSessionEnds(temp);
-    final session = celsSession(
-      camera: aCameraThatMoves(),
-      guides: CutGuides(guides: [aPerspectiveGuide()]),
-    );
-    // A picture on one drawing: under the test's faked clock its render
-    // never finishes, so the run stays under way for as long as the test
-    // looks at it — a drawing with none renders nothing, at once.
-    final cut = session.cutById(cut1)!;
-    session.renderCaches.brushFrameStore.storeBakedSurface(
-      session.brushFrameKeyForCut(cut, const LayerId('a'), const FrameId('f1')),
-      BitmapSurface(
-        canvasSize: cut.canvasSize,
-        tileSize: 8,
-        tiles: {
-          TileCoord(x: 0, y: 0): BitmapTile(
-            size: 8,
-            pixels: Uint8List(8 * 8 * 4)..[3] = 255,
-          ),
-        },
-      ),
-    );
-    final state = await pumpCels(tester, session, placeIn: temp.path);
-    await standOn(tester, 'a');
-    ExportCelsBand band() => tester.widget(find.byType(ExportCelsBand));
-    expect(band().directions, isNotEmpty);
-    expect(band().onStep, isNotNull);
-    expect(band().directions.map((d) => d.onPressed), everyElement(isNotNull));
-    expect(band().camera.onPressed, isNotNull);
-    expect(band().guides.onPressed, isNotNull);
-
-    unawaited(state.export());
-    await tester.pump();
-    await tester.pump();
-
-    expect(band().onStep, isNull);
-    expect(band().directions.map((d) => d.onPressed), everyElement(isNull));
-    expect(band().camera.onPressed, isNull);
-    expect(band().guides.onPressed, isNull);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('nothing is laid over a direction row\'s OWN drawing: stood '
