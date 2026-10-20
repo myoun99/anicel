@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -870,6 +871,33 @@ void main() {
       lessThanOrEqualTo(band.right - 4 + 0.01),
       reason: 'narrowed into its band — ↩️an ellipsis cut its end, and its '
           'paragraph still measured the whole name',
+    );
+  });
+
+  // 🗣️F-348 (유저 2026-10-12): 「1G컷이 코마텍스트가 사라짐. 콘티레이어나
+  // 기존 프레임 블록은 공간 부족하면 글자 좌우 길이 짧게한다던가 그런식으로
+  // 하면서 최대한 버티는데 컷블록은 그런게없음. 법 통일해서 적용」.
+  testWidgets('F-348: a block too narrow for its length keeps it, narrowed '
+      'into the right end of its bottom band — as its title narrows', (
+    tester,
+  ) async {
+    await _pump(tester, pixelsPerFrame: 1);
+    final block = requireCutBlock(tester, 'cut-1');
+    expect(
+      block.rect.width,
+      lessThan(48),
+      reason: '⛔전제: under the width that used to print no length',
+    );
+    expect(block.total, '12');
+    final band = block.bottomBand;
+    final inset = math.min(4, band.width / 2);
+    final length = _wordsIn(band, _painted(tester));
+    expect(length, hasLength(1), reason: 'the length is painted');
+    expect(length.single.right, closeTo(band.right - inset, 0.01));
+    expect(
+      length.single.left,
+      greaterThanOrEqualTo(band.left + inset - 0.01),
+      reason: 'narrowed into its band',
     );
   });
 

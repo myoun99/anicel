@@ -149,8 +149,9 @@ class StoryboardCutBlockVisual {
   /// The cut's name, drawn top-left.
   final String title;
 
-  /// The cumulative time at the cut's end (the conte sheet's TIME column),
-  /// or null when the block is too narrow to print it.
+  /// The cut's length, as a frame block's run label prints it (F-89),
+  /// drawn bottom-right however narrow the block (F-348) — or null for a
+  /// cut of one comma, which prints none (D23).
   final String? total;
 
   /// One picture per [cells] entry, in the same order — null while a
@@ -353,9 +354,6 @@ class StoryboardCutBlocksPainter extends CustomPainter
 
   static const double _padding = 4;
 
-  /// The narrowest block that still prints its total (the widget rule).
-  static const double totalLabelMinWidth = 48;
-
   double get _cellExtent => geometry.value.frameCellExtent;
 
   /// A frame's leading edge in the ROW's coordinates — measured from the
@@ -457,10 +455,10 @@ class StoryboardCutBlocksPainter extends CustomPainter
     );
   }
 
-  /// Where [entry]'s block lies and what it prints — its rect, its title,
-  /// and its total when the block is wide enough — or null when it lies
-  /// outside the visible window: what a sentence about the block reads,
-  /// and what the rest of its picture stands on ([_visualFor]).
+  /// Where [entry]'s block lies and what it prints — its rect, its title
+  /// and its total — or null when it lies outside the visible window: what
+  /// a sentence about the block reads, and what the rest of its picture
+  /// stands on ([_visualFor]).
   ({Rect rect, String title, String? total})? _placedFor(
     StoryboardTimelineLayoutEntry entry, {
     required ({int startIndex, int endIndexExclusive}) window,
@@ -479,13 +477,18 @@ class StoryboardCutBlocksPainter extends CustomPainter
       // 재사용」 — the cut's own length, by the frame blocks' run label. It
       // printed the running END frame, the conte sheet's TIME column (D23),
       // which the conte sheet itself keeps.
-      total: width >= totalLabelMinWidth
-          ? timelineRunLengthLabel(
-              entry.endFrame - entry.startFrame,
-              showSeconds: showSeconds,
-              countingBase: countingBase,
-            )
-          : null,
+      //
+      // 🗣️F-348 (유저 2026-10-12): 「1G컷이 코마텍스트가 사라짐. 콘티레이어나
+      // 기존 프레임 블록은 공간 부족하면 글자 좌우 길이 짧게한다던가 그런식으로
+      // 하면서 최대한 버티는데 컷블록은 그런게없음. 법 통일해서 적용」 — it
+      // narrows into its band as every block word does ([paintBandWord]).
+      // ↩️A block under 48px printed none (the widget rule it was painted
+      // from, #729).
+      total: timelineRunLengthLabel(
+        entry.endFrame - entry.startFrame,
+        showSeconds: showSeconds,
+        countingBase: countingBase,
+      ),
     );
   }
 
@@ -1049,9 +1052,9 @@ class StoryboardCutBlocksPainter extends CustomPainter
           CustomPainterSemantics(
             rect: rect,
             properties: SemanticsProperties(
-              // Joined from the parts that EXIST: a block too narrow for
-              // its length prints none, and an unconditional joiner would
-              // leave its space behind. ↩️The storyboard layer's name stood
+              // Joined from the parts that EXIST: a cut of one comma prints
+              // no length (D23), and an unconditional joiner would leave
+              // its space behind. ↩️The storyboard layer's name stood
               // between the two while the conte blocks were this block's
               // (I-73: they are the conte row's cells, which say their own).
               label: [title, ?total].join(' '),
