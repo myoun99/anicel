@@ -5,9 +5,8 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// storyboard-label-double-click (I-48's last family): the storyboard's
 /// layer labels — its S rows', its transition row's — take the timeline
@@ -20,19 +19,11 @@ void main() {
   setUp(TimelineDoubleTapGate.reset);
 
   Future<Track> openStoryboard(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    session = await pumpStoryboardHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1400, 800),
     );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-    );
-    await tester.pumpAndSettle();
-    session = tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
     return session.repository.requireProject().tracks.first;
   }
 

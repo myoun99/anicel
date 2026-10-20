@@ -10,11 +10,11 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_host.dart';
 import '../helpers/the_classic_rail.dart';
 
 /// THE cells contract, brought from the timeline to the storyboard: a press
@@ -62,15 +62,10 @@ Project _project() => Project(
   ],
 );
 
+/// The conte as its tab hosts it ([pumpStoryboardHost]), in the test's
+/// own window.
 Future<void> _openStoryboard(WidgetTester tester) async {
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
+  await pumpStoryboardHost(tester, _project(), surface: const Size(800, 600));
   // The second cut's frames on screen.
   await standTheClassicRail(tester);
 }

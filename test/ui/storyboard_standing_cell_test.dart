@@ -16,12 +16,12 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/project_repository.dart';
-import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_host.dart';
 
 /// UI-R5 ③b: the storyboard says where you STAND, as the timeline does —
 /// its standing cell, which paints nothing since F-212 (the playhead's wash
@@ -95,18 +95,9 @@ Project _project() {
 }
 
 void main() {
-  Future<void> pumpStoryboard(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: _project())),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-    );
-    await tester.pumpAndSettle();
-  }
+  /// The conte as its tab hosts it ([pumpStoryboardHost]).
+  Future<EditorSessionManager> pumpStoryboard(WidgetTester tester) =>
+      pumpStoryboardHost(tester, _project(), surface: const Size(1400, 900));
 
   Rect standingRect(WidgetTester tester) => tester.getRect(
     find.byKey(const ValueKey<String>('storyboard-standing-cell')),
@@ -279,22 +270,7 @@ void main() {
   // key window.
   testWidgets('a DOUBLE tap on a V lane keys an empty cell, and on the key '
       'opens the common key window', (tester) async {
-    late ProjectRepository repository;
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(
-          initialProject: _project(),
-          onRepositoryCreated: (created) => repository = created,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-    );
-    await tester.pumpAndSettle();
+    final repository = (await pumpStoryboard(tester)).repository;
     await twirlOpenVLanes(tester);
 
     final laneId = effectLaneId(_trackEffect, 'brightness');
