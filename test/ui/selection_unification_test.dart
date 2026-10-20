@@ -8,6 +8,7 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
@@ -66,6 +67,7 @@ void main() {
     LayerPoseSample? placement,
     // The shape the tool traces. Null = the tool's own default.
     CanvasShapeKind? shape,
+    CutGuides? guides,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -91,6 +93,7 @@ void main() {
                           .withShapeKind(shape, forTool: tool),
               ),
               selectionCommands: commands,
+              guides: guides,
               interactiveContentPose: placementOfSample(
                 placement,
                 BrushCanvasFixture.canvasSize,
@@ -511,6 +514,90 @@ void main() {
     );
     expect(region.containsPoint(CanvasPoint(x: 60, y: 60)), isTrue);
     expect(region.containsPoint(CanvasPoint(x: 170, y: 105)), isFalse);
+  });
+
+  testWidgets('what the lock still holds when the hand lifts lands on the '
+      'outline', (tester) async {
+    final env = await pumpPanel(tester, shape: CanvasShapeKind.lasso);
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    final gesture = await tester.startGesture(
+      origin + const Offset(20, 20),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    for (final to in const [Offset(100, 20), Offset(100, 100)]) {
+      await gesture.moveTo(origin + to);
+      await tester.pump();
+    }
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    // Too short a travel for the lock to have chosen a way: held.
+    await gesture.moveTo(origin + const Offset(104, 100.5));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    expect(
+      env.commands.region!.containsPoint(CanvasPoint(x: 102, y: 99.5)),
+      isTrue,
+      reason: 'the outline ends at (104, 100), not where the lock held it',
+    );
+  });
+
+  testWidgets('🗣️I-110-Q2 (「따른다」): under a snapping perspective a lasso '
+      'goes along its ray — drawn freehand, it encloses nothing, the cost '
+      'the answer took', (tester) async {
+    Future<CanvasSelectionRegion?> lassoed({CutGuides? guides}) async {
+      final env = await pumpPanel(
+        tester,
+        shape: CanvasShapeKind.lasso,
+        guides: guides,
+      );
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(
+        origin + const Offset(10, 10),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await tester.pump();
+      for (final to in const [
+        Offset(90, 35),
+        Offset(90, 90),
+        Offset(10, 90),
+      ]) {
+        await gesture.moveTo(origin + to);
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+      return env.commands.region;
+    }
+
+    final free = await lassoed();
+    expect(free!.containsPoint(CanvasPoint(x: 50, y: 60)), isTrue);
+
+    final guided = await lassoed(
+      guides: CutGuides(
+        guides: [
+          DrawingGuide(
+            id: const GuideId('p1'),
+            name: 'p1',
+            shape: PerspectiveShape(
+              vanishingPoints: [
+                VanishingPointAt(CanvasPoint(x: 150, y: 60)),
+              ],
+              eyeLevel: GuideAxis(
+                origin: CanvasPoint(x: 80, y: 60),
+                angleDegrees: 0,
+              ),
+              snapEnabled: true,
+            ),
+          ),
+        ],
+      ),
+    );
+    expect(guided?.containsPoint(CanvasPoint(x: 50, y: 60)) ?? false, isFalse);
   });
 
   testWidgets('every fold is ONE undo step, and undo restores the region '
