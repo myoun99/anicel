@@ -247,6 +247,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.historyManager,
     this.takeStrokePrefixCommand,
     this.onPressNeedsCel,
+    this.markMakesItsOwnCel,
     this.onStrokeNeedsCel,
     this.onAutoFrameSettled,
     this.viewport,
@@ -481,6 +482,13 @@ class BrushCanvasPanel extends StatefulWidget {
   /// [InteractiveBrushEditCanvasView.onPressNeedsCel], which is where it
   /// goes. The shell answers 「make one, or say why not」.
   final bool Function()? onPressNeedsCel;
+
+  /// I-113: whether a mark pressed now makes a cel of its own although one
+  /// stands under the playhead — see
+  /// [InteractiveBrushEditCanvasView.markMakesItsOwnCel], which is where it
+  /// goes; the layers over the view ask it in the view's stead
+  /// ([_BrushCanvasPanelState._markDoorOverTheView]).
+  final bool Function()? markMakesItsOwnCel;
 
   /// The same answer for a stroke whatever tool is up — the door 확정's
   /// 재입력 takes on an empty cell (`MainCanvasBrushHost.onStrokeNeedsCel`).
@@ -1289,6 +1297,32 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// runs — the view's getter, a tear-off of this State.
   BrushEditCanvasInputSettings _inputSettingsNow() => _brush.toInputSettings();
 
+  /// The door a layer over the drawing view asks in the view's stead — the
+  /// shape tool's and the text tool's — answering 「go on」: on a frame with
+  /// no cel by making one, on a held cel that gives way by making its own
+  /// (I-113), and at once on a cel that stays.
+  ///
+  /// 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE DOES (I-10).
+  /// The drawing view stands down in place, or would draw, under a layer
+  /// that takes the press. Where a cel IS there and its row takes no marks,
+  /// or nothing stands here at all, the host's own listener speaks
+  /// (`MainCanvasBrushHost`) and this is null — a second question would say
+  /// it twice.
+  bool Function()? get _markDoorOverTheView {
+    final door = widget.onPressNeedsCel;
+    if (widget.coordinator == null || door == null) {
+      return null;
+    }
+    if (!widget.celEditable) {
+      return door;
+    }
+    final ownCel = widget.markMakesItsOwnCel;
+    if (!widget.rowAcceptsStrokes || ownCel == null) {
+      return null;
+    }
+    return () => !ownCel() || door();
+  }
+
   /// The structure the last build was made for — see
   /// [BrushCanvasPanel.structureOf].
   ///
@@ -1949,12 +1983,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               shapeKeepsRatio:
                   _brush.shapeOptions.ratioLock,
               // 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE
-              // DOES (I-10) — the text layer's wiring, word for word: on a
-              // frame with no cel this layer asks in the standing-down
-              // view's stead; where a cel IS there and its row takes no
-              // marks, or nothing stands here at all, the host's own
-              // listener speaks. Content that is not one cel answers with
-              // the cel under the press (F-420).
+              // DOES (I-10) — the text layer's door too. Content that is not
+              // one cel answers with the cel under the press (F-420).
               onPressNeedsCel: _shapePressNeedsCel(context),
               // CANVAS space,
               // unmapped: this
@@ -2184,6 +2214,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       inputSettings: _inputSettingsNow,
       viewport: _viewportState._viewport,
       onPressNeedsCel: widget.onPressNeedsCel,
+      markMakesItsOwnCel: widget.markMakesItsOwnCel,
       // The pen's tail and a button mapped to the eraser — the holds that
       // DRAW. A held pick and the history verbs are [_mappedButtons]'.
       onTemporaryToolHold: widget.onTemporaryToolHold,
@@ -2544,20 +2575,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// The shape tool's question at its press
   /// ([CanvasSelectionLayer.onPressNeedsCel]), [layer] being the context of
-  /// the layer that asks — the box the canvas is laid in. On a frame with
-  /// no cel it is the shell's 「make one, or say why not」; on content that
-  /// is not one cel, the view under the press (F-420), which is the cel the
+  /// the layer that asks — the box the canvas is laid in. On one cel it is
+  /// the door over the view ([_markDoorOverTheView]); on content that is
+  /// not one cel, the view under the press (F-420), which is the cel the
   /// shape lands on wherever the drag goes after — as a stroke is the
   /// window's it starts in (H49).
   bool Function(CanvasPoint at)? _shapePressNeedsCel(BuildContext layer) {
     final targetAt = widget.contentShapeTargetAt;
     if (targetAt == null) {
-      final needsCel = widget.onPressNeedsCel;
-      return widget.coordinator != null &&
-              !widget.celEditable &&
-              needsCel != null
-          ? (_) => needsCel()
-          : null;
+      final door = _markDoorOverTheView;
+      return door == null ? null : (_) => door();
     }
     Offset onTheScreen(CanvasPoint point) {
       final local = _viewportState._viewport.canvasToViewport(point);

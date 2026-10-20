@@ -166,6 +166,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.editable = true,
     this.rowAcceptsStrokes = true,
     this.onPressNeedsCel,
+    this.markMakesItsOwnCel,
     CanvasViewport? viewport,
     CutGuides? guides,
     this.guideSpace = GuideSpace.canvas,
@@ -224,6 +225,26 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// timesheet, the cut envelope): they pass nothing and stand down exactly
   /// as before.
   final bool Function()? onPressNeedsCel;
+
+  /// Whether a mark pressed NOW makes a cel of its own although one stands
+  /// under the playhead — the 프레임 자동 생성 toggle answering a held cell
+  /// as the ＋ does there.
+  ///
+  /// 🗣️I-113 (유저 2026-10-19): 「프레임 자동생성 버튼 동작 변경. 블록
+  /// 홀드구간에서 그리면 해당부분에 프레임 추가하듯이 추가하도록 동작변경.
+  /// 지금은 기존 같은 블록에 그림그려짐」.
+  ///
+  /// ⚠️Asked at the press, never kept from a build: a step inside one block
+  /// takes the playhead off its head with no new cel to rebuild for. Null
+  /// on the surfaces [onPressNeedsCel] is null on.
+  final bool Function()? markMakesItsOwnCel;
+
+  /// Whether a mark pressed now makes the cel it lands on first: none
+  /// stands here, or one does and [markMakesItsOwnCel] has it give way — on
+  /// a row that takes strokes, where alone a press of this view draws.
+  bool get marksMakeTheirCel =>
+      !editable ||
+      (rowAcceptsStrokes && (markMakesItsOwnCel?.call() ?? false));
 
   /// The cut's drawing guides, as they stand on the CANVAS. Empty (the
   /// default) leaves the stroke path exactly as it was — the ink surfaces

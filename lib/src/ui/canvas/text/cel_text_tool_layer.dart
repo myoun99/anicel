@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/app_input_settings.dart';
+import '../../../models/brush_frame_key.dart';
 import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
 import '../../../services/history_run.dart';
@@ -39,6 +40,7 @@ class CelTextToolLayer extends StatefulWidget {
     required this.stage,
     required this.cel,
     required this.onPressNeedsCel,
+    this.markMakesItsOwnCel,
     required this.onDragActive,
     this.oneFingerAction,
   });
@@ -56,6 +58,12 @@ class CelTextToolLayer extends StatefulWidget {
   /// frame a click and a drag are the click and the drag they are anywhere
   /// else.
   final bool Function()? onPressNeedsCel;
+
+  /// Whether [cel] gives way to a cel of the press's own — the auto toggle
+  /// on a held cell (I-113, `InteractiveBrushEditCanvasView.
+  /// markMakesItsOwnCel`): the press then asks as it does where there is
+  /// none.
+  final bool Function()? markMakesItsOwnCel;
 
   /// A press began or ended: the panel holds its pans and zooms meanwhile.
   final ValueChanged<bool> onDragActive;
@@ -81,6 +89,11 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   /// until that text begins, and the two land as one step
   /// ([CelTextTool.beginText]).
   HistoryRun? _celMade;
+
+  /// The key of the held cel a press gave way beside (I-113) — the cel
+  /// under the tool until the one the press made arrives, which a text is
+  /// not to be set on meanwhile ([_beginText]).
+  BrushFrameKey? _gaveWay;
 
   /// The box an empty drag is tracing, on the artwork.
   Rect? _tracedBox;
@@ -155,7 +168,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
     double? minHeight,
   }) {
     final cel = widget.cel;
-    if (cel == null) {
+    if (cel == null || cel.key == _gaveWay) {
       _textAwaitingCel = (
         anchor: anchor,
         wrapWidth: wrapWidth,
@@ -165,6 +178,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
     }
     final celMade = _celMade;
     _celMade = null;
+    _gaveWay = null;
     _tool.beginText(
       cel,
       anchor,
@@ -272,7 +286,10 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
     if (artwork == null) {
       return;
     }
-    final cel = widget.cel;
+    // A held cel that gives way to the press's own is none to set on
+    // (I-113): the press asks as it does where there is none.
+    final givesWay = widget.markMakesItsOwnCel?.call() ?? false;
+    final cel = givesWay ? null : widget.cel;
     if (cel == null) {
       // Nothing to set a text on: ask for a cel, as a stroke's press does
       // (`_BrushEditCelPress`). The press then goes on as the press on
@@ -284,6 +301,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
         return;
       }
       _celMade = _tool.beginRun();
+      _gaveWay = givesWay ? widget.cel?.key : null;
     }
     final scene = CelTextScene(
       tool: _tool,

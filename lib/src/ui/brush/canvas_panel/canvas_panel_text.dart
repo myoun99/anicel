@@ -309,16 +309,8 @@ class _CanvasPanelText implements CelTextToolHost {
         placement: _state.widget.interactiveContentPose,
       ),
       cel: cel,
-      // 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE DOES (I-10).
-      // On a frame with no cel the drawing view stands down in place and
-      // asks — but this layer is over it and takes the press, so it asks in
-      // the view's stead. Where a cel IS there and its row takes no marks,
-      // or nothing stands here at all, the host's own listener speaks
-      // (`MainCanvasBrushHost`), and a second question would say it twice.
-      onPressNeedsCel:
-          _state.widget.coordinator != null && !_state.widget.celEditable
-          ? _state.widget.onPressNeedsCel
-          : null,
+      onPressNeedsCel: _state._markDoorOverTheView,
+      markMakesItsOwnCel: _state.widget.markMakesItsOwnCel,
       onDragActive: (active) => _state._textDragActive = active,
       oneFingerAction: _state.widget.oneFingerAction,
     ),

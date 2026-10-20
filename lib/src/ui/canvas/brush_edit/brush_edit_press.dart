@@ -143,8 +143,12 @@ class _BrushEditPress {
       return;
     }
 
-    if (!_state.widget.editable) {
-      _state._celPress.pressAsksForACel(event);
+    // A press parked for the cel it made goes on when that cel is here; one
+    // that made none goes on now where a cel stands (a press the pan takes,
+    // a tool that marks nothing), and nowhere where none does.
+    if (_state.widget.marksMakeTheirCel &&
+        (_state._celPress.pressAsksForACel(event) ||
+            !_state.widget.editable)) {
       return;
     }
 

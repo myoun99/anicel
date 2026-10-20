@@ -424,6 +424,10 @@ class _InteractiveCanvasBuild {
       onPressNeedsCel: () {
         return _state._pressNeedsCel(tool, session);
       },
+      // 🗣️I-113: a held cell is a place a mark makes its own cel, as the ＋
+      // does there, when the toggle is on — the auto frame's own answer,
+      // asked at the press.
+      markMakesItsOwnCel: () => session.autoFrame.canAutoCreateFrameForStroke,
       onStrokeNeedsCel: () => _state._strokeNeedsCel(session),
       takeStrokePrefixCommand: session.autoFrame.takeAutoFrameForStroke,
       onAutoFrameSettled: session.autoFrame.flushAutoFrameForStroke,

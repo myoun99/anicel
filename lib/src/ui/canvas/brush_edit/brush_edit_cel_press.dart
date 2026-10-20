@@ -22,8 +22,10 @@ class _BrushEditCelPress {
   /// where the pen actually landed rather than where it had moved on to.
   PointerDownEvent? _pendingCelPress;
 
-  /// Standing down, and something pressed: ask the shell for a cel — for a
-  /// press that DRAWS.
+  /// A mark pressed where it makes its cel first
+  /// ([InteractiveBrushEditCanvasView.marksMakeTheirCel]): ask the shell for
+  /// one — for a press that DRAWS — and park the press until it is here.
+  /// True when the press is parked.
   ///
   /// ⛔Only what the stroke path would draw with: a mapped barrel/middle
   /// press means pan or undo, and none of those wants a block made
@@ -34,12 +36,12 @@ class _BrushEditCelPress {
   /// order (🗣️I-15 follow-up, 유저 2026-09-11: 「브러시로 그리는 로직이
   /// 발생하는 상황이 아닌데 프레임 존재하지 않는다는 메시지뜨니 …
   /// 근본적/구조적으로 해결」).
-  void pressAsksForACel(PointerDownEvent event) {
+  bool pressAsksForACel(PointerDownEvent event) {
     if (_pendingCelPress != null) {
-      return;
+      return false;
     }
     if (!canvasPressDraws(event, penTailActive: _state._toolHolds.penTail)) {
-      return;
+      return false;
     }
     // Nor for a fill beyond the wall, which does nothing there — so it
     // makes no cel and explains no silence. The fill's own answer
@@ -47,12 +49,13 @@ class _BrushEditCelPress {
     if (_state._press.fillSpendsNothingAt(
       _state._canvasPositionFromLocal(event.localPosition),
     )) {
-      return;
+      return false;
     }
     if (!(_state.widget.onPressNeedsCel?.call() ?? false)) {
-      return;
+      return false;
     }
     _pendingCelPress = event;
+    return true;
   }
 
   /// Begins the held press now that there is somewhere for it to go.

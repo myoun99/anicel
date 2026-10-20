@@ -31,9 +31,10 @@ class _BrushEditPathStroke {
     if (path.length < 2 || _state._activeDrawingPointer != null) {
       return false;
     }
-    if (!_state.widget.editable) {
-      // Nothing to draw on: ask for the cel, as a press that draws does
-      // (I-10, [_BrushEditCelPress]). ⚠️The shape tool's own press has
+    if (_state.widget.marksMakeTheirCel) {
+      // Nothing to draw on, or a held cel that gives way to a new one
+      // (I-113): ask for the cel, as a press that draws does (I-10,
+      // [_BrushEditCelPress]). ⚠️The shape tool's own press has
       // asked already and its cel is here by now
       // (`CanvasSelectionLayer.onPressNeedsCel`); this is for a caller that
       // did not, and its block is settled as a step of its own before the

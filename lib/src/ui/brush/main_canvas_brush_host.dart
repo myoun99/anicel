@@ -110,6 +110,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onStrokeLanderChanged,
     this.onSelectionInteractionChanged,
     this.onPressNeedsCel,
+    this.markMakesItsOwnCel,
     this.onStrokeNeedsCel,
     this.standingFrameKeyOf,
     this.onAutoFrameSettled,
@@ -344,6 +345,13 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// nothing to say: a tool that marks nothing asks for no block and earns
   /// no notice).
   final bool Function()? onPressNeedsCel;
+
+  /// Whether a mark pressed now makes a cel of its own although one stands
+  /// under the playhead (I-113) — see
+  /// [InteractiveBrushEditCanvasView.markMakesItsOwnCel]. A press it takes
+  /// is the view's to ask about, so this host's own listener stays quiet
+  /// over it: the cel stands, and `hasEditableFrame` says so.
+  final bool Function()? markMakesItsOwnCel;
 
   /// The same answer for a STROKE whatever tool is up — what 확정's 재입력
   /// asks on an empty cell (confirm-button). [onPressNeedsCel] is this after
@@ -595,6 +603,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       historyManager: widget.historyManager,
       takeStrokePrefixCommand: widget.takeStrokePrefixCommand,
       onPressNeedsCel: widget.onPressNeedsCel,
+      markMakesItsOwnCel: widget.markMakesItsOwnCel,
       onStrokeNeedsCel: widget.onStrokeNeedsCel,
       onAutoFrameSettled: widget.onAutoFrameSettled,
       viewport: widget.viewport,
