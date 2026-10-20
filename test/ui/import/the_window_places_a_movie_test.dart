@@ -367,7 +367,9 @@ void main() {
     final s = await open(
       tester,
       [movie],
-      backend: FakeVideoBackend(frameCount: 24),
+      // Four frames: a count with a middle is all the % is asked for — 24
+      // baked one at a time were 4.3 s of this file's 7.8 (heavy-tests-save).
+      backend: FakeVideoBackend(frameCount: 4),
     );
     await tester.tap(find.byKey(ValueKey<String>('import-cell-bake-$movie')));
     await tester.pump();
