@@ -13,6 +13,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -49,6 +50,8 @@ void main() {
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Film',
+      // The work's words, set apart from the file's name (작품 설정).
+      timesheetInfo: const TimesheetInfo(title: 'AMMI', episode: 'OP'),
       cameraSize: const CanvasSize(width: 32, height: 18),
       createdAt: DateTime.utc(2026),
       tracks: [
@@ -212,7 +215,7 @@ void main() {
       await press(tester, 'export-tab-conte');
 
       expect(extensionShown(tester), '.pdf');
-      expect(tester.exportFirstFileName, 'Film.pdf');
+      expect(tester.exportFirstFileName, 'AMMI_OP.pdf');
 
       await tester.enterText(keyed('export-file-name-field'), 'board');
       await tester.pump();
@@ -246,12 +249,13 @@ void main() {
   /// 고스트텍스트로 … 시퀀스에서 범위 컷이면 파일 고스트텍스트를 컷이름으로.
   /// 범위 프로젝트면 고스트텍스트 지금처럼 작품명_화수명으로. 이미지는
   /// 기본적으로 현재컷이 대상인거니 고스트텍스트 컷이름. 콘티용지는 범위 기본
-  /// 프로젝트니 고스트텍스트를 똑같이 작품명_화수명으로」.
+  /// 프로젝트니 고스트텍스트를 똑같이 작품명_화수명으로」 — and F-404-Q1
+  /// (유저 2026-10-20): 「작품 설정의 작품명_화수로」, not the file's name.
   group('🎯F-404: a name field opens EMPTY, and behind it stands what the '
       'export covers — the name its file is written under', () {
     testWidgets('the sequence: the cut\'s name under the cut scope, the '
-        'project\'s under the project scope — its video and its stills '
-        'alike', (tester) async {
+        'work\'s title and episode under the project scope — its video and '
+        'its stills alike', (tester) async {
       final session = film();
       addTearDown(session.dispose);
       await pumpWindow(tester, session);
@@ -261,8 +265,8 @@ void main() {
       expect(tester.exportFirstFileName, '301.mp4');
 
       await press(tester, 'export-scope-project');
-      expect(ghostOf(tester, 'export-file-name-field'), 'Film');
-      expect(tester.exportFirstFileName, 'Film.mp4');
+      expect(ghostOf(tester, 'export-file-name-field'), 'AMMI_OP');
+      expect(tester.exportFirstFileName, 'AMMI_OP.mp4');
 
       await press(tester, 'export-format-still-png');
       await tester.ensureVisible(find.textContaining('Naming'));
@@ -270,8 +274,8 @@ void main() {
       await tester.pump();
       final base = tester.widget<TextField>(keyed('export-naming-base-field'));
       expect(base.controller!.text, isEmpty);
-      expect(ghostOf(tester, 'export-naming-base-field'), 'Film');
-      expect(tester.exportFirstFileName, 'Film_0001.png');
+      expect(ghostOf(tester, 'export-naming-base-field'), 'AMMI_OP');
+      expect(tester.exportFirstFileName, 'AMMI_OP_0001.png');
 
       await press(tester, 'export-scope-cut');
       expect(ghostOf(tester, 'export-naming-base-field'), '301');
@@ -295,20 +299,19 @@ void main() {
       session.playbackRig.prerenderScheduler.cancel();
     });
 
-    testWidgets('the conte: the project\'s name, its PDF\'s and its pages\'', (
-      tester,
-    ) async {
+    testWidgets('the conte: the work\'s title and episode, its PDF\'s and its '
+        'pages\'', (tester) async {
       final session = film();
       addTearDown(session.dispose);
       await pumpWindow(tester, session);
       await press(tester, 'export-tab-conte');
 
       expect(nameTyped(tester), isEmpty);
-      expect(ghostOf(tester, 'export-file-name-field'), 'Film');
-      expect(tester.exportFirstFileName, 'Film.pdf');
+      expect(ghostOf(tester, 'export-file-name-field'), 'AMMI_OP');
+      expect(tester.exportFirstFileName, 'AMMI_OP.pdf');
       await press(tester, 'export-conteformat-png');
-      expect(ghostOf(tester, 'export-file-name-field'), 'Film');
-      expect(tester.exportPreviewName, startsWith('Film'));
+      expect(ghostOf(tester, 'export-file-name-field'), 'AMMI_OP');
+      expect(tester.exportPreviewName, startsWith('AMMI_OP'));
       session.playbackRig.prerenderScheduler.cancel();
     });
 

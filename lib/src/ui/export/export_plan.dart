@@ -523,13 +523,25 @@ String sanitizeExportFileComponent(String value) {
 }
 
 /// What an export is called while nobody has named it: what it covers —
-/// [cut]'s name when it is of one cut, the project's when it is of the
-/// whole (no [cut]).
+/// [cut]'s name when it is of one cut; when it is of the whole (no [cut]),
+/// the work's title and its episode as 작품 설정 holds them, joined by `_`
+/// (AMMI + OP → AMMI_OP). The title is the one the paper forms print
+/// (`TimesheetInfo.titleOr` — the project's name while the work has none),
+/// and it stands alone while there is no episode.
 ///
 /// 🗣️F-404 (유저 2026-10-19): 「시퀀스에서 범위 컷이면 파일 고스트텍스트를
 /// 컷이름으로. 범위 프로젝트면 고스트텍스트 지금처럼 작품명_화수명으로.
 /// 이미지는 기본적으로 현재컷이 대상인거니 고스트텍스트 컷이름. 콘티용지는
-/// 범위 기본 프로젝트니 고스트텍스트를 똑같이 작품명_화수명으로」. 작품명_화수명
-/// is the project's name as it is now — the name of the file it is saved as.
-String unnamedExportName(Project project, {Cut? cut}) =>
-    sanitizeExportFileComponent(cut?.name ?? project.name);
+/// 범위 기본 프로젝트니 고스트텍스트를 똑같이 작품명_화수명으로」.
+/// 🗣️F-404-Q1 (유저 2026-10-20): 「작품 설정의 작품명_화수로」. ↩️작품명_화수명
+/// was read as the project's name — the name of the file it is saved as.
+String unnamedExportName(Project project, {Cut? cut}) {
+  final work = project.timesheetInfo;
+  return sanitizeExportFileComponent(
+    cut?.name ??
+        [
+          work.titleOr(project.name),
+          if (work.episode.isNotEmpty) work.episode,
+        ].join('_'),
+  );
+}

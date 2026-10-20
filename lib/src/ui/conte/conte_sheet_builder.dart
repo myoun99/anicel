@@ -55,7 +55,7 @@ ConteSheetSource buildConteSheetSource(Project project) {
   final info = project.timesheetInfo;
   return ConteSheetSource(
     cuts: cuts,
-    title: info.title.isEmpty ? project.name : info.title,
+    title: info.titleOr(project.name),
     episode: info.episode,
     logoAssetPath: info.logoAssetPath,
     coverImagePath: info.coverImagePath,

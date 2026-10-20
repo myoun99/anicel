@@ -45,6 +45,11 @@ class TimesheetInfo {
   final String title;
   final String episode;
 
+  /// The title the work goes by: its own, or [projectName] — the project's
+  /// name — while it has none. What every paper form prints, and what an
+  /// export of the whole is named after.
+  String titleOr(String projectName) => title.isEmpty ? projectName : title;
+
   /// Header boxes the form does NOT print; everything else stays visible.
   final Set<TimesheetHeaderField> hiddenFields;
 

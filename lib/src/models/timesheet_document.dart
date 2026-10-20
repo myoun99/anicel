@@ -463,7 +463,7 @@ class TimesheetDocument {
     ];
 
     return TimesheetDocument._(
-      title: info.title.isEmpty ? projectName : info.title,
+      title: info.titleOr(projectName),
       episode: info.episode,
       artist: cut.metadata.staffNameFor(sheetArtistMark),
       pageMemos: cut.metadata.pageNotes,
