@@ -72,6 +72,7 @@ class BrushStrokeDynamics {
       return dabs;
     }
     final scatterActive = _scatters;
+    final tipTurns = _tipTurns;
     final emitted = <BrushDab>[];
     var sequence = firstSequence;
 
@@ -80,8 +81,8 @@ class BrushStrokeDynamics {
       for (var copy = 0; copy < copies; copy += 1) {
         // Every dab takes a turn — each of a spray's too (F-176-Q3: 「dab
         // 하나마다 다음 장으로」).
-        final tip = _tipTurns == null ? dab.tipMask : _tipTurns.next();
-        if (tip == null && _tipTurns != null) {
+        final tip = tipTurns == null ? dab.tipMask : tipTurns.next();
+        if (tip == null && tipTurns != null) {
           continue;
         }
         var center = dab.center;

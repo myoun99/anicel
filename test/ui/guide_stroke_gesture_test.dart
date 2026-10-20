@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/native/windows_key_state.dart' show vkShift;
 import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -42,8 +43,13 @@ void main() {
             celNow: blankCel(canvasSize, tileSize: 32),
             layerId: layerId,
             frameId: frameId,
-            inputSettings: () =>
-                BrushEditCanvasInputSettings(color: 0xFFFF0000),
+            // The pen's own line: a steadied one runs on the events'
+            // clock, and these carry none (F-418 — a brush steadies as
+            // Clip Studio's 0 unless told otherwise).
+            inputSettings: () => BrushEditCanvasInputSettings(
+              color: 0xFFFF0000,
+              correction: BrushCorrection.none,
+            ),
             guides: guides,
             onSourceStrokeCommitted: commits.add,
           ),

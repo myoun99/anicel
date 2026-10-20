@@ -566,7 +566,16 @@ void main() {
   /// inline; the ● asks the same, so the window is one. 🔬`clean_code_diff`
   /// against master (`11209d525`, at 407) named that one added and nothing
   /// gone; stood on F-287's 408 above when the lane was rebased onto it.
-  const wideSignatures = 409;
+  ///
+  /// ⚠️409 → 408 on 2026-10-20, lowered as the rule asks (F-176 · F-418,
+  /// the brush lanes): `tipMaskFromPatternArray` (six) left the list. It
+  /// became two when a brush took several tips — the array's reader and
+  /// one material's — and both carried the brush's name, the part's words
+  /// and the warnings, the three every warning about a part is made of;
+  /// those travel as one `_BrushPart` now, and the four 「imported without
+  /// it」 sentences are one (`_leftOut`). 🔬`clean_code_diff` against the
+  /// lanes' base (`243dd8074`, at 409) named that one gone.
+  const wideSignatures = 408;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -801,7 +810,16 @@ void main() {
   /// named those two added and nothing gone. ⛔Not split to fit: each says
   /// one thing — the stack and what is laid over it; the files a run
   /// writes — and a part taken out would be read beside the rest anyway.
-  const longBodies = 411;
+  ///
+  /// ⚠️411 → 412 on 2026-10-20, named as the rule above asks (F-176 ·
+  /// F-418, the brush lanes). `BrushSettings.toJson` crossed the line with
+  /// a brush's further tips, their order and its correction — a key a line
+  /// and, beside the three, why each is written only off its default.
+  /// 🔬`clean_code_diff` against the lanes' base (`243dd8074`, at 411)
+  /// named that one added and nothing gone. ⛔Not split to fit: it is one
+  /// flat list of what a preset keeps, and a list cut in two is read as
+  /// one anyway.
+  const longBodies = 412;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
