@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -119,8 +118,6 @@ void main() {
 
   // F-409 (user, 2026-10-19): 「환경설정창은 다 두꺼운 스크롤바 사용」.
   testWidgets('every bar in the window is the thick one', (tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -137,7 +134,9 @@ void main() {
         AppScrollbarLane.thick,
       );
     }
-  });
+    // On a desktop, where the root shows its bars: a platform the test
+    // set by hand outlived the test and failed it at the binding's check.
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
   testWidgets('🚨F-1: the Autosave section is ONE switch and ONE slider', (
     tester,
