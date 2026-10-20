@@ -159,7 +159,9 @@ void main() {
           !mark.closed &&
           mark.points.length == 2 &&
           ((mark.points[1] - mark.points[0]).distance -
-                      2 * CameraPathOverlay.sizes.crossArm)
+                      2 *
+                          CameraPathOverlay.sizes.crossArm *
+                          overlay(tester).viewport.zoom)
                   .abs() <
               1e-6)
         (mark.points[0] + mark.points[1]) / 2,

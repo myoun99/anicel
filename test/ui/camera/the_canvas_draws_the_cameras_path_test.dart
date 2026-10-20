@@ -6,11 +6,13 @@ import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/camera_frame_corners.dart';
+import 'package:anicel/src/services/camera_path.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/camera/camera_path_overlay.dart';
@@ -106,17 +108,24 @@ void main() {
   List<Offset> centreTrail(WidgetTester tester) =>
       tester.widget<CameraPathOverlay>(path()).centreTrail;
 
+  /// The screen pixels a canvas pixel spans — what its sizes are drawn by
+  /// (F-421).
+  double pixel(WidgetTester tester) =>
+      tester.widget<CameraPathOverlay>(path()).viewport.zoom;
+
   /// What the keys are written as — at the size a key's label takes.
   List<String> labels(WidgetTester tester) => [
     for (final mark in marks(tester))
-      if (mark is SheetWords && mark.size == CameraPathOverlay.sizes.labelSize)
+      if (mark is SheetWords &&
+          mark.size == CameraPathOverlay.sizes.labelSize * pixel(tester))
         mark.text,
   ];
 
   /// The frames the crosses in time wear beside them.
   List<String> tickLabels(WidgetTester tester) => [
     for (final mark in marks(tester))
-      if (mark is SheetWords && mark.size == CameraPathOverlay.tickLabelSize)
+      if (mark is SheetWords &&
+          mark.size == CameraPathOverlay.tickLabelSize * pixel(tester))
         mark.text,
   ];
 
@@ -230,11 +239,11 @@ void main() {
       reason: '유저 2026-10-12: 「그 상황에서 십자가쪽에도 프레임번호」 — and '
           'the keys\' own crosses (I-89-Q16 B 「키의 십자에도」)',
     );
-    // The mock's sizes (5판): a key's cross reaches 5 screen pixels either
+    // The mock's sizes (5판): a key's cross reaches 5 canvas pixels either
     // way, a frame's 3.
     expect(arms(tester), [
-      for (var arm = 0; arm < 4; arm++) closeTo(10, 1e-9),
-      for (var arm = 0; arm < 8; arm++) closeTo(6, 1e-9),
+      for (var arm = 0; arm < 4; arm++) closeTo(10 * pixel(tester), 1e-9),
+      for (var arm = 0; arm < 8; arm++) closeTo(6 * pixel(tester), 1e-9),
     ]);
 
     CameraPathSettings.settings.value = const CameraPathSettings(
@@ -307,7 +316,9 @@ void main() {
     expect(dashes.length, greaterThan(1), reason: 'in dashes');
     expect(
       dashes,
-      everyElement(closeTo(CameraPathOverlay.centreTrailWidth, 1e-6)),
+      everyElement(
+        closeTo(CameraPathOverlay.centreTrailWidth * pixel(tester), 1e-6),
+      ),
     );
 
     final standing = (painter: painter(), marks: overlay().marks);
@@ -470,6 +481,101 @@ void main() {
     await drain(tester);
   });
 
+  // 🗣️F-421 (유저 2026-10-20): 「캔버스 확대해도 축소해도 크기 안바뀌는
+  // 벡터?느낌인데 크기는 100%인 상태에서 고정되도록」 · 「사각형 라인도
+  // 글자도 픽셀에 올리고싶단느낌」 · 「글자 3배는 너무큰거같으니 2배로」.
+  testWidgets('F-421: it lies on the picture\'s pixels — at 100% the mock\'s '
+      'sizes with its words twice, and at 200% all of it twice that, the '
+      'dashes of the camera\'s middle too', (tester) async {
+    final (s, _) = panning();
+    addTearDown(s.dispose);
+    final cameraPath = CameraPath.of(
+      s.requireActiveCut,
+      cameraOf(s).cameraFrameSize,
+    )!;
+
+    /// The path stood on in space and time, [zoom] screen pixels to a
+    /// canvas pixel — and pumped, to be painted.
+    Future<CameraPathOverlay> at(double zoom) async {
+      final overlay = CameraPathOverlay(
+        path: cameraPath,
+        playhead: 0,
+        settings: const CameraPathSettings(),
+        viewport: CanvasViewport(zoom: zoom),
+        standing: true,
+      );
+      await tester.pumpWidget(MaterialApp(home: overlay));
+      return overlay;
+    }
+
+    /// Every number [overlay]'s marks are drawn by: a word's size and its
+    /// slot, a stroke's width and its points.
+    List<double> numbersOf(CameraPathOverlay overlay) => [
+      for (final mark in overlay.marks)
+        ...switch (mark) {
+          SheetWords(:final size, :final slot) => [
+            size,
+            slot.left,
+            slot.top,
+            slot.right,
+            slot.bottom,
+          ],
+          SheetStroke(:final width, :final points) => [
+            width,
+            for (final point in points) ...[point.dx, point.dy],
+          ],
+          _ => const <double>[],
+        },
+    ];
+
+    /// The dashes of the line the camera's middle walks, as painted: each
+    /// one's width.
+    List<double> dashes() {
+      final picture = find.byKey(const ValueKey<String>('camera-path-overlay'));
+      final canvas = TestRecordingCanvas();
+      tester
+          .widget<CustomPaint>(picture)
+          .painter!
+          .paint(canvas, tester.getSize(picture));
+      return [
+        for (final call in canvas.invocations)
+          if (call.invocation.memberName == #drawPath)
+            if (call.invocation.positionalArguments[1] case final Paint ink
+                when ink.color.toARGB32() == AppColors.accent.toARGB32())
+              ink.strokeWidth,
+      ];
+    }
+
+    final hundred = await at(1);
+    expect(
+      {
+        for (final mark in hundred.marks)
+          if (mark is SheetWords) mark.size,
+      },
+      {24.0, 20.0},
+      reason: 'a key\'s name, and a frame beside a cross: the mock\'s 12 and '
+          '10 twice over',
+    );
+    final numbers = numbersOf(hundred);
+    final dashed = dashes();
+    expect(dashed.length, greaterThan(1), reason: '⛔전제: in dashes');
+    expect(
+      dashed,
+      everyElement(closeTo(CameraPathOverlay.centreTrailWidth, 1e-6)),
+    );
+
+    final twoHundred = await at(2);
+    expect(numbersOf(twoHundred), [
+      for (final number in numbers) closeTo(2 * number, 1e-6),
+    ]);
+    expect(
+      dashes(),
+      [for (final width in dashed) closeTo(2 * width, 1e-6)],
+      reason: 'a dash as long as canvas pixels make it: as many along the '
+          'path at 200% as at 100%',
+    );
+  });
+
   testWidgets('its crosses in time wear where the playhead stands — grey '
       'behind it, blue ahead, ink on it — and are painted again as it '
       'moves', (tester) async {
@@ -479,7 +585,8 @@ void main() {
     await pumpArea(tester, s);
     List<int> ticks() => [
       for (final mark in marks(tester))
-        if (mark is SheetStroke && mark.width == CameraPathOverlay.tickWidth)
+        if (mark is SheetStroke &&
+            mark.width == CameraPathOverlay.tickWidth * pixel(tester))
           mark.argb,
     ];
     CustomPainter painter() => tester

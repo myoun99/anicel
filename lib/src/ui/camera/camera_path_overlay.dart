@@ -22,7 +22,13 @@ import '../theme/app_theme.dart' show AppColors;
 /// many frames with the frame beside it ([cameraPathTicks]) — as
 /// [settings] say, around [playhead] where they keep to it.
 ///
-/// It only draws, at the size the screen reads it whatever the zoom.
+/// It only draws, on the picture's pixels: every size it has is canvas
+/// pixels, so it grows and shrinks with the view as the picture does.
+///
+/// 🗣️F-421 (유저 2026-10-20): 「캔버스 확대해도 축소해도 크기 안바뀌는
+/// 벡터?느낌인데 크기는 100%인 상태에서 고정되도록」 · 「사각형 라인도
+/// 글자도 픽셀에 올리고싶단느낌. 래스터라이즈 한단건 아니지만」. ↩️It was
+/// drawn at the size the screen reads it, whatever the zoom.
 class CameraPathOverlay extends StatelessWidget {
   const CameraPathOverlay({
     super.key,
@@ -34,12 +40,13 @@ class CameraPathOverlay extends StatelessWidget {
     this.toCanvas,
   });
 
-  /// How large the canvas writes a camera's work, in screen pixels (the
-  /// mock of the confirmed spec, 5판).
+  /// How large the canvas writes a camera's work, in canvas pixels: at 100%
+  /// the screen pixels the mock of the confirmed spec gave it (5판), and the
+  /// words twice that (🗣️F-421: 「글자 3배는 너무큰거같으니 2배로」).
   static const CameraMarkSizes sizes = CameraMarkSizes(
     frameWidth: 1.8,
     trailWidth: 1.4,
-    labelSize: 12,
+    labelSize: 24,
     crossArm: 5,
     crossWidth: 1.6,
     labelInset: 4,
@@ -50,8 +57,9 @@ class CameraPathOverlay extends StatelessWidget {
   static const double tickWidth = 1.1;
 
   /// The frame a cross in time wears beside it: smaller than a key's label,
-  /// as its cross is, and clear of the cross's line.
-  static const double tickLabelSize = 10;
+  /// as its cross is, and clear of the cross's line. A word of the path, so
+  /// twice the mock's as [sizes]' label is (F-421).
+  static const double tickLabelSize = 20;
   static const double tickLabelGap = 2;
 
   /// The line the camera's middle walks ([centreTrail]): dashed, in the
@@ -102,6 +110,9 @@ class CameraPathOverlay extends StatelessWidget {
     ];
   }
 
+  /// The screen pixels a canvas pixel spans in [viewport].
+  double get _pixel => viewport.zoom;
+
   /// What it draws, in screen pixels.
   List<SheetMark> get marks {
     final (:from, :to) = settings.framesShownAt(playhead);
@@ -109,7 +120,7 @@ class CameraPathOverlay extends StatelessWidget {
       ...cameraPathMarks(
         path,
         place: _place,
-        sizes: sizes,
+        sizes: sizes.scaledBy(_pixel),
         layer: SheetPaintLayer.picture,
         from: from,
         to: to,
@@ -120,10 +131,10 @@ class CameraPathOverlay extends StatelessWidget {
           place: _place,
           every: settings.tickEvery,
           playhead: playhead,
-          arm: tickArm,
-          width: tickWidth,
-          labelSize: tickLabelSize,
-          labelGap: tickLabelGap,
+          arm: tickArm * _pixel,
+          width: tickWidth * _pixel,
+          labelSize: tickLabelSize * _pixel,
+          labelGap: tickLabelGap * _pixel,
           layer: SheetPaintLayer.picture,
           from: from,
           to: to,
@@ -141,6 +152,7 @@ class CameraPathOverlay extends StatelessWidget {
         // The handles' colour: a row's box wears the accent
         // (F-222-box-Q5, `RowTransformBox`).
         centreTrailColor: AppColors.accent,
+        pixel: _pixel,
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
       ),
       // A bare CustomPaint sizes to zero under loose constraints; the path
@@ -152,18 +164,21 @@ class CameraPathOverlay extends StatelessWidget {
 
 /// [marks] printed as the sheets print theirs ([SheetCanvasPrinter]), in
 /// the screen's own pixels, and over them the [centreTrail] — an editing
-/// line no sheet prints — in dashes of [centreTrailColor].
+/// line no sheet prints — in dashes of [centreTrailColor], as large as a
+/// canvas [pixel] makes them.
 class _CameraPathPainter extends CustomPainter {
   const _CameraPathPainter({
     required this.marks,
     required this.centreTrail,
     required this.centreTrailColor,
+    required this.pixel,
     required this.devicePixelRatio,
   });
 
   final List<SheetMark> marks;
   final List<Offset> centreTrail;
   final Color centreTrailColor;
+  final double pixel;
   final double devicePixelRatio;
 
   @override
@@ -176,13 +191,14 @@ class _CameraPathPainter extends CustomPainter {
     if (centreTrail.length < 2) {
       return;
     }
+    const dashes = CameraPathOverlay.centreTrailDashes;
     final ink = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = CameraPathOverlay.centreTrailWidth
+      ..strokeWidth = CameraPathOverlay.centreTrailWidth * pixel
       ..color = centreTrailColor;
     for (final dash in dashesAlong(
       Path()..addPolygon(centreTrail, false),
-      CameraPathOverlay.centreTrailDashes,
+      DashPattern(on: dashes.on * pixel, off: dashes.off * pixel),
     )) {
       canvas.drawPath(dash, ink);
     }
@@ -193,5 +209,6 @@ class _CameraPathPainter extends CustomPainter {
       !listEquals(oldDelegate.marks, marks) ||
       !listEquals(oldDelegate.centreTrail, centreTrail) ||
       oldDelegate.centreTrailColor != centreTrailColor ||
+      oldDelegate.pixel != pixel ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 }
