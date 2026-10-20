@@ -109,14 +109,15 @@ void main() {
   /// A drag across the middle half of [window], top left to bottom right.
   Future<({Offset from, Offset to, Offset middle})> dragAcross(
     WidgetTester tester,
-    SheetInkWindow window,
-  ) async {
+    SheetInkWindow window, {
+    PointerDeviceKind kind = PointerDeviceKind.mouse,
+  }) async {
     final rect = window.documentRect;
     final from = rect.center - Offset(rect.width / 4, rect.height / 4);
     final to = rect.center + Offset(rect.width / 4, rect.height / 4);
     final gesture = await tester.startGesture(
       sheetPaperOnScreen(tester, from),
-      kind: PointerDeviceKind.mouse,
+      kind: kind,
     );
     await tester.pump();
     for (var step = 1; step <= 6; step += 1) {
@@ -336,20 +337,24 @@ void main() {
         for (final tool in CanvasTool.values)
           if (!sheetRunsTool(tool)) tool,
       ]) {
-        testWidgets('a drag of the ${tool.name} tool, which has nothing on a '
-            'sheet to act on, moves the sheet and lays nothing', (
-          tester,
-        ) async {
-          final (_, views) = await sheet.pump(tester, holding(tool));
-          final window = aWindow(tester, sheet.keyPrefix);
+        for (final kind in const [
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.touch,
+        ]) {
+          testWidgets('a ${kind.name} drag of the ${tool.name} tool, which '
+              'has nothing on a sheet to act on, moves the sheet and lays '
+              'nothing', (tester) async {
+            final (_, views) = await sheet.pump(tester, holding(tool));
+            final window = aWindow(tester, sheet.keyPrefix);
 
-          final drag = await dragAcross(tester, window);
-          await tester.pumpAndSettle();
+            final drag = await dragAcross(tester, window, kind: kind);
+            await tester.pumpAndSettle();
 
-          expect(views, isNotEmpty, reason: 'the sheet moved');
-          expect(inkUnder(tester, window, drag.from), isFalse);
-          expect(inkUnder(tester, window, drag.middle), isFalse);
-        });
+            expect(views, isNotEmpty, reason: 'the sheet moved');
+            expect(inkUnder(tester, window, drag.from), isFalse);
+            expect(inkUnder(tester, window, drag.middle), isFalse);
+          });
+        }
       }
     });
   }
