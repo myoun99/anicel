@@ -322,8 +322,12 @@ class LayerSwitchVerbs {
     // A storyboard row TILES its cut, so a row that becomes one is filled
     // to cover before it changes kind — otherwise its holes would show as
     // "X" cells in the timeline while the strip, which reads the coverage
-    // rule, showed none. An empty row becomes a fresh blank panel, which
-    // is what a new storyboard row is born as.
+    // rule, showed none. An empty row takes a fresh blank panel, which is
+    // what a new storyboard row is born with.
+    //
+    // ↩️It took a whole new storyboard row's place (#752), the row's name
+    // carried over and nothing else — what the row wears went, its label
+    // first (F-424). The panel is the birth's; the row stays the row.
     if (toStoryboard) {
       final cut = _project.requireActiveCut;
       final filled = storyboardTimelineFilledToCover(
@@ -337,13 +341,18 @@ class LayerSwitchVerbs {
           cut.id,
         ).head,
       );
-      final covered = filled == null
-          ? createStoryboardLayer(
-              layerId: targetLayer.id,
+      final blank = filled == null
+          ? coveringCelFor(
               frameId: _frameIds.mintFrameId(targetLayer.id),
-              cut: cut,
-            ).copyWith(name: targetLayer.name)
-          : targetLayer.copyWith(timeline: filled);
+              cutDuration: cut.duration,
+            )
+          : null;
+      final covered = blank == null
+          ? targetLayer.copyWith(timeline: filled)
+          : targetLayer.copyWith(
+              frames: [blank.frame],
+              timeline: blank.timeline,
+            );
       if (covered != targetLayer) {
         _controllers.timelineController.commitLayerTimelineDrag(
           before: targetLayer,

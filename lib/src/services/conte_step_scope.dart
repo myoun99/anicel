@@ -1,4 +1,3 @@
-import '../models/layer_id.dart';
 import 'history_step_scope.dart';
 import 'project_repository.dart';
 
@@ -17,29 +16,37 @@ import 'project_repository.dart';
 /// undo would not be one. Nothing else can tell them from rows the user
 /// drew on — a picture is not in the model — but the undo can: everything
 /// done after its step is undone already.
+///
+/// ③ The heads the structure PUT ON rows that joined a conte in a step go
+/// with the step's undo too ([ProjectRepository.takeOffConteHeads]): a row
+/// made a cut's conte wears its track's head, and the step's own undo
+/// gives back only what the step wrote — the kind — while no laying lays
+/// a row that is in no conte (F-424).
 final class ConteStepScope implements HistoryStepScope {
   ConteStepScope(this._repository);
 
   final ProjectRepository _repository;
 
   @override
-  Object? execute(void Function() write) => _given(write);
+  Object? execute(void Function() write) => _made(write);
 
   @override
   void undo(void Function() write, List<Object> made) {
+    final steps = made.cast<ConteWriteMade>();
     _repository.asOneConteWrite(() {
       write();
-      _repository.dropConteFills({
-        for (final given in made) ...given as Set<LayerId>,
-      });
+      _repository.dropConteFills({for (final step in steps) ...step.fills});
+      _repository.takeOffConteHeads([
+        for (final step in steps) ...step.heads,
+      ]);
     });
   }
 
   @override
-  Object? redo(void Function() write) => _given(write);
+  Object? redo(void Function() write) => _made(write);
 
-  Set<LayerId>? _given(void Function() write) {
-    final given = _repository.asOneConteWrite(write);
-    return given.isEmpty ? null : given;
+  ConteWriteMade? _made(void Function() write) {
+    final made = _repository.asOneConteWrite(write);
+    return made.fills.isEmpty && made.heads.isEmpty ? null : made;
   }
 }
