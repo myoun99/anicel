@@ -429,9 +429,10 @@ void main() {
     rail.resizeBy(-243, naturalExtent: classicRailWidth);
     await tester.pump();
 
-    // The window is 200 wide; the rail INSIDE it never moved or shrank.
+    // The window is 200 wide; the rail INSIDE it never moved or shrank. It
+    // opens the grid: the layer axis's bar stands at the far right (F-409).
     expect(tester.getSize(railBody).width, moreOrLessEquals(classicRailWidth));
-    final windowRight = gridLeft + 16 + 200;
+    final windowRight = gridLeft + 200;
     expect(
       tester.getRect(find.byType(LayerRailWindow).first).right,
       moreOrLessEquals(windowRight),
