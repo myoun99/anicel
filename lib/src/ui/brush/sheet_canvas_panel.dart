@@ -320,6 +320,7 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
       runsTheSelectedTool: runs,
       toolCursorsEnabled: runs,
       contentShapeTargetAt: _shapes.at,
+      contentTakesPressAt: _shapes.takesPressAt,
       contentOverride: (context, paperView) => SheetShapeScope(
         targets: _shapes,
         child: widget.content(

@@ -88,10 +88,30 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  ValueNotifier<BrushToolState> brush() {
-    final tool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+  ValueNotifier<BrushToolState> holding(CanvasTool held) {
+    final tool = ValueNotifier<BrushToolState>(
+      BrushToolState.defaults.copyWith(tool: held),
+    );
     addTearDown(tool.dispose);
     return tool;
+  }
+
+  /// [body] under the brush, and under the shape tool, whose layer lies
+  /// over the sheet (F-420) — 「어느 도구든」.
+  void underTheTools(
+    String what,
+    Future<void> Function(
+      WidgetTester tester,
+      ValueNotifier<BrushToolState> tool,
+    )
+    body,
+  ) {
+    for (final held in const [CanvasTool.brush, CanvasTool.shape]) {
+      testWidgets(
+        '$what — the ${held.name} tool',
+        (tester) => body(tester, holding(held)),
+      );
+    }
   }
 
   /// The one photo on [session]'s sheets: its cel and where it stands.
@@ -140,8 +160,8 @@ void main() {
     expect(history.undoCount, steps + 1);
   }
 
-  testWidgets('the timesheet: a press of the tool on a page\'s photo takes '
-      'it and drags it', (tester) async {
+  underTheTools('the timesheet: a press of the tool on a page\'s photo takes '
+      'it and drags it', (tester, tool) async {
     final png = await poolPicture(tester);
     final session = EditorSessionManager(
       initialProject: createDefaultProject().copyWith(
@@ -153,7 +173,6 @@ void main() {
       store: session.renderCaches.timesheetInkStore,
     );
     addTearDown(ink.dispose);
-    final tool = brush();
     await pumpPanel(
       tester,
       session,
@@ -181,8 +200,8 @@ void main() {
     );
   });
 
-  testWidgets('the conte: a press of the tool on a block\'s photo takes it '
-      'and drags it', (tester) async {
+  underTheTools('the conte: a press of the tool on a block\'s photo takes it '
+      'and drags it', (tester, tool) async {
     const cut = CutId('38');
     final png = await poolPicture(tester);
     final session = EditorSessionManager(
@@ -234,7 +253,6 @@ void main() {
       cels: session.renderCaches.brushFrameStore,
     );
     addTearDown(cels.dispose);
-    final tool = brush();
     await pumpPanel(
       tester,
       session,
@@ -268,8 +286,8 @@ void main() {
     await dropThenDrag(tester, session, png, band);
   });
 
-  testWidgets('the 봉투: a press of the tool on a box\'s photo takes it and '
-      'drags it', (tester) async {
+  underTheTools('the 봉투: a press of the tool on a box\'s photo takes it and '
+      'drags it', (tester, tool) async {
     final png = await poolPicture(tester);
     final session = EditorSessionManager(
       initialProject: createDefaultProject().copyWith(
@@ -281,7 +299,6 @@ void main() {
       store: session.renderCaches.envelopeInkStore,
     );
     addTearDown(ink.dispose);
-    final tool = brush();
     await pumpPanel(
       tester,
       session,

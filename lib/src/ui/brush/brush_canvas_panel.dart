@@ -128,6 +128,7 @@ import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../text/text_measure.dart';
 import '../listenable_rebind.dart';
+import '../input/hit_gate.dart';
 import '../input/value_control_pointers.dart';
 import '../canvas/canvas_viewport_offset.dart';
 
@@ -260,6 +261,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.activeSourceEffects = const <ResolvedLayerEffect>[],
     this.contentOverride,
     this.contentShapeTargetAt,
+    this.contentTakesPressAt,
     this.fitFocusRect,
     this.floorCover = EdgeInsets.zero,
     this.floorRightRailBand,
@@ -699,6 +701,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// landing as on the canvas, on the cel that content draws there. Null
   /// at a point where nothing takes it — the press then traces nothing.
   final ContentShapeTarget? Function(Offset global)? contentShapeTargetAt;
+
+  /// Whether a press at [global] is [contentOverride]'s own before any
+  /// tool's — a sheet's photo (I-97-Q3: 「브러시 허용이면 어느 도구든 사진을
+  /// 누르면 집는다」). The tool's layer over the content is not hit there.
+  final bool Function(Offset global)? contentTakesPressAt;
 
   /// Canvas-space rectangle the Fit button frames instead of the whole
   /// canvas (e.g. the camera frame's bounds while the camera layer is
@@ -1879,7 +1886,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   Positioned _selectionLayer() {
     return Positioned.fill(
-      child: ValueListenableBuilder<TransformToolOptions>(
+      child: _asideForTheContent(ValueListenableBuilder<TransformToolOptions>(
         valueListenable:
             widget
                 .transformOptions ??
@@ -2016,9 +2023,25 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               transformOptions:
                   transformOptions,
             ),
-      ),
+      )),
     );
   }
+
+  /// [layer], a tool's over the content, not hit where the content takes
+  /// the press itself ([BrushCanvasPanel.contentTakesPressAt]) — so the
+  /// press falls through to it.
+  Widget _asideForTheContent(Widget layer) => Builder(
+    builder: (gate) => HitGate(
+      admits: (position) {
+        final takes = widget.contentTakesPressAt;
+        final box = gate.findRenderObject();
+        return takes == null ||
+            box is! RenderBox ||
+            !takes(box.localToGlobal(position));
+      },
+      child: layer,
+    ),
+  );
 
   /// The three regions below each do two things and nothing else: hide
   /// the system cursor while the tool's own cursor is up (the app draws

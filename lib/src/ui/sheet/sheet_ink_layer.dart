@@ -796,7 +796,8 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     final targets = SheetShapeScope.maybeOf(context);
     if (!identical(targets, _shapeTargets)) {
       _shapeTargets?.stopAnswering(_shapeAnswer);
-      _shapeTargets = targets?..answerWith(_shapeAnswer);
+      _shapeTargets = targets
+        ?..answerWith(_shapeAnswer, takes: _photoTakesPressAt);
     }
   }
 
@@ -812,6 +813,23 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// lay the brush's stroke for a tool that is not the brush.
   bool get _takesStrokes =>
       canvasToolPaints(widget.brushToolState.value.tool);
+
+  /// The photos' boxes, asked whether a press is theirs.
+  final _photoBoxes = GlobalKey();
+
+  /// Whether a press at [global] is a photo's — its boxes' own answer, the
+  /// one they give the pointer (I-97-Q3: 「어느 도구든」). A tool's layer
+  /// over the sheet stands aside for it, as the brush's view does under
+  /// them.
+  bool _photoTakesPressAt(Offset global) {
+    final boxes = _photoBoxes.currentContext?.findRenderObject();
+    return boxes is RenderBox &&
+        boxes.hasSize &&
+        boxes.hitTest(
+          BoxHitTestResult(),
+          position: boxes.globalToLocal(global),
+        );
+  }
 
   void _shapeShowOf(String id, ShapeShow? show) {
     final was = _shapeShows[id];
@@ -1012,6 +1030,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
           if (hold != null)
             Positioned.fill(
               child: SheetPhotoBoxes(
+                key: _photoBoxes,
                 hold: hold,
                 keyPrefix: widget.keyPrefix,
                 windows: [
