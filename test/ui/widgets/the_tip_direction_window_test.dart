@@ -166,6 +166,16 @@ void main() {
       warnIfMissed: false,
     );
     await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<InkWell>(
+            find.byKey(const ValueKey<String>('dead-source-button')),
+          )
+          .onTap,
+      isNull,
+      reason: 'the well looks dead — no ink, no hover — by having no tap '
+          '(`silentPress`)',
+    );
   });
 
   testWidgets('the lit base is the one the tip turns from — 「선택 표시는 '
