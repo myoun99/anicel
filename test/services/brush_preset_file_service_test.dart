@@ -408,6 +408,27 @@ void main() {
       expect(settings.tipOrder, BrushTipOrder.random);
     });
 
+    test('several tips go inline as well, where a brush leaves the machine '
+        'whole, and come back in order', () {
+      final settings = several().settings;
+      final back = BrushSettings.fromJson(settings.toJson());
+      expect(back.tips, settings.tips);
+    });
+
+    test('a first tip set over several replaces the first and keeps the '
+        'rest', () {
+      final settings = brushSettingsWithMasks(
+        several().settings,
+        'tipMask',
+        [mask('other')],
+      );
+      expect([for (final tip in settings.tips) tip.id], [
+        'other',
+        'cloud-2',
+        'cloud-3',
+      ]);
+    });
+
     test('a library written while a brush had ONE tip reads as it was — no '
         'carry-forward code, and no bump that eats it (유저 2026-09-24)', () {
       // The shape every library on disk has today: one tip, by id, at

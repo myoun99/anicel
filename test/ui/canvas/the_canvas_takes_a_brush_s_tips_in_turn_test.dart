@@ -83,6 +83,33 @@ void main() {
 
     expect(tipsOf(landed.single.sourceDabs), 'abc');
   });
+
+  testWidgets("ランダム throws the stroke's own dice: one path laid twice "
+      'takes the same tips', (tester) async {
+    final landed = <BrushStrokeCommitData>[];
+    ShapeShow? show;
+    await _pump(
+      tester,
+      landed,
+      brushOf(BrushTipOrder.random),
+      onShow: (shown) => show = shown,
+    );
+
+    for (var stroke = 0; stroke < 2; stroke += 1) {
+      show!.landStroke([
+        CanvasPoint(x: 10, y: 20),
+        CanvasPoint(x: 120, y: 20),
+      ]);
+      await tester.pump();
+    }
+
+    final [first, second] = [
+      for (final stroke in landed) tipsOf(stroke.sourceDabs),
+    ];
+    expect(first.length, greaterThan(6), reason: 'a line, not a dot');
+    expect(first, isNot(inTurn(first.length)), reason: 'thrown, not in turn');
+    expect(second, first);
+  });
 }
 
 final _cel = BitmapSurface(

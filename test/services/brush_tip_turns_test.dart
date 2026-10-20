@@ -55,6 +55,14 @@ void main() {
       taken(abc, BrushTipOrder.shuffledLap, 3, seed: 11),
       taken(abc, BrushTipOrder.shuffledLap, 3, seed: 11),
     );
+    // And it IS a shuffle: ten strokes' dice lay more than one order.
+    expect(
+      {
+        for (var seed = 0; seed < 10; seed += 1)
+          taken(abc, BrushTipOrder.shuffledLap, 3, seed: seed),
+      }.length,
+      greaterThan(1),
+    );
   });
 
   test('ランダム throws any tip, each dab, by the stroke\'s dice', () {
