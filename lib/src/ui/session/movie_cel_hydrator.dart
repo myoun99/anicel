@@ -14,14 +14,13 @@ import '../../models/transform_pose.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/cut_frame_composite_plan.dart'
     show resolveCutFrameCompositeEntries;
-import '../../services/import/raster_cel_import.dart'
-    show rasterizeImageToSurface;
+import '../../services/import/cel_picture.dart' show pictureOfPixels;
+import '../../services/import/raster_cel_import.dart' show layCelPicture;
 import '../../services/layer_pose_matrix.dart' show picturePlacement;
 import '../../services/media/media_byte_source.dart'
     show HeldBytesMove, HeldMediaBytes, HoldMediaBytes;
 import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
-import '../../services/straight_rgba_image.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
 
@@ -247,8 +246,8 @@ class MovieCelHydrator {
     if (rgba == null || _disposed) {
       return null;
     }
-    final image = await decodeStraightRgbaImage(
-      rgba: rgba,
+    final picture = await pictureOfPixels(
+      rgba,
       width: movie.info.width,
       height: movie.info.height,
     );
@@ -257,19 +256,16 @@ class MovieCelHydrator {
       // pool's fit for the file, fitted to the canvas as it was at each
       // decode — so a canvas grown since put the movie in its middle.
       // Whole, past the wall (F-374-Q8: 「참조 그림은 벽 밖까지 통째로」).
-      final surface = await rasterizeImageToSurface(
-        image: image,
+      final surface = await layCelPicture(
+        picture: picture,
         canvas: canvas,
-        placement: picturePlacement(
-          pose,
-          CanvasSize(width: image.width, height: image.height),
-        ),
+        placement: picturePlacement(pose, picture.size),
         whole: true,
       );
       _decoded[at] = WeakReference(surface);
       return surface;
     } finally {
-      image.dispose();
+      picture.dispose();
     }
   }
 

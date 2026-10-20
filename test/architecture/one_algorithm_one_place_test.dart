@@ -421,8 +421,22 @@ import '../../tool/refactor/clone_scan.dart';
 /// out of these blocks merges the walk and lowers this back.
 /// 🔬Measured on the lane against master (`4c997b9cc`, at 88): this one
 /// added, none gone.
+///
+/// 89 → 88 (2026-10-20, a-picture-past-the-texture-limit-is-decoded
+/// -squashed — a picture past the engine's side is read by the app). Its
+/// reader would have added three, and adds none: a PNG is unfiltered by the
+/// Paeth predictor the writer filters by (`pngPaeth`), a picture's straight
+/// RGBA is read back one way (`straightRgbaOf`, whose third writer this
+/// was), and a palette entry is copied as the four bytes it is. The read
+/// back made one took a standing pair with it:
+///
+///     lib/src/services/import/raster_cel_import.dart  _laidBlock
+///     lib/src/services/media/viewer_document.dart     cropImageRgba
+///
+/// 🔬Measured on the lane against master (`9705c2b3a`, at 89): none added,
+/// that one gone.
 void main() {
-  const ceiling = 89;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

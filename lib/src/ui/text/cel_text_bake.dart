@@ -7,6 +7,7 @@ import '../../models/bitmap_tile.dart';
 import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
+import '../../services/import/cel_picture.dart' show EnginePicture;
 import '../../services/import/raster_cel_import.dart';
 import '../canvas/raster_picture.dart';
 import 'cel_text_layout.dart';
@@ -44,7 +45,7 @@ CelTextBaker? debugCelTextBaker;
 /// 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
 ///
 /// The pixels take the pass an imported picture's take
-/// ([rasterizeImageToSurface]: one raster over the tiles covered, read back
+/// ([layCelPicture]: one raster over the tiles covered, read back
 /// as straight RGBA, the empty tiles dropped), and are cut at the same
 /// pasteboard wall. A text set wholly beyond it has no plate.
 ///
@@ -89,8 +90,8 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
   );
   final BitmapSurface cut;
   try {
-    cut = await rasterizeImageToSurface(
-      image: set,
+    cut = await layCelPicture(
+      picture: EnginePicture(set),
       canvas: canvasSize,
       placement: rectPlacement(window, width: set.width, height: set.height),
       tileSize: tileSize,

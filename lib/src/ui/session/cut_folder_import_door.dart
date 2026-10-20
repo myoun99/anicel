@@ -170,14 +170,11 @@ class CutFolderImportDoor {
           continue;
         }
         try {
-          final surface = await rasterizeImageToSurface(
-            image: frames.first.image,
+          final picture = frames.first.picture;
+          final surface = await layCelPicture(
+            picture: picture,
             canvas: bakedCut.canvasSize,
-            placement: fitPlacement(
-              frames.first.image,
-              bakedCut.canvasSize,
-              fit,
-            ),
+            placement: fitPlacement(picture.size, bakedCut.canvasSize, fit),
           );
           bakeCelSurface(
             _renderCaches.brushFrameStore,
@@ -190,7 +187,7 @@ class CutFolderImportDoor {
           );
         } finally {
           for (final frame in frames) {
-            frame.image.dispose();
+            frame.picture.dispose();
           }
         }
       }

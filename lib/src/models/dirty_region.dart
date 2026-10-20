@@ -52,7 +52,7 @@ class DirtyRegion {
   /// The whole pixels [rect] touches — its edges floored and ceiled, so a
   /// fractional edge still takes the pixel it reaches into. ONE spelling
   /// for the tiles under a view (`tilesUnderRect`) and where a file's
-  /// picture lies (`rasterizeImageToSurface`, F-374-Q8). ⚠️An empty [rect]
+  /// picture lies (`layCelPicture`, F-374-Q8). ⚠️An empty [rect]
   /// on whole pixels has no region, and is refused as every empty span is.
   factory DirtyRegion.wholePixelsOf(Rect rect) => DirtyRegion(
     left: rect.left.floor(),

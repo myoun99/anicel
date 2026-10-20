@@ -9,7 +9,6 @@
 
 import 'dart:collection';
 import 'dart:typed_data';
-import 'dart:ui' as ui show Image, ImageByteFormat;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
@@ -33,6 +32,7 @@ import '../../models/timeline_exposure.dart';
 import '../../models/transform_pose.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/brush_frame_store.dart' show CelRead;
+import '../../services/brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import '../../services/commands/rasterize_layer_reference_command.dart';
 import '../../services/commands/swap_layer_reference_command.dart';
 import '../../services/cut_frame_composite_plan.dart' show referenceMoveAt;
@@ -41,6 +41,7 @@ import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, picturePlacement;
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/import/import_layer_spot.dart';
+import '../../services/import/cel_picture.dart';
 import '../../services/import/media_identity_reader.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/import/psd_expand_import.dart';
@@ -55,7 +56,6 @@ import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/media_staging_store.dart';
-import '../../services/straight_rgba_image.dart';
 import '../audio/audio_conform_store.dart';
 import '../import/import_file_settings.dart';
 import 'import_landing.dart';
@@ -81,10 +81,11 @@ typedef _MoviePlacement = ({
   List<PlannedCelBake> bakes,
 });
 
-/// One picture a bake lays: its image, whether the bake lets go of it, and
-/// the size the picture IS — what a pose stands on (I-68). A PDF page is
-/// rendered at the size it will stand at, so its image is not its size.
-typedef _BakePicture = ({ui.Image image, bool owned, CanvasSize size});
+/// One picture a bake lays: its pixels, whether the bake lets go of them,
+/// and the size the picture IS — what a pose stands on (I-68). A PDF page
+/// is rendered at the size it will stand at, so its pixels are not its
+/// size.
+typedef _BakePicture = ({CelPicture picture, bool owned, CanvasSize size});
 
 /// What making a reference row's pictures from its file again came to
 /// ([ProjectImportDoors]): the pictures, or why there are none.
@@ -123,12 +124,9 @@ typedef _MadePictures = ({
   Map<int, CanvasSize> sizes,
 });
 
-/// [image] as the picture it is: its size is its own.
-_BakePicture _pictureOf(ui.Image image, {required bool owned}) => (
-  image: image,
-  owned: owned,
-  size: CanvasSize(width: image.width, height: image.height),
-);
+/// [picture] as the picture it is: its size is its own.
+_BakePicture _pictureOf(CelPicture picture, {required bool owned}) =>
+    (picture: picture, owned: owned, size: picture.size);
 
 /// Where a placement stands each of its pictures — one rule for the whole
 /// placement, given the bake, the picture's own size and the canvas it
@@ -277,16 +275,14 @@ class ProjectImportDoors {
     final decoded = allFrames.sublist(kept.first, kept.last + 1);
     for (var index = 0; index < allFrames.length; index += 1) {
       if (index < kept.first || index > kept.last) {
-        allFrames[index].image.dispose();
+        allFrames[index].picture.dispose();
       }
     }
     // A NEW cut is made at the file's own size, which its locked 1:1 fit
     // fills exactly.
-    final first = decoded.first.image;
+    final first = decoded.first.picture;
     final arrival = gate.targetCut == null
-        ? gate.withCanvasSize(
-            CanvasSize(width: first.width, height: first.height),
-          )
+        ? gate.withCanvasSize(first.size)
         : gate;
     final source = arrival.source;
     // The file where the user keeps it — what the pool points at, kept
@@ -301,12 +297,7 @@ class ProjectImportDoors {
     // 굽기」) — baked, whatever was asked.
     final reference = rasterize || spot is RowFramesSpot
         ? null
-        : placedReference(
-            source,
-            CanvasSize(width: first.width, height: first.height),
-            arrival.canvasSize,
-            fit,
-          );
+        : placedReference(source, first.size, arrival.canvasSize, fit);
 
     final Layer layer;
     final List<PlannedCelBake> bakes;
@@ -335,10 +326,7 @@ class ProjectImportDoors {
       // fingerprint is a cheap fold over each frame's RGBA bytes.
       final fingerprints = <Object?>[];
       for (final frame in decoded) {
-        final data = await frame.image.toByteData(
-          format: ui.ImageByteFormat.rawStraightRgba,
-        );
-        fingerprints.add(data == null ? null : _foldBytes(data));
+        fingerprints.add(_foldBytes(await frame.picture.straightRgba()));
       }
       final plan = planSequenceLayer(
         sourceFiles: List<String>.filled(decoded.length, source),
@@ -367,7 +355,7 @@ class ProjectImportDoors {
     );
     if (!landed) {
       for (final frame in decoded) {
-        frame.image.dispose();
+        frame.picture.dispose();
       }
       return false;
     }
@@ -390,11 +378,11 @@ class ProjectImportDoors {
         rowId: _rowOf(spot),
         standing: _standingFor(reference, fit),
         pictureOf: (bake, _) async =>
-            _pictureOf(decoded[bake.sourceFrameIndex].image, owned: false),
+            _pictureOf(decoded[bake.sourceFrameIndex].picture, owned: false),
       );
     } finally {
       for (final frame in decoded) {
-        frame.image.dispose();
+        frame.picture.dispose();
       }
     }
     return true;
@@ -493,18 +481,17 @@ class ProjectImportDoors {
       if (still == null) {
         return null;
       }
+      firstSize ??= still.size;
+      final Uint8List pixels;
       try {
-        firstSize ??= CanvasSize(
-          width: still.image.width,
-          height: still.image.height,
-        );
-        final data = await still.image.toByteData(
-          format: ui.ImageByteFormat.rawStraightRgba,
-        );
-        fingerprints.add(data == null ? null : _foldBytes(data));
+        // A picture held off the engine is read here, not at its decode.
+        pixels = await still.straightRgba();
+      } on Object {
+        return null;
       } finally {
-        still.image.dispose();
+        still.dispose();
       }
+      fingerprints.add(_foldBytes(pixels));
     }
     return (fingerprints: fingerprints, firstSize: firstSize!);
   }
@@ -515,13 +502,12 @@ class ProjectImportDoors {
     if (still == null) {
       throw StateError('$path no longer reads');
     }
-    return _pictureOf(still.image, owned: true);
+    return _pictureOf(still, owned: true);
   }
 
   /// [path]'s picture — the first frame of what it decodes to, a run's cel
-  /// being a still — with the bytes it was read from; null when it does not
-  /// read or decode.
-  Future<({ui.Image image, Uint8List bytes})?> _stillOf(String path) async {
+  /// being a still; null when it does not read or decode.
+  Future<CelPicture?> _stillOf(String path) async {
     try {
       final bytes = await readHeldMediaBytes(_holdBytes, path);
       final frames = await decodeImageFrames(bytes);
@@ -529,9 +515,9 @@ class ProjectImportDoors {
         return null;
       }
       for (final extra in frames.skip(1)) {
-        extra.image.dispose();
+        extra.picture.dispose();
       }
-      return (image: frames.first.image, bytes: bytes);
+      return frames.first.picture;
     } on Object {
       return null;
     }
@@ -1221,7 +1207,7 @@ class ProjectImportDoors {
   }
 
   /// [cel]'s picture where [move] carries it, on a cel of the same canvas —
-  /// laid as every picture a door bakes is ([rasterizeImageToSurface]),
+  /// laid as every picture a door bakes is ([layCelPicture]),
   /// whole (F-374-Q8).
   ///
   /// 🚨Composed over where its FILE lies, not over the cel: the clear canvas
@@ -1235,7 +1221,49 @@ class ProjectImportDoors {
     BitmapSurface cel,
     LayerPlacement move,
   ) async {
+    final held = await _celPicture(cel);
+    try {
+      return await layCelPicture(
+        picture: held.picture,
+        canvas: cel.canvasSize,
+        placement: move.compose(held.at),
+        tileSize: cel.tileSize,
+        whole: cel.laidBounds != null,
+      );
+    } finally {
+      held.picture.dispose();
+    }
+  }
+
+  /// [cel]'s picture over where its file lies ([_celMoved]), and where that
+  /// stands on the canvas: composed — or, past the side this device's
+  /// engine hands a picture back at, the bytes the cel holds, kept off the
+  /// engine as its file was when it was laid ([pictureSideLimit]). 🔬A
+  /// compose past the side comes back smaller (20480×1024 asked, 16384×819
+  /// made — `composePositionedSurfaceImage`), and the move would have laid
+  /// it so.
+  static Future<({CelPicture picture, LayerPlacement at})> _celPicture(
+    BitmapSurface cel,
+  ) async {
     final laid = cel.laidBounds;
+    if (laid != null &&
+        isPastTheSide(laid.width, laid.height, await pictureSideLimit())) {
+      return (
+        picture: PixelsPicture(
+          bitmapSurfaceRegionPixels(cel, laid),
+          width: laid.width,
+          height: laid.height,
+        ),
+        at: GuideTransform(
+          1,
+          0,
+          0,
+          1,
+          laid.left.toDouble(),
+          laid.top.toDouble(),
+        ),
+      );
+    }
     final composed = await composePositionedSurfaceImage(
       cel,
       over: laid?.rect,
@@ -1243,18 +1271,11 @@ class ProjectImportDoors {
     if (composed == null) {
       throw StateError('The cel did not compose.');
     }
-    try {
-      final at = composed.worldRect.topLeft;
-      return await rasterizeImageToSurface(
-        image: composed.image,
-        canvas: cel.canvasSize,
-        placement: move.compose(GuideTransform(1, 0, 0, 1, at.dx, at.dy)),
-        tileSize: cel.tileSize,
-        whole: laid != null,
-      );
-    } finally {
-      composed.image.dispose();
-    }
+    final at = composed.worldRect.topLeft;
+    return (
+      picture: EnginePicture(composed.image),
+      at: GuideTransform(1, 0, 0, 1, at.dx, at.dy),
+    );
   }
 
   /// I-47: [layerId] — a reference row of the active cut — shows [path]
@@ -1437,10 +1458,10 @@ class ProjectImportDoors {
     }
     return (
       count: frames.length,
-      at: (index) async => _pictureOf(frames[index].image, owned: false),
+      at: (index) async => _pictureOf(frames[index].picture, owned: false),
       close: () async {
         for (final frame in frames) {
-          frame.image.dispose();
+          frame.picture.dispose();
         }
       },
     );
@@ -1654,12 +1675,12 @@ class ProjectImportDoors {
     if (rgba == null) {
       throw StateError('Movie frame ${bake.sourceFrameIndex} did not decode.');
     }
-    final image = await decodeStraightRgbaImage(
-      rgba: rgba,
+    final picture = await pictureOfPixels(
+      rgba,
       width: info.width,
       height: info.height,
     );
-    return _pictureOf(image, owned: true);
+    return _pictureOf(picture, owned: true);
   }
 
   /// The row a [spot] names, when it names one — frames let go of on a
@@ -1752,24 +1773,24 @@ class ProjectImportDoors {
     CanvasSize canvas,
   ) async {
     try {
-      return await rasterizeImageToSurface(
-        image: picture.image,
+      return await layCelPicture(
+        picture: picture.picture,
         canvas: canvas,
         placement: _laid(picture, pose),
         whole: true,
       );
     } finally {
       if (picture.owned) {
-        picture.image.dispose();
+        picture.picture.dispose();
       }
     }
   }
 
-  /// Where [picture]'s image lays when the picture stands at [pose]: the
-  /// pose stands on the picture's own size, and the image may be drawn at
+  /// Where [picture]'s pixels lay when the picture stands at [pose]: the
+  /// pose stands on the picture's own size, and its pixels may be drawn at
   /// another — a PDF page is rendered at the size it will stand at.
   static LayerPlacement _laid(_BakePicture picture, TransformPose pose) {
-    final image = picture.image;
+    final image = picture.picture;
     final size = picture.size;
     final onTheCanvas = picturePlacement(pose, size);
     if (image.width == size.width && image.height == size.height) {
@@ -1851,10 +1872,12 @@ class ProjectImportDoors {
     CanvasSize page,
     TransformPose pose,
   ) async => (
-    image: await document.renderPage(
-      pageIndex,
-      width: pagePixels(page.width * pose.scaleX.abs()),
-      height: pagePixels(page.height * pose.scaleY.abs()),
+    picture: EnginePicture(
+      await document.renderPage(
+        pageIndex,
+        width: pagePixels(page.width * pose.scaleX.abs()),
+        height: pagePixels(page.height * pose.scaleY.abs()),
+      ),
     ),
     owned: true,
     size: page,
@@ -1871,9 +1894,10 @@ class ProjectImportDoors {
     return end;
   }
 
-  Object _foldBytes(ByteData data) {
+  Object _foldBytes(Uint8List pixels) {
     // Every 4th PIXEL, all four channels — a fold that read one channel
     // would merge frames whose change hides in the others.
+    final data = ByteData.sublistView(pixels);
     var hash = 0x811c9dc5;
     for (var i = 0; i + 3 < data.lengthInBytes; i += 16) {
       hash = (hash ^ data.getUint32(i)) * 0x01000193 & 0xFFFFFFFF;

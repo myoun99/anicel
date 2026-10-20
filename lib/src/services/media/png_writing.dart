@@ -200,7 +200,7 @@ final class PngImageData {
           final left = i < bpp ? 0 : row[i - bpp];
           final up = above == null ? 0 : above[i];
           final upLeft = above == null || i < bpp ? 0 : above[i - bpp];
-          final f = (row[i] - _paeth(left, up, upLeft)) & 0xFF;
+          final f = (row[i] - pngPaeth(left, up, upLeft)) & 0xFF;
           into[i] = f;
           cost += f < 128 ? f : 256 - f;
         }
@@ -210,8 +210,9 @@ final class PngImageData {
 }
 
 /// The Paeth predictor: of [a] (left), [b] (up) and [c] (up-left), the one
-/// nearest to a + b − c, ties to the earlier.
-int _paeth(int a, int b, int c) {
+/// nearest to a + b − c, ties to the earlier — what a row is filtered by
+/// here, and unfiltered by when one is read (`readPngRows`).
+int pngPaeth(int a, int b, int c) {
   final p = a + b - c;
   final pa = (p - a).abs();
   final pb = (p - b).abs();

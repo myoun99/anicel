@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui' as ui show ImageByteFormat;
 
 import '../../core/on_a_worker.dart';
 import '../../models/kept_span.dart';
@@ -213,17 +212,11 @@ class TrimmedPieces {
         inFrame: trim.inFrame,
         outFrame: trim.outFrame,
       );
-      final first = decoded[kept.first].image;
+      final first = decoded[kept.first].picture;
       final frames = <AnimatedPngFrame>[];
       for (var index = kept.first; index <= kept.last; index += 1) {
-        final data = await decoded[index].image.toByteData(
-          format: ui.ImageByteFormat.rawStraightRgba,
-        );
-        if (data == null) {
-          return null;
-        }
         frames.add((
-          rgba: data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+          rgba: await decoded[index].picture.straightRgba(),
           duration: decoded[index].duration,
         ));
       }
@@ -236,7 +229,7 @@ class TrimmedPieces {
       return kept;
     } finally {
       for (final frame in decoded) {
-        frame.image.dispose();
+        frame.picture.dispose();
       }
     }
   }

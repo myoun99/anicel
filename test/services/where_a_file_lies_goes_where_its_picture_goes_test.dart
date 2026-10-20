@@ -7,6 +7,7 @@ import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
+import 'package:anicel/src/services/import/cel_picture.dart';
 import 'package:anicel/src/services/import/raster_cel_import.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/undo_surface_snapshot.dart';
@@ -205,8 +206,8 @@ void main() {
       await tester.runAsync(() async {
         final image = await strip();
 
-        final surface = await rasterizeImageToSurface(
-          image: image,
+        final surface = await layCelPicture(
+          picture: EnginePicture(image),
           canvas: celTextTestCanvas,
           placement: const GuideTransform(1, 0, 0, 1, -64, 0),
           tileSize: celTextTestTileSize,
@@ -237,8 +238,8 @@ void main() {
       await tester.runAsync(() async {
         final image = await strip();
 
-        final surface = await rasterizeImageToSurface(
-          image: image,
+        final surface = await layCelPicture(
+          picture: EnginePicture(image),
           canvas: celTextTestCanvas,
           placement: const GuideTransform(1, 0, 0, 1, -64.5, 0.25),
           tileSize: celTextTestTileSize,
@@ -264,8 +265,8 @@ void main() {
       await tester.runAsync(() async {
         final image = await strip();
 
-        final surface = await rasterizeImageToSurface(
-          image: image,
+        final surface = await layCelPicture(
+          picture: EnginePicture(image),
           canvas: celTextTestCanvas,
           placement: const GuideTransform(1, 0, 0, 1, -64, 0),
           tileSize: celTextTestTileSize,

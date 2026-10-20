@@ -6,6 +6,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/media_asset.dart' show MediaFitMode;
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
+import 'package:anicel/src/services/import/cel_picture.dart';
 import 'package:anicel/src/services/import/raster_cel_import.dart';
 
 /// A 1:1 integer-aligned placement must be a BYTE COPY, not a resample:
@@ -14,7 +15,7 @@ import 'package:anicel/src/services/import/raster_cel_import.dart';
 /// store pixels ARE the engine render.
 void main() {
   testWidgets('an exactly canvas-sized image round-trips through '
-      'rasterizeImageToSurface byte-identically', (tester) async {
+      'layCelPicture byte-identically', (tester) async {
     await tester.runAsync(() async {
       const canvas = CanvasSize(width: 64, height: 64);
       final recorder = ui.PictureRecorder();
@@ -35,10 +36,14 @@ void main() {
         format: ui.ImageByteFormat.rawStraightRgba,
       ))!.buffer.asUint8List();
 
-      final surface = await rasterizeImageToSurface(
-        image: image,
+      final surface = await layCelPicture(
+        picture: EnginePicture(image),
         canvas: canvas,
-        placement: fitPlacement(image, canvas, MediaFitMode.stretch),
+        placement: fitPlacement(
+          CanvasSize(width: image.width, height: image.height),
+          canvas,
+          MediaFitMode.stretch,
+        ),
         tileSize: 64,
       );
       image.dispose();
@@ -73,8 +78,8 @@ void main() {
 
       // Four times its size at a whole-pixel origin: a copy repeats each
       // pixel four times, a resample blends where the two meet.
-      final surface = await rasterizeImageToSurface(
-        image: image,
+      final surface = await layCelPicture(
+        picture: EnginePicture(image),
         canvas: canvas,
         placement: const GuideTransform(4, 0, 0, 4, 0, 0),
         tileSize: 64,
@@ -131,8 +136,8 @@ void main() {
       ui.Image image,
       GuideTransform placement,
     ) async {
-      final surface = await rasterizeImageToSurface(
-        image: image,
+      final surface = await layCelPicture(
+        picture: EnginePicture(image),
         canvas: const CanvasSize(width: 256, height: 256),
         placement: placement,
         tileSize: 64,

@@ -40,12 +40,16 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+import 'package:anicel/src/services/import/cel_picture.dart'
+    show debugPictureSideLimit;
 import 'package:anicel/src/services/import/raster_cel_import.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show picturePlacement;
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/reference_move_carried.dart';
+import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
+    show debugComposesFromBytes;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
@@ -651,6 +655,44 @@ void main() {
         shown(s, rowOf(s, row)),
         const ui.Rect.fromLTRB(-630, 812, 2970, 842),
       );
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    // 🗣️유저 2026-10-18 (a-picture-past-the-texture-limit-is-decoded
+    // -squashed-Q1): 「원본 해상도 그대로」. A compose past the side this
+    // device's engine hands a picture back at comes back smaller (20480×1024
+    // asked, 16384×819 made — `composePositionedSurfaceImage`); the test
+    // engine cuts nothing, so the side is named, and what is pinned is that
+    // no compose is asked.
+    testWidgets('🚨past the side the engine hands a picture back at, a paper '
+        'is baked as it shows from the bytes its cel holds — never composed '
+        'by the engine', (tester) async {
+      debugPictureSideLimit = 64;
+      addTearDown(() => debugPictureSideLimit = null);
+      final (s, row) = await placed(tester, width: 7200, height: 60);
+      attachToTheDrawing(s, row);
+      posed(s, row, fx: halved);
+      debugComposesFromBytes = 0;
+
+      await tester.runAsync(
+        () => s.importDoors.bakeReferenceAsSeen(
+          cutId: s.requireActiveCut.id,
+          layerId: row.id,
+        ),
+      );
+
+      expect(debugComposesFromBytes, 0);
+      expect(
+        shown(s, rowOf(s, row)),
+        const ui.Rect.fromLTRB(-630, 812, 2970, 842),
+      );
+      expect(colourAt(celOf(s, rowOf(s, row), 0), 1170, 827), [
+        255,
+        0,
+        0,
+        255,
+      ]);
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });

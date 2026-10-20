@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import '../straight_rgba_image.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
@@ -11,6 +10,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../photoshop/psd_reader.dart';
+import 'cel_picture.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 import 'psd_layer_plan.dart';
 import 'raster_cel_import.dart';
@@ -96,8 +96,8 @@ Future<PsdExpansion?> readPsdExpansion({
       continue;
     }
     final crop = placement.crop;
-    final image = await decodeStraightRgbaImage(
-      rgba: _croppedTo(crop, pixels, source.width),
+    final picture = await pictureOfPixels(
+      _croppedTo(crop, pixels, source.width),
       width: crop.width,
       height: crop.height,
     );
@@ -109,8 +109,8 @@ Future<PsdExpansion?> readPsdExpansion({
           // The rect comes from the plan, which already carried the
           // document's fit — fitting each layer on its own would scatter a
           // stack that lines up in Photoshop.
-          surface: await rasterizeImageToSurface(
-            image: image,
+          surface: await layCelPicture(
+            picture: picture,
             canvas: laidOn,
             placement: rectPlacement(
               placement.rect,
@@ -123,7 +123,7 @@ Future<PsdExpansion?> readPsdExpansion({
     } finally {
       // One layer's picture at a time: eighty full-canvas layers held at
       // once is how expanding a background runs a tablet out of memory.
-      image.dispose();
+      picture.dispose();
     }
   }
 

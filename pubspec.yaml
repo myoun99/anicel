@@ -58,6 +58,11 @@ dependencies:
   pdf: ^3.13.0
   desktop_drop: ^0.7.1
   pdfrx: ^2.4.7
+  # A JPEG, WebP, BMP or GIF too big for this device's engine to decode
+  # whole is read off the GPU through it (유저 2026-10-18: 「원본 해상도
+  # 그대로 — GPU 를 거치지 않는 디코더」). Already in the lock through pdf;
+  # named here because lib now imports it.
+  image: ^4.9.1
 
 dev_dependencies:
   flutter_test:

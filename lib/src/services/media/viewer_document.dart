@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../../models/canvas_size.dart';
+import '../straight_rgba_image.dart' show straightRgbaOf;
 import 'media_byte_source.dart';
 
 /// One open document the viewer can show: how many pages it has, how big
@@ -229,13 +230,7 @@ Future<Uint8List> cropImageRgba(
     picture.dispose();
   }
   try {
-    final data = await cropped.toByteData(
-      format: ui.ImageByteFormat.rawStraightRgba,
-    );
-    if (data == null) {
-      throw StateError('the box could not be read back');
-    }
-    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    return await straightRgbaOf(cropped);
   } finally {
     cropped.dispose();
   }
