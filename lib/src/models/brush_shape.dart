@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show listEquals, mapEquals;
+
 import 'brush_anti_alias.dart';
 import 'brush_input_source.dart';
 import 'brush_blend_mode.dart';
@@ -492,10 +494,12 @@ class BrushShape {
           other.flow == flow &&
           other.hardness == hardness &&
           other.spacing == spacing &&
-          _sameCurves(other.curves, curves) &&
+          // ⚠️`==` on a map or a list is IDENTITY: every rebuilt shape would
+          // be unequal to itself and every listener rebuild forever.
+          mapEquals(other.curves, curves) &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
-          _sameTips(other.tips, tips) &&
+          listEquals(other.tips, tips) &&
           other.tipOrder == tipOrder &&
           other.rotationMode == rotationMode &&
           other.angleJitter == angleJitter &&
@@ -575,47 +579,6 @@ class BrushShape {
       'textureContrast: $textureContrast, '
       'textureScale: $textureScale, textureDensity: $textureDensity, '
       'correction: $correction)';
-}
-
-/// Whether two curve maps hold the same curves.
-///
-/// ⚠️`Map ==` is IDENTITY in Dart, so comparing the maps directly would make
-/// every rebuilt shape unequal to itself and every listener rebuild forever.
-/// The four named fields this replaced were compared one by one and got that
-/// for free; a map has to say it.
-bool _sameCurves(
-  Map<BrushDynamicsKey, BrushPressureCurve> a,
-  Map<BrushDynamicsKey, BrushPressureCurve> b,
-) {
-  if (identical(a, b)) {
-    return true;
-  }
-  if (a.length != b.length) {
-    return false;
-  }
-  for (final entry in a.entries) {
-    if (b[entry.key] != entry.value) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/// Whether two tip lists hold the same tips in the same order — `List ==`
-/// is identity, the trap [_sameCurves] spells out.
-bool _sameTips(List<BrushTipMask> a, List<BrushTipMask> b) {
-  if (identical(a, b)) {
-    return true;
-  }
-  if (a.length != b.length) {
-    return false;
-  }
-  for (var index = 0; index < a.length; index += 1) {
-    if (a[index] != b[index]) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /// The four pressure curves as a [BrushShape.curves] map.
