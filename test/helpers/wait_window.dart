@@ -27,11 +27,24 @@ Future<void> pumpPastTheWaitWindow(WidgetTester tester) async {
   await settleAsync(
     tester,
     () => window.evaluate().isEmpty,
+    beat: _hop,
     step: const Duration(milliseconds: 50),
     everyFrame: () => passTheDoneLinger(tester),
   );
   expect(window, findsNothing, reason: 'the wait window went');
 }
+
+/// The real time a round of [pumpPastTheWaitWindow] lends: a turn of the
+/// real event loop, no more. What the window waits on is a chain of real
+/// hops — a file read, a decode, a write — each finishing in a turn and
+/// going on in the next pump, so the chain sets how many rounds it takes,
+/// not how long each lends.
+///
+/// 🔬2026-10-20, a numbered run's four placements: 49~59 rounds at a beat
+/// of 20, 4 or 1 ms and a step of 10 or 50 ms alike — and 7.3 s of placing
+/// at 20ms against 3.4 s at 1ms. ⛔Not the shared beat: a window that waits
+/// for something NOT to happen (`lendBothClocks`) is as long as its beats.
+const _hop = Duration(milliseconds: 1);
 
 /// Pumps a wait window's done line ([appProgressDoneLinger]) in ONE step,
 /// once every [AppProgressDialog] standing SHOWS its work is over — its
