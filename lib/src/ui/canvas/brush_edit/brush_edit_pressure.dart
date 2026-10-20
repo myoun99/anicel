@@ -319,14 +319,13 @@ class _BrushEditPressure {
     }
     final pressure = pressureOf(event);
     if (pressure.read || opening) {
-      _state._currentPressure = pressure.pressure;
+      _state._readings = _state._readings.withPressure(pressure.pressure);
     }
     // ⚠️ONE FIELD for the tilt READING, because azimuth without altitude is a
     // lean in a direction nothing reported — and `BrushDab` refuses that pair
     // outright. The same shape as `_travelled` below, and for the same reason.
     final lean = tiltOf(event);
-    _state._currentTilt = lean;
-    _state._currentTwist = penTwist();
+    _state._readings = _state._readings.withLean(lean).withTwist(penTwist());
     final tally = _leanTally;
     _leanTally = lean == null
         ? (
@@ -366,7 +365,7 @@ class _BrushEditPressure {
       // A pen that has just landed has no move behind it: standing still is
       // only what stands in until the first move measures (유저 2026-09-27,
       // `opening-dab-speed-Q1`: 「첫 이동의 속도로 — 필압과 같은 법」).
-      _state._currentSpeed = 0.0;
+      _state._readings = _state._readings.withSpeed(0.0);
       return false;
     }
     final measured = AppInput.normalizedSpeed(
@@ -378,7 +377,7 @@ class _BrushEditPressure {
     if (measured == null) {
       return false;
     }
-    _state._currentSpeed = measured;
+    _state._readings = _state._readings.withSpeed(measured);
     return true;
   }
 
@@ -386,8 +385,7 @@ class _BrushEditPressure {
   /// reported (which is what a mouse says, and is not the same as an upright
   /// pen), standing still, with no earlier reading to measure against.
   void restInput() {
-    _state._currentPressure = 1.0;
-    _state._currentSpeed = 0.0;
+    _state._readings = _state._readings.withPressure(1.0).withSpeed(0.0);
     _travelled = null;
   }
 

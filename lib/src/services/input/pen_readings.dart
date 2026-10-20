@@ -11,6 +11,30 @@ typedef PenReadings = ({
   double speed,
 });
 
+/// One reading of [PenReadings] changed and the rest kept — the one place
+/// the four are listed to change one.
+///
+/// 🚨A STROKE HOLDS ITS READINGS AS ONE VALUE (F-176-Q9). As four fields
+/// beside each other, every place that saved, restored or held them listed
+/// all four, and a twist dropped from any one list still compiled: the
+/// steadied line behind the pen and a sample waiting for its first pressure
+/// both lost the pen's twist and no pin noticed (mutants P20–P23). Held as
+/// one, a reading is saved and put back whole; only a change of one input
+/// names the others, and it names them here.
+extension PenReadingsChange on PenReadings {
+  PenReadings withPressure(double pressure) =>
+      (pressure: pressure, lean: lean, twist: twist, speed: speed);
+
+  PenReadings withLean(PenLean? lean) =>
+      (pressure: pressure, lean: lean, twist: twist, speed: speed);
+
+  PenReadings withTwist(double? twist) =>
+      (pressure: pressure, lean: lean, twist: twist, speed: speed);
+
+  PenReadings withSpeed(double speed) =>
+      (pressure: pressure, lean: lean, twist: twist, speed: speed);
+}
+
 /// A place on a line, and what the pen read there.
 typedef PenPoint = ({CanvasPoint position, PenReadings readings});
 

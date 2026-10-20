@@ -186,12 +186,13 @@ class _BrushEditOpening {
   /// without one — the sample just noted brought it, so it is what the
   /// stroke holds now.
   void _fillWaiting({required bool pressure, required bool speed}) {
+    final now = _state._readings;
     for (final sample in _waiting!.samples) {
       if (pressure) {
-        sample.pressure = _state._currentPressure;
+        sample.readings = sample.readings.withPressure(now.pressure);
       }
       if (speed) {
-        sample.speed = _state._currentSpeed;
+        sample.readings = sample.readings.withSpeed(now.speed);
       }
     }
   }
@@ -207,17 +208,24 @@ class _BrushEditOpening {
     final samples = _waiting!.samples;
     _waiting = null;
     for (final sample in samples) {
-      final tilt = sample.tilt;
-      _state._stroke.paintReading((
-        pressure:
-            _state._pressure.recordedPressure(sample.at) ?? sample.pressure,
-        lean: tilt == null
-            ? null
-            : _state._pressure.recordedTilt(sample.at, tilt.azimuthDegrees) ??
-                  tilt,
-        twist: sample.twist,
-        speed: sample.speed,
-      ), sample.paint);
+      final own = sample.readings;
+      final lean = own.lean;
+      _state._stroke.paintReading(
+        own
+            .withPressure(
+              _state._pressure.recordedPressure(sample.at) ?? own.pressure,
+            )
+            .withLean(
+              lean == null
+                  ? null
+                  : _state._pressure.recordedTilt(
+                          sample.at,
+                          lean.azimuthDegrees,
+                        ) ??
+                        lean,
+            ),
+        sample.paint,
+      );
     }
   }
 
@@ -229,10 +237,7 @@ class _BrushEditOpening {
   ) => _WaitingSample(
     at: at,
     position: position,
-    pressure: _state._currentPressure,
-    speed: _state._currentSpeed,
-    tilt: _state._currentTilt,
-    twist: _state._currentTwist,
+    readings: _state._readings,
     paint: paint,
   );
 }
@@ -246,10 +251,7 @@ class _WaitingSample {
   _WaitingSample({
     required this.at,
     required this.position,
-    required this.pressure,
-    required this.speed,
-    required this.tilt,
-    required this.twist,
+    required this.readings,
     required this.paint,
   });
 
@@ -259,9 +261,9 @@ class _WaitingSample {
   /// Where the pen was, before any smoothing: the press's is where the
   /// stroke's direction is measured from.
   final CanvasPoint position;
-  double pressure;
-  double speed;
-  final PenLean? tilt;
-  final double? twist;
+
+  /// What the sample read, whole — its pressure and speed filled in as the
+  /// first readings come ([_BrushEditOpening._fillWaiting]).
+  PenReadings readings;
   final void Function() paint;
 }
