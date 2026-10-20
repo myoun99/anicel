@@ -6,6 +6,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/viewer_ink_keys.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
@@ -166,6 +167,46 @@ void main() {
 
     session.historyManager.undo();
     expect(ink.hasInkFor(plane, window.key), isFalse);
+  });
+
+  testWidgets('the brush cursor stands only while the page takes ink, and '
+      'the switch going off under a pen lets the stroke go', (tester) async {
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedPicture,
+    );
+    final (:slot, ink: _) = await view(tester, session, path);
+    bool cursors() => tester
+        .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+        .toolCursorsEnabled;
+    expect(cursors(), isFalse, reason: 'nothing to draw on, no tip');
+
+    slot.brushAllowed.value = true;
+    await tester.pump();
+    expect(cursors(), isTrue);
+
+    final overlay = tester.widget<ViewerInkOverlay>(
+      find.byType(ViewerInkOverlay),
+    );
+    final origin = tester.getTopLeft(find.byType(ViewerInkOverlay));
+    final rect = overlay.windows.single.screenRect(overlay.viewport);
+    final gesture = await tester.startGesture(origin + rect.center, pointer: 7);
+    await tester.pump();
+    await gesture.moveTo(origin + rect.center + const Offset(6, 4));
+    await tester.pump();
+    expect(session.brushInputActive.value, isTrue, reason: '⛔전제');
+
+    slot.brushAllowed.value = false;
+    await tester.pump();
+    await tester.pump();
+    expect(
+      session.brushInputActive.value,
+      isFalse,
+      reason: 'the window is gone; the pen will never be lifted there',
+    );
+    expect(cursors(), isFalse);
+    await gesture.up();
   });
 
   testWidgets('a picture the pool points at keeps the switch in its place, '
