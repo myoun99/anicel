@@ -523,9 +523,10 @@ class ProjectImportDoors {
     }
   }
 
-  /// EXPAND: a Photoshop stack becomes ours — ONE folder named after the
-  /// file, holding its layers with their groups, names, opacity, blend and
-  /// eye intact.
+  /// EXPAND: a Photoshop stack becomes ours — its layers with their groups,
+  /// names, opacity, blend and eye intact, held in ONE folder named after
+  /// the file where they join a cut, and standing bare in a NEW cut, which
+  /// is the file's own ([planPsdExpansion], F-422).
   ///
   /// Always baked. "One of them baked means all of them are" is the rule
   /// the user set: a half-linked stack would take original updates on some
@@ -561,6 +562,7 @@ class ProjectImportDoors {
     }
     final cutId = gate.cutId;
     final duration = gate.stillDuration(lengthFrames: lengthFrames);
+    final newCut = gate.targetCut == null;
 
     final PsdExpansion? expansion;
     try {
@@ -570,7 +572,7 @@ class ProjectImportDoors {
         cutId: cutId,
         duration: duration,
         canvas: gate.canvasSize,
-        canvasFromDocument: gate.targetCut == null,
+        newCut: newCut,
         fit: fit,
         mint: gate.mint,
       );
@@ -580,9 +582,7 @@ class ProjectImportDoors {
     if (expansion == null || expansion.layers.isEmpty) {
       return null;
     }
-    final arrival = gate.targetCut == null
-        ? gate.withCanvasSize(expansion.canvas)
-        : gate;
+    final arrival = newCut ? gate.withCanvasSize(expansion.canvas) : gate;
 
     _landing.land(
       expansion.layers,
@@ -604,8 +604,9 @@ class ProjectImportDoors {
       }
     }
 
-    // The folder row is the last layer, and a folder takes no brush — so
-    // the topmost PICTURE is what the hand should land on.
+    // The last row may be a folder — the file's, where it joined a cut, or
+    // a group of its own — and a folder takes no brush, so the topmost
+    // PICTURE is what the hand should land on.
     final picture = expansion.layers.lastWhere(
       (layer) => layer.kind != LayerKind.folder,
       orElse: () => expansion!.layers.last,

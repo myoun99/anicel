@@ -10,9 +10,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import '../helpers/psd_fixture.dart';
 import '../helpers/temp_dir.dart';
 
-/// EXPAND, end to end: a real `.psd` on disk becomes a folder of layers
-/// whose cels live in the brush-frame store like drawn ones, and ONE undo
-/// takes the whole thing back out.
+/// EXPAND, end to end: a real `.psd` on disk becomes layers — in a folder of
+/// its name where they join a cut — whose cels live in the brush-frame
+/// store like drawn ones, and ONE undo takes the whole thing back out.
 ///
 /// The real IO and codec work runs inside `tester.runAsync` — the fake-async
 /// zone never completes a file future.
@@ -78,8 +78,8 @@ void main() {
     return file.path;
   }
 
-  testWidgets('a PSD expands into ONE folder of layers, cels baked, one undo '
-      'takes it all back', (tester) async {
+  testWidgets('a PSD joining a cut expands into ONE folder of layers, cels '
+      'baked, one undo takes it all back', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final cut = s.activeCutOrNull!;
@@ -163,8 +163,8 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('expanding into a NEW CUT lands a cut holding the stack',
-      (tester) async {
+  testWidgets('expanding into a NEW CUT lands a cut holding the stack bare: '
+      'the cut is the file, so no folder of its name (F-422)', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
@@ -186,10 +186,17 @@ void main() {
       reason: 'a NEW cut is made at the document\'s own size',
     );
     expect(
-      cut.layers.where((layer) => layer.kind == LayerKind.folder).length,
-      2,
-      reason: 'the document folder and the group inside it',
+      [
+        for (final layer in cut.layers)
+          if (layer.kind == LayerKind.folder) layer.name,
+      ],
+      ['BOOK'],
+      reason: 'the group the file has, and no folder it does not',
     );
+    for (final name in ['under', 'BOOK']) {
+      final row = cut.layers.firstWhere((layer) => layer.name == name);
+      expect(row.folderId, isNull, reason: name);
+    }
     await tester.pumpAndSettle();
   });
 }

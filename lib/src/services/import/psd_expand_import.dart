@@ -50,13 +50,16 @@ class PsdExpansion {
   final List<ImportWarning> warnings;
 
   /// The canvas the stack was laid out on — the document's own size when
-  /// the stack makes a NEW cut ([readPsdExpansion]'s `canvasFromDocument`).
+  /// the stack makes a NEW cut ([readPsdExpansion]'s `newCut`).
   final CanvasSize canvas;
 }
 
 /// Expands [bytes] into layers and cel surfaces, or null when the document
 /// has no layer stack to expand (a flattened PSD — which the MERGE reading
 /// handles perfectly well).
+///
+/// [newCut]: the stack makes a cut of its own — laid out at the document's
+/// own size, and standing in it unwrapped ([planPsdExpansion]).
 Future<PsdExpansion?> readPsdExpansion({
   required Uint8List bytes,
   required String displayName,
@@ -65,7 +68,7 @@ Future<PsdExpansion?> readPsdExpansion({
   required CanvasSize canvas,
   required MediaFitMode fit,
   required ImportIdMint mint,
-  bool canvasFromDocument = false,
+  required bool newCut,
 }) async {
   // Off the UI isolate: a layout PSD is routinely a hundred megabytes, and
   // its layer section is the expensive half.
@@ -75,7 +78,7 @@ Future<PsdExpansion?> readPsdExpansion({
   }
   // A NEW cut is made at the document's own size, which is only known once
   // the header has been read — here.
-  final laidOn = canvasFromDocument
+  final laidOn = newCut
       ? CanvasSize(width: document.width, height: document.height)
       : canvas;
   final plan = planPsdExpansion(
@@ -86,6 +89,7 @@ Future<PsdExpansion?> readPsdExpansion({
     canvas: laidOn,
     fit: fit,
     mint: mint,
+    newCut: newCut,
   );
 
   final cels = <PsdExpandedCel>[];

@@ -113,6 +113,7 @@ void main() {
     MediaFitMode fit = MediaFitMode.none,
     CanvasSize canvas = const CanvasSize(width: 4, height: 4),
     int duration = 12,
+    bool newCut = false,
   }) => planPsdExpansion(
     document: doc,
     displayName: 'BG_a12.psd',
@@ -121,10 +122,12 @@ void main() {
     canvas: canvas,
     fit: fit,
     mint: mint(),
+    newCut: newCut,
   );
 
   group('the shape of the stack', () {
-    test('everything lands inside ONE folder named after the file', () {
+    test('into a cut already there, everything lands inside ONE folder '
+        'named after the file', () {
       final result = plan(document([raster('a'), raster('b')]));
       expect(result.layers, hasLength(3));
       final root = result.layers.last;
@@ -167,6 +170,29 @@ void main() {
       expect(book.folderId, root.id);
       expect(result.layers[0].folderId, root.id);
       expect(result.layers[3].folderId, root.id);
+    });
+
+    test('a NEW cut is the file: its rows stand in it bare, under no folder '
+        'the file does not have (F-422)', () {
+      final result = plan(
+        document([
+          raster('under'),
+          bracket(PsdLayerRole.groupClose),
+          raster('inside'),
+          bracket(PsdLayerRole.groupOpen, name: 'BOOK'),
+          raster('over'),
+        ]),
+        newCut: true,
+      );
+      expect(
+        result.layers.map((layer) => layer.name).toList(),
+        ['under', 'inside', 'BOOK', 'over'],
+      );
+      final book = result.layers[2];
+      expect(result.layers[1].folderId, book.id, reason: 'inside the group');
+      for (final row in [result.layers[0], book, result.layers[3]]) {
+        expect(row.folderId, isNull, reason: row.name);
+      }
     });
 
     test('a group shown closed comes in closed, an open one open — the '

@@ -30,10 +30,16 @@ import '../../models/import/import_warning.dart';
 /// a translation — [LayerBlendMode.passThrough] is our folder default and
 /// means the same thing.
 ///
-/// The whole document lands inside ONE folder named after the file. That is
-/// what makes "expanded PSD" a thing you can point at: undo takes it, a
-/// later re-import replaces it, and nobody has to reason about which of
-/// forty rows came from where.
+/// Into a cut that is there already, the whole document lands inside ONE
+/// folder named after the file. That is what makes "expanded PSD" a thing
+/// you can point at there: undo takes it, a later re-import replaces it,
+/// and nobody has to reason about which of forty rows came from where.
+///
+/// A NEW cut made of the document is that thing already — the cut is the
+/// file — so its rows stand in it as the file has them, under no folder the
+/// file does not have (🗣️유저 2026-10-20, F-422: 「새 컷으로 만들기 해도
+/// psd의 파일이름폴더가 타임라인에 생기는데 안생기도록. 레이어에 임포트할때만
+/// 생기도록」). ↩️A new cut held the file's folder too.
 ///
 /// Pure: it decides the tree and the rectangles, and never touches a pixel.
 /// The pixels are the service's half, which is what makes every rule here
@@ -105,7 +111,8 @@ const Map<String, LayerBlendMode> psdBlendModes = {
 /// Plans [document]'s expansion into [canvas].
 ///
 /// [duration] is the cut's length: an expanded layer is a PICTURE layer, so
-/// its one cel is held across the whole thing.
+/// its one cel is held across the whole thing. [newCut]: the stack makes a
+/// cut of its own, and stands in it unwrapped.
 PsdExpandPlan planPsdExpansion({
   required PsdDocument document,
   required String displayName,
@@ -114,6 +121,7 @@ PsdExpandPlan planPsdExpansion({
   required CanvasSize canvas,
   required MediaFitMode fit,
   required ImportIdMint mint,
+  required bool newCut,
 }) {
   final warnings = <ImportWarning>[...document.warnings];
   final held = duration < 1 ? 1 : duration;
@@ -134,7 +142,7 @@ PsdExpandPlan planPsdExpansion({
     documentSize,
   );
 
-  final rootId = mint.nextLayerId();
+  final rootId = newCut ? null : mint.nextLayerId();
   final layers = <Layer>[];
   final placements = <PsdLayerPlacement>[];
 
@@ -142,7 +150,7 @@ PsdExpandPlan planPsdExpansion({
   // members and the folder row itself ABOVE them — which is our order
   // exactly, so the walk is one pass with a stack of open groups.
   final openGroups = <LayerId>[];
-  LayerId enclosing() => openGroups.isEmpty ? rootId : openGroups.last;
+  LayerId? enclosing() => openGroups.isEmpty ? rootId : openGroups.last;
 
   for (var index = 0; index < document.layers.length; index += 1) {
     final source = document.layers[index];
@@ -232,15 +240,17 @@ PsdExpandPlan planPsdExpansion({
   }
 
   // The root goes last: the folder row sits above everything it holds.
-  layers.add(
-    Layer(
-      id: rootId,
-      name: displayName,
-      kind: LayerKind.folder,
-      frames: const [],
-      timeline: SplayTreeMap<int, TimelineExposure>(),
-    ),
-  );
+  if (rootId != null) {
+    layers.add(
+      Layer(
+        id: rootId,
+        name: displayName,
+        kind: LayerKind.folder,
+        frames: const [],
+        timeline: SplayTreeMap<int, TimelineExposure>(),
+      ),
+    );
+  }
 
   return PsdExpandPlan(
     layers: layers,
