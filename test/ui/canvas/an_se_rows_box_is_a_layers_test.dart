@@ -356,6 +356,36 @@ void main() {
       expect((await colourAt(blurred, far)).a, greaterThan(0));
     });
 
+    test('through the row\'s blur — the picture it blurs is its drawing '
+        'grown by the blur\'s spread, as a layer\'s is', () async {
+      Future<Rect> bufferOf(double radius) async {
+        debugLastSubtreeRaster = null;
+        await alphaAt(
+          tag(
+            effects: [
+              ResolvedLayerEffect(
+                kind: EffectKind.blur,
+                values: [radius, radius],
+              ),
+            ],
+          ),
+          0,
+          0,
+        );
+        return debugLastSubtreeRaster!.bounds;
+      }
+
+      final narrow = await bufferOf(1);
+      final wide = await bufferOf(30);
+      expect(wide.contains(narrow.topLeft), isTrue);
+      expect(wide.contains(narrow.bottomRight - const Offset(1, 1)), isTrue);
+      expect(
+        wide.width * wide.height,
+        greaterThan(narrow.width * narrow.height),
+        reason: 'room for what the blur spreads past the drawing',
+      );
+    });
+
     test('as one picture, the whole of every letter — set closer than they '
         'are wide, a letter reaches past the line\'s ink', () async {
       // No box round them: the box would hold what they reach (measured —
