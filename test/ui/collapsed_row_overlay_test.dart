@@ -80,6 +80,22 @@ void main() {
     expect(inOverlay(find.byType(TimelineLayerControlsRow)), findsOneWidget);
   });
 
+  /// F-408 — the folded row rebuilds on the rail's view sets as ONE
+  /// listenable ([RailView.drawn]), as both tabs do. A twirl tells no
+  /// session listener: only the sets carry it.
+  testWidgets('folded, the row twirls when its row does', (tester) async {
+    final session = await pumpApp(tester);
+    await collapseBottom(tester);
+    TimelineLayerControlsRow row() =>
+        tester.widget(inOverlay(find.byType(TimelineLayerControlsRow)));
+    expect(row().lanesExpanded, isFalse, reason: '⛔전제: born shut');
+
+    session.layerSwitches.toggleLayerLanes(session.activeLayerId!);
+    await tester.pump();
+
+    expect(row().lanesExpanded, isTrue);
+  });
+
   /// T16-ⓐ — mounting the real row brought the panel's GROUND with it.
   ///
   /// 유저 2026-08-13: 「원래 구상대로라면 프레임셀쪽은 바탕색은 싹 없애고
