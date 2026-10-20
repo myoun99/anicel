@@ -509,6 +509,31 @@ void main() {
       expect(session.onionSkin.isLayerOnionSkinEnabled(born.id), isTrue);
     });
 
+    test('🚨the canvas ghosts the conte of the cut stood in, turned on '
+        'through another cut\'s', () {
+      final session = sessionOf(film());
+      session.selectCut(const CutId('b'));
+      session.selectLayer(const LayerId('b-conte'));
+      session.selectFrameIndex(6);
+      session.createDrawingAtCurrentFrame();
+      expect(
+        session.onionSkin.onionSkinCanvasRequests(),
+        isEmpty,
+        reason: '⛔전제: nothing ghosts yet',
+      );
+
+      session.onionSkin.toggleLayerOnionSkin(const LayerId('a-conte'));
+
+      expect(
+        [
+          for (final request in session.onionSkin.onionSkinCanvasRequests())
+            request.frameKey.layerId,
+        ],
+        [const LayerId('b-conte')],
+        reason: 'b\'s panel before the playhead',
+      );
+    });
+
     test('⛔a row in no conte group ghosts alone', () {
       final session = sessionOf(film());
       session.onionSkin.toggleLayerOnionSkin(const LayerId('a-cel'));
