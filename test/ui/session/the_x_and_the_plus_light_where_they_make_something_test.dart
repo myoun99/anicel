@@ -184,6 +184,28 @@ void main() {
         );
       }
     });
+
+    // F-339 (유저 2026-10-11: 「버튼 활성화되고 눌러도 아무반응없는데」) —
+    // F-107's 「그 외도 있나 확인」: the direction row lit on every cell.
+    test('on a direction row, is lit on an empty cell and dark on a block, '
+        'where its press makes nothing', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.layerStack.addLayerOfKind(LayerKind.instruction);
+      session.selectFrameIndex(3);
+      final before = session.historyManager.undoCount;
+
+      expect(session.cellInstances.canCreateInstance, isTrue);
+      createActiveInstance(session);
+      final made = session.historyManager.undoCount;
+      expect(made, before + 1, reason: '⛔전제: an empty cell makes a block');
+
+      expect(session.cellInstances.canCreateInstance, isFalse);
+      createActiveInstance(session);
+      expect(session.historyManager.undoCount, made);
+    });
   });
 
   group('the conte row\'s other buttons are lit, and each press lands', () {

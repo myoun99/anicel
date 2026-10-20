@@ -60,21 +60,33 @@ class Instructions {
     return instructionSpanCovering(layer.instructions, frameIndex);
   }
 
+  /// Whether [createDefaultInstructionEventAtCurrentFrame] makes a block —
+  /// the ONE sentence its press and the ＋ that lights for it read (T25).
+  ///
+  /// 🗣️F-107 (유저 2026-09-12): 「불가능한 버튼 비활성화 … 그 외도 있나
+  /// 확인」. ↩️The ＋ lit on every direction cell while the press made
+  /// nothing on a covered one (F-339: 「버튼 활성화되고 눌러도 아무반응없는데」).
+  bool get canCreateDefaultInstructionEventAtCurrentFrame {
+    final layer = _selection.activeLayer;
+    if (layer == null || layer.kind != LayerKind.instruction) {
+      return false;
+    }
+    final frameIndex = _controllers.timelineController.currentFrameIndex;
+    return frameIndex >= 0 &&
+        instructionSpanAt(layer.id, frameIndex) == null &&
+        _camera.cameraInstructionSet.defs.isNotEmpty;
+  }
+
   /// Dialog-free instruction creation (UI-R25 #2, 조작 통일화): an EMPTY
   /// instruction cell gains a ONE-frame event of the vocabulary's first
   /// entry directly — the Edit Instance dialog changes it afterwards.
   /// Covered cells no-op (creation never edits).
   void createDefaultInstructionEventAtCurrentFrame() {
-    final layer = _selection.activeLayer;
-    if (layer == null || layer.kind != LayerKind.instruction) {
+    if (!canCreateDefaultInstructionEventAtCurrentFrame) {
       return;
     }
+    final layer = _selection.activeLayer!;
     final frameIndex = _controllers.timelineController.currentFrameIndex;
-    if (frameIndex < 0 ||
-        instructionSpanAt(layer.id, frameIndex) != null ||
-        _camera.cameraInstructionSet.defs.isEmpty) {
-      return;
-    }
     upsertInstructionEventAt(
       layer.id,
       frameIndex,
