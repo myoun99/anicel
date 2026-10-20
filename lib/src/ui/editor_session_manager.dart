@@ -1888,6 +1888,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     activeCut: _activeCutEdits,
     laneGroupShown: (row, laneId) => activeCutControllers.layerController
+        .twirls
         .laneGroupShownCommand(row, laneId),
   );
 
