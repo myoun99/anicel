@@ -168,7 +168,7 @@ class _BrushEditOpening {
   ///
   /// ↩️The lean waited here too, while UIKit's estimate of it counted as no
   /// reading. Build 1065 showed nearly every Pencil sample estimated: every
-  /// sample's lean is read now ([_BrushEditPressure.tiltOf]), so a contact
+  /// sample's lean is read now ([penLeanOf]), so a contact
   /// has read it from its press and there is nothing to wait for.
   bool get _awaitsAReading =>
       (_pressureUnread && _reads(BrushInputSource.pressure)) ||
@@ -218,11 +218,7 @@ class _BrushEditOpening {
             .withLean(
               lean == null
                   ? null
-                  : _state._pressure.recordedTilt(
-                          sample.at,
-                          lean.azimuthDegrees,
-                        ) ??
-                        lean,
+                  : recordedPenLean(sample.at, lean.azimuthDegrees) ?? lean,
             ),
         sample.paint,
       );

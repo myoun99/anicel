@@ -179,14 +179,14 @@ class _CanvasPanelToolCursor {
   // 지우개나 다른툴누르면 커서가 사라짐」 — stays fixed, by construction
   // rather than by a build-time copy.
 
-  /// The brush cursor's look for the tool state and the viewport as they
-  /// are now: the outline of the tip, in a box that certainly holds it.
-  ToolCursorLook _brushLook() => brushCursorLook(
+  /// The brush cursor's look for [tip] and the viewport as it is now: the
+  /// outline of the tip, in a box that certainly holds it.
+  ToolCursorLook _brushLook(PoisedTip tip) => brushCursorLook(
     brushCursorShape(
       viewport: _state._viewportState._viewport,
-      size: _state._brush.size,
-      roundness: _state._brush.roundness,
-      angleDegrees: _state._brush.angleDegrees,
+      size: tip.size,
+      roundness: tip.roundness,
+      angleDegrees: tip.angleDegrees,
     ),
   );
 
@@ -319,27 +319,23 @@ class _CanvasPanelToolCursor {
     ];
   }
 
-  /// The brush cursor. The tip's footprint — size, roundness, angle — is
-  /// the one part of the brush it SHOWS, so it hears those three for
-  /// itself: the panel around it no longer rebuilds for the brush
-  /// (H40 ②, see [BrushCanvasPanel.brushToolState]).
+  /// The brush cursor. The tip's footprint — size, roundness, angle, as the
+  /// pen at the aim is held ([poisedTip], F-176-Q7) — is the one part of
+  /// the brush it SHOWS, so it hears the brush and the pen's pose for
+  /// itself and rebuilds only when the tip they make changes: the panel
+  /// around it no longer rebuilds for the brush (H40 ②, see
+  /// [BrushCanvasPanel.brushToolState]).
   Widget _brushCursor(ValueListenable<Offset?> aim) {
-    Widget sprite() => ToolCursorSprite(
-      key: const ValueKey<String>('brush-cursor-overlay'),
-      position: aim,
-      look: _brushLook(),
-    );
     final brush = _state.widget.brushToolState;
-    if (brush == null) {
-      return sprite();
-    }
-    return SlicedValueListenableBuilder<
-      BrushToolState,
-      (double, double, double)
-    >(
-      valueListenable: brush,
-      slice: (state) => (state.size, state.roundness, state.angleDegrees),
-      builder: (context, _) => sprite(),
+    final pose = _state._penPose;
+    return SlicedListenableBuilder<PoisedTip>(
+      listenable: brush == null ? pose : Listenable.merge([brush, pose]),
+      slice: () => poisedTip(_state._brush.shape, pose.value),
+      builder: (context, tip) => ToolCursorSprite(
+        key: const ValueKey<String>('brush-cursor-overlay'),
+        position: aim,
+        look: _brushLook(tip),
+      ),
     );
   }
 }

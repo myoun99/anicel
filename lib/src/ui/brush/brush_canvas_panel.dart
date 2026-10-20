@@ -15,6 +15,7 @@ import '../timeline/axis_turn.dart' show sizedAlong;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
 import '../../services/input/modifier_keys.dart';
+import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
@@ -95,6 +96,7 @@ import '../sliced_value_listenable_builder.dart';
 import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
+import '../../services/brush_poised_tip.dart';
 import 'brush_cursor_geometry.dart' show brushCursorShape;
 import 'brush_cursor_painter.dart' show brushCursorLook;
 import 'eyedropper_swatch_painter.dart' show eyedropperSwatchLook;
@@ -1138,6 +1140,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// `paint`, once per frame (`eyedropper_swatch_painter.dart`).
   final ValueNotifier<Offset?> _toolCursorHover = ValueNotifier<Offset?>(null);
 
+  /// How the pen at the aim is held — its lean and its twist — for the brush
+  /// outline, which shows the tip that pose lays down (F-176-Q7, 유저
+  /// 2026-10-21 「펜을 따라 바뀐다」). Written beside the aim by the same
+  /// census, from the same event; a mouse writes no pose.
+  final ValueNotifier<PenPose> _penPose = ValueNotifier<PenPose>((
+    lean: null,
+    twist: null,
+  ));
+
   /// 🚨★★★F-33: what the surface painter draws as the stamp's ghost.
   ///
   /// A notifier rather than a build-time value so a hover REPAINTS the
@@ -1598,6 +1609,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _idleAnts.dispose();
     _selectionFloat.dispose();
     _toolCursorHover.dispose();
+    _penPose.dispose();
     _stampPreview.dispose();
     widget.viewCommands?.unbind(this);
     super.dispose();
@@ -1724,10 +1736,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// ⚠️Consequence, and it is the right one: on a pen-less tablet with the
   /// slot on flip/none, no brush outline ever appears. There is nothing being
   /// aimed. Lift a pen and it follows the pen.
-  void _noteCanvasPointer(
-    Offset localPosition, {
-    required PointerDeviceKind kind,
-  }) {
+  void _noteCanvasPointer(PointerEvent event) {
+    final kind = event.kind;
     // I-15 · I-88: nor while a view hold has the pointer — it drives no tool.
     if (!AppInput.toolAcceptsPointer(kind) ||
         CanvasViewHold.held.value != null) {
@@ -1767,7 +1777,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // The cursors were always mounted behind their own `_brushCursorActive`
     // gates, so the value simply being there is what arms them — the seed
     // was doing by hand what the mount already does.
-    _toolCursor.setToolCursorHover(localPosition, 'census:${kind.name}');
+    _toolCursor.setToolCursorHover(
+      event.localPosition,
+      'census:${kind.name}',
+    );
+    // How the pen at the aim is held, off the same event — what the brush
+    // outline turns and stretches by (F-176-Q7).
+    _penPose.value = penPoseOf(event);
     if (_toolCursor.brushCursorActive ||
         _toolCursor.fillCursorActive ||
         // The stamp's piece preview reads the same census — one writer,

@@ -9,7 +9,7 @@ import 'package:flutter/scheduler.dart';
 import '../../models/bitmap_surface.dart';
 import '../../native/qa_pen_ledger.dart';
 import '../../services/input/modifier_keys.dart';
-import '../../services/input/pen_lean.dart';
+import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_readings.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../debug/input_inspector.dart';

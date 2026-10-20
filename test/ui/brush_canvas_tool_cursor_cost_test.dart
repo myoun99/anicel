@@ -1,8 +1,16 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'dart:math' as math;
+
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ContainerLayer, Layer, PictureLayer;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/brush/brush_cursor_geometry.dart';
+import 'package:anicel/src/ui/brush/brush_cursor_painter.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
@@ -301,6 +309,110 @@ void main() {
       () => brush.value = brush.value.copyWith(tool: CanvasTool.eraser),
     );
     expect(toolChange.rebuilt, contains(BrushCanvasPanel));
+  });
+
+  // 🚨F-176-Q7 (유저 2026-10-21 「펜을 따라 바뀐다」): the outline of a
+  // tilted pencil is the tip the pen lays down — turned by its lean and
+  // flattened as it lies down. A hovering pen's lean changes by the event,
+  // so it is held to what a brush change is held to: the cursor and the way
+  // to it, nothing beside — the law the F-130 cursor lives by.
+  testWidgets('🚨a leaning pen turns and flattens the outline — the tip it '
+      'lays down — and repaints the cursor alone (F-176-Q7)', (tester) async {
+    final canvasPaints = <int>[0];
+    final chromePaints = <int>[0];
+    final brush = await pumpPanel(
+      tester,
+      tool: CanvasTool.brush,
+      canvasPaints: canvasPaints,
+      chromePaints: chromePaints,
+    );
+    // The tilted pencil: the tip turns with the pen's lean and is as round
+    // as the pen leans.
+    brush.value = brush.value.copyWith(
+      shape: brush.value.shape
+          .withCurve(
+            BrushPressureTarget.roundness,
+            BrushInputSource.tilt,
+            BrushPressureCurve.linearFrom(0.0),
+          )
+          .copyWith(rotationMode: BrushTipRotationMode.penTilt),
+    );
+    final cursor = find.byKey(const ValueKey<String>('brush-cursor-overlay'));
+    BrushCursorShape shape() =>
+        (tester.widget<ToolCursorSprite>(cursor).look.painter
+                as BrushCursorPainter)
+            .shape!;
+    // The pointer carries the lean on the test's platform (Android): [tilt]
+    // from vertical, and the top leaning to the bottom of the screen.
+    void hover(Offset at, {required double tilt}) =>
+        tester.binding.handlePointerEvent(
+          PointerHoverEvent(
+            kind: PointerDeviceKind.stylus,
+            position: canvasGlobalOffset(tester, at),
+            tilt: tilt,
+          ),
+        );
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
+    await tester.pump();
+    expect(
+      shape().minorRadius,
+      closeTo(shape().majorRadius, 1e-6),
+      reason: 'a mouse has no pose: the tip as it is set, round',
+    );
+
+    hover(const Offset(8, 4), tilt: math.pi / 4);
+    await tester.pump();
+    expect(
+      shape().minorRadius / shape().majorRadius,
+      closeTo(0.5, 1e-6),
+      reason: 'half way down is half the lean: half as round',
+    );
+    expect(
+      shape().majorAxis.dx.abs(),
+      lessThan(1e-6),
+      reason: 'a pen leaning toward the bottom of the screen turns the tip '
+          'to stand up and down',
+    );
+
+    final canvasBefore = canvasPaints[0];
+    final chromeBefore = chromePaints[0];
+    final (:rebuilt, :painted) = await frameCensus(
+      tester,
+      () => hover(const Offset(12, 4), tilt: math.pi / 3),
+    );
+    // ALIVE — the outline followed the lean.
+    expect(shape().minorRadius / shape().majorRadius, closeTo(2 / 3, 1e-6));
+    // THE CLAIM — as for a brush change: the panel did not rebuild, and
+    // nothing beside the way to the cursor painted.
+    expect(rebuilt, isNot(contains(BrushCanvasPanel)));
+    final sprite = tester.renderObject(cursor);
+    bool leadsToTheCursor(RenderObject object) {
+      for (RenderObject? at = sprite; at != null; at = at.parent) {
+        if (identical(at, object)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    expect(painted, contains(sprite));
+    expect([
+      for (final object in painted)
+        if (!leadsToTheCursor(object) &&
+            !(object.isRepaintBoundary && !paintedInside(painted, object)))
+          object.runtimeType,
+    ], isEmpty);
+    expect(canvasPaints[0], canvasBefore);
+    expect(chromePaints[0], chromeBefore);
+
+    // And the mouse again has no pose — the tip as it is set.
+    await mouse.moveTo(canvasGlobalOffset(tester, const Offset(16, 4)));
+    await tester.pump();
+    expect(shape().minorRadius, closeTo(shape().majorRadius, 1e-6));
   });
 
   testWidgets('the fill bucket and its cursor-hiding region mount together', (

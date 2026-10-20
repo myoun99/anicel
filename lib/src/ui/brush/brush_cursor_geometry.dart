@@ -42,6 +42,8 @@ const double minimumBrushCursorDiameter = 7.0;
 /// [size] is the BASE brush size: pen pressure changes what a stroke lays
 /// down moment to moment, and a cursor that breathed with it would be
 /// impossible to aim with. Photoshop and Clip Studio both show the base.
+/// How the pen is HELD does reach it (`poisedTip`, F-176-Q7): a pose is
+/// there before the pen touches, and a pressure is not.
 BrushCursorShape? brushCursorShape({
   required CanvasViewport viewport,
   required double size,

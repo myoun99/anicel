@@ -464,22 +464,13 @@ class _PanelBuild {
                     },
                     child: Listener(
                       behavior: HitTestBehavior.translucent,
-                      onPointerHover: (event) => _state._noteCanvasPointer(
-                        event.localPosition,
-                        kind: event.kind,
-                      ),
+                      onPointerHover: _state._noteCanvasPointer,
                       onPointerDown: (event) {
                         _state._tap.beginCanvasPointer(event);
-                        _state._noteCanvasPointer(
-                          event.localPosition,
-                          kind: event.kind,
-                        );
+                        _state._noteCanvasPointer(event);
                         _state._line.press(event);
                       },
-                      onPointerMove: (event) => _state._noteCanvasPointer(
-                        event.localPosition,
-                        kind: event.kind,
-                      ),
+                      onPointerMove: _state._noteCanvasPointer,
                       // …and the exit above is the whole
                       // story ONLY for pointers Flutter
                       // reports an exit for. A finger, a

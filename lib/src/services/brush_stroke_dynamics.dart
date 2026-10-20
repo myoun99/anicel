@@ -95,12 +95,11 @@ class BrushStrokeDynamics {
         }
 
         var angle = dab.angleDegrees;
-        final turn = switch (settings.rotationMode) {
-          BrushTipRotationMode.fixed => null,
-          BrushTipRotationMode.direction => directionDegrees,
-          BrushTipRotationMode.penTilt => penDirectionDegrees(dab),
-          BrushTipRotationMode.penTwist => penTwistDegrees(dab),
-        };
+        final turn = tipTurnDegrees(
+          settings.rotationMode,
+          dab,
+          directionDegrees: directionDegrees,
+        );
         if (turn != null) {
           angle += turn;
         }
@@ -172,6 +171,24 @@ double? strokeDirectionDegrees({
   }
   return math.atan2(-dy, dx) * 180.0 / math.pi;
 }
+
+/// How far the 向き base [mode] turns [dab]'s tip from its own angle, in
+/// dab degrees — null where it turns nothing: a fixed tip, or a base that
+/// cannot say yet (no [directionDegrees] before the stroke moves, a pen that
+/// reports no lean or no twist).
+///
+/// The one answer to "which way does the tip point": a stroke's dabs and
+/// the brush cursor (`poisedTip`, F-176-Q7) both ask it.
+double? tipTurnDegrees(
+  BrushTipRotationMode mode,
+  BrushDab dab, {
+  required double? directionDegrees,
+}) => switch (mode) {
+  BrushTipRotationMode.fixed => null,
+  BrushTipRotationMode.direction => directionDegrees,
+  BrushTipRotationMode.penTilt => penDirectionDegrees(dab),
+  BrushTipRotationMode.penTwist => penTwistDegrees(dab),
+};
 
 /// Which way the pen leans, as a dab angle — visual counterclockwise degrees
 /// from the horizontal, the way [BrushDab.angleDegrees] runs — or `null`

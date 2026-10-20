@@ -296,7 +296,7 @@ class _BrushEditPressure {
 
   /// Reads every input the next dab will carry off one pointer sample, and
   /// answers which of them the sample READ: its pressure ([pressureOf]) and
-  /// its speed ([_noteSpeed]). Its lean ([tiltOf]) is always read. [opening]
+  /// its speed ([_noteSpeed]). Its lean ([penLeanOf]) is always read. [opening]
   /// says the contact has not read a pressure yet.
   ///
   /// 🚨ONE CALL, because pressure and tilt come off the SAME event and a
@@ -324,8 +324,9 @@ class _BrushEditPressure {
     // ⚠️ONE FIELD for the tilt READING, because azimuth without altitude is a
     // lean in a direction nothing reported — and `BrushDab` refuses that pair
     // outright. The same shape as `_travelled` below, and for the same reason.
-    final lean = tiltOf(event);
-    _state._readings = _state._readings.withLean(lean).withTwist(penTwist());
+    final pose = penPoseOf(event);
+    final lean = pose.lean;
+    _state._readings = _state._readings.withLean(lean).withTwist(pose.twist);
     final tally = _leanTally;
     _leanTally = lean == null
         ? (
@@ -388,108 +389,4 @@ class _BrushEditPressure {
     _state._readings = _state._readings.withPressure(1.0).withSpeed(0.0);
     _travelled = null;
   }
-
-  /// How the pen leans, as the pair a dab carries ([PenLean]) — or null
-  /// where nothing measured one.
-  ///
-  /// ★FROM WHOEVER CARRIES THE LEAN FOR THIS EVENT (desktop-pen-tilt,
-  /// 2026-09-28): the pointer on iOS and Android; on a desktop, whose
-  /// pointer carries none ([_pointerCarriesTilt]), the platform's own
-  /// record — the NSEvent's, through the pen ledger, on macOS, and the
-  /// driver's, through the sidecars, on Windows. Each speaks its own
-  /// convention, and `pen_lean.dart` is the one place they become one.
-  /// ↩️This used to read the pointer alone, 「deliberately, and unlike
-  /// pressure」, because no defect in tilt was known: the defect was that a
-  /// desktop pointer has no tilt to read.
-  ///
-  /// 🚨NULL WHEN THE DEVICE REPORTED NONE — it used to answer "upright pen"
-  /// (altitude 1.0), which is a reading a mouse never made. 유저 2026-09-09,
-  /// `brush-tilt-no-device-Q1` 답 1: 「기울기 못 재는 기기에서는 傾き 소스를
-  /// 건너뛴다」 (「1번이 구조적으로 맞아보여서」). With the invented value, an
-  /// imported brush whose tilt minimum is 0% drew nothing at all on a mouse
-  /// and nothing on screen could say why.
-  PenLean? penTilt(PointerEvent event) {
-    if (!_pointerCarriesTilt) {
-      final appKit = QaPenLedger.tiltAt(event.timeStamp);
-      if (appKit != null) {
-        return penLeanFromAppKitTilt(x: appKit.x, y: appKit.y);
-      }
-      return PenSidecars.freshLean();
-    }
-    if (event.kind != PointerDeviceKind.stylus &&
-        event.kind != PointerDeviceKind.invertedStylus) {
-      return null;
-    }
-    final tilt = event.tilt;
-    if (!tilt.isFinite) {
-      return null;
-    }
-    return penLeanFromPointer(tilt: tilt, orientation: event.orientation);
-  }
-
-  /// 🚨WHERE THE POINTER CARRIES NO LEAN AT ALL (checked 2026-09-27 on
-  /// 3.47). Flutter's desktop embedder API has no tilt field: Windows reads
-  /// POINTER_PEN_INFO's pressure and rotation and drops tiltX/tiltY, and
-  /// macOS and Linux never see a pen. There a 0 is the field's default, not
-  /// a pen held upright — the invented reading `brush-tilt-no-device-Q1`
-  /// ruled out. Only iOS (UITouch's altitude) and Android (AXIS_TILT) carry
-  /// the lean; everywhere else [penTilt] asks the platform's own record.
-  /// How far the pen is turned about its own barrel, in degrees 0..360
-  /// clockwise — null where nothing measured one (F-176-Q9, Clip Studio's
-  /// ペン軸の回転).
-  ///
-  /// Only Windows' driver-side streams carry it ([PenSidecars.freshTwist]).
-  /// Flutter's pointer has no field for it on any platform — the Windows
-  /// embedder reads POINTER_PEN_INFO's rotation into a pan-zoom field that
-  /// a pen's event never shows — and the macOS pen ledger records no
-  /// rotation yet, so everywhere else this is null: the twist base turns
-  /// nothing there, as 없음 does.
-  double? penTwist() =>
-      _pointerCarriesTilt ? null : PenSidecars.freshTwist();
-
-  static bool get _pointerCarriesTilt =>
-      defaultTargetPlatform == TargetPlatform.iOS ||
-      defaultTargetPlatform == TargetPlatform.android;
-
-  /// How the pen leans for this sample ([penTilt]) — every sample's lean is
-  /// a reading. Where the ledger holds UIKit's measurement of the Pencil's
-  /// altitude, that is the altitude.
-  ///
-  /// ↩️An altitude UIKit called an estimate used to WAIT, as its force did
-  /// (H43 round two). Build 1065 showed UIKit calling nearly every sample's
-  /// force an estimate, and the lean crosses the same Bluetooth link: a tilt
-  /// brush would have waited the whole patience on every stroke. The
-  /// estimate is UIKit's best value, so it is read — pressure's law, which
-  /// holds only the press repeated (see [pressureOf]).
-  PenLean? tiltOf(PointerEvent event) {
-    final own = penTilt(event);
-    final recorded = own == null
-        ? null
-        : QaPenLedger.altitudeAt(event.timeStamp);
-    if (own == null || recorded?.state != PenLedgerState.measured) {
-      return own;
-    }
-    return (
-      azimuthDegrees: own.azimuthDegrees,
-      altitude: _altitudeFrom(recorded!.value),
-    );
-  }
-
-  /// The lean the platform has by now MEASURED for the sample stamped [at]
-  /// — UIKit's altitude sent after the fact, with the sample's own
-  /// [azimuthDegrees] — or null when the ledger holds no measurement of it.
-  PenLean? recordedTilt(Duration at, double azimuthDegrees) {
-    final recorded = QaPenLedger.altitudeAt(at);
-    if (recorded == null || recorded.state != PenLedgerState.measured) {
-      return null;
-    }
-    return (
-      azimuthDegrees: azimuthDegrees,
-      altitude: _altitudeFrom(recorded.value),
-    );
-  }
-
-  /// UIKit's altitude (radians up from the surface) as the dab's 0..1.
-  static double _altitudeFrom(double radians) =>
-      (radians / (math.pi / 2.0)).clamp(0.0, 1.0);
 }

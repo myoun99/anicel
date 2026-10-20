@@ -8,6 +8,9 @@ import 'tool_cursor_look.dart';
 
 /// The brush/eraser cursor: an outline of the tip footprint following the
 /// pointer, Clip-Studio style — size, roundness and angle, and nothing else.
+/// They are the tip the pen at the pointer lays down as it is held
+/// (`poisedTip`, F-176-Q7 「펜을 따라 바뀐다」): a tilted pencil's outline
+/// turns and flattens with the pen.
 ///
 /// Deliberately NOT Photoshop's exact-alpha silhouette. Our sampled tips
 /// (Splatter, Sponge, anything imported) would trace as a heap of contours
