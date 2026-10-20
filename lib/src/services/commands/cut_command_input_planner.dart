@@ -517,32 +517,7 @@ List<AddLayerCommandInputPlan> planAddLayersCommandInput({
     layerId: anchor,
     targetCutId: sibling,
   );
-
-  final copied = <(LayerId, CutId)>{
-    for (final layer in layers)
-      if (layer.kind.linksIntoLinkedCut)
-        for (final sibling in siblings)
-          if (!_keepsItsOwnSingleton(project, sibling, layer))
-            (layer.id, sibling),
-  };
-  bool reaches(LayerId? anchor, CutId sibling) =>
-      anchor == null ||
-      (batch.contains(anchor)
-          ? copied.contains((anchor, sibling))
-          : outside(anchor, sibling) != null);
-  for (var dropped = true; dropped;) {
-    dropped = false;
-    for (final layer in layers) {
-      for (final sibling in siblings) {
-        final anchored =
-            reaches(layer.folderId, sibling) &&
-            reaches(layer.attachedToLayerId, sibling);
-        if (!anchored && copied.remove((layer.id, sibling))) {
-          dropped = true;
-        }
-      }
-    }
-  }
+  final copied = _copiesAnchored(project, layers, siblings, outside);
 
   final ids = _ProjectIdSnapshot.fromProject(project)
     ..layerIds.addAll([for (final id in batch) id.value]);
@@ -575,6 +550,46 @@ List<AddLayerCommandInputPlan> planAddLayersCommandInput({
   }
 
   return [for (final layer in layers) planOf(layer)];
+}
+
+/// The copies [layers] take in [siblings]: each row of a kind that links
+/// into a 겸용 cut, in each sibling that keeps no singleton of its own —
+/// less every copy whose folder or attach base reaches no row there. An
+/// anchor in the batch reaches through its own copy, so a copy dropped
+/// drops the ones that hang on it; one outside reaches through [outside].
+Set<(LayerId, CutId)> _copiesAnchored(
+  Project project,
+  List<Layer> layers,
+  List<CutId> siblings,
+  LayerId? Function(LayerId anchor, CutId sibling) outside,
+) {
+  final batch = {for (final layer in layers) layer.id};
+  final copied = <(LayerId, CutId)>{
+    for (final layer in layers)
+      if (layer.kind.linksIntoLinkedCut)
+        for (final sibling in siblings)
+          if (!_keepsItsOwnSingleton(project, sibling, layer))
+            (layer.id, sibling),
+  };
+  bool reaches(LayerId? anchor, CutId sibling) =>
+      anchor == null ||
+      (batch.contains(anchor)
+          ? copied.contains((anchor, sibling))
+          : outside(anchor, sibling) != null);
+  for (var dropped = true; dropped;) {
+    dropped = false;
+    for (final layer in layers) {
+      for (final sibling in siblings) {
+        final anchored =
+            reaches(layer.folderId, sibling) &&
+            reaches(layer.attachedToLayerId, sibling);
+        if (!anchored && copied.remove((layer.id, sibling))) {
+          dropped = true;
+        }
+      }
+    }
+  }
+  return copied;
 }
 
 /// Whether [sibling] keeps its own row of [layer]'s SINGLETON kind, and so
