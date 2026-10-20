@@ -112,11 +112,7 @@ ConteCellSource _cellSource({
   return ConteCellSource(
     startFrame: cell.startIndex,
     endFrameExclusive: cell.endIndexExclusive,
-    pictureFrame: storyboardCellPictureFrame(
-      cell,
-      pinnedFrameIndex: cut.metadata.thumbnailFrameIndex,
-      conteStart: conteStart,
-    ),
+    pictureFrame: storyboardCellPictureFrame(cell, conteStart: conteStart),
     frameId: cell.frameId,
     inkId: switch (exposure?.memo?.inkId) {
       final inkId? when inkId.isNotEmpty => inkId,

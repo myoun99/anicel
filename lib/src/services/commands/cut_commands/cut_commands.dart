@@ -376,22 +376,6 @@ class _CutCommands {
     );
   }
 
-  /// Pins the storyboard thumbnail to a cut-local frame (null = back to the
-  /// first frame); one undo step.
-  void updateCutThumbnailFrame({
-    required CutId cutId,
-    required int? frameIndex,
-  }) => _coordinator._executeIfChanged(
-    subject: _coordinator._requireCut(cutId),
-    value: frameIndex,
-    read: (cut) => cut.metadata.thumbnailFrameIndex,
-    command: (_) => UpdateCutThumbnailFrameCommand(
-      repository: _coordinator.repository,
-      cutId: cutId,
-      frameIndex: frameIndex,
-    ),
-  );
-
   /// Moves ONE cut to [newIndex] — the left/right nudge buttons' form of
   /// the order edit, stated as the resulting order so both forms share a
   /// command.

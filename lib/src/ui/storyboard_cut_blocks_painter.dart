@@ -566,11 +566,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       for (final cell in cells)
         thumbnails.resolve(
           entry.cut,
-          storyboardCellPictureFrame(
-            cell,
-            pinnedFrameIndex: entry.cut.metadata.thumbnailFrameIndex,
-            conteStart: conteStart,
-          ),
+          storyboardCellPictureFrame(cell, conteStart: conteStart),
           shownHeight: shownHeight,
         ),
     ];

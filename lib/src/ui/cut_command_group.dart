@@ -171,15 +171,9 @@ List<PanelFlyoutEntry> cutAddEntries(EditorSessionManager session) {
       enabled: session.cutPlacement.canCreateCut,
       onSelected: session.cutVerbs.createCut,
     ),
-    // ↩️It read 「Duplicate active cut」 here and 「Duplicate cut」 in the
-    // menu beside it — one verb, and one action's name now.
-    PanelFlyoutItem(
-      keyValue: 'add-cut-duplicate',
-      label: editorActionLabel(EditorActionIds.cutDuplicate),
-      shortcuts: const [EditorActionIds.cutDuplicate],
-      icon: Icons.content_copy,
-      onSelected: session.cutVerbs.duplicateActiveCut,
-    ),
+    // ⛔No duplicate here — 🗣️F-379 (유저 2026-10-17): 「컷 추가
+    // 팝오버버튼의 컷 복제는 컷 버튼에 중복존재하니 삭제」. The cut button's
+    // menu keeps it.
     // 겸용컷: same pictures, own timing. It only ever lived in the top
     // menu bar, and it belongs beside the other ways of making a cut.
     // ↩️It borrowed the menu bar's wording by id; the id is its action's.
@@ -268,20 +262,6 @@ List<PanelFlyoutEntry> cutMenuEntries(
       enabled: canConvertActiveCutToLinked(session),
       onSelected: () =>
           unawaited(showConvertActiveCutToLinked(context, session)),
-    ),
-    // ONE name, and the check says which way the switch stands — as every
-    // switch in a menu does. ↩️The label flipped between 「Pin thumbnail
-    // frame」 and 「Unpin thumbnail frame」, a checked 「Unpin」 among them,
-    // and in English whatever the program language was.
-    PanelFlyoutItem(
-      keyValue: 'set-cut-thumbnail-button',
-      label: editorActionLabel(EditorActionIds.cutPinThumbnail),
-      shortcuts: const [EditorActionIds.cutPinThumbnail],
-      icon: session.cutVerbs.isActiveCutThumbnailPinnedHere
-          ? Icons.image
-          : Icons.image_outlined,
-      checked: session.cutVerbs.isActiveCutThumbnailPinnedHere,
-      onSelected: session.cutVerbs.toggleActiveCutThumbnailFrame,
     ),
     const PanelFlyoutDivider(),
     PanelFlyoutItem(

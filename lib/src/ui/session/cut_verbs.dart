@@ -23,7 +23,6 @@ import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
 import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import '../text/place_lines.dart' show drawingPlaceLines;
-import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'cut_placement.dart';
 import 'independent_clip_mint.dart' show carryBakedPictures, carrySurfaces;
@@ -32,9 +31,9 @@ import 'session_roles.dart';
 import 'storyboard_rows.dart';
 
 /// The CUT VERBS — creating, deleting, duplicating, renaming and moving
-/// the active cut, linking it, resizing its canvas, its note, guides and
-/// thumbnail frame — as their own object. Each is a command over the
-/// repository; the session stays the facade that names them.
+/// the active cut, linking it, resizing its canvas, its note and guides —
+/// as their own object. Each is a command over the repository; the session
+/// stays the facade that names them.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: nothing of its own and twelve
@@ -46,7 +45,6 @@ class CutVerbs {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
-    required ActiveCutControllers controllers,
     required StoryboardRows storyboardRows,
     required ActiveCutEdits activeCut,
     required CutPlacement placement,
@@ -55,7 +53,6 @@ class CutVerbs {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _controllers = controllers,
        _storyboardRows = storyboardRows,
        _activeCut = activeCut,
        _placement = placement,
@@ -74,7 +71,6 @@ class CutVerbs {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
-  final ActiveCutControllers _controllers;
 
   /// Where a cut may step to and which index that is. Stateless, and asked
   /// by nobody but these verbs — so it is theirs, not a name on the session.
@@ -338,31 +334,6 @@ class CutVerbs {
       cutIds: cutIds,
       names: names,
     );
-    _changes.notifyChanged();
-  }
-
-  /// Whether the active cut's storyboard thumbnail is pinned to the
-  /// playhead frame (drives the toolbar toggle's state).
-  bool get isActiveCutThumbnailPinnedHere =>
-      _project.activeCutOrNull?.metadata.thumbnailFrameIndex ==
-          _controllers.timelineController.currentFrameIndex &&
-      _project.activeCutOrNull?.metadata.thumbnailFrameIndex != null;
-
-  /// Pins the active cut's storyboard thumbnail to the playhead frame, or
-  /// releases the pin back to the first frame when pressed on the pinned
-  /// frame itself (toggle; one undo step either way).
-  void toggleActiveCutThumbnailFrame() {
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
-      return;
-    }
-    final frame = _controllers.timelineController.currentFrameIndex;
-    final pinned = cut.metadata.thumbnailFrameIndex;
-    _project.cutCommandCoordinator.updateCutThumbnailFrame(
-      cutId: cut.id,
-      frameIndex: pinned == frame ? null : frame,
-    );
-    _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
   }
 

@@ -51,7 +51,6 @@ final barRows = [
   EditorActionIds.cutSettings,
   EditorActionIds.cutCanvasSize,
   EditorActionIds.cutConvertLinked,
-  EditorActionIds.cutPinThumbnail,
   EditorActionIds.cutMoveLeft,
   EditorActionIds.cutMoveRight,
   EditorActionIds.cutCopyAeCamera,
@@ -269,7 +268,6 @@ void main() {
         'duplicateActiveCut',
         'createLinkedCutFromActiveCut',
         'renameActiveCutWithDialog',
-        'toggleActiveCutThumbnailFrame',
         'moveActiveCutLeft',
         'moveActiveCutRight',
         'copyCameraAeKeyframes',
@@ -393,34 +391,16 @@ void main() {
       );
     });
 
-    testWidgets('one verb reached from two lists is ONE action: both rows '
-        'of 「컷 복제」 name it and read alike', (tester) async {
+    // 🗣️F-379 (유저 2026-10-17): 「컷 추가 팝오버버튼의 컷 복제는 컷 버튼에
+    // 중복존재하니 삭제」.
+    testWidgets("「컷 복제」 is the cut button's row alone — the add list "
+        'carries no second road to it', (tester) async {
       await pumpApp(tester);
       final rows = timelineRows(tester)
           .where((row) => row.shortcuts.contains(EditorActionIds.cutDuplicate))
           .toList();
-      expect(rows.map((row) => row.keyValue), [
-        'duplicate-cut-button',
-        'add-cut-duplicate',
-      ]);
-      expect(rows.map((row) => row.label).toSet(), {'Duplicate cut'});
-    });
-
-    testWidgets('the thumbnail switch says one name, and its check says '
-        'which way it stands', (tester) async {
-      await pumpApp(tester);
-      final session = sessionOf(tester);
-      PanelFlyoutItem row() =>
-          rowOf(timelineRows(tester), EditorActionIds.cutPinThumbnail);
-      final before = row();
-      expect(before.label, 'Pin thumbnail frame');
-      expect(before.checked, session.cutVerbs.isActiveCutThumbnailPinnedHere);
-
-      before.onSelected!();
-      await tester.pumpAndSettle();
-
-      expect(row().label, 'Pin thumbnail frame');
-      expect(row().checked, isNot(before.checked));
+      expect(rows.map((row) => row.keyValue), ['duplicate-cut-button']);
+      expect(rows.single.label, 'Duplicate cut');
     });
   });
 

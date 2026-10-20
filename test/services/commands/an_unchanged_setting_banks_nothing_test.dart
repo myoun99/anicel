@@ -78,10 +78,6 @@ void main() {
       (c) => c.updateCutNote(cutId: cutOf(c), page: 0, note: 'a note'),
     );
     banksOnce(
-      'updateCutThumbnailFrame',
-      (c) => c.updateCutThumbnailFrame(cutId: cutOf(c), frameIndex: 3),
-    );
-    banksOnce(
       'resizeCutCanvas',
       (c) => c.resizeCutCanvas(
         cutId: cutOf(c),

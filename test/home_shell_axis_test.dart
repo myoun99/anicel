@@ -55,7 +55,6 @@ void main() {
       'edit-cut-note-button',
       'resize-cut-canvas-button',
       'duplicate-cut-button',
-      'set-cut-thumbnail-button',
       'move-cut-left-button',
       'move-cut-right-button',
     ]) {

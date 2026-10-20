@@ -917,7 +917,6 @@ abstract final class EditorActionIds {
   static const cutSettings = 'cut-settings';
   static const cutCanvasSize = 'cut-canvas-size';
   static const cutConvertLinked = 'cut-convert-linked';
-  static const cutPinThumbnail = 'cut-pin-thumbnail';
   static const cutMoveLeft = 'cut-move-left';
   static const cutMoveRight = 'cut-move-right';
   static const cutCopyAeCamera = 'cut-copy-ae-camera';
@@ -1919,16 +1918,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.cutConvertLinked,
     label: 'Convert to linked cut…',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  // One name for the switch, and the row's check says which way it stands.
-  // ↩️The row read 「Pin thumbnail frame」 or 「Unpin thumbnail frame」 by its
-  // state, in English in every language.
-  const EditorActionDefinition(
-    id: EditorActionIds.cutPinThumbnail,
-    label: 'Pin thumbnail frame',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,

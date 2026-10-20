@@ -103,7 +103,6 @@ void main() {
     s.cutVerbs.deleteActiveCut();
     s.layerStack.addLayer();
     s.camera.setCameraKeyframeAtCurrentFrame(pose);
-    s.cutVerbs.toggleActiveCutThumbnailFrame();
     s.frameVerbs.selectNextFrame();
     s.frameVerbs.selectPreviousFrame();
     expect(s.activeCutId, isNull, reason: 'stand-downs kept the gap state');

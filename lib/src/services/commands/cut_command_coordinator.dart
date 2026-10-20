@@ -80,7 +80,6 @@ import 'update_cut_staff_name_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
 import 'update_track_effects_command.dart';
-import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_se_name_tag_command.dart';
 import 'update_layer_reference_fx_command.dart';
@@ -230,10 +229,6 @@ class CutCommandCoordinator {
     CutId? cutId,
     TimesheetSheetKind? kind,
   }) => _cuts.setTimesheetFormat(info: info, cutId: cutId, kind: kind);
-  void updateCutThumbnailFrame({
-    required CutId cutId,
-    required int? frameIndex,
-  }) => _cuts.updateCutThumbnailFrame(cutId: cutId, frameIndex: frameIndex);
   void reorderCut({
     required TrackId trackId,
     required CutId cutId,

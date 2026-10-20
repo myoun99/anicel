@@ -41,7 +41,6 @@ const Map<String, String> flyoutOwnerByItemKey = {
   'edit-cut-note-button': 'cut-menu-button',
   'resize-cut-canvas-button': 'cut-menu-button',
   'duplicate-cut-button': 'cut-menu-button',
-  'set-cut-thumbnail-button': 'cut-menu-button',
   'move-cut-left-button': 'cut-menu-button',
   'move-cut-right-button': 'cut-menu-button',
   // ⛔'delete-cut-button' is NOT here any more: ① moved it out of the cut
