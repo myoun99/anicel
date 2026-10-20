@@ -72,6 +72,9 @@ const ledger = <String, Why>{
   // a panel's own action already shows it): 「주지 않는다」.
   "panels/editor_panel_tabs.dart | 'panel-tab-overflow-item-\${tab.id}'":
       Why.declined,
+  // The shortcut window's list of presets (I-107): which layout the keys
+  // are, one out of the list — `key` is `'shortcut-preset-${preset.id}'`.
+  'shortcuts/shortcut_settings_dialog.dart | key': Why.aChoice,
   "timeline/layer_label_controls.dart | 'layer-mark-option-\${option.keySlug}'":
       Why.aChoice,
   "timeline/layer_label_controls.dart | 'layer-mark-option-none'": Why.aChoice,
