@@ -207,6 +207,42 @@ void main() {
       expect(edited.style.fontSize, SeNameTag.defaultStyle.fontSize);
     });
 
+    test('`none` turns an UNKEYED box off in its static slot, keying none; '
+        'a keyed box is turned off by its keys, not by a word', () {
+      final off = seNameTagWithLaneValueEdited(
+        const SeNameTag(),
+        laneId: seNameTagBoxColorLaneId,
+        frameIndex: 6,
+        input: 'none',
+      )!;
+      expect(off.style.backgroundColor, isNull);
+      expect(off.track, isNull);
+
+      final keyedBox = SeNameTag(
+        track: SeNameTagTrack(boxColor: keyed({0: 0xFF000000})),
+      );
+      expect(
+        seNameTagWithLaneValueEdited(
+          keyedBox,
+          laneId: seNameTagBoxColorLaneId,
+          frameIndex: 6,
+          input: 'none',
+        ),
+        isNull,
+      );
+    });
+
+    test('a colour typed into an unkeyed ink keys it (F-407)', () {
+      final edited = seNameTagWithLaneValueEdited(
+        const SeNameTag(),
+        laneId: seNameTagNameInkLaneId,
+        frameIndex: 6,
+        input: '#123456',
+      )!;
+      expect(edited.track!.nameInk.keyAt(6)!.value, 0xFF123456);
+      expect(edited.resolveAt(0).style.color, 0xFF123456);
+    });
+
     test('colours parse in the form the readout prints', () {
       expect(parseArgbInput('#123456'), 0xFF123456);
       expect(parseArgbInput('123456'), 0xFF123456);
