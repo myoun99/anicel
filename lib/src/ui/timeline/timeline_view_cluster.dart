@@ -278,9 +278,9 @@ class TimelineViewCluster extends StatelessWidget {
         _minPixelsPerFrame,
         TimelineZoomLimits.maxPixelsPerFrame,
       ),
-      // Zoom reads as percent of the default frame width.
+      // Zoom reads as percent of the frame to work at (F-403).
       unit: '%',
-      displayScale: 100 / TimelineZoomLimits.defaultPixelsPerFrame,
+      displayScale: 100 / TimelineZoomLimits.referencePixelsPerFrame,
       height: _zoomBarHeight + FieldSlider.growthIn(context),
       // 🚨MULTIPLICATIVE track (I-22 ②-1): a linear one spent 97% of its
       // length on 24→96px and left the whole narrow half — the half the

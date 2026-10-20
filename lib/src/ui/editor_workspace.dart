@@ -890,7 +890,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   // One shared zoom slider drives whichever view is shown; the values are
   // kept per view so each keeps a sensible default scale.
   final ValueNotifier<double> _timelinePixelsPerFrame = ValueNotifier(
-    TimelinePanel.defaultPixelsPerFrame,
+    TimelineZoomLimits.referencePixelsPerFrame,
   );
 
   /// The conte's zoom — the PROJECT's, held by the session and saved beside
@@ -905,7 +905,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// The timeline's zoom follows the active cut: each cut shows at the zoom
   /// it was left at ([TimelineZoomMemory]), and a cut nobody zoomed at the
-  /// default — not at the zoom the last cut was left at.
+  /// zoom to work at, the one the bar reads as 100% (F-403) — not at the
+  /// zoom the last cut was left at.
   void _followTimelineZoomToCut() {
     final session = widget.session;
     final cut = session.activeCutId;
@@ -914,7 +915,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
     _timelineZoomCut = cut;
     _timelinePixelsPerFrame.value =
-        session.timelineZoom.zoomOf(cut) ?? TimelinePanel.defaultPixelsPerFrame;
+        session.timelineZoom.zoomOf(cut) ??
+        TimelineZoomLimits.referencePixelsPerFrame;
   }
 
   /// The zoom slider's one writer: the timeline shows [value], and the

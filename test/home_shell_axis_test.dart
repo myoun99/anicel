@@ -141,10 +141,11 @@ void main() {
   ) async {
     await tester.pumpWidget(const AnicelApp());
 
-    // 24 at 100% — the slim default (R-toolbar round); the painterized
-    // ruler (UI-R13 #1) reports geometry/labels through its painter.
+    // 19.2 at 100%, where a cut opens (F-403: 「80%를 100%로」), laid on
+    // whole pixels; the painterized ruler (UI-R13 #1) reports
+    // geometry/labels through its painter. ↩️24 (R-toolbar round).
     double headerWidth() => timelineHeaderGlobalRect(tester, 0).width;
-    expect(headerWidth(), 24);
+    expect(headerWidth(), 19);
     // Wide cells label every frame in-cell.
     expect(timelineHeaderModel(tester, 0).label, '1');
 
@@ -157,11 +158,11 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await zoomTo(72);
-    expect(headerWidth(), 72);
+    await zoomTo(40);
+    expect(headerWidth(), 40);
 
     // UI-R11 #11: the −/+ STEP buttons flanking the slider zoom without
-    // dragging — multiplicative ×1.25 steps on the whole-px grid.
+    // dragging — multiplicative ×1.25 steps on the bar's 0.1% steps.
     await zoomTo(24);
     await tapToolbarButton(
       tester,

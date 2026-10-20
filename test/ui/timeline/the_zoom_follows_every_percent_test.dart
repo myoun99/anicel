@@ -15,20 +15,51 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 /// 안바뀌고, 2.9까지 이동해야 타임라인 줌 상태가 바뀌는등 … 제대로 퍼센테이지
 /// 바뀔때마다 줌 상태가 바뀌지 않음. … 손을 뗄 때 값이 멋대로 살짝 바뀜」.
 ///
-/// The slider and the −/+ buttons ask ONE bound, and any zoom inside it is a
-/// zoom: every percent the bar reaches is the zoom, and releasing it leaves
-/// it there. ↩️They landed on a grid — whole pixels a frame, whole frames a
-/// pixel under one — which had no zoom between 1/2 and 1 pixel a frame
-/// (2.1% to 4.2%), and the bar jumped back to the grid on release.
+/// 🗣️F-403 (유저 2026-10-19): 「0.9%에서 숫자 안바뀌는데 줌이 바뀌는걸
+/// 발견. 내가 분명 이런 슬라이더에서 조절되는 숫자까지 다 슬라이더에
+/// 보여주라고 하지않았나? … 소수점 두번째부터는 작동안하도록」.
+///
+/// The slider and the −/+ buttons ask ONE bound, and the zooms inside it are
+/// the numbers the bar writes — a step of 0.1%: every number the bar
+/// reaches is a zoom, and no zoom lies between two numbers. ↩️They landed
+/// on a grid — whole pixels a frame, whole frames a pixel under one — which
+/// had no zoom between 1/2 and 1 pixel a frame (2.1% to 4.2%), and the bar
+/// jumped back to the grid on release (F-220); then any zoom was one, and
+/// two zooms could write one number (F-403).
 void main() {
   const fps = 24;
   final floor = TimelineZoomLimits.minPixelsPerFrameAt(fps);
+  const reference = TimelineZoomLimits.referencePixelsPerFrame;
+  const step = reference / 1000;
+
+  /// The number the bar writes for [zoom].
+  String shown(double zoom) => (zoom * 100 / reference).toStringAsFixed(1);
 
   group('TimelineZoomLimits.clamped', () {
-    test('🚨any zoom inside the range is itself — the old grid\'s gaps '
-        'included', () {
+    test('🚨a zoom lands on its nearest 0.1% — the old grid\'s gaps '
+        'included — and a step is itself', () {
       for (final zoom in <double>[0.41, 0.55, 0.67, 1.3, 9.6, 19.2, 24.5, 30]) {
-        expect(TimelineZoomLimits.clamped(zoom, framesPerSecond: fps), zoom);
+        final landed = TimelineZoomLimits.clamped(zoom, framesPerSecond: fps);
+        expect(landed, closeTo(zoom, step / 2), reason: '$zoom');
+        expect(
+          TimelineZoomLimits.clamped(landed, framesPerSecond: fps),
+          landed,
+          reason: '$zoom: on a step',
+        );
+      }
+    });
+
+    test('🚨「소수점 두번째부터는 작동안하도록」: two zooms the bar writes as one '
+        'number are one zoom', () {
+      for (final zoom in <double>[0.1728, 0.5, 4.8, 19.2, 33.3]) {
+        final landed = TimelineZoomLimits.clamped(zoom, framesPerSecond: fps);
+        for (final nudge in [for (final k in [-4, -1, 1, 4]) k * step / 10]) {
+          expect(
+            TimelineZoomLimits.clamped(landed + nudge, framesPerSecond: fps),
+            landed,
+            reason: '$zoom nudged by $nudge, still 「${shown(landed)}%」',
+          );
+        }
       }
     });
 
@@ -46,63 +77,85 @@ void main() {
     });
   });
 
-  test('at the widest zoom ten minutes fit 1,800px at every rate', () {
+  test('「200%까지만」 · 「80%를 100%로」: the closest zoom is 200% of the old '
+      '24-pixel 100% — 250% now — and 80% of it reads 100%', () {
+    expect(TimelineZoomLimits.maxPixelsPerFrame, 2 * 24);
+    expect(shown(TimelineZoomLimits.maxPixelsPerFrame), '250.0');
+    expect(reference, closeTo(0.8 * 24, 1e-9));
+    expect(shown(reference), '100.0');
+  });
+
+  test('at the widest zoom ten minutes fit 1,800px at every rate, and a '
+      'step closer would not', () {
     for (final rate in ProjectFrameRate.presets) {
       final base = rate.countingBase;
       final widest = TimelineZoomLimits.minPixelsPerFrameAt(base);
-      final framesPerPixel = 1 / widest;
       expect(
         600 * base * widest,
         lessThanOrEqualTo(1800),
         reason: '$base fps: ten minutes inside 1,800px',
       );
       expect(
-        600 * base / (framesPerPixel - 1),
+        600 * base * (widest + step),
         greaterThan(1800),
-        reason: '$base fps: a frame a pixel fewer would not fit — the floor '
-            'is the widest the rule needs, not wider',
+        reason: '$base fps: the floor is the widest the rule needs, not wider',
+      );
+      expect(
+        TimelineZoomLimits.clamped(widest, framesPerSecond: base),
+        widest,
+        reason: '$base fps: the floor is a step',
       );
     }
-    expect(TimelineZoomLimits.minPixelsPerFrameAt(24), 1 / 8);
-    expect(TimelineZoomLimits.minPixelsPerFrameAt(30), 1 / 10);
-    expect(TimelineZoomLimits.minPixelsPerFrameAt(60), 1 / 20);
+    expect(shown(TimelineZoomLimits.minPixelsPerFrameAt(24)), '0.6');
+    expect(shown(TimelineZoomLimits.minPixelsPerFrameAt(30)), '0.5');
+    expect(shown(TimelineZoomLimits.minPixelsPerFrameAt(60)), '0.2');
   });
 
-  test('a −/+ step is ×1.25 from any zoom and stops only at a bound', () {
-    for (final zoom in [floor, 0.3, 0.5, 0.8, 1.0, 2.0, 3.0, 24.0, 80.0]) {
+  test('a −/+ step is ×1.25 to the nearest step, moves at least one, and '
+      'stops only at a bound', () {
+    const ceiling = TimelineZoomLimits.maxPixelsPerFrame;
+    for (final zoom in [floor, 0.3, 0.5, 0.8, 1.0, 2.0, 3.0, 24.0, 40.0]) {
+      double near(double target) =>
+          TimelineZoomLimits.clamped(target, framesPerSecond: fps);
       final zoomedIn = TimelineZoomLimits.stepped(
         zoom,
         zoomIn: true,
         framesPerSecond: fps,
       );
-      expect(
-        zoomedIn,
-        closeTo(
-          (zoom * 1.25).clamp(floor, TimelineZoomLimits.maxPixelsPerFrame),
-          1e-12,
-        ),
-        reason: '+ from $zoom',
-      );
+      expect(zoomedIn, near(zoom * 1.25), reason: '+ from $zoom');
+      expect(zoomedIn, greaterThan(near(zoom)), reason: '+ from $zoom moves');
       final zoomedOut = TimelineZoomLimits.stepped(
         zoom,
         zoomIn: false,
         framesPerSecond: fps,
       );
+      expect(zoomedOut, near(zoom / 1.25), reason: '− from $zoom');
       expect(
         zoomedOut,
-        closeTo(
-          (zoom / 1.25).clamp(floor, TimelineZoomLimits.maxPixelsPerFrame),
-          1e-12,
-        ),
+        zoom <= floor ? floor : lessThan(near(zoom)),
         reason: '− from $zoom',
       );
     }
+    expect(
+      TimelineZoomLimits.stepped(ceiling, zoomIn: true, framesPerSecond: fps),
+      ceiling,
+    );
+    // Where ×1.25 rounds back onto the step it left, a press still moves
+    // one: the widest zoom of a 120fps count is a single step.
+    final single = TimelineZoomLimits.minPixelsPerFrameAt(120);
+    expect(shown(single), '0.1', reason: 'fixture: one step');
+    expect(
+      shown(
+        TimelineZoomLimits.stepped(single, zoomIn: true, framesPerSecond: 120),
+      ),
+      '0.2',
+    );
   });
 
   group('the frame axis\' one law keeps a line on one pixel at any zoom', () {
     test('from a pixel a cell, every boundary is a whole pixel, and a cell '
         'is its zoom give or take one', () {
-      for (final zoom in [1.0, 1.3, 2.5, 7.3, 24.6, 95.9]) {
+      for (final zoom in [1.0, 1.3, 2.5, 7.3, 24.6, 47.9]) {
         for (var frame = 0; frame < 200; frame += 1) {
           final edge = timelineFrameEdge(frame, zoom);
           expect(edge, edge.roundToDouble(), reason: '$zoom: frame $frame');
@@ -183,15 +236,19 @@ void main() {
       return zooms.last;
     }
 
-    testWidgets('the + and − buttons step ×1.25 exactly', (tester) async {
-      expect(await press(tester, from: 3, zoomIn: true), 3.75);
-      expect(await press(tester, from: 4, zoomIn: false), 3.2);
-      expect(await press(tester, from: 1 / 2, zoomIn: true), 0.625);
+    testWidgets('the + and − buttons step ×1.25 onto the bar\'s numbers', (
+      tester,
+    ) async {
+      Future<String> pressed(double from, {required bool zoomIn}) async =>
+          shown(await press(tester, from: from, zoomIn: zoomIn));
+      expect(await pressed(reference, zoomIn: true), '125.0');
+      expect(await pressed(reference, zoomIn: false), '80.0');
+      expect(await pressed(3.84, zoomIn: true), '25.0');
     });
 
-    testWidgets('🚨a drag across the old grid\'s gap — 1.7% to 2.8% — zooms '
-        'at every step', (tester) async {
-      final zooms = await pump(tester, pixelsPerFrame: 24);
+    testWidgets('🚨a drag across the old grid\'s gap — 2.1% to 3.5% — zooms '
+        'at every number it writes, and writes every zoom', (tester) async {
+      final zooms = await pump(tester, pixelsPerFrame: reference);
       final track = tester.getRect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-zoom-slider')),
@@ -204,7 +261,8 @@ void main() {
           track.width *
               math.log(zoom / floor) /
               math.log(TimelineZoomLimits.maxPixelsPerFrame / floor);
-      // 1.7% and 2.8% of the default 24px frame — the user's own stretch.
+      // The user's own stretch of F-220, 1.7% to 2.8% of the 24-pixel frame
+      // then.
       final from = xFor(0.41);
       final to = xFor(0.67);
       final gesture = await tester.startGesture(
@@ -222,16 +280,19 @@ void main() {
       await tester.pump();
 
       expect(moves, greaterThanOrEqualTo(8), reason: 'fixture: the stretch');
-      final inside = [
+      final inside = {
         for (final zoom in zooms)
           if (zoom > 0.3 && zoom < 0.9) zoom,
-      ];
-      expect(inside.length, greaterThanOrEqualTo(moves), reason: 'every move');
+      };
       expect(
-        inside.toSet().length,
         inside.length,
-        reason: 'each move a zoom of its own — ↩️the grid gave every one of '
-            'them the same 1/2 pixel a frame',
+        greaterThan(5),
+        reason: '↩️the grid gave every move the same 1/2 pixel a frame',
+      );
+      expect(
+        {for (final zoom in inside) shown(zoom)}.length,
+        inside.length,
+        reason: '「숫자 안바뀌는데 줌이 바뀌는」 — each zoom a number of its own',
       );
     });
 
@@ -244,7 +305,7 @@ void main() {
     });
 
     testWidgets('a step never leaves the range', (tester) async {
-      expect(await press(tester, from: floor + 0.01, zoomIn: false), floor);
+      expect(await press(tester, from: floor + step, zoomIn: false), floor);
     });
   });
 }

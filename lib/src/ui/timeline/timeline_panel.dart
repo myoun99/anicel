@@ -407,7 +407,10 @@ class TimelinePanel extends StatefulWidget {
   /// alike. The X-sheet's frame row height scales proportionally so its
   /// classic geometry sits at the same default.
   // 48 → 24 (R-toolbar slim round): the zoom slider's 100% now reads the
-  // CSP/TVPaint-density default.
+  // CSP/TVPaint-density default. ↩️The 100% moved to 19.2 with F-403
+  // ([TimelineZoomLimits.referencePixelsPerFrame]), which is where a cut
+  // opens; this is the cell a panel is laid out at when its host names no
+  // zoom.
   static const double defaultPixelsPerFrame =
       TimelineZoomLimits.defaultPixelsPerFrame;
 

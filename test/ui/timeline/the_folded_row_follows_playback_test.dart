@@ -315,7 +315,7 @@ void main() {
         // The two windows a frame stands between, as they were drawn.
         await standTheClassicRail(tester);
         final axis = gridAxis();
-        axis.jumpTo(scrolledCells * TimelineZoomLimits.defaultPixelsPerFrame);
+        axis.jumpTo(scrolledCells * TimelineZoomLimits.referencePixelsPerFrame);
         await tester.pumpAndSettle();
         gridView = gridAxis().viewportDimension;
       },
