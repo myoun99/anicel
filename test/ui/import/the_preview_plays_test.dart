@@ -153,7 +153,7 @@ void main() {
       await show(tester, movie);
       await press(tester);
 
-      bar(tester).onSeek(6);
+      bar(tester).onSeek!(6);
       await tester.pump();
 
       expect(sound.from, [0, 6 / 24]);
@@ -168,7 +168,7 @@ void main() {
       await show(tester, movie);
       await press(tester);
 
-      bar(tester).onSeek(11);
+      bar(tester).onSeek!(11);
       await tester.pump();
 
       expect(bar(tester).currentFrame, 11);
@@ -185,14 +185,14 @@ void main() {
       await show(tester, movie);
       int asksForFive() => fake.asked.where((index) => index == 5).length;
 
-      bar(tester).onSeek(5);
+      bar(tester).onSeek!(5);
       await settleAsync(tester, () => asksForFive() > 0);
       fake.held.remove(5);
       // Nothing asks again by itself: nothing is playing, so no tick forgets.
       await lendBothClocks(tester, rounds: 10);
       expect(asksForFive(), 1, reason: 'fixture: the refusal is remembered');
 
-      bar(tester).onSeek(5);
+      bar(tester).onSeek!(5);
 
       expect(
         await settleAsync(tester, () => asksForFive() > 1),
@@ -222,7 +222,7 @@ void main() {
       await show(tester, movie, frameRate: const ProjectFrameRate.integer(12));
       expect(bar(tester).frameCount, 6, reason: 'half a second at 12');
 
-      bar(tester).onSeek(3);
+      bar(tester).onSeek!(3);
       await tester.pump();
       await press(tester);
 
@@ -296,7 +296,7 @@ void main() {
       await show(tester, line);
       await press(tester);
 
-      bar(tester).onSeek(12);
+      bar(tester).onSeek!(12);
       await tester.pump();
 
       expect(sound.from, [0, 0.5]);
@@ -321,7 +321,7 @@ void main() {
     ) async {
       await show(tester, line);
 
-      bar(tester).onSeek(36);
+      bar(tester).onSeek!(36);
       await tester.pump();
       await press(tester);
 

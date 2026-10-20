@@ -223,7 +223,7 @@ void main() {
       await press(tester, 'first');
       expect(slot.position.value, 0);
 
-      bar(tester).onSeek(7);
+      bar(tester).onSeek!(7);
       await tester.pump();
       expect(slot.position.value, 7);
     });
@@ -266,7 +266,7 @@ void main() {
       expect(frames, greaterThan(1));
 
       final half = frames ~/ 2;
-      bar(tester).onSeek(half);
+      bar(tester).onSeek!(half);
       await tester.pump();
       expect(bar(tester).currentFrame, half, reason: 'the pair round-trips');
 
@@ -288,7 +288,7 @@ void main() {
       expect(sound!.from, [0]);
 
       final frames = bar(tester).frameCount;
-      bar(tester).onSeek(frames ~/ 4);
+      bar(tester).onSeek!(frames ~/ 4);
       await tester.pump();
 
       expect(sound!.from, hasLength(2));

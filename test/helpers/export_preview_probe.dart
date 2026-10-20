@@ -80,7 +80,7 @@ extension ExportPreviewProbe on WidgetTester {
 
   /// Seeks the preview's transport to [frame], as a hand on its track does.
   Future<void> seekExportPreview(int frame) async {
-    exportTransport.onSeek(frame);
+    exportTransport.onSeek!(frame);
     await pump();
   }
 

@@ -102,7 +102,11 @@ class TransportBar extends StatelessWidget {
   final int currentFrame;
 
   final bool playing;
-  final ValueChanged<int> onSeek;
+
+  /// Null while nothing may move the playhead — the export window's, while
+  /// a run writes what it shows: the track and the four steps stay where
+  /// they are and are off.
+  final ValueChanged<int>? onSeek;
 
   /// Null when there is nothing to play — a still, a PDF: the button stays
   /// where it is and is off.
@@ -266,7 +270,7 @@ class TransportBar extends StatelessWidget {
   /// a span is kept — that span is what runs.
   Widget _buttons(TransportRange? kept) {
     final strings = AppText.strings;
-    final canMove = _lastFrame > 0;
+    final seek = _lastFrame > 0 ? onSeek : null;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -277,14 +281,14 @@ class TransportBar extends StatelessWidget {
               : strings.transportIn,
           icon: const Icon(Icons.first_page),
           size: AppIconButtonSize.strip,
-          onPressed: canMove ? () => onSeek(kept?.inFrame ?? 0) : null,
+          onPressed: seek == null ? null : () => seek(kept?.inFrame ?? 0),
         ),
         AppIconButton(
           keyValue: _key('step-back'),
           tooltip: strings.transportPrevFrame,
           icon: const Icon(Icons.chevron_left),
           size: AppIconButtonSize.strip,
-          onPressed: canMove ? () => onSeek(_clamp(currentFrame - 1)) : null,
+          onPressed: seek == null ? null : () => seek(_clamp(currentFrame - 1)),
         ),
         AppIconButton(
           keyValue: _key('play'),
@@ -299,16 +303,16 @@ class TransportBar extends StatelessWidget {
           tooltip: strings.transportNextFrame,
           icon: const Icon(Icons.chevron_right),
           size: AppIconButtonSize.strip,
-          onPressed: canMove ? () => onSeek(_clamp(currentFrame + 1)) : null,
+          onPressed: seek == null ? null : () => seek(_clamp(currentFrame + 1)),
         ),
         AppIconButton(
           keyValue: _key('last'),
           tooltip: kept == null ? strings.transportToEnd : strings.transportOut,
           icon: const Icon(Icons.last_page),
           size: AppIconButtonSize.strip,
-          onPressed: canMove
-              ? () => onSeek(kept?.outFrame ?? _lastFrame)
-              : null,
+          onPressed: seek == null
+              ? null
+              : () => seek(kept?.outFrame ?? _lastFrame),
         ),
       ],
     );
@@ -580,8 +584,9 @@ class _TrackGrip extends StatelessWidget {
 /// The seek track: a press seeks there, and keeps seeking while the finger
 /// moves.
 ///
-/// A source with one frame has nowhere to seek to: the track stands, off,
-/// and a press on it is still its own.
+/// A source with one frame has nowhere to seek to, and a track with no
+/// [onSeek] may not seek: it stands, off, and a press on it is still its
+/// own.
 class TransportTrack extends StatefulWidget {
   const TransportTrack({
     super.key,
@@ -595,7 +600,7 @@ class TransportTrack extends StatefulWidget {
 
   final int frameCount;
   final int currentFrame;
-  final ValueChanged<int> onSeek;
+  final ValueChanged<int>? onSeek;
 
   /// The span washed on the track, or null where none is kept. The handles
   /// that move it are the range row's ([TransportRangeTrack]).
@@ -617,13 +622,17 @@ class _TransportTrackState extends State<TransportTrack> {
 
   int get _lastFrame => widget.frameCount <= 1 ? 0 : widget.frameCount - 1;
 
+  /// Where a press reports, or null where it seeks nowhere.
+  ValueChanged<int>? get _seek => _lastFrame == 0 ? null : widget.onSeek;
+
   void _begin(double x, double width) {
     _reported = null;
     _apply(x, width);
   }
 
   void _apply(double x, double width) {
-    if (_lastFrame == 0) {
+    final seek = _seek;
+    if (seek == null) {
       return;
     }
     final frame = _frameAt(x, width, _lastFrame);
@@ -631,7 +640,7 @@ class _TransportTrackState extends State<TransportTrack> {
       return;
     }
     _reported = frame;
-    widget.onSeek(frame);
+    seek(frame);
   }
 
   @override
@@ -647,7 +656,7 @@ class _TransportTrackState extends State<TransportTrack> {
         keptStart: kept == null ? null : _fractionOf(kept.first, _lastFrame),
         keptEnd: kept == null ? null : _fractionOf(kept.last, _lastFrame),
         wash: TransportBar.rangeWash,
-        enabled: _lastFrame > 0,
+        enabled: _seek != null,
       ),
     );
   }

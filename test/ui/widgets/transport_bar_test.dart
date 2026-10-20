@@ -29,7 +29,7 @@ void main() {
     required int frameCount,
     int currentFrame = 0,
     bool playing = false,
-    ValueChanged<int>? onSeek,
+    ValueChanged<int>? onSeek = _ignoreFrame,
     VoidCallback? onPlayPause = _ignore,
     TransportRange? range,
     TransportSound? sound,
@@ -47,7 +47,7 @@ void main() {
                 frameCount: frameCount,
                 currentFrame: currentFrame,
                 playing: playing,
-                onSeek: onSeek ?? (_) {},
+                onSeek: onSeek,
                 onPlayPause: onPlayPause,
                 range: range,
                 sound: sound,
@@ -348,6 +348,20 @@ void main() {
       await tester.dragFrom(along(tester, 'track', 0.1), const Offset(120, 0));
       expect(seeks, isEmpty);
     });
+
+    testWidgets('a track that may not seek stands off, as one with one frame '
+        'does', (tester) async {
+      List<int> inks() => [
+        for (final rect in drawn(tester, 'track')) rect.color,
+      ];
+      await pump(tester, frameCount: 1);
+      final off = inks();
+      await pump(tester, frameCount: 10, currentFrame: 4);
+      expect(inks(), isNot(off), reason: 'a track that seeks is drawn live');
+
+      await pump(tester, frameCount: 10, currentFrame: 4, onSeek: null);
+      expect(inks(), off);
+    });
   });
 
   group('the buttons', () {
@@ -431,15 +445,22 @@ void main() {
       }
     });
 
-    testWidgets('a source with one frame leaves all four where they are, '
-        'off', (tester) async {
-      await pump(tester, frameCount: 1);
-      for (final suffix in ['first', 'step-back', 'step-forward', 'last']) {
-        expect(
-          tester.appIconButton(find.byKey(k(suffix))).onPressed,
-          isNull,
-          reason: suffix,
+    testWidgets('a source with one frame, or a bar that may not seek, leaves '
+        'all four where they are, off', (tester) async {
+      for (final (frameCount, onSeek) in [(1, _ignoreFrame), (10, null)]) {
+        await pump(
+          tester,
+          frameCount: frameCount,
+          currentFrame: frameCount ~/ 2,
+          onSeek: onSeek,
         );
+        for (final suffix in ['first', 'step-back', 'step-forward', 'last']) {
+          expect(
+            tester.appIconButton(find.byKey(k(suffix))).onPressed,
+            isNull,
+            reason: '$frameCount frame(s): $suffix',
+          );
+        }
       }
     });
   });

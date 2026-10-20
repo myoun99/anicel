@@ -263,17 +263,16 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
     final range = widget.range;
     return CanvasTransportBand(
       height: TransportBar.heightIn(context, range: range != null),
-      child: AbsorbPointer(
-        absorbing: !widget.enabled,
-        child: TransportBar(
-          keyPrefix: 'export-transport',
-          frameCount: document.pageCount,
-          currentFrame: _page,
-          playing: _run.playing,
-          onSeek: (frame) => _run.seekToFrame(frame, rate),
-          onPlayPause: widget.enabled && _run.canPlay ? _run.toggle : null,
-          range: range,
-        ),
+      child: TransportBar(
+        keyPrefix: 'export-transport',
+        frameCount: document.pageCount,
+        currentFrame: _page,
+        playing: _run.playing,
+        onSeek: widget.enabled
+            ? (frame) => _run.seekToFrame(frame, rate)
+            : null,
+        onPlayPause: widget.enabled && _run.canPlay ? _run.toggle : null,
+        range: range,
       ),
     );
   }
