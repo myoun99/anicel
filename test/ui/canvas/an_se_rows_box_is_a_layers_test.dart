@@ -10,7 +10,12 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart'
-    show EffectKind, ResolvedLayerEffect;
+    show
+        EffectId,
+        EffectKind,
+        EffectParameter,
+        LayerEffect,
+        ResolvedLayerEffect;
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -21,6 +26,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_offset.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
+import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
+    show debugLastSubtreeRaster;
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
@@ -191,6 +198,34 @@ void main() {
       reason: 'the anchor went right, so the tag hangs further left of it',
     );
     expect(after.y, closeTo(before.y, 1));
+    await drain(tester);
+  });
+
+  testWidgets('a tag with its row\'s effects rasters at the scale the '
+      'canvas shows it, as a folder does', (tester) async {
+    final s = speaking();
+    addTearDown(s.dispose);
+    final se = s.activeTrack.seLayers.first;
+    s.effectsAndFx.updateLayerEffects(se.id, [
+      LayerEffect(
+        id: const EffectId('blur'),
+        kind: EffectKind.blur,
+        parameters: {'blurX': EffectParameter(value: 2)},
+      ),
+    ]);
+    await pumpArea(tester, s);
+    // The same window in logical pixels, at twice the device pixels.
+    tester.view.physicalSize = const Size(3200, 2000);
+    tester.view.devicePixelRatio = 2;
+    debugLastSubtreeRaster = null;
+    await tester.pump();
+
+    expect(debugLastSubtreeRaster, isNotNull, reason: 'one picture');
+    expect(
+      debugLastSubtreeRaster!.rasterScale,
+      boxOf(tester).viewport.zoom * 2,
+      reason: 'device pixels per canvas pixel',
+    );
     await drain(tester);
   });
 
