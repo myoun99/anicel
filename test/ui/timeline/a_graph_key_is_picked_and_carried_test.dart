@@ -141,9 +141,10 @@ void main() {
         if (method != #drawPath) {
           return false;
         }
+        // A paint keeps its stroke as a 32-bit float.
         final paint = arguments[1] as Paint;
         return paint.style == PaintingStyle.stroke &&
-            paint.strokeWidth == 8 / 3;
+            (paint.strokeWidth - 8 / 3).abs() < 1e-6;
       });
     expect(_paintOf(tester), isNot(ring), reason: '⛔전제: none picked');
 
