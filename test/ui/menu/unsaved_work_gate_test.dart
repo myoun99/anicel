@@ -1,4 +1,5 @@
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -15,8 +16,6 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import '../../helpers/poll_until.dart';
-import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 
@@ -167,10 +166,11 @@ void main() {
   });
 
   /// Drives [ask] through a REAL save: taps [buttonKey] on the gate window
-  /// and pumps real time until the whole thing settles — the save crosses
+  /// and lends both clocks until the whole thing settles — the save crosses
   /// into an isolate and the progress window spins, so neither the fake
-  /// clock nor pumpAndSettle can finish it (save_shows_progress_test's
-  /// harness, folded in).
+  /// clock nor pumpAndSettle can finish it ([settleBehindTheWaitWindow]).
+  /// ↩️It tapped inside `runAsync` until 10-20, where the window's linger
+  /// is 900ms of real time.
   Future<bool> settleThroughRealSave(
     WidgetTester tester,
     Future<bool> Function() ask,
@@ -178,22 +178,15 @@ void main() {
   ) async {
     late bool settled;
     var done = false;
-    await tester.runAsync(() async {
-      final future = ask().then((value) {
+    unawaited(
+      ask().then((value) {
         settled = value;
         done = true;
-      });
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(ValueKey<String>(buttonKey)));
-      await pollUntil(
-        () async {
-          await tester.pump();
-          return done;
-        },
-        beat: const Duration(milliseconds: 5),
-      );
-      await future;
-    });
+      }),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey<String>(buttonKey)));
+    await settleBehindTheWaitWindow(tester, () => done);
     await tester.pump();
     expect(done, isTrue, reason: 'the gate never came back');
     return settled;
@@ -373,7 +366,9 @@ void main() {
     // the fake clock too: a new tab comes up once the window's linger is
     // over. ↩️It lent the real loop alone, so the tab never came, and every
     // open here ran the whole patience out — sixty seconds a test (10-19).
-    final shown = await settleAsync(
+    // ↩️It walked the linger 50ms a frame until 10-20: 25 rounds an open,
+    // 8 with the linger passed in one step.
+    final shown = await settleBehindTheWaitWindow(
       tester,
       () =>
           tester
@@ -382,7 +377,6 @@ void main() {
               .projectFile
               .path ==
           path,
-      step: const Duration(milliseconds: 50),
     );
     expect(shown, isTrue, reason: 'the tab on screen holds the file');
     // The window lingers with its check for `appProgressDoneLinger`, and a

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart' show ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
@@ -5,10 +7,10 @@ import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'settle_async.dart';
 
 /// Lends both clocks to work standing behind the app's wait window
-/// (`runWithAppProgress`) until the window is gone ([settleAsync]): the
-/// fake one for its frames and its `appProgressDoneLinger`, the real one
-/// for work that hops to a file or an isolate. The linger itself goes in
-/// one step ([passTheDoneLinger]).
+/// (`runWithAppProgress`) until the window is gone
+/// ([settleBehindTheWaitWindow]): the fake one for its frames and its
+/// `appProgressDoneLinger`, the real one for work that hops to a file or an
+/// isolate. The linger itself goes in one step ([passTheDoneLinger]).
 ///
 /// ⛔A turning spinner never settles, so `pumpAndSettle` cannot be the wait,
 /// and a bare `pump()` never reaches the linger's end.
@@ -24,17 +26,34 @@ import 'settle_async.dart';
 Future<void> pumpPastTheWaitWindow(WidgetTester tester) async {
   final window = find.byType(AppProgressDialog);
   await tester.pump();
-  await settleAsync(
-    tester,
-    () => window.evaluate().isEmpty,
-    beat: _hop,
-    step: const Duration(milliseconds: 50),
-    everyFrame: () => passTheDoneLinger(tester),
-  );
+  await settleBehindTheWaitWindow(tester, () => window.evaluate().isEmpty);
   expect(window, findsNothing, reason: 'the wait window went');
 }
 
-/// The real time a round of [pumpPastTheWaitWindow] lends: a turn of the
+/// [settleAsync] for work that may stand behind the app's wait window —
+/// an import, an open, a save — until [ready]: a round lends a turn of the
+/// real loop ([_hop]) and a frame 50ms on, and the window's done line goes
+/// in one step ([passTheDoneLinger]).
+///
+/// ⚠️For a wait that is NOT there to see the done line: the frame that
+/// draws the check is passed over unread. A test that watches for it
+/// watches frame by frame (Save As's `watchUntil`).
+///
+/// ⚠️The tap that starts the work is made OUTSIDE `runAsync`: in it the
+/// linger is 900ms of real time, which no step passes (10-20: a save, an
+/// open from the recents — each paid it whole).
+Future<bool> settleBehindTheWaitWindow(
+  WidgetTester tester,
+  FutureOr<bool> Function() ready,
+) => settleAsync(
+  tester,
+  ready,
+  beat: _hop,
+  step: const Duration(milliseconds: 50),
+  everyFrame: () => passTheDoneLinger(tester),
+);
+
+/// The real time a round of [settleBehindTheWaitWindow] lends: a turn of the
 /// real event loop, no more. What the window waits on is a chain of real
 /// hops — a file read, a decode, a write — each finishing in a turn and
 /// going on in the next pump, so the chain sets how many rounds it takes,
@@ -42,8 +61,9 @@ Future<void> pumpPastTheWaitWindow(WidgetTester tester) async {
 ///
 /// 🔬2026-10-20, a numbered run's four placements: 49~59 rounds at a beat
 /// of 20, 4 or 1 ms and a step of 10 or 50 ms alike — and 7.3 s of placing
-/// at 20ms against 3.4 s at 1ms. ⛔Not the shared beat: a window that waits
-/// for something NOT to happen (`lendBothClocks`) is as long as its beats.
+/// at 20ms against 3.4 s at 1ms; an open from the recents, 8 rounds at 20ms
+/// and 1ms alike. ⛔Not the shared beat: a window that waits for something
+/// NOT to happen (`lendBothClocks`) is as long as its beats.
 const _hop = Duration(milliseconds: 1);
 
 /// Pumps a wait window's done line ([appProgressDoneLinger]) in ONE step,

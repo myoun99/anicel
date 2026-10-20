@@ -15,7 +15,7 @@ import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/os_file_drop.dart';
 import '../../helpers/project_scratch_folder.dart';
-import '../../helpers/settle_async.dart';
+import '../../helpers/wait_window.dart';
 
 /// F-247 (유저 2026-09-30): 「드래그앤드롭으로 외부파일 임포트시 확장자?에
 /// 맞도록. anicel이면 배치창이아니라 새 프로젝트로 열도록. tvpp도 똑같이」.
@@ -84,14 +84,11 @@ void main() {
       osDrop(tester, paths, at: tester.getCenter(find.byType(EditorWorkspace)));
 
   /// Lends the disk real time and the test clock a beat, by turns, until
-  /// [done] says so, or [settleAsync]'s patience has run out.
+  /// [done] says so, or [settleAsync]'s patience has run out — the open's
+  /// linger passed in one step ([settleBehindTheWaitWindow]; ↩️walked 50ms
+  /// a frame until 10-20).
   Future<void> until(WidgetTester tester, bool Function() done) async {
-    await settleAsync(
-      tester,
-      done,
-      beat: const Duration(milliseconds: 25),
-      step: const Duration(milliseconds: 50),
-    );
+    await settleBehindTheWaitWindow(tester, done);
     await tester.pump();
   }
 

@@ -17,7 +17,7 @@ import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
 import '../helpers/project_scratch_folder.dart';
-import '../helpers/settle_async.dart';
+import '../helpers/wait_window.dart';
 import '../models/import/tvpp_test_builder.dart';
 
 /// PICK-7 through the window: a project in a Drive document on Android is
@@ -141,14 +141,11 @@ void main() {
   /// returns the moment what it waits for is there, so the ceiling costs
   /// nothing; it is only how long a real failure takes to say so.
   /// ↩️The time was this file's own `patience` until 2026-10-16; it is the
-  /// one every wait in the suite shares now.
+  /// one every wait in the suite shares now. ↩️It lent 25ms a round and
+  /// walked the open's linger 50ms a frame until 10-20; the wait behind the
+  /// window is one ([settleBehindTheWaitWindow]).
   Future<void> until(WidgetTester tester, bool Function() done) async {
-    await settleAsync(
-      tester,
-      done,
-      beat: const Duration(milliseconds: 25),
-      step: const Duration(milliseconds: 50),
-    );
+    await settleBehindTheWaitWindow(tester, done);
     await tester.pumpAndSettle();
   }
 

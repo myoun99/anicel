@@ -38,6 +38,7 @@ import '../helpers/draw_on_current_frame.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/settle_async.dart';
+import '../helpers/wait_window.dart';
 import '../models/import/tvpp_test_builder.dart';
 
 /// I-7 through the window (유저 2026-09-26): 「여러 프로젝트 열수있게할거야 …
@@ -382,10 +383,9 @@ void main() {
     await mouse.moveTo(tester.getCenter(recents));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
-    await settleAsync(
+    await settleBehindTheWaitWindow(
       tester,
       () => find.text(AppText.strings.commonNotice).evaluate().isNotEmpty,
-      step: const Duration(milliseconds: 50),
     );
     expect(
       find.text(AppText.strings.commonNotice),
@@ -435,10 +435,9 @@ void main() {
     ];
     await tapKey(tester, 'top-strip-project-button');
     await tester.tap(find.byKey(const ValueKey<String>('menu-file-open')));
-    await settleAsync(
+    await settleBehindTheWaitWindow(
       tester,
       () => projects.active.projectFile.path == path,
-      step: const Duration(milliseconds: 50),
     );
     expect(projects.active.projectFile.path, path, reason: 'CONTROL: opened');
     await settleAsync(
@@ -468,10 +467,9 @@ void main() {
     final before = projects.sessions.length;
     await tapKey(tester, 'top-strip-project-button');
     await tester.tap(find.byKey(const ValueKey<String>('menu-file-open')));
-    await settleAsync(
+    await settleBehindTheWaitWindow(
       tester,
       () => projects.sessions.length > before,
-      step: const Duration(milliseconds: 50),
     );
   }
 
