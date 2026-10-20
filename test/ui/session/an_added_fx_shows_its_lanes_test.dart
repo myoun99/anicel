@@ -27,6 +27,13 @@ void main() {
     LayerId row,
   ) => rowTwirlsOf(s.repository.requireProject(), row)!;
 
+  // A record compares its Set by identity, so each half is matched alone.
+  void expectTwirls(LayerId row, {required bool lanes, Set<String>? groups}) {
+    final twirls = twirlsOf(row);
+    expect(twirls.lanesExpanded, lanes);
+    expect(twirls.expandedLaneGroups, groups ?? <String>{});
+  }
+
   test('a layer shut to its lanes opens them, and the new effect\'s header '
       'with them — one undo shuts both and takes the effect', () {
     final row = s.requireActiveCut.layers.first.id;
@@ -36,15 +43,12 @@ void main() {
     s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
 
     final blur = s.commitLayerById(row)!.effects.single.id;
-    expect(twirlsOf(row), (
-      lanesExpanded: true,
-      expandedLaneGroups: {effectGroupLaneId(blur)},
-    ));
+    expectTwirls(row, lanes: true, groups: {effectGroupLaneId(blur)});
     expect(s.railView.expandedLaneLayerIds.value, contains(row));
 
     s.undo();
     expect(s.commitLayerById(row)!.effects, isEmpty);
-    expect(twirlsOf(row), (lanesExpanded: false, expandedLaneGroups: {}));
+    expectTwirls(row, lanes: false);
 
     s.redo();
     expect(s.commitLayerById(row)!.effects.single.id, blur);
@@ -64,13 +68,11 @@ void main() {
     s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
 
     final blur = s.commitLayerById(row)!.effects.single.id;
-    expect(twirlsOf(row), (
-      lanesExpanded: true,
-      expandedLaneGroups: {
-        transformGroupHeaderLane.laneId,
-        effectGroupLaneId(blur),
-      },
-    ));
+    expectTwirls(
+      row,
+      lanes: true,
+      groups: {transformGroupHeaderLane.laneId, effectGroupLaneId(blur)},
+    );
   });
 
   test('an S row is shown on its track, where its twirls live', () {
@@ -81,12 +83,9 @@ void main() {
     s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
 
     final blur = s.commitLayerById(se)!.effects.single.id;
-    expect(twirlsOf(se), (
-      lanesExpanded: true,
-      expandedLaneGroups: {effectGroupLaneId(blur)},
-    ));
+    expectTwirls(se, lanes: true, groups: {effectGroupLaneId(blur)});
     s.undo();
-    expect(twirlsOf(se), (lanesExpanded: false, expandedLaneGroups: {}));
+    expectTwirls(se, lanes: false);
   });
 
   test('the V row is shown as a layer is — by its lane carrier', () {
@@ -96,12 +95,9 @@ void main() {
     s.effectsAndFx.addEffectToTrack(track.id, EffectKind.blur);
 
     final blur = s.repository.requireProject().tracks.first.effects.single.id;
-    expect(twirlsOf(carrier), (
-      lanesExpanded: true,
-      expandedLaneGroups: {effectGroupLaneId(blur)},
-    ));
+    expectTwirls(carrier, lanes: true, groups: {effectGroupLaneId(blur)});
     s.undo();
     expect(s.repository.requireProject().tracks.first.effects, isEmpty);
-    expect(twirlsOf(carrier), (lanesExpanded: false, expandedLaneGroups: {}));
+    expectTwirls(carrier, lanes: false);
   });
 }

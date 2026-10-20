@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectGroupLaneId;
 import 'package:anicel/src/ui/timeline/held_row_pin.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show SectionBandZone;
@@ -528,13 +530,22 @@ void main() {
     final before = chain();
     expect(before.length, 2);
 
-    // The add shows the row's lanes, its header open (F-396).
-
-    final firstId = session.requireActiveCut.layers
+    // The add shows the row's lanes and each new header open (F-396); the
+    // headers are shut again so one row's drag carries the first past the
+    // second.
+    final effects = session.requireActiveCut.layers
         .firstWhere((layer) => layer.id == const LayerId('b'))
-        .effects
-        .first
-        .id;
+        .effects;
+    for (final effect in effects) {
+      session.layerSwitches.setLayerLaneGroupExpanded(
+        const LayerId('b'),
+        effectGroupLaneId(effect.id),
+        expanded: false,
+      );
+    }
+    await tester.pumpAndSettle();
+
+    final firstId = effects.first.id;
     final header = find.byKey(
       ValueKey<String>('timeline-lane-label-b-fx-group:${firstId.value}'),
     );
