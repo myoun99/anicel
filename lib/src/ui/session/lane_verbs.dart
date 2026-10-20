@@ -20,7 +20,6 @@ import '../../models/track_transform_lane_carrier.dart';
 import '../../services/camera_pose_resolver.dart';
 import '../../services/project_lookup.dart' show rowPoseSpace;
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
-import '../../services/cut_frame_composite_plan.dart';
 import '../timeline/effect_lane_editing.dart'
     show
         effectsWithEnabledToggled,
