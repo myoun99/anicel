@@ -406,17 +406,27 @@ _independentClipOf(
 /// id of its own ([carryConteHandwriting]) and a duplicated cut's sheets'
 /// writing (`CutVerbs`) were three loops saying it when the third arrived
 /// (2026-09-26).
+///
+/// [keyOfSource], where a source has a key of its own: a copy that stores
+/// the very surface that key holds shows its source's pictures from the
+/// frame it is made ([BrushFrameStore.storeCopiedSurface], F-275).
 void carrySurfaces<S>({
   required BrushFrameStore store,
   required Iterable<S> sources,
   required BitmapSurface? Function(S source) surfaceOf,
   required BrushFrameKey? Function(S source) keyOfCopy,
+  BrushFrameKey Function(S source)? keyOfSource,
 }) {
   for (final source in sources) {
     final surface = surfaceOf(source);
     final key = keyOfCopy(source);
-    if (surface != null && key != null) {
+    if (surface == null || key == null) {
+      continue;
+    }
+    if (keyOfSource == null) {
       store.storeBakedSurface(key, surface);
+    } else {
+      store.storeCopiedSurface(key, surface, source: keyOfSource(source));
     }
   }
 }
@@ -457,6 +467,10 @@ void carryBakedPictures({
     null => null,
   },
   keyOfCopy: (minted) => project.brushFrameKeyForCut(cut, to, minted.value),
+  // A cel copied on its own row — a duplicate, 링크 독립's fork of a base
+  // cel and of its attach rows' mirrors — is its source's picture as it
+  // stands; one pasted from anywhere else is only stored.
+  keyOfSource: (minted) => project.brushFrameKeyForCut(cut, to, minted.key),
 );
 
 /// The pictures [cels] show as they are NOW, each under the key [keyOf]

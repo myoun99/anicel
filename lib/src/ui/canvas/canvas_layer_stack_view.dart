@@ -480,6 +480,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     InputInspector.visible.addListener(_rebuildForInspector);
     widget.run?.landings.addListener(_takeWhatLanded);
     widget.imageCache.frameStore.addRekeyListener(_travelWithTheirCels);
+    widget.imageCache.frameStore.addCopyListener(_shareWithTheirCopies);
   }
 
   /// What this view holds of a cel is held under the key a rekey moved its
@@ -496,26 +497,50 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   ) {
     for (final (from, to) in pairs) {
       final held = _images[from];
-      if (held == null) {
-        continue;
+      if (held != null) {
+        _holdAlsoUnder(to, held, revision: held.revision);
       }
-      final there = _images.remove(to);
-      if (there != null) {
-        _dropImage(to, there);
-      }
-      widget.imageCache.retainPin(to, held.quality);
-      _holdImage(to, (
-        source: held.source,
-        clone: held.clone.clone(),
-        worldRect: held.worldRect,
-        extent: held.extent,
-        revision: held.revision,
-        quality: held.quality,
-        content: held.content,
-        madeFrom: held.madeFrom,
-        laidBack: LaidBackWhole(),
-      ));
     }
+  }
+
+  /// What this view holds of a cel is held for its COPY as well
+  /// ([BrushFrameStore.addCopyListener]) — the very pixels, so the same
+  /// picture: a row that turns to the copy draws it as it drew the source,
+  /// on the frame it turns (F-275). Only a picture of the source as it
+  /// stands is one of the copy, stamped with the copy's own revision.
+  void _shareWithTheirCopies(
+    List<(BrushFrameKey from, BrushFrameKey to)> pairs,
+  ) {
+    for (final (from, to) in pairs) {
+      final held = _images[from];
+      if (held != null && held.revision == _revisionOf(from)) {
+        _holdAlsoUnder(to, held, revision: _revisionOf(to));
+      }
+    }
+  }
+
+  /// [held] held under [to] as well, at [revision] — a clone, pinned there.
+  void _holdAlsoUnder(
+    BrushFrameKey to,
+    _HeldImage held, {
+    required int? revision,
+  }) {
+    final there = _images.remove(to);
+    if (there != null) {
+      _dropImage(to, there);
+    }
+    widget.imageCache.retainPin(to, held.quality);
+    _holdImage(to, (
+      source: held.source,
+      clone: held.clone.clone(),
+      worldRect: held.worldRect,
+      extent: held.extent,
+      revision: revision,
+      quality: held.quality,
+      content: held.content,
+      madeFrom: held.madeFrom,
+      laidBack: LaidBackWhole(),
+    ));
   }
 
   /// A picture of the run's landed: the rows it brought are taken, and the
@@ -553,6 +578,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         _travelWithTheirCels,
       );
       widget.imageCache.frameStore.addRekeyListener(_travelWithTheirCels);
+      oldWidget.imageCache.frameStore.removeCopyListener(
+        _shareWithTheirCopies,
+      );
+      widget.imageCache.frameStore.addCopyListener(_shareWithTheirCopies);
     }
     // The active row that left takes the image it was handed with it.
     final leftLineage = oldWidget.activeSurfacePainter?.lineage;
@@ -729,6 +758,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     InputInspector.visible.removeListener(_rebuildForInspector);
     widget.run?.landings.removeListener(_takeWhatLanded);
     widget.imageCache.frameStore.removeRekeyListener(_travelWithTheirCels);
+    widget.imageCache.frameStore.removeCopyListener(_shareWithTheirCopies);
     TilePyramid.instance.dropSeed(widget.activeSurfacePainter?.lineage);
     for (final entry in _images.entries) {
       widget.imageCache.releasePin(entry.key, entry.value.quality);

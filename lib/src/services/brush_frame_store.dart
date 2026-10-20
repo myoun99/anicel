@@ -1299,6 +1299,48 @@ class BrushFrameStore {
     void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
   ) => _rekeyListeners.remove(listener);
 
+  /// Told the pairs [storeCopiedSurface] gave a copy, once it is stored: the
+  /// copy holds the very pixels its source does, so every picture made of
+  /// the source is a picture of the copy — the rekey's twin, the source
+  /// kept ([addRekeyListener]).
+  ///
+  /// 🚨F-275 (유저 2026-10-08): 「링크독립하면 싱크어태치 그림 사라지길래
+  /// 해결안된건가 했는데 다른 레이어 이동하니 화면에 정상표시」 — 링크 독립
+  /// hands a block a cel of its own and its attach row a mirror of it, the
+  /// same pictures under new keys, and the rows went blank on the frame
+  /// after it until the asynchronous build came back with what they had
+  /// shown — 🔬0 of 7225 pixels on that frame, in
+  /// `an_unlinked_cel_keeps_its_attach_on_screen_test`.
+  final List<void Function(List<(BrushFrameKey from, BrushFrameKey to)>)>
+  _copyListeners = [];
+
+  void addCopyListener(
+    void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
+  ) => _copyListeners.add(listener);
+
+  void removeCopyListener(
+    void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
+  ) => _copyListeners.remove(listener);
+
+  /// [surface] stored under [key] as a COPY of the cel [source]
+  /// ([storeBakedSurface]) — and when it is the very surface [source] holds,
+  /// the pictures made of [source] are the copy's too ([addCopyListener]).
+  /// Any other surface (a copy taken before the source was drawn over,
+  /// one laid to another canvas) is only stored.
+  void storeCopiedSurface(
+    BrushFrameKey key,
+    BitmapSurface surface, {
+    required BrushFrameKey source,
+  }) {
+    storeBakedSurface(key, surface);
+    if (!identical(_bakedSurfaces[_canonicalize(source)], surface)) {
+      return;
+    }
+    for (final listener in List.of(_copyListeners)) {
+      listener([(source, key)]);
+    }
+  }
+
   /// Re-homes stored drawings under new keys, AS GIVEN — the cut-scoped ops
   /// that manage canonical storage directly (a cut deleted, a cut made
   /// 겸용). Content is untouched, so the display cache travels along and

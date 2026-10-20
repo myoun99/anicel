@@ -248,6 +248,28 @@ void main() {
     expect(store.frameOrNull(to)?.key, to);
   });
 
+  test('storeCopiedSurface tells the copy listeners only where the copy is '
+      'the very surface its source holds (F-275)', () {
+    final store = BrushFrameStore();
+    final source = key(layer: 'a');
+    final surface = surfaceWithInk();
+    store.storeBakedSurface(source, surface);
+    final told = <(BrushFrameKey, BrushFrameKey)>[];
+    store.addCopyListener(told.addAll);
+
+    final copy = key(layer: 'b');
+    store.storeCopiedSurface(copy, surface, source: source);
+    expect(told, [(source, copy)]);
+    expect(identical(store.bakedSurfaceOrNull(copy), surface), isTrue);
+
+    // Pixels taken before the source was drawn over are not its picture.
+    final older = key(layer: 'c');
+    final olderSurface = surfaceWithInk();
+    store.storeCopiedSurface(older, olderSurface, source: source);
+    expect(told, [(source, copy)]);
+    expect(identical(store.bakedSurfaceOrNull(older), olderSurface), isTrue);
+  });
+
   test('rekeyFrames is a content CROSSING the timeline hears: '
       'celContentRevision bumps for both ends of the move', () {
     final store = BrushFrameStore();
