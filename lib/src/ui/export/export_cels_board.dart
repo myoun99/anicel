@@ -435,13 +435,16 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
 
   /// The row's name — the press that stands the list on it, whether or not
   /// it holds a file (its attach column is where a picture is put back).
+  /// Dead while an export runs, as the rest of the board is: standing on a
+  /// row turns the preview, and the preview shows what the run is writing.
   Widget _name(BuildContext context, ExportCelsBoardRow row, Color ink) {
     final idValue = row.idValue;
+    final standOn = widget.enabled ? () => widget.onStoodOn(row) : null;
     return ControlPressClaim(
-      onPressed: () => widget.onStoodOn(row),
+      onPressed: standOn,
       child: InkWell(
         key: ValueKey<String>('export-cels-stand-$idValue'),
-        onTap: silentPress(() => widget.onStoodOn(row)),
+        onTap: silentPress(standOn),
         child: Align(
           alignment: Alignment.centerLeft,
           child: Text(

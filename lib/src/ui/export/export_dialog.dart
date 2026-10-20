@@ -463,6 +463,12 @@ class ExportDialogState extends State<ExportDialog> {
     onTap: _isExporting ? null : onPick,
   );
 
+  /// Whether a Reset that is [offered] — something under it has left its
+  /// default — takes a press: not while an export runs, as no control that
+  /// writes the spec does ([_pill]). Two of the window's three Resets went
+  /// on writing it through a run.
+  bool _canReset(bool offered) => offered && !_isExporting;
+
   /// The Cels list as it stands now: the plan, the cut the list shows, its
   /// rows, and where the list stands on them — settled, so a row that left
   /// the list or a drawing that was turned off is not what is stood on.
@@ -3356,7 +3362,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
         onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
         reset: (
-          enabled: spec.format != const ExportFormatSelection(),
+          enabled: _canReset(spec.format != const ExportFormatSelection()),
           onTap: () =>
               _updateSpec(spec.copyWith(format: const ExportFormatSelection())),
         ),
@@ -3658,9 +3664,9 @@ class ExportDialogState extends State<ExportDialog> {
       Expanded(child: _celRuleCaption(AppText.strings.exKinds)),
       ExportResetChip(
         key: const ValueKey<String>('export-cels-reset'),
-        enabled:
-            (_overrides.deltaFor(cut.id)?.leavesTheRules ?? false) &&
-            !_isExporting,
+        enabled: _canReset(
+          _overrides.deltaFor(cut.id)?.leavesTheRules ?? false,
+        ),
         onPressed: () =>
             _editCelDelta(cut.id, (delta) => delta.backOnTheRules()),
       ),
@@ -3682,17 +3688,17 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// A pill that flips one spec field — lit while [on], writing [write]'s
-  /// spec on tap, dead while an export runs.
+  /// spec on tap, dead while an export runs ([_pill]).
   PillItem _specSwitch(
     String keyValue,
     String label,
     bool on,
     CelsExportSpec Function() write,
-  ) => PillItem(
+  ) => _pill(
     keyValue: keyValue,
     label: label,
     selected: on,
-    onTap: _isExporting ? null : () => _updateSpec(write()),
+    onPick: () => _updateSpec(write()),
   );
 
   /// 레이어: the three FILTERS — each its own switch, stacking (유저
@@ -3711,11 +3717,11 @@ class ExportDialogState extends State<ExportDialog> {
       String label,
       bool on,
       CelsExportSpec Function() flip,
-    ) => PillItem(
+    ) => _pill(
       keyValue: 'export-cels-select-$key',
       label: label,
       selected: on,
-      onTap: _isExporting ? null : () => _applyCelFilter(flip()),
+      onPick: () => _applyCelFilter(flip()),
     );
     // Side by side while the column has the room for both — and in a
     // language whose words do not leave it, the second strip under the
@@ -4089,7 +4095,7 @@ class ExportDialogState extends State<ExportDialog> {
     title: AppText.strings.exNaming,
     summary: summary,
     expansion: _expansion('naming'),
-    reset: (enabled: !isDefault, onTap: onReset),
+    reset: (enabled: _canReset(!isDefault), onTap: onReset),
     child: child,
   );
 
@@ -4127,7 +4133,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// A toggle row bound to the tab's spec: DEAD while an export runs, and
   /// a change writes the spec [write] answers. Six rows wrote that binding
   /// out; a run in flight owns the spec, so one place says it — the same
-  /// law [_chip] states for the chips. [_fxAccordion]'s row is not this: its
+  /// law [_pill] states for the pills. [_fxAccordion]'s row is not this: its
   /// preview clear is part of the switch.
   SettingsSwitchRow _specToggle({
     required String keyValue,
