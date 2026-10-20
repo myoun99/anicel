@@ -217,7 +217,8 @@ void main() {
         )
         .onChanged!(40);
     await tester.pumpAndSettle();
-    expect(xsheetFrameRowGlobalRect(tester, 0).height, 40);
+    // The bar's tenth nearest 40 is 39.9936, laid on the pixel 40.
+    expect(xsheetFrameRowGlobalRect(tester, 0).height, moreOrLessEquals(40));
   });
 
   testWidgets('the time display toggle switches the counter to seconds', (
