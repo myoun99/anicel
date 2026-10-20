@@ -157,7 +157,9 @@ const double timelineBottomScrollbarRailHeight = AppScrollbarLane.wide;
 /// without measuring one, and the grid's lines followed it down. Each mark
 /// now climbs the ladder on its own measure — a number by its measured
 /// extent (`TimelineRulerScale.labelEveryFrames`), a line by its stroke
-/// (`timelineGridLineEveryFrames`).
+/// (`timelineGridLineEveryFrames`). A NUMBER climbs only the rungs that
+/// divide a second, and past them stands under the seconds' marks (I-102 —
+/// 「서로 같은기준」).
 ///
 /// ↩️I-22 (the ten-minute floor, 2026-09-26): the list stopped at 96 — at
 /// the old 2.4px floor 96 frames held any number the ruler writes. At an

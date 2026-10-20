@@ -279,8 +279,9 @@ void main() {
     test('at the ten-minute floor the paper comes back the way the strip '
         'lays it — a stretch at a time', () {
       final scale = scaleOf(cell: 0.16, frames: 3000);
-      final step = scale.writingStep;
-      final frame = step * 40;
+      // Halfway along the strip, on a frame it writes at — the strip's own
+      // writing there is what the pair covers.
+      final frame = 1500 ~/ scale.writingStep * scale.writingStep;
       final x = scale.cellRectFor(frame).left;
       final pair = at('P', Offset(x, 0));
       final covered = at('AAAAAA', Offset(x - 20, 5));
@@ -288,12 +289,10 @@ void main() {
         TimelineRulerScale scale,
         int frameIndex, {
         required bool current,
-      }) {
-        if (current) {
-          return frameIndex == frame ? [pair] : const [];
-        }
-        return frameIndex == frame - step ? [covered] : const [];
-      }
+      }) => [
+        if (frameIndex == frame && current) pair,
+        if (frameIndex == frame && !current) covered,
+      ];
 
       expect(covered.rect.overlaps(pair.rect), isTrue, reason: 'fixture');
       expect(

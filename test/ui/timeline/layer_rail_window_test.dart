@@ -1,3 +1,5 @@
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -363,6 +365,28 @@ void main() {
         ),
       );
       expect(find.byType(InkWell), findsNothing);
+    });
+
+    testWidgets('I-102: the corner names the display a press turns to, in '
+        'the program\'s language', (tester) async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      Widget corner({required bool showSeconds}) => MaterialApp(
+        home: Scaffold(
+          body: TimelineSecondsToggleCorner(
+            width: 16,
+            height: 28,
+            showSeconds: showSeconds,
+            onChanged: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpWidget(corner(showSeconds: false));
+      expect(find.byTooltip('초+코마'), findsOneWidget);
+      await tester.pumpWidget(corner(showSeconds: true));
+      expect(find.byTooltip('프레임'), findsOneWidget);
     });
   });
 }

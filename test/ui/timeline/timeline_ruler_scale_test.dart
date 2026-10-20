@@ -193,13 +193,22 @@ void main() {
                 : width;
             return needs + timelineMarkGap <= stride * cell;
           }
+          // The rungs a number climbs (I-102): the ladder's that divide a
+          // second, then the seconds' marks, every one, two, three …
+          final marks = 24 * ruler.secondsLabelEverySeconds;
+          final rungs = [
+            for (final stride in timelineFrameStrideLadder)
+              if (stride < 24 && 24 % stride == 0) stride,
+            for (var times = 1; times <= frames; times += 1) marks * times,
+          ];
           final every = ruler.labelEveryFrames;
           final where = '$frames frames at ${cell}px';
+          expect(rungs, contains(every), reason: '$where: a rung');
           expect(fits(every), isTrue, reason: '$where: the rung holds it');
-          final index = timelineFrameStrideLadder.indexOf(every);
+          final index = rungs.indexOf(every);
           if (index > 0) {
             expect(
-              fits(timelineFrameStrideLadder[index - 1]),
+              fits(rungs[index - 1]),
               isFalse,
               reason: '$where: the denser rung would touch',
             );
@@ -208,18 +217,103 @@ void main() {
       }
     });
 
-    test('in seconds mode the longest number is the fps, not the frame '
-        'count', () {
-      TimelineRulerScale at8({required bool seconds}) => scale(
-        frameEndIndexExclusive: 1200,
-        playbackFrameCount: 1200,
-        showSeconds: seconds,
-        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 8),
+    test('F-385: both displays thin on the frame numbers — the seconds '
+        'display squeezes no number into a cell the other thins out of', () {
+      for (final frames in [30, 120, 1200, 14400]) {
+        for (final cell in [1.0, 4.0, 8.0, 12.0, 16.0, 24.0, 36.0]) {
+          TimelineRulerScale at({required bool seconds}) => scale(
+            frameEndIndexExclusive: frames,
+            playbackFrameCount: frames,
+            showSeconds: seconds,
+            metrics: TimelineGridMetrics.defaults.copyWith(
+              frameCellWidth: cell,
+            ),
+          );
+          expect(
+            at(seconds: true).labelEveryFrames,
+            at(seconds: false).labelEveryFrames,
+            reason: '$frames frames at ${cell}px',
+          );
+        }
+      }
+    });
+
+    test('I-102: inside a second every second\'s head carries a number, and '
+        'past one the numbers stand under the seconds\' marks', () {
+      for (final fps in [12, 24, 25, 30]) {
+        for (var sixteenths = 1; sixteenths <= 400; sixteenths += 3) {
+          final ruler = scale(
+            framesPerSecond: fps,
+            frameEndIndexExclusive: 14400,
+            playbackFrameCount: 14400,
+            metrics: TimelineGridMetrics.defaults.copyWith(
+              frameCellWidth: sixteenths / 16,
+            ),
+          );
+          final every = ruler.labelEveryFrames;
+          final marks = fps * ruler.secondsLabelEverySeconds;
+          final where = '$fps fps at ${sixteenths / 16}px: every $every';
+          if (every < fps) {
+            expect(fps % every, 0, reason: where);
+          } else {
+            expect(every % marks, 0, reason: '$where, marks every $marks');
+          }
+        }
+      }
+    });
+
+    test('I-102: with the seconds written five apart, the number under 5 is '
+        'the frame beneath it — 121, never 97', () {
+      final fiveApart = [
+        for (var sixteenths = 1; sixteenths <= 400; sixteenths += 1)
+          scale(
+            frameEndIndexExclusive: 1200,
+            playbackFrameCount: 1200,
+            metrics: TimelineGridMetrics.defaults.copyWith(
+              frameCellWidth: sixteenths / 16,
+            ),
+          ),
+      ].where((ruler) => ruler.secondsLabelEverySeconds == 5);
+      expect(fiveApart, isNotEmpty, reason: 'the premise: a zoom writes so');
+      for (final ruler in fiveApart) {
+        final cell = ruler.metrics.frameCellWidth;
+        expect(ruler.writingAt(120, current: false).second, '5');
+        expect(ruler.writingAt(96, current: false).number, '', reason: '$cell');
+        if (ruler.labelEveryFrames == 120) {
+          expect(ruler.writingAt(120, current: false).number, '121');
+        }
+      }
+    });
+  });
+
+  group('I-102: the seconds line grows into minutes and hours as far as the '
+      'count needs', () {
+    test('the count alone below a minute, then m:ss, then h:mm:ss', () {
+      expect(timelineSecondsMark(0), '0');
+      expect(timelineSecondsMark(59), '59');
+      expect(timelineSecondsMark(60), '1:00');
+      expect(timelineSecondsMark(61), '1:01');
+      expect(timelineSecondsMark(600), '10:00');
+      expect(timelineSecondsMark(3599), '59:59');
+      expect(timelineSecondsMark(3661), '1:01:01');
+    });
+
+    test('the strip writes it, and measures the widest it writes', () {
+      final ruler = scale(
+        frameEndIndexExclusive: 24 * 3600,
+        playbackFrameCount: 24 * 3600,
+        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 24),
       );
-      expect(
-        at8(seconds: true).labelEveryFrames,
-        lessThan(at8(seconds: false).labelEveryFrames),
-      );
+      expect(ruler.secondsLabelEverySeconds, 1, reason: 'fixture premise');
+      expect(ruler.writingAt(24 * 61, current: false).second, '1:01');
+      expect(ruler.modelAt(24 * 61).secondsLabel, '1:01');
+      // Two digits hold a second at this zoom; the minutes' marks do not.
+      double second(int frames) => scale(
+        frameEndIndexExclusive: frames,
+        playbackFrameCount: frames,
+        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 0.6),
+      ).secondsLabelEverySeconds.toDouble();
+      expect(second(24 * 3600), greaterThan(second(24 * 59)));
     });
   });
 

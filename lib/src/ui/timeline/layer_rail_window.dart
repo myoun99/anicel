@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../layout/render_shifted_child.dart';
+import '../text/app_strings.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart';
 import 'axis_turn.dart';
@@ -608,8 +609,14 @@ class TimelineSecondsToggleCorner extends KeptPiece {
     if (onChanged == null) {
       return SizedBox(width: width, height: height);
     }
+    final strings = AppText.strings;
+    // 🗣️I-102 (유저 2026-10-15): 「초+코마 표시 토글버튼 로컬라이즈
+    // 안되있으니 해주고」 — the display a press turns to, in the words the
+    // frame-count entry names the two displays by.
     return AppTooltip(
-      message: showSeconds ? 'Show Frames' : 'Show Seconds',
+      message: showSeconds
+          ? strings.frameCountEntryFrames
+          : strings.frameCountEntrySecondsPlusFrames,
       child: ControlPressClaim(
         onPressed: () => onChanged(!showSeconds),
         child: InkWell(
