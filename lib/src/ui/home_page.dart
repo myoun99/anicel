@@ -1167,6 +1167,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _workspaceBar.zoomStep(_session.workingPanel, zoomIn: true);
       case EditorActionIds.timelineZoomOut:
         _workspaceBar.zoomStep(_session.workingPanel, zoomIn: false);
+      case EditorActionIds.timelineZoomFit:
+        _workspaceBar.zoomFit(_session.workingPanel);
       case EditorActionIds.timelineOrientationToggle:
         _workspaceBar.toggleOrientation(_session.workingPanel);
       case EditorActionIds.canvasRotateCcw:

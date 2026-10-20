@@ -64,6 +64,7 @@ class TimelineTabHost extends StatefulWidget {
     required this.pixelsPerFrame,
     this.pixelsPerFrameListenable,
     required this.onPixelsPerFrameChanged,
+    this.onZoomFit,
     required this.showSeconds,
     required this.onShowSecondsChanged,
     this.timelineRailExtent,
@@ -112,6 +113,9 @@ class TimelineTabHost extends StatefulWidget {
   /// without the notifier.
   final ValueListenable<double>? pixelsPerFrameListenable;
   final ValueChanged<double> onPixelsPerFrameChanged;
+
+  /// The zoom fit (I-111) — the workspace's, which keeps the zoom.
+  final VoidCallback? onZoomFit;
   final bool showSeconds;
   final ValueChanged<bool> onShowSecondsChanged;
 
@@ -849,6 +853,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onOrientationChanged: widget.onOrientationChanged,
             pixelsPerFrame: pixelsPerFrame,
             onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+            onZoomFit: widget.onZoomFit,
             showSeconds: widget.showSeconds,
             onShowSecondsChanged: widget.onShowSecondsChanged,
             timelineRailExtent: widget.timelineRailExtent,

@@ -116,6 +116,23 @@ abstract final class TimelineZoomLimits {
     ).clamp(_minStepsAt(framesPerSecond), _maxSteps),
   );
 
+  /// The closest zoom at which [frames] frames stand inside [extent]
+  /// pixels — on a step, inside the range: the zoom fit (I-111).
+  static double fitting(
+    double extent, {
+    required int frames,
+    required int framesPerSecond,
+  }) {
+    final steps =
+        extent /
+        math.max(1, frames) *
+        _stepsPerReference /
+        referencePixelsPerFrame;
+    return _zoomOf(
+      steps.floor().clamp(_minStepsAt(framesPerSecond), _maxSteps),
+    );
+  }
+
   /// One −/+ step (UI-R11 #11): ×1.25 like every editor zoom in the app, so
   /// a step feels equal at the widest zoom and the closest — and at least
   /// one step ([_stepsPerReference]), so a press moves the zoom wherever

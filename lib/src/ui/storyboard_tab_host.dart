@@ -59,6 +59,7 @@ class StoryboardTabHost extends StatefulWidget {
     this.onPlaceMediaAsset,
     required this.pixelsPerFrame,
     required this.onPixelsPerFrameChanged,
+    this.onZoomFit,
     required this.showSeconds,
     required this.onShowSecondsChanged,
     this.railExtent,
@@ -157,6 +158,9 @@ class StoryboardTabHost extends StatefulWidget {
   final EditorSessionManager session;
   final double pixelsPerFrame;
   final ValueChanged<double> onPixelsPerFrameChanged;
+
+  /// The zoom fit (I-111) — the workspace's, which keeps the zoom.
+  final VoidCallback? onZoomFit;
   final bool showSeconds;
   final ValueChanged<bool> onShowSecondsChanged;
 
@@ -612,6 +616,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           showSeconds: widget.showSeconds,
           pixelsPerFrame: widget.pixelsPerFrame,
           onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+          onZoomFit: widget.onZoomFit,
           cutName: _session.cutUnderPlayhead.cutName,
           trailing: null,
         ),
@@ -625,6 +630,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           showSeconds: widget.showSeconds,
           pixelsPerFrame: widget.pixelsPerFrame,
           onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+          onZoomFit: widget.onZoomFit,
         ),
       ),
     );

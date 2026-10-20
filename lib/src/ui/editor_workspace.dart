@@ -140,6 +140,7 @@ import 'storyboard_panel.dart'
         StoryboardTrackLabelRow,
         storyboardVideoRowName;
 import 'storyboard_playhead_mapping.dart';
+import '../models/storyboard_timeline_layout.dart' show movieEndFrames;
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import 'timeline/collapsed_row_overlay.dart';
@@ -951,6 +952,54 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
   }
 
+  /// One press of [panel]'s zoom fit — its button's and its key's (I-111,
+  /// 유저 2026-10-19: 「타임라인/콘티패널등 줌 fit 버튼 추가. 해당 패널의
+  /// 엔드라인에 맞춰서 스크롤바 fit하는것」): the closest zoom at which the
+  /// end line the panel draws — the cut's on the timeline, the movie's on
+  /// the conte — stands inside the window its frame axis was last shown in
+  /// ([keptAxisWindows]), through the zoom's one writer; and the axis at
+  /// its start.
+  ///
+  /// ⚠️The start is written a frame later: the grid re-anchors its axis on
+  /// the playhead when the zoom it is built at changes
+  /// ([applyZoomAnchoredScroll]), which would move it off the start again.
+  void _fitZoom(WorkingPanel panel) {
+    final session = widget.session;
+    final (railId, frames, write) = switch (panel) {
+      WorkingPanel.timeline => (
+        _timelineOrientation.value == TimelineOrientation.horizontal
+            ? LayerRailId.timeline
+            : LayerRailId.xsheet,
+        session.activeCutSpan.activeCutPlaybackFrameCount,
+        _setTimelineZoom,
+      ),
+      WorkingPanel.storyboard => (
+        LayerRailId.storyboard,
+        movieEndFrames(session.repository.requireProject()),
+        _setStoryboardZoom,
+      ),
+    };
+    final kept = _frameAxisOffsets[railId];
+    final window = kept == null ? null : keptAxisWindows[kept];
+    if (kept == null || window == null) {
+      return;
+    }
+    write(
+      TimelineZoomLimits.fitting(
+        window,
+        frames: frames,
+        framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
+      ),
+    );
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) => kept.value = 0)
+      ..scheduleFrame();
+  }
+
+  void _fitTimelineZoom() => _fitZoom(WorkingPanel.timeline);
+
+  void _fitStoryboardZoom() => _fitZoom(WorkingPanel.storyboard);
+
   /// The timeline's ⇄ — its button's one writer.
   void _setTimelineOrientation(TimelineOrientation orientation) {
     _timelineOrientation.value = orientation;
@@ -1262,6 +1311,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.barCommands?.bind(
       this,
       zoomStep: _stepZoom,
+      zoomFit: _fitZoom,
       toggleOrientation: _toggleOrientation,
     );
     widget.doorCommands?.bind(

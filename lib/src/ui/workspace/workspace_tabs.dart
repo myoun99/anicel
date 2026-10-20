@@ -1016,6 +1016,7 @@ class _WorkspaceTabs {
               pixelsPerFrame: _state._timelinePixelsPerFrame.value,
               pixelsPerFrameListenable: _state._timelinePixelsPerFrame,
               onPixelsPerFrameChanged: _state._setTimelineZoom,
+              onZoomFit: _state._fitTimelineZoom,
               showSeconds: _state._showSecondsDisplay.value,
               onShowSecondsChanged: (show) {
                 _state._showSecondsDisplay.value = show;
@@ -1147,6 +1148,7 @@ class _WorkspaceTabs {
               ).laneGraphVerbs,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
+              onZoomFit: _state._fitStoryboardZoom,
               showSeconds: _state._showSecondsDisplay.value,
               onShowSecondsChanged: (show) {
                 _state._showSecondsDisplay.value = show;

@@ -123,6 +123,7 @@ class TimelinePanel extends StatefulWidget {
     this.timelineActionToolbar,
     this.pixelsPerFrame = TimelinePanel.defaultPixelsPerFrame,
     this.onPixelsPerFrameChanged,
+    this.onZoomFit,
     this.showSeconds = false,
     this.onShowSecondsChanged,
     this.timelineRailExtent,
@@ -479,6 +480,10 @@ class TimelinePanel extends StatefulWidget {
   final double pixelsPerFrame;
   final ValueChanged<double>? onPixelsPerFrameChanged;
 
+  /// The zoom fit beside the + (I-111) — the host's
+  /// ([TimelineViewCluster.onZoomFit]).
+  final VoidCallback? onZoomFit;
+
   /// Frames↔seconds display toggle, shared by the timeline counter and the
   /// storyboard cut totals (conte-sheet `s+ff` notation).
   final bool showSeconds;
@@ -782,6 +787,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 showSeconds: widget.showSeconds,
                 pixelsPerFrame: widget.pixelsPerFrame,
                 onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+                onZoomFit: widget.onZoomFit,
                 cutName: widget.cutName,
                 // The orientation toggle below: what it shows, and where its
                 // press goes.
@@ -793,6 +799,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 showSeconds: widget.showSeconds,
                 pixelsPerFrame: widget.pixelsPerFrame,
                 onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+                onZoomFit: widget.onZoomFit,
                 cutName: widget.cutName,
                 trailing: [
                   // R26 #42's standard button, like every other control on

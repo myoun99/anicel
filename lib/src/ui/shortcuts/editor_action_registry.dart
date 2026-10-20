@@ -838,6 +838,9 @@ abstract final class EditorActionIds {
   /// being worked in, and the timeline's ⇄ X-sheet.
   static const timelineZoomIn = 'timeline-zoom-in';
   static const timelineZoomOut = 'timeline-zoom-out';
+
+  /// The zoom fit beside them (I-111).
+  static const timelineZoomFit = 'timeline-zoom-fit';
   static const timelineOrientationToggle = 'timeline-orientation-toggle';
 
   /// 🗣️I-19 (유저 2026-09-12): 「여러 단축키 기존 버튼에 연결. 우선
@@ -1889,6 +1892,15 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.timelineZoomOut,
     label: 'Timeline Zoom Out',
+    shelf: ShortcutShelf.timelineBar,
+    defaultActivators: [],
+  ),
+  // 🗣️I-111 (유저 2026-10-19): 「타임라인/콘티패널등 줌 fit 버튼 추가.
+  // 해당 패널의 엔드라인에 맞춰서 스크롤바 fit하는것」 · 「위치는 줌
+  // 확대버튼 오른쪽」. No key was said for it.
+  const EditorActionDefinition(
+    id: EditorActionIds.timelineZoomFit,
+    label: 'Timeline Zoom to Fit',
     shelf: ShortcutShelf.timelineBar,
     defaultActivators: [],
   ),
