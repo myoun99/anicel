@@ -755,6 +755,17 @@ bool layerMarksSheetBook(Layer layer) =>
     layer.onTimesheet &&
     layer.mark.process == LayerProcess.art;
 
+/// Whether this layer's lines print on paper — an SE row with its sheet
+/// switch on: the timesheet's SE column, the XDTS export and the conte
+/// sheet's dialogue all read it.
+///
+/// 🗣️F-345 (유저 2026-10-12): 「se트랙 타임시트off시, 콘티용지패널에도 대사
+/// 안적도록」. ↩️The conte sheet read every SE row, switch or not.
+bool layerPrintsSheetLines(Layer layer) =>
+    layerCarriesTimesheetToggle(layer) &&
+    layer.kind == LayerKind.se &&
+    layer.onTimesheet;
+
 /// The block [layer]'s lane holds that somebody AUTHORED — its first drawing
 /// that is not a ghost — or null when the row stands empty.
 ///

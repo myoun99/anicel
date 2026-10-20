@@ -10,7 +10,6 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/key_range_move.dart' show transformKeyAgreedNames;
 import '../../models/layer.dart';
-import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/project.dart';
@@ -231,7 +230,8 @@ ConteCameraKey _cameraKey(
   label: cameraKeyLabel(named, frameIndex),
 );
 
-/// The cut's lines, read off the track's SE rows and clipped to the cut.
+/// The cut's lines, read off the track's SE rows that print on paper
+/// ([layerPrintsSheetLines], F-345) and clipped to the cut.
 ///
 /// The SE block's frame NAME is the line and its `seName` is the speaker
 /// (design G) — the sheet reads them straight, which is why typing dialogue
@@ -239,7 +239,7 @@ ConteCameraKey _cameraKey(
 List<ConteDialogueLine> _dialogueOf(Track track, int startFrame, int endFrame) {
   final lines = <ConteDialogueLine>[];
   for (final layer in track.seLayers) {
-    if (layer.kind != LayerKind.se) {
+    if (!layerPrintsSheetLines(layer)) {
       continue;
     }
     for (final block in drawingBlocks(layer.timeline)) {

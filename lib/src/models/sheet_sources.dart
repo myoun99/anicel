@@ -46,11 +46,11 @@ class SheetSources {
       cellBooks: sheetBooksOf(_blockRows(cut.layers, inbetween: true)),
       seLayers: [
         for (final layer in cut.layers)
-          if (layer.kind == LayerKind.se && layer.onTimesheet)
+          if (layerPrintsSheetLines(layer))
             (layer: layer, crosses: crossesCutEnd(layer, playbackFrameCount),
              spills: false),
         for (final layer in trackSeLayers)
-          if (layer.onTimesheet)
+          if (layerPrintsSheetLines(layer))
             () {
               // The display window is open-ended on the right now (SE
               // globalization — the timeline's runway shows the
