@@ -227,6 +227,12 @@ void main() {
     // Drawn and unlinked before the screen has drawn the new pixels once.
     draw(s, attach, rowOf(s, attach).baseFrameLinks[a]!, green);
     TimelineToolbarPanelContext(s).unlink();
+    await tester.pump();
+    expect(
+      await bluePixels(tester),
+      0,
+      reason: 'not for a frame: the blue the screen held is not the copy\'s',
+    );
     await drainWarming(tester);
 
     expect(
