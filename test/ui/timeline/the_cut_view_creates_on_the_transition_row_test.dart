@@ -22,6 +22,8 @@ import 'package:anicel/src/ui/timeline/instance_editor_commands.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 void main() {
   test('standing on the transition row, the ＋ makes a span at the playhead '
       '— on the global row', () {
@@ -172,6 +174,61 @@ void main() {
       s.activeTrack.transitionLayer.instructions.keys,
       [s.activeCutGlobalStartFrame + 2],
     );
+  });
+
+  // 🗣️F-338 (유저 2026-10-11): 「프레임 추가버튼 활성화된채로 트랜지션레이어
+  // 가면 추가버튼 다른 블록있는 OL있는곳가던 뭐하던 활성화된채」.
+  testWidgets('the bar\'s ＋ goes dark where the playhead steps onto an '
+      'O.L\'s mark — and lights again off it', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final s = _session();
+    s.cutVerbs.createCut();
+    final track = s.repository.requireProject().tracks.single;
+    final boundary = track.cuts.first.duration;
+    // An O.L of 12 on the boundary: the second cut's own frames open with
+    // its 6 frames of のりしろ, and the mark covers its first 12.
+    s.transitions.updateTransitionInstructions({
+      boundary - 6: const InstructionEvent(instructionId: 'ol', length: 12),
+    });
+    s.selectCut(track.cuts[1].id);
+    s.standOnRow(LayerRowAddress(track.transitionLayer.id));
+    s.selectFrameIndex(14);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: s,
+            builder: (context, _) => TimelineTabHost(
+              session: s,
+              orientation: TimelineOrientation.horizontal,
+              onOrientationChanged: (_) {},
+              pixelsPerFrame: 24,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    bool lit() => tester
+            .appIconButton(
+              find.byKey(const ValueKey<String>('new-frame-button')),
+            )
+            .onPressed !=
+        null;
+    expect(lit(), isTrue, reason: '⛔전제: a free cell past the mark');
+
+    s.selectFrameIndex(5);
+    await tester.pumpAndSettle();
+    expect(s.transitions.transitionShownInCutAt(5), isTrue, reason: '⛔전제');
+    expect(lit(), isFalse, reason: 'its press makes nothing on the mark');
+
+    s.selectFrameIndex(14);
+    await tester.pumpAndSettle();
+    expect(lit(), isTrue);
   });
 }
 

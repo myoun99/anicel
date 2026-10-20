@@ -1135,13 +1135,14 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // an empty cell or a ghost — a seek moves it, and a seek is no notify.
       // The timeline context's answer, read where it comes from.
       session.blockNaming.timelineTargets != null,
-      // The Add button gates on the active layer's kind + cell state.
-      // NOTE: these two move together with the can* getters above in every
-      // reachable scenario, so the guard test cannot isolate them — they are
-      // listed because the Add button genuinely reads them, not because a
-      // test proves each one.
-      session.activeLayer?.kind,
-      session.cells.hasActiveNonNegativeCell,
+      // The Add button's own answer, read where it comes from.
+      // 🚨F-338 (유저 2026-10-11): 「프레임 추가버튼 활성화된채로
+      // 트랜지션레이어 가면 추가버튼 다른 블록있는 OL있는곳가던 뭐하던
+      // 활성화된채」. ↩️This entry was the row's kind and whether its cell
+      // was on the axis — which the transition row's gate does not move
+      // with: a seek from a free cell onto an O.L's mark changed neither,
+      // and the cached bar kept a ＋ whose press made nothing there.
+      session.cellInstances.canCreateInstance,
       // Edit Instance means THAT LANE'S KEY while you stand on a lane row,
       // an enablement no layer kind can answer. The row you stand on
       // publishes through its OWN notifier without a session notify, which
