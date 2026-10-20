@@ -229,9 +229,12 @@ void main() {
       'run waited for its sound is not found still filling', () {
     mode = PlaybackMode.renderFirst;
     there.add(0);
-    coming = true;
     final w = wait();
     expect(put(w, 0), isTrue, reason: '⛔premise: it fills');
+    // ⛔Its sound comes on its way only now, the fill begun: put while the
+    // sound was already coming, the run began no fill with the sound asked
+    // first either, and this read the same both ways (10-20).
+    coming = true;
     filled = true;
     expect(reached(w, 0), isTrue, reason: 'filled, and its sound not come');
 
