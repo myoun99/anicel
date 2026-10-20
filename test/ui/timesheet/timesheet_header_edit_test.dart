@@ -40,9 +40,17 @@ const _editorKey = ValueKey<String>('timesheet-header-edit-field');
 
 void main() {
   late List<(int, String)> committedMemos;
-  late List<String> committedNames;
+  late List<(TimesheetHeaderField, String)> committedHeads;
   late TimesheetDocumentLayout layout;
   late Offset layerOrigin;
+
+  /// The fields the tab host gives a road (I-112).
+  const edited = {
+    TimesheetHeaderField.episode,
+    TimesheetHeaderField.title,
+    TimesheetHeaderField.cut,
+    TimesheetHeaderField.name,
+  };
 
   Future<void> pumpLayer(
     WidgetTester tester, {
@@ -50,7 +58,7 @@ void main() {
     int duration = 24,
   }) async {
     committedMemos = [];
-    committedNames = [];
+    committedHeads = [];
     layout = TimesheetDocumentLayout(
       document: _document(notes: notes, duration: duration),
     );
@@ -74,7 +82,10 @@ void main() {
                 viewport: CanvasViewport(),
                 onMemoCommitted: (page, memo) =>
                     committedMemos.add((page, memo)),
-                onNameCommitted: committedNames.add,
+                headerCommits: {
+                  for (final field in edited)
+                    field: (text) => committedHeads.add((field, text)),
+                },
               ),
             ),
           ),
@@ -154,9 +165,9 @@ void main() {
       expect(find.byKey(_editorKey), findsNothing);
     });
 
+
     testWidgets('🎯the NAME box edits its worker in place — one line, centred '
-        'as printed, Enter lands it (I-112); ⛔every other header box is '
-        'printed, not edited', (tester) async {
+        'as printed, Enter lands it (I-112)', (tester) async {
       await pumpLayer(tester);
 
       await tester.tap(
@@ -171,20 +182,43 @@ void main() {
       await tester.enterText(find.byKey(_editorKey), 'ユキ');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
-      expect(committedNames, ['ユキ']);
+      expect(committedHeads, [(TimesheetHeaderField.name, 'ユキ')]);
       expect(find.byKey(_editorKey), findsNothing);
+    });
 
-      // 유저 09-25: 「작품명/화수는 이제 타임시트패널같은곳에서 편집안하게.
-      // 작업자든 뭐든. 해당 설정은 프로젝트 설정쪽에」 — I-112 took the name
-      // back alone.
+    // 🗣️I-112 (유저 2026-10-21): 「추가로 화수,타이틀,신,이름 등 다른
+    // 변경가능한것도 변경가능하게. 타임은 안하는게 나을듯. 페이지도 자동이고.」
+    testWidgets('🎯every box with a road opens on what it prints and lands '
+        'through its own road; ⛔a box without one — the length, the page, '
+        'the scene — is printed, not edited', (tester) async {
+      await pumpLayer(tester);
+      const typed = {
+        TimesheetHeaderField.episode: ('MV', '#3'),
+        TimesheetHeaderField.title: ('YOASOBI', '夜に駆ける'),
+        TimesheetHeaderField.cut: ('Cut 1', 'C-012'),
+        TimesheetHeaderField.name: ('大川', 'ユキ'),
+      };
+
       for (final box in layout.headerFieldBoxes(0)) {
-        if (box.field == TimesheetHeaderField.name) {
-          continue;
-        }
         await tester.tapAt(layerOrigin + box.rect.center);
         await tester.pumpAndSettle();
-        expect(find.byKey(_editorKey), findsNothing, reason: box.field.name);
+        final words = typed[box.field];
+        if (words == null) {
+          expect(find.byKey(_editorKey), findsNothing, reason: box.field.name);
+          continue;
+        }
+        final editor = tester.widget<TextField>(find.byKey(_editorKey));
+        expect(editor.controller!.text, words.$1, reason: box.field.name);
+        await tester.enterText(find.byKey(_editorKey), words.$2);
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
       }
+
+      expect(committedHeads, [
+        for (final box in layout.headerFieldBoxes(0))
+          if (typed[box.field] case (_, final next)) (box.field, next),
+      ]);
+      expect(committedHeads, hasLength(4));
       expect(committedMemos, isEmpty);
     });
   });
@@ -201,6 +235,7 @@ void main() {
 
     expect(printed.headerValueFor(TimesheetHeaderField.title, 0), 'YOASOBI');
     expect(printed.headerValueFor(TimesheetHeaderField.episode, 0), 'MV');
+    expect(printed.headerValueFor(TimesheetHeaderField.cut, 0), 'Cut 1');
     expect(printed.headerValueFor(TimesheetHeaderField.name, 0), '大川');
     expect(printed.headerValueFor(TimesheetHeaderField.scene, 0), '');
   });

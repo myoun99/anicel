@@ -389,6 +389,21 @@ class TimesheetDocumentLayout {
     return boxes;
   }
 
+  /// What a header box prints that someone TYPED — the work's title and
+  /// episode, the cut's name, its sheet worker — or null for a box the
+  /// sheet counts itself (the length, the page). Shared by the painter and
+  /// the tap-to-edit layer, so the field opens on the printed words.
+  String? typedHeaderValue(TimesheetHeaderField field) => switch (field) {
+    TimesheetHeaderField.episode => document.episode,
+    TimesheetHeaderField.title => document.title,
+    // Written by hand: a scene belongs to a group of cuts, which the
+    // conte will make (유저 09-25), not to the work.
+    TimesheetHeaderField.scene => '',
+    TimesheetHeaderField.cut => document.cutName,
+    TimesheetHeaderField.name => document.artist,
+    TimesheetHeaderField.time || TimesheetHeaderField.sheet => null,
+  };
+
   /// The memo band rect of a page — directly under the header band, same
   /// grid-aligned edges.
   Rect memoBandRect(int pageIndex) {

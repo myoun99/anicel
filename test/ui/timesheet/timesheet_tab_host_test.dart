@@ -216,6 +216,43 @@ void main() {
         reason: 'one name — the one 컷 설정 shows',
       );
     });
+
+    Future<void> typeInto(WidgetTester tester, String box, String words) async {
+      await tester.tap(find.byKey(ValueKey<String>('timesheet-$box-edit-p0')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(_editorKey), words);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
+
+    // 🗣️I-112 (유저 2026-10-21): 「추가로 화수,타이틀,신,이름 등 다른
+    // 변경가능한것도 변경가능하게 … 타이틀 바꾸면 다른곳에도 반영되는거
+    // 인지하고있음. 화수도 마찬가지.」
+    testWidgets('🎯the episode and title boxes type the work\'s own — the '
+        'values its settings show — and the cut box renames the cut', (
+      tester,
+    ) async {
+      await pumpHost(tester, brushAllowed: false);
+
+      await typeInto(tester, 'episode', '#3');
+      await typeInto(tester, 'title', '夜に駆ける');
+      await typeInto(tester, 'cut', 'C-012');
+
+      expect(session.timesheetInfo.episode, '#3');
+      expect(session.timesheetInfo.title, '夜に駆ける');
+      expect(session.requireActiveCut.name, 'C-012');
+    });
+
+    testWidgets('⛔an emptied cut box keeps the cut\'s name — no cut goes '
+        'nameless', (tester) async {
+      await pumpHost(tester, brushAllowed: false);
+      final name = session.requireActiveCut.name;
+
+      await typeInto(tester, 'cut', '  ');
+
+      expect(find.byKey(_editorKey), findsNothing);
+      expect(session.requireActiveCut.name, name);
+    });
   });
 }
 

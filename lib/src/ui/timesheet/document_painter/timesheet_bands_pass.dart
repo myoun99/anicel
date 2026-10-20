@@ -114,26 +114,18 @@ class _TimesheetBandsPass {
   ///
   /// The length and the sheet count are read LIVE, so the header follows a
   /// cut-length drag instead of waiting for the release (F-88); the rest
-  /// is the document's own.
-  String headerFieldValue(TimesheetHeaderField field, int pageIndex) {
-    final document = _painter.document;
-    return switch (field) {
-      TimesheetHeaderField.episode => document.episode,
-      TimesheetHeaderField.title => document.title,
-      // Written by hand: a scene belongs to a group of cuts, which the
-      // conte will make (유저 09-25), not to the work.
-      TimesheetHeaderField.scene => '',
-      TimesheetHeaderField.cut => document.cutName,
-      TimesheetHeaderField.time => _spacedLength(
-        _painter.livePlaybackFrameCount,
-      ),
-      TimesheetHeaderField.name => document.artist,
-      TimesheetHeaderField.sheet => _painter.layout.pageLabel(
-        pageIndex,
-        pageCount: _painter.livePageCount,
-      ),
-    };
-  }
+  /// is typed ([TimesheetDocumentLayout.typedHeaderValue]).
+  String headerFieldValue(TimesheetHeaderField field, int pageIndex) =>
+      switch (field) {
+        TimesheetHeaderField.time => _spacedLength(
+          _painter.livePlaybackFrameCount,
+        ),
+        TimesheetHeaderField.sheet => _painter.layout.pageLabel(
+          pageIndex,
+          pageCount: _painter.livePageCount,
+        ),
+        _ => _painter.layout.typedHeaderValue(field)!,
+      };
 
   /// The Direction memo band under the header: COMPLETELY open handwriting
   /// space, exactly like the reference forms (R7-⑥ — the band outline and

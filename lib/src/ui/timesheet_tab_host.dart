@@ -7,6 +7,7 @@ import '../models/cut.dart';
 import '../models/sheet_paper.dart';
 import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
+import '../models/timesheet_info.dart';
 import 'brush/brush_canvas_panel.dart'
     show BrushCanvasPanel, CanvasTransportBand;
 import 'brush/sheet_canvas_panel.dart';
@@ -262,6 +263,30 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     );
   }
 
+  /// Where each header box edited in place lands (I-112): the work's
+  /// episode and title — the values its settings show — the cut's name,
+  /// and its sheet worker ([TimesheetHeaderEditLayer]).
+  Map<TimesheetHeaderField, ValueChanged<String>> _headerCommits() {
+    final session = widget.session;
+    void work(TimesheetInfo Function(TimesheetInfo info) edit) =>
+        session.updateTimesheetInfo(edit(session.timesheetInfo));
+    return {
+      TimesheetHeaderField.episode: (episode) =>
+          work((info) => info.copyWith(episode: episode)),
+      TimesheetHeaderField.title: (title) =>
+          work((info) => info.copyWith(title: title)),
+      // ⛔An empty name is no cut's name — the rename window refuses one
+      // inline ([RenameCutDialog]); a box has no line to say so, so it
+      // keeps the name it prints.
+      TimesheetHeaderField.cut: (name) {
+        if (name.isNotEmpty) {
+          session.cutVerbs.renameActiveCut(name);
+        }
+      },
+      TimesheetHeaderField.name: session.cutVerbs.setActiveCutSheetArtist,
+    };
+  }
+
   /// The sheet's own commands, at the head of the panel's pill — after the
   /// brush switch, which the sheet shell puts first on every sheet.
   ///
@@ -495,8 +520,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                               viewport: viewport,
                               onMemoCommitted: (page, memo) => session.cutVerbs
                                   .updateActiveCutNote(page: page, note: memo),
-                              onNameCommitted:
-                                  session.cutVerbs.setActiveCutSheetArtist,
+                              headerCommits: _headerCommits(),
                             ),
                           ),
                           if (ink != null)
