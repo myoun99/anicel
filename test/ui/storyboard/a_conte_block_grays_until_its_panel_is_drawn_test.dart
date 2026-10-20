@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -8,14 +9,19 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard/storyboard_rows_channel.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/cel_text_fixture.dart' show drawingOf, tileFilledWith;
 import '../../helpers/conte_track_fixture.dart';
+import '../../helpers/storyboard_twirls.dart';
 import '../timeline/timeline_frame_geometry_probe.dart';
 
 /// 🗣️F-357: the conte row grays a block whose panel holds no picture yet,
@@ -152,5 +158,58 @@ void main() {
       expect(has(1), isTrue);
       expect(paper(1), paper(5));
     }
+  });
+
+  testWidgets('the storyboard tab hands the row the session\x27s fact — a '
+      'panel goes white when its cel takes ink', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
+    final cut = session.activeCutOrNull!;
+    final conte = session.activeLayer!;
+    final cel = conte.timeline[0]!.frameId!;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
+              session: session,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
+              pixelsPerFrame: 12,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+              thumbnails: null,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final track = session.repository.requireProject().tracks.single.id;
+    final painter = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((paint) => paint.painter)
+        .whereType<TimelineRowCellsPainter>()
+        .singleWhere((painter) => painter.layer.id == trackConteRowId(track));
+    bool drawnAtTheStart() =>
+        painter.celHasContentForLayer!(painter.layer, 0);
+
+    expect(drawnAtTheStart(), isFalse);
+    final before = painter.celContentRevision;
+    session.renderCaches.brushFrameStore.storeBakedSurface(
+      session.brushFrameKeyForCut(cut, conte.id, cel),
+      drawingOf({TileCoord(x: 0, y: 0): tileFilledWith([0, 0, 0, 255])}),
+    );
+    expect(drawnAtTheStart(), isTrue);
+    expect(painter.celContentRevision, isNot(before));
   });
 }
