@@ -53,10 +53,7 @@ Set<LayerId> conteFillsGiven(Project? before, Project? after) {
   if (after == null || identical(before, after)) {
     return const {};
   }
-  final was = {
-    for (final track in before?.tracks ?? const <Track>[])
-      for (final cut in track.cuts) cut.id: cut,
-  };
+  final was = _cutsById(before);
   final given = <LayerId>{};
   for (final track in after.tracks) {
     for (final cut in track.cuts) {
@@ -100,40 +97,38 @@ List<ConteHeadPut> conteHeadsPut(
   if (identical(written, laid)) {
     return const [];
   }
-  final was = {
-    for (final track in before?.tracks ?? const <Track>[])
-      for (final cut in track.cuts) cut.id: cut,
-  };
-  final wrote = {
-    for (final track in written.tracks)
-      for (final cut in track.cuts) cut.id: cut,
-  };
+  final was = _cutsById(before);
+  final wrote = _cutsById(written);
   final put = <ConteHeadPut>[];
-  for (final track in laid.tracks) {
-    for (final cut in track.cuts) {
-      final own = wrote[cut.id];
-      final old = was[cut.id];
-      if (own == null || old == null || identical(own, cut)) {
+  for (final cut in _cutsById(laid).values) {
+    final own = wrote[cut.id];
+    final old = was[cut.id];
+    if (own == null || old == null || identical(own, cut)) {
+      continue;
+    }
+    final rode = {for (final row in _conteRowsOf(old)) row.id};
+    for (final row in _conteRowsOf(cut)) {
+      final mine = own.layers.byId(row.id);
+      // A row the write made goes with its undo, head and all.
+      if (mine == null ||
+          rode.contains(row.id) ||
+          old.layers.byId(row.id) == null) {
         continue;
       }
-      final rode = {for (final row in _conteRowsOf(old)) row.id};
-      for (final row in _conteRowsOf(cut)) {
-        final mine = own.layers.byId(row.id);
-        // A row the write made goes with its undo, head and all.
-        if (mine == null ||
-            rode.contains(row.id) ||
-            old.layers.byId(row.id) == null) {
-          continue;
-        }
-        final head = ConteHead.of(mine);
-        if (!head.isWornBy(row)) {
-          put.add((cutId: cut.id, laid: row, own: head));
-        }
+      final head = ConteHead.of(mine);
+      if (!head.isWornBy(row)) {
+        put.add((cutId: cut.id, laid: row, own: head));
       }
     }
   }
   return put;
 }
+
+/// Every cut of [project] by its id — none for no project.
+Map<CutId, Cut> _cutsById(Project? project) => {
+  for (final track in project?.tracks ?? const <Track>[])
+    for (final cut in track.cuts) cut.id: cut,
+};
 
 /// [row] with the head [put] laid on it taken off: each field it still
 /// wears as laid goes back to its own, and one changed since stays.
