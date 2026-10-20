@@ -137,7 +137,7 @@ void main() {
       ),
     );
     // Its share (F-337) the window this was written at: 1200 wide. At its
-    // least (1018) the band's pair name runs past its room in the TEST font
+    // least (1018 then) the band's pair name runs past its room in the TEST font
     // — in the app's own faces it holds there
     // (a_linked_groups_cels_are_listed_in_the_windows_cut_test).
     await tester.binding.setSurfaceSize(const Size(1470, 860));
