@@ -602,6 +602,20 @@ void main() {
       expect(positionKeysOf(session, b), [2, 6, 12], reason: 'scale alone');
       expect(scaleKeysOf(session, a), [0, 12, 20, 30]);
     });
+
+    // I-89 ① ⓕ: the double click lands on the frame it names, as the
+    // timeline's does — and over an O.L that frame is the line's cut's,
+    // where the track frame alone would name the cut in front.
+    testWidgets('🚨over an O.L, keys the lane of the cut whose line it is on', (
+      tester,
+    ) async {
+      final session = await pumpPanel(tester, transitions: ol);
+
+      await clickTwice(tester, at(tester, 'scale', 21, across: 0.8));
+
+      expect(scaleKeysOf(session, b), [2, 3, 4, 6, 12], reason: 'b\'s own 3');
+      expect(scaleKeysOf(session, a), [0, 12, 20, 30]);
+    });
   });
 
   group('a sweep on a lane — the timeline lane\'s range, held to the cut', () {
