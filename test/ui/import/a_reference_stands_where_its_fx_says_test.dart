@@ -668,8 +668,9 @@ void main() {
     testWidgets('🚨past the side the engine hands a picture back at, a paper '
         'is baked as it shows from the bytes its cel holds — never composed '
         'by the engine', (tester) async {
+      final side = debugPictureSideLimit;
       debugPictureSideLimit = 64;
-      addTearDown(() => debugPictureSideLimit = null);
+      addTearDown(() => debugPictureSideLimit = side);
       final (s, row) = await placed(tester, width: 7200, height: 60);
       attachToTheDrawing(s, row);
       posed(s, row, fx: halved);

@@ -38,7 +38,9 @@ import '../straight_rgba_image.dart';
 /// read it; a row the engine refuses measures no side at all.
 ///
 /// 🧪The test engine cuts nothing (65536×1 comes back whole — measured
-/// 10-20), so a test names the side ([debugPictureSideLimit]).
+/// 10-20), so a test names the side ([debugPictureSideLimit]); every test
+/// stands at that one (`flutter_test_config.dart`), as a `testWidgets`
+/// clock never waits the measurement out.
 Future<int> pictureSideLimit() {
   final named = debugPictureSideLimit;
   if (named != null) {

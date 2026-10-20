@@ -38,9 +38,13 @@ import '../../helpers/temp_dir.dart';
 /// nothing, so the side is named here ([debugPictureSideLimit]): a picture
 /// past 64 in these tests is one past 16384 on the Surface.
 void main() {
+  /// The side every test stands at (`flutter_test_config.dart`): the test
+  /// engine's own, which cuts no picture a test makes.
+  final engineSide = debugPictureSideLimit;
+
   setUp(() => debugPictureSideLimit = 64);
   tearDown(() {
-    debugPictureSideLimit = null;
+    debugPictureSideLimit = engineSide;
     debugLayRasterSide = null;
     debugWorkersRunHere = true;
     debugLayFilterQuality = null;
@@ -545,7 +549,7 @@ void main() {
 
       await tester.runAsync(() async {
         final held = await expandedLayer();
-        debugPictureSideLimit = null;
+        debugPictureSideLimit = engineSide;
         expectSameCel(held, await expandedLayer());
       });
     });

@@ -21,7 +21,7 @@ import 'dart:typed_data';
 
 import '../../core/rgba_premultiply.dart';
 import 'png_writing.dart'
-    show pngIndexed, pngPaeth, pngRgb, pngRgba, pngSignature;
+    show pngHeaderType, pngIndexed, pngPaeth, pngRgb, pngRgba, pngSignature;
 
 /// IHDR colour types the writer has no name for: one grey channel, and
 /// grey with alpha.
@@ -43,7 +43,7 @@ PngHeader? readPngHeader(Uint8List bytes) {
     return null;
   }
   final data = ByteData.sublistView(bytes);
-  if (data.getUint32(12) != _type('IHDR')) {
+  if (data.getUint32(12) != _type(pngHeaderType)) {
     return null;
   }
   return (

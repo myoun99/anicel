@@ -22,13 +22,17 @@ const int pngRgb = 2;
 const int pngIndexed = 3;
 const int pngRgba = 6;
 
+/// The type of the chunk every PNG opens with: what [pngHeader] writes and
+/// `readPngHeader` looks for first.
+const String pngHeaderType = 'IHDR';
+
 /// IHDR of an 8-bit, uninterlaced [width] × [height] picture whose pixels
 /// are of [colourType] ([pngRgb], [pngIndexed] or [pngRgba]).
 Uint8List pngHeader({
   required int width,
   required int height,
   required int colourType,
-}) => pngChunk('IHDR', [
+}) => pngChunk(pngHeaderType, [
   ...pngUint32(width),
   ...pngUint32(height),
   8, // bit depth
