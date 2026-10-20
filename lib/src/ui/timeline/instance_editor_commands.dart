@@ -833,6 +833,7 @@ Future<void> _renameLaneKey(
           const SizedBox(height: 10),
           KeyFlagRow(
             label: strings.keyPath,
+            help: strings.keyPathHelp,
             off: (
               id: 'rename-key-path-straight',
               word: strings.keyPathStraight,
@@ -848,6 +849,7 @@ Future<void> _renameLaneKey(
           // Time, under the path it rides.
           KeyFlagRow(
             label: strings.keyRoving,
+            help: strings.keyRovingHelp,
             off: (id: 'rename-key-rove-off', word: strings.commonOff),
             on: (id: 'rename-key-rove-on', word: strings.commonOn),
             flags: roving,

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'app_tooltip.dart';
 import 'app_icon_button.dart';
+import 'settings_rows.dart' show settingsHelpTooltip;
 import 'package:flutter/material.dart';
 
 import '../theme/app_scroll_behavior.dart';
@@ -439,11 +440,20 @@ class AppWindowField extends StatelessWidget {
     super.key,
     required this.label,
     required this.child,
+    this.help,
     this.emphasized = false,
   });
 
   final String label;
   final Widget child;
+
+  /// What the field means, as a tooltip on its cap — the settings rows' law
+  /// ([settingsHelpTooltip], F-2: the explanation is a tooltip, never a
+  /// line of the window). Null where the cap says it on its own.
+  ///
+  /// 🗣️F-366 (유저 2026-10-16): 「로빙이 애초에 뭐지? 이런거 설명은 항목
+  /// 헤더에 툴팁 띄워줬으면. 도착 출발 경로 이런거에도」.
+  final String? help;
 
   /// The field the window is really about (the name being typed) — its cap
   /// takes the accent.
@@ -458,12 +468,18 @@ class AppWindowField extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 5),
-          child: Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: emphasized
-                  ? AppColors.accent
-                  : theme.colorScheme.onSurfaceVariant,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: settingsHelpTooltip(
+              help,
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: emphasized
+                      ? AppColors.accent
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ),
         ),

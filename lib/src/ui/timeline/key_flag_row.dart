@@ -19,6 +19,7 @@ class KeyFlagRow extends StatelessWidget {
   const KeyFlagRow({
     super.key,
     required this.label,
+    required this.help,
     required this.off,
     required this.on,
     required this.flags,
@@ -27,6 +28,10 @@ class KeyFlagRow extends StatelessWidget {
   });
 
   final String label;
+
+  /// The cap's tooltip ([AppWindowField.help]).
+  final String help;
+
   final KeyFlagChoice off;
   final KeyFlagChoice on;
 
@@ -50,6 +55,7 @@ class KeyFlagRow extends StatelessWidget {
     );
     return AppWindowField(
       label: label,
+      help: help,
       child: Align(
         alignment: Alignment.centerLeft,
         child: PillStrip(

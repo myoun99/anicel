@@ -59,6 +59,7 @@ class KeySidesRows extends StatelessWidget {
         _SideRow<KeySide>(
           id: 'in',
           label: strings.keySideIncoming,
+          help: strings.keySideIncomingHelp,
           leaving: false,
           choices: const [
             KeySide.linear,
@@ -78,6 +79,7 @@ class KeySidesRows extends StatelessWidget {
         _SideRow<KeyExit>(
           id: 'out',
           label: strings.keySideOutgoing,
+          help: strings.keySideOutgoingHelp,
           leaving: true,
           choices: const [
             KeySide.linear,
@@ -104,6 +106,7 @@ class _SideRow<S extends KeyExit> extends StatelessWidget {
   const _SideRow({
     required this.id,
     required this.label,
+    required this.help,
     required this.leaving,
     required this.choices,
     required this.current,
@@ -114,6 +117,9 @@ class _SideRow<S extends KeyExit> extends StatelessWidget {
   /// `in` or `out` — what the row's keys are named by.
   final String id;
   final String label;
+
+  /// The cap's tooltip ([AppWindowField.help]).
+  final String help;
 
   /// The side leaving the keys — the right half of their mark.
   final bool leaving;
@@ -137,6 +143,7 @@ class _SideRow<S extends KeyExit> extends StatelessWidget {
     final eases = together.eases;
     return AppWindowField(
       label: label,
+      help: help,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

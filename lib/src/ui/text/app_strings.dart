@@ -377,6 +377,14 @@ enum AppStrings {
   /// a position key's time left to its run.
   String get keyRoving => _s('keyRoving');
 
+  /// What the key window's rows mean, each as its cap's tooltip (F-366,
+  /// 유저 2026-10-16: 「이런거 설명은 항목 헤더에 툴팁 띄워줬으면. 도착 출발
+  /// 경로 이런거에도」).
+  String get keySideIncomingHelp => _s('keySideIncomingHelp');
+  String get keySideOutgoingHelp => _s('keySideOutgoingHelp');
+  String get keyPathHelp => _s('keyPathHelp');
+  String get keyRovingHelp => _s('keyRovingHelp');
+
   /// The canvas's camera path settings (I-89 ④), words of the confirmed
   /// spec's mock: what it shows, how much of it, and its numbers.
   String get cameraPath => _s('cameraPath');
@@ -1975,6 +1983,14 @@ enum AppStrings {
     'keyPathStraight': 'Straight',
     'keyPathCurved': 'Curved',
     'keyRoving': 'Roving',
+    'keySideIncomingHelp':
+        'How the value arrives at the key. Linear: at an even speed · Ease: slowing into it · Fast: speeding into it · Smooth: carrying the speed the keys either side set. Influence: how much of the way the change takes.',
+    'keySideOutgoingHelp':
+        'How the value leaves the key. Linear: at an even speed · Ease: setting off slowly · Fast: shooting off · Smooth: carrying the speed the keys either side set · Hold: staying put until the next key. Influence: how much of the way the change takes.',
+    'keyPathHelp':
+        'The shape of the path a position takes through the key. Straight: a corner at the key · Curved: a smooth bend, laid by the keys either side.',
+    'keyRovingHelp':
+        'The key keeps its place on the path and gives up its time: between the keys either side that keep theirs, it moves to the frame where the speed comes out even (After Effects' Rove Across Time). The first and last keys never rove.',
     'cameraPath': 'Camera path',
     'cameraPathOff': 'Off',
     'cameraPathSpace': 'Space',
@@ -3179,6 +3195,14 @@ enum AppStrings {
     'keyPathStraight': '直線',
     'keyPathCurved': '曲線',
     'keyRoving': 'ロービング',
+    'keySideIncomingHelp':
+        '前のキーからこのキーに入る速さ。リニア：一定 · イーズ：減速して到着 · クイック：加速して到着 · スムーズ：前後のキーに合わせて速さをつなぐ。影響：その変化が区間のどれだけにかかるか。',
+    'keySideOutgoingHelp':
+        'このキーから次のキーへ出る速さ。リニア：一定 · イーズ：ゆっくり出発 · クイック：勢いよく出発 · スムーズ：前後のキーに合わせて速さをつなぐ · ホールド：次のキーまで値をそのまま。影響：その変化が区間のどれだけにかかるか。',
+    'keyPathHelp':
+        '位置がこのキーを通る道の形。直線：キーで折れる · 曲線：前後のキーに合わせてなめらかに曲がる。',
+    'keyRovingHelp':
+        'パス上の位置はそのままに、キーが時間を手放す。時間を持つ前後のキーの間で、速さが均一になるフレームへ自動で移る（After Effects の Rove Across Time）。最初と最後のキーはロービングしない。',
     'cameraPath': 'カメラパス',
     'cameraPathOff': 'オフ',
     'cameraPathSpace': '空間',
@@ -4774,6 +4798,14 @@ enum AppStrings {
     'keyPathStraight': '직선',
     'keyPathCurved': '곡선',
     'keyRoving': '로빙',
+    'keySideIncomingHelp':
+        '앞 키에서 이 키로 들어오는 빠르기. 리니어: 고르게 · 천천히: 느려지며 도착 · 급하게: 빨라지며 도착 · 부드럽게: 앞뒤 키에 맞춰 빠르기를 이어 지나감. 세기: 그 변화가 구간의 얼마만큼에 걸치는지.',
+    'keySideOutgoingHelp':
+        '이 키에서 다음 키로 나가는 빠르기. 리니어: 고르게 · 천천히: 천천히 출발 · 급하게: 빠르게 튀어 나감 · 부드럽게: 앞뒤 키에 맞춰 빠르기를 이어 지나감 · 홀드: 다음 키까지 값을 그대로. 세기: 그 변화가 구간의 얼마만큼에 걸치는지.',
+    'keyPathHelp':
+        '위치가 이 키를 지나는 길의 모양. 직선: 키에서 꺾임 · 곡선: 앞뒤 키에 맞춰 매끄럽게 휘어 지나감.',
+    'keyRovingHelp':
+        '경로 위의 자리는 그대로 두고 키가 시간을 내놓는다. 시간을 가진 앞뒤 키 사이에서 빠르기가 고르게 되는 프레임으로 저절로 옮겨진다(After Effects 의 Rove Across Time). 처음 · 마지막 키는 로빙하지 않는다.',
     'cameraPath': '카메라 경로',
     'cameraPathOff': '끄기',
     'cameraPathSpace': '공간',
@@ -6362,6 +6394,14 @@ enum AppStrings {
     'keyPathStraight': 'Droite',
     'keyPathCurved': 'Courbe',
     'keyRoving': 'Itinérance',
+    'keySideIncomingHelp':
+        'Comment la valeur arrive à la clé. Linéaire : vitesse constante · Lissage : en ralentissant · Vite : en accélérant · Fluide : à la vitesse que donnent les clés voisines. Influence : quelle part du trajet prend le changement.',
+    'keySideOutgoingHelp':
+        'Comment la valeur quitte la clé. Linéaire : vitesse constante · Lissage : en démarrant doucement · Vite : en partant d'un coup · Fluide : à la vitesse que donnent les clés voisines · Maintien : la valeur reste jusqu'à la clé suivante. Influence : quelle part du trajet prend le changement.',
+    'keyPathHelp':
+        'La forme du chemin d'une position à travers la clé. Droite : un angle à la clé · Courbe : une courbe douce, tracée selon les clés voisines.',
+    'keyRovingHelp':
+        'La clé garde sa place sur la trajectoire et cède son temps : entre les clés voisines qui gardent le leur, elle se place à l'image où la vitesse devient régulière (Rove Across Time d'After Effects). La première et la dernière clé ne bougent jamais.',
     'cameraPath': 'Trajectoire de la caméra',
     'cameraPathOff': 'Désactivé',
     'cameraPathSpace': 'Espace',
@@ -8067,6 +8107,14 @@ enum AppStrings {
     'keyPathStraight': '直线',
     'keyPathCurved': '曲线',
     'keyRoving': '漂浮',
+    'keySideIncomingHelp':
+        '值进入此关键帧的方式。线性：匀速 · 缓动：减速进入 · 快速：加速进入 · 平滑：按前后关键帧接续速度。影响：变化占区间的多少。',
+    'keySideOutgoingHelp':
+        '值离开此关键帧的方式。线性：匀速 · 缓动：缓慢出发 · 快速：迅速出发 · 平滑：按前后关键帧接续速度 · 保持：值保持到下一个关键帧。影响：变化占区间的多少。',
+    'keyPathHelp':
+        '位置经过此关键帧的路径形状。直线：在关键帧处转折 · 曲线：按前后关键帧平滑弯曲。',
+    'keyRovingHelp':
+        '关键帧保留其在路径上的位置，交出时间：在前后保有时间的关键帧之间，自动移到速度均匀的帧（After Effects 的 Rove Across Time）。第一个和最后一个关键帧不会漂浮。',
     'cameraPath': '摄像机路径',
     'cameraPathOff': '关',
     'cameraPathSpace': '空间',

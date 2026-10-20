@@ -21,6 +21,7 @@ void main() {
               child: StatefulBuilder(
                 builder: (context, setState) => KeyFlagRow(
                   label: 'Roving',
+                  help: 'What roving is',
                   off: (id: 'row-off', word: 'Off'),
                   on: (id: 'row-on', word: 'On'),
                   flags: flags,
