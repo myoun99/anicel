@@ -69,7 +69,7 @@ void main() {
       from: _canvas,
     );
 
-    expect(moved.track.position.keyAt(0)!.value, CanvasPoint(x: 960, y: 540));
+    expect(moved.track.position.keyAt(0)?.value, CanvasPoint(x: 960, y: 540));
     expect(moved.track.position.keys.length, 1);
     expect(moved.track.scale.isEmpty, isTrue);
     expect(moved.track.rotation.isEmpty, isTrue);
@@ -91,7 +91,7 @@ void main() {
       from: _canvas,
     );
 
-    expect(moved.track.position.keyAt(0)!.value, CanvasPoint(x: 760, y: 440));
+    expect(moved.track.position.keyAt(0)?.value, CanvasPoint(x: 760, y: 440));
     expect(moved.track.rotation, camera.track.rotation);
   });
 
@@ -103,7 +103,7 @@ void main() {
       from: _canvas,
     );
 
-    expect(moved.track.position.keyAt(0)!.value, CanvasPoint(x: 961, y: 540));
+    expect(moved.track.position.keyAt(0)?.value, CanvasPoint(x: 961, y: 540));
   });
 
   test('guides move: symmetry axis origin, perspective eye level, placed '
@@ -192,10 +192,10 @@ void main() {
       centreDx: 99,
       centreDy: 99,
     );
-    expect(moved.transformTrack.position.keyAt(0)!.value.x, 45);
-    expect(moved.transformTrack.position.keyAt(0)!.value.y, 56);
-    expect(moved.transformTrack.anchorPoint.keyAt(0)!.value.x, 17);
-    expect(moved.transformTrack.anchorPoint.keyAt(0)!.value.y, 19);
+    expect(moved.transformTrack.position.keyAt(0)?.value.x, 45);
+    expect(moved.transformTrack.position.keyAt(0)?.value.y, 56);
+    expect(moved.transformTrack.anchorPoint.keyAt(0)?.value.x, 17);
+    expect(moved.transformTrack.anchorPoint.keyAt(0)?.value.y, 19);
 
     // Null anchor + position keys: a topLeft EXTENSION (content offset
     // 0) still moves the implicit anchor — the canvas centre — so the
@@ -219,8 +219,8 @@ void main() {
       centreDx: 200,
       centreDy: 0,
     );
-    expect(followed.transformTrack.position.keyAt(0)!.value.x, 240);
-    expect(followed.transformTrack.position.keyAt(0)!.value.y, 50);
+    expect(followed.transformTrack.position.keyAt(0)?.value.x, 240);
+    expect(followed.transformTrack.position.keyAt(0)?.value.y, 50);
     expect(followed.transformTrack.anchorPoint.isEmpty, isTrue);
 
     final unkeyed = Layer(
@@ -272,12 +272,12 @@ void main() {
     );
 
     expect(
-      moved.transformTrack.position.keyAt(0)!.value,
+      moved.transformTrack.position.keyAt(0)?.value,
       CanvasPoint(x: 965, y: 546),
     );
     expect(moved.transformTrack.position.keys.length, 1);
     expect(
-      moved.transformTrack.anchorPoint.keyAt(0)!.value,
+      moved.transformTrack.anchorPoint.keyAt(0)?.value,
       CanvasPoint(x: 17, y: 19),
     );
   });
@@ -394,14 +394,14 @@ void main() {
       from: _canvas,
     );
     final position = moved.track.position;
-    expect(position.keyAt(0)!.value.x, 110);
+    expect(position.keyAt(0)?.value.x, 110);
     expect(
-      position.keyAt(0)!.outgoing,
+      position.keyAt(0)?.outgoing,
       KeyExit.hold,
       reason: 'a stepped camera must not start panning after a resize — '
           'the pose-facade rebuild linearized holds (adversarial review)',
     );
-    expect(position.keyAt(0)!.name, 'A');
+    expect(position.keyAt(0)?.name, 'A');
     expect(
       position.keyAt(4),
       isNull,

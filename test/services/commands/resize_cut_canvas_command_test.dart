@@ -407,8 +407,8 @@ void main() {
       expect(axis.origin.x, 200);
       expect(axis.origin.y, 100);
       final track = cut.layers.single.transformTrack;
-      expect(track.position.keyAt(0)!.value.x, 300);
-      expect(track.position.keyAt(0)!.value.y, 150);
+      expect(track.position.keyAt(0)?.value.x, 300);
+      expect(track.position.keyAt(0)?.value.y, 150);
       expect(
         track.anchorPoint.isEmpty,
         isTrue,
