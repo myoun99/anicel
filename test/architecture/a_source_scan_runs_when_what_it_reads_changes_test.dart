@@ -162,13 +162,11 @@ void main() {
       );
     });
 
-    test('🗣️Q8: before landing a change is asked near — what stands further '
-        'is the wide run\'s', () {
-      // plain → helper (1) → lib/a (2) → lib/b (3)
-      const helper = 'test/helpers/h.dart';
+    test('🗣️Q8 · Q12: before landing a change is asked one import away — '
+        'what stands further is the wide run\'s', () {
+      // plain → lib/a (1) → lib/b (2)
       final imports = {
-        plain: {helper},
-        helper: {'lib/a.dart'},
+        plain: {'lib/a.dart'},
         'lib/a.dart': {'lib/b.dart'},
       };
       Set<String> chosen(String changed, {int? within}) => selectTests(
@@ -178,7 +176,7 @@ void main() {
         read: (_) => '',
         within: within,
       );
-      expect(kNearImports, 2);
+      expect(kNearImports, 1);
       expect(chosen('lib/a.dart', within: kNearImports), {plain});
       expect(chosen('lib/b.dart', within: kNearImports), isEmpty);
       expect(chosen('lib/b.dart'), {plain});

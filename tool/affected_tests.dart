@@ -128,9 +128,13 @@ const gcTagMarker = "@Tags(['$gcTag'])";
 /// 검사에서 놓친 빨강의 거리를 기록해 조정」. The wide run after landing
 /// (`master_check`) asks every import and keeps how far each red it finds
 /// stood (`near_misses.tsv`): this number is set by that record.
-/// 🧪Over that day's 120 landings two imports chose 64% of the work every
-/// import chose (459 of 720 machine-hours), one import 22%.
-const kNearImports = 2;
+/// ↩️Two until 10-21 — 🗣️tests-crowd-the-machine-Q12 「1단계 — 바뀐 파일을
+/// 직접 import 하는 테스트까지」, before that record had any: the 21 lanes
+/// standing in the line that night chose 400 to 1,600 files each at two
+/// steps, 6,126 machine-minutes together (ten hours of ten suites), and
+/// 1,922 at one; the timeline's code is imported widely enough that a
+/// second step reaches a thousand tests, the same thousand for every lane.
+const kNearImports = 1;
 
 /// How many imports from [kTestConfig] a change may stand and still be
 /// every suite's in the near run: none — the config file alone, which
