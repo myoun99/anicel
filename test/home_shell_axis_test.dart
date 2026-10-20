@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/layout/device_grid_safe_area.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/tick_text.dart';
 
@@ -209,15 +208,16 @@ void main() {
     // R10 R6: a frame ROW is a frame CELL turned on its side, so the sheet
     // reads the slider 1:1 instead of scaling it by an old 36/24 ratio —
     // one slider position now means one frame extent on both surfaces.
-    expect(xsheetFrameRowGlobalRect(tester, 0).height, timelineFrameCellWidth);
+    // 19.2 at 100%, laid on whole pixels, as the timeline's header (F-403).
+    expect(xsheetFrameRowGlobalRect(tester, 0).height, 19);
 
     tester
         .widget<FieldSlider>(
           find.byKey(const ValueKey<String>('timeline-zoom-slider')),
         )
-        .onChanged!(72);
+        .onChanged!(40);
     await tester.pumpAndSettle();
-    expect(xsheetFrameRowGlobalRect(tester, 0).height, 72);
+    expect(xsheetFrameRowGlobalRect(tester, 0).height, 40);
   });
 
   testWidgets('the time display toggle switches the counter to seconds', (
