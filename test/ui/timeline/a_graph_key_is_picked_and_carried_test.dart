@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
+    show timelineLaneKeyMarkerSize;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
@@ -200,6 +202,30 @@ void main() {
 
     expect(rows.pixels, 0);
     expect(_keyedFrames(s), [0, 10]);
+  });
+
+  testWidgets('a key is picked in the box its mark is drawn in — as high '
+      'as its row, as wide as its cell lets it — and nowhere beside it', (
+    tester,
+  ) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    final (:painter, :box) = _graphOf(tester);
+    final key = painter.keysIn(box.size).singleWhere((key) => key.frame == 8);
+    final mark = timelineLaneKeyMarkerSize(
+      painter.frameAxis.laneExtent,
+      frameCellExtent: _cellExtent(tester),
+    );
+    expect(
+      mark.width,
+      lessThan(mark.height - 2),
+      reason: '⛔전제: the mark is narrower than it is high at this zoom',
+    );
+
+    LaneGraphKey? at(double along) =>
+        painter.keyAt(key.at + Offset(along, 0), box.size);
+    expect(at(mark.width / 2 - 1), key, reason: 'on its mark');
+    expect(at(mark.width / 2 + 1), isNull, reason: 'beside it, no key');
   });
 
   testWidgets('a speed graph marks no key, so it has none to pick', (
