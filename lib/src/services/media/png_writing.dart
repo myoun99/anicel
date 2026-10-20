@@ -142,7 +142,11 @@ final class PngImageData {
     }
     var best = 0;
     var bestCost = _filter(0, row);
-    for (var type = 1; type < _filterTypes.length; type += 1) {
+    // A filter that leaves nothing cannot be beaten — a tie goes to the
+    // lower — so the rest are not tried: on a page's flat paper, Up leaves
+    // nothing on every row but the first (🔬2026-10-20, an A4 page of the
+    // conte in the test VM: 190 → 115 ms, the same bytes).
+    for (var type = 1; type < _filterTypes.length && bestCost > 0; type += 1) {
       final cost = _filter(type, row);
       if (cost < bestCost) {
         bestCost = cost;
