@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/flutter_room.dart' show FlutterRun;
 import '../../tool/test_queue.dart';
 import '../../tool/test_seconds.dart' show kUntimedFileMs;
 import '../helpers/temp_dir.dart';
@@ -21,8 +22,10 @@ String nameOf(File file) => file.uri.pathSegments.last;
 /// 「작은실행은 순서 앞당긴다거나 … 다 싹 개선해줘」): the machine's test runs
 /// stand in one line, hold ten suites between them — all ten for a run
 /// alone, five each beside another — the shortest and longest-waiting
-/// first, others in the gaps the first leaves, and a run that waits
-/// launches nothing.
+/// first, and a run that waits launches nothing. And since 10-20 (「계속 10줄
+/// 중 아까 낮처럼 2개쓴다거나 지금처럼 6개만쓴다거나 이런거 안일어나게」) none of
+/// the ten stands free while a run waits: what the runs ahead leave goes to
+/// the next, short of its share if that is all there is.
 ///
 /// ⚠️WHAT THIS FILE CANNOT REACH: a ticket held by a DIFFERENT live process,
 /// and two processes deciding under the line's lock at once. Both need a
@@ -37,12 +40,20 @@ void main() {
   // The moment every line below is decided at.
   final t0 = DateTime(2026, 10, 20, 14);
   DateTime ago(int seconds) => t0.subtract(Duration(seconds: seconds));
-  Standing waiting(String name, {int? files, int? work, int waited = 0}) => (
+  /// [old]: its tool is from before the line handed out what is left.
+  Standing waiting(
+    String name, {
+    int? files,
+    int? work,
+    int waited = 0,
+    bool old = false,
+  }) => (
     name: name,
     suites: null,
     files: files,
     work: work,
     since: ago(waited),
+    takesWhatIsLeft: !old,
   );
   Standing runningAt(
     String name,
@@ -50,7 +61,14 @@ void main() {
     int? files,
     int? work,
     int ran = 0,
-  }) => (name: name, suites: suites, files: files, work: work, since: ago(ran));
+  }) => (
+    name: name,
+    suites: suites,
+    files: files,
+    work: work,
+    since: ago(ran),
+    takesWhatIsLeft: true,
+  );
   int? decide(String mine, List<Standing> line, {int? asked}) =>
       suitesToRun(mine, line, asked: asked, now: t0);
   List<String> turnOrder(List<Standing> line) => [
@@ -118,14 +136,14 @@ void main() {
     });
 
     test('of runs that waited alike, the shortest is first in line — and the '
-        'longer does not start on what the first would leave it', () {
+        'longer takes what it leaves', () {
       final line = [
         waiting('long', work: 3600, waited: 60),
         waiting('short', work: 300, waited: 60),
       ];
       expect(turnOrder(line), ['short', 'long']);
       expect(decide('short', line), 5);
-      expect(decide('long', line), isNull);
+      expect(decide('long', line), 5);
     });
 
     test('a long run comes forward as it waits, so none waits for ever', () {
@@ -149,92 +167,74 @@ void main() {
         'ticket was asked', () {
       final name = ticketName(ago(100).microsecondsSinceEpoch, 1);
       Standing unsaid() =>
-          (name: name, suites: null, files: null, work: null, since: null);
+          (
+            name: name,
+            suites: null,
+            files: null,
+            work: null,
+            since: null,
+            takesWhatIsLeft: true,
+          );
       expect(turnOrder([waiting('a', waited: 50), unsaid()]), [name, 'a']);
       expect(turnOrder([waiting('a', waited: 200), unsaid()]), ['a', name]);
     });
 
     test('beside the first in line a run starts when both fit now — and '
-        'waits when it would take the first its suites', () {
+        'takes what is left after the first', () {
       expect(decide('b', [waiting('a'), waiting('b')]), 5);
       final line = [runningAt('r', 2), waiting('a'), waiting('b')];
+      expect(decide('a', line), 5);
+      expect(decide('b', line), 3);
+    });
+
+    test('🚨the first in line takes what stands free, short of its share — '
+        'none is kept idle for it', () {
+      // 유저 10-20: 「계속 10줄 중 아까 낮처럼 2개쓴다거나 지금처럼 6개만쓴다거나
+      // 이런거 안일어나게 하고싶어」. ↩️It waited for its five while the two
+      // stood free, and a run behind it took them only if the line could
+      // tell it would end in time.
+      final line = [
+        runningAt('r', 5, work: 3000),
+        runningAt('q', 3),
+        waiting('first', waited: 1000),
+        waiting('s', files: 2, work: 60),
+      ];
+      expect(turnOrder(line).first, 'first');
+      expect(decide('first', line), 2);
+      expect(decide('s', line), isNull);
+    });
+
+    test('what the runs ahead take goes down the line in turn, until the ten '
+        'are held', () {
+      final line = [
+        runningAt('r', 2),
+        waiting('short', files: 3, work: 60, waited: 60),
+        waiting('a', waited: 10),
+        waiting('b'),
+      ];
+      expect(turnOrder(line), ['short', 'a', 'b']);
+      expect(decide('short', line), 3);
       expect(decide('a', line), 5);
       expect(decide('b', line), isNull);
     });
 
-    test('while the first cannot start, a run takes the gap if it ends before '
-        'the running runs leave the first its suites', () {
+    test('⚠️a run of a tool from before takes all of its share or waits — '
+        'so what it would not take now is not kept for it', () {
       final line = [
-        // Ends in 600s, and in 100s.
-        runningAt('r', 5, work: 3000),
-        runningAt('q', 3, work: 300),
-        waiting('first', waited: 1000),
+        runningAt('r', 7),
+        waiting('old', waited: 1000, old: true),
         waiting('s', files: 2, work: 60),
-        waiting('s2', files: 2, work: 400),
       ];
-      expect(turnOrder(line).first, 'first');
-      expect(decide('first', line), isNull);
-      // 30s, in the gap of 100s.
+      expect(turnOrder(line).first, 'old');
       expect(decide('s', line), 2);
-      // 200s would hold the first back.
-      expect(decide('s2', line), isNull);
-    });
-
-    test('…or if it fits in what they leave over beyond the first', () {
-      final line = [
-        // Ends in 600s, and in 100s with one suite to spare.
-        runningAt('r', 4, work: 2400),
-        runningAt('q', 4, work: 400),
-        waiting('first', waited: 1000),
-        waiting('s1', files: 1, work: 400),
-        waiting('s2', files: 2, work: 400),
-      ];
-      expect(turnOrder(line).first, 'first');
-      expect(decide('s1', line), 1);
-      expect(decide('s2', line), isNull);
-    });
-
-    test('while the line cannot tell when the first will start, only a quick '
-        'run takes the gap', () {
-      for (final unsaid in <Standing>[
-        runningAt('r', 8),
-        (name: 'r', suites: 8, files: null, work: 800, since: null),
-      ]) {
-        final line = [
-          unsaid,
-          waiting('first', waited: 60),
-          waiting('quick', files: 2, work: 240),
-          waiting('slow', files: 2, work: 242),
-        ];
-        expect(turnOrder(line).first, 'first');
-        expect(decide('quick', line), 2);
-        expect(decide('slow', line), isNull);
-      }
-    });
-
-    test('⛔a running run past its end leaves no gap to wait in', () {
-      final line = [
-        runningAt('r', 8, work: 400, ran: 1000),
-        waiting('first', waited: 60),
-        waiting('s', files: 2, work: 60),
-      ];
+      // When its share does stand free, it takes it first.
+      line[0] = runningAt('r', 5);
       expect(decide('s', line), isNull);
-      // The same run with 50s still to go leaves 30s of gap room.
-      line[0] = runningAt('r', 8, work: 400);
-      expect(decide('s', line), 2);
     });
 
-    test('⛔small runs do not halve a long run — it waits them out and takes '
-        'the machine', () {
+    test('⛔small runs do not halve a long run — it takes all they leave', () {
       expect(
         decide('a', [waiting('a'), runningAt('s', 1, files: 1, work: 600)]),
-        isNull,
-      );
-      expect(
-        decide('a', [
-          waiting('a'),
-          runningAt('s', 1, files: 1, work: 600),
-        ], asked: 9),
         9,
       );
       // One machine-second more is a long run.
@@ -414,14 +414,15 @@ void main() {
       expect(runHasEnded(ticket('a.ticket')), isTrue);
     });
 
-    test('a ticket says its suites while running, its files, its work and '
-        'since when; waiting or unreadable holds none', () {
+    test('a ticket says its suites while running, its files, its work, since '
+        'when and how it takes; waiting or unreadable holds none', () {
       ticket('a.ticket', told: {
         'state': 'running',
         'suites': 5,
         'files': 1,
         'work': 300,
         'since': t0.toIso8601String(),
+        'takesWhatIsLeft': true,
       });
       ticket('b.ticket', told: {'state': 'waiting', 'files': 2});
       ticket('c.ticket');
@@ -432,13 +433,16 @@ void main() {
         files: 1,
         work: 300,
         since: t0,
+        takesWhatIsLeft: true,
       ));
+      // A tool from before says nothing of how it takes: all or nothing.
       expect(standingOf(line, 'b.ticket'), (
         name: 'b.ticket',
         suites: null,
         files: 2,
         work: null,
         since: null,
+        takesWhatIsLeft: false,
       ));
       expect(standingOf(line, 'c.ticket').suites, isNull);
       expect(standingOf(line, 'd.ticket'), (
@@ -447,6 +451,7 @@ void main() {
         files: null,
         work: null,
         since: null,
+        takesWhatIsLeft: false,
       ));
     });
 
@@ -655,6 +660,12 @@ void main() {
       expect(whileWaiting!.files, 40);
       expect(whileWaiting!.work, 2400);
       expect(whileWaiting!.since, isNotNull);
+      expect(
+        whileWaiting!.takesWhatIsLeft,
+        isTrue,
+        reason: 'the rest of the line keeps nothing for a run of this tool '
+            'that it would not take',
+      );
       expect(seen.$1, 10);
       expect(seen.$2.suites, 10);
       expect(seen.$2.files, 40);
@@ -670,8 +681,11 @@ void main() {
       expect(tickets(), [nameOf(behind)]);
     });
 
-    test('a long run at its next batch gives way to a short run that has '
-        'waited longer, waits it out, then takes the machine again', () async {
+    test('🚨a long run at its next batch takes what a short run that waited '
+        'longer leaves it — it waits nothing out', () async {
+      // ↩️Until 유저 10-20 (「…6개만쓴다거나 이런거 안일어나게」) it waited
+      // second, then first, until the short run was given back, and held
+      // all ten again — nine standing free meanwhile.
       final events = <String>[];
       late File short;
       var looks = 0;
@@ -687,6 +701,7 @@ void main() {
             'since': DateTime.now()
                 .subtract(const Duration(minutes: 1))
                 .toIso8601String(),
+            'takesWhatIsLeft': true,
           });
           events.add('batch at ${await turn.take()}');
           turn.putDown();
@@ -710,19 +725,14 @@ void main() {
             );
             events.add('short runs at 1');
           }
-          final gone = looks == 3;
-          if (gone) events.add('short given back');
-          return gone;
+          return false;
         },
       );
       expect(events, [
         'batch at 10', //
-        // The short run is first in line, so the long run waits second…
-        'waits', 'short runs at 1',
-        // …then first, waiting it out, for a small run does not halve it…
-        'waits', 'short given back',
-        // …and then holds all ten again.
-        'batch at 10',
+        // The short run is first in line and takes its one; the long run
+        // takes the nine beside it, never waiting.
+        'short runs at 1', 'batch at 9',
       ]);
     });
 
@@ -748,6 +758,120 @@ void main() {
         throwsStateError,
       );
       expect(tickets(), isEmpty);
+    });
+  });
+
+  group("the machine's room", () {
+    test('🚨the line asks for the headroom alone — its runs take none of the '
+        'four places', () async {
+      // 유저 tests-crowd-the-machine-Q9 「line」(10-20): at 18:00 the line used
+      // six suites of ten while nineteen runs waited, every place held.
+      final asked = <bool>[];
+      final room = await machineHasRoom(
+        measure: ({required headroomAlone}) async {
+          asked.add(headroomAlone);
+          return (
+            taken: 9,
+            freeGb: 4,
+            room: headroomAlone,
+            runs: const <FlutterRun>[],
+            bashRead: true,
+          );
+        },
+      );
+      expect(asked, [true]);
+      expect(room, isTrue);
+    });
+
+    test('⛔a machine that could not be measured has no room', () async {
+      expect(await machineHasRoom(measure: ({required headroomAlone}) async {
+        return null;
+      }), isFalse);
+    });
+  });
+
+  group("the line's record of itself", () {
+    late Directory line;
+    setUp(() => line = Directory.systemTemp.createTempSync('queue_fx'));
+    tearDown(() => deleteTempQuietly(line));
+
+    List<String> rows() => [
+      for (final row in File('${line.path}/$kUsageFile').readAsLinesSync())
+        row.split('\t').skip(1).join('\t'),
+    ];
+
+    test('a turn writes a row as it waits, takes its suites, puts them down '
+        'and leaves: the suites held, and how many wait', () async {
+      await standInLine(
+        'a run',
+        (turn) async {
+          await turn.take();
+          turn.putDown();
+        },
+        line: line,
+        room: () async => true,
+      );
+      expect(rows(), ['0\t1', '10\t0', '0\t1', '0\t0']);
+    });
+
+    test('a row counts every ticket there — running, waiting, or one that '
+        'said nothing', () {
+      File('${line.path}/a.ticket').writeAsStringSync('1\n');
+      File('${line.path}/a.ticket.json').writeAsStringSync(
+        jsonEncode({'state': 'running', 'suites': 5}),
+      );
+      File('${line.path}/b.ticket').writeAsStringSync('1\n');
+      File('${line.path}/c.ticket').writeAsStringSync('1\n');
+      File('${line.path}/c.ticket.json').writeAsStringSync(
+        jsonEncode({'state': 'running', 'suites': 3}),
+      );
+      noteUsage(line);
+      expect(rows(), ['8\t1']);
+    });
+
+    test('⛔a record past its size keeps its later half', () {
+      final file = File('${line.path}/$kUsageFile')
+        ..writeAsStringSync(
+          '${List.filled(kUsageKeeps ~/ 20, '${t0.toIso8601String()}\t1\t1').join('\n')}\n',
+        );
+      noteUsage(line);
+      final kept = file.readAsLinesSync();
+      expect(file.lengthSync(), lessThan(kUsageKeeps));
+      expect(kept.last, endsWith('\t0\t0'));
+    });
+
+    test('how long runs waited, and the suites held meanwhile — a row stands '
+        'until the next, the last until the end', () {
+      String row(int seconds, int held, int waiting) =>
+          '${t0.add(Duration(seconds: seconds)).toIso8601String()}'
+          '\t$held\t$waiting';
+      final record = [
+        row(120, 3, 0),
+        'not a row',
+        row(0, 5, 2),
+        row(60, 10, 1),
+      ];
+      final whole = usageOf(
+        record,
+        from: t0,
+        to: t0.add(const Duration(seconds: 180)),
+      );
+      expect(whole.waited, const Duration(seconds: 120));
+      expect(whole.held, 7.5);
+      // From halfway through the first row, and a row before the window.
+      final later = usageOf(
+        record,
+        from: t0.add(const Duration(seconds: 30)),
+        to: t0.add(const Duration(seconds: 180)),
+      );
+      expect(later.waited, const Duration(seconds: 90));
+      expect(later.held, closeTo((5 * 30 + 10 * 60) / 90, 1e-9));
+      // While nobody waits, nothing is counted.
+      expect(
+        usageOf([row(0, 2, 0)], from: t0, to: t0.add(const Duration(hours: 1)))
+            .waited,
+        Duration.zero,
+      );
     });
   });
 }

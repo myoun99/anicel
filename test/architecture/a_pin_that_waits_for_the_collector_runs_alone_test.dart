@@ -7,7 +7,13 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/dart_sources.dart';
 
 import '../../tool/affected_tests.dart'
-    show gcTag, gcTagMarker, partitionByGcTag, runPlan;
+    show
+        gcTag,
+        gcTagMarker,
+        kBatchWall,
+        nextBatch,
+        partitionByGcTag,
+        runInBatches;
 
 /// 🚨★★★**A PIN THAT WAITS FOR THE COLLECTOR CANNOT RUN IN A CROWD.**
 ///
@@ -63,44 +69,87 @@ void main() {
     });
   });
 
-  group('the plan', () {
-    ({List<List<String>> crowd, List<String> alone}) plan(
-      List<String> selected,
-      Map<String, String> tree,
-    ) => runPlan(
-      selected: selected,
-      read: (path) => tree[path]!,
-      // One command per file, so a test can see what went where.
-      batches: (files) => [for (final file in files) [file]],
-    );
-
+  group('the run', () {
     const tree = {
       'a_test.dart': 'void main() {}',
       'b_test.dart': '$gcTagMarker\nlibrary;\nvoid main() {}',
+      'c_test.dart': 'void main() {}',
     };
 
-    test('🚨a run splits by file: the pins alone, the rest in batches — the '
-        'whole suite too, which names its files like any selection', () {
+    /// The batches a run of [files] makes, in order, as `(its files by a
+    /// space, suites, pins)`, the line handing each batch [suites] in turn
+    /// — and what each ask stood in line for.
+    Future<(List<(String, int, bool)>, List<List<String>>)> batchesOf(
+      List<String> files, {
+      List<int> suites = const [5],
+      Map<String, int> known = const {},
+    }) async {
+      final ran = <(String, int, bool)>[];
+      final asked = <List<String>>[];
+      var turn = 0;
+      await runInBatches(
+        files,
+        known: known,
+        // A file the tree does not hold is a plain one.
+        read: (path) => tree[path] ?? '',
+        take: (left) async {
+          asked.add(left);
+          return suites[turn++ % suites.length];
+        },
+        run: (batch, suites, {required pins}) async =>
+            ran.add((batch.join(' '), suites, pins)),
+      );
+      return (ran, asked);
+    }
+
+    test('🚨a run splits by file: the pins alone and last, the rest in '
+        'batches — the whole suite too, which names its files like any '
+        'selection', () async {
       // 2026-09-23: a config change sent the gate to the whole suite, which
       // was one command with the pins in it — and the parked-transform pin
       // went red in that crowd for the third time.
-      final result = plan(const ['a_test.dart', 'b_test.dart'], tree);
-      expect(result.crowd, [
-        ['a_test.dart'],
+      final (ran, _) = await batchesOf(tree.keys.toList());
+      expect(ran, [
+        ('a_test.dart c_test.dart', 5, false),
+        ('b_test.dart', 5, true),
       ]);
-      expect(result.alone, ['b_test.dart']);
     });
 
     test('⛔a selection of nothing but pins runs no crowd — an empty command '
-        'is the whole suite', () {
-      final result = runPlan(
-        selected: const ['b_test.dart'],
-        read: (path) => tree[path]!,
-        // A batching that would hand an empty list back as one empty batch.
-        batches: (files) => [files],
+        'is the whole suite', () async {
+      final (ran, _) = await batchesOf(const ['b_test.dart']);
+      expect(ran, [
+        ('b_test.dart', 5, true),
+      ]);
+    });
+
+    test('🚨each batch is cut to the suites the line gave it — five minutes '
+        'of them — and stands in line for what is still to run', () async {
+      // 유저 10-20: 「계속 10줄 중 … 6개만쓴다거나 이런거 안일어나게」. The
+      // line hands a run what is left, so a batch cut before the run began
+      // would hold two suites for as long as five were meant to.
+      expect(kBatchWall, 300);
+      final known = {
+        for (final f in ['a_test.dart', 'c_test.dart', 'd_test.dart'])
+          f: 300000,
+      };
+      final (ran, asked) = await batchesOf(
+        const ['a_test.dart', 'c_test.dart', 'd_test.dart'],
+        suites: const [1, 2],
+        known: known,
       );
-      expect(result.crowd, isEmpty);
-      expect(result.alone, ['b_test.dart']);
+      // Five minutes at one suite is one of the three; at two, the other two.
+      expect([
+        for (final (files, suites, _) in ran) (files.split(' ').length, suites),
+      ], [
+        (1, 1),
+        (2, 2),
+      ]);
+      expect(asked.map((left) => left.length), [3, 2]);
+      expect(
+        nextBatch(known.keys.toList(), known, suites: 10, fits: (_) => true),
+        hasLength(3),
+      );
     });
 
     test('the tag the pins carry is one the suite declares', () {

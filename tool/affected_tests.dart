@@ -108,34 +108,6 @@ const gcTagMarker = "@Tags(['$gcTag'])";
   return (crowd: crowd, alone: alone);
 }
 
-/// The `flutter test` argument lists one run is made of: the [selected]
-/// crowd in [batches], then the pins that wait for the collector, [alone]
-/// and last.
-///
-/// 🚨**THE WHOLE SUITE USED TO SKIP THE SPLIT.** An empty selection names
-/// no files to partition, so it stayed one command with every file in it,
-/// the pins included — and every run a blanket file forces (the test
-/// config, the pubspec) and `--all` ran them in the crowd
-/// [partitionByGcTag] exists to keep them out of. The parked-transform pin
-/// went red that way in a whole-suite gate (2026-09-23, 「16 tiles, 16
-/// still alive」, green in its own batch) — that file's third time.
-/// ↩️It then stayed one command that left the tag out; since 유저 10-20 Q6
-/// a whole suite names its files like any selection ([_wholeSuite]), so it
-/// is cut into batches the machine's line decides between too.
-({List<List<String>> crowd, List<String> alone}) runPlan({
-  required List<String> selected,
-  required String Function(String path) read,
-  required List<List<String>> Function(List<String> files) batches,
-}) {
-  final split = partitionByGcTag(selected, read);
-  // ⛔An empty command IS the whole suite, so a selection of nothing but
-  // pins has no crowd at all — not one empty batch.
-  return (
-    crowd: split.crowd.isEmpty ? const <List<String>>[] : batches(split.crowd),
-    alone: split.alone,
-  );
-}
-
 /// What a change to [changed] — every changed file, Dart or not — can have
 /// broken, out of [tests].
 Set<String> selectTests({
@@ -426,17 +398,69 @@ bool _fitsTheCommandLine(List<String> batch) =>
     !Platform.isWindows ||
     batch.fold(0, (length, file) => length + file.length + 1) <= _argBudget;
 
-/// The work a batch is cut to ([timedBatches]): forty machine-minutes —
-/// about eight minutes at five suites and four at ten, against the 5~15s
-/// a batch's `flutter test` takes to start.
-const kBatchWork = 2400;
+/// How long a batch should run at the suites the line gave it, in seconds
+/// — what [nextBatch] cuts to.
+///
+/// 🗣️유저 10-20: 「계속 10줄 중 아까 낮처럼 2개쓴다거나 지금처럼 6개만쓴다거나
+/// 이런거 안일어나게 하고싶어」. The line now hands a run what is left of its
+/// share (`suitesToRun`), which may be two suites where it wanted five; a
+/// batch cut to a fixed work would then hold those two for twenty minutes.
+/// Cut to the suites it was given, every batch runs about this long however
+/// many it got, and the run asks again — for more, once more stand free.
+/// ⚖️Five minutes against the 5~15s a `flutter test` takes to start: the
+/// line decides again at least that often, for a few percent.
+/// ↩️It was forty machine-minutes a batch (`kBatchWork`, 유저 10-20 Q6),
+/// cut before the run began.
+const kBatchWall = 300;
 
-List<List<String>> _batches(List<String> files) => timedBatches(
-  files,
-  _knownTimes(),
-  work: kBatchWork,
-  fits: _fitsTheCommandLine,
-);
+/// The batch to run next out of [left] at [suites] suites: as much work as
+/// they do in [kBatchWall], dealt the way every batch is ([timedBatches]) —
+/// so it starts on heavy files and ends on light ones — and never past
+/// [fits].
+///
+/// 🚨THE WHOLE SUITE IS CUT LIKE ANY SELECTION. An empty command is the
+/// whole suite, so the whole suite once went out as one command with the
+/// collector's pins in it ([partitionByGcTag]) — and the parked-transform
+/// pin went red in that crowd a third time (2026-09-23, 「16 tiles, 16 still
+/// alive」, green in its own batch). Since 유저 10-20 Q6 a whole suite names
+/// its files ([_wholeSuite]), and ⛔no batch is ever empty.
+List<String> nextBatch(
+  List<String> left,
+  Map<String, int> known, {
+  required int suites,
+  bool Function(List<String> batch) fits = _fitsTheCommandLine,
+}) => timedBatches(left, known, work: suites * kBatchWall, fits: fits).first;
+
+/// Runs [files] batch by batch: the crowd first, cut as it goes to the
+/// suites each batch is given ([nextBatch]), then the pins that wait for
+/// the collector as one batch of their own ([partitionByGcTag]). [take]
+/// stands in the line for the files still to run and says how many suites
+/// the next batch has; [run] runs the batch at them.
+Future<void> runInBatches(
+  List<String> files, {
+  required Map<String, int> known,
+  required String Function(String path) read,
+  required Future<int> Function(List<String> left) take,
+  required Future<void> Function(
+    List<String> batch,
+    int suites, {
+    required bool pins,
+  })
+  run,
+}) async {
+  final split = partitionByGcTag(files, read);
+  var left = split.crowd;
+  while (left.isNotEmpty) {
+    final suites = await take(left);
+    final batch = nextBatch(left, known, suites: suites);
+    await run(batch, suites, pins: false);
+    final ran = batch.toSet();
+    left = [for (final file in left) if (!ran.contains(file)) file];
+  }
+  if (split.alone.isNotEmpty) {
+    await run(split.alone, await take(split.alone), pins: true);
+  }
+}
 
 /// What one batch hands `flutter test`: [files], and at most [concurrency]
 /// suites at once when one is given.
@@ -481,17 +505,10 @@ Future<int> _runTests(
             'exit 0)');
     return 0;
   }
-  // The collector-waiting pins go last and by themselves — see [runPlan].
-  final plan = runPlan(
-    selected: selected,
-    read: (path) => File(path).readAsStringSync(),
-    batches: _batches,
-  );
-  final batches = [...plan.crowd, if (plan.alone.isNotEmpty) plan.alone];
+  // The collector-waiting pins go last and by themselves.
+  final split = partitionByGcTag(selected, (path) => File(path).readAsStringSync());
   if (listOnly) {
-    for (final batch in batches) {
-      stdout.writeln(batch.join('\n'));
-    }
+    [...split.crowd, ...split.alone].forEach(stdout.writeln);
     return 0;
   }
 
@@ -504,16 +521,10 @@ Future<int> _runTests(
   final engine = _engineCaveat();
   if (engine != null) _report(engine);
 
-  if (plan.alone.isNotEmpty) {
-    _report('${plan.alone.length} pin(s) wait for the garbage collector '
+  if (split.alone.isNotEmpty) {
+    _report('${split.alone.length} pin(s) wait for the garbage collector '
         '($gcTagMarker) and run in a batch of their own — in company they '
         'report a holder that has already let go.');
-  }
-  if (plan.crowd.length > 1) {
-    _report('${plan.crowd.expand((batch) => batch).length} files in '
-        '${plan.crowd.length} batches of about ${kBatchWork ~/ 60} '
-        'machine-minutes — the line decides again between them, and each '
-        'pays the resident compiler\'s cold start.');
   }
 
   var skipped = 0;
@@ -524,38 +535,48 @@ Future<int> _runTests(
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
   // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
-  // takes the suites the line gives it then, by the work the batch says.
+  // takes the suites the line gives it then, by the work still to do.
   final known = _knownTimes();
+  var launched = 0;
   await standInLine('affected_tests', say: _report, asked: concurrency, (
     turn,
   ) async {
-    Future<_BatchResult> launch(List<String> batch, File report) async {
-      final suites = await turn.take(
-        files: filesNamed(batch),
-        work: workOf(batch, known),
-      );
-      try {
-        return await _flutterTest(
-          batch,
-          concurrency: suites,
-          report: report.path,
-        );
-      } finally {
-        turn.putDown();
-      }
-    }
+    // Runs every file of [files] in batches ([runInBatches]) and hands
+    // [record] each batch's number, report and result.
+    Future<void> runAll(
+      List<String> files,
+      void Function(int i, File report, _BatchResult result) record,
+    ) => runInBatches(
+      files,
+      known: known,
+      read: (path) => File(path).readAsStringSync(),
+      take: (left) =>
+          turn.take(files: filesNamed(left), work: workOf(left, known)),
+      run: (batch, suites, {required pins}) async {
+        final i = launched++;
+        _report('batch ${i + 1}: ${batch.length} file(s) at $suites '
+            'suite(s)${pins ? ' — the pins' : ''}');
+        final report = File('${reports.path}/batch$i.json');
+        try {
+          record(
+            i,
+            report,
+            await _flutterTest(batch, concurrency: suites, report: report.path),
+          );
+        } finally {
+          turn.putDown();
+        }
+      },
+    );
 
-    for (var i = 0; i < batches.length; i++) {
-      if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
-      final report = File('${reports.path}/batch$i.json');
-      final result = await launch(batches[i], report);
+    await runAll(selected, (i, report, result) {
       runsOf[i] = _recordBatch(report, cache);
       skipped += result.skipped;
       if (result.exitCode != 0) {
         exits[i] = result.exitCode;
         if (!result.ranTests) neverRan.add(i + 1);
       }
-    }
+    });
 
     // 🗣️Q4 b: a red file runs once more with the same inputs; green the
     // second time, it is flaky.
@@ -567,19 +588,11 @@ Future<int> _runTests(
     if (reds.isEmpty) return;
     _report('${reds.length} red file(s) — running them once more, to tell a '
         'flaky one from a real red.');
-    final again = runPlan(
-      selected: reds.toList()..sort(),
-      read: (path) => File(path).readAsStringSync(),
-      batches: _batches,
-    );
-    final retried = [...again.crowd, if (again.alone.isNotEmpty) again.alone];
-    for (var i = 0; i < retried.length; i++) {
-      final report = File('${reports.path}/again$i.json');
-      await launch(retried[i], report);
+    await runAll(reds.toList()..sort(), (i, report, result) {
       for (final run in _recordBatch(report, cache)) {
         if (run.green == true && reds.contains(run.path)) flaky.add(run.path);
       }
-    }
+    });
   });
   try {
     reports.deleteSync(recursive: true);
@@ -627,9 +640,9 @@ Future<int> _runTests(
   // ended it. A green tail under a red run has already nearly been
   // believed once.
   if (failed.isEmpty) {
-    _report('PASSED (${batches.length} batch(es), exit 0)');
+    _report('PASSED (${runsOf.length} batch(es), exit 0)');
   } else {
-    _report('FAILED — batch(es) ${failed.join(', ')} of ${batches.length}, '
+    _report('FAILED — batch(es) ${failed.join(', ')} of ${runsOf.length}, '
         'exit $worst');
   }
   _reportSkips(skipped);

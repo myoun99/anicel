@@ -43,6 +43,26 @@ TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && { pwd -W 2>/dev/null || pwd; 
 . "$TOOL_DIR/exe_stamp.sh"
 NAME="${1:?usage: bash tool/run.sh <tool> [arguments…]}"
 shift
+# 🚨THE MACHINE'S LINE IS ONE VERSION (유저 10-20: 「계속 10줄 중 아까 낮처럼
+# 2개쓴다거나 지금처럼 6개만쓴다거나 이런거 안일어나게 하고싶어」). Every run
+# decides its own turn by the rules built into it, so a lane opened before a
+# change to them decided by the old rules beside runs deciding by the new —
+# 브러시/렌더링 found its lane's line standing at the back that day, and two
+# rulebooks can each see the other's run first in line while both wait.
+# ⇒ From a worktree, the tools that hold a place in the machine's line run
+# from the main checkout, which `lane.sh` keeps at master; the working
+# directory stays the lane's. A lane that changes one of them runs its own
+# with `dart tool/<tool>.dart`.
+case "$NAME" in
+  test_queue | flutter_room | affected_tests)
+    if [ -f "$TOOL_DIR/../.git" ]; then
+      read -r _ GITDIR < "$TOOL_DIR/../.git"
+      MAIN="${GITDIR%/.git/worktrees/*}"
+      if [ "$MAIN" != "$GITDIR" ] && [ -f "$MAIN/tool/$NAME.dart" ]; then
+        TOOL_DIR="$MAIN/tool"
+      fi
+    fi ;;
+esac
 ENTRY="$TOOL_DIR/$NAME.dart"
 # An exe does not sit beside its source, so a tool that has to find its own
 # folder (flutter_room asks git from there) is told where it was built from.

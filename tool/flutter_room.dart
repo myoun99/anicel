@@ -37,6 +37,14 @@
 // 그대로」. So `--land` asks for the headroom alone, and what a landing
 // lane's gates launch is not counted against anyone else.
 //
+// 🗣️AND THE LINE'S TESTS TAKE NONE EITHER (유저 tests-crowd-the-machine-Q9
+// 「line」, 10-20). A test was held by two bounds at once — the line's ten
+// suites and these four places — and the four counted a one-file run the
+// same as a five-suite one: at 18:00 that day the line used six suites of
+// its ten while nineteen runs waited, every place held. The line's ten are
+// what bound the CPU, so what the line launched counts in the line alone,
+// and the line asks for the headroom alone.
+//
 // Exit codes: 0 room · 1 no room · 2 could not measure.
 import 'dart:async';
 import 'dart:convert';
@@ -65,6 +73,13 @@ const _aSession = 'claude.exe';
 /// Android Studio's helper and its debug app, a build from a terminal the
 /// user opened.
 const _theUsersOwn = {'studio64.exe', 'explorer.exe'};
+
+/// Under one of these the run is the line's: the exes `tool/run.sh` builds
+/// of the two tools that launch a `flutter test` in their turn
+/// (`<tool>-<stamp>.exe`). ⚠️A tool run by JIT, when its build failed, is a
+/// `dart.exe` like any other, and its run counts as the session's — a
+/// place taken that need not be, never one missed.
+const _theLines = ['test_queue-', 'affected_tests-'];
 
 /// One process as Windows lists it.
 class WindowsProcess {
@@ -121,7 +136,8 @@ enum RunOf {
   /// read. It runs all the same, and nothing says it is the user's.
   nobody('launched by nobody that can be named', takesAPlace: true),
   user("the user's own", takesAPlace: false),
-  land("a land's gate", takesAPlace: false);
+  land("a land's gate", takesAPlace: false),
+  line("the line's", takesAPlace: false);
 
   const RunOf(this.words, {required this.takesAPlace});
 
@@ -184,6 +200,9 @@ class Machine {
     final names = {
       for (final pid in above) ?_windows[pid]?.name.toLowerCase(),
     };
+    if (names.any((name) => _theLines.any(name.startsWith))) {
+      return RunOf.line;
+    }
     if (names.contains(_aSession)) return RunOf.session;
     if (names.any(_theUsersOwn.contains)) return RunOf.user;
     return RunOf.nobody;
@@ -212,13 +231,14 @@ class Machine {
   }
 }
 
-/// Whether one more run may be launched now. A land's gates ([aLand]) are
-/// asked for the headroom alone.
+/// Whether one more run may be launched now. A land's gates and the line's
+/// tests take no place, and are asked for the headroom alone
+/// ([headroomAlone]).
 bool roomFor({
   required int taken,
   required int freeGb,
-  required bool aLand,
-}) => freeGb >= kHeadroomGb && (aLand || taken < kFlutterPlaces);
+  required bool headroomAlone,
+}) => freeGb >= kHeadroomGb && (headroomAlone || taken < kFlutterPlaces);
 
 /// What PowerShell is asked: the free commit, then every process — and of
 /// a command line only what the Flutter tool was asked to do, so nothing
@@ -370,9 +390,10 @@ typedef MachineRoom = ({
   bool bashRead,
 });
 
-/// The room on this machine for one more run — a land's gates when [aLand]
-/// — or null when it could not be measured.
-Future<MachineRoom?> measureRoom({required bool aLand}) async {
+/// The room on this machine for one more run — one that takes no place
+/// when [headroomAlone] ([roomFor]) — or null when it could not be
+/// measured.
+Future<MachineRoom?> measureRoom({required bool headroomAlone}) async {
   final answer = await _askWindows();
   if (answer == null) return null;
   final bash = _bashTable();
@@ -384,7 +405,11 @@ Future<MachineRoom?> measureRoom({required bool aLand}) async {
   return (
     taken: taken,
     freeGb: answer.freeGb,
-    room: roomFor(taken: taken, freeGb: answer.freeGb, aLand: aLand),
+    room: roomFor(
+      taken: taken,
+      freeGb: answer.freeGb,
+      headroomAlone: headroomAlone,
+    ),
     runs: runs,
     bashRead: bash.isNotEmpty,
   );
@@ -397,7 +422,9 @@ Future<void> main(List<String> args) async {
     exitCode = 2;
     return;
   }
-  final measured = await measureRoom(aLand: args.contains('--land'));
+  final measured = await measureRoom(
+    headroomAlone: args.contains('--land'),
+  );
   if (measured == null) {
     stderr.writeln(
       'flutter_room: this machine could not be measured (Windows was asked '
