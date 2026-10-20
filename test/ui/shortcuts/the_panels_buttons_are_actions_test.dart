@@ -774,5 +774,31 @@ void main() {
         'Close shape (Enter)',
       );
     });
+
+    testWidgets('🎯the two inverts are two buttons of two actions: a key '
+        'recorded for the one in the canvas joins ITS name (I-108)', (
+      tester,
+    ) async {
+      final shortcuts = EditorShortcutBindings();
+      await pumpToolSettings(
+        tester,
+        tool: CanvasTool.select,
+        selectionCommands: selectionChannel(),
+        shortcuts: shortcuts,
+      );
+      shortcuts.setActivators(EditorActionIds.selectionInvertInCanvas, const [
+        SingleActivator(k),
+      ]);
+      await tester.pump();
+
+      expect(
+        tooltipOf(tester, 'selection-invert-in-canvas-button'),
+        'Invert Selection in Canvas (K)',
+      );
+      expect(
+        tooltipOf(tester, 'selection-invert-button'),
+        isNot(contains('(K)')),
+      );
+    });
   });
 }
