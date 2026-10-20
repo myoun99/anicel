@@ -38,7 +38,7 @@ import 'package:anicel/src/ui/export/export_preview_panel.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show LayerMarkPlates;
+    show LayerMarkPlates, layerMarkColor;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerTypeButton;
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
