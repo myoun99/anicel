@@ -25,6 +25,7 @@ import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/png_chunks.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/wait_window.dart';
 
 /// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재 보이는대로
 /// png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로 클립하는건
@@ -107,7 +108,7 @@ void main() {
       done,
       beat: const Duration(milliseconds: 10),
       step: const Duration(milliseconds: 16),
-      everyFrame: () {
+      everyFrame: () async {
         for (final word in words) {
           if (!labels.contains(word) &&
               find.text(word).evaluate().isNotEmpty) {
@@ -118,6 +119,11 @@ void main() {
             .byKey(const ValueKey<String>('save-placed-dialog'))
             .evaluate()
             .isNotEmpty;
+        // What is watched for may be the done line itself: passed over in
+        // the frame it stands in, it is never seen again.
+        if (!done()) {
+          await passTheDoneLinger(tester);
+        }
       },
     );
     return (labels: labels, placedWindow: placedWindow);
