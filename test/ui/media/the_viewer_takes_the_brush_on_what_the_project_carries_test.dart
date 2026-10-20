@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -43,18 +44,21 @@ void main() {
 
   Finder page() => find.byKey(const ValueKey<String>('media-viewer-page'));
 
-  /// The viewer on [path] with its slot's switch, settled on the page.
+  /// The viewer on [path] with its slot's switch — [allowed] before the
+  /// file opens — settled on the page.
   Future<({MediaViewerSlot slot, ViewerInkController ink})> view(
     WidgetTester tester,
     EditorSessionManager session,
-    String path,
-  ) async {
+    String path, {
+    bool allowed = false,
+  }) async {
     AppMemory.settings.value = AppMemorySettings(
       allowanceBytes: session.deviceCacheBudgets.total,
     );
     addTearDown(() => AppMemory.settings.value = const AppMemorySettings());
     final slot = MediaViewerSlot();
     addTearDown(slot.dispose);
+    slot.brushAllowed.value = allowed;
     final tool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
     addTearDown(tool.dispose);
     final ink = ViewerInkController(
@@ -71,6 +75,7 @@ void main() {
               session: session,
               request: slot.request,
               position: slot.position,
+              viewportController: slot.viewport,
               brushTool: tool,
               inkController: ink,
               brushAllowed: allowed,
@@ -226,19 +231,105 @@ void main() {
       normalizedMediaPath(loose),
     )!;
     expect(pooled.carried, isFalse, reason: 'the premise: pointed at');
-    final (:slot, ink: _) = await view(tester, session, pooled.path);
+    // The viewer's switch was left on, on another file.
+    final (:slot, ink: _) = await view(
+      tester,
+      session,
+      pooled.path,
+      allowed: true,
+    );
 
     final button = tester.appIconButton(brushSwitch());
     expect(button.onPressed, isNull, reason: 'it cannot write on this file');
-    expect(button.isSelected, isFalse);
-
-    slot.brushAllowed.value = true;
-    await tester.pump();
-    expect(find.byType(ViewerInkOverlay), findsNothing);
     expect(
-      tester.appIconButton(brushSwitch()).isSelected,
+      button.isSelected,
       isFalse,
       reason: 'the switch says what is true on THIS file',
     );
+    expect(find.byType(ViewerInkOverlay), findsNothing);
+    expect(slot.brushAllowed.value, isTrue, reason: 'and keeps the viewer\'s');
+  });
+
+  testWidgets('while the page takes ink a drag is the brush\'s — a mouse\'s '
+      'and a finger\'s alike — and the wheel waits for the pen', (
+    tester,
+  ) async {
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedPicture,
+    );
+    final (:slot, :ink) = await view(tester, session, path, allowed: true);
+    final overlay = tester.widget<ViewerInkOverlay>(
+      find.byType(ViewerInkOverlay),
+    );
+    final window = overlay.windows.single;
+    final plane = window.plane! as CanvasSize;
+    final origin = tester.getTopLeft(find.byType(ViewerInkOverlay));
+    final rect = window.screenRect(overlay.viewport);
+    final view0 = slot.viewport.value;
+
+    Future<void> drag(Offset from, PointerDeviceKind kind) async {
+      final gesture = await tester.startGesture(from, kind: kind);
+      await tester.pump();
+      for (var step = 1; step <= 4; step += 1) {
+        await gesture.moveTo(from + Offset(step * 6.0, step * 4.0));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+    }
+
+    await drag(
+      origin + rect.topLeft + const Offset(4, 4),
+      PointerDeviceKind.mouse,
+    );
+    expect(ink.hasInkFor(plane, window.key), isTrue, reason: 'the mouse drew');
+    expect(slot.viewport.value, view0, reason: 'and moved no view');
+    session.historyManager.undo();
+
+    await drag(origin + rect.center, PointerDeviceKind.touch);
+    expect(ink.hasInkFor(plane, window.key), isTrue, reason: 'the finger drew');
+    expect(slot.viewport.value, view0, reason: 'and moved no view');
+
+    final pen = await tester.startGesture(origin + rect.center, pointer: 9);
+    await tester.pump();
+    await pen.moveTo(origin + rect.center + const Offset(6, 4));
+    await tester.pump();
+    final wheel = TestPointer(21, PointerDeviceKind.mouse);
+    await tester.sendEventToBinding(wheel.hover(origin + rect.center));
+    await tester.sendEventToBinding(wheel.scroll(const Offset(0, -40)));
+    await tester.pump();
+    expect(
+      slot.viewport.value,
+      view0,
+      reason: 'a stroke holds the view, as on a sheet',
+    );
+    await pen.up();
+    await tester.pump();
+  });
+
+  testWidgets('a hold the pen raised is let go when the switch goes off — '
+      'after the frame, as a sheet lets go', (tester) async {
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedPicture,
+    );
+    final (:slot, ink: _) = await view(tester, session, path, allowed: true);
+    final hold =
+        tester
+                .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+                .contentStrokeActive!
+            as ValueNotifier<bool>;
+    hold.value = true; // the pen is down on the page's ink
+    await tester.pump();
+    expect(session.brushInputActive.value, isTrue, reason: '⛔전제');
+
+    slot.brushAllowed.value = false; // …and the brush goes off under it
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(hold.value, isFalse, reason: 'nothing else will lift this pen');
+    expect(session.brushInputActive.value, isFalse);
   });
 }
