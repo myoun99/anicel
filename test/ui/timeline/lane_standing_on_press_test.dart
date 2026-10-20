@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show LaneEditPreview;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart' show FieldSlider;
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
@@ -530,6 +532,47 @@ void main() {
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
     await tester.pumpAndSettle();
+  });
+
+  // 🗣️F-389 (유저 2026-10-17): 「키에 관한 리니어 등 타입 편집, 세기편집이
+  // 라이브로 화면이나 그래프에도 보이도록」.
+  testWidgets('a side picked in the key window is shown before the OK, on '
+      'the channel the screen and the graphs read — cancelled, it is '
+      'dropped and nothing is written; confirmed, what it showed is written',
+      (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    await keyBetween(s, tester);
+    final before = positionOf(s);
+
+    Future<TransformTrack> pickEase() async {
+      await doubleTapBand(tester, 'position', 2.5);
+      final ease = find.byKey(const ValueKey<String>('rename-key-in-ease'));
+      await tester.ensureVisible(ease);
+      await tester.tap(ease);
+      await tester.pumpAndSettle();
+      final preview = s.dragPreview.value;
+      expect(preview, isA<LaneEditPreview>());
+      return (preview! as LaneEditPreview).row!.transformTrack;
+    }
+
+    final shown = await pickEase();
+    expect(shown.position.keyAt(2)!.incoming, const EaseSide());
+    expect(positionOf(s), before, reason: 'shown, not written');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(s.dragPreview.value, isNull, reason: 'the window let it go');
+    expect(positionOf(s), before);
+
+    final again = await pickEase();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(s.dragPreview.value, isNull);
+    expect(positionOf(s), again.position, reason: 'what it showed');
   });
 
   testWidgets('a taken name the user does NOT join still frees the time '

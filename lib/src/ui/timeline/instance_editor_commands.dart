@@ -795,6 +795,14 @@ Future<void> _renameLaneKey(
   // ADOPTS (유저 2026-09-12: 「싹다링크해야하는데」 put the type inside the
   // link, so re-stating it is no longer free).
   var picked = const KeyTypePick();
+  // F-389: each pick is shown on the screen and the graphs as it is made,
+  // by the write the window's OK makes (`previewLaneKeyTypeForSelection`);
+  // the window gone, it is dropped.
+  void pick(StateSetter setLocal, KeyTypePick next) {
+    setLocal(() => picked = next);
+    session.laneVerbs.previewLaneKeyTypeForSelection(next);
+  }
+
   // The keys stand still while the window is up: read them once.
   final sides = session.laneVerbs.laneKeySidesForSelection;
   final paths = session.laneVerbs.laneKeyPathsForSelection;
@@ -819,8 +827,7 @@ Future<void> _renameLaneKey(
             sides: sides,
             picked: picked.sides ?? const KeySidesEdit(),
             onPicked: sidesCount(picked.roving)
-                ? (edit) =>
-                      setLocal(() => picked = picked.copyWith(sides: edit))
+                ? (edit) => pick(setLocal, picked.copyWith(sides: edit))
                 : null,
           ),
           const SizedBox(height: 10),
@@ -834,7 +841,7 @@ Future<void> _renameLaneKey(
             flags: [for (final path in paths) path.curved],
             picked: picked.curved,
             onPicked: (bends) =>
-                setLocal(() => picked = picked.copyWith(curved: bends)),
+                pick(setLocal, picked.copyWith(curved: bends)),
           ),
           const SizedBox(height: 10),
           // I-89 ④-Q5 (A′ while it is asked): After Effects' Rove Across
@@ -846,7 +853,7 @@ Future<void> _renameLaneKey(
             flags: roving,
             picked: picked.roving,
             onPicked: (roves) =>
-                setLocal(() => picked = picked.copyWith(roving: roves)),
+                pick(setLocal, picked.copyWith(roving: roves)),
           ),
         ],
       ),
@@ -882,7 +889,7 @@ Future<void> _renameLaneKey(
         }
       },
     ),
-  );
+  ).whenComplete(session.laneVerbs.endLaneEditPreview);
 }
 
 Future<void> _renameSelectedFrame(

@@ -1454,6 +1454,23 @@ class LaneVerbs {
   void setLaneKeyTypeForSelection(KeyTypePick pick) =>
       _writeLaneKeysForSelection(pick: pick);
 
+  /// The key window's TYPE while it is being picked: what
+  /// [setLaneKeyTypeForSelection] would write for [pick], shown and not
+  /// written — the same write, not a look-alike, as a graph handle's in
+  /// flight ([previewLaneKeySidesAt]). An empty pick shows the committed
+  /// row.
+  ///
+  /// 🗣️F-389 (유저 2026-10-17): 「키에 관한 리니어 등 타입 편집, 세기편집이
+  /// 라이브로 화면이나 그래프에도 보이도록」.
+  void previewLaneKeyTypeForSelection(KeyTypePick pick) {
+    final lane = laneVerbRange;
+    _previewLaneEdit(
+      lane == null || pick.isEmpty
+          ? null
+          : _laneKeysWriteOver(lane, pick: pick).edit,
+    );
+  }
+
   /// The shared body: [_laneKeysWriteOver] the lane range, committed as one
   /// undo step — or nothing, and true, when a name is taken. Stopping
   /// before any commit is what makes the confirmation honest — nothing is
