@@ -27,8 +27,8 @@ import '../../timeline/layer_row_drag.dart'
         LayerRowDragSubject,
         LayerRowSubject,
         TrackRowSubject;
-import '../../timeline/timeline_section_policy.dart'
-    show TimelineSection, timelineSectionForLayerKind;
+import '../../timeline/timeline_section_runs.dart'
+    show timelineSectionRunsOf;
 
 /// The row-order drag (layer / track / effect rows) as its own object.
 ///
@@ -395,38 +395,6 @@ class RowOrderDrag {
     }
   }
 
-  /// [slot] as the caret DRAWS it: a landing found past the end of the
-  /// moving row's section — over the rows of another, which draw no line
-  /// (a camera row is no drop target) — is the seat at the section's own
-  /// edge on that side, and its line stands there.
-  ///
-  /// 🗣️F-423 (유저 2026-10-20): 「선택한 파일을 폴더 위로 옮기는게 불가. 위
-  /// 폴더밖에 레이어가 존재해야만 이동되는거같은데」 — a member of the top
-  /// folder carried up over the camera's rows landed out of the folder all
-  /// along, but its line stood on the transitions row, which draws none.
-  int _drawnInItsSection(
-    List<Layer> displayLayers,
-    LayerId movingId,
-    int slot,
-  ) {
-    final home = displayLayers.indexWhere((layer) => layer.id == movingId);
-    if (home < 0) {
-      return slot;
-    }
-    TimelineSection sectionAt(int at) =>
-        timelineSectionForLayerKind(displayLayers[at].kind);
-    final own = sectionAt(home);
-    var first = home;
-    while (first > 0 && sectionAt(first - 1) == own) {
-      first -= 1;
-    }
-    var end = home + 1;
-    while (end < displayLayers.length && sectionAt(end) == own) {
-      end += 1;
-    }
-    return slot.clamp(first, end);
-  }
-
   /// R5 #15: the pointer is ON [targetId] rather than between rows.
   ///
   /// The intent a caret cannot carry: a folder with no members has no gap
@@ -641,4 +609,28 @@ class RowOrderDrag {
     _trackSlot = null;
     _channel.value = null;
   }
+}
+
+/// [slot] as the caret DRAWS it: a landing found past the end of the moving
+/// row's section — over the rows of another, which draw no line (a camera
+/// row is no drop target) — is the seat at the section's own edge on that
+/// side, and its line stands there.
+///
+/// 🗣️F-423 (유저 2026-10-20): 「선택한 파일을 폴더 위로 옮기는게 불가. 위
+/// 폴더밖에 레이어가 존재해야만 이동되는거같은데」 — a member of the top
+/// folder carried up over the camera's rows landed out of the folder all
+/// along, but its line stood on the transitions row, which draws none.
+int _drawnInItsSection(
+  List<Layer> displayLayers,
+  LayerId movingId,
+  int slot,
+) {
+  final home = displayLayers.indexWhere((layer) => layer.id == movingId);
+  for (final run in timelineSectionRunsOf(displayLayers, (row) => row.kind)) {
+    final end = run.startRowIndex + run.rowCount;
+    if (home >= run.startRowIndex && home < end) {
+      return slot.clamp(run.startRowIndex, end);
+    }
+  }
+  return slot;
 }
