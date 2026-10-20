@@ -353,6 +353,8 @@ void main() {
         'shaders or the native package — or one every test reads', () {
       expect(canBeAnInput('lib/a.dart'), isTrue);
       expect(canBeAnInput('tool/run.sh'), isTrue);
+      // A shell a test reads as text (유저 10-20 Q6).
+      expect(canBeAnInput('windows/runner/flutter_window.cpp'), isTrue);
       expect(canBeAnInput('pubspec.lock'), isTrue);
       expect(canBeAnInput('packages/qa_native/src/e.c'), isTrue);
       expect(canBeAnInput('단축키/a.txt'), isFalse);

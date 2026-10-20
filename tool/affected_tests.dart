@@ -43,26 +43,30 @@ import 'test_seconds.dart';
 /// Changing one of these means the graph cannot answer, so we do not ask it.
 ///
 /// Dependencies and toolchain change what every file compiles to; the native
-/// sources sit behind FFI where no import edge reaches them; the platform
-/// directories decide what the app links against; and
-/// `test/flutter_test_config.dart` is loaded by flutter_test before every
-/// suite in the tree while nothing imports it — an edge the graph cannot
-/// see because it does not exist in the source.
+/// sources (`packages/`) sit behind FFI where no import edge reaches them;
+/// and `test/flutter_test_config.dart` is loaded by flutter_test before
+/// every suite in the tree while nothing imports it — an edge the graph
+/// cannot see because it does not exist in the source.
+///
+/// ↩️THE PLATFORM FOLDERS ARE NO LONGER HERE (유저 10-20,
+/// tests-crowd-the-machine-Q6 「전부」). `android/ ios/ linux/ macos/
+/// windows/` stood in this list from 08-13 because 「they decide what the
+/// app links against」 — the app's, never a suite's: `flutter test` runs
+/// `flutter_tester`, which loads none of them, and the engine the suites
+/// load is the one [_engineCaveat] names. 🧪That day a lane that touched
+/// only `windows/runner/` ran all 2,561 files — eighty minutes of five
+/// suites, with eleven runs waiting behind it. A suite that reads a
+/// platform file as text is still chosen, by [scansReaching], like any scan.
 const _runEverything = <String>[
   'pubspec.yaml',
   'pubspec.lock',
   'analysis_options.yaml',
   'dart_test.yaml',
   'packages/',
-  'android/',
-  'ios/',
-  'linux/',
-  'macos/',
-  'windows/',
   'test/flutter_test_config.dart',
 ];
 
-/// The tag [gcTagMarker] writes, as `--exclude-tags` names it.
+/// The tag [gcTagMarker] writes, as `dart_test.yaml` declares it.
 const gcTag = 'gc';
 
 /// The marker a file writes to say 「my assertion waits for the garbage
@@ -91,9 +95,7 @@ const gcTagMarker = "@Tags(['$gcTag'])";
 ///
 /// ⚠️It is a whole-FILE question because the tag is a library annotation,
 /// so partitioning by file is exact — no `--exclude-tags` pass that could
-/// come back 「no tests match」 and read as a failure to start. (The whole
-/// suite is the one run that does exclude it, and [runPlan] says why that
-/// one cannot come back empty.)
+/// come back 「no tests match」 and read as a failure to start.
 ({List<String> crowd, List<String> alone}) partitionByGcTag(
   List<String> files,
   String Function(String path) read,
@@ -106,40 +108,28 @@ const gcTagMarker = "@Tags(['$gcTag'])";
   return (crowd: crowd, alone: alone);
 }
 
-/// The `flutter test` argument lists one run is made of: the [crowd], in as
-/// many commands as the command line allows, then the pins that wait for
-/// the collector, [alone] and last.
-///
-/// [selected] empty means THE WHOLE SUITE, and [suite] is then every test
-/// file there is. Its crowd stays ONE command that names no files — a whole
-/// suite of paths is far past what [batches] splits against — and leaves
-/// the tag out instead, which cannot come back 「no tests match」 with
-/// thousands of others in it.
+/// The `flutter test` argument lists one run is made of: the [selected]
+/// crowd in [batches], then the pins that wait for the collector, [alone]
+/// and last.
 ///
 /// 🚨**THE WHOLE SUITE USED TO SKIP THE SPLIT.** An empty selection names
 /// no files to partition, so it stayed one command with every file in it,
 /// the pins included — and every run a blanket file forces (the test
-/// config, `windows/`, the pubspec) and `--all` ran them in the crowd
+/// config, the pubspec) and `--all` ran them in the crowd
 /// [partitionByGcTag] exists to keep them out of. The parked-transform pin
 /// went red that way in a whole-suite gate (2026-09-23, 「16 tiles, 16
 /// still alive」, green in its own batch) — that file's third time.
+/// ↩️It then stayed one command that left the tag out; since 유저 10-20 Q6
+/// a whole suite names its files like any selection ([_wholeSuite]), so it
+/// is cut into batches the machine's line decides between too.
 ({List<List<String>> crowd, List<String> alone}) runPlan({
   required List<String> selected,
-  required List<String> suite,
   required String Function(String path) read,
   required List<List<String>> Function(List<String> files) batches,
 }) {
-  if (selected.isEmpty) {
-    final alone = partitionByGcTag(suite, read).alone;
-    final crowd = alone.isEmpty
-        ? const <String>[]
-        : const ['--exclude-tags', gcTag];
-    return (crowd: [crowd], alone: alone);
-  }
   final split = partitionByGcTag(selected, read);
   // ⛔An empty command IS the whole suite, so a selection of nothing but
-  // pins has no crowd at all — [batches] off Windows hands an empty list
-  // back as one empty batch.
+  // pins has no crowd at all — not one empty batch.
   return (
     crowd: split.crowd.isEmpty ? const <List<String>>[] : batches(split.crowd),
     alone: split.alone,
@@ -203,7 +193,7 @@ Future<void> main(List<String> args) async {
     _report('--all: running the whole suite.');
     exit(
       await _runTests(
-        const [],
+        _wholeSuite(),
         listOnly: listOnly,
         concurrency: concurrency,
         cache: _openCache(),
@@ -218,13 +208,13 @@ Future<void> main(List<String> args) async {
     exit(0);
   }
 
-  final blanket = changed.where(_forcesFullRun).toList()..sort();
+  final blanket = changed.where(forcesFullRun).toList()..sort();
   if (blanket.isNotEmpty) {
     _report('running everything: ${blanket.first} changed'
         '${blanket.length > 1 ? ' (and ${blanket.length - 1} more like it)' : ''}.');
     exit(
       await _runTests(
-        const [],
+        _wholeSuite(),
         listOnly: listOnly,
         concurrency: concurrency,
         cache: _openCache(),
@@ -391,7 +381,9 @@ List<String> _gitLines(List<String> args) {
       .toList();
 }
 
-bool _forcesFullRun(String path) => _runEverything.any(
+/// Whether a change to [path] is one the graph cannot answer
+/// ([_runEverything]), so the whole suite runs.
+bool forcesFullRun(String path) => _runEverything.any(
       (prefix) => prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
     );
 
@@ -407,9 +399,8 @@ List<String> _suitesIn(Map<String, Set<String>> graph) => graph.keys
     .toList()
   ..sort();
 
-/// Every suite there is — what a whole-suite run has to find its collector
-/// pins among ([runPlan]).
-List<String> _suiteFiles() =>
+/// Every suite there is, named — what `--all` and a blanket file run.
+List<String> _wholeSuite() =>
     _suitesIn(buildImportGraph(roots: const ['test']));
 
 
@@ -427,27 +418,25 @@ List<String> _suiteFiles() =>
 /// megabytes and one batch is always enough.
 const _argBudget = 6000;
 
-/// Split so no invocation exceeds the budget. A file that is somehow longer
-/// than the whole budget still goes out alone rather than being dropped —
-/// failing loudly beats running less than we said we would.
-List<List<String>> _batches(List<String> files) {
-  if (!Platform.isWindows) return [files];
-  final out = <List<String>>[];
-  var current = <String>[];
-  var length = 0;
-  for (final file in files) {
-    final cost = file.length + 1;
-    if (current.isNotEmpty && length + cost > _argBudget) {
-      out.add(current);
-      current = <String>[];
-      length = 0;
-    }
-    current.add(file);
-    length += cost;
-  }
-  if (current.isNotEmpty) out.add(current);
-  return out;
-}
+/// Whether [batch] fits one invocation's budget — off Windows any batch
+/// does. A file that is somehow longer than the whole budget still goes out
+/// alone ([timedBatches] ends at one file a batch) rather than being dropped
+/// — failing loudly beats running less than we said we would.
+bool _fitsTheCommandLine(List<String> batch) =>
+    !Platform.isWindows ||
+    batch.fold(0, (length, file) => length + file.length + 1) <= _argBudget;
+
+/// The work a batch is cut to ([timedBatches]): forty machine-minutes —
+/// about eight minutes at five suites and four at ten, against the 5~15s
+/// a batch's `flutter test` takes to start.
+const kBatchWork = 2400;
+
+List<List<String>> _batches(List<String> files) => timedBatches(
+  files,
+  _knownTimes(),
+  work: kBatchWork,
+  fits: _fitsTheCommandLine,
+);
 
 /// What one batch hands `flutter test`: [files], and at most [concurrency]
 /// suites at once when one is given.
@@ -492,21 +481,16 @@ Future<int> _runTests(
             'exit 0)');
     return 0;
   }
-  // The collector-waiting pins go last and by themselves, a whole suite
-  // included — see [runPlan].
+  // The collector-waiting pins go last and by themselves — see [runPlan].
   final plan = runPlan(
     selected: selected,
-    suite: selected.isEmpty ? _suiteFiles() : const [],
     read: (path) => File(path).readAsStringSync(),
     batches: _batches,
   );
   final batches = [...plan.crowd, if (plan.alone.isNotEmpty) plan.alone];
   if (listOnly) {
     for (final batch in batches) {
-      final wholeSuite = batch.isEmpty || batch.first.startsWith('--');
-      stdout.writeln(
-        wholeSuite ? '(the whole suite) ${batch.join(' ')}' : batch.join('\n'),
-      );
+      stdout.writeln(batch.join('\n'));
     }
     return 0;
   }
@@ -526,9 +510,10 @@ Future<int> _runTests(
         'report a holder that has already let go.');
   }
   if (plan.crowd.length > 1) {
-    _report('${plan.crowd.expand((batch) => batch).length} files exceed the '
-        'command-line budget: running them in ${plan.crowd.length} batches. '
-        'Each batch pays the resident compiler\'s cold start again.');
+    _report('${plan.crowd.expand((batch) => batch).length} files in '
+        '${plan.crowd.length} batches of about ${kBatchWork ~/ 60} '
+        'machine-minutes — the line decides again between them, and each '
+        'pays the resident compiler\'s cold start.');
   }
 
   var skipped = 0;
@@ -538,14 +523,17 @@ Future<int> _runTests(
   final flaky = <String>{};
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
-  // machine-Q1 · Q3): this run keeps one place in it, and every batch takes
-  // the suites the line gives it then — ten alone, five beside another long
-  // run, its files when it names two or fewer, fewer when asked.
+  // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
+  // takes the suites the line gives it then, by the work the batch says.
+  final known = _knownTimes();
   await standInLine('affected_tests', say: _report, asked: concurrency, (
     turn,
   ) async {
     Future<_BatchResult> launch(List<String> batch, File report) async {
-      final suites = await turn.take(files: filesNamed(batch));
+      final suites = await turn.take(
+        files: filesNamed(batch),
+        work: workOf(batch, known),
+      );
       try {
         return await _flutterTest(
           batch,
@@ -581,7 +569,6 @@ Future<int> _runTests(
         'flaky one from a real red.');
     final again = runPlan(
       selected: reds.toList()..sort(),
-      suite: const [],
       read: (path) => File(path).readAsStringSync(),
       batches: _batches,
     );
@@ -650,23 +637,19 @@ Future<int> _runTests(
   return worst;
 }
 
-/// [files] — the whole suite when empty — without those green on this
-/// machine with the inputs they have now ([ResultCache.stillGreenAmong]),
-/// or null when none is left. The whole suite stays one command that names
-/// no files while none of it is green.
+/// [files] without those green on this machine with the inputs they have
+/// now ([ResultCache.stillGreenAmong]), or null when none is left.
 List<String>? _withoutStillGreen(List<String> files, ResultCache cache) {
-  final asked = files.isEmpty ? _suiteFiles() : files;
-  final green = cache.stillGreenAmong(asked);
+  final green = cache.stillGreenAmong(files);
   if (green.isEmpty) return files;
-  _report('${green.length} of ${asked.length} file(s) were green on this '
+  _report('${green.length} of ${files.length} file(s) were green on this '
       'machine with the inputs they have now — not run again (--no-cache '
       'runs them).');
   final left = [
-    for (final file in asked)
+    for (final file in files)
       if (!green.contains(file)) file,
   ];
-  if (left.isEmpty) return null;
-  return files.isEmpty ? longestFirst(left, _knownTimes()) : left;
+  return left.isEmpty ? null : left;
 }
 
 /// Quarantines the [flaky] files on this machine and puts them on the

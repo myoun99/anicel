@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/test_queue.dart';
+import '../../tool/test_seconds.dart' show kUntimedFileMs;
 import '../helpers/temp_dir.dart';
 
 /// A file by its name alone: Windows lists a folder with `\`, and the
@@ -16,10 +17,12 @@ String nameOf(File file) => file.uri.pathSegments.last;
 /// 🗣️유저 2026-10-18 (tests-crowd-the-machine-Q1 「b」 — 「②기계 하나의 테스트
 /// 대기열」) · 10-19 (「일일이 감시로 손으로 확인하는거말고 ci로해서 자원
 /// 안쓰게」 · 「최대가 10만되게 할수있나. 지금상태면 단독진행일때
-/// 5개제한이잖아」 · Q3 「짧은 실행은 틈에 끼운다」): the machine's test runs
+/// 5개제한이잖아」 · Q3 「짧은 실행은 틈에 끼운다」) · 10-20 (Q6 「전부」 —
+/// 「작은실행은 순서 앞당긴다거나 … 다 싹 개선해줘」): the machine's test runs
 /// stand in one line, hold ten suites between them — all ten for a run
-/// alone, five each beside another, a short run its files in the gaps — and
-/// a run that waits launches nothing.
+/// alone, five each beside another — the shortest and longest-waiting
+/// first, others in the gaps the first leaves, and a run that waits
+/// launches nothing.
 ///
 /// ⚠️WHAT THIS FILE CANNOT REACH: a ticket held by a DIFFERENT live process,
 /// and two processes deciding under the line's lock at once. Both need a
@@ -31,13 +34,32 @@ String nameOf(File file) => file.uri.pathSegments.last;
 /// `a_run_that_ended_leaves_its_room_test` pins the same law for the app's
 /// rooms.
 void main() {
-  Standing waiting(String name, {int? files}) =>
-      (name: name, suites: null, files: files);
-  Standing runningAt(String name, int suites, {int? files}) =>
-      (name: name, suites: suites, files: files);
+  // The moment every line below is decided at.
+  final t0 = DateTime(2026, 10, 20, 14);
+  DateTime ago(int seconds) => t0.subtract(Duration(seconds: seconds));
+  Standing waiting(String name, {int? files, int? work, int waited = 0}) => (
+    name: name,
+    suites: null,
+    files: files,
+    work: work,
+    since: ago(waited),
+  );
+  Standing runningAt(
+    String name,
+    int suites, {
+    int? files,
+    int? work,
+    int ran = 0,
+  }) => (name: name, suites: suites, files: files, work: work, since: ago(ran));
+  int? decide(String mine, List<Standing> line, {int? asked}) =>
+      suitesToRun(mine, line, asked: asked, now: t0);
+  List<String> turnOrder(List<Standing> line) => [
+    for (final s in waitingInTurn(line, t0)) s.name,
+  ];
 
   group('the line', () {
-    test('a ticket asked for earlier sorts first', () {
+    test('a ticket asked for earlier sorts first, and says when it was asked',
+        () {
       final names = [
         ticketName(1000000000000, 7),
         ticketName(40, 1),
@@ -48,6 +70,11 @@ void main() {
         ticketName(40, 1),
         ticketName(1000000000000, 7),
       ]);
+      expect(
+        askedAt(ticketName(1000000000000, 7)),
+        DateTime.fromMicrosecondsSinceEpoch(1000000000000),
+      );
+      expect(askedAt('deciding.lock'), isNull);
     });
 
     test('ten suites between every run; half each when two share', () {
@@ -57,100 +84,185 @@ void main() {
 
     test('a run alone in the line takes the machine — or what it asked for',
         () {
-      expect(suitesToRun('a', [waiting('a')]), 10);
-      expect(suitesToRun('a', [waiting('a')], asked: 4), 4);
-      expect(suitesToRun('a', [waiting('a')], asked: 20), 10);
+      expect(decide('a', [waiting('a')]), 10);
+      expect(decide('a', [waiting('a')], asked: 4), 4);
+      expect(decide('a', [waiting('a')], asked: 20), 10);
     });
 
-    test('with anyone else in line, ahead or behind, a run takes half', () {
-      expect(suitesToRun('a', [waiting('a'), waiting('b')]), 5);
-      expect(suitesToRun('b', [runningAt('a', 5), waiting('b')]), 5);
+    test('with another long run in line, ahead or behind, a run takes half',
+        () {
+      expect(decide('a', [waiting('a'), waiting('b')]), 5);
+      expect(decide('b', [runningAt('a', 5), waiting('b')]), 5);
     });
 
     test('⛔a run holding all ten is waited out, not joined', () {
-      expect(suitesToRun('b', [runningAt('a', 10), waiting('b')]), isNull);
+      expect(decide('b', [runningAt('a', 10), waiting('b')]), isNull);
       // …though one that asked for fewer leaves the rest.
-      expect(suitesToRun('b', [runningAt('a', 3), waiting('b')]), 5);
+      expect(decide('b', [runningAt('a', 3), waiting('b')]), 5);
     });
 
-    test('⛔no long run starts ahead of a long run still waiting, and a third '
-        'waits while two hold the ten', () {
-      expect(suitesToRun('b', [waiting('a'), waiting('b')]), isNull);
+    test('⛔a third waits while two hold the ten, and a run not in line '
+        'takes nothing', () {
       expect(
-        suitesToRun('c', [runningAt('a', 5), runningAt('b', 5), waiting('c')]),
+        decide('c', [runningAt('a', 5), runningAt('b', 5), waiting('c')]),
         isNull,
       );
-      expect(suitesToRun('gone', [waiting('a')]), isNull);
+      expect(decide('gone', [waiting('a')]), isNull);
     });
 
-    test('a short run is charged the files it names', () {
-      expect(kShortRun, 2);
-      expect(suitesToRun('a', [waiting('a', files: 1)]), 1);
-      expect(suitesToRun('a', [waiting('a', files: 2)], asked: 1), 1);
+    test('a run is charged no more suites than the files it names', () {
+      expect(decide('a', [waiting('a', files: 1)]), 1);
+      expect(decide('a', [waiting('a', files: 2)], asked: 1), 1);
       // A long run's last batch of three takes three.
-      expect(suitesToRun('a', [waiting('a', files: 3)]), 3);
+      expect(decide('a', [waiting('a', files: 3)]), 3);
     });
 
-    test('a short run starts out of turn in the gap the running runs leave',
-        () {
+    test('of runs that waited alike, the shortest is first in line — and the '
+        'longer does not start on what the first would leave it', () {
       final line = [
-        runningAt('a', 5),
-        waiting('b'),
-        waiting('s', files: 1),
+        waiting('long', work: 3600, waited: 60),
+        waiting('short', work: 300, waited: 60),
       ];
-      expect(suitesToRun('s', line), 1);
-      // …and the long run ahead of it keeps that room for it.
-      expect(suitesToRun('b', line), isNull);
-      // ⛔A short run waiting ahead holds no long run's turn.
-      expect(
-        suitesToRun('b', [waiting('a', files: 1), waiting('b')], asked: 9),
-        9,
-      );
+      expect(turnOrder(line), ['short', 'long']);
+      expect(decide('short', line), 5);
+      expect(decide('long', line), isNull);
     });
 
-    test('⛔with no gap a short run waits', () {
-      expect(
-        suitesToRun('s', [
-          runningAt('a', 5),
-          runningAt('b', 5),
-          waiting('s', files: 1),
-        ]),
-        isNull,
-      );
-    });
-
-    test('a long run deciding its next batch keeps room for every short run '
-        'still waiting', () {
+    test('a long run comes forward as it waits, so none waits for ever', () {
       final line = [
-        waiting('a'),
-        runningAt('b', 5),
-        waiting('s', files: 1),
+        waiting('long', work: 3600, waited: 3600),
+        waiting('short', work: 300, waited: 60),
       ];
-      expect(suitesToRun('a', line), isNull);
-      expect(suitesToRun('s', line), 1);
+      expect(turnOrder(line), ['long', 'short']);
+      expect(decide('long', line), 10);
+      expect(decide('short', line), isNull);
     });
 
-    test('a short run keeps the gap for the short runs ahead of it, not '
-        'behind', () {
+    test('runs alike keep the order they asked in', () {
+      expect(turnOrder([waiting('b', waited: 10), waiting('a', waited: 5)]), [
+        'b', 'a', //
+      ]);
+      expect(turnOrder([waiting('b'), waiting('a')]), ['a', 'b']);
+    });
+
+    test('a run that did not say since when it waits stands from when its '
+        'ticket was asked', () {
+      final name = ticketName(ago(100).microsecondsSinceEpoch, 1);
+      Standing unsaid() =>
+          (name: name, suites: null, files: null, work: null, since: null);
+      expect(turnOrder([waiting('a', waited: 50), unsaid()]), [name, 'a']);
+      expect(turnOrder([waiting('a', waited: 200), unsaid()]), ['a', name]);
+    });
+
+    test('beside the first in line a run starts when both fit now — and '
+        'waits when it would take the first its suites', () {
+      expect(decide('b', [waiting('a'), waiting('b')]), 5);
+      final line = [runningAt('r', 2), waiting('a'), waiting('b')];
+      expect(decide('a', line), 5);
+      expect(decide('b', line), isNull);
+    });
+
+    test('while the first cannot start, a run takes the gap if it ends before '
+        'the running runs leave the first its suites', () {
       final line = [
-        runningAt('a', 8, files: 9),
-        waiting('s', files: 1),
-        waiting('t', files: 2),
+        // Ends in 600s, and in 100s.
+        runningAt('r', 5, work: 3000),
+        runningAt('q', 3, work: 300),
+        waiting('first', waited: 1000),
+        waiting('s', files: 2, work: 60),
+        waiting('s2', files: 2, work: 400),
       ];
-      expect(suitesToRun('s', line), 1);
-      expect(suitesToRun('t', line), isNull);
+      expect(turnOrder(line).first, 'first');
+      expect(decide('first', line), isNull);
+      // 30s, in the gap of 100s.
+      expect(decide('s', line), 2);
+      // 200s would hold the first back.
+      expect(decide('s2', line), isNull);
     });
 
-    test('⛔short runs do not halve a long run — it waits them out and takes '
+    test('…or if it fits in what they leave over beyond the first', () {
+      final line = [
+        // Ends in 600s, and in 100s with one suite to spare.
+        runningAt('r', 4, work: 2400),
+        runningAt('q', 4, work: 400),
+        waiting('first', waited: 1000),
+        waiting('s1', files: 1, work: 400),
+        waiting('s2', files: 2, work: 400),
+      ];
+      expect(turnOrder(line).first, 'first');
+      expect(decide('s1', line), 1);
+      expect(decide('s2', line), isNull);
+    });
+
+    test('while the line cannot tell when the first will start, only a quick '
+        'run takes the gap', () {
+      for (final unsaid in <Standing>[
+        runningAt('r', 8),
+        (name: 'r', suites: 8, files: null, work: 800, since: null),
+      ]) {
+        final line = [
+          unsaid,
+          waiting('first', waited: 60),
+          waiting('quick', files: 2, work: 240),
+          waiting('slow', files: 2, work: 242),
+        ];
+        expect(turnOrder(line).first, 'first');
+        expect(decide('quick', line), 2);
+        expect(decide('slow', line), isNull);
+      }
+    });
+
+    test('⛔a running run past its end leaves no gap to wait in', () {
+      final line = [
+        runningAt('r', 8, work: 400, ran: 1000),
+        waiting('first', waited: 60),
+        waiting('s', files: 2, work: 60),
+      ];
+      expect(decide('s', line), isNull);
+      // The same run with 50s still to go leaves 30s of gap room.
+      line[0] = runningAt('r', 8, work: 400);
+      expect(decide('s', line), 2);
+    });
+
+    test('⛔small runs do not halve a long run — it waits them out and takes '
         'the machine', () {
       expect(
-        suitesToRun('a', [waiting('a'), runningAt('s', 1, files: 1)]),
+        decide('a', [waiting('a'), runningAt('s', 1, files: 1, work: 600)]),
         isNull,
       );
-      expect(suitesToRun('a', [waiting('a'), waiting('s', files: 2)]), isNull);
       expect(
-        suitesToRun('a', [waiting('a'), runningAt('s', 1, files: 1)], asked: 9),
+        decide('a', [
+          waiting('a'),
+          runningAt('s', 1, files: 1, work: 600),
+        ], asked: 9),
         9,
+      );
+      // One machine-second more is a long run.
+      expect(
+        decide('a', [waiting('a'), runningAt('s', 1, files: 1, work: 601)]),
+        5,
+      );
+    });
+
+    test('a run that cannot say its work is a long one: an hour of one '
+        "suite's time", () {
+      expect(
+        decide('a', [waiting('a'), runningAt('s', 1, files: 1)]),
+        5,
+      );
+      expect(
+        turnOrder([
+          waiting('u', waited: 100),
+          waiting('k', work: 3599, waited: 100),
+        ]),
+        ['k', 'u'],
+      );
+      expect(
+        turnOrder([
+          waiting('u', waited: 100),
+          waiting('k', work: 3601, waited: 100),
+        ]),
+        ['u', 'k'],
       );
     });
 
@@ -201,6 +313,27 @@ void main() {
       // A batch of affected_tests: its files, or the whole suite.
       expect(filesNamed(['--exclude-tags', 'gc'], isFolder: isFolder), isNull);
       expect(filesNamed(const []), isNull);
+    });
+
+    test('a flutter test says the work of the files it names, by this '
+        "machine's times, in either slash", () {
+      final known = {'test/a_test.dart': 3000, 'test/b_test.dart': 7000};
+      expect(
+        workAsked(
+          ['flutter', 'test', 'test/a_test.dart', r'test\b_test.dart'],
+          known,
+        ),
+        10,
+      );
+      expect(
+        workAsked(
+          ['timeout', '300', 'flutter', 'test', 'test/c_test.dart'],
+          known,
+        ),
+        kUntimedFileMs ~/ 1000,
+      );
+      expect(workAsked(['flutter', 'test'], known), isNull);
+      expect(workAsked(['dart', 'run', 'x.dart'], known), isNull);
     });
 
     test('its turn runs it at the suites the line gave, whatever it said', () {
@@ -281,9 +414,15 @@ void main() {
       expect(runHasEnded(ticket('a.ticket')), isTrue);
     });
 
-    test('a ticket says its suites while running and its files; waiting or '
-        'unreadable holds none', () {
-      ticket('a.ticket', told: {'state': 'running', 'suites': 5, 'files': 1});
+    test('a ticket says its suites while running, its files, its work and '
+        'since when; waiting or unreadable holds none', () {
+      ticket('a.ticket', told: {
+        'state': 'running',
+        'suites': 5,
+        'files': 1,
+        'work': 300,
+        'since': t0.toIso8601String(),
+      });
       ticket('b.ticket', told: {'state': 'waiting', 'files': 2});
       ticket('c.ticket');
       File('${line.path}/d.ticket.json').writeAsStringSync('not json');
@@ -291,18 +430,53 @@ void main() {
         name: 'a.ticket',
         suites: 5,
         files: 1,
+        work: 300,
+        since: t0,
       ));
       expect(standingOf(line, 'b.ticket'), (
         name: 'b.ticket',
         suites: null,
         files: 2,
+        work: null,
+        since: null,
       ));
       expect(standingOf(line, 'c.ticket').suites, isNull);
       expect(standingOf(line, 'd.ticket'), (
         name: 'd.ticket',
         suites: null,
         files: null,
+        work: null,
+        since: null,
       ));
+    });
+
+    test('--list shows the running runs, then the waiting ones in turn', () {
+      ticket('a.ticket', told: {
+        'state': 'waiting',
+        'what': 'long',
+        'work': 3600,
+        'since': ago(60).toIso8601String(),
+      });
+      ticket('b.ticket', told: {
+        'state': 'running',
+        'suites': 5,
+        'what': 'running',
+        'work': 3000,
+        'since': t0.toIso8601String(),
+      });
+      ticket('c.ticket', told: {
+        'state': 'waiting',
+        'what': 'short',
+        'files': 2,
+        'work': 120,
+        'since': ago(60).toIso8601String(),
+      });
+      final rows = describeLine(line, now: t0);
+      expect(rows, hasLength(3));
+      expect(rows[0], startsWith('1. running 5 suites · ~50 machine-min'));
+      expect(rows[1], startsWith('2. waiting · 2 files · ~2 machine-min'));
+      expect(rows[1], contains(' · short · '));
+      expect(rows[2], contains(' · long · '));
     });
   });
 
@@ -454,13 +628,13 @@ void main() {
         'a run',
         (turn) async {
           final mine = tickets().single;
-          final first = await turn.take(files: 40);
+          final first = await turn.take(files: 40, work: 2400);
           final whileRunning = standingOf(line, mine);
           turn.putDown();
           final between = standingOf(line, mine);
           // Another long run asks while the first batch runs.
           behind = askedAfter({'state': 'waiting'});
-          final second = await turn.take(files: 40);
+          final second = await turn.take(files: 40, work: 2400);
           return (
             first,
             whileRunning,
@@ -479,17 +653,25 @@ void main() {
       );
       expect(whileWaiting!.suites, isNull);
       expect(whileWaiting!.files, 40);
+      expect(whileWaiting!.work, 2400);
+      expect(whileWaiting!.since, isNotNull);
       expect(seen.$1, 10);
       expect(seen.$2.suites, 10);
       expect(seen.$2.files, 40);
+      expect(seen.$2.work, 2400);
+      expect(
+        seen.$2.since!.isBefore(whileWaiting!.since!),
+        isFalse,
+        reason: 'running, it says since when it runs',
+      );
       expect(seen.$3, isNull);
       expect(seen.$4, 5);
       expect(seen.$5, isTrue);
       expect(tickets(), [nameOf(behind)]);
     });
 
-    test('a long run gives the gap to a short run waiting at its next batch, '
-        'then takes the machine again', () async {
+    test('a long run at its next batch gives way to a short run that has '
+        'waited longer, waits it out, then takes the machine again', () async {
       final events = <String>[];
       late File short;
       var looks = 0;
@@ -498,7 +680,14 @@ void main() {
         (turn) async {
           events.add('batch at ${await turn.take()}');
           turn.putDown();
-          short = askedAfter({'state': 'waiting', 'files': 1});
+          short = askedAfter({
+            'state': 'waiting',
+            'files': 1,
+            'work': 30,
+            'since': DateTime.now()
+                .subtract(const Duration(minutes: 1))
+                .toIso8601String(),
+          });
           events.add('batch at ${await turn.take()}');
           turn.putDown();
         },
@@ -509,21 +698,29 @@ void main() {
         ended: (file) {
           if (nameOf(file) != nameOf(short)) return false;
           looks++;
-          if (looks == 1) {
+          if (looks == 2) {
             File('${short.path}.json').writeAsStringSync(
-              jsonEncode({'state': 'running', 'suites': 1, 'files': 1}),
+              jsonEncode({
+                'state': 'running',
+                'suites': 1,
+                'files': 1,
+                'work': 30,
+                'since': DateTime.now().toIso8601String(),
+              }),
             );
             events.add('short runs at 1');
           }
-          final gone = looks == 2;
+          final gone = looks == 3;
           if (gone) events.add('short given back');
           return gone;
         },
       );
       expect(events, [
         'batch at 10', //
-        // The short run's room is kept, so the long run waits it out…
-        'short runs at 1', 'waits', 'short given back',
+        // The short run is first in line, so the long run waits second…
+        'waits', 'short runs at 1',
+        // …then first, waiting it out, for a small run does not halve it…
+        'waits', 'short given back',
         // …and then holds all ten again.
         'batch at 10',
       ]);

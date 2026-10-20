@@ -1,5 +1,7 @@
 // ONE LINE OF TEST RUNS FOR THE WHOLE MACHINE, and ten suites at once
-// between all of them, taken in the order asked — short runs in the gaps.
+// between all of them, taken shortest first by the work each says it has —
+// the longer a run has waited, the further forward it comes — and short
+// runs in the gaps the first in line leaves.
 //
 //   bash tool/run.sh test_queue flutter test <files…>   run it in its turn
 //   bash tool/run.sh test_queue timeout 300 flutter test <files…>
@@ -83,59 +85,161 @@ Directory? queueFolder(Map<String, String> environment) {
 String ticketName(int microseconds, int processId) =>
     '${microseconds.toString().padLeft(17, '0')}-$processId.ticket';
 
-/// A `flutter test` naming this many test files or fewer is a short run: it
-/// is charged the files it names, and it starts out of turn in whatever the
-/// running runs leave of [kMachineSuites]. 🗣️유저 10-19,
-/// tests-crowd-the-machine-Q3 「짧은 실행은 틈에 끼운다」 — 「파일 둘 이하인
-/// 실행은 줄 순서를 앞질러 남은 예산에 끼워 출발한다… 큰 실행끼리는 지금처럼
-/// 순서대로」, after a one-file check stood an hour behind two long runs.
-const kShortRun = 2;
+/// A run whose work ([Standing.work]) is this many machine-seconds or less
+/// does not halve a long run's share: ten minutes of one suite's time — a
+/// handful of files, a mutant's check. ↩️It was 「two files or fewer」
+/// (`kShortRun`, 유저 10-19 Q3 「짧은 실행은 틈에 끼운다」) until 유저 10-20
+/// Q6 (「작은실행은 순서 앞당긴다거나 … 다 싹 개선해줘」): that day eleven runs
+/// of three to thirteen files stood an hour and three quarters behind two
+/// long runs, every one of them too long for the old rule.
+const kSmallWork = 600;
+
+/// What a run that cannot say its work is counted at: an hour of one
+/// suite's time — long, so it neither jumps the line nor takes a gap it may
+/// hold for an hour. A whole suite is such a run, and so is the ticket of a
+/// tool from before [Standing.work].
+const kUnknownWork = 3600;
+
+/// The longest run, in seconds, that may take a gap while the line cannot
+/// tell when the first in line will start — a running run that did not say
+/// its work.
+const kQuickWall = 120;
 
 /// One held ticket as the line reads it: the suites its run holds, or null
-/// while it waits, and the test files its `flutter test` names — null when
-/// it names none (the whole suite, a folder) or is no `flutter test`.
-typedef Standing = ({String name, int? suites, int? files});
+/// while it waits; the test files its `flutter test` names — null when it
+/// names none (the whole suite, a folder) or is no `flutter test`; the
+/// machine-seconds that `flutter test` should take ([workOf]) — null when
+/// it cannot say; and since when it has waited, or run — null when it did
+/// not say, and then the line reads when it was asked ([askedAt]).
+typedef Standing = ({
+  String name,
+  int? suites,
+  int? files,
+  int? work,
+  DateTime? since,
+});
 
-bool _isShort(Standing standing) =>
-    (standing.files ?? kShortRun + 1) <= kShortRun;
+/// When the ticket [name] was asked, read off its name ([ticketName]).
+DateTime? askedAt(String name) {
+  final micros = int.tryParse(name.split('-').first);
+  return micros == null ? null : DateTime.fromMicrosecondsSinceEpoch(micros);
+}
+
+int _workOf(Standing standing) => standing.work ?? kUnknownWork;
+
+bool _isSmall(Standing standing) => _workOf(standing) <= kSmallWork;
+
+/// The suites [standing] would take now: all of its share — the machine
+/// alone among the long runs in [line], half beside another
+/// ([kSharedSuites]) — and never more than the files it names or what it
+/// [asked].
+int _wants(Standing standing, List<Standing> line, {int? asked}) {
+  final share = line.any((o) => o.name != standing.name && !_isSmall(o))
+      ? kSharedSuites
+      : kMachineSuites;
+  return [share, ?asked, ?standing.files].reduce(math.min);
+}
+
+/// How long [standing] should run at [suites], in seconds — never under one.
+double _wallOf(Standing standing, int suites) =>
+    math.max(1, _workOf(standing) / suites);
+
+/// How far forward [standing] stands in [line] at [now]: (waited + its run)
+/// over its run — the highest-response-ratio-next rule. A short run comes
+/// forward fast, and a long one comes forward too as it waits, so no run
+/// waits for ever; runs alike keep the order they asked in.
+double _forwardness(Standing standing, List<Standing> line, DateTime now) {
+  final wall = _wallOf(standing, _wants(standing, line));
+  final since = standing.since ?? askedAt(standing.name) ?? now;
+  final waited = math.max(0, now.difference(since).inMilliseconds / 1000);
+  return (waited + wall) / wall;
+}
+
+/// The waiting runs in [line], the first in line first ([_forwardness]).
+List<Standing> waitingInTurn(List<Standing> line, DateTime now) {
+  final forward = {
+    for (final s in line)
+      if (s.suites == null) s.name: _forwardness(s, line, now),
+  };
+  return [
+    for (final s in line)
+      if (s.suites == null) s,
+  ]..sort((a, b) {
+    final ahead = forward[b.name]!.compareTo(forward[a.name]!);
+    return ahead != 0 ? ahead : a.name.compareTo(b.name);
+  });
+}
+
+/// When the runs in [running] will have left [needed] more suites — the
+/// moment the ones that end first add up to it — and how many of theirs
+/// are left over then; null when one that has to end first did not say its
+/// work or since when it runs.
+({DateTime when, int leftOver})? _whenTheyFree(
+  int needed,
+  List<Standing> running,
+) {
+  DateTime? endOf(Standing s) => s.work == null || s.since == null
+      ? null
+      : s.since!.add(
+          Duration(milliseconds: (_wallOf(s, s.suites!) * 1000).round()),
+        );
+  final never = DateTime(9999);
+  final ends = [for (final s in running) (suites: s.suites!, end: endOf(s))]
+    ..sort((a, b) => (a.end ?? never).compareTo(b.end ?? never));
+  var freed = 0;
+  for (final (:suites, :end) in ends) {
+    if (end == null) return null;
+    freed += suites;
+    if (freed >= needed) {
+      return (when: end, leftOver: freed - needed);
+    }
+  }
+  return null;
+}
 
 /// The suites the run holding [mine] may start its `flutter test` with now,
 /// or null while it waits. It takes all of what it may hold or waits —
 /// suites are fixed for the whole of a `flutter test`, and a long batch
 /// started on the one suite left would run at one for its whole length.
 ///
-/// · Long runs go in turn: every long run ahead of it is already running.
-///   Alone among the long runs in line, one takes the machine
-///   ([kMachineSuites]); with another, half ([kSharedSuites]).
-/// · A short run ([kShortRun]) is charged the files it names and goes out
-///   of turn. Every long run keeps room for each short run still waiting,
-///   so the next to decide cannot take the gap first; a short run keeps it
-///   for the short runs ahead of it.
-/// · Never more than it [asked] for, and only while what is running and
-///   what is kept leave that much of [kMachineSuites].
-int? suitesToRun(String mine, List<Standing> line, {int? asked}) {
-  final sorted = [...line]..sort((a, b) => a.name.compareTo(b.name));
-  final at = sorted.indexWhere((standing) => standing.name == mine);
-  if (at < 0) return null;
-  final me = sorted[at];
-  final short = _isShort(me);
-  if (!short &&
-      sorted.take(at).any((ahead) => ahead.suites == null && !_isShort(ahead))) {
-    return null;
-  }
-  final longs = sorted.where((standing) => !_isShort(standing)).length;
-  final share = longs <= 1 ? kMachineSuites : kSharedSuites;
-  final suites = [share, ?asked, ?me.files].reduce(math.min);
-  var taken = 0;
-  for (final (i, other) in sorted.indexed) {
-    if (i == at) continue;
-    if (other.suites != null) {
-      taken += other.suites!;
-    } else if (_isShort(other) && (!short || i < at)) {
-      taken += other.files!;
-    }
-  }
-  return taken + suites <= kMachineSuites ? suites : null;
+/// · THE FIRST IN LINE is the waiting run that stands furthest forward
+///   ([_forwardness]); it starts as soon as the running runs leave its
+///   suites.
+/// · Any other run starts out of turn only in a gap that does not hold the
+///   first back: beside it when both fit now; or, while it cannot start
+///   yet, one that ends before the running runs have left the first its
+///   suites, or that fits in what they will leave over beyond them — the
+///   backfill a batch scheduler does. While the line cannot tell when the
+///   first will start, only a run of [kQuickWall] seconds or less.
+/// · Never more than it [asked] for, and only while what is running leaves
+///   that much of [kMachineSuites].
+int? suitesToRun(
+  String mine,
+  List<Standing> line, {
+  int? asked,
+  DateTime? now,
+}) {
+  final at = now ?? DateTime.now();
+  final me = line.where((s) => s.name == mine).firstOrNull;
+  if (me == null) return null;
+  final running = [
+    for (final s in line)
+      if (s.suites != null) s,
+  ];
+  final waiting = waitingInTurn(line, at);
+  final free =
+      kMachineSuites - running.fold<int>(0, (n, s) => n + s.suites!);
+  final wants = _wants(me, line, asked: asked);
+  if (wants > free) return null;
+  final first = waiting.firstOrNull;
+  if (first == null || first.name == mine) return wants;
+  final firstWants = _wants(first, line);
+  if (firstWants <= free) return wants <= free - firstWants ? wants : null;
+  final opens = _whenTheyFree(firstWants - free, running);
+  final wall = _wallOf(me, wants);
+  if (opens == null) return wall <= kQuickWall ? wants : null;
+  final ends = at.add(Duration(milliseconds: (wall * 1000).round()));
+  return !ends.isAfter(opens.when) || wants <= opens.leftOver ? wants : null;
 }
 
 /// How many suites [command] asks for, if it is a `flutter test` that says.
@@ -184,6 +288,32 @@ int? filesNamed(
     }
   }
   return files == 0 ? null : files;
+}
+
+/// The machine-seconds the `flutter test` in [command] should take by
+/// [known] ([workOf]) — null when it names no test files (the whole suite,
+/// a folder) or is no `flutter test`.
+int? workAsked(List<String> command, Map<String, int> known) {
+  final at = _flutterTestAt(command);
+  if (at == null) return null;
+  final files = [
+    for (final word in command.skip(at + 2))
+      if (word.endsWith('.dart')) word.replaceAll(r'\', '/'),
+  ];
+  return filesAsked(command) == null ? null : workOf(files, known);
+}
+
+/// This machine's test times ([readTimes]), or none when it keeps none.
+Map<String, int> timesOnThisMachine() {
+  final folder = machineCacheFolder(Platform.environment);
+  final file = folder == null ? null : File('$folder/test_times.tsv');
+  try {
+    return file != null && file.existsSync()
+        ? readTimes(file.readAsStringSync())
+        : const {};
+  } on FileSystemException {
+    return const {};
+  }
 }
 
 /// [command] as its turn runs it: a `flutter test` holds [suites] suites,
@@ -257,9 +387,10 @@ List<String> heldTickets(
 }
 
 /// What the run holding the ticket [name] in [line] said: the suites it
-/// holds — none while it waits — and the files its `flutter test` names.
-/// One that has said nothing readable waits and names none, which keeps
-/// every long run behind it waiting rather than over the machine.
+/// holds — none while it waits — the files its `flutter test` names, the
+/// work it should take and since when it waits or runs ([Standing]). One
+/// that has said nothing readable waits, names none and cannot say its
+/// work, which keeps it from halving or overtaking anyone it should not.
 Standing standingOf(Directory line, String name) {
   try {
     final about = jsonDecode(
@@ -270,12 +401,14 @@ Standing standingOf(Directory line, String name) {
         name: name,
         suites: about['state'] == 'running' ? about['suites'] as int? : null,
         files: about['files'] as int?,
+        work: about['work'] as int?,
+        since: DateTime.tryParse('${about['since'] ?? ''}'),
       );
     }
   } on Object {
     // Read as one that said nothing.
   }
-  return (name: name, suites: null, files: null);
+  return (name: name, suites: null, files: null, work: null, since: null);
 }
 
 /// Whether the run that holds [ticket] is gone — asked by TAKING its lock,
@@ -344,11 +477,22 @@ class Ticket {
     }
   }
 
-  /// Holds no suites, and its next `flutter test` names [files].
-  void waiting(int? files) => _tell({'state': 'waiting', 'files': files});
+  /// Holds no suites since [since], and its next `flutter test` names
+  /// [files] and should take [work] machine-seconds.
+  void waiting(int? files, {int? work, DateTime? since}) => _tell({
+    'state': 'waiting',
+    'files': files,
+    'work': work,
+    'since': (since ?? DateTime.now()).toIso8601String(),
+  });
 
-  void running(int suites, int? files) =>
-      _tell({'state': 'running', 'suites': suites, 'files': files});
+  void running(int suites, int? files, {int? work}) => _tell({
+    'state': 'running',
+    'suites': suites,
+    'files': files,
+    'work': work,
+    'since': DateTime.now().toIso8601String(),
+  });
 
   void giveBack() {
     try {
@@ -421,20 +565,22 @@ class Turn {
   final Duration lookAgain;
   final Duration askAgain;
 
-  /// The suites a `flutter test` naming [files] test files may hold
-  /// ([suitesToRun]), once its turn has come and the machine has [room].
-  /// [say] hears where it stands; nothing is said while nothing changes.
-  Future<int> take({int? files}) async {
+  /// The suites a `flutter test` naming [files] test files, with [work]
+  /// machine-seconds to do ([workOf]), may hold ([suitesToRun]), once its
+  /// turn has come and the machine has [room]. [say] hears where it stands;
+  /// nothing is said while nothing changes.
+  Future<int> take({int? files, int? work}) async {
     final folder = _folder;
     if (folder == null) {
       // No machine folder: no line to stand in, and the machine is its own.
       return [kMachineSuites, ?asked, ?files].reduce(math.min);
     }
-    _ticket!.waiting(files);
+    var since = DateTime.now();
+    _ticket!.waiting(files, work: work, since: since);
     List<Standing> standings() => [
       for (final name in heldTickets(folder, mine: _ticket!.name, ended: ended))
         if (name == _ticket!.name)
-          (name: name, suites: null, files: files)
+          (name: name, suites: null, files: files, work: work, since: since)
         else
           standingOf(folder, name),
     ];
@@ -444,7 +590,9 @@ class Turn {
       // A ticket swept in the instant between being made and being locked
       // stands nowhere; it takes another at the back.
       if (!_ticket!.file.existsSync()) {
-        _ticket = Ticket.take(folder, _what)..waiting(files);
+        since = DateTime.now();
+        _ticket = Ticket.take(folder, _what)
+          ..waiting(files, work: work, since: since);
       }
       final line = standings();
       if (suitesToRun(_ticket!.name, line, asked: asked) != null) {
@@ -454,7 +602,7 @@ class Turn {
           // goes.
           final suites = _deciding(folder, () {
             final now = suitesToRun(_ticket!.name, standings(), asked: asked);
-            if (now != null) _ticket!.running(now, files);
+            if (now != null) _ticket!.running(now, files, work: work);
             return now;
           });
           if (suites != null) return suites;
@@ -468,12 +616,12 @@ class Turn {
         await Future<void>.delayed(askAgain);
         continue;
       }
-      final at = (line.map((s) => s.name).toList()..sort())
-              .indexOf(_ticket!.name) +
-          1;
+      final waiting = waitingInTurn(line, DateTime.now());
+      final at = waiting.indexWhere((s) => s.name == _ticket!.name) + 1;
       if (at != stood) {
-        say('test_queue: number $at in line — waiting for $kMachineSuites '
-            'suites between the runs (nothing runs while it waits)');
+        say('test_queue: number $at of the ${waiting.length} waiting, '
+            'shortest and longest-waiting first — $kMachineSuites suites '
+            'between the runs (nothing runs while it waits)');
         stood = at;
       }
       await Future<void>.delayed(lookAgain);
@@ -525,6 +673,7 @@ Future<T> inTurn<T>(
   Future<T> Function(int suites) run, {
   int? asked,
   int? files,
+  int? work,
   Directory? line,
   Future<bool> Function()? room,
   bool Function(File ticket) ended = runHasEnded,
@@ -533,7 +682,7 @@ Future<T> inTurn<T>(
   Duration askAgain = kAskAgain,
 }) => standInLine(
   what,
-  (turn) async => run(await turn.take(files: files)),
+  (turn) async => run(await turn.take(files: files, work: work)),
   asked: asked,
   line: line,
   room: room,
@@ -553,17 +702,28 @@ Future<bool> machineHasRoom() async {
   return measured?.room ?? false;
 }
 
-/// The line as `--list` prints it, one ticket a row, in turn order.
-List<String> describeLine(Directory line) {
+/// The line as `--list` prints it at [now], one ticket a row: the running
+/// runs, then the waiting ones in turn ([waitingInTurn]).
+List<String> describeLine(Directory line, {DateTime? now}) {
   if (!line.existsSync()) return const ['(nobody in line)'];
-  final tickets = [
+  final tickets = {
     for (final entity in line.listSync())
-      if (entity is File && entity.path.endsWith('.ticket')) entity,
-  ]..sort((a, b) => a.path.compareTo(b.path));
+      if (entity is File && entity.path.endsWith('.ticket'))
+        entity.uri.pathSegments.last: entity,
+  };
   if (tickets.isEmpty) return const ['(nobody in line)'];
+  final standings = [
+    for (final name in tickets.keys.toList()..sort()) standingOf(line, name),
+  ];
+  final inTurn = [
+    for (final s in standings)
+      if (s.suites != null) s,
+    ...waitingInTurn(standings, now ?? DateTime.now()),
+  ];
   return [
-    for (final (i, ticket) in tickets.indexed)
-      '${i + 1}. ${_about(ticket)}${runHasEnded(ticket) ? '  (ended)' : ''}',
+    for (final (i, s) in inTurn.indexed)
+      '${i + 1}. ${_about(tickets[s.name]!)}'
+          '${runHasEnded(tickets[s.name]!) ? '  (ended)' : ''}',
   ];
 }
 
@@ -573,8 +733,11 @@ String _about(File ticket) {
         as Map<String, dynamic>;
     final suites = about['suites'] == null ? '' : ' ${about['suites']} suites';
     final files = about['files'] == null ? '' : ' · ${about['files']} files';
-    return '${about['state']}$suites$files · pid ${about['pid']} · since '
-        '${about['asked']} · ${about['what']} · ${about['where']}';
+    final work = about['work'] == null
+        ? ''
+        : ' · ~${((about['work'] as int) / 60).ceil()} machine-min';
+    return '${about['state']}$suites$files$work · pid ${about['pid']} · '
+        'since ${about['asked']} · ${about['what']} · ${about['where']}';
   } on Object {
     return ticket.uri.pathSegments.last;
   }
@@ -599,6 +762,7 @@ Future<void> main(List<String> args) async {
     args.join(' '),
     asked: askedSuites(args),
     files: filesAsked(args),
+    work: workAsked(args, timesOnThisMachine()),
     (suites) async {
       final command = placed(args, suites);
       final started = await Process.start(

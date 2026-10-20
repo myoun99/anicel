@@ -233,7 +233,8 @@ Map<String, String>? contentIds(
 bool canBeAnInput(String path) =>
     kEveryTestReads.contains(path) ||
     [
-      'lib/', 'test/', 'tool/', ...kEveryTestReadsUnder, //
+      for (final root in kTextRoots) '$root/',
+      ...kEveryTestReadsUnder,
     ].any(path.startsWith);
 
 /// `git ls-files --stage -z`: `<mode> <id> <stage>\t<path>` per entry.

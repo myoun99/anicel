@@ -6,7 +6,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/affected_tests.dart'
-    show kGraphRoots, scansReaching, selectTests;
+    show forcesFullRun, kGraphRoots, scansReaching, selectTests;
 import '../../tool/import_graph.dart'
     show buildImportGraph, pathsReadAsText;
 
@@ -145,6 +145,46 @@ void main() {
         (path) => File(path).readAsStringSync(),
       ),
       [law],
+    );
+  });
+
+  test('🚨a platform folder runs no whole suite — the tests that read it are '
+      'chosen like any scan', () {
+    // 유저 10-20 (tests-crowd-the-machine-Q6): a lane that touched only
+    // `windows/runner/` ran all 2,561 files, and the roots a scan could name
+    // were lib, test and tool — so without the blanket, the tests that read
+    // the shells would have gone unchosen.
+    for (final shell in [
+      'windows/runner/flutter_window.cpp',
+      'android/app/build.gradle.kts',
+      'ios/Runner/AppDelegate.swift',
+      'linux/runner/my_application.cc',
+      'macos/Runner/MainFlutterWindow.swift',
+    ]) {
+      expect(forcesFullRun(shell), isFalse, reason: shell);
+    }
+    for (final blanket in [
+      'pubspec.yaml',
+      'pubspec.lock',
+      'analysis_options.yaml',
+      'dart_test.yaml',
+      'packages/qa_native/src/brush.c',
+      'test/flutter_test_config.dart',
+    ]) {
+      expect(forcesFullRun(blanket), isTrue, reason: blanket);
+    }
+    const reader = 'test/ui/the_close_button_asks_the_app_test.dart';
+    expect(
+      scansReaching(
+        {'windows/runner/flutter_window.cpp'},
+        [reader],
+        (path) => File(path).readAsStringSync(),
+      ),
+      [reader],
+    );
+    expect(
+      pathsReadAsText("File('android/app/build.gradle.kts')"),
+      {'android/app/build.gradle.kts'},
     );
   });
 

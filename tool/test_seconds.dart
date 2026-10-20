@@ -168,3 +168,57 @@ List<String> longestFirst(List<String> files, Map<String, int> known) {
   });
   return [for (final i in order) files[i]];
 }
+
+/// A file never timed, counted at this — about the mean of the files this
+/// machine has timed (9.3s over 2,583 files, 10-20) — so a run of untimed
+/// files is neither free nor the whole machine.
+const kUntimedFileMs = 10000;
+
+/// The machine-seconds [files] should take by [known]: what each took last
+/// time, [kUntimedFileMs] for one never timed.
+int workOf(Iterable<String> files, Map<String, int> known) =>
+    files.fold(0, (sum, file) => sum + (known[file] ?? kUntimedFileMs)) ~/
+    1000;
+
+/// [files] cut into batches of about [work] machine-seconds each, every
+/// batch longest first, and none past [fits] (the command line's budget).
+///
+/// 🗣️유저 10-20, tests-crowd-the-machine-Q6 「전부」: a run's suites are
+/// fixed for a whole `flutter test`, so a batch is how long the line goes
+/// without deciding again. 🧪That day one batch held five suites for 26
+/// minutes (the 110 heaviest timeline files, cut only by the command
+/// line's length) while eleven runs of three to thirteen files waited
+/// behind it — the longest an hour and three quarters.
+///
+/// The files are dealt longest first to whichever batch holds the least so
+/// far — the longest-processing-time rule [longestFirst] already runs a
+/// batch by, applied to the batches themselves — so every batch starts on
+/// its heavy files and ends on light ones, and no batch is left with only
+/// the tail. ⚖️A batch costs its `flutter test`'s start, 5~15s measured
+/// that day, which is why a batch is minutes and not one file.
+List<List<String>> timedBatches(
+  List<String> files,
+  Map<String, int> known, {
+  required int work,
+  bool Function(List<String> batch) fits = _anyLength,
+}) {
+  if (files.isEmpty) return const [];
+  final ordered = longestFirst(files, known);
+  for (var count = (workOf(files, known) / work).ceil().clamp(1, files.length);
+      ;
+      count++) {
+    final batches = [for (var i = 0; i < count; i++) <String>[]];
+    final load = List.filled(count, 0);
+    for (final file in ordered) {
+      var least = 0;
+      for (var i = 1; i < count; i++) {
+        if (load[i] < load[least]) least = i;
+      }
+      batches[least].add(file);
+      load[least] += known[file] ?? kUntimedFileMs;
+    }
+    if (count == files.length || batches.every(fits)) return batches;
+  }
+}
+
+bool _anyLength(List<String> batch) => true;

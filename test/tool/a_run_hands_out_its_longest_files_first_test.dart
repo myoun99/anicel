@@ -40,6 +40,73 @@ void main() {
     });
   });
 
+  /// 🆕10-20 (유저 tests-crowd-the-machine-Q6 「전부」): a batch is how long
+  /// the machine's line goes without deciding again, so a run is cut into
+  /// batches of minutes of work, not of whatever the command line holds.
+  group('batches of minutes', () {
+    test('the work of files is what each took, ten seconds for one never '
+        'timed', () {
+      expect(workOf(['a', 'b'], {'a': 1500, 'b': 2600}), 4);
+      expect(workOf(['a', 'new'], {'a': 1500}), 11);
+      expect(workOf(const [], const {}), 0);
+    });
+
+    test('files are dealt longest first to the batch that holds least, in '
+        'as many batches as their work needs', () {
+      final known = {
+        'a': 50000, 'b': 40000, 'c': 30000, 'd': 20000, 'e': 10000, //
+      };
+      // 150s of work in batches of 100s: two, of 80s and 70s.
+      expect(timedBatches(['e', 'd', 'c', 'b', 'a'], known, work: 100), [
+        ['a', 'd', 'e'],
+        ['b', 'c'],
+      ]);
+      // A file never timed goes first, and weighs ten seconds.
+      expect(
+        timedBatches(['b', 'a', 'new'], {'a': 25000, 'b': 5000}, work: 20),
+        [
+          ['new', 'b'],
+          ['a'],
+        ],
+      );
+    });
+
+    test('work that fits one batch is one batch, and no files are none', () {
+      expect(
+        timedBatches(['a', 'b'], {'a': 1000, 'b': 2000}, work: 100),
+        [
+          ['b', 'a'],
+        ],
+      );
+      expect(timedBatches(const [], const {}, work: 100), isEmpty);
+    });
+
+    test('a batch past what fits is cut again, into more', () {
+      expect(
+        timedBatches(
+          ['a', 'b', 'c', 'd'],
+          {'a': 1000, 'b': 1000, 'c': 1000, 'd': 1000},
+          work: 100,
+          fits: (batch) => batch.length <= 2,
+        ),
+        [
+          ['a', 'c'],
+          ['b', 'd'],
+        ],
+      );
+    });
+
+    test('⛔a file past what fits still goes, alone', () {
+      expect(
+        timedBatches(['a', 'b'], const {}, work: 100, fits: (_) => false),
+        [
+          ['a'],
+          ['b'],
+        ],
+      );
+    });
+  });
+
   group("a batch's report", () {
     String event(Map<String, Object> e) => jsonEncode(e);
     const root = r'C:\repo\lane';
