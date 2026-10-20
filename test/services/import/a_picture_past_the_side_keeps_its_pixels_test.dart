@@ -18,6 +18,8 @@ import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/psd_expand_import.dart';
 import 'package:anicel/src/services/import/raster_cel_import.dart';
 import 'package:anicel/src/services/media/animated_png_writer.dart';
+import 'package:anicel/src/services/media/png_writing.dart'
+    show pngChunk, pngRgba, pngSignature, pngUint32;
 import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -70,6 +72,42 @@ void main() {
 
   Uint8List pngOf(Uint8List rgba, int width, int height) =>
       img.encodePng(imageOf(rgba, width, height));
+
+  /// [rgba] as an interlaced PNG, which the image package reads and does not
+  /// write: Adam7's seven passes, each row unfiltered.
+  Uint8List interlacedPngOf(Uint8List rgba, int width, int height) {
+    const passes = [
+      (x: 0, y: 0, dx: 8, dy: 8),
+      (x: 4, y: 0, dx: 8, dy: 8),
+      (x: 0, y: 4, dx: 4, dy: 8),
+      (x: 2, y: 0, dx: 4, dy: 4),
+      (x: 0, y: 2, dx: 2, dy: 4),
+      (x: 1, y: 0, dx: 2, dy: 2),
+      (x: 0, y: 1, dx: 1, dy: 2),
+    ];
+    final rows = BytesBuilder();
+    for (final pass in passes) {
+      for (var y = pass.y; y < height && pass.x < width; y += pass.dy) {
+        rows.addByte(0);
+        for (var x = pass.x; x < width; x += pass.dx) {
+          final at = (y * width + x) * 4;
+          rows.add(Uint8List.sublistView(rgba, at, at + 4));
+        }
+      }
+    }
+    return Uint8List.fromList([
+      ...pngSignature,
+      ...pngChunk('IHDR', [
+        ...pngUint32(width),
+        ...pngUint32(height),
+        8, // bit depth
+        pngRgba,
+        0, 0, 1, // compression, filter, interlace (Adam7)
+      ]),
+      ...pngChunk('IDAT', zlib.encode(rows.takeBytes())),
+      ...pngChunk('IEND', const []),
+    ]);
+  }
 
   /// [rgba] as the engine holds it.
   Future<EnginePicture> engineOf(Uint8List rgba, int width, int height) async =>
@@ -159,6 +197,38 @@ void main() {
 
     testWidgets('a BMP', (tester) async {
       await tester.runAsync(() => readAsTheEngine(img.encodeBmp(opaque())));
+    });
+
+    /// 100 × 20 whose clear pixels still carry a colour, as a file's may.
+    Uint8List clearKeepingColour() {
+      final rgba = patterned(100, 20);
+      for (var i = 0; i < rgba.length; i += 4) {
+        if (rgba[i + 3] == 0) {
+          rgba
+            ..[i] = 200
+            ..[i + 1] = 100
+            ..[i + 2] = 50;
+        }
+      }
+      return rgba;
+    }
+
+    testWidgets('a BMP that has alpha, a clear pixel all zero', (
+      tester,
+    ) async {
+      await tester.runAsync(
+        () => readAsTheEngine(
+          img.encodeBmp(imageOf(clearKeepingColour(), 100, 20)),
+        ),
+      );
+    });
+
+    testWidgets('an interlaced PNG, read whole by the package', (
+      tester,
+    ) async {
+      await tester.runAsync(
+        () => readAsTheEngine(interlacedPngOf(clearKeepingColour(), 100, 20)),
+      );
     });
 
     testWidgets('a JPEG', (tester) async {
