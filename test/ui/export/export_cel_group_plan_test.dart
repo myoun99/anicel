@@ -1653,6 +1653,34 @@ void main() {
       expect(offered.first.ref, drawingAt(row, 0));
     });
 
+    test('a drawing whose block says nothing is offered by its row\'s name '
+        '— its BLOCK reads nothing, the button names what it lays (F-395)', () {
+      final mute = Layer(
+        id: const LayerId('mute'),
+        name: 'Notes',
+        kind: LayerKind.instruction,
+        frames: [frame('n1', unnamed: true)],
+        timeline: const {
+          0: TimelineExposure.drawing(FrameId('n1'), length: 2),
+        },
+      );
+      final offered = exportDirectionDrawingsOf(
+        projectWith([mute]).tracks.single.cuts.single,
+        projectWith(const []).cameraInstructions,
+      );
+      expect(
+        [for (final one in offered) (one.name, one.fullName)],
+        [('Notes', 'Notes')],
+      );
+      expect(
+        plan([mute], spec: const CelsExportSpec(kinds: withDirection))
+            .sheets
+            .single
+            .word,
+        '',
+      );
+    });
+
     test('it is in that drawing\'s cel, over every member — one drawing, '
         'not its row — whether or not the direction kind is written', () {
       final row = directionRow();
