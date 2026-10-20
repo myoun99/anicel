@@ -63,10 +63,50 @@ Future<void> narrowTo(WidgetTester tester, double width) async {
   await tester.pumpAndSettle();
 }
 
-Finder inStrip(Key key) => find.descendant(
-  of: find.byType(EditorTopStrip),
-  matching: find.byKey(key),
+/// [key] in the strip — found by walking the strip alone.
+///
+/// ⛔Not `find.descendant(of: find.byType(EditorTopStrip), …)`: that walks
+/// the whole app to find the strip each time it is asked, and a sweep asks
+/// ten things of each width it stops at — a third of this file's time went
+/// to those walks (measured 2026-10-21, heavy-tests-common).
+Finder inStrip(Key key) =>
+    _InTheStrip((widget) => widget.key == key, 'the $key in the strip');
+
+/// The strip itself, found as [inStrip] finds what is in it.
+final Finder theStrip = _InTheStrip(
+  (widget) => widget is EditorTopStrip,
+  'the strip',
 );
+
+/// What [_picks] picks out under the strip's own element — found once and
+/// kept while it is mounted, as the app keeps its one strip from a test's
+/// first pump to its last.
+final class _InTheStrip extends MatchFinder {
+  _InTheStrip(this._picks, this._name);
+
+  final bool Function(Widget widget) _picks;
+  final String _name;
+
+  static Element? _strip;
+
+  @override
+  Iterable<Element> get allCandidates {
+    final kept = _strip;
+    final strip = kept != null && kept.mounted
+        ? kept
+        : _strip = find.byType(EditorTopStrip).evaluate().single;
+    // The walk leaves out the element it starts from.
+    return [
+      strip,
+    ].followedBy(collectAllElementsFrom(strip, skipOffstage: skipOffstage));
+  }
+
+  @override
+  bool matches(Element candidate) => _picks(candidate.widget);
+
+  @override
+  String get description => _name;
+}
 
 double widthOf(WidgetTester tester, Key key) =>
     tester.getSize(inStrip(key)).width;
@@ -93,33 +133,21 @@ double narrowestOf(WidgetTester tester, Key key) => tester
     .widget<FieldSlider>(inStrip(key))
     .narrowestIn(tester.element(inStrip(key)));
 
-/// The widths a sweep stops at, wide to narrow: EVERY PIXEL where the
-/// standings change hands, every tenth elsewhere.
+/// Narrows the window from [from] to [to], asking [at] of every width it
+/// stops at, and returns the standings in the order they came. It stops at
+/// every tenth, and at EVERY PIXEL of a tenth the standings change hands in
+/// — wherever this language, this text size and this strip put it.
 ///
-/// The bars start to narrow under 770 in any language and at any text size
-/// (the strip's fixed parts and the tabs' place are not words), and the
-/// group becomes the button no lower than the narrowest pair of names lets
-/// it — 727 in Korean, measured 2026-10-07. 780 down to 690 holds both with
-/// room; a pair of names short enough to pass 690 would fail 「went all the
-/// way to its narrowest」 below, which is the cue to widen this. ⚠️Each bar
-/// took its pencil since (tool-settings-panel-tidy, 2026-10-10), so the
-/// range stands two pencils further out.
-Iterable<double> widthsDown(double from, double to) sync* {
-  for (
-    var width = from;
-    width >= to;
-    width -=
-        width <= 780 + 2 * ValuePencil.reach &&
-            width > 690 + 2 * ValuePencil.reach
-        ? 1
-        : 10
-  ) {
-    yield width;
-  }
-}
-
-/// Narrows the window from [from] to [to] ([widthsDown]), asking [at] of
-/// every width, and returns the standings in the order they came.
+/// A tenth whose two ends stand alike is not walked: the group's standing
+/// is the room's alone, beside the strip's fixed parts (`_TabsAndBrushGroup`
+/// asks `_BrushValueBars.widthsIn` of it), so it cannot change and change
+/// back inside one.
+///
+/// ↩️It walked every pixel of one band in every sweep, 780 down to 690 and
+/// two pencils out — where the bars narrow and the button comes in any
+/// language (measured 2026-10-07): 140 widths a sweep, and 366s for this
+/// file, where the tenths the standings change in are two
+/// (2026-10-21, heavy-tests-common).
 ///
 /// ⚠️Never to under 300: at 280 two panel docks are left 24px, less than a
 /// tab (`editor_panel_tabs.dart`), and the strip's own fixed parts leave
@@ -137,11 +165,10 @@ Future<List<Standing>> sweep(
   required void Function(double width, Standing standing) at,
 }) async {
   final seen = <Standing>[];
-  for (final width in widthsDown(from, to)) {
-    await narrowTo(tester, width);
+  void stand(double width) {
     expect(tester.takeException(), isNull, reason: 'at $width');
     expect(
-      tester.getRect(find.byType(EditorTopStrip)).right,
+      tester.getRect(theStrip).right,
       lessThanOrEqualTo(width),
       reason: 'at $width',
     );
@@ -150,6 +177,18 @@ Future<List<Standing>> sweep(
       seen.add(standing);
     }
     at(width, standing);
+  }
+
+  for (var width = from; width >= to; width -= 10) {
+    await narrowTo(tester, width);
+    if (seen.isNotEmpty && standingOf(tester) != seen.last) {
+      for (var pixel = width + 9; pixel > width; pixel--) {
+        await narrowTo(tester, pixel);
+        stand(pixel);
+      }
+      await narrowTo(tester, width);
+    }
+    stand(width);
   }
   return seen;
 }
@@ -491,7 +530,7 @@ void main() {
         at: (width, standing) {
           expect(inStrip(gauge), findsOneWidget, reason: 'at $width');
           final at = tester.getRect(inStrip(gauge));
-          final strip = tester.getRect(find.byType(EditorTopStrip));
+          final strip = tester.getRect(theStrip);
           expect(
             strip.right - at.right,
             lessThanOrEqualTo(3),
