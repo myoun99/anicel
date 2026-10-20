@@ -9,6 +9,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/stroke.dart';
@@ -52,6 +53,23 @@ void main() {
         ),
         isTrue,
       );
+    });
+
+    // 🗣️F-339 (유저 2026-10-11): 「… 추가나 붙여넣기나 관련로직 해당부분에서
+    // 못하게 하는게 맞는거같은데」 — a conte's held-back のりしろ is no room.
+    test('canPasteLinkedFrameAt turns away a conte\'s のりしろ, the frames '
+        'before its first panel (F-339)', () {
+      final conte = _layer(
+        timeline: {4: const TimelineExposure.drawing(FrameId('a'), length: 3)},
+      ).copyWith(kind: LayerKind.storyboard);
+      final fixture = _fixture(conte);
+      bool at(int frame) => fixture.controller.canPasteLinkedFrameAt(
+        layer: conte,
+        frameIndex: frame,
+        copiedFrameId: const FrameId('a'),
+      );
+
+      expect([at(0), at(3), at(4)], [false, false, true]);
     });
 
     test('paste linked frame on an empty X cell creates a drawing entry', () {
