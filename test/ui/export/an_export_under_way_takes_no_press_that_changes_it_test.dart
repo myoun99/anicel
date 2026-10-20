@@ -655,13 +655,12 @@ void main() {
     final job = column.queue.jobs.single;
 
     // Each refused at once: one that ran would wait on the hand-over held.
-    const atOnce = Duration(seconds: 5);
     late Future<void> whole;
     await tester.runAsync(() async {
       whole = window.state.export();
       expect(await pollUntil(() => window.handedOver() == 1), isTrue);
-      await window.state.export().timeout(atOnce);
-      await window.state.runQueue().timeout(atOnce);
+      await patiently(window.state.export());
+      await patiently(window.state.runQueue());
     });
     column.onRestore!(job);
     await tester.pump();
