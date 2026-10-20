@@ -128,4 +128,47 @@ void main() {
     history.redo();
     expect(idsIn(repository, sibling).last, inSibling, reason: 'the same row');
   });
+
+  test('a target the origin is 겸용 with already is no sibling of its own: '
+      'its row is not copied into it again', () {
+    final repository = ProjectRepository(
+      initialProject: Project(
+        id: const ProjectId('p'),
+        name: 'P',
+        createdAt: DateTime.utc(2026, 10, 21),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'V',
+            cuts: [
+              cut(origin, [row('a-origin', 'A')]),
+              cut(target, [row('a-target', 'A'), row('b-target', 'B')]),
+            ],
+          ),
+        ],
+        linkRegistry: LayerLinkRegistry(
+          groups: [
+            LayerLinkGroup(
+              id: 'link-a',
+              members: [member(origin, 'a-origin'), member(target, 'a-target')],
+            ),
+          ],
+        ),
+      ),
+    );
+    final coordinator = CutCommandCoordinator(
+      repository: repository,
+      editingSession: EditingSessionState(activeCutId: origin),
+      historyManager: HistoryManager(),
+      brushFrameStore: BrushFrameStore(),
+    );
+
+    coordinator.convertCutToLinked(originCutId: origin, targetCutId: target);
+
+    expect(idsIn(repository, target), [
+      const LayerId('a-target'),
+      const LayerId('b-target'),
+    ]);
+    expect(idsIn(repository, origin), hasLength(2), reason: 'B came over');
+  });
 }
