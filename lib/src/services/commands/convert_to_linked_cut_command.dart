@@ -280,15 +280,16 @@ class ConvertToLinkedCutCommand implements Command {
   static Project _withCutsLayers(
     Project current,
     Map<CutId, List<Layer>> layers,
-  ) {
-    var next = current;
-    for (final MapEntry(key: cutId, value: rows) in layers.entries) {
-      next =
-          updateCutAnywhere(next, cutId, (cut) => cut.copyWith(layers: rows)) ??
-          (throw StateError('Cut not found: $cutId'));
-    }
-    return next;
-  }
+  ) => layers.entries.fold(
+    current,
+    (next, entry) =>
+        updateCutAnywhere(
+          next,
+          entry.key,
+          (cut) => cut.copyWith(layers: entry.value),
+        ) ??
+        (throw StateError('Cut not found: ${entry.key}')),
+  );
 
   /// [cutId] as a side a conversion copies into: a working copy of its rows.
   static _ConvertSide _sideOf(Project project, CutId cutId) {

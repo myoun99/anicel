@@ -313,47 +313,21 @@ ConvertToLinkedCutCommandInputPlan planConvertToLinkedCutCommandInput({
     targetCut: targetCut,
   );
   final ids = _ProjectIdSnapshot.fromProject(project);
-
-  final unionLayerIdMap = <(CutId, LayerId), LayerId>{};
+  final union = _PlannedCopies(ids);
+  final siblingCopies = _PlannedCopies(ids);
   final newGroupIdBySource = <LayerId, String>{};
-  final coveringFrameIdBySource = <(CutId, LayerId), FrameId>{};
-  final siblingUnionLayerIdMap = <(CutId, LayerId), LayerId>{};
-  final siblingCoveringFrameIds = <(CutId, LayerId), FrameId>{};
-
-  /// A copy of [owner]'s row [layerId] given an id in [copies], and the
-  /// panel a row born with a frame is born with in [panels].
-  void planCopy(
-    Cut owner,
-    LayerId layerId, {
-    required (CutId, LayerId) key,
-    required Map<(CutId, LayerId), LayerId> copies,
-    required Map<(CutId, LayerId), FrameId> panels,
-  }) {
-    final copyId = copies[key] = ids.nextLayerId();
-    if (_bornWithAFreshPanel(owner.layers.byId(layerId)!)) {
-      panels[key] = mintFrameId(copyId);
-    }
-  }
-
-  void planUnion(Cut owner, LayerId layerId) {
-    planCopy(
-      owner,
-      layerId,
-      key: (owner.id, layerId),
-      copies: unionLayerIdMap,
-      panels: coveringFrameIdBySource,
-    );
-    newGroupIdBySource[layerId] = ids.nextLinkGroupId();
-  }
 
   for (final pair in plan.layerPairs) {
     newGroupIdBySource[pair.originLayerId] = ids.nextLinkGroupId();
   }
-  for (final originLayerId in plan.originOnlyLayerIds) {
-    planUnion(originCut, originLayerId);
-  }
-  for (final targetLayerId in plan.targetOnlyLayerIds) {
-    planUnion(targetCut, targetLayerId);
+  for (final (owner, onlyIds) in [
+    (originCut, plan.originOnlyLayerIds),
+    (targetCut, plan.targetOnlyLayerIds),
+  ]) {
+    for (final layerId in onlyIds) {
+      union.plan(owner, layerId, key: (owner.id, layerId));
+      newGroupIdBySource[layerId] = ids.nextLinkGroupId();
+    }
   }
   // 🗣️F-398 (유저 2026-10-18): 「관련 링크안되는것들 다른것도 조사 법 통일」
   // — a row the origin takes in from the target is an added row there, and
@@ -362,24 +336,37 @@ ConvertToLinkedCutCommandInputPlan planConvertToLinkedCutCommandInput({
     if (sibling == targetCut.id) {
       continue;
     }
-    for (final targetLayerId in plan.targetOnlyLayerIds) {
-      planCopy(
-        targetCut,
-        targetLayerId,
-        key: (sibling, targetLayerId),
-        copies: siblingUnionLayerIdMap,
-        panels: siblingCoveringFrameIds,
-      );
+    for (final layerId in plan.targetOnlyLayerIds) {
+      siblingCopies.plan(targetCut, layerId, key: (sibling, layerId));
     }
   }
 
   return ConvertToLinkedCutCommandInputPlan(
-    unionLayerIdMap: unionLayerIdMap,
+    unionLayerIdMap: union.ids,
     newGroupIdBySource: newGroupIdBySource,
-    coveringFrameIdBySource: coveringFrameIdBySource,
-    siblingUnionLayerIdMap: siblingUnionLayerIdMap,
-    siblingCoveringFrameIds: siblingCoveringFrameIds,
+    coveringFrameIdBySource: union.panels,
+    siblingUnionLayerIdMap: siblingCopies.ids,
+    siblingCoveringFrameIds: siblingCopies.panels,
   );
+}
+
+/// The copies a 겸용 변경 plans under one kind of key: each copy's id,
+/// minted from the one snapshot every copy of the step mints from, and the
+/// fresh panel a row born with a frame is born with (F-99).
+class _PlannedCopies {
+  _PlannedCopies(this._snapshot);
+
+  final _ProjectIdSnapshot _snapshot;
+  final ids = <(CutId, LayerId), LayerId>{};
+  final panels = <(CutId, LayerId), FrameId>{};
+
+  /// A copy of [owner]'s row [layerId], under [key].
+  void plan(Cut owner, LayerId layerId, {required (CutId, LayerId) key}) {
+    final copyId = ids[key] = _snapshot.nextLayerId();
+    if (_bornWithAFreshPanel(owner.layers.byId(layerId)!)) {
+      panels[key] = mintFrameId(copyId);
+    }
+  }
 }
 
 class LinkDuplicateLayerCommandInputPlan {
