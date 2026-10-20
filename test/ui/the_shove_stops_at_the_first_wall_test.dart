@@ -65,7 +65,9 @@ void main() {
       [(0, 1), (5, 6)],
       reason: 'B travelled the SAME three frames, not its own seven',
     );
-    expect(shove.canPullFrames(), isFalse, reason: 'A is packed now');
+    // The band stays on 4 (F-264): A has nothing past it now and sets no
+    // wall, and B's block is pulled up to it from there.
+    expect(shove.framePullSlack(), 4);
   });
 }
 

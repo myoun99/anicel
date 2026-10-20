@@ -2874,7 +2874,6 @@ class EditorSessionManager extends ChangeNotifier
   // after it.
   late final CutShift cutShift = CutShift(
     project: this,
-    selection: this,
     changes: this,
     storyboardRows: storyboardRows,
   );

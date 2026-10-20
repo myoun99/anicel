@@ -5,15 +5,15 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/block_shift.dart';
 
-/// 🚨F-264 (유저 2026-10-02): 「타임라인 버튼 밀기/당기기 작동시 선택범위로
-/// 여러행선택한거라던가 블록 선택범위 풀리는데 안풀리도록」.
+/// 🚨F-264 — a shove leaves the selection that aimed it where it stands.
 ///
-/// A shove's scope is the selection — its rows, anchored at its start — so
-/// the selection is what the NEXT press is aimed by. The shove ended with
-/// the cut commands' tidy-up, which drops the frame selection: the second
-/// press shoved from the playhead instead. It is carried with the blocks
-/// now; left on the cells it covered, a second pull would find the block it
-/// had just moved standing before its anchor and pass it by.
+/// 🗣️유저 2026-10-02: 「선택범위 풀리는데 안풀리도록」 — it is kept. 🗣️유저
+/// 2026-10-08: 「선택범위는 기준인 선택범위조차 이동해버리니까 계속해서
+/// 당길수있는상황. 그래서 로직 통일해서 선택범위까지만 기준으로서
+/// 당길수있게 … 자기 위치에 갱신」 — and it stays put, as the cell stood on
+/// does: it is the anchor, and what lies under it now is what it holds.
+/// ↩️It was carried the way its blocks went (10-06), so a pull it aimed
+/// never ran out.
 ///
 /// The storyboard's two — an S row's sounds and the cut row's cuts — are
 /// pinned beside their shoves (`storyboard_selection_verbs_test.dart`).
@@ -35,12 +35,14 @@ void main() {
         null => null,
       };
 
-  /// One row holding a block at 0 and another at 4, the second selected.
-  ({EditorSessionManager s, LayerId row}) secondBlockSelected() {
+  /// One row holding a block on each of [frames], the one on 4 selected.
+  ({EditorSessionManager s, LayerId row}) blockOnFourSelected(
+    List<int> frames,
+  ) {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final row = s.activeLayer!.id;
-    for (final frame in [0, 4]) {
+    for (final frame in frames) {
       s.selectFrameIndex(frame);
       s.createDrawingAtCurrentFrame();
     }
@@ -49,33 +51,43 @@ void main() {
     return (s: s, row: row);
   }
 
-  test('pushed, the selected block is still what is selected — where it '
-      'went', () {
-    final (:s, :row) = secondBlockSelected();
+  test('pushed, the selection is still there, on the cells it covered', () {
+    final (:s, :row) = blockOnFourSelected([0, 4]);
 
     shoveOf(s).pushFrames(2);
 
     expect(blocksOn(s, row), [(0, 1), (6, 7)]);
-    expect(cellsSelected(s), (6, 7), reason: '「안풀리도록」');
+    expect(cellsSelected(s), (4, 5), reason: '「안풀리도록」, in its place');
     expect(s.frameRangeSelection.value!.spanLayerIds, [row]);
   });
 
-  test('pulled twice, it is the same block both times — the anchor goes '
-      'with it', () {
-    final (:s, :row) = secondBlockSelected();
+  test('pulled twice, the block goes past the selection once and no further '
+      '— the second pull finds nothing from its anchor on', () {
+    final (:s, :row) = blockOnFourSelected([0, 4]);
 
     shoveOf(s).pullFrames(1);
+    expect(blocksOn(s, row), [(0, 1), (3, 4)]);
+    expect(shoveOf(s).canPullFrames(), isFalse, reason: '「선택범위까지만」');
     shoveOf(s).pullFrames(1);
 
-    expect(blocksOn(s, row), [(0, 1), (2, 3)]);
-    expect(cellsSelected(s), (2, 3));
-    // …and stops where it touches, selection and all.
-    shoveOf(s).pullFrames(9);
-    expect(blocksOn(s, row), [(0, 1), (1, 2)]);
-    expect(cellsSelected(s), (1, 2));
+    expect(blocksOn(s, row), [(0, 1), (3, 4)]);
+    expect(cellsSelected(s), (4, 5));
   });
 
-  test('a band over several rows keeps every row', () {
+  test('a block after it is pulled up to it, and is what it holds then', () {
+    final (:s, :row) = blockOnFourSelected([0, 4, 8]);
+
+    // The button's presses, a frame each, as many as it takes.
+    for (var press = 0; press < 6; press += 1) {
+      shoveOf(s).pullFrames(1);
+    }
+
+    expect(blocksOn(s, row), [(0, 1), (3, 4), (4, 5)]);
+    expect(cellsSelected(s), (4, 5), reason: 'the block from 8 under it now');
+    expect(shoveOf(s).canPullFrames(), isFalse);
+  });
+
+  test('a band over several rows keeps every row, in its place', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final lower = s.activeLayer!.id;
@@ -99,12 +111,12 @@ void main() {
 
     expect(blocksOn(s, lower), [(6, 7)]);
     expect(blocksOn(s, upper), [(6, 7)]);
-    expect(cellsSelected(s), (6, 7));
+    expect(cellsSelected(s), (4, 5));
     expect(s.frameRangeSelection.value!.spanLayerIds, rows);
   });
 
   test('with nothing selected a shove selects nothing', () {
-    final (:s, :row) = secondBlockSelected();
+    final (:s, :row) = blockOnFourSelected([0, 4]);
     s.clearTimelineSelections();
     s.selectFrameIndex(4);
 

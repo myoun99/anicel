@@ -252,13 +252,12 @@ void main() {
       expect(seLayerOf(session).timeline.keys, [2, 5]);
     });
 
-    // 🚨F-264 (유저 2026-10-02): 「밀기/당기기 작동시 … 선택범위 풀리는데
-    // 안풀리도록」 — the selection a shove was aimed by rides it
-    // (`carrySelectionWithTheShove`). Pulled twice is what tells: left on
-    // the frames it covered, the second pull finds the sound it had just
-    // moved standing BEFORE its anchor.
-    test('F-264 — the selection rides the shove: pulled twice, it is the '
-        'same sound both times', () {
+    // 🚨F-264 (유저 2026-10-08): 「선택범위까지만 기준으로서 당길수있게 …
+    // 자기 위치에 갱신」 — the selection a shove was aimed by stays where it
+    // is, its anchor, as the cell stood on is (`BlockShift`). Pulled twice
+    // is what tells: the sound goes past it once and no further.
+    test('F-264 — the selection stays: pulled twice, the sound goes past it '
+        'once and no further', () {
       final session = sessionFor();
       session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
@@ -269,9 +268,10 @@ void main() {
       session.blockShift.pullFrames(1);
       session.blockShift.pullFrames(1);
 
-      expect(seLayerOf(session).timeline.keys, [2, 7]);
+      expect(seLayerOf(session).timeline.keys, [2, 8]);
       final selection = session.trackFrameRangeSelection.value!;
-      expect((selection.startFrame, selection.endFrameExclusive), (7, 10));
+      expect((selection.startFrame, selection.endFrameExclusive), (9, 12));
+      expect(session.blockShift.canPullFrames(), isFalse);
     });
 
     test('with no storyboard selection the timeline scope is untouched', () {
@@ -856,8 +856,8 @@ void main() {
       expect(seLayerOf(session).timeline.keys, [2, 9]);
     });
 
-    test('F-264 — a CUT selection rides the shove too: pushed and pulled, '
-        'it is the same cut', () {
+    test('F-264 — a CUT selection stays too: pushed and pulled, what lies '
+        'under it is what it selects', () {
       final session = sessionFor();
       session.updateStoryboardCutSelectionByFrame(
         trackId: _trackId,
@@ -871,7 +871,7 @@ void main() {
       session.blockShift.pushBlocks(3);
       expect(selected(), [cut2.id]);
       final pushed = session.trackFrameRangeSelection.value!;
-      expect((pushed.startFrame, pushed.endFrameExclusive), (11, 17));
+      expect((pushed.startFrame, pushed.endFrameExclusive), (8, 14));
 
       session.blockShift.pullBlocks(1);
       session.blockShift.pullBlocks(1);
@@ -884,45 +884,9 @@ void main() {
             .last
             .leadingGapFrames,
         1,
-        reason: 'the second pull found the cut it had just moved',
+        reason: 'the second pull found the cut still under it',
       );
       expect(selected(), [cut2.id]);
-    });
-
-    test('F-264 — a shove the selection did not aim leaves it where it is',
-        () {
-      // The cut row's shove, aimed by the cut stood on while an S row's
-      // sounds are what is selected…
-      final seSelected = sessionFor();
-      seSelected.updateTrackRowRangeSelectionByFrame(
-        layerId: _seLayerId,
-        anchorGlobalFrame: 9,
-        headGlobalFrame: 9,
-      );
-      final sounds = seSelected.trackFrameRangeSelection.value;
-      seSelected.cutShift.pushCuts(2);
-      expect(seSelected.trackFrameRangeSelection.value, sounds);
-
-      // …and the frame shove, aimed by the S row stood on while a CUT is
-      // what is selected.
-      final cutSelected = sessionFor();
-      cutSelected.updateStoryboardCutSelectionByFrame(
-        trackId: _trackId,
-        anchorGlobalFrame: 9,
-        headGlobalFrame: 9,
-      );
-      final cuts = cutSelected.trackFrameRangeSelection.value;
-      cutSelected.selectGlobalFrame(1);
-      cutSelected.blockShift.pushFrames(
-        2,
-        currentRow: const LayerRowAddress(_seLayerId),
-      );
-      expect(
-        seLayerOf(cutSelected).timeline.keys,
-        [4, 11],
-        reason: '⛔전제: the sounds were shoved from the playhead',
-      );
-      expect(cutSelected.trackFrameRangeSelection.value, cuts);
     });
 
     test('an S-ROW selection shoves sounds instead', () {

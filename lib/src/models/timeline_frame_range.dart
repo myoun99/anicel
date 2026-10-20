@@ -102,17 +102,6 @@ class TimelineFrameRangeSelection {
   bool contains(int frameIndex) =>
       frameIndex >= startIndex && frameIndex < endIndexExclusive;
 
-  /// This selection [delta] frames along — the same rows, the cells the
-  /// blocks it covered were shoved to (F-264). The axis starts at 0.
-  TimelineFrameRangeSelection shiftedBy(int delta) =>
-      TimelineFrameRangeSelection(
-        layerId: layerId,
-        layerIds: layerIds,
-        rows: rows,
-        startIndex: math.max(0, startIndex + delta),
-        endIndexExclusive: endIndexExclusive + delta,
-      );
-
   /// This selection ending at [endExclusive] — the same rows from the same
   /// start, over the cels a retime made longer or shorter.
   TimelineFrameRangeSelection endingAt(int endExclusive) =>
