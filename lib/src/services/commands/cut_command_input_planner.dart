@@ -275,10 +275,21 @@ class ConvertToLinkedCutCommandInputPlan {
     required this.unionLayerIdMap,
     required this.newGroupIdBySource,
     required this.coveringFrameIdBySource,
+    this.siblingUnionLayerIdMap = const {},
+    this.siblingCoveringFrameIds = const {},
   });
 
   /// (owning cut, source layer) → new copy id in the OTHER cut.
   final Map<(CutId, LayerId), LayerId> unionLayerIdMap;
+
+  /// (sibling, target-only source layer) → its copy's id in that 겸용
+  /// sibling of the origin: the origin takes the row, so its siblings do
+  /// (F-398).
+  final Map<(CutId, LayerId), LayerId> siblingUnionLayerIdMap;
+
+  /// The fresh panel each sibling copy of a row born with a frame is born
+  /// with, keyed like [siblingUnionLayerIdMap].
+  final Map<(CutId, LayerId), FrameId> siblingCoveringFrameIds;
 
   /// Planned registry group id per newly-linked source layer.
   final Map<LayerId, String> newGroupIdBySource;
@@ -302,40 +313,41 @@ ConvertToLinkedCutCommandInputPlan planConvertToLinkedCutCommandInput({
     targetCut: targetCut,
   );
   final ids = _ProjectIdSnapshot.fromProject(project);
-  final usedGroupIds = <String>{
-    for (final group in project.linkRegistry.groups) group.id,
-  };
 
   final unionLayerIdMap = <(CutId, LayerId), LayerId>{};
   final newGroupIdBySource = <LayerId, String>{};
   final coveringFrameIdBySource = <(CutId, LayerId), FrameId>{};
+  final siblingUnionLayerIdMap = <(CutId, LayerId), LayerId>{};
+  final siblingCoveringFrameIds = <(CutId, LayerId), FrameId>{};
 
-  String nextGroupId() {
-    final id = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
-    usedGroupIds.add(id);
-    return id;
-  }
-
-  LayerId nextLayerId() {
-    final id = LayerId(_firstAvailableId(prefix: 'layer', usedIds: ids.layerIds));
-    ids.layerIds.add(id.value);
-    return id;
-  }
-
-  void planUnion(Cut owner, LayerId layerId) {
-    unionLayerIdMap[(owner.id, layerId)] = nextLayerId();
-    newGroupIdBySource[layerId] = nextGroupId();
-    if (_bornWithAFreshPanel(
-      owner.layers.firstWhere((layer) => layer.id == layerId),
-    )) {
-      coveringFrameIdBySource[(owner.id, layerId)] = mintFrameId(
-        unionLayerIdMap[(owner.id, layerId)]!,
-      );
+  /// A copy of [owner]'s row [layerId] given an id in [copies], and the
+  /// panel a row born with a frame is born with in [panels].
+  void planCopy(
+    Cut owner,
+    LayerId layerId, {
+    required (CutId, LayerId) key,
+    required Map<(CutId, LayerId), LayerId> copies,
+    required Map<(CutId, LayerId), FrameId> panels,
+  }) {
+    final copyId = copies[key] = ids.nextLayerId();
+    if (_bornWithAFreshPanel(owner.layers.byId(layerId)!)) {
+      panels[key] = mintFrameId(copyId);
     }
   }
 
+  void planUnion(Cut owner, LayerId layerId) {
+    planCopy(
+      owner,
+      layerId,
+      key: (owner.id, layerId),
+      copies: unionLayerIdMap,
+      panels: coveringFrameIdBySource,
+    );
+    newGroupIdBySource[layerId] = ids.nextLinkGroupId();
+  }
+
   for (final pair in plan.layerPairs) {
-    newGroupIdBySource[pair.originLayerId] = nextGroupId();
+    newGroupIdBySource[pair.originLayerId] = ids.nextLinkGroupId();
   }
   for (final originLayerId in plan.originOnlyLayerIds) {
     planUnion(originCut, originLayerId);
@@ -343,11 +355,30 @@ ConvertToLinkedCutCommandInputPlan planConvertToLinkedCutCommandInput({
   for (final targetLayerId in plan.targetOnlyLayerIds) {
     planUnion(targetCut, targetLayerId);
   }
+  // 🗣️F-398 (유저 2026-10-18): 「관련 링크안되는것들 다른것도 조사 법 통일」
+  // — a row the origin takes in from the target is an added row there, and
+  // the origin's 겸용 siblings take it too. ↩️Only the two cuts matched.
+  for (final sibling in linkedCutSiblings(project, cutId: originCut.id)) {
+    if (sibling == targetCut.id) {
+      continue;
+    }
+    for (final targetLayerId in plan.targetOnlyLayerIds) {
+      planCopy(
+        targetCut,
+        targetLayerId,
+        key: (sibling, targetLayerId),
+        copies: siblingUnionLayerIdMap,
+        panels: siblingCoveringFrameIds,
+      );
+    }
+  }
 
   return ConvertToLinkedCutCommandInputPlan(
     unionLayerIdMap: unionLayerIdMap,
     newGroupIdBySource: newGroupIdBySource,
     coveringFrameIdBySource: coveringFrameIdBySource,
+    siblingUnionLayerIdMap: siblingUnionLayerIdMap,
+    siblingCoveringFrameIds: siblingCoveringFrameIds,
   );
 }
 

@@ -38,6 +38,9 @@ typedef _ConvertSide = ({
 /// into the other with empty timelines (완전 미러). The target's timeline
 /// numbers stay put — only the pictures link ("겸용 설정은 그림만 잇는다").
 ///
+/// The origin's other 겸용 siblings take the rows the origin takes in from
+/// the target the same way, each its own copy linked with them (F-398).
+///
 /// Undo is snapshot-based: every changed layer's before-state, the
 /// registry, the joined-cel rekeys, and the union-copy ids — restored in
 /// reverse. One undo step for the whole conversion.
@@ -50,6 +53,8 @@ class ConvertToLinkedCutCommand implements Command {
     required this.unionLayerIdMap,
     required this.newGroupIdBySource,
     required this.coveringFrameIdBySource,
+    this.siblingUnionLayerIdMap = const {},
+    this.siblingCoveringFrameIds = const {},
   });
 
   final ProjectRepository repository;
@@ -69,6 +74,19 @@ class ConvertToLinkedCutCommand implements Command {
   /// The planned fresh panel of each union copy born covering the cut it
   /// lands in (F-99), keyed like [unionLayerIdMap].
   final Map<(CutId, LayerId), FrameId> coveringFrameIdBySource;
+
+  /// Planned ids for the copies the origin's other 겸용 siblings take of
+  /// the target-only rows: (sibling, source layer) → copy id.
+  final Map<(CutId, LayerId), LayerId> siblingUnionLayerIdMap;
+
+  /// The planned fresh panel of each sibling copy born covering its cut,
+  /// keyed like [siblingUnionLayerIdMap].
+  final Map<(CutId, LayerId), FrameId> siblingCoveringFrameIds;
+
+  /// The origin's siblings this conversion copies into, in plan order.
+  List<CutId> get _siblings => [
+    ...{for (final (sibling, _) in siblingUnionLayerIdMap.keys) sibling},
+  ];
 
   LayerLinkRegistry? _registryBefore;
   final List<(BrushFrameKey, BrushFrameKey)> _rekeys = [];
@@ -96,8 +114,10 @@ class ConvertToLinkedCutCommand implements Command {
       // Capture the exact pre-conversion state once (redo re-runs from
       // the restored state, so re-capturing would be wrong).
       _registryBefore = project.linkRegistry;
-      _snapshotOrigin = [...originCut.layers];
-      _snapshotTarget = [...targetCut.layers];
+      _snapshots = {
+        for (final cutId in [originCutId, targetCutId, ..._siblings])
+          cutId: [...requireCut(project, cutId).layers],
+      };
     }
     var groups = [...project.linkRegistry.groups];
 
@@ -210,17 +230,28 @@ class ConvertToLinkedCutCommand implements Command {
       into: originSide,
       onlyIds: plan.targetOnlyLayerIds,
     );
+    final siblingSides = [
+      for (final sibling in _siblings) _sideOf(project, sibling),
+    ];
+    for (final side in siblingSides) {
+      groups = _unionInto(
+        groups,
+        from: targetSide,
+        into: side,
+        onlyIds: plan.targetOnlyLayerIds,
+      );
+    }
 
     // Move the joining cels to canonical keys BEFORE the resolver links
     // them (raw rekey).
     brushFrameStore.rekeyFrames(_rekeys);
 
     repository.updateProject(
-      (current) => _withBothCutsLayers(
-        current,
-        origin: originLayers,
-        target: targetLayers,
-      ).copyWith(linkRegistry: LayerLinkRegistry(groups: groups)),
+      (current) => _withCutsLayers(current, {
+        originCutId: originLayers,
+        targetCutId: targetLayers,
+        for (final side in siblingSides) side.cutId: side.layers,
+      }).copyWith(linkRegistry: LayerLinkRegistry(groups: groups)),
     );
     _hasExecuted = true;
   }
@@ -235,41 +266,44 @@ class ConvertToLinkedCutCommand implements Command {
     brushFrameStore.rekeyFrames([
       for (final (from, to) in _rekeys) (to, from),
     ]);
-    // Restore both cuts' original layer lists and the registry.
+    // Restore the cuts' original layer lists and the registry.
     repository.updateProject(
-      (current) => _withBothCutsLayers(
+      (current) => _withCutsLayers(
         current,
-        origin: _snapshotOrigin,
-        target: _snapshotTarget,
+        _snapshots,
       ).copyWith(linkRegistry: registryBefore),
     );
   }
 
-  /// [current] with the origin cut holding [origin] and the target cut
-  /// holding [target] — execute and undo swap the same two lists.
-  Project _withBothCutsLayers(
-    Project current, {
-    required List<Layer> origin,
-    required List<Layer> target,
-  }) {
-    final withOrigin =
-        updateCutAnywhere(
-          current,
-          originCutId,
-          (cut) => cut.copyWith(layers: origin),
-        ) ??
-        (throw StateError('Cut not found: $originCutId'));
-    return updateCutAnywhere(
-          withOrigin,
-          targetCutId,
-          (cut) => cut.copyWith(layers: target),
-        ) ??
-        (throw StateError('Cut not found: $targetCutId'));
+  /// [current] with each cut of [layers] holding its list — execute and
+  /// undo swap the same lists.
+  static Project _withCutsLayers(
+    Project current,
+    Map<CutId, List<Layer>> layers,
+  ) {
+    var next = current;
+    for (final MapEntry(key: cutId, value: rows) in layers.entries) {
+      next =
+          updateCutAnywhere(next, cutId, (cut) => cut.copyWith(layers: rows)) ??
+          (throw StateError('Cut not found: $cutId'));
+    }
+    return next;
   }
 
-  // The exact pre-conversion layer lists, captured on the first execute.
-  List<Layer> _snapshotOrigin = const [];
-  List<Layer> _snapshotTarget = const [];
+  /// [cutId] as a side a conversion copies into: a working copy of its rows.
+  static _ConvertSide _sideOf(Project project, CutId cutId) {
+    final position = requireCutPosition(project, cutId);
+    return (
+      trackId: position.track.id,
+      cutId: cutId,
+      layers: [...position.cut.layers],
+      duration: position.cut.duration,
+    );
+  }
+
+  // The exact pre-conversion layer lists of every cut the conversion
+  // writes, captured on the first execute.
+  Map<CutId, List<Layer>> _snapshots = const {};
 
   TimelineExposure _retargetExposure(
     TimelineExposure exposure,
@@ -297,10 +331,11 @@ class ConvertToLinkedCutCommand implements Command {
   }) {
     for (final sourceId in _ridersAfterTheRest(from.layers, onlyIds)) {
       final index = from.layers.indexWhere((layer) => layer.id == sourceId);
+      final planned = _plannedCopy(from, into, sourceId);
       final union = _unionCopyOf(
         from.layers[index],
-        copyId: unionLayerIdMap[(from.cutId, sourceId)]!,
-        panel: coveringFrameIdBySource[(from.cutId, sourceId)],
+        copyId: planned.copyId,
+        panel: planned.panel,
         cutDuration: into.duration,
       );
       from.layers[index] = union.source;
@@ -327,6 +362,26 @@ class ConvertToLinkedCutCommand implements Command {
       );
     }
     return groups;
+  }
+
+  /// The planned id and panel of [into]'s copy of [from]'s row [sourceId]:
+  /// the other cut's of the two, keyed by the cut it comes from — a
+  /// sibling's, keyed by the sibling.
+  ({LayerId copyId, FrameId? panel}) _plannedCopy(
+    _ConvertSide from,
+    _ConvertSide into,
+    LayerId sourceId,
+  ) {
+    if (into.cutId == originCutId || into.cutId == targetCutId) {
+      return (
+        copyId: unionLayerIdMap[(from.cutId, sourceId)]!,
+        panel: coveringFrameIdBySource[(from.cutId, sourceId)],
+      );
+    }
+    return (
+      copyId: siblingUnionLayerIdMap[(into.cutId, sourceId)]!,
+      panel: siblingCoveringFrameIds[(into.cutId, sourceId)],
+    );
   }
 
   /// [onlyIds] in the order their copies are made: a row that rides a base

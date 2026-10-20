@@ -142,6 +142,8 @@ class _LinkCommands {
           unionLayerIdMap: plan.unionLayerIdMap,
           newGroupIdBySource: plan.newGroupIdBySource,
           coveringFrameIdBySource: plan.coveringFrameIdBySource,
+          siblingUnionLayerIdMap: plan.siblingUnionLayerIdMap,
+          siblingCoveringFrameIds: plan.siblingCoveringFrameIds,
         ),
       ],
     );
