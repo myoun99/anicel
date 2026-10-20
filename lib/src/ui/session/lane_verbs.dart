@@ -1317,20 +1317,43 @@ class LaneVerbs {
     bool Function(T keys, String laneId, int frame)? canRove,
     bool Function(String laneId)? takesSides,
   }) sync* {
-    for (final laneId in home.laneIds) {
-      final keys = home.lensOf(laneId)?.keysOf(home.keys) ?? const {};
+    for (final (:laneId, :keys) in home.keysWhere(lane.contains)) {
       final sided = takesSides?.call(laneId) ?? true;
       for (final MapEntry(key: frame, value: key) in keys.entries) {
-        if (lane.contains(frame)) {
-          yield (
-            laneId: laneId,
-            key: key,
-            canRove: canRove?.call(home.keys, laneId, frame) ?? false,
-            takesSides: sided,
-          );
-        }
+        yield (
+          laneId: laneId,
+          key: key,
+          canRove: canRove?.call(home.keys, laneId, frame) ?? false,
+          takesSides: sided,
+        );
       }
     }
+  }
+
+  /// Every lane [lane] reaches ([laneVerbTargets]), with the keys it holds
+  /// inside the range by their frame from the range's first — what a copy
+  /// of keys banks (F-388, [KeyClipboard]). Null where the range names no
+  /// row a lane verb serves.
+  List<LaneKeys>? laneKeysCopiedFrom(TimelineLaneSelection lane) {
+    final homes = _laneVerbScope(lane)?.homes;
+    if (homes == null) {
+      return null;
+    }
+    return [
+      for (final (:laneId, :keys) in [
+        ...homes.own.keysWhere(lane.contains),
+        ...homes.reference.keysWhere(lane.contains),
+        ...homes.effects.keysWhere(lane.contains),
+        ...homes.nameTag.keysWhere(lane.contains),
+      ])
+        (
+          laneId: laneId,
+          keys: {
+            for (final MapEntry(key: frame, value: key) in keys.entries)
+              frame - lane.startIndex: key,
+          },
+        ),
+    ];
   }
 
   /// The names the range's keys carry — null for an unnamed one.

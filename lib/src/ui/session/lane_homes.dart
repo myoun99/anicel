@@ -45,6 +45,21 @@ class LaneHome<T> {
     (laneId) => lensOf(laneId)?.keyFrames(keys).any(covers) ?? false,
   );
 
+  /// The keys every lane here holds at a frame [covers] takes, lane by lane
+  /// — a lane with none there as an empty map.
+  Iterable<LaneKeys> keysWhere(bool Function(int frame) covers) sync* {
+    for (final laneId in laneIds) {
+      final held = lensOf(laneId)?.keysOf(keys) ?? const {};
+      yield (
+        laneId: laneId,
+        keys: {
+          for (final MapEntry(key: frame, value: key) in held.entries)
+            if (covers(frame)) frame: key,
+        },
+      );
+    }
+  }
+
   /// [edit] on every lane here, in turn — null where none changed.
   T? edited(PropertyLaneEdit edit) => foldedEdits(
     keys,
@@ -90,6 +105,9 @@ class LaneHome<T> {
         frameDelta: frameDelta,
       );
 }
+
+/// One lane's keys, by frame ([LaneHome.keysWhere]).
+typedef LaneKeys = ({String laneId, Map<int, PropertyKey<Object?>> keys});
 
 /// The four homes of a row's keys ([LaneHome]).
 typedef RowLaneHomes = ({

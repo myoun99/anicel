@@ -232,12 +232,16 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// WHAT the copy takes, on the pill's one ladder ([pillSubjectOn]): the
   /// selected rows, else the frame axis — 「선택안하면 현재프레임, 선택하면
   /// 해당 선택한 소재가 기준임」 (I-45's answer, which every verb here
-  /// follows).
+  /// follows). On the frame axis a LANE's keys come first, as Delete's do
+  /// (F-87): standing on a lane, the frame board has no place
+  /// ([FrameClipboard.timelinePlace]) and the key board answers (F-388).
   PillSubject get _copySubject => pillSubjectOn(
     cuts: false,
     layers: () =>
         rowsAreThisPanels && session.layerClipboard.canCopySelectedRows,
-    cells: () => session.clipboard.canCopyAt(clipboardPlace),
+    cells: () =>
+        session.keyClipboard.canCopy ||
+        session.clipboard.canCopyAt(clipboardPlace),
   );
 
   @override
@@ -248,6 +252,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
     switch (_copySubject) {
       case PillSubject.layers:
         session.layerClipboard.copySelectedRows();
+      case PillSubject.cells when session.keyClipboard.canCopy:
+        session.keyClipboard.copy();
       case PillSubject.cells:
         session.clipboard.copyAt(clipboardPlace);
       case PillSubject.cuts:

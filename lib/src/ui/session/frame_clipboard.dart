@@ -93,8 +93,19 @@ class FrameClipboard implements BringsMedia {
   // own axis, THE selection — and each panel answers only where its press
   // stands. The `…AtCurrentFrame` members are the timeline's doors.
 
-  /// The TIMELINE's place: the cut's active row, at the cut's playhead.
+  /// The TIMELINE's place: the cut's active row, at the cut's playhead —
+  /// null while the timeline stands on a LANE, as [storyboardPlace] is.
+  ///
+  /// 🗣️F-388 (유저 2026-10-17): 「해당 fx에 서있으면 지금 캔버스 조작이 그 행
+  /// 기준으로 작동할텐데 복붙은 그 fx의 주인인 레이어행을 기준으로 작동함.
+  /// 제대로 서있는곳에서 작동하도록」. Standing on a lane seats its owner as
+  /// the active layer, and this place read the owner's cel there. A lane row
+  /// is its own subject (R10 #19 · F-87 — Delete's rung); its keys are the
+  /// key board's ([KeyClipboard]).
   ClipboardPlace? get timelinePlace {
+    if (_selection.timelineStandingRow is LaneRowAddress) {
+      return null;
+    }
     final row = _selection.activeLayer;
     return row == null
         ? null

@@ -1,5 +1,6 @@
 import '../../models/bitmap_surface.dart';
 import 'frame_clipboard.dart' show FrameBoard;
+import 'key_clipboard.dart' show KeyBoard;
 import 'layer_clipboard.dart' show LayerBoard;
 import 'pixel_board.dart';
 
@@ -32,14 +33,31 @@ import 'pixel_board.dart';
 /// the pill's scale — 「복사는 언제나 하나 들고있음. 보통 프로그램이
 /// 그러니까」 — and it is what lets a paste need no second question: it
 /// puts down what is in hand.
+///
+/// 🗣️F-388 (유저 2026-10-17): 「키도 복붙기능 제대로 만들고 기존것들이랑 법
+/// 통일하고」 — the KEY board is the pill's third, and the hand holds one of
+/// the three. ↩️The two let each other go by name, a pair; a third made the
+/// rule a list.
 class AppClipboard {
   AppClipboard() {
-    frames.onTake = layers.letGo;
-    layers.onTake = frames.letGo;
+    final letGoes = [frames.letGo, layers.letGo, keys.letGo];
+    void Function() lettingGoAllBut(void Function() own) => () {
+      for (final letGo in letGoes) {
+        if (letGo != own) {
+          letGo();
+        }
+      }
+    };
+    frames.onTake = lettingGoAllBut(frames.letGo);
+    layers.onTake = lettingGoAllBut(layers.letGo);
+    keys.onTake = lettingGoAllBut(keys.letGo);
   }
 
   final FrameBoard frames = FrameBoard();
   final LayerBoard layers = LayerBoard();
+
+  /// The keys a copy on a lane row took ([KeyBoard], F-388).
+  final KeyBoard keys = KeyBoard();
 
   /// 픽셀 복사's board (I-55) — a third payload with a third set of verbs,
   /// which the frame copy neither reads nor overwrites (유저 2026-10-01:
