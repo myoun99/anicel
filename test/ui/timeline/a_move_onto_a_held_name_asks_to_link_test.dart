@@ -1,16 +1,18 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/range_move_asking_first.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+
+import '../../helpers/dart_sources.dart';
 
 /// 🚨F-413 (유저 2026-10-19): 「A의 1,2라는 프레임이있고, B의 3,1이라는
 /// 프레임있을때, A1,A2를 B행으로 옮기면 1이라는 이름의 그림이 두개존재함.
@@ -157,6 +159,57 @@ void main() {
 
       expect(joins?.single.held, {carried: held});
     });
+
+    // The move's own commit tells listeners before the names are joined.
+    test('whoever listens is told once the names are joined, not only '
+        'before', () {
+      final b = heldOverB(s).b;
+      s.rangeMove.endFrameRangeMoveDrag();
+      var lastHeard = const <String?>[];
+      void hear() => lastHeard = [for (final f in rowIn(s, b).frames) f.name];
+      s.addListener(hear);
+      addTearDown(() => s.removeListener(hear));
+
+      s.rangeMove.endFrameRangeMoveDrag(joinTakenNames: true);
+
+      expect(lastHeard, isNotEmpty, reason: '⛔전제: it was told');
+      expect(lastHeard.where((name) => name == '1'), hasLength(1));
+    });
+
+    // An S row's names are its lines', not its drawings' identities
+    // (`LayerKind.celNameIsIdentity`): two lines may say the same.
+    test('a line carried onto an S row saying the same lands without '
+        'asking', () {
+      final [from, onto, ...] = s.activeTrack.seLayers;
+      Layer saying(Layer row, String id, int at) => row.copyWith(
+        frames: [
+          Frame(id: FrameId(id), duration: 1, strokes: const [], name: 'A'),
+        ],
+        timeline: {at: TimelineExposure.drawing(FrameId(id), length: 1)},
+      );
+      s.repository.replaceLayer(layer: saying(from, 'line-1', 0));
+      s.repository.replaceLayer(layer: saying(onto, 'line-2', 4));
+      s.updateFrameRangeSelectionDrag(
+        layerId: from.id,
+        anchorIndex: 0,
+        headIndex: 0,
+      );
+      expect(s.rangeMove.beginFrameRangeMoveDrag(from.id), isTrue);
+      s.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: onto.id,
+      );
+
+      expect(s.rangeMove.endFrameRangeMoveDrag(), isNull);
+      final landed = s.activeTrack.seLayers.firstWhere(
+        (layer) => layer.id == onto.id,
+      );
+      expect(
+        landed.timeline[0]?.frameId,
+        const FrameId('line-1'),
+        reason: '⛔전제: the move reached the S row',
+      );
+    });
   });
 
   testWidgets('the release asks in the rename\'s own window — Cancel puts '
@@ -209,10 +262,7 @@ void main() {
   // a release wired straight to the session would land the second 「1」.
   test('no panel lets a range move go without asking', () {
     final bypasses = <String>[];
-    for (final file in Directory('lib/src/ui').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib/src/ui')) {
       final text = file.readAsStringSync();
       if (text.contains('rangeMove.endFrameRangeMoveDrag') &&
           !file.path.endsWith('range_move_asking_first.dart')) {
