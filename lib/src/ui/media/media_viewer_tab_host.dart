@@ -36,12 +36,13 @@ import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/cut_into_the_hand.dart';
 import '../brush/sheet_canvas_panel.dart'
-    show SheetStrokeHold, sheetBrushSwitch;
+    show SheetStrokeHold, sheetBrushSwitch, sheetRunsTool;
 import '../editor_session_manager.dart';
 import '../input/os_file_drop.dart';
 import '../playback/playback_transport.dart';
 import '../session/media_file_views.dart';
 import '../sheet/sheet_ink_layer.dart' show SheetInkWindow;
+import '../sheet/sheet_shape_targets.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -464,6 +465,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   late final SheetStrokeHold _strokeHold = SheetStrokeHold(
     brushInput: (live) => widget.session.setBrushInputActive(live),
   );
+
+  /// What takes a shape on the page ink — its layer says (F-420).
+  final SheetShapeTargets _shapes = SheetShapeTargets();
 
   /// Whether the last build mounted the page ink: drawing going off — the
   /// switch, another file — unmounts it under a pen that will never be
@@ -1489,8 +1493,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     _drawingOn = drawing;
 
-    BrushCanvasPanel panelWith(ValueListenable<BrushToolState>? tool) =>
-        BrushCanvasPanel(
+    /// The panel running [tool] — the workspace's while [inks], the armed
+    /// cut's, or none.
+    BrushCanvasPanel panelWith(
+      ValueListenable<BrushToolState>? tool, {
+      bool inks = false,
+    }) => BrushCanvasPanel(
       floorCover: floor?.insets ?? EdgeInsets.zero,
       floorRightRailBand: floor?.rightRailBand,
       floorBottomOverlaySpan: floor?.bottomOverlaySpan ?? 0,
@@ -1507,28 +1515,36 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // Paper rule: the viewer never rotates the view.
       allowViewRotation: false,
       // Read-only host: a brush-tip cursor over undrawable content is a
-      // false affordance. ↩️Drawable while the page takes ink (I-114).
-      toolCursorsEnabled: drawing,
+      // false affordance. ↩️Drawable while the page takes ink (I-114) under
+      // a tool a sheet runs (F-420).
+      toolCursorsEnabled: inks,
       // F-77 (유저: 「뷰어패널 열린거 없으면 확대나 스크롤바같은 조작 버튼
       // 비활성화」): with no file open there is no view to operate.
       hasContentToView: request != null,
       // 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드
       // 존재안하니 한손가락 핑거시 팬」 — whatever the one-finger slot says,
       // and so a finger drives no tool here: the cut takes a pen or a mouse.
-      // ↩️While the page takes ink (I-114) the finger is a sheet's: the
-      // slot's own answer.
-      oneFingerAction: drawing ? null : CanvasTouchDragAction.navigate,
-      // While the page takes ink the brush is the ink's, as on a sheet: the
-      // panel holds none of the workspace's ([SheetCanvasPanel]).
-      brushToolState: drawing ? null : tool,
-      // F-80: with no cut armed nothing here can act on a press, so it
-      // moves the page instead — and a sheet's answer while it draws.
-      runsTheSelectedTool: drawing || tool != null,
+      // ↩️While the page takes ink under a tool a sheet runs (I-114 ·
+      // F-420) the finger is a sheet's: the slot's own answer.
+      oneFingerAction: inks ? null : CanvasTouchDragAction.navigate,
+      // 🗣️F-420 (유저 2026-10-20: 「선택한 도구가 작동하게하도록」), a
+      // sheet's law: while the page takes ink, a tool a sheet runs
+      // ([sheetRunsTool]) is the panel's — the brush and the eraser in the
+      // ink's windows, a shape landed in the window it is pressed in
+      // ([SheetShapeScope] in [build]); the armed cut runs as it does with
+      // the ink off (F-380); and under any other tool nothing here can act,
+      // so a press moves the page (F-80). ↩️While it took ink the panel ran
+      // no tool and the windows laid the brush under whatever was in hand.
+      brushToolState: tool,
+      runsTheSelectedTool: tool != null,
       // ⚠️THE SECOND OF ITS KIND: [SheetCanvasPanel] answers its drawingOn
-      // with these same answers — the finger, the press, the brush, the
-      // hold, and the let-go after the frame in [build]. Two, so not shared
-      // yet (the rule of three); a third host taking ink lifts them into one.
+      // with these same answers — the finger, the press, the tool in hand,
+      // the shapes, the hold, and the let-go after the frame in [build].
+      // Two, so not shared yet (the rule of three); a third host taking ink
+      // lifts them into one.
       contentStrokeActive: drawing ? _strokeHold : null,
+      contentShapeTargetAt: _shapes.at,
+      contentTakesPressAt: _shapes.takesPressAt,
       // F-179 (유저 2026-09-25: 「타임시트패널등 캔버스 베이스 패널엔
       // 페이스트보드가 없다는 뜻임」): the viewer is one of those panels —
       // F-201 names it one.
@@ -1757,16 +1773,22 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final brushTool = widget.brushTool;
     final panel = brushTool == null
         ? panelWith(null)
-        : SlicedValueListenableBuilder<BrushToolState, CanvasShapeKind?>(
+        : SlicedValueListenableBuilder<
+            BrushToolState,
+            (CanvasShapeKind?, bool)
+          >(
             valueListenable: brushTool,
-            slice: armedCutShape,
-            builder: (context, tool) => panelWith(_toolFor(tool)),
+            slice: (tool) => (armedCutShape(tool), sheetRunsTool(tool.tool)),
+            builder: (context, tool) => drawing && sheetRunsTool(tool.tool)
+                ? panelWith(brushTool, inks: true)
+                : panelWith(_toolFor(tool)),
           );
 
     final surface = ColoredBox(
       key: ValueKey<String>(_key('panel')),
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: panel,
+      // Where the page ink's layer answers what takes a shape (F-420).
+      child: SheetShapeScope(targets: _shapes, child: panel),
     );
     // 🗣️F-378 (유저 2026-10-17: 「윈도우등 os에서 드래그앤 드롭으로 파일을
     // 뷰어패널에 떨어트리면 바로 뷰어패널에서 열리도록. 서브뷰어던
