@@ -69,8 +69,12 @@ void main() {
     since: ago(ran),
     takesWhatIsLeft: true,
   );
-  int? decide(String mine, List<Standing> line, {int? asked}) =>
-      suitesToRun(mine, line, asked: asked, now: t0);
+  int? decide(
+    String mine,
+    List<Standing> line, {
+    int? asked,
+    int machine = kMachineSuites,
+  }) => suitesToRun(mine, line, asked: asked, now: t0, machine: machine);
   List<String> turnOrder(List<Standing> line) => [
     for (final s in waitingInTurn(line, t0)) s.name,
   ];
@@ -97,7 +101,31 @@ void main() {
 
     test('ten suites between every run; half each when two share', () {
       expect(kMachineSuites, 10);
-      expect(kSharedSuites, 5);
+      expect(decide('a', [waiting('a'), waiting('b')]), 5);
+    });
+
+    test('🗣️a machine whose line names its own number holds that many — '
+        'all of them alone, half each beside another', () {
+      // 유저 10-21: 「10줄이 진짜 괜찮나? … 12줄이나 15줄이나」.
+      expect(decide('a', [waiting('a')], machine: 14), 14);
+      expect(decide('a', [waiting('a'), waiting('b')], machine: 14), 7);
+      expect(decide('b', [runningAt('a', 7), waiting('b')], machine: 14), 7);
+      expect(decide('b', [runningAt('a', 10), waiting('b')], machine: 14), 4);
+      expect(decide('b', [runningAt('a', 10), waiting('b')]), isNull);
+    });
+
+    test('the number is what the line folder\'s file says — ten when it '
+        'says none', () {
+      final line = Directory.systemTemp.createTempSync('queue_n');
+      addTearDown(() => deleteTempQuietly(line));
+      expect(machineSuitesOf(line), kMachineSuites);
+      final said = File('${line.path}/$kSuitesFile');
+      said.writeAsStringSync('14\n');
+      expect(machineSuitesOf(line), 14);
+      for (final none in ['0', '-3', 'twelve', '']) {
+        said.writeAsStringSync(none);
+        expect(machineSuitesOf(line), kMachineSuites, reason: none);
+      }
     });
 
     test('a run alone in the line takes the machine — or what it asked for',
@@ -530,6 +558,25 @@ void main() {
       expect(ran, (10, 1, 10));
       expect(tickets(), isEmpty);
       expect(said, isEmpty);
+    });
+
+    test('🗣️with the line\'s file at fourteen, beside two runs holding ten '
+        'it starts at once on the four left', () async {
+      File('${line.path}/$kSuitesFile').writeAsStringSync('14');
+      final first = runningBefore(1, 5);
+      runningBefore(2, 5);
+      final events = <String>[];
+      var looks = 0;
+      await inTurn(
+        'a run',
+        (suites) async => events.add('ran at $suites'),
+        line: line,
+        room: () async => true,
+        say: (_) => events.add('waits'),
+        lookAgain: Duration.zero,
+        ended: (file) => nameOf(file) == nameOf(first) && ++looks > 2,
+      );
+      expect(events, ['ran at 4']);
     });
 
     test('behind two runs holding the ten it starts only once one of them '

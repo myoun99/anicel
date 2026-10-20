@@ -52,17 +52,43 @@ import 'dart:math' as math;
 import 'flutter_room.dart';
 import 'test_seconds.dart';
 
-/// The suites every run in the line holds between them. ⚖️TEN, AS
-/// MEASURED: one run filled the CPU at ten, and two runs side by side were
-/// fastest at ten between them (145s at five each, 155s at ten each).
+/// The suites every run in the line holds between them, when the line names
+/// no number of its own ([machineSuitesOf]). ⚖️TEN, AS MEASURED: one run
+/// filled the CPU at ten, and two runs side by side were fastest at ten
+/// between them (145s at five each, 155s at ten each).
 /// 🪦It was two places of six for a morning — twelve, on a guess — and then
 /// two of five, which kept a run alone in the line at five (유저 10-19:
 /// 「최대가 10만되게 할수있나. 지금상태면 단독진행일때 5개제한이잖아」).
+/// A run beside another long one takes half ([_wants]), so two run side by
+/// side and the tail of one is filled by the other.
 const kMachineSuites = 10;
 
-/// What a run takes when another is in line: half, so two run side by side
-/// and the tail of one is filled by the other.
-const kSharedSuites = kMachineSuites ~/ 2;
+/// The file in the line's folder that says how many suites this machine's
+/// runs hold between them — a whole number and nothing else.
+///
+/// 🗣️유저 10-21: 「10줄이 진짜 괜찮나? 저번에 10줄아니면 20줄으로 확인하지
+/// 않았나. 12줄이나 15줄이나. 좀 더 효율적으로 자원 극한으로 끌어서
+/// 하고싶은데. pc 자원 더써도되」 — ten was the better of two points, ten and
+/// twenty, measured under the Balanced power plan, and nothing between them
+/// was. The number is the machine's, as its test times are, and every look
+/// reads it again: a line is measured at twelve, fourteen, sixteen while
+/// its runs go on, and a machine with fewer cores keeps its own.
+/// ⚠️A run of a tool from before this file holds to ten whatever it says.
+const kSuitesFile = 'suites';
+
+/// The suites [line] holds between its runs: what its [kSuitesFile] says,
+/// or [kMachineSuites] when it says no whole number above zero.
+int machineSuitesOf(Directory line) {
+  try {
+    final said = int.tryParse(
+      File('${line.path}/$kSuitesFile').readAsStringSync().trim(),
+    );
+    if (said != null && said > 0) return said;
+  } on FileSystemException {
+    // No file: the line holds the default.
+  }
+  return kMachineSuites;
+}
 
 /// How often a run that waits looks at the line again.
 const kLookAgain = Duration(seconds: 2);
@@ -128,14 +154,18 @@ int _workOf(Standing standing) => standing.work ?? kUnknownWork;
 
 bool _isSmall(Standing standing) => _workOf(standing) <= kSmallWork;
 
-/// The suites [standing] would take now: all of its share — the machine
-/// alone among the long runs in [line], half beside another
-/// ([kSharedSuites]) — and never more than the files it names or what it
-/// [asked].
-int _wants(Standing standing, List<Standing> line, {int? asked}) {
+/// The suites [standing] would take now of the [machine]'s: all of its
+/// share — the machine alone among the long runs in [line], half beside
+/// another — and never more than the files it names or what it [asked].
+int _wants(
+  Standing standing,
+  List<Standing> line, {
+  required int machine,
+  int? asked,
+}) {
   final share = line.any((o) => o.name != standing.name && !_isSmall(o))
-      ? kSharedSuites
-      : kMachineSuites;
+      ? machine ~/ 2
+      : machine;
   return [share, ?asked, ?standing.files].reduce(math.min);
 }
 
@@ -147,18 +177,29 @@ double _wallOf(Standing standing, int suites) =>
 /// over its run — the highest-response-ratio-next rule. A short run comes
 /// forward fast, and a long one comes forward too as it waits, so no run
 /// waits for ever; runs alike keep the order they asked in.
-double _forwardness(Standing standing, List<Standing> line, DateTime now) {
-  final wall = _wallOf(standing, _wants(standing, line));
+double _forwardness(
+  Standing standing,
+  List<Standing> line,
+  DateTime now, {
+  required int machine,
+}) {
+  final wall = _wallOf(standing, _wants(standing, line, machine: machine));
   final since = standing.since ?? askedAt(standing.name) ?? now;
   final waited = math.max(0, now.difference(since).inMilliseconds / 1000);
   return (waited + wall) / wall;
 }
 
-/// The waiting runs in [line], the first in line first ([_forwardness]).
-List<Standing> waitingInTurn(List<Standing> line, DateTime now) {
+/// The waiting runs in [line], the first in line first ([_forwardness]),
+/// on a machine of [machine] suites.
+List<Standing> waitingInTurn(
+  List<Standing> line,
+  DateTime now, {
+  int machine = kMachineSuites,
+}) {
   final forward = {
     for (final s in line)
-      if (s.suites == null) s.name: _forwardness(s, line, now),
+      if (s.suites == null)
+        s.name: _forwardness(s, line, now, machine: machine),
   };
   return [
     for (final s in line)
@@ -174,7 +215,8 @@ List<Standing> waitingInTurn(List<Standing> line, DateTime now) {
 ///
 /// 🗣️NO SUITE STANDS FREE WHILE A RUN WAITS (유저 10-20: 「계속 10줄 중 아까
 /// 낮처럼 2개쓴다거나 지금처럼 6개만쓴다거나 이런거 안일어나게 하고싶어」).
-/// What the running runs leave of [kMachineSuites] is handed down the line
+/// What the running runs leave of the [machine]'s suites — the number its
+/// line names ([machineSuitesOf]) — is handed down the line
 /// in turn ([waitingInTurn]): each waiting run takes what it may hold
 /// ([_wants]) — never more than it [asked] for — or what is left when that
 /// is less, and the rest goes on to the one behind it.
@@ -195,13 +237,19 @@ int? suitesToRun(
   List<Standing> line, {
   int? asked,
   DateTime? now,
+  int machine = kMachineSuites,
 }) {
-  var left =
-      kMachineSuites - line.fold<int>(0, (n, s) => n + (s.suites ?? 0));
-  for (final s in waitingInTurn(line, now ?? DateTime.now())) {
+  var left = machine - line.fold<int>(0, (n, s) => n + (s.suites ?? 0));
+  final turn = waitingInTurn(line, now ?? DateTime.now(), machine: machine);
+  for (final s in turn) {
     if (left <= 0) return null;
     final isMe = s.name == mine;
-    final wants = _wants(s, line, asked: isMe ? asked : null);
+    final wants = _wants(
+      s,
+      line,
+      machine: machine,
+      asked: isMe ? asked : null,
+    );
     final takes = wants <= left || isMe || s.takesWhatIsLeft
         ? math.min(wants, left)
         : 0;
@@ -581,13 +629,20 @@ class Turn {
           ..waiting(files, work: work, since: since);
       }
       final line = standings();
-      if (suitesToRun(_ticket!.name, line, asked: asked) != null) {
+      final machine = machineSuitesOf(folder);
+      if (suitesToRun(_ticket!.name, line, asked: asked, machine: machine) !=
+          null) {
         if (await room()) {
           // Asked again under the lock: the line may have moved while the
           // machine was measured, and what is taken is said before the lock
           // goes.
           final suites = _deciding(folder, () {
-            final now = suitesToRun(_ticket!.name, standings(), asked: asked);
+            final now = suitesToRun(
+              _ticket!.name,
+              standings(),
+              asked: asked,
+              machine: machineSuitesOf(folder),
+            );
             if (now != null) {
               _ticket!.running(now, files, work: work);
               noteUsage(folder);
@@ -605,11 +660,11 @@ class Turn {
         await Future<void>.delayed(askAgain);
         continue;
       }
-      final waiting = waitingInTurn(line, DateTime.now());
+      final waiting = waitingInTurn(line, DateTime.now(), machine: machine);
       final at = waiting.indexWhere((s) => s.name == _ticket!.name) + 1;
       if (at != stood) {
         say('test_queue: number $at of the ${waiting.length} waiting, '
-            'shortest and longest-waiting first — $kMachineSuites suites '
+            'shortest and longest-waiting first — $machine suites '
             'between the runs (nothing runs while it waits)');
         stood = at;
       }
@@ -800,7 +855,11 @@ List<String> describeLine(Directory line, {DateTime? now}) {
   final inTurn = [
     for (final s in standings)
       if (s.suites != null) s,
-    ...waitingInTurn(standings, now ?? DateTime.now()),
+    ...waitingInTurn(
+      standings,
+      now ?? DateTime.now(),
+      machine: machineSuitesOf(line),
+    ),
   ];
   return [
     for (final (i, s) in inTurn.indexed)
@@ -848,10 +907,11 @@ Future<void> main(List<String> args) async {
       from: to.subtract(Duration(hours: hours)),
       to: to,
     );
+    final machine = machineSuitesOf(line!);
     stdout.writeln(
       'the last $hours h: runs waited ${waited.inMinutes} min, and the runs '
-      'held ${held.toStringAsFixed(1)} of $kMachineSuites suites meanwhile — '
-      '${((kMachineSuites - held) * waited.inMinutes / 60).toStringAsFixed(1)}'
+      'held ${held.toStringAsFixed(1)} of $machine suites meanwhile — '
+      '${((machine - held) * waited.inMinutes / 60).toStringAsFixed(1)}'
       ' suite-hours stood free',
     );
     return;
