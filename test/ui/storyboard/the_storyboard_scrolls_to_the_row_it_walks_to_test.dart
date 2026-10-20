@@ -112,7 +112,10 @@ void main() {
     return (top: cell.top - view.top, bottom: cell.bottom - view.top);
   }
 
-  Future<EditorSessionManager> railPastTheView(WidgetTester tester) async {
+  Future<EditorSessionManager> railPastTheView(
+    WidgetTester tester, {
+    int rowsAdded = 12,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
@@ -122,7 +125,7 @@ void main() {
     session.selectLayer(
       session.layers.firstWhere((layer) => layer.kind == LayerKind.se).id,
     );
-    for (var count = 0; count < 12; count += 1) {
+    for (var count = 0; count < rowsAdded; count += 1) {
       session.layerStack.addLayerOfKind(LayerKind.se);
     }
     await showStoryboardPanel(tester);
@@ -170,44 +173,46 @@ void main() {
     );
   });
 
-  // The session stands on a LANE while the rail's selected row stays the
-  // row the lanes belong to: the reveal follows where the walk stands.
-  testWidgets('a walk down an S row\'s lanes scrolls to the lane it stands '
-      'on, not to the row they hang from', (tester) async {
-    final session = await railPastTheView(tester);
-    final last = session.repository
+  // Standing on a LANE, the session's row is the lane while the rail's own
+  // selected row is the track's V row, at the foot of the rail: the reveal
+  // follows where the walk stands.
+  testWidgets('a walk into the top S row\'s lanes keeps the lane it stands '
+      'on in view, not the V row the rail selects', (tester) async {
+    final session = await railPastTheView(tester, rowsAdded: 24);
+    final top = session.repository
         .requireProject()
         .tracks
         .single
         .seLayers
         .last;
-    session.layerSwitches.toggleLayerLanes(last.id);
+    session.layerSwitches.toggleLayerLanes(top.id);
     await tester.pumpAndSettle();
-    rows(tester).jumpTo(0);
-    await tester.pumpAndSettle();
-    // Brought into view from the top, the row stands at the foot with one
-    // row of margin under it — where its first lane is.
     session.standOnRow(
-      LayerRowAddress(last.id),
+      LayerRowAddress(top.id),
       panel: WorkingPanel.storyboard,
     );
     await tester.pumpAndSettle();
-    final before = rows(tester).pixels;
+    rows(tester).jumpTo(0);
+    await tester.pumpAndSettle();
+    expect(
+      rows(tester).maxScrollExtent,
+      greaterThan(rows(tester).viewportDimension),
+      reason: '⛔전제: the V row is more than a view below the top',
+    );
 
-    for (
-      var step = 0;
-      step < 40 && rows(tester).pixels == before;
-      step += 1
-    ) {
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-      await tester.pumpAndSettle();
-      expect(
-        session.currentRow,
-        isA<LaneRowAddress>(),
-        reason: '⛔전제: the walk stays on the row\'s lanes',
-      );
-    }
-    expect(rows(tester).pixels, greaterThan(before));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(
+      session.currentRow,
+      isA<LaneRowAddress>(),
+      reason: '⛔전제: it stands on a lane',
+    );
+    expect(
+      session.selectedRow,
+      isA<TrackRowAddress>(),
+      reason: '⛔전제: the rail selects the V row',
+    );
+    expect(rows(tester).pixels, lessThan(rows(tester).viewportDimension));
     final cell = standingInView(tester);
     expect(cell.top, greaterThanOrEqualTo(0));
     expect(
