@@ -123,6 +123,12 @@ void main() {
       );
       expect(kept.map((p) => p.position), contains(corner));
       expect(offTheSides(kept), lessThan(1e-9), reason: 'bezier $bezier');
+      expect(
+        kept.last.position,
+        _corner().last.position,
+        reason: 'out of the corner to the end: each side its own section, '
+            'from where the one before it ended (bezier $bezier)',
+      );
 
       final rounded = postCorrected(_corner(), within: 2, bezier: bezier);
       expect(offTheSides(rounded), greaterThan(1), reason: 'bezier $bezier');

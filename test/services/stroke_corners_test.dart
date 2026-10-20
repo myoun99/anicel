@@ -33,6 +33,14 @@ void main() {
     expect(_cornersOf([_p(0, 0), _p(40, 0), after(60)]), isEmpty);
   });
 
+  test('a pen that rests where it starts or where it ends turns nowhere', () {
+    final line = _along([_p(0, 0), _p(40, 0)]);
+    expect(
+      StrokeCorners.of([line.first, line.first, ...line, line.last]),
+      isEmpty,
+    );
+  });
+
   test("a hand's wobble is none, nor a round curve", () {
     expect(
       _cornersOf([

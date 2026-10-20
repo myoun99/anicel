@@ -25,6 +25,9 @@ StrokeStabilizer _from(
 
 Duration _ms(int ms) => Duration(milliseconds: ms);
 
+/// A point on y = 0.
+CanvasPoint _p(num x) => CanvasPoint(x: x.toDouble(), y: 0);
+
 void main() {
   test('a sample one lag later closes 1 - 1/e of the distance to the pen', () {
     final stabilizer = _from(CanvasPoint(x: 0, y: 0));
@@ -236,6 +239,73 @@ void main() {
       }
     });
 
+    test('a step closes the same share of the way through the corner as of '
+        'a straight way, reading what the pen read along the leg it is on '
+        '— and what it has left past the corner, it goes on with', () {
+      final stabilizer = _from(
+        CanvasPoint(x: 0, y: 0),
+        readings: _pressing(0.3),
+        keepsCorners: true,
+      );
+      // At no later time than the start: the pen turns, the line stays.
+      _right(stabilizer, downTo: 40, lift: false, still: true);
+      final pen = CanvasPoint(x: 100, y: 40);
+      const way = 100.0 + 40;
+
+      final first = stabilizer.follow(pen, _pressing(0.9), at: _ms(10));
+      expect(first.single.position.x, closeTo(way * _oneLag, 1e-9));
+      expect(first.single.position.y, 0);
+      expect(first.single.readings.pressure, closeTo(0.3, 1e-9));
+
+      final second = stabilizer.follow(pen, _pressing(0.9), at: _ms(20));
+      final past = way * _oneLag + (way - way * _oneLag) * _oneLag - 100;
+      expect(second.map((point) => point.position.x), [100, 100]);
+      expect(second.first.position.y, 0);
+      expect(second.last.position.y, closeTo(past, 1e-9));
+      expect(
+        second.last.readings.pressure,
+        closeTo(0.3 + 0.6 * past / 40, 1e-9),
+      );
+    });
+
+    test('a frame that takes the line through a corner answers the corner '
+        'too', () {
+      final stabilizer = _from(CanvasPoint(x: 0, y: 0), keepsCorners: true);
+      _right(stabilizer, downTo: 40, lift: false, still: true);
+      expect(stabilizer.lookAtFrame(_ms(1000)), isEmpty);
+      expect(
+        stabilizer.lookAtFrame(_ms(1020)).map((point) => point.position),
+        [corner, isA<CanvasPoint>()],
+      );
+    });
+
+    test('a line come within a hair of the pen with a corner still to go '
+        'through has not settled: the lift draws the fold', () {
+      final stabilizer = _from(CanvasPoint(x: 0, y: 0), keepsCorners: true);
+      final pen = CanvasPoint(x: 24, y: 0);
+      // Out along y = 0 to x = 40 and straight back to the pen, at no
+      // later time than the start.
+      for (var x = 2; x <= 40; x += 2) {
+        stabilizer.follow(_p(x), _rest, at: Duration.zero);
+      }
+      for (var x = 38; x >= 24; x -= 2) {
+        stabilizer.follow(_p(x), _rest, at: Duration.zero);
+      }
+      // 40 out and 16 back: a share of 24/56 brings the line to the pen's
+      // side on its way out.
+      final step = stabilizer.follow(
+        pen,
+        _rest,
+        at: const Duration(microseconds: 5596),
+      );
+      expect(step.last.position.distanceTo(pen), lessThan(0.01));
+      expect(stabilizer.settled, isFalse);
+      expect(stabilizer.finish().map((point) => point.position), [
+        _p(40),
+        pen,
+      ]);
+    });
+
     test('the lift goes through the corners the line had yet to reach — '
         'and the one the pen was still turning', () {
       final stabilizer = _from(CanvasPoint(x: 0, y: 0), keepsCorners: true);
@@ -260,11 +330,13 @@ PenReadings _pressing(double pressure) =>
 
 /// A pen that goes right along y = 0 to x = 100, pressing 0.3, and turns
 /// down to y = [downTo], pressing 0.9 — a sample every millisecond, 4 px
-/// apart: the way the line went, to the lift when it [lift]s.
+/// apart, or all at the start when [still]: the way the line went, to the
+/// lift when it [lift]s.
 List<PenPoint> _right(
   StrokeStabilizer stabilizer, {
   int downTo = 100,
   bool lift = true,
+  bool still = false,
 }) {
   final way = <PenPoint>[];
   var ms = 0;
@@ -274,7 +346,7 @@ List<PenPoint> _right(
       stabilizer.follow(
         CanvasPoint(x: x, y: y),
         _pressing(pressure),
-        at: _ms(ms),
+        at: still ? Duration.zero : _ms(ms),
       ),
     );
   }
