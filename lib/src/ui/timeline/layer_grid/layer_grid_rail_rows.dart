@@ -146,7 +146,7 @@ class _LayerGridRailRows {
       onToggleSection: _state.widget.onToggleSection,
       rowFilter: _state.widget.hooks.rowFilter,
       marksInUse: _state._marksInUse,
-      kindsInUse: _state._kindsInUse,
+      kinds: timelineRailKinds,
       visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
       anyLanesExpanded: _state.widget.hooks.expandedLaneLayerIds.isNotEmpty,
       allSeMuted: _state._allSeMuted(),

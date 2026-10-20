@@ -42,7 +42,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
     this.onExpandAllLanes,
     this.rowFilter = TimelineRowFilter.none,
     this.marksInUse = TimelineLegendMenus.noMarks,
-    this.kindsInUse = TimelineLegendMenus.noKinds,
+    this.kinds = const {},
     this.visibilitySoloEnabled = false,
     this.anyLanesExpanded = false,
     this.allSeMuted = false,
@@ -96,9 +96,9 @@ class TimelineLayerControlsHeader extends KeptPiece {
   /// read when it is ([TimelineLegendMenus.marksInUse] has why).
   final Set<LayerMark> Function() marksInUse;
 
-  /// Kinds present across the active cut's layers — the "solo kind" list
-  /// (R4 #8) is built from these, read when it is.
-  final Set<LayerKind> Function() kindsInUse;
+  /// The kinds this panel's rows can be — the "solo kind" list (R4 #8,
+  /// [TimelineLegendMenus.kinds] has F-408's why).
+  final Set<LayerKind> kinds;
 
   /// The rows the rail currently DISPLAYS (filter-passing, non-camera) —
   /// the master opacity bar's target set (R4 #6). Null disables the bar.
@@ -162,8 +162,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
     onToggleSection != null,
     rowFilter,
     marksInUse,
-    kindsInUse,
-    kindsInUse().isNotEmpty,
+    BySet(kinds),
     visibilitySoloEnabled,
     anyLanesExpanded,
     allSeMuted,
@@ -186,7 +185,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
     onToggleSection: onToggleSection,
     rowFilter: rowFilter,
     marksInUse: marksInUse,
-    kindsInUse: kindsInUse,
+    kinds: kinds,
     visibilitySoloEnabled: visibilitySoloEnabled,
     displayedLayerIds: displayedLayerIds,
     displayedOnionSkinOn: displayedOnionSkinOn,

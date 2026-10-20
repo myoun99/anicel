@@ -250,6 +250,24 @@ class RailView {
     }
   }
 
+  /// Every set above, as ONE listenable: what a surface that draws a rail
+  /// rebuilds on — the timeline's tab, the conte's, the folded row.
+  ///
+  /// 🚨F-408 (유저 2026-10-19: 「콘티패널은 한번 솔로 적용하면 다시
+  /// 클릭해서 되돌리기가 안됨. 사본인거같으니 법 통일」): each surface
+  /// listed the sets by hand, and the conte's list had no [rowFilter] — a
+  /// solo set there was never drawn, and its legend, still holding the
+  /// filter it was built with, set the same solo again at the next press.
+  late final Listenable drawn = Listenable.merge([
+    hiddenSections,
+    rowFilter,
+    _collapsedAttachBaseIds,
+    _expandedLaneLayerIds,
+    _expandedLaneGroupKeys,
+    _twirledTrackIds,
+    laneGraphs,
+  ]);
+
   void dispose() {
     hiddenSections.dispose();
     rowFilter.dispose();

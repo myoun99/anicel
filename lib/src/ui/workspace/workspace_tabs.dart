@@ -930,12 +930,7 @@ class _WorkspaceTabs {
               // #4): the host scopes it to the panel subtree, so a zoom
               // step skips this whole tab rebuild.
               _state._showSecondsDisplay,
-              _state.widget.session.railView.expandedLaneLayerIds,
-              _state.widget.session.railView.expandedLaneGroupKeys,
-              _state.widget.session.railView.laneGraphs,
-              _state.widget.session.railView.hiddenSections,
-              _state.widget.session.railView.collapsedAttachBaseIds,
-              _state.widget.session.railView.rowFilter,
+              _state.widget.session.railView.drawn,
             ]),
             host: (context) => TimelineTabHost(
               session: _state.widget.session,
@@ -1077,19 +1072,11 @@ class _WorkspaceTabs {
             listenable: Listenable.merge([
               _state.widget.session,
               _state._storyboardPixelsPerFrame,
-              // F-199: a section toggle is not a session notify.
-              _state.widget.session.railView.hiddenSections,
-              // Nor is a fold: the conte row's twirl folds its attach rows
-              // here as it does on the timeline's rail (I-73).
-              _state.widget.session.railView.collapsedAttachBaseIds,
-              // Nor a twirl: the camera row opens its lanes, a conte row its
-              // lanes and their groups (I-73 ④ⓔ), an S row its SE row's, a
-              // V row its track's (F-360).
-              _state.widget.session.railView.expandedLaneLayerIds,
-              _state.widget.session.railView.expandedLaneGroupKeys,
-              _state.widget.session.railView.twirledTrackIds,
-              // Nor a header graph (I-89 ①) — the timeline's own.
-              _state.widget.session.railView.laneGraphs,
+              // The rail's view is no session notify: a section toggle
+              // (F-199), a fold (I-73), a twirl — the camera row's lanes, a
+              // conte row's and their groups (I-73 ④ⓔ), an S row's, a V
+              // row's (F-360) — a header graph (I-89 ①) and the filter.
+              _state.widget.session.railView.drawn,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
             ]),

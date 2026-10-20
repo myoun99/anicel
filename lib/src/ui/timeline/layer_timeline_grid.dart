@@ -482,12 +482,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       if (layer.mark != LayerMark.none) layer.mark,
   };
 
-  /// Kinds present across the current layer list — the kind-solo menu
-  /// (R4 #8) is built from these.
-  Set<LayerKind> _kindsInUse() => {
-    for (final layer in widget.layers) layer.kind,
-  };
-
   /// The rows the rail currently DISPLAYS (layer rows only, camera
   /// excluded) — the master opacity bar's target set (R4 #6).
   Set<LayerId> _displayedLayerIds(List<TimelineDisplayRow> rows) => {

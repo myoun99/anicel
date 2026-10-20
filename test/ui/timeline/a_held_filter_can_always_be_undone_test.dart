@@ -30,7 +30,7 @@ void main() {
     WidgetTester tester, {
     required TimelineRowFilter filter,
     Set<LayerMark> marksInUse = const {},
-    Set<LayerKind> kindsInUse = const {},
+    Set<LayerKind> panelKinds = const {},
   }) async {
     final marks = <LayerMark>[];
     final kinds = <LayerKind>[];
@@ -66,7 +66,7 @@ void main() {
               showRowSolos: true,
               rowFilter: filter,
               marksInUse: () => marksInUse,
-              kindsInUse: () => kindsInUse,
+              kinds: panelKinds,
             ),
           ),
         ),
@@ -99,12 +99,13 @@ void main() {
     expect(heard.marks, [layout]);
   });
 
-  testWidgets('a kind whose last row went away is still listed, checked, and '
+  testWidgets('a kind the panel has no row of is still listed while the '
+      'filter holds it, checked, and '
       'unchecking it lets it go', (tester) async {
     final heard = await pump(
       tester,
       filter: const TimelineRowFilter(kinds: {LayerKind.se}),
-      kindsInUse: {LayerKind.animation},
+      panelKinds: {LayerKind.animation},
     );
     await tester.tap(find.byKey(const ValueKey<String>('legend-kind')));
     await tester.pumpAndSettle();

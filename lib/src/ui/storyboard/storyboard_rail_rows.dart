@@ -317,13 +317,21 @@ class _StoryboardRailRows {
       !_state.widget.hiddenSections.contains(section);
 
   /// Whether the rail shows [track]'s transition row: its section is the one
-  /// the timeline puts that row's kind in — the camera section.
+  /// the timeline puts that row's kind in — the camera section — and the
+  /// legend's filter judges it as every row ([_filterAllowsProjectionRow]).
+  /// ↩️F-408: it asked the section alone, so a solo left it standing where
+  /// the timeline's transition row, a layer row, went.
   ///
   /// ⚠️ONE question for the three places that lay the row out — the row
   /// table, the rail's labels and the strips — or a hidden row would part a
   /// label from its strip by a row, the filter's lesson below.
   bool _showsTransitionRow(Track track) =>
-      _sectionShown(timelineSectionForLayerKind(track.transitionLayer.kind));
+      _sectionShown(timelineSectionForLayerKind(track.transitionLayer.kind)) &&
+      _filterAllowsProjectionRow(
+        LayerRowAddress(track.transitionLayer.id),
+        head: track.transitionLayer,
+        kind: track.transitionLayer.kind,
+      );
 
   /// Whether the rail shows [track]'s CAMERA row (I-73 ④): its section is
   /// the one the timeline puts the kind in — the camera section, whose top

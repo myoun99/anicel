@@ -408,11 +408,7 @@ class _WorkspaceCollapsedRows {
     _state._foldedStoryboard.bindSession(session);
     _collapsedRowStructure = Listenable.merge([
       session,
-      session.railView.expandedLaneLayerIds,
-      session.railView.expandedLaneGroupKeys,
-      session.railView.hiddenSections,
-      session.railView.rowFilter,
-      session.railView.collapsedAttachBaseIds,
+      session.railView.drawn,
       _state._timelinePixelsPerFrame,
       _state._railExtents[LayerRailId.timeline],
       _state._storyboardPixelsPerFrame,

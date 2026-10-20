@@ -757,6 +757,25 @@ class StoryboardPanel extends StatefulWidget {
     blend: true,
   );
 
+  /// The kinds this rail's rows can be — its legend's kind solos
+  /// ([TimelineLegendMenus.kinds]): a conte row, and a cut's row turned
+  /// back into a drawing row (I-73) or filed in a 공정 folder of the conte;
+  /// an S row; the transition row and the camera row.
+  ///
+  /// 🗣️F-408 (유저 2026-10-19): 「콘티패널엔 이미지레이어 없으니
+  /// 대응안되는거 리스트 정리」 — no IMAGE, INSTRUCTION or ADJUSTMENT row
+  /// stands on this rail: those are a cut's own rows, which the timeline
+  /// shows. ↩️It listed the active cut's kinds, so those came up here and
+  /// a solo of one emptied the rail.
+  static const Set<LayerKind> railKinds = {
+    LayerKind.storyboard,
+    LayerKind.animation,
+    LayerKind.folder,
+    LayerKind.se,
+    LayerKind.transition,
+    LayerKind.camera,
+  };
+
   /// [_trackLabelWidth] where [context] lays its text out: this rail pays for
   /// its word-holding columns' growth — the opacity bar's, the blend
   /// chip's and a lane's value boxes' — as the timeline's pays for the
@@ -1808,10 +1827,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       if (layer.mark != LayerMark.none) layer.mark,
   };
 
-  Set<LayerKind> _legendKindsInUse() => {
-    for (final layer in _legendLayers()) layer.kind,
-  };
-
   bool _legendAllSeMuted() {
     var sawSe = false;
     for (final layer in _legendLayers()) {
@@ -2548,7 +2563,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               onToggleSection: widget.onToggleSection,
               showRowSolos: true,
               marksInUse: _legendMarksInUse,
-              kindsInUse: _legendKindsInUse,
+              kinds: StoryboardPanel.railKinds,
               visibilitySoloEnabled: widget.visibilitySoloEnabled,
               allSeMuted: _legendAllSeMuted(),
               displayedLayerIds: widget.legend == null

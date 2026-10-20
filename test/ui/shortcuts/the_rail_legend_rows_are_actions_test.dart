@@ -61,7 +61,7 @@ TimelineLegendMenus fullest() => TimelineLegendMenus(
   legend: everyVerb(),
   onToggleSection: (_) {},
   marksInUse: () => everyLayerMark().toSet(),
-  kindsInUse: () => LayerKind.values.toSet(),
+  kinds: LayerKind.values.toSet(),
   displayedLayerIds: () => const {},
 );
 
@@ -211,8 +211,9 @@ void main() {
       expect(eyes(), everyElement(isTrue));
     });
 
-    testWidgets('a kind on the rows is soloed and let go by its key; a kind '
-        'on no row is no row, and its key does nothing', (tester) async {
+    testWidgets('a kind is soloed and let go by its key — on the timeline '
+        'every kind, a row of it there or not; on the conte a kind its rows '
+        'cannot be is no row, and its key does nothing', (tester) async {
       await pumpApp(tester);
       final session = sessionOf(tester);
       Set<LayerKind> soloed() => session.railView.rowFilter.value.kinds;
@@ -225,18 +226,23 @@ void main() {
       final onTheRows = {
         for (final layer in session.activeCutOrNull!.layers) layer.kind,
       };
-      final absent = [
-        LayerKind.folder,
-        LayerKind.adjustment,
-        LayerKind.image,
-      ].firstWhere((kind) => !onTheRows.contains(kind));
-      await pressKeyOf(tester, railSoloKindActionId(absent));
+      expect(onTheRows, isNot(contains(LayerKind.image)), reason: '⛔premise');
+      // 🗣️F-408 (유저 2026-10-19): 「대응하는 레이어가 다 있어야함」.
+      await pressKeyOf(tester, railSoloKindActionId(LayerKind.image));
+      expect(soloed(), {LayerKind.image});
+      await pressKeyOf(tester, railSoloKindActionId(LayerKind.image));
+      expect(soloed(), isEmpty);
+
+      await workIn(tester, WorkingPanel.storyboard);
+      await pressKeyOf(tester, railSoloKindActionId(LayerKind.image));
       expect(
         soloed(),
         isEmpty,
-        reason: 'the kind column lists the kinds on the rows — there is no '
-            '${absent.name} row for the key to press',
+        reason: 'no image row stands on the conte — its kind column has no '
+            'image row for the key to press',
       );
+      await pressKeyOf(tester, railSoloKindActionId(LayerKind.animation));
+      expect(soloed(), {LayerKind.animation}, reason: '⛔premise: it answers');
     });
 
     testWidgets('on the storyboard its own header answers — the onion, a '
