@@ -65,6 +65,18 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v27 (2026-10-20, anchor-walks-a-path ① · ④ — 유저 10-13 「구조는 최대한
+/// AE랑 통일하려고」): an anchor point's keys walk a path as a position's
+/// do, so a key on the anchor's lane may rove (`rove: true`, `walksAPath`).
+/// A v26 build turns the whole file away at such a key — as one that roves
+/// on a lane walking no path, a sentence that names nothing a person could
+/// act on. The bump turns that into the refusal of a newer Anicel's file
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): an anchor key that does not rove is
+/// read as it was, so a v26 file is such a document.
+///
 /// v26 (2026-10-18, F-382 — 유저 10-17 「뷰어패널에서 파일을 마지막에
 /// 봣던 상태를 기억하게하고싶음」): the page a viewer was at is the FILE's,
 /// kept beside the project with the framing each viewer left it at
@@ -401,7 +413,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 26;
+const int anicelFormatVersion = 27;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
