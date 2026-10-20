@@ -2,6 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 
@@ -35,6 +36,47 @@ void main() {
       QaTabletBridge.debugResetInstance();
     });
     expect(QaTabletBridge.instanceOrNull?.rawInputSupported, isTrue);
+  }, skip: dllSkip);
+
+  test('the Raw Input reader listens where a pen reports: the Pen '
+      'collection and the Digitizer one both (F-176-Q8 — a Cintiq sends '
+      'every report through the Digitizer one alone)', () {
+    final pen = DynamicLibrary.open(
+      '${File(engine!).parent.path}${Platform.pathSeparator}qa_tablet.dll',
+    );
+    final start = pen.lookupFunction<Int32 Function(), int Function()>(
+      'qpr_start',
+    );
+    final stop = pen.lookupFunction<Void Function(), void Function()>(
+      'qpr_stop',
+    );
+    expect(start(), 1);
+    addTearDown(stop);
+
+    final registered = DynamicLibrary.open('user32.dll')
+        .lookupFunction<
+          Uint32 Function(Pointer<Uint16>, Pointer<Uint32>, Uint32),
+          int Function(Pointer<Uint16>, Pointer<Uint32>, int)
+        >('GetRegisteredRawInputDevices');
+    // RAWINPUTDEVICE in a 64-bit process: page, usage, flags, window.
+    const bytes = 16;
+    const room = 8;
+    final count = calloc<Uint32>()..value = room;
+    final devices = calloc<Uint16>(bytes ~/ 2 * room);
+    addTearDown(() {
+      calloc.free(devices);
+      calloc.free(count);
+    });
+    final read = registered(devices, count, bytes);
+    expect(read, inInclusiveRange(1, room));
+    final collections = {
+      for (var i = 0; i < read; i += 1)
+        (page: devices[i * bytes ~/ 2], usage: devices[i * bytes ~/ 2 + 1]),
+    };
+    expect(
+      collections,
+      containsAll([(page: 0x0D, usage: 0x02), (page: 0x0D, usage: 0x01)]),
+    );
   }, skip: dllSkip);
 
   test('a Wintab record says how the pen leans only when the device is '
