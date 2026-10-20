@@ -430,13 +430,13 @@ String? scrubTransformLaneValue(
       if (degrees == null) {
         return null;
       }
-      return '${columnValueText(degrees + dragDelta.dx * 0.5)}°';
+      return '${columnValueText(scrubbedNumber(degrees, dragDelta))}°';
     case 'opacity':
       final percent = parse(currentLabel);
       if (percent == null) {
         return null;
       }
-      final scrubbed = (percent + dragDelta.dx * 0.5).clamp(0.0, 100.0);
+      final scrubbed = scrubbedNumber(percent, dragDelta).clamp(0.0, 100.0);
       return '${columnValueText(scrubbed)}%';
   }
   return null;

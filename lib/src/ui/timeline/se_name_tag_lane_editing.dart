@@ -131,12 +131,20 @@ SeNameTag? seNameTagWithLaneKeyToggled(
   return null;
 }
 
-/// Applies a value typed into a member's value editor.
+/// Applies a value typed into a member's value editor: it KEYS the member
+/// at [frameIndex] — always, as an effect's parameter and a transform's
+/// lane are keyed (R9 #18 — one rule: a value the user typed is a key). The
+/// tag does not move on the first edit: a member with one key resolves to
+/// it at every frame, exactly as the static slot did.
 ///
-/// A member with NO keys writes its STATIC slot — the effect-parameter rule
-/// (an unkeyed property is a plain value, and typing into it must not turn
-/// the tag into an animated one behind the user's back). A member that IS
-/// keyed takes a key at [frameIndex], AE-style.
+/// 🗣️F-407 (유저 2026-10-19): 「굵게같은 멤버 변경해도 키가 안찍힘. fx는
+/// 키가 찍히는게 규칙인데 사본 만든듯함. 법 통일」. ↩️An unkeyed member
+/// wrote its STATIC slot — the effect parameters' old rule, copied here
+/// and left behind when R9 #18 retired it there.
+///
+/// ⚠️`none` alone still writes the slot: a box turned off is no colour,
+/// and a key holding no colour has nothing to tween towards — so it turns
+/// an unkeyed box off, and a keyed box is turned off by its keys.
 ///
 /// Accepted input: numbers plainly; colours as `#RRGGBB`, `RRGGBB` or
 /// `none` (the box only); booleans as `on`/`off`. Null on parse failure.
@@ -154,132 +162,90 @@ SeNameTag? seNameTagWithLaneValueEdited(
 
   SeNameTag? number(
     PropertyTrack<double> lane,
-    SeNameTag Function(double) putStatic,
     SeNameTagTrack Function(PropertyTrack<double>) putKey,
   ) {
     final value = double.tryParse(text.replaceAll('%', '').trim());
     if (value == null) {
       return null;
     }
-    if (lane.isEmpty) {
-      return putStatic(value);
-    }
     return tag.copyWith(track: putKey(lane.withKey(frameIndex, value)));
   }
 
   SeNameTag? argb(
     PropertyTrack<int> lane,
-    SeNameTag? Function(int?) putStatic,
     SeNameTagTrack Function(PropertyTrack<int>) putKey, {
     bool allowNone = false,
   }) {
     if (allowNone && text.toLowerCase() == 'none') {
-      // "none" is a STATIC state — a key holding "no colour" has no value
-      // to interpolate, so the box is turned off on the slot instead.
-      return lane.isEmpty ? putStatic(null) : null;
+      return lane.isEmpty
+          ? tag.copyWith(style: tag.style.copyWith(backgroundColor: null))
+          : null;
     }
     final value = parseArgbInput(text);
     if (value == null) {
       return null;
-    }
-    if (lane.isEmpty) {
-      return putStatic(value);
     }
     return tag.copyWith(track: putKey(lane.withKey(frameIndex, value)));
   }
 
   SeNameTag? flag(
     PropertyTrack<bool> lane,
-    SeNameTag Function(bool) putStatic,
     SeNameTagTrack Function(PropertyTrack<bool>) putKey,
   ) {
     final value = parseBoolInput(text);
     if (value == null) {
       return null;
     }
-    if (lane.isEmpty) {
-      return putStatic(value);
-    }
+    // Booleans hold by nature, as the toggle keys them.
     return tag.copyWith(
       track: putKey(lane.withKey(frameIndex, value, outgoing: KeyExit.hold)),
     );
   }
 
-  // A member both runs share writes both ([SeNameTagTrack]).
-  SeNameTag bothRuns(TextCelStyle Function(TextCelStyle run) edit) =>
-      tag.copyWith(style: edit(tag.style), lineStyle: edit(tag.lineStyle));
-
-  switch (laneId) {
-    case seNameTagSizeLaneId:
-      return number(
-        keys.fontSize,
-        (value) => bothRuns((run) => run.copyWith(fontSize: value)),
-        (lane) => keys.copyWith(fontSize: lane),
-      );
-    case seNameTagTrackingLaneId:
-      return number(
-        keys.letterSpacing,
-        (value) => bothRuns((run) => run.copyWith(letterSpacing: value)),
-        (lane) => keys.copyWith(letterSpacing: lane),
-      );
-    case seNameTagBoldLaneId:
-      return flag(
-        keys.bold,
-        (value) => bothRuns((run) => run.copyWith(bold: value)),
-        (lane) => keys.copyWith(bold: lane),
-      );
-    case seNameTagItalicLaneId:
-      return flag(
-        keys.italic,
-        (value) => bothRuns((run) => run.copyWith(italic: value)),
-        (lane) => keys.copyWith(italic: lane),
-      );
-    case seNameTagUnderlineLaneId:
-      return flag(
-        keys.underline,
-        (value) => bothRuns((run) => run.copyWith(underline: value)),
-        (lane) => keys.copyWith(underline: lane),
-      );
-    case seNameTagStrikethroughLaneId:
-      return flag(
-        keys.strikethrough,
-        (value) => bothRuns((run) => run.copyWith(strikethrough: value)),
-        (lane) => keys.copyWith(strikethrough: lane),
-      );
-    case seNameTagNameInkLaneId:
-      return argb(
-        keys.nameInk,
-        (value) => value == null
-            ? null
-            : tag.copyWith(style: tag.style.copyWith(color: value)),
-        (lane) => keys.copyWith(nameInk: lane),
-      );
-    case seNameTagBoxColorLaneId:
-      return argb(
-        keys.boxColor,
-        // `null` really means "no box" here, and `copyWith`'s sentinel is
-        // what tells that apart from "leave it alone".
-        (value) =>
-            tag.copyWith(style: tag.style.copyWith(backgroundColor: value)),
-        (lane) => keys.copyWith(boxColor: lane),
-        allowNone: true,
-      );
-    case seNameTagLineInkLaneId:
-      return argb(
-        keys.lineInk,
-        (value) => value == null
-            ? null
-            : tag.copyWith(lineStyle: tag.lineStyle.copyWith(color: value)),
-        (lane) => keys.copyWith(lineInk: lane),
-      );
-    case seNameTagShowLineLaneId:
-      return flag(
-        keys.showLine,
-        (value) => tag.copyWith(showLine: value),
-        (lane) => keys.copyWith(showLine: lane),
-      );
-  }
-  return null;
+  return switch (laneId) {
+    seNameTagSizeLaneId => number(
+      keys.fontSize,
+      (lane) => keys.copyWith(fontSize: lane),
+    ),
+    seNameTagTrackingLaneId => number(
+      keys.letterSpacing,
+      (lane) => keys.copyWith(letterSpacing: lane),
+    ),
+    seNameTagBoldLaneId => flag(
+      keys.bold,
+      (lane) => keys.copyWith(bold: lane),
+    ),
+    seNameTagItalicLaneId => flag(
+      keys.italic,
+      (lane) => keys.copyWith(italic: lane),
+    ),
+    seNameTagUnderlineLaneId => flag(
+      keys.underline,
+      (lane) => keys.copyWith(underline: lane),
+    ),
+    seNameTagStrikethroughLaneId => flag(
+      keys.strikethrough,
+      (lane) => keys.copyWith(strikethrough: lane),
+    ),
+    seNameTagNameInkLaneId => argb(
+      keys.nameInk,
+      (lane) => keys.copyWith(nameInk: lane),
+    ),
+    seNameTagBoxColorLaneId => argb(
+      keys.boxColor,
+      (lane) => keys.copyWith(boxColor: lane),
+      allowNone: true,
+    ),
+    seNameTagLineInkLaneId => argb(
+      keys.lineInk,
+      (lane) => keys.copyWith(lineInk: lane),
+    ),
+    seNameTagShowLineLaneId => flag(
+      keys.showLine,
+      (lane) => keys.copyWith(showLine: lane),
+    ),
+    _ => null,
+  };
 }
 
 /// The key window's write on member lane [laneId] (F-374): the keys inside

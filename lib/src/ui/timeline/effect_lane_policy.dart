@@ -209,5 +209,8 @@ String? scrubEffectLaneValue(
   if (current == null) {
     return null;
   }
-  return formatEffectLaneValue(spec, spec.clamp(current + dragDelta.dx * 0.5));
+  return formatEffectLaneValue(
+    spec,
+    spec.clamp(scrubbedNumber(current, dragDelta)),
+  );
 }

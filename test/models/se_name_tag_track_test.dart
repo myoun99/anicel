@@ -174,17 +174,25 @@ void main() {
       );
     });
 
-    test('typing into an UNKEYED member writes the STATIC slot — it must '
-        'not turn a plain value into an animated one', () {
+    test('🎯typing into an UNKEYED member KEYS it at the playhead, as an '
+        'effect\'s parameter is — and the tag reads it at every frame '
+        '(F-407)', () {
       final edited = seNameTagWithLaneValueEdited(
         const SeNameTag(),
         laneId: seNameTagSizeLaneId,
         frameIndex: 6,
         input: '48',
       )!;
-      expect(edited.style.fontSize, 48);
-      expect(edited.lineStyle.fontSize, 48, reason: 'one lane, both runs');
-      expect(edited.track, isNull, reason: 'no key was authored');
+      expect(edited.track!.fontSize.keyAt(6)!.value, 48);
+      for (final frame in [0, 6, 30]) {
+        final resolved = edited.resolveAt(frame);
+        expect(resolved.style.fontSize, 48, reason: 'frame $frame');
+        expect(
+          resolved.lineStyle.fontSize,
+          48,
+          reason: 'one lane, both runs',
+        );
+      }
     });
 
     test('typing into a KEYED member keys at the playhead, AE-style', () {
@@ -227,12 +235,10 @@ void main() {
 
     test('🎯the group\'s Reset puts an UNKEYED member back to a new tag\'s '
         'look in its static slot — and keys none (F-374)', () {
-      final edited = seNameTagWithLaneValueEdited(
-        const SeNameTag(),
-        laneId: seNameTagSizeLaneId,
-        frameIndex: 0,
-        input: '48',
-      )!;
+      final edited = SeNameTag(
+        style: SeNameTag.defaultStyle.copyWith(fontSize: 48),
+        lineStyle: SeNameTag.defaultLineStyle.copyWith(fontSize: 48),
+      );
 
       final reset = seNameTagWithGroupReset(edited, frameIndexes: const [3])!;
 
@@ -373,18 +379,21 @@ void main() {
         expect(switches(resolved.lineStyle), switches(lit.lineStyle));
       });
 
-      test('$laneId: typed into while unkeyed, it is both runs\' plain '
-          'value — and keys none', () {
+      test('$laneId: typed into while unkeyed, it keys at the playhead, '
+          'HELD — and both runs read it (F-407)', () {
         final edited = seNameTagWithLaneValueEdited(
           off,
           laneId: laneId,
           frameIndex: 6,
           input: 'on',
         )!;
+        final key = lane(edited.track!).keyAt(6)!;
+        final resolved = edited.resolveAt(0);
 
-        expect(switches(edited.style), switches(lit.style));
-        expect(switches(edited.lineStyle), switches(lit.lineStyle));
-        expect(edited.track, isNull);
+        expect(key.value, isTrue);
+        expect(key.outgoing, KeyExit.hold);
+        expect(switches(resolved.style), switches(lit.style));
+        expect(switches(resolved.lineStyle), switches(lit.lineStyle));
       });
 
       test('$laneId: typed into while keyed, it keys at the playhead, '

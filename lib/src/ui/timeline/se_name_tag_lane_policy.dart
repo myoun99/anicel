@@ -1,5 +1,9 @@
+import 'dart:math' as math;
+import 'dart:ui' show Offset;
+
 import '../../models/key_mark.dart';
 import '../../models/se_name_tag.dart';
+import '../../services/cel_text_box_edits.dart' show celTextMinFontSize;
 import '../text/app_strings.dart' show AppText;
 import 'property_lane_lens.dart';
 import '../text/readout_text.dart';
@@ -224,8 +228,39 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
           colorCanBeNone: seNameTagLaneColorCanBeNone(laneId),
           valueLabel: (frame) =>
               formatSeNameTagLaneValue(laneId, resolveAt(frame)),
+          scrubValue: seNameTagLaneValueKind(laneId) ==
+                  PropertyLaneValueKind.number
+              ? (label, delta) => scrubSeNameTagLaneValue(laneId, label, delta)
+              : null,
         ),
   ];
+}
+
+/// A member's number scrubbed by a drag on its readout, in the form the
+/// value editor parses back — the rate every number lane scrubs at
+/// ([scrubbedNumber]). Null for a member that is not a number.
+///
+/// 🗣️F-407 (유저 2026-10-19): 「S행의 이름표, 크기나 자간 변경하려해도 값
+/// 변경 안됨」 — the lanes wore no scrub, so a drag on them did nothing.
+/// The size stops at the smallest a text can be set in, as the text tool's
+/// size bar does ([celTextMinFontSize]).
+String? scrubSeNameTagLaneValue(
+  String laneId,
+  String currentLabel,
+  Offset dragDelta,
+) {
+  final value = double.tryParse(currentLabel.trim());
+  if (value == null) {
+    return null;
+  }
+  final scrubbed = scrubbedNumber(value, dragDelta);
+  return switch (laneId) {
+    seNameTagSizeLaneId => columnValueText(
+      math.max(celTextMinFontSize, scrubbed),
+    ),
+    seNameTagTrackingLaneId => columnValueText(scrubbed),
+    _ => null,
+  };
 }
 
 /// What KIND of value a member holds — the one place that knows, since it

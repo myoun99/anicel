@@ -44,6 +44,17 @@ enum PropertyLaneValueKind {
   color,
 }
 
+/// A number SCRUBBED by a drag on its readout ([PropertyLaneRow.scrubValue]):
+/// [value] moved by the drag's travel across, half a unit a pixel.
+///
+/// ⛔THE ONE RATE every one-number lane scrubs at — a rotation, an opacity,
+/// an effect's parameter, a name tag's size and tracking. Three of them
+/// spelled `value + dx * 0.5` each, and the name tag's lanes, spelling
+/// none, could not be scrubbed at all (F-407: 「크기나 자간 변경하려해도 값
+/// 변경 안됨」).
+double scrubbedNumber(double value, Offset dragDelta) =>
+    value + dragDelta.dx * 0.5;
+
 /// A lane colour written the way its own parser reads it back —
 /// `#RRGGBB`, or `none` where the lane allows absence.
 ///
