@@ -288,34 +288,12 @@ class RowOrderDrag {
     if (cut == null) {
       return;
     }
-    final landing = _nearestLanding(displayLayers, subject.layerId, slot, (
-      probe,
-    ) {
-      final insertAt = modelInsertionForSlot(
-        stack: cut.layers,
-        displayRows: displayLayers,
-        slot: probe,
-      );
-      if (insertAt == null) {
-        return null;
-      }
-      LayerDropPlan? read(LayerId? pointer) => resolveLayerDrop(
-        stack: cut.layers,
-        movingId: subject.layerId,
-        insertAt: insertAt,
-        pointerInRow: pointer,
-        alsoMoving: _rowSelectionCarriedBy(subject.layerId),
-      );
-      // 결정 6 at ONE gap: the half the pointer is in picks a boundary's
-      // meaning (F-31②), and where that meaning is no landing — a row
-      // riding the conte is never let go — the gap's other meaning is the
-      // last place the row can reach that way, read as if the pointer
-      // still stood on the row itself. Left to the walk instead, the caret
-      // fell a row INSIDE while the pointer was at the edge and came back
-      // to the edge once it went further (F-393's sweep, 10-18).
-      return read(pointerInRow) ??
-          (pointerInRow == null ? null : read(subject.layerId));
-    });
+    final landing = _nearestLanding(
+      displayLayers,
+      subject.layerId,
+      slot,
+      _cutLandings(cut, displayLayers, subject.layerId, pointerInRow),
+    );
     final plan = landing?.value;
     _plan = plan;
     _channel.value = LayerRowDragState(
@@ -325,6 +303,40 @@ class RowOrderDrag {
       joinLabel: _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
     );
   }
+
+  /// What letting [movingId] go at a slot of [displayLayers] does to
+  /// [cut]'s stack, asked slot by slot — null where it is no landing.
+  LayerDropPlan? Function(int probe) _cutLandings(
+    Cut cut,
+    List<Layer> displayLayers,
+    LayerId movingId,
+    LayerId? pointerInRow,
+  ) => (probe) {
+    final insertAt = modelInsertionForSlot(
+      stack: cut.layers,
+      displayRows: displayLayers,
+      slot: probe,
+    );
+    if (insertAt == null) {
+      return null;
+    }
+    LayerDropPlan? read(LayerId? pointer) => resolveLayerDrop(
+      stack: cut.layers,
+      movingId: movingId,
+      insertAt: insertAt,
+      pointerInRow: pointer,
+      alsoMoving: _rowSelectionCarriedBy(movingId),
+    );
+    // 결정 6 at ONE gap: the half the pointer is in picks a boundary's
+    // meaning (F-31②), and where that meaning is no landing — a row riding
+    // the conte is never let go — the gap's other meaning is the last place
+    // the row can reach that way, read as if the pointer still stood on the
+    // row itself. Left to the walk instead, the caret fell a row INSIDE
+    // while the pointer was at the edge and came back to the edge once it
+    // went further (F-393's sweep, 10-18).
+    return read(pointerInRow) ??
+        (pointerInRow == null ? null : read(movingId));
+  };
 
   /// 결정 6 (유저 확정 2026-08-22) — **THE CARET STANDS AT THE NEAREST SLOT
   /// THAT WOULD ACTUALLY LAND**, searching back toward the row's own place.
