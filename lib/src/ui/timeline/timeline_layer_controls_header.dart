@@ -49,7 +49,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
     this.displayedLayerIds,
     this.displayedOpacity = 1.0,
     this.displayedOnionSkinOn = false,
-    this.showRowSolos = true,
   }) : assert(
          axis == Axis.horizontal || railExtent != null,
          'a stood-up legend is told its extent',
@@ -112,11 +111,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
   /// onion legend's engaged state, UI-R17 #5).
   final bool displayedOnionSkinOn;
 
-  /// Hosts without a row filter (the storyboard's track-global rail,
-  /// UI-R5) pass false: the 'Solo …' flyout entries and the kind-solo
-  /// flyout stand down while the bulk ops and the master bar keep working.
-  final bool showRowSolos;
-
   /// Whether the visibility SOLO MODE is on (eye legend state color +
   /// flyout check).
   final bool visibilitySoloEnabled;
@@ -169,7 +163,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
     displayedLayerIds != null,
     displayedOpacity,
     displayedOnionSkinOn,
-    showRowSolos,
     onCollapseAllLanes != null,
     onExpandAllLanes != null,
     AppText.language,
@@ -189,7 +182,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
     visibilitySoloEnabled: visibilitySoloEnabled,
     displayedLayerIds: displayedLayerIds,
     displayedOnionSkinOn: displayedOnionSkinOn,
-    showRowSolos: showRowSolos,
   );
 
   // R9 #22: the cell no longer carries its own width — the rail's shared

@@ -162,8 +162,57 @@ List<Widget> timelineRowAudioOverlays({
   required Color color,
   int leadInAtStart = 0,
   String keyPrefix = 'timeline',
+}) => [
+  for (final strip in seRowAudioStrips(
+    layer: layer,
+    frameStartIndex: frameStartIndex,
+    frameEndIndexExclusive: frameEndIndexExclusive,
+    axis: axis,
+    frameRate: frameRate,
+    audioPeaksFor: audioPeaksFor,
+    color: color,
+    leadInAtStart: leadInAtStart,
+  ))
+    TimelineFrameSpan(
+      placement: TimelineFrameSpanPlacement(
+        startIndex: strip.startFrame,
+        endIndexExclusive: strip.endFrameExclusive,
+      ),
+      child: KeyedSubtree(
+        key: ValueKey<String>('$keyPrefix-audio-clip-${strip.keyName}'),
+        child: strip.strip,
+      ),
+    ),
+];
+
+/// One sound's waveform strip on an SE row ([seRowAudioStrips]): the frames
+/// it covers, the name it is keyed by, and the strip.
+typedef SeRowAudioStrip = ({
+  int startFrame,
+  int endFrameExclusive,
+  String keyName,
+  Widget strip,
+});
+
+/// An SE row's waveform strips with the frames each covers and the name it
+/// is keyed by — what [timelineRowAudioOverlays] places on a cut's cells,
+/// and the storyboard's S row on the track's axis. One reading of a sound
+/// for both: where it starts, how much of it is heard, and its gain and
+/// fades drawn on it.
+///
+/// ↩️The storyboard's S row read them on its own, and drew no gain and no
+/// fade (I-89 ① ⓕ, 2026-10-20).
+List<SeRowAudioStrip> seRowAudioStrips({
+  required Layer layer,
+  required int frameStartIndex,
+  int frameEndIndexExclusive = 1 << 30,
+  required Axis axis,
+  required ProjectFrameRate frameRate,
+  required AudioPeaks? Function(String filePath) audioPeaksFor,
+  required Color color,
+  int leadInAtStart = 0,
 }) {
-  final overlays = <Widget>[];
+  final strips = <SeRowAudioStrip>[];
   for (final span in seAudioSpans(layer, leadInAtStart: leadInAtStart)) {
     // Windowed like every sibling builder: the open-ended SE display
     // clone carries every downstream sound now, and an off-window
@@ -190,35 +239,26 @@ List<Widget> timelineRowAudioOverlays({
     if (audibleFrames <= 0) {
       continue;
     }
-    overlays.add(
-      TimelineFrameSpan(
-        placement: TimelineFrameSpanPlacement(
-          startIndex: span.startFrame,
-          endIndexExclusive: span.startFrame + audibleFrames,
-        ),
-        child: KeyedSubtree(
-          key: ValueKey<String>(
-            '$keyPrefix-audio-clip-${layer.id}-${span.clipIndex}'
-            '-b${span.startFrame}',
-          ),
-          child: _AudioClipStrip(
-            peaks: peaks,
-            frameRate: frameRate,
-            // Frames, not pixels: the strip reads its own box to learn what
-            // a frame is worth, so a zoom step repaints it without a rebuild.
-            audibleFrames: audibleFrames,
-            axis: axis,
-            color: color,
-            leadingFrames: span.leadingFrames,
-            gain: span.clip.gain,
-            fadeInFrames: span.clip.fadeInFrames,
-            fadeOutFrames: span.clip.fadeOutFrames,
-          ),
-        ),
+    strips.add((
+      startFrame: span.startFrame,
+      endFrameExclusive: span.startFrame + audibleFrames,
+      keyName: '${layer.id}-${span.clipIndex}-b${span.startFrame}',
+      strip: _AudioClipStrip(
+        peaks: peaks,
+        frameRate: frameRate,
+        // Frames, not pixels: the strip reads its own box to learn what a
+        // frame is worth, so a zoom step repaints it without a rebuild.
+        audibleFrames: audibleFrames,
+        axis: axis,
+        color: color,
+        leadingFrames: span.leadingFrames,
+        gain: span.clip.gain,
+        fadeInFrames: span.clip.fadeInFrames,
+        fadeOutFrames: span.clip.fadeOutFrames,
       ),
-    );
+    ));
   }
-  return overlays;
+  return strips;
 }
 
 /// Red warning lines for takes that CLIPPED (REC1-D), tooltip-explained.

@@ -51,7 +51,6 @@ import 'canvas/flip_hud_model.dart';
 import 'canvas/flip_hud_rows.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
-import 'audio/waveform_painter.dart';
 import 'storyboard_cut_blocks_painter.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_layer_policy.dart';
@@ -233,7 +232,11 @@ import 'timeline/timeline_scale.dart';
 import 'timeline/timeline_section_policy.dart'
     show TimelineSection, timelineSectionForLayerKind, timelineSectionLabel;
 import 'timeline/timeline_se_row_visual.dart'
-    show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
+    show
+        SePaperSpan,
+        SeSpanVisual,
+        seRowAudioStrips,
+        timelineRowClipMarkerOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
@@ -2561,7 +2564,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               rowFilter: widget.rowFilter,
               hiddenSections: widget.hiddenSections,
               onToggleSection: widget.onToggleSection,
-              showRowSolos: true,
               marksInUse: _legendMarksInUse,
               kinds: StoryboardPanel.railKinds,
               visibilitySoloEnabled: widget.visibilitySoloEnabled,
@@ -4155,30 +4157,29 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
         _paperSpan(block, layer),
       );
     }
-    // Waveforms above the paper (painted UNDER the SE writing): sounds
-    // are FRAME-LINKED — each carrying block windows its waveform,
-    // clamped to the block and the file length (cut ends no longer
-    // clip — the block may cross them).
+    // Waveforms above the paper (painted UNDER the SE writing): the
+    // timeline SE row's own strips — each carrying block windows its
+    // sound, clamped to the block and the file length, its gain and fades
+    // drawn on it — at their true global extent (cut ends no longer clip:
+    // the block may cross them).
     final audioPeaksFor = this.audioPeaksFor;
     if (audioPeaksFor != null) {
-      for (final span in seAudioSpans(layer)) {
-        final peaks = audioPeaksFor(span.clip.filePath);
-        if (peaks == null) {
-          continue;
-        }
-        // The offset trim shrinks the audible tail (same as the
-        // timeline rows and playback).
-        final endExclusive = math.min(
-          span.startFrame +
-              peaks.durationFrames(projectFrameRate) -
-              span.clip.offsetFrames,
-          span.endFrameExclusive,
-        );
-        if (endExclusive <= span.startFrame) {
-          continue;
-        }
+      for (final strip in seRowAudioStrips(
+        layer: layer,
+        frameStartIndex: 0,
+        axis: Axis.horizontal,
+        frameRate: projectFrameRate,
+        audioPeaksFor: audioPeaksFor,
+        // Ink on the paper spans, like the timeline SE rows.
+        color: timelineDrawingInkColor.withValues(alpha: 0.22),
+      )) {
         spans.add(
-          _waveformSpan(span, endExclusive, layer, peaks),
+          _frameSpan(
+            startFrame: strip.startFrame,
+            endExclusive: strip.endFrameExclusive,
+            key: ValueKey<String>('storyboard-audio-clip-${strip.keyName}'),
+            child: strip.strip,
+          ),
         );
       }
     }
@@ -4498,30 +4499,6 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
       frames: block.length,
       dialogue: dialogue ?? '',
       seName: seName,
-    ),
-  );
-
-  Positioned _waveformSpan(
-    SeAudioSpan span,
-    int endExclusive,
-    Layer layer,
-    AudioPeaks peaks,
-  ) => _frameSpan(
-    startFrame: span.startFrame,
-    endExclusive: endExclusive,
-    key: ValueKey<String>(
-      'storyboard-audio-clip-${layer.id}'
-      '-${span.clipIndex}-b${span.startFrame}',
-    ),
-    child: CustomPaint(
-      painter: WaveformPainter(
-        peaks: peaks,
-        frameRate: projectFrameRate,
-        pixelsPerFrame: timelineScale.pixelsPerFrame,
-        // Ink on the paper spans, like the timeline SE rows.
-        color: timelineDrawingInkColor.withValues(alpha: 0.22),
-        leadingFrames: span.clip.offsetFrames,
-      ),
     ),
   );
 

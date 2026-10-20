@@ -30,6 +30,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
+import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
@@ -620,6 +621,44 @@ void main() {
       ),
       findsNothing,
     );
+  });
+
+  // I-89 ① ⓕ (2026-10-20): the timeline SE row's own strips. ↩️The row
+  // read its sounds on its own, and drew no gain and no fade.
+  testWidgets('an S row\'s sound wears its gain and its fades, as the '
+      'timeline row\'s does', (tester) async {
+    await _pumpPanel(
+      tester,
+      project: _project(
+        seLayers: [
+          _seLayer().copyWith(
+            audioClips: [
+              AudioClip(
+                filePath: 'voice.wav',
+                frameId: const FrameId('lane-f'),
+                gain: 0.5,
+                fadeInFrames: 2,
+                fadeOutFrames: 3,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    final strip = find.descendant(
+      of: find.byKey(
+        const ValueKey<String>('storyboard-audio-clip-lane-se-0-b0'),
+      ),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is CustomPaint && widget.painter is WaveformPainter,
+      ),
+    );
+    final painter =
+        tester.widget<CustomPaint>(strip).painter! as WaveformPainter;
+
+    expect(painter.gain, 0.5);
+    expect(painter.fadeInFrames, 2);
+    expect(painter.fadeOutFrames, 3);
   });
 
   group('timeline-parity S rows (R4-⑨ 완벽통일)', () {

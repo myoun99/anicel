@@ -149,10 +149,13 @@ Future<void> activateCellEditor(
 /// must never create. A fork inside it made the button author a camera key
 /// instead of opening the key dialog — one entrance answering two gestures.
 /// The double tap is a gesture with two meanings; the button has one.
+///
+/// [layerId] null: no layer in hand — the storyboard's lanes in a gap — so
+/// a filled cell has nothing to open, and an empty one is made all the same.
 Future<void> activateCellOnDoubleTap(
   BuildContext context,
   EditorSessionManager session, {
-  required LayerId layerId,
+  required LayerId? layerId,
   required int frameIndex,
   Axis previewAxis = Axis.horizontal,
 }) async {
@@ -173,6 +176,9 @@ Future<void> activateCellOnDoubleTap(
       : session.cellInstances.activeCellHoldsAnInstance;
   if (!instanceHere) {
     createActiveInstance(session);
+    return;
+  }
+  if (layerId == null) {
     return;
   }
   await activateCellEditor(

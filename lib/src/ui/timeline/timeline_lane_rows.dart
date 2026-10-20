@@ -1321,8 +1321,10 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// single key the instant you pulled one, so the same axis had two
   /// grammars depending on whether you happened to grab a diamond.
   ///
-  /// Null keeps the band display-only (the storyboard's lanes). Every
-  /// timeline and x-sheet lane has one, camera included since 2026-08-08.
+  /// Null keeps the band display-only, for a host that hands no lane verbs.
+  /// Every timeline and x-sheet lane has one, camera included since
+  /// 2026-08-08, and every lane of the storyboard's rail since R5 ③b.
+  /// ↩️It named the storyboard's lanes as the display-only ones.
   final TimelineLaneRangeCallbacks? laneRange;
 
   /// Frame-axis direction; only the band's composition transposes.

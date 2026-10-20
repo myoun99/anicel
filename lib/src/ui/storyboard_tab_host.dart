@@ -463,6 +463,28 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     );
   }
 
+  /// The cells' double tap on a LANE (유저 2026-09-11: 「…싹 법 하나로
+  /// 통일」) — the timeline's own door ([activateCellOnDoubleTap]: a key
+  /// opens, an empty cell is keyed) on the layer in hand, at the cell the
+  /// double click names ([globalFrame]). The first click stood on the frame
+  /// under the pointer, and under a pixel a cell the double click names the
+  /// pixel's ([timelineDoubleTapAim]), so it lands there first — as the
+  /// timeline's door seeks its own frame.
+  ///
+  /// ↩️It forked by itself on this rail's Edit and ＋, and answered where
+  /// the first click had stood (I-89 ① ⓕ, 2026-10-20).
+  Future<void> _activateLaneCell(int globalFrame) async {
+    if (_session.editingGlobalFrame != globalFrame) {
+      _session.selectGlobalFrame(globalFrame);
+    }
+    await activateCellOnDoubleTap(
+      context,
+      _session,
+      layerId: _session.activeLayer?.id,
+      frameIndex: _session.currentFrameIndex,
+    );
+  }
+
   /// I-48: a double click on a layer's label renames the rows its first
   /// press acted on — the timeline rail's door, on this rail's rows.
   VoidCallback _renameOnLabelDoubleClick(LayerId pressed) =>
@@ -945,16 +967,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           ),
                       // H18: the cells family's release rule, here too.
                       onTapClear: _session.clearLaneRangeSelection,
-                      // The cells' double tap on a lane (유저 2026-09-11:
-                      // 「…싹 법 하나로 통일」), through this rail's own two
-                      // verbs — its Edit for a key, its ＋ for an empty cell.
-                      onActivateAt: (layerId, laneId, globalFrame) {
-                        if (_session.laneVerbs.canNameLaneKeys) {
-                          unawaited(editActiveInstance(context, _session));
-                        } else {
-                          _toolbarPanel.createInstance();
-                        }
-                      },
+                      onActivateAt: (_, _, globalFrame) =>
+                          unawaited(_activateLaneCell(globalFrame)),
                       onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
                       onMoveUpdate: (frameDelta) => _session
                           .laneMove.updateLaneRangeMoveDrag(frameDelta: frameDelta),
@@ -1038,9 +1052,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // their blend is that rail's own verb.
                     onLayerBlendModeSelected: _rowPresses.pickBlendMode,
                     // The timeline's rail legend on this panel too (UI-R5): the
-                    // same session-backed bulk flyouts + master opacity bar; the
-                    // row solos stand down (the storyboard rail is track-global,
-                    // no row filter here).
+                    // same session-backed bulk flyouts, solos and master
+                    // opacity bar (#904: every chip). ↩️The row solos stood
+                    // down here, with no row filter, until then.
                     visibilitySoloEnabled: _session.visibilitySolo.layerVisibilitySoloEnabled,
                     // What its legend opens, for a key on this panel (I-40).
                     onLegendMenus: (menus) => _session.railLegends.publish(

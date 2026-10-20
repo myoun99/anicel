@@ -129,7 +129,6 @@ class TimelineLegendMenus {
     this.visibilitySoloEnabled = false,
     this.displayedLayerIds,
     this.displayedOnionSkinOn = false,
-    this.showRowSolos = true,
   });
 
   /// No marks in use — a legend over no rows that carry one.
@@ -173,11 +172,6 @@ class TimelineLegendMenus {
   /// Whether every displayed drawing layer is ghosting (UI-R17 #5).
   final bool displayedOnionSkinOn;
 
-  /// Hosts without a row filter (the storyboard's track-global rail, UI-R5)
-  /// pass false: the solo entries and the kind solos stand down while the
-  /// bulk ops keep working.
-  final bool showRowSolos;
-
   /// Every row of every flyout the legend opens right now ([flyoutRowsOf])
   /// — what a key presses one of.
   List<PanelFlyoutItem> rows() => flyoutRowsOf([
@@ -218,10 +212,14 @@ class TimelineLegendMenus {
     ),
   ];
 
-  /// One column's flyout: its BULK OPS, then — only where the host shows
-  /// row solos — a divider and the SOLO entries. A solo half that comes
-  /// back EMPTY takes its divider with it, so a host with row solos on but
-  /// nothing to solo never shows a stray line. No legend, no flyout.
+  /// One column's flyout: its BULK OPS, then a divider and the SOLO
+  /// entries. A solo half that comes back EMPTY takes its divider with it,
+  /// so a legend with nothing to solo never shows a stray line. No legend,
+  /// no flyout.
+  ///
+  /// ↩️A host could turn the solos off (`showRowSolos`) — the storyboard's,
+  /// until it took every chip (#904, 2026-08-09: 「있는거면 다 달아서
+  /// 통일」); no host has since, and the switch went with I-89 ① ⓖ.
   ///
   /// The template four columns spell out (timesheet, mark, fill-ref, fx).
   /// [kind] deliberately does not: its whole flyout is solos with no bulk
@@ -234,7 +232,7 @@ class TimelineLegendMenus {
     final legend = this.legend;
     if (legend == null) return null;
     return () {
-      final solo = showRowSolos ? solos(legend) : const <PanelFlyoutEntry>[];
+      final solo = solos(legend);
       return [
         ...bulk(legend),
         if (solo.isNotEmpty) const PanelFlyoutDivider(),
@@ -335,7 +333,6 @@ class TimelineLegendMenus {
   LegendFlyout? get kind {
     final legend = this.legend;
     if (legend == null ||
-        !showRowSolos ||
         kinds.isEmpty && rowFilter.kinds.isEmpty) {
       return null;
     }

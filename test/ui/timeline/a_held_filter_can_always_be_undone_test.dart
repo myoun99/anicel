@@ -63,7 +63,6 @@ void main() {
                 onPreviewLayersOpacity: (_, _) {},
                 onCommitLayersOpacity: (_, _) {},
               ),
-              showRowSolos: true,
               rowFilter: filter,
               marksInUse: () => marksInUse,
               kinds: panelKinds,
