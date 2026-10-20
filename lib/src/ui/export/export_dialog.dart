@@ -2107,21 +2107,12 @@ class ExportDialogState extends State<ExportDialog> {
   /// live state (the window honestly shows what renders). A failure marks
   /// the job and the runner CONTINUES (부분 실패); Cancel stops the
   /// current job and leaves the rest queued. The user's own setup returns
-  /// when the queue rests.
+  /// when the queue rests ([_setupNow]).
   Future<void> runQueue() async {
     if (_isExporting || _queue.nextQueued == null) {
       return;
     }
-    final snapshotTab = _tab;
-    final snapshotSpecs = _specs;
-    final snapshotDestination = _destination;
-    // The names typed are the user's setup as much as the specs: each job
-    // puts its own into its field while it runs ([_loadJobIntoForm]), and a
-    // field left empty must come back empty, its name shown behind it.
-    final snapshotNames = {
-      for (final field in ExportTab.values.map(_nameFieldOf).nonNulls)
-        field.controller: field.controller.text,
-    };
+    final setup = _setupNow();
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
@@ -2159,14 +2150,7 @@ class ExportDialogState extends State<ExportDialog> {
         _progress.value = null;
         setState(() {
           _isExporting = false;
-          _tab = snapshotTab;
-          _specs = snapshotSpecs;
-          _destination = snapshotDestination;
-          for (final MapEntry(key: controller, value: text)
-              in snapshotNames.entries) {
-            controller.text = text;
-          }
-          _syncControllersFromSpecs();
+          _putSetup(setup);
           if (ran) {
             _statusMessage =
                 handOverSaid ?? _queueRestSentence(succeeded, failed);
@@ -2176,6 +2160,33 @@ class ExportDialogState extends State<ExportDialog> {
         _settleStanding();
       }
     }
+  }
+
+  /// The user's own setup on the window now, for a run of the queue to hand
+  /// back when it rests ([runQueue]).
+  ///
+  /// The names typed are the user's setup as much as the specs: each job
+  /// puts its own into its field while it runs ([_loadJobIntoForm]), and a
+  /// field left empty must come back empty, its name shown behind it.
+  _Setup _setupNow() => (
+    tab: _tab,
+    specs: _specs,
+    destination: _destination,
+    names: {
+      for (final field in ExportTab.values.map(_nameFieldOf).nonNulls)
+        field.controller: field.controller.text,
+    },
+  );
+
+  /// [setup] back on the window — inside the caller's `setState`.
+  void _putSetup(_Setup setup) {
+    _tab = setup.tab;
+    _specs = setup.specs;
+    _destination = setup.destination;
+    for (final MapEntry(key: controller, value: text) in setup.names.entries) {
+      controller.text = text;
+    }
+    _syncControllersFromSpecs();
   }
 
   /// [모두 렌더] IS WHERE A QUEUED PLACE IS HELD AGAINST WHAT ITS JOB WRITES
@@ -4267,6 +4278,15 @@ enum _Tally {
     _Tally.files => strings.exFileCount(count),
   };
 }
+
+/// The user's own setup on the window: the tab, the specs, the place, and
+/// what is typed in each name field ([ExportDialogState._setupNow]).
+typedef _Setup = ({
+  ExportTab tab,
+  ExportTabSpecs specs,
+  ExportDestination? destination,
+  Map<TextEditingController, String> names,
+});
 
 /// One picture file of a run: where it is written, what it is, and the
 /// encoder its format asks for (null is the default PNG).
