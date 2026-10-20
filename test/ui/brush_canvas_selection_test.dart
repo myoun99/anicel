@@ -9015,12 +9015,20 @@ void main() {
       await tester.pump();
       expect(env.commands.region, isNull, reason: 'the premise: not chosen');
 
+      // ⚠️THE FIRST FRAME, not the settled one: the channel's next ping
+      // puts a wrong copy right a microtask later, after it has been drawn
+      // — and one frame of ants is ants (measured: a mount that dropped
+      // the flag passed a check made after `setTool`).
+      SelectionAntsPainter? firstFrame;
+      var drawn = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        drawn = true;
+        firstFrame = antsOnScreen(tester);
+      });
       await env.setTool(CanvasTool.move);
-      expect(
-        find.byKey(layerKey),
-        findsOneWidget,
-        reason: 'the layer mounted on it',
-      );
+      expect(drawn, isTrue, reason: 'the mount drew a frame');
+      expect(firstFrame, isNotNull, reason: 'the layer mounted on it');
+      expect(firstFrame!.committedRegion, isNull);
       expect(antsOnScreen(tester)!.committedRegion, isNull);
     });
   });
