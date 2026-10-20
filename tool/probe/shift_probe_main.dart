@@ -5,7 +5,8 @@
 //     --dart-define=SHIFT_OUT=<dir>
 //
 // Writes `report.txt` into SHIFT_OUT — a line per case, `PASS` or `FAIL`
-// with what the framework's record held at a D — and exits.
+// with the keys the framework's record held, by name and by physical key —
+// and exits.
 //
 // It runs in the REAL app process, on the app's own Windows runner, because
 // the answer belongs to the engine and the runner the app ships with: what
@@ -20,6 +21,11 @@
 // 재기동하니까 해결되있음」. The keys round a gray arrow under a held right
 // Shift are one shape that leaves the record so; the runner's answer is for
 // any shape (windows/runner/flutter_window.cpp says why).
+//
+// ⚠️The engine itself syncs the LAST key of each modifier it saw to Windows,
+// letting go and pressing again. A case where the key left behind is that
+// last one is answered by the engine whatever the runner does — so each
+// stuck shape is also tried with the modifier's own key seen after it.
 //
 // Measurement, not a feature: not wired into the app, no strings, no UI
 // conventions apply.
@@ -64,26 +70,33 @@ const _wmSysKeyUp = 0x0105;
 const _vkRight = 0x27;
 const _vkD = 0x44;
 
+/// A key message's shape: its scan code and its extended bit, which the
+/// engine names the physical key by.
+typedef _Shape = ({int scancode, bool extended});
+
 /// One modifier as a keyboard sends it: the virtual key its messages carry,
-/// the keys Windows says are held while it is, its own key's shape, and the
-/// framework's names for either side of it.
+/// the keys Windows says are held while it is, its own key's shape and
+/// physical key, the framework's names for either side of it, and the
+/// shapes a second key-down of it is sent in while it is held.
 class _Modifier {
   _Modifier(
     this.name, {
     required this.key,
     required this.heldAs,
-    required this.scancode,
+    required this.shape,
+    required this.physical,
     required this.named,
-    this.extended = false,
+    required this.otherShapes,
     this.system = false,
   });
 
   final String name;
   final int key;
   final Set<int> heldAs;
-  final int scancode;
+  final _Shape shape;
+  final PhysicalKeyboardKey physical;
   final Set<LogicalKeyboardKey> named;
-  final bool extended;
+  final List<_Shape> otherShapes;
 
   /// Whether its messages are the SYS ones, as Alt's are.
   final bool system;
@@ -96,36 +109,45 @@ final _rightShift = _Modifier(
   'right Shift',
   key: 0x10,
   heldAs: {0x10, 0xA1},
-  scancode: 0x36,
+  shape: (scancode: 0x36, extended: false),
+  physical: PhysicalKeyboardKey.shiftRight,
   named: {LogicalKeyboardKey.shiftLeft, LogicalKeyboardKey.shiftRight},
+  otherShapes: const [],
 );
 
-/// The modifiers whose key-down can come in another shape than their own
-/// key's — here a scan code no key has, as software that types for a hand
-/// sends it.
+/// A scan code no key has, as software that types for a hand may send it.
+/// ⚠️Not 0: measured on this runner (F-411), the engine reads a key-down
+/// with no scan code as the modifier's own key, and nothing is left behind.
+const _noKeysShapes = [(scancode: 0x6F, extended: false)];
+
 final _modifiers = [
   _Modifier(
     'left Ctrl',
     key: 0x11,
     heldAs: {0x11, 0xA2},
-    scancode: 0x1D,
+    shape: (scancode: 0x1D, extended: false),
+    physical: PhysicalKeyboardKey.controlLeft,
     named: {LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.controlRight},
+    otherShapes: _noKeysShapes,
   ),
   _Modifier(
     'left Alt',
     key: 0x12,
     heldAs: {0x12, 0xA4},
-    scancode: 0x38,
+    shape: (scancode: 0x38, extended: false),
+    physical: PhysicalKeyboardKey.altLeft,
     named: {LogicalKeyboardKey.altLeft, LogicalKeyboardKey.altRight},
+    otherShapes: _noKeysShapes,
     system: true,
   ),
   _Modifier(
     'left Windows',
     key: 0x5B,
     heldAs: {0x5B},
-    scancode: 0x5B,
+    shape: (scancode: 0x5B, extended: true),
+    physical: PhysicalKeyboardKey.metaLeft,
     named: {LogicalKeyboardKey.metaLeft, LogicalKeyboardKey.metaRight},
-    extended: true,
+    otherShapes: [..._noKeysShapes, (scancode: 0x5B, extended: false)],
   ),
 ];
 
@@ -168,11 +190,23 @@ void _windowsHolds(Set<int> down) {
   }
 }
 
-int _lparam(int scancode, {required bool up, bool extended = false}) =>
+int _lparam(_Shape shape, {required bool up, bool wasDown = false}) =>
     1 |
-    (scancode << 16) |
-    (extended ? 1 << 24 : 0) |
-    (up ? (1 << 30) | (1 << 31) : 0);
+    (shape.scancode << 16) |
+    (shape.extended ? 1 << 24 : 0) |
+    (up || wasDown ? 1 << 30 : 0) |
+    (up ? 1 << 31 : 0);
+
+/// What the framework's record holds: its keys' names and physical keys.
+typedef _Held = ({
+  Set<LogicalKeyboardKey> logical,
+  Set<PhysicalKeyboardKey> physical,
+});
+
+_Held _record() => (
+  logical: {...HardwareKeyboard.instance.logicalKeysPressed},
+  physical: {...HardwareKeyboard.instance.physicalKeysPressed},
+);
 
 class _Keyboard {
   _Keyboard(this.view) {
@@ -180,28 +214,25 @@ class _Keyboard {
   }
 
   final int view;
-  Set<LogicalKeyboardKey> _heldAtD = const {};
+  _Held _atD = (logical: const {}, physical: const {});
 
   bool _note(KeyEvent event) {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.keyD) {
-      _heldAtD = {...HardwareKeyboard.instance.logicalKeysPressed};
+      _atD = _record();
     }
     return false;
   }
-
-  Set<LogicalKeyboardKey> get held => {
-    ...HardwareKeyboard.instance.logicalKeysPressed,
-  };
 
   Future<void> send(int message, int key, int lparam) async {
     _sendMessage(view, message, key, lparam);
     await Future<void>.delayed(const Duration(milliseconds: 60));
   }
 
-  Future<Set<LogicalKeyboardKey>> pressD() async {
-    await send(_wmKeyDown, _vkD, _lparam(0x20, up: false));
-    await send(_wmKeyUp, _vkD, _lparam(0x20, up: true));
-    return _heldAtD;
+  Future<_Held> pressD() async {
+    const d = (scancode: 0x20, extended: false);
+    await send(_wmKeyDown, _vkD, _lparam(d, up: false));
+    await send(_wmKeyUp, _vkD, _lparam(d, up: true));
+    return _atD;
   }
 
   Future<void> down(_Modifier modifier) async {
@@ -209,47 +240,66 @@ class _Keyboard {
     await send(
       modifier.downMessage,
       modifier.key,
-      _lparam(modifier.scancode, up: false, extended: modifier.extended),
+      _lparam(modifier.shape, up: false),
     );
   }
 
-  /// A second key-down of [modifier] while it is held, in a shape that is
-  /// not its own key's.
-  Future<void> downInAnotherShape(_Modifier modifier) =>
-      send(modifier.downMessage, modifier.key, _lparam(0x00, up: false));
+  /// [modifier]'s own key repeating while it is held: the last key of it
+  /// the engine saw is then its own.
+  Future<void> repeat(_Modifier modifier) => send(
+    modifier.downMessage,
+    modifier.key,
+    _lparam(modifier.shape, up: false, wasDown: true),
+  );
+
+  /// A second key-down of [modifier] while it is held, in [shape].
+  Future<void> downAs(_Modifier modifier, _Shape shape) =>
+      send(modifier.downMessage, modifier.key, _lparam(shape, up: false));
 
   Future<void> up(_Modifier modifier) async {
     _windowsHolds({});
     await send(
       modifier.upMessage,
       modifier.key,
-      _lparam(modifier.scancode, up: true, extended: modifier.extended),
+      _lparam(modifier.shape, up: true),
     );
   }
 
   /// What a keyboard sends round a gray arrow while Shift is held: the
   /// fake Shift up and down, with the extended bit, round the arrow.
   Future<void> arrowUnderShift() async {
-    await send(_wmKeyUp, 0x10, _lparam(0x36, up: true, extended: true));
-    await send(_wmKeyDown, _vkRight, _lparam(0x4D, up: false, extended: true));
-    await send(_wmKeyUp, _vkRight, _lparam(0x4D, up: true, extended: true));
-    await send(_wmKeyDown, 0x10, _lparam(0x36, up: false, extended: true));
+    const fake = (scancode: 0x36, extended: true);
+    const arrow = (scancode: 0x4D, extended: true);
+    await send(_wmKeyUp, 0x10, _lparam(fake, up: true));
+    await send(_wmKeyDown, _vkRight, _lparam(arrow, up: false));
+    await send(_wmKeyUp, _vkRight, _lparam(arrow, up: true));
+    await send(_wmKeyDown, 0x10, _lparam(fake, up: false));
   }
 }
 
-String _named(Set<LogicalKeyboardKey> held) =>
-    '[${held.map((key) => key.debugName).join(', ')}]';
+String _shown(_Held held) =>
+    'logical [${held.logical.map((key) => key.debugName).join(', ')}] '
+    'physical [${held.physical.map((key) => key.debugName).join(', ')}]';
+
+String _shapeName(_Shape shape) =>
+    '${shape.scancode.toRadixString(16)}${shape.extended ? ' extended' : ''}';
 
 Future<List<String>> _cases(_Keyboard keys) async {
   final lines = <String>[];
+
+  /// Held: the record names [modifier] and holds its own key. Let go of:
+  /// the record names it no more.
   void expectHeld(
     String name,
     _Modifier modifier,
-    Set<LogicalKeyboardKey> held, {
+    _Held held, {
     required bool isHeld,
   }) {
-    final passed = held.any(modifier.named.contains) == isHeld;
-    lines.add('${passed ? 'PASS' : 'FAIL'} $name: held ${_named(held)}');
+    final named = held.logical.any(modifier.named.contains);
+    final passed = isHeld
+        ? named && held.physical.contains(modifier.physical)
+        : !named;
+    lines.add('${passed ? 'PASS' : 'FAIL'} $name: ${_shown(held)}');
   }
 
   final shift = _rightShift;
@@ -271,7 +321,7 @@ Future<List<String>> _cases(_Keyboard keys) async {
   expectHeld(
     'let go of after an arrow, let go of at once',
     shift,
-    keys.held,
+    _record(),
     isHeld: false,
   );
   expectHeld(
@@ -281,33 +331,48 @@ Future<List<String>> _cases(_Keyboard keys) async {
     isHeld: false,
   );
 
+  await keys.down(shift);
+  await keys.arrowUnderShift();
+  await keys.repeat(shift);
+  expectHeld(
+    'held through an arrow and its own repeat, still held',
+    shift,
+    await keys.pressD(),
+    isHeld: true,
+  );
+  await keys.up(shift);
+  expectHeld(
+    'let go of after an arrow and its own repeat, let go of at once',
+    shift,
+    _record(),
+    isHeld: false,
+  );
+
   for (final modifier in _modifiers) {
-    await keys.down(modifier);
-    await keys.downInAnotherShape(modifier);
-    expectHeld(
-      '${modifier.name} held twice, still held',
-      modifier,
-      await keys.pressD(),
-      isHeld: true,
-    );
-    await keys.up(modifier);
-    expectHeld(
-      '${modifier.name} let go of, let go of at once',
-      modifier,
-      keys.held,
-      isHeld: false,
-    );
-    expectHeld(
-      '${modifier.name} let go of, let go of at D',
-      modifier,
-      await keys.pressD(),
-      isHeld: false,
-    );
+    for (final shape in modifier.otherShapes) {
+      final named = '${modifier.name} and ${_shapeName(shape)}';
+      await keys.down(modifier);
+      await keys.downAs(modifier, shape);
+      await keys.repeat(modifier);
+      expectHeld(
+        '$named held, still held',
+        modifier,
+        await keys.pressD(),
+        isHeld: true,
+      );
+      await keys.up(modifier);
+      expectHeld(
+        '$named let go of, let go of at once',
+        modifier,
+        _record(),
+        isHeld: false,
+      );
+    }
   }
 
   await keys.down(shift);
   await keys.up(shift);
-  expectHeld('a plain press lets go', shift, keys.held, isHeld: false);
+  expectHeld('a plain press lets go', shift, _record(), isHeld: false);
   return lines;
 }
 
