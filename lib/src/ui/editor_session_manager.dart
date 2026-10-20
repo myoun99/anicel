@@ -1242,7 +1242,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/pixel_verbs.dart), carved out of the cell verbs
   // when I-55 doubled the family. Callers name it, as they name [cells].
-  late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels);
+  late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels, solo: visibilitySolo);
 
   // ── the rail legends: what each panel's header opens, for a key (I-40) ──
   final RailLegends railLegends = RailLegends();

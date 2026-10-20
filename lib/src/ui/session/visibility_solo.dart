@@ -178,10 +178,34 @@ class VisibilitySolo {
     return asSaved;
   }
 
+  /// [layers] with each eye as the USER set it — the solo's flips put back,
+  /// as the file records them ([projectAsSavedWithoutSolo]). Identity with
+  /// no solo up.
+  ///
+  /// 🚨F-399 (유저 2026-10-18): 「활성레이어 솔로 상태라도 여러 행의 블록
+  /// 선택하고 변형작동시 가능하게하도록. 지금 현재 서있는 레이어만
+  /// 적용되는듯」. A pixel verb acts on the rows that are switched on
+  /// (유저 08-27), and the solo switched none of them for an edit: it is
+  /// display (F-125: 「진짜 표시용만 바꿀뿐」), and the file keeps the eyes
+  /// from before it (F-153). So an edit asks the eyes the file does.
+  List<Layer> layersAsSet(List<Layer> layers) {
+    final snapshot = _visibilitySoloSnapshot;
+    if (snapshot == null) {
+      return layers;
+    }
+    return [
+      for (final layer in layers)
+        switch (snapshot[layer.id]) {
+          null => layer,
+          final wasVisible => _eyeRestoredTo(wasVisible)(layer),
+        },
+    ];
+  }
+
   /// What 「put this row's eye back to what the snapshot remembers」 MEANS,
-  /// spelled once. [exitVisibilitySolo] writes it into the session and
-  /// [projectAsSavedWithoutSolo] writes it into the project being saved —
-  /// two sinks, one law.
+  /// spelled once. [exitVisibilitySolo] writes it into the session,
+  /// [projectAsSavedWithoutSolo] into the project being saved and
+  /// [layersAsSet] into the rows an edit asks — three sinks, one law.
   Layer Function(Layer) _eyeRestoredTo(bool visible) => (layer) =>
       layer.isVisible == visible ? layer : layer.copyWith(isVisible: visible);
 

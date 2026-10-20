@@ -603,6 +603,88 @@ void main() {
         ('twin-cel-0', false),
       ]);
     });
+
+    /// The cels a transform's confirm lands on, by name.
+    List<String> landsOn(EditorSessionManager session) => [
+      for (final key in pixelVerbsOf(session).transformCellKeys())
+        key.frameId.value,
+    ];
+
+    // 🚨F-399 (유저 2026-10-18): 「활성레이어 솔로 상태라도 여러 행의 블록
+    // 선택하고 변형작동시 가능하게하도록. 지금 현재 서있는 레이어만
+    // 적용되는듯」. The solo switches the other rows' eyes off for the
+    // screen, and the ladder asked those eyes.
+    testWidgets('with the solo up, a range across both rows still lands on '
+        'both — the solo is display, not an edit', (tester) async {
+      final session = await pump(tester);
+      final (:a, :b) = await rowAndTwin(tester, session);
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: a.id,
+        layerIds: [a.id, b.id],
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      final before = landsOn(session);
+      expect(before, contains('twin-cel-0'), reason: 'the premise');
+
+      session.visibilitySolo.toggleLayerVisibilitySolo();
+      await tester.pump();
+      expect(
+        session.requireActiveCut.layers.byId(b.id)!.isVisible,
+        isFalse,
+        reason: 'the premise: the solo switched the twin off',
+      );
+
+      expect(landsOn(session), before);
+      expect(
+        lifted(session),
+        isNull,
+        reason: 'nothing else is lifted live: the twin is not on screen, '
+            'and it lands at the confirm',
+      );
+    });
+
+    testWidgets('and a row the USER switched off stays out of it, solo or '
+        'not', (tester) async {
+      final session = await pump(tester);
+      final (:a, :b) = await rowAndTwin(tester, session);
+      session.layerSwitches.toggleLayerVisibility(b.id);
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: a.id,
+        layerIds: [a.id, b.id],
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      final before = landsOn(session);
+      expect(before, isNot(contains('twin-cel-0')), reason: 'the premise');
+
+      session.visibilitySolo.toggleLayerVisibilitySolo();
+      await tester.pump();
+      expect(landsOn(session), before);
+    });
+
+    testWidgets('and standing on a row the user switched off, the solo '
+        'showing it does not make it one an edit reaches', (tester) async {
+      final session = await pump(tester);
+      final (:a, b: _) = await rowAndTwin(tester, session);
+      session.layerSwitches.toggleLayerVisibility(a.id);
+      await tester.pump();
+      expect(session.pixelVerbs.pixelVerbSubject, PixelVerbSubject.nothing);
+
+      session.visibilitySolo.toggleLayerVisibilitySolo();
+      await tester.pump();
+      expect(
+        session.requireActiveCut.layers.byId(a.id)!.isVisible,
+        isTrue,
+        reason: 'the premise: the solo shows the row you stand on',
+      );
+      expect(
+        session.pixelVerbs.pixelVerbSubject,
+        PixelVerbSubject.nothing,
+        reason: 'the eye is the one the file keeps (F-153) — the solo '
+            'changes nothing an edit reaches, either way',
+      );
+    });
   });
 
   group('the marquee reaches a row where the row shows', () {

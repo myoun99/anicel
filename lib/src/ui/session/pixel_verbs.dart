@@ -27,6 +27,7 @@ import 'pixel_board.dart';
 import 'pixel_editing.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
+import 'visibility_solo.dart';
 
 /// The canvas-side facts a PIXEL VERB press needs, read together at the
 /// moment of the press.
@@ -66,12 +67,17 @@ class PixelVerbs {
     required PixelEditing pixelEditing,
     required RenderCaches renderCaches,
     required PixelBoard pixelBoard,
+    required VisibilitySolo solo,
   }) : _project = project,
        _selection = selection,
        _controllers = controllers,
        _pixelEditing = pixelEditing,
        _renderCaches = renderCaches,
-       _pixelBoard = pixelBoard;
+       _pixelBoard = pixelBoard,
+       _solo = solo;
+
+  /// The eyes an edit asks — the user's, not the solo's ([_celOf]).
+  final VisibilitySolo _solo;
 
   /// 픽셀 복사's board — the app clipboard's, one for every open project.
   final PixelBoard _pixelBoard;
@@ -142,8 +148,11 @@ class PixelVerbs {
     if (cut == null) {
       return null;
     }
+    // What the canvas SHOWS — the solo's eyes, since the solo is what is on
+    // screen. A cel the ladder names that is not shown lands at the confirm.
     final shown = {
-      for (final layer in cut.layers) ?_celOf(cut, layer, null),
+      for (final layer in cut.layers)
+        ?_celOf(cut, layer, null, eyes: cut.layers),
     };
     final standing = _standingCel(cut);
     final lifted = {
@@ -195,12 +204,13 @@ class PixelVerbs {
     if (cut == null) {
       return const [];
     }
+    final eyes = _solo.layersAsSet(cut.layers);
     final range = _selection.frameRangeSelection.value;
     if (range == null) {
       final standing = _standingLayer();
       return standing == null
           ? const []
-          : _rowCels(cut, standing, null, intoFolders: intoFolders);
+          : _rowCels(cut, standing, null, eyes: eyes, intoFolders: intoFolders);
     }
     final byId = {for (final layer in _project.layers) layer.id: layer};
     final rows = range.layerIds.isEmpty ? [range.layerId] : range.layerIds;
@@ -208,7 +218,7 @@ class PixelVerbs {
       for (final layerId in rows)
         if (byId[layerId] case final layer?)
           for (var i = range.startIndex; i < range.endIndexExclusive; i++)
-            ..._rowCels(cut, layer, i, intoFolders: intoFolders),
+            ..._rowCels(cut, layer, i, eyes: eyes, intoFolders: intoFolders),
     ];
   }
 
@@ -232,7 +242,12 @@ class PixelVerbs {
   /// The cel you are standing on: the ACTIVE layer's, at the playhead.
   BrushFrameKey? _standingCel(Cut cut) => switch (_standingLayer()) {
     null => null,
-    final layer => _celOf(cut, layer, null),
+    final layer => _celOf(
+      cut,
+      layer,
+      null,
+      eyes: _solo.layersAsSet(cut.layers),
+    ),
   };
 
   /// [layer]'s cel at [frameIndex] (the playhead when null) — or, a FOLDER
@@ -241,20 +256,30 @@ class PixelVerbs {
     Cut cut,
     Layer layer,
     int? frameIndex, {
+    required List<Layer> eyes,
     required bool intoFolders,
   }) {
     if (intoFolders && layer.kind.groupsLayers) {
       return [
         for (final member in cut.layers.subtreeMembersOf(layer.id))
-          ?_celOf(cut, member, frameIndex),
+          ?_celOf(cut, member, frameIndex, eyes: eyes),
       ];
     }
-    return [?_celOf(cut, layer, frameIndex)];
+    return [?_celOf(cut, layer, frameIndex, eyes: eyes)];
   }
 
   /// [layer]'s cel at [frameIndex] (the playhead when null), if a pixel verb
   /// may reach it.
-  BrushFrameKey? _celOf(Cut cut, Layer layer, int? frameIndex) {
+  ///
+  /// [eyes] is the stack whose eyes say what is switched on: the user's
+  /// for an edit ([VisibilitySolo.layersAsSet] — the solo is display,
+  /// F-399), the solo's for what the canvas shows.
+  BrushFrameKey? _celOf(
+    Cut cut,
+    Layer layer,
+    int? frameIndex, {
+    required List<Layer> eyes,
+  }) {
     // 🚨HIDDEN ROWS ARE NOT TOUCHED. 유저 2026-08-27: 「해당 두 버튼은
     // 비지블이 on인 레이어만 활성화되야함. **기본적으로 그림 조작하는건
     // 그런느낌인거지**」 — the reason is general, so it is stated as the
@@ -266,7 +291,8 @@ class PixelVerbs {
     // `hidden_folder_is_hidden_test`, which caught this line reading the
     // raw flag — ⚠️and counts it in COMMENTS too, so the flag's name
     // cannot be written here even to say not to use it.
-    if (!layerAcceptsBrushInput(layer) || !cut.layers.rowVisible(layer)) {
+    if (!layerAcceptsBrushInput(layer) ||
+        !eyes.rowVisible(eyes.byId(layer.id) ?? layer)) {
       return null;
     }
     final frame = _controllers.timelineController.resolveFrameForLayer(
