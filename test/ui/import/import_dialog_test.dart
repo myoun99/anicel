@@ -290,6 +290,47 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('🎯F-405: one press of Import is ONE undo — every file it '
+      'placed goes back together', (tester) async {
+    // 🗣️유저 2026-10-19: 「여러파일 임포트/배치시 레이어 하나당 한번언두인데
+    // 임포트한거 한번에 언두하도록」.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final a = await tester.runAsync(() => writePng('a.png'));
+    final b = await tester.runAsync(() => writePng('b.png'));
+    final layersBefore = s.requireActiveCut.layers.length;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [a!, b!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
+    await settleAsync(
+      tester,
+      () => s.requireActiveCut.layers.length == layersBefore + 2,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      s.requireActiveCut.layers.length,
+      layersBefore + 2,
+      reason: 'CONTROL: a layer each',
+    );
+
+    s.undo();
+
+    expect(
+      s.requireActiveCut.layers.length,
+      layersBefore,
+      reason: 'both go with the one undo',
+    );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
   /// The media pool's ＋ became a destination in this window rather
   /// than a picker of its own, which is what makes the two import
   /// entrances one. The browser accepted movies and the window refused

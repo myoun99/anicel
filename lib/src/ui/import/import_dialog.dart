@@ -854,7 +854,18 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   Future<void> _runImport() async {
-    if (!_canImport || !await _answerMovieRates() || !mounted) {
+    if (!_canImport) {
+      return;
+    }
+    // 🗣️F-405 (유저 2026-10-19: 「여러파일 임포트/배치시 레이어 하나당
+    // 한번언두인데 임포트한거 한번에 언두하도록」): what one press of Import
+    // writes is ONE undo step — every file it registers or places, and the
+    // project rate it took for a movie when it asked. The doors write a
+    // file at a time across many events, so the press folds them once it
+    // is over, as a sweep across rows does ([HistoryGestures.foldSince]).
+    final history = widget.session.historyManager.gestures;
+    final pressed = history.mark;
+    if (!await _answerMovieRates() || !mounted) {
       return;
     }
     setState(() {
@@ -886,6 +897,9 @@ class _ImportDialogState extends State<ImportDialog> {
       cancelLive: _wait.waiting,
       task: (report) => _importAll(tally, report),
     );
+    // What landed is folded however the run ended — a batch that stopped
+    // part-way is still one press.
+    history.foldSince(pressed, 'Import');
     if (!finished || !mounted) {
       return; // the dialog went away part-way through the batch
     }

@@ -130,7 +130,9 @@ void main() {
 
   testWidgets('a 23.976 movie in a 24 project is named when Import is '
       'pressed — and taken, the project runs at its rate and the movie '
-      'comes in from where it was placed', (tester) async {
+      'comes in from where it was placed, both of them ONE undo', (
+    tester,
+  ) async {
     final movie = await write(tester, 'take.mp4');
     final s = await open(tester, [movie]);
 
@@ -147,6 +149,11 @@ void main() {
       const ProjectFrameRate.ntsc(24),
     );
     expect(placedFrom(s, movie)!.mediaReference!.frameOffset, 0);
+
+    // F-405: the rate was taken by the press that placed the movie.
+    s.undo();
+    expect(placedFrom(s, movie), isNull);
+    expect(s.projectSettings.projectFrameRate, ProjectFrameRate.fps24);
     s.playbackRig.prerenderScheduler.cancel();
   });
 
