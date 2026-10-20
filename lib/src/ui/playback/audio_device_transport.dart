@@ -407,6 +407,14 @@ class AudioDeviceTransport {
         _keep(device);
         _coming.waitOn(device);
       case OutputRefused():
+        // 🧪MUTATION: setting this false SURVIVES the suite — never applied.
+        // With an output in hand, a refusal is an open that fails or a
+        // schedule the binary will not take, and no bench here can stage
+        // either: `QaAudioDevice` binds to the real binary, the null
+        // backend's one device always opens, and the binary turns away only
+        // a schedule the app never builds (a negative count, a buffer it did
+        // not make). The reachable half — no output at all — is pinned in
+        // `audio_device_transport_test` ("no device → …").
         _outputRefused = true;
       case OutputArmed(:final deviceRate, :final cannotPlay):
         _keep(device);
