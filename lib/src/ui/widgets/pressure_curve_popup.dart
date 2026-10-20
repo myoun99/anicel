@@ -1,4 +1,3 @@
-import 'app_tooltip.dart';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
@@ -6,10 +5,10 @@ import '../input/control_press_claim.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../theme/app_theme.dart';
-import '../theme/disabled_ink.dart';
 import 'anchored_popup.dart';
 import 'field_slider.dart';
 import 'kept_tail_row.dart';
+import 'setting_source_button.dart';
 import 'axis_bar_gesture.dart' show OwningPanGestureRecognizer;
 import '../text/app_strings.dart' show AppText;
 import '../repaint_props.dart';
@@ -36,10 +35,8 @@ class PressureCurveButton extends StatelessWidget {
     this.enabled = true,
   });
 
-  /// False dims the button and refuses the popup (TP2): the tools that take
-  /// no pressure keep the control in place and greyed rather than losing it,
-  /// so the row never changes shape and "does pressure apply here?" has a
-  /// visible answer.
+  /// False dims the button and refuses the popup — see
+  /// [SettingSourceButton.enabled].
   final bool enabled;
 
   /// Widget key string for the trigger button ('brush-tool-pressure-size').
@@ -53,147 +50,38 @@ class PressureCurveButton extends StatelessWidget {
   final Map<BrushInputSource, BrushPressureCurve?> curves;
   final ValueChanged<Map<BrushInputSource, BrushPressureCurve?>> onChanged;
 
-  /// The OFF state's ink, mark and edge together.
-  ///
-  /// 유저, R6 #2: 「필압아이콘 필압설정안하면 x잖아. 지금 진하니까 불투명도
-  /// 낮은 하얀색 x로」 · 「테두리도 그럼 흐리게하자」.
-  ///
-  /// ⚠️It is NOT [AppColors.textDim], which is what it used to be and is the
-  /// reason it read as loud: that token is 0xFF9DA2A6 against body text's
-  /// 0xFFB4B8BB — a "dim" that is only dim beside white, and BRIGHTER than
-  /// most of the row it sits in. The one control whose whole message is
-  /// "this setting is doing nothing" was the strongest mark on the line.
-  ///
-  /// A transparent white rather than another opaque grey, so it dims
-  /// against whatever surface the button lands on — the tool settings, the
-  /// brush panel and the top strip are three different greys.
-  static const Color _offInk = Color(0x4DFFFFFF);
-  static const Color _offEdge = Color(0x1AFFFFFF);
-
-  /// The mini curve this button paints, and the padding around it. Named
-  /// because [slotWidth] is derived from them and a row reserving the slot
-  /// must not re-derive either.
-  /// ⚠️Two doubles rather than a `Size`: `Size.width` is not a constant
-  /// expression, and [slotWidth] has to be one.
-  static const double _curveWidth = 22;
-  static const double _curveHeight = 14;
-  static const Size _curveSize = Size(_curveWidth, _curveHeight);
-  static const double _curvePadding = 3;
-
-  /// How wide this button stands in a settings row.
-  ///
-  /// ⚠️The border is NOT in the sum: a [DecoratedBox] sizes itself to its
-  /// child and paints the shape over that box, so the stroke costs no
-  /// layout width. (A `Container` with the same decoration would differ —
-  /// it applies `decoration.padding`.)
-  ///
-  /// 🚨A ROW WITHOUT A CURVE BUTTON RESERVES THIS MUCH ANYWAY (유저 09-08:
-  /// 「슬라이더 크기는 항상 고정되도록. 압력버튼없으면 그냥 빈공간으로」).
-  /// Two of the settings panel's twenty sliders carry a button, and before
-  /// this the other eighteen ate the space — the same control at two widths
-  /// in one panel, which is the 「자리는 항상 예약하고 내용만 바꾼다」 rule
-  /// read backwards.
-  ///
-  /// ⚠️Kept honest by `pressure_curve_button_slot_test`, which lays the real
-  /// button out and fails if its width stops matching this number.
-  static const double slotWidth = _curveWidth + _curvePadding * 2;
-
-  /// Spelled out rather than left to [BorderSide]'s default, so the note in
-  /// [slotWidth] about the stroke costing no width names a real number.
-  static const double _borderWidth = 1;
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => SettingSourceButton(
+    keyValue: keyValue,
+    tooltip: AppText.strings.penPressureTitle,
+    enabled: enabled,
     // ANY source counts: the button says "this setting is driven", and after
     // the source axis that is no longer a question about pressure alone.
-    final active = enabled && curves.values.any((curve) => curve != null);
-    final button = AppTooltip(
-      message: AppText.strings.penPressureTitle,
-      child: Material(
-        color: Colors.transparent,
-        child: ControlPressClaim(
-          onPressed: enabled
-              ? () => showPressureCurvePopup(
-                  context,
-                  target: target,
-                  initialCurves: curves,
-                  onChanged: onChanged,
-                )
-              : null,
-          child: InkWell(
-            key: ValueKey<String>(keyValue),
-            customBorder: AppShapes.container(AppShapes.wellRadius),
-            onTap: silentPress(
-              enabled
-                  ? () => showPressureCurvePopup(
-                      context,
-                      target: target,
-                      initialCurves: curves,
-                      onChanged: onChanged,
-                    )
-                  : null,
-            ),
-            child: DecoratedBox(
-              decoration: ShapeDecoration(
-                shape: AppShapes.container(
-                  AppShapes.wellRadius,
-                  side: BorderSide(
-                    color: dimmedIfDisabled(
-                      active ? AppColors.accent : _offEdge,
-                      enabled: enabled,
-                    ),
-                    width: _borderWidth,
-                  ),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(_curvePadding),
-                child: CustomPaint(
-                  size: _curveSize,
-                  painter: _MiniCurvePainter(
-                    // The thumbnail draws PRESSURE — the source every device
-                    // has. A thumbnail that tried to show three would be
-                    // three unreadable lines at 22x14.
-                    curve: curves[BrushInputSource.pressure],
-                    color: dimmedIfDisabled(
-                      active ? AppColors.accent : _offInk,
-                      enabled: enabled,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    // The same 40% the field slider dims to, so a disabled group reads as
-    // one thing rather than as three different greys — [disabledInkOpacity]
-    // is where that figure lives now.
-    //
-    // 🪦It used to be `Opacity(0.4)` around the whole button, and that is a
-    // compositing boundary: it cost the panel it sits in its bake, on every
-    // frame (유저 확정 2026-09-22, 보드
-    // `a-disabled-bar-dims-without-a-layer-Q1`). The well's own two colours
-    // carry the dimming now.
-    return button;
-  }
+    active: curves.values.any((curve) => curve != null),
+    onPressed: (anchor) => showPressureCurvePopup(
+      anchor,
+      target: target,
+      initialCurves: curves,
+      onChanged: onChanged,
+    ),
+    glyph: (ink) => _MiniCurvePainter(
+      // The thumbnail draws PRESSURE — the source every device has. A
+      // thumbnail that tried to show three would be three unreadable lines
+      // at 22x14.
+      curve: curves[BrushInputSource.pressure],
+      color: ink,
+    ),
+  );
 }
 
-/// The tiny in-button preview: the CURVE when pressure is on, and an X when
-/// it is off.
-///
-/// 유저, R4 #9: 필압 적용 안 했을 때의 ui, 지금 버튼이 상단정렬된 직선의
-/// 그래프가 그대로 보이는데, 그게 아니라 해당 버튼에 그래프 말고 x 이렇게 둬서
-/// 필압 적용 안 되어 있다는 거 알기 쉽게.
+/// The tiny in-button preview: the CURVE when pressure is on, and the off
+/// mark ([paintSettingOffMark]) when it is off.
 ///
 /// The OFF state used to draw `evaluate(t) ?? 1.0` — a flat line pinned to
 /// the top of the box, which is a perfectly truthful graph of "pressure has
 /// no effect" and reads at 22×14px as a graph you have not looked at
 /// closely. Worse, an identity curve that has been dragged flat draws the
-/// same picture and means the opposite thing. An X is not a graph at all,
-/// which is exactly the point: OFF is a different KIND of state, not a
-/// shape the curve can take.
+/// same picture and means the opposite thing.
 class _MiniCurvePainter extends CustomPainter with RepaintOnProps {
   const _MiniCurvePainter({required this.curve, required this.color});
 
@@ -202,25 +90,10 @@ class _MiniCurvePainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      // Round ends so the X's four arms do not read as chipped at this size.
-      ..strokeCap = StrokeCap.round;
+    final paint = settingGlyphPaint(color);
     final shape = curve;
     if (shape == null) {
-      // Inset, so the X is a mark inside the button rather than a cross
-      // that touches its border on all four sides.
-      const inset = 3.0;
-      final box = Rect.fromLTRB(
-        inset,
-        inset,
-        size.width - inset,
-        size.height - inset,
-      );
-      canvas.drawLine(box.topLeft, box.bottomRight, paint);
-      canvas.drawLine(box.topRight, box.bottomLeft, paint);
+      paintSettingOffMark(canvas, size, paint);
       return;
     }
     canvas.drawPath(pressureCurvePath(shape, size, steps: 12), paint);
@@ -254,9 +127,9 @@ Path pressureCurvePath(
   return path;
 }
 
-/// Popup geometry. The WIDTH is frozen at 248 (유저 확정 2026-09-08 ⑧); the
-/// height is the axis that gives.
-const double _popupWidth = 248;
+/// Popup geometry. The WIDTH is the source windows' frozen one
+/// ([SettingSourceButton.windowWidth]); the height is the axis that gives.
+const double _popupWidth = SettingSourceButton.windowWidth;
 
 /// The layout after Clip Studio's 影響元設定 (F-176-Q2, 유저 2026-10-18
 /// 「첨부한 클튜 팝업창 최대한 참고해서 구현」): a row per input — its tick and
@@ -530,30 +403,12 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
       children: [
         SizedBox(
           width: _nameWidth,
-          // The NAME is the toggle — 「선택 표시는 색상만」, so on and off
-          // differ in ink and in nothing else. Fires on release inside the
-          // button: this is not a rail row, so it is not a tap-down.
-          child: ControlPressClaim(
+          // The NAME is the toggle.
+          child: SettingSourceName(
+            keyValue: 'curve-source-${source.name}',
+            label: _nameOf(source),
+            lit: draft.enabled,
             onPressed: () => _setEnabled(source, !draft.enabled),
-            child: InkWell(
-              key: ValueKey<String>('curve-source-${source.name}'),
-              customBorder: AppShapes.container(AppShapes.wellRadius),
-              onTap: silentPress(() => _setEnabled(source, !draft.enabled)),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  _nameOf(source),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: draft.enabled
-                        ? AppColors.accent
-                        : PressureCurveButton._offInk,
-                  ),
-                ),
-              ),
-            ),
           ),
         ),
         const SizedBox(width: _nameGap),

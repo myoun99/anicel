@@ -1,10 +1,13 @@
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
+import 'package:anicel/src/ui/widgets/setting_source_button.dart';
+import 'package:anicel/src/ui/widgets/tip_direction_popup.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The settings panel reserves [PressureCurveButton.slotWidth] on EVERY
+/// The settings panel reserves [SettingSourceButton.slotWidth] on EVERY
 /// slider row, so eighteen sliders without a curve button stay the same
 /// length as the two with one. That reservation is a number written in one
 /// place and a widget laid out somewhere else — this is the mechanism that
@@ -30,8 +33,38 @@ void main() {
 
     expect(
       tester.getSize(find.byKey(const ValueKey<String>('slot-probe'))).width,
-      PressureCurveButton.slotWidth,
+      SettingSourceButton.slotWidth,
     );
+  });
+
+  testWidgets('the angle\'s direction button stands in the same slot, lit or '
+      'not (F-176-Q6)', (tester) async {
+    for (final base in [
+      BrushTipRotationMode.fixed,
+      BrushTipRotationMode.direction,
+    ]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: TipDirectionButton(
+                direction: (base: base, random: 0),
+                onChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(
+        tester
+            .getSize(
+              find.byKey(const ValueKey<String>(TipDirectionButton.keyValue)),
+            )
+            .width,
+        SettingSourceButton.slotWidth,
+        reason: base.name,
+      );
+    }
   });
 
   testWidgets('a curve on the button does not change its width', (
@@ -58,7 +91,7 @@ void main() {
 
     expect(
       tester.getSize(find.byKey(const ValueKey<String>('slot-probe'))).width,
-      PressureCurveButton.slotWidth,
+      SettingSourceButton.slotWidth,
     );
   });
 }

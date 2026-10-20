@@ -44,6 +44,7 @@ import '../widgets/app_tooltip.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
+import '../widgets/setting_source_button.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../dialogs/dialog_verb.dart';
 import '../dialogs/preferences_dialog.dart';
@@ -1062,7 +1063,7 @@ class _BrushGroupButton extends StatelessWidget {
               _padding * 2 +
               _BrushValueBars.fullBar +
               _BrushValueBars._gap +
-              PressureCurveButton.slotWidth,
+              SettingSourceButton.slotWidth,
           height:
               _padding * 2 + _BrushValueBars._barHeight * 3 + _lineGap * 2,
           builder: (context, _) => Padding(
@@ -1135,10 +1136,10 @@ class _BrushValueBars extends StatelessWidget {
   /// pressure button after each, and the gaps.
   static const double fixedWidth =
       _gap +
-      PressureCurveButton.slotWidth +
+      SettingSourceButton.slotWidth +
       _gap +
       _gap +
-      PressureCurveButton.slotWidth;
+      SettingSourceButton.slotWidth;
 
   /// The size bar as the strip writes it — the one the strip shows, and the
   /// one [narrowestIn] measures.

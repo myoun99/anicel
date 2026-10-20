@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/panels/editor_panel_dock.dart';
 import 'package:anicel/src/ui/panels/editor_panel_frame.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
+import 'package:anicel/src/ui/widgets/tip_direction_popup.dart';
 
 void main() {
   testWidgets('EditorPanelFrame renders toolbar and body at small sizes', (
@@ -443,13 +444,21 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the angle\'s random turn reaches the engine', (tester) async {
+    testWidgets('the angle\'s random turn reaches the engine — from the '
+        'window behind the button beside the angle (F-176-Q6)', (
+      tester,
+    ) async {
       final read = await _pumpPanel(tester);
 
+      final button = find.byKey(
+        const ValueKey<String>(TipDirectionButton.keyValue),
+      );
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
       final slider = find.byKey(
         const ValueKey<String>('brush-tool-angle-jitter-slider'),
       );
-      await tester.ensureVisible(slider);
       await tester.drag(slider, const Offset(60, 0));
       await tester.pumpAndSettle();
 
@@ -564,7 +573,7 @@ void main() {
       expect(read().rotationMode, BrushTipRotationMode.fixed);
 
       final button = find.byKey(
-        const ValueKey<String>('brush-tool-rotation-menu-button'),
+        const ValueKey<String>(TipDirectionButton.keyValue),
       );
       await tester.ensureVisible(button);
       await tester.tap(button);

@@ -9,13 +9,14 @@ import '../../models/brush_settings_group.dart';
 import '../../models/brush_shape.dart' show BrushMaskSlot, BrushShape;
 import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_order.dart';
-import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
 import '../widgets/settings_rows.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
+import '../widgets/setting_source_button.dart';
+import '../widgets/tip_direction_popup.dart';
 import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
 import 'tool_setting_rows.dart'
@@ -89,7 +90,7 @@ class BrushSettingsPanel extends StatefulWidget {
 /// was built with — so the configuration is read through the getters below
 /// at CALL time, and the rows keep closing over those names as they always
 /// did. ⛔A row that holds the state ITSELF as a field cannot be kept at all
-/// (tip rotation, the dual blend): it would write that snapshot back.
+/// (the tip order, the dual blend): it would write that snapshot back.
 ///
 /// ⛔Not a repaint boundary per row (tried 2026-09-24, H40): on the real
 /// Windows app at the user's screen size it bought nothing — a pick's worst
@@ -184,6 +185,10 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
               a.target == b.target &&
               a.enabled == b.enabled &&
               mapEquals(a.curves, b.curves),
+        // What it shows is the setting it holds; its callback reads the
+        // brush in hand at call time, as every kept row's does.
+        (final TipDirectionButton a, final TipDirectionButton b) =>
+          a.direction == b.direction,
         _ => false,
       };
 
@@ -349,23 +354,23 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       keyValue: 'brush-tool-angle-slider',
       onChanged: (value) =>
           onChanged(state.copyWith(angleDegrees: value)),
-    ),
-    // 向き is ONE setting — the angle above, the base it turns from
-    // and its random turn (F-176-Q1 「클튜처럼 — 「방향」 하나: 기준 +
-    // 랜덤」) — so the three sit together. ↩️The random turn was the
-    // 「무작위」 group's angle slider, the base a row of its own below
-    // spacing.
-    _RotationModeRow(state: state, onChanged: onChanged),
-    _PanelSlider(
-      label: AppText.strings.curveSourceRandom,
-      unit: '%',
-      displayScale: 100,
-      value: BrushToolState.clampZeroToOne(state.angleJitter),
-      min: 0,
-      max: 1,
-      keyValue: 'brush-tool-angle-jitter-slider',
-      onChanged: (value) =>
-          onChanged(state.copyWith(angleJitter: value)),
+      // 向き is ONE setting — the angle, the base it turns from and its
+      // random turn (F-176-Q1 「클튜처럼 — 「방향」 하나: 기준 + 랜덤」) —
+      // and the base and the random turn are behind the button beside it
+      // (F-176-Q6 「클튜처럼 — 각도 옆 버튼 하나」). ↩️They were two rows of
+      // their own under the angle.
+      trailing: TipDirectionButton(
+        direction: (
+          base: state.rotationMode,
+          random: BrushToolState.clampZeroToOne(state.angleJitter),
+        ),
+        onChanged: (direction) => onChanged(
+          state.copyWith(
+            rotationMode: direction.base,
+            angleJitter: direction.random,
+          ),
+        ),
+      ),
     ),
     _PanelSlider(
       label: AppText.strings.brSpacing,
@@ -684,41 +689,6 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   ];
 }
 
-/// How a dab picks its angle: the fixed [BrushToolState.angleDegrees], or
-/// the stroke's own direction with that angle as an offset.
-///
-/// A flat tip is the whole reason this exists — a calligraphy nib held at a
-/// fixed angle draws thick and thin as the stroke turns, while a bristle
-/// brush wants to rake ALONG the stroke however it curves.
-class _RotationModeRow extends StatelessWidget {
-  const _RotationModeRow({required this.state, required this.onChanged});
-
-  final BrushToolState state;
-  final ValueChanged<BrushToolState> onChanged;
-
-  String _labelFor(BrushTipRotationMode mode) => switch (mode) {
-    BrushTipRotationMode.fixed => AppText.strings.brRotationFixed,
-    BrushTipRotationMode.direction => AppText.strings.brRotationDirection,
-    BrushTipRotationMode.penTilt => AppText.strings.brRotationPenTilt,
-  };
-
-  @override
-  Widget build(BuildContext context) => ToolSettingRow(
-    label: AppText.strings.brTipRotation,
-    child: PanelFlyoutButton(
-      key: const ValueKey<String>('brush-tool-rotation-menu-button'),
-      label: _labelFor(state.rotationMode),
-      expand: true,
-      entriesBuilder: () => BrushTipRotationMode.values.asFlyoutChoices(
-        current: state.rotationMode,
-        keyPrefix: 'brush-tool-rotation-',
-        labelOf: _labelFor,
-        onPicked: (mode) => onChanged(state.copyWith(rotationMode: mode)),
-      ),
-    ),
-  );
-}
-
 /// Which tip each dab takes — Clip Studio's 繰り返し方法, all six (F-176-Q3
 /// 「클튜 여섯 전부 + 끌어서 순서」), in the order Clip Studio lists them.
 ///
@@ -884,7 +854,7 @@ class _PanelSlider extends StatelessWidget {
   /// The END column of this panel's grid ([ToolSettingSurface.end]): a
   /// bar's ±, and the curve button's slot after them.
   static const double endReach =
-      FieldSlider.handsReach + _trailingGap + PressureCurveButton.slotWidth;
+      FieldSlider.handsReach + _trailingGap + SettingSourceButton.slotWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -919,8 +889,8 @@ class _PanelSlider extends StatelessWidget {
 /// eight codes across 765 brushes — the engine reads them now, and the dual
 /// mask's other knobs have had rows here all along.
 ///
-/// ⛔A `PanelFlyoutButton` row, the shape this panel already uses for tip
-/// rotation. Twelve entries is what a flyout is for; the segmented button
+/// ⛔A `PanelFlyoutButton` row, the shape this panel already uses for the tip
+/// order. Twelve entries is what a flyout is for; the segmented button
 /// above is for the four-way edge step, and a third control shape would be
 /// a new convention for no reason.
 class _DualBlendRow extends StatelessWidget {
