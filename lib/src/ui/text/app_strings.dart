@@ -1626,6 +1626,13 @@ enum AppStrings {
   String get brTipOrderOneLap => _s('brTipOrderOneLap');
   String get brTipOrderShuffledLap => _s('brTipOrderShuffledLap');
   String get brStabilizer => _s('brStabilizer');
+  String get brStabilizerBySpeed => _s('brStabilizerBySpeed');
+  String get brBySpeedSlow => _s('brBySpeedSlow');
+  String get brBySpeedFast => _s('brBySpeedFast');
+  String get brPostCorrection => _s('brPostCorrection');
+  String get brPostBySpeed => _s('brPostBySpeed');
+  String get brPostByViewScale => _s('brPostByViewScale');
+  String get brPostBezier => _s('brPostBezier');
   String get brGroupInk => _s('brGroupInk');
   String get brGroupTip => _s('brGroupTip');
   String get brGroupMixing => _s('brGroupMixing');
@@ -2773,6 +2780,13 @@ enum AppStrings {
     'brRenameTip': 'Rename tip',
     'brDeleteTip': 'Delete tip',
     'brStabilizer': 'Stabilizer',
+    'brStabilizerBySpeed': 'By speed',
+    'brBySpeedSlow': 'Slow',
+    'brBySpeedFast': 'Fast',
+    'brPostCorrection': 'Post-correction',
+    'brPostBySpeed': 'Adjust by speed',
+    'brPostByViewScale': 'Adjust by zoom',
+    'brPostBezier': 'Bezier curve',
     'brGroupInk': 'Ink',
     'brGroupTip': 'Brush tip',
     'brGroupMixing': 'Mixing',
@@ -4246,6 +4260,13 @@ enum AppStrings {
     'brRenameTip': '先端の名前を変更',
     'brDeleteTip': '先端を削除',
     'brStabilizer': '手ブレ補正',
+    'brStabilizerBySpeed': '速度で補正',
+    'brBySpeedSlow': 'ゆっくり',
+    'brBySpeedFast': 'すばやく',
+    'brPostCorrection': '描いた後に補正',
+    'brPostBySpeed': '速度で調整',
+    'brPostByViewScale': '表示倍率で調整',
+    'brPostBezier': 'ベジェ曲線',
     'brGroupInk': 'インク',
     'brGroupTip': 'ブラシ先端',
     'brGroupMixing': '混色',
@@ -5817,6 +5838,13 @@ enum AppStrings {
     'brRenameTip': '끝 이름 변경',
     'brDeleteTip': '끝 삭제',
     'brStabilizer': '손떨림 보정',
+    'brStabilizerBySpeed': '속도에 따라',
+    'brBySpeedSlow': '느릴 때',
+    'brBySpeedFast': '빠를 때',
+    'brPostCorrection': '후보정',
+    'brPostBySpeed': '속도로 조정',
+    'brPostByViewScale': '배율로 조정',
+    'brPostBezier': '베지어 곡선',
     'brGroupInk': '잉크',
     'brGroupTip': '브러시 끝',
     'brGroupMixing': '혼색',
@@ -7532,6 +7560,13 @@ enum AppStrings {
     'brRenameTip': 'Renommer la pointe',
     'brDeleteTip': 'Supprimer la pointe',
     'brStabilizer': 'Stabilisateur',
+    'brStabilizerBySpeed': 'Selon la vitesse',
+    'brBySpeedSlow': 'Lent',
+    'brBySpeedFast': 'Rapide',
+    'brPostCorrection': 'Lissage après tracé',
+    'brPostBySpeed': 'Ajuster à la vitesse',
+    'brPostByViewScale': 'Ajuster au zoom',
+    'brPostBezier': 'Courbe de Bézier',
     'brGroupInk': 'Encre',
     'brGroupTip': 'Pointe',
     'brGroupMixing': 'Mélange',
@@ -9041,6 +9076,13 @@ enum AppStrings {
     'brRenameTip': '重命名笔尖',
     'brDeleteTip': '删除笔尖',
     'brStabilizer': '防抖',
+    'brStabilizerBySpeed': '按速度',
+    'brBySpeedSlow': '慢',
+    'brBySpeedFast': '快',
+    'brPostCorrection': '后修正',
+    'brPostBySpeed': '按速度调整',
+    'brPostByViewScale': '按缩放调整',
+    'brPostBezier': '贝塞尔曲线',
     'brGroupInk': '墨水',
     'brGroupTip': '笔尖',
     'brGroupMixing': '混色',

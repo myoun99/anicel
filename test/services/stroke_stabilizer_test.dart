@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/services/input/pen_readings.dart';
 import 'package:anicel/src/services/stroke_stabilizer.dart';
 
 const _lag = Duration(milliseconds: 10);
@@ -13,7 +14,12 @@ StrokeStabilizer _from(
   CanvasPoint start, {
   Duration at = Duration.zero,
   PenReadings readings = _rest,
-}) => StrokeStabilizer(lag: _lag, start: start, readings: readings, at: at);
+}) => StrokeStabilizer(
+  lagAt: (_) => _lag,
+  start: start,
+  readings: readings,
+  at: at,
+);
 
 Duration _ms(int ms) => Duration(milliseconds: ms);
 
@@ -171,5 +177,27 @@ void main() {
     expect(stabilizer.settled, isTrue);
     expect(stabilizer.finish(), isNull);
     expect(stabilizer.lookAtFrame(_ms(16)), isNull);
+  });
+
+  test('how far behind the line runs is asked at the speed the pen moves '
+      'now (速度による手ブレ補正)', () {
+    final asked = <double>[];
+    final stabilizer = StrokeStabilizer(
+      lagAt: (speed) {
+        asked.add(speed);
+        return speed > 0.5 ? _ms(100) : _lag;
+      },
+      start: CanvasPoint(x: 0, y: 0),
+      readings: _rest,
+      at: Duration.zero,
+    );
+    const quick = (pressure: 0.5, lean: null, speed: 0.9);
+    final brush = stabilizer.follow(
+      CanvasPoint(x: 100, y: 0),
+      quick,
+      at: _ms(10),
+    );
+    expect(asked, [0.9]);
+    expect(brush.position.x, closeTo(100 * (1 - math.exp(-0.1)), 1e-9));
   });
 }

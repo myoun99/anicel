@@ -144,9 +144,7 @@ Future<SutImportResult> _decode(
         variant['BrushPatternImageArray'],
         materials: materials,
         maskId: '$idBase-tip',
-        brushName: name,
-        describe: 'tip bitmap',
-        warnings: warnings,
+        part: (brushName: name, describe: 'tip bitmap', warnings: warnings),
       );
     }
     // Paper texture material (canvas-anchored overlay), referenced the same
@@ -156,18 +154,19 @@ Future<SutImportResult> _decode(
     var textureBrightness = 0.0;
     var textureContrast = 0.0;
     if (variant['TextureImage'] != null) {
+      final part = (
+        brushName: name,
+        describe: 'paper texture',
+        warnings: warnings,
+      );
       textureMask = _theOneOf(
         await _tipMasksFromPatternArray(
           variant['TextureImage'],
           materials: materials,
           maskId: '$idBase-texture',
-          brushName: name,
-          describe: 'paper texture',
-          warnings: warnings,
+          part: part,
         ),
-        brushName: name,
-        describe: 'paper texture',
-        warnings: warnings,
+        part,
       );
       if (textureMask != null) {
         // ⛔CARRIED, not baked in here — see the same change in the ABR
@@ -198,18 +197,19 @@ Future<SutImportResult> _decode(
     BrushTipMask? dualMask;
     if (_intOf(variant['UseDualBrush']) == 1 &&
         _intOf(variant['DualUsePatternImage']) == 1) {
+      final part = (
+        brushName: name,
+        describe: 'dual brush tip',
+        warnings: warnings,
+      );
       dualMask = _theOneOf(
         await _tipMasksFromPatternArray(
           variant['DualPatternImageArray'],
           materials: materials,
           maskId: '$idBase-dual',
-          brushName: name,
-          describe: 'dual brush tip',
-          warnings: warnings,
+          part: part,
         ),
-        brushName: name,
-        describe: 'dual brush tip',
-        warnings: warnings,
+        part,
       );
     }
 
@@ -434,19 +434,43 @@ BrushSettings _settingsFromVariant(
   );
 }
 
-/// The brush's 補正 — its 手ブレ補正 (`FlickerReduction`, Clip Studio's
-/// 0..100; measured in the user's own files, F-418) on our scale.
+/// The brush's 補正, every column of it the user's five files carry
+/// (F-418): its 手ブレ補正 (`FlickerReduction`, Clip Studio's 0..100) on
+/// our scale, the speed's say in it, the 後補正 and the corners.
 ///
-/// 🗣️A file without it reads as Clip Studio's 0 (유저 2026-10-20,
-/// F-418-Q6: 「없으면 클튜 0인거랑 동일한 우리의 값으로 기본값으로」).
+/// 🗣️A file without the 手ブレ補正 reads as Clip Studio's 0 (유저
+/// 2026-10-20, F-418-Q6: 「없으면 클튜 0인거랑 동일한 우리의 값으로
+/// 기본값으로」). A 後補正 that is off is 0 whatever strength it keeps
+/// ([BrushCorrection.postStrength]); a part the file leaves out keeps our
+/// default.
 BrushCorrection _correctionOf(Map<String, Object?> variant) {
-  final flickerReduction = _doubleOf(variant['FlickerReduction']);
+  const fallback = BrushCorrection();
+  double finite(String column, double otherwise) {
+    final value = _doubleOf(variant[column]);
+    return value == null || !value.isFinite ? otherwise : value;
+  }
+
+  bool flag(String column, bool otherwise) => switch (_intOf(
+    variant[column],
+  )) {
+    null => otherwise,
+    final value => value != 0,
+  };
   return BrushCorrection(
+    sharpenCorners: flag('BrushSharpenCorner', fallback.sharpenCorners),
     stabilization: BrushCorrection.fromClipStudio(
-      flickerReduction == null || !flickerReduction.isFinite
-          ? 0
-          : flickerReduction,
+      finite('FlickerReduction', 0),
     ),
+    steadyingBySpeed: BrushSteadyingBySpeed.fromClipStudio(
+      bySpeed: _intOf(variant['FlickerReductionBySpeed']),
+      type: _intOf(variant['FlickerReductionBySpeedType']),
+    ),
+    postStrength: flag('BrushUseRevision', false)
+        ? finite('BrushRevision', 0).clamp(0.0, BrushCorrection.maxPostStrength)
+        : 0,
+    postBySpeed: flag('BrushRevisionBySpeed', fallback.postBySpeed),
+    postByViewScale: flag('BrushRevisionByViewScale', fallback.postByViewScale),
+    postBezier: flag('BrushRevisionBezier', fallback.postBezier),
   );
 }
 
@@ -891,25 +915,17 @@ Future<List<BrushTipMask>> _tipMasksFromPatternArray(
   Object? patternArray, {
   required List<({String path, Uint8List data})> materials,
   required String maskId,
-  required String brushName,
-  required String describe,
-  required List<String> warnings,
+  required _BrushPart part,
 }) async {
   if (patternArray is! Uint8List || materials.isEmpty) {
     if (patternArray != null) {
-      warnings.add(
-        'Brush "$brushName": $describe is not embedded; '
-        'imported without it.',
-      );
+      _leftOut(part, 'is not embedded');
     }
     return const [];
   }
   final named = _materialsNamedBy(patternArray, materials);
   if (named.isEmpty) {
-    warnings.add(
-      'Brush "$brushName": $describe reference not found; '
-      'imported without it.',
-    );
+    _leftOut(part, 'reference not found');
     return const [];
   }
   final masks = <({String path, Uint8List data}), BrushTipMask?>{};
@@ -919,9 +935,7 @@ Future<List<BrushTipMask>> _tipMasksFromPatternArray(
       masks[material] = await _tipMaskOf(
         material,
         id: masks.isEmpty ? maskId : '$maskId-${masks.length + 1}',
-        brushName: brushName,
-        describe: describe,
-        warnings: warnings,
+        part: part,
       );
     }
     if (masks[material] case final mask?) {
@@ -934,20 +948,28 @@ Future<List<BrushTipMask>> _tipMasksFromPatternArray(
 /// What a one-mask slot — the paper texture, the dual tip — keeps of
 /// [masks]: the first, said aloud when the file names more (Clip Studio
 /// lets a dual tip take turns too).
-BrushTipMask? _theOneOf(
-  List<BrushTipMask> masks, {
-  required String brushName,
-  required String describe,
-  required List<String> warnings,
-}) {
+BrushTipMask? _theOneOf(List<BrushTipMask> masks, _BrushPart part) {
   if (masks.length > 1) {
-    warnings.add(
-      'Brush "$brushName": $describe has ${masks.length} images; '
-      'only the first is used.',
+    part.warnings.add(
+      'Brush "${part.brushName}": ${part.describe} has ${masks.length} '
+      'images; only the first is used.',
     );
   }
   return masks.firstOrNull;
 }
+
+/// One part of a brush being read — the brush, the part as a warning
+/// words it, and where its warnings go.
+typedef _BrushPart = ({
+  String brushName,
+  String describe,
+  List<String> warnings,
+});
+
+/// Says [part] came in without it, for [why].
+void _leftOut(_BrushPart part, String why) => part.warnings.add(
+  'Brush "${part.brushName}": ${part.describe} $why; imported without it.',
+);
 
 /// 繰り返し方法, from `BrushPatternOrderType`.
 ///
@@ -1037,25 +1059,17 @@ List<({String path, Uint8List data})> _materialsNamedBy(
 Future<BrushTipMask?> _tipMaskOf(
   ({String path, Uint8List data}) material, {
   required String id,
-  required String brushName,
-  required String describe,
-  required List<String> warnings,
+  required _BrushPart part,
 }) async {
   final png = _largestPng(material.data);
   if (png == null) {
-    warnings.add(
-      'Brush "$brushName": $describe material holds no readable '
-      'image; imported without it.',
-    );
+    _leftOut(part, 'material holds no readable image');
     return null;
   }
   try {
     return await decodeBrushTipImage(png, id: id);
   } on Object catch (error) {
-    warnings.add(
-      'Brush "$brushName": $describe image could not be decoded '
-      '($error); imported without it.',
-    );
+    _leftOut(part, 'image could not be decoded ($error)');
     return null;
   }
 }

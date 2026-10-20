@@ -10,6 +10,7 @@ import '../../models/bitmap_surface.dart';
 import '../../native/qa_pen_ledger.dart';
 import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_lean.dart';
+import '../../services/input/pen_readings.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../debug/input_inspector.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
@@ -38,6 +39,7 @@ import '../../services/canvas_selection_region.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/guide_geometry.dart';
 import '../../services/guide_stroke_input.dart';
+import '../../services/stroke_post_correction.dart';
 import '../../services/stroke_stabilizer.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -427,6 +429,15 @@ class _InteractiveBrushEditCanvasViewState
   /// it BEFORE clipping and interpolation, so every downstream route sees
   /// the smoothed chain.
   StrokeStabilizer? _stabilizer;
+
+  /// The line the pen's stroke has been laid along so far, each point with
+  /// what it read there — what its 後補正 smooths at pen-up (F-418). Null
+  /// for a stroke the tool lays: it draws no line of the pen's.
+  List<PenPoint>? _drawn;
+
+  /// The stroke's dice ([_BrushEditStroke._armItsOwn]) — kept so a stroke
+  /// laid again rolls its scatter and jitter as it first did.
+  int _strokeDice = 0;
 
   /// A frame is asked for the stabilizer to keep closing on a resting pen.
   bool _steadyingFrameAsked = false;

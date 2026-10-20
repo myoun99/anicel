@@ -88,6 +88,55 @@ void main() {
     expect(_look(steadied.committed.single), _look(plain.committed.single));
   });
 
+  testWidgets('⛔nothing smooths it: a brush with 後補正 lays the path where '
+      'it was told, corner and all (F-418)', (tester) async {
+    final plain = _Host();
+    await _pump(tester, plain, _brush());
+    plain.show!.landStroke(corner);
+
+    final smoothing = _Host();
+    await _pump(tester, smoothing, _brush(postStrength: 100));
+    smoothing.show!.landStroke(corner);
+    // Fixture: a hand's stroke through the same points is smoothed.
+    await _byMouse(tester, const [
+      Offset(10, 10),
+      Offset(100, 10),
+      Offset(100, 50),
+    ]);
+
+    expect(smoothing.committed, hasLength(2));
+    expect(_look(smoothing.committed.first), _look(plain.committed.single));
+    expect(
+      _look(smoothing.committed.last),
+      isNot(_look(plain.committed.single)),
+      reason: "fixture: the hand's stroke was smoothed",
+    );
+  });
+
+  testWidgets('⛔a cancelled stroke leaves no line behind to smooth: the '
+      'path laid after it lands where it was told (F-418)', (tester) async {
+    final plain = _Host();
+    await _pump(tester, plain, _brush());
+    plain.show!.landStroke(corner);
+
+    final smoothing = _Host();
+    await _pump(tester, smoothing, _brush(postStrength: 100));
+    final hand = await tester.startGesture(
+      canvasGlobalOffset(tester, const Offset(20, 40)),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    await hand.moveTo(canvasGlobalOffset(tester, const Offset(60, 30)));
+    await tester.pump();
+    await hand.cancel();
+    await tester.pump();
+    smoothing.show!.landStroke(corner);
+
+    expect(smoothing.committed, hasLength(1), reason: 'the cancel landed none');
+    expect(_look(smoothing.committed.single), _look(plain.committed.single));
+  });
+
   testWidgets('⛔nothing snaps it: under a perspective guide that bends a '
       'hand\'s stroke onto its rays, a path is laid where it was told', (
     tester,
@@ -651,12 +700,17 @@ final _cel = BitmapSurface(
 
 BrushEditCanvasInputSettings _brush({
   double stabilizer = 0,
+  double postStrength = 0,
   BrushTipRotationMode rotation = BrushTipRotationMode.fixed,
 }) => BrushToolState.defaults
     .copyWith(
       size: 6,
       roundness: 0.5,
-      correction: BrushCorrection(stabilization: stabilizer),
+      correction: BrushCorrection(
+        stabilization: stabilizer,
+        postStrength: postStrength,
+        postBySpeed: false,
+      ),
       rotationMode: rotation,
     )
     .toInputSettings();

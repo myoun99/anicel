@@ -411,6 +411,9 @@ class _BrushEditPress {
         _state._stroke.advanceStrokeTo(locked);
       }
     }
+    // The whole line is down now, and its 後補正 lays it again smoothed
+    // (F-418-Q7) — before the commit reads the tiles.
+    _state._stroke.postCorrect();
 
     final hadDabs = _state._collectedDabs.isNotEmpty;
     var landed = false;

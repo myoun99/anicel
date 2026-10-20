@@ -451,7 +451,16 @@ void _validateShape(BrushShape shape) {
   _validateUnitInterval(shape.paintAmount, 'paintAmount');
   _validateUnitInterval(shape.paintDensity, 'paintDensity');
   _validateUnitInterval(shape.colorStretch, 'colorStretch');
-  _validateStabilization(shape.correction.stabilization);
+  _validateCorrection(
+    shape.correction.stabilization,
+    'stabilization',
+    BrushCorrection.maxStabilization,
+  );
+  _validateCorrection(
+    shape.correction.postStrength,
+    'postStrength',
+    BrushCorrection.maxPostStrength,
+  );
   _validatePositive(shape.size, 'size');
   _validateUnitInterval(shape.opacity, 'opacity');
   _validateUnitInterval(shape.flow, 'flow');
@@ -490,15 +499,13 @@ void _validateUnitInterval(double value, String fieldName) {
   }
 }
 
-void _validateStabilization(double value) {
-  if (!value.isFinite ||
-      value < 0.0 ||
-      value > BrushCorrection.maxStabilization) {
+/// A correction value [name] on its 0..[max] scale.
+void _validateCorrection(double value, String name, double max) {
+  if (!value.isFinite || value < 0.0 || value > max) {
     throw ArgumentError.value(
       value,
-      'stabilization',
-      'BrushSettings.correction.stabilization must be between 0 and '
-          '${BrushCorrection.maxStabilization} inclusive.',
+      name,
+      'BrushSettings.correction.$name must be between 0 and $max inclusive.',
     );
   }
 }

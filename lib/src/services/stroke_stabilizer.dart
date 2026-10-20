@@ -1,14 +1,7 @@
 import 'dart:math' as math;
 
 import '../models/canvas_point.dart';
-import 'input/pen_lean.dart';
-
-/// What the pen reads at a sample: how hard it presses, how it leans (null
-/// where nothing measured one), how fast it travelled.
-typedef PenReadings = ({double pressure, PenLean? lean, double speed});
-
-/// Where the steadied line has got to, and what it reads there.
-typedef SteadiedPoint = ({CanvasPoint position, PenReadings readings});
+import 'input/pen_readings.dart';
 
 /// Clip Studio's 손떨림 보정 (手ブレ補正): the line runs a little behind the
 /// pen and closes the same share of the distance left in the same time —
@@ -36,7 +29,7 @@ typedef SteadiedPoint = ({CanvasPoint position, PenReadings readings});
 /// sample — the two clocks are never compared.
 class StrokeStabilizer {
   StrokeStabilizer({
-    required this.lag,
+    required this.lagAt,
     required CanvasPoint start,
     required PenReadings readings,
     required Duration at,
@@ -45,15 +38,17 @@ class StrokeStabilizer {
        _brushAt = at,
        _sampleAt = at;
 
-  /// How far behind the pen the line runs — the time it takes to close all
-  /// but 1/e of the distance left.
-  final Duration lag;
+  /// How far behind the pen the line runs while the pen moves at a speed
+  /// (normalised, as the pen's readings carry it) — the time it takes to
+  /// close all but 1/e of the distance left. Clip Studio's 速度による手ブレ
+  /// 補正 bends it by the speed; without it, it is one time.
+  final Duration Function(double speed) lagAt;
 
   /// Closer than this, in canvas pixels, the line is where the pen is.
   static const double _settlesWithin = 0.01;
 
-  SteadiedPoint _brush;
-  SteadiedPoint _pen;
+  PenPoint _brush;
+  PenPoint _pen;
 
   /// The pen time the brush stands at.
   Duration _brushAt;
@@ -64,14 +59,14 @@ class StrokeStabilizer {
   Duration? _firstFrameAfterSample;
 
   /// Where the line has got to, and what it reads there.
-  SteadiedPoint get brush => _brush;
+  PenPoint get brush => _brush;
 
   /// The line has reached the pen and nothing moves it until the pen does.
   bool get settled => _brush == _pen;
 
   /// The pen at [pen], reading [readings], at its time [at]; the brush
   /// closes on it for the time since it last moved. Answers the brush.
-  SteadiedPoint follow(
+  PenPoint follow(
     CanvasPoint pen,
     PenReadings readings, {
     required Duration at,
@@ -87,7 +82,7 @@ class StrokeStabilizer {
   /// the pen while it rests. Answers the brush where it moved, or null when
   /// this frame moved it nowhere — the first frame after a sample only
   /// marks where the pen's time stands on the frame clock.
-  SteadiedPoint? lookAtFrame(Duration frameAt) {
+  PenPoint? lookAtFrame(Duration frameAt) {
     if (settled) {
       return null;
     }
@@ -103,7 +98,7 @@ class StrokeStabilizer {
 
   /// The pen lifted: the line goes straight to where it was, reading what
   /// it read there. Answers that, or null when the line was already there.
-  SteadiedPoint? finish() {
+  PenPoint? finish() {
     if (settled) {
       return null;
     }
@@ -116,6 +111,7 @@ class StrokeStabilizer {
       return;
     }
     _brushAt = at;
+    final lag = lagAt(_pen.readings.speed);
     final share =
         1 - math.exp(-elapsed.inMicroseconds / lag.inMicroseconds);
     final position = CanvasPoint.lerp(_brush.position, _pen.position, share);
@@ -123,36 +119,7 @@ class StrokeStabilizer {
         ? _pen
         : (
             position: position,
-            readings: _closer(_brush.readings, _pen.readings, share),
+            readings: readingsBetween(_brush.readings, _pen.readings, share),
           );
   }
-}
-
-/// [from] a [share] of the way to [to]. A lean goes round the shorter way;
-/// a lean only one side measured is the other side's as it is.
-PenReadings _closer(PenReadings from, PenReadings to, double share) {
-  double lerp(double a, double b) => a + (b - a) * share;
-  final fromLean = from.lean;
-  final toLean = to.lean;
-  return (
-    pressure: lerp(from.pressure, to.pressure),
-    speed: lerp(from.speed, to.speed),
-    lean: fromLean == null || toLean == null
-        ? toLean
-        : (
-            azimuthDegrees: _turned(
-              fromLean.azimuthDegrees,
-              toLean.azimuthDegrees,
-              share,
-            ),
-            altitude: lerp(fromLean.altitude, toLean.altitude),
-          ),
-  );
-}
-
-/// [from] turned a [share] of the shorter way round to [to], in degrees
-/// 0..360 as a lean's azimuth is.
-double _turned(double from, double to, double share) {
-  final apart = (to - from + 540) % 360 - 180;
-  return (from + apart * share) % 360;
 }

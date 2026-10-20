@@ -62,7 +62,8 @@ class _BrushEditStroke {
     // A press off the pasteboard lays nothing down; the stroke's first dab
     // comes where a move crosses in. The line starts steadying either way,
     // when the press is painted: with the readings it is painted with, the
-    // first a held press waited for and not the stand-in it was taken with.
+    // first a held press waited for and not the stand-in it was taken with
+    // — and the line the pen draws starts there with them.
     _state._opening.press(
       () {
         _startSteadying(
@@ -70,6 +71,7 @@ class _BrushEditStroke {
           at: canvasPosition,
           startedAt: event.timeStamp,
         );
+        _state._drawn = [(position: canvasPosition, readings: _readings)];
         if (startsInsidePasteboard) {
           _paintPress(canvasPosition);
         }
@@ -150,6 +152,25 @@ class _BrushEditStroke {
     required int dice,
   }) {
     _state.widget.onActiveStrokeChanged?.call(true);
+    _armAfresh(
+      strokeSettings,
+      at: at,
+      startsInsidePasteboard: startsInsidePasteboard,
+      dice: dice,
+    );
+  }
+
+  /// The pen's stroke stands on nothing yet at [at]: what is its own is made
+  /// afresh, the overlay opens on the cel as it stands, and the live tiles
+  /// and the dabs queued for them go — at the press, and again for a line
+  /// laid anew along its 後補正 ([postCorrect]), which the host still sees
+  /// as the one stroke it heard of.
+  void _armAfresh(
+    BrushEditCanvasInputSettings strokeSettings, {
+    required CanvasPoint at,
+    required bool startsInsidePasteboard,
+    required int dice,
+  }) {
     _armItsOwn(
       strokeSettings,
       at: at,
@@ -157,6 +178,7 @@ class _BrushEditStroke {
       dice: dice,
     );
     _openOverlay(strokeSettings);
+    _state._pendingOverlayDabs.clear();
     _state._prepareLiveRasterizer();
   }
 
@@ -195,6 +217,7 @@ class _BrushEditStroke {
     required int dice,
   }) {
     final canvasPosition = at;
+    _state._strokeDice = dice;
     _state._nextSequence = 0;
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
     _state._previousRawCanvasPosition = canvasPosition;
@@ -271,15 +294,15 @@ class _BrushEditStroke {
     required CanvasPoint at,
     required Duration startedAt,
   }) {
-    final lag = strokeSettings.shape.correction.lag;
-    _state._stabilizer = lag == null
-        ? null
-        : StrokeStabilizer(
-            lag: lag,
+    final correction = strokeSettings.shape.correction;
+    _state._stabilizer = correction.steadies
+        ? StrokeStabilizer(
+            lagAt: correction.lagAt,
             start: at,
             readings: _readings,
             at: startedAt,
-          );
+          )
+        : null;
   }
 
   /// What the pen reads now.
@@ -289,21 +312,29 @@ class _BrushEditStroke {
     speed: _state._currentSpeed,
   );
 
-  /// Lays the line to where it has got to, with what it reads there — and
-  /// leaves the pen's current readings as they were, as the opening paints
-  /// what waited ([_BrushEditOpening._paintWaiting]).
-  void _paintSteadied(SteadiedPoint brush) {
-    final pressure = _state._currentPressure;
-    final tilt = _state._currentTilt;
-    final speed = _state._currentSpeed;
-    _state._currentPressure = brush.readings.pressure;
-    _state._currentTilt = brush.readings.lean;
-    _state._currentSpeed = brush.readings.speed;
-    advanceStrokeThroughGuides(brush.position);
-    _state._currentPressure = pressure;
-    _state._currentTilt = tilt;
-    _state._currentSpeed = speed;
+  /// Runs [paint] with [readings] standing for the pen's, and puts the
+  /// pen's own back after — THE way a stroke lays what was read elsewhere
+  /// than where the pen is now: a sample that waited for its first readings
+  /// ([_BrushEditOpening._paintWaiting]), the steadied line behind the pen
+  /// ([_paintSteadied]), the line its 後補正 lays anew ([postCorrect]).
+  void paintReading(PenReadings readings, void Function() paint) {
+    final pen = _readings;
+    _read(readings);
+    paint();
+    _read(pen);
   }
+
+  void _read(PenReadings readings) {
+    _state._currentPressure = readings.pressure;
+    _state._currentTilt = readings.lean;
+    _state._currentSpeed = readings.speed;
+  }
+
+  /// Lays the line to where it has got to, with what it reads there.
+  void _paintSteadied(PenPoint brush) => paintReading(
+    brush.readings,
+    () => advanceStrokeThroughGuides(brush.position),
+  );
 
   /// While the line has not reached the pen, frames move it on — Clip
   /// Studio's line keeps going while the pen rests (F-418).
@@ -335,6 +366,59 @@ class _BrushEditStroke {
     final rest = _state._stabilizer?.finish();
     if (rest != null) {
       _paintSteadied(rest);
+    }
+  }
+
+  /// 後補正: the line the pen drew, its wobble taken out, laid again as this
+  /// same stroke — from nothing, on its own dice, so its scatter and jitter
+  /// roll as they did — before it lands.
+  ///
+  /// 🗣️유저 2026-10-20 (F-418-Q7 「뗄 때 다듬은 선으로 바뀐다」): the line
+  /// on screen while it is drawn is the steadied one, and the pen-up puts
+  /// the smoothed one in its place. ⚠️The one stroke that lands other than
+  /// it was shown, by that answer — and still in one turn: what is shown
+  /// next is what landed.
+  ///
+  /// Nothing happens for a brush that takes nothing out, nor for a stroke
+  /// the tool lays — it draws no line of the pen's ([_state._drawn]).
+  void postCorrect() {
+    final drawn = _state._drawn;
+    _state._drawn = null;
+    final settings = _state._activeStrokeInputSettings;
+    if (drawn == null || settings == null) {
+      return;
+    }
+    final correction = settings.shape.correction;
+    final within = correction.postWithin(
+      zoom: _state.widget.viewport.zoom,
+      speed:
+          drawn.fold(0.0, (sum, point) => sum + point.readings.speed) /
+          drawn.length,
+    );
+    if (within == null) {
+      return;
+    }
+    final line = postCorrected(
+      drawn,
+      within: within,
+      bezier: correction.postBezier,
+    );
+    if (identical(line, drawn)) {
+      return;
+    }
+    final start = line.first;
+    final startsInsidePasteboard = _state._isInsidePasteboard(start.position);
+    _armAfresh(
+      settings,
+      at: start.position,
+      startsInsidePasteboard: startsInsidePasteboard,
+      dice: _state._strokeDice,
+    );
+    if (startsInsidePasteboard) {
+      paintReading(start.readings, () => _paintPress(start.position));
+    }
+    for (final point in line.skip(1)) {
+      paintReading(point.readings, () => advanceStrokeTo(point.position));
     }
   }
 
@@ -418,6 +502,7 @@ class _BrushEditStroke {
   }
 
   void advanceStrokeTo(CanvasPoint canvasPosition) {
+    _state._drawn?.add((position: canvasPosition, readings: _readings));
     final previousRaw = _state._previousRawCanvasPosition;
     _state._previousRawCanvasPosition = canvasPosition;
     if (previousRaw == null) {
@@ -693,6 +778,7 @@ class _BrushEditStroke {
     _state._groundMixer = null;
     _state._groundSampler = null;
     _state._stabilizer = null;
+    _state._drawn = null;
     _state._collectedDabs.clear();
     _state._pendingOverlayDabs.clear();
   }

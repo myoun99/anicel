@@ -206,23 +206,18 @@ class _BrushEditOpening {
   void _paintWaiting() {
     final samples = _waiting!.samples;
     _waiting = null;
-    final pressure = _state._currentPressure;
-    final tilt = _state._currentTilt;
-    final speed = _state._currentSpeed;
     for (final sample in samples) {
       final tilt = sample.tilt;
-      _state._currentPressure =
-          _state._pressure.recordedPressure(sample.at) ?? sample.pressure;
-      _state._currentTilt = tilt == null
-          ? null
-          : _state._pressure.recordedTilt(sample.at, tilt.azimuthDegrees) ??
-                tilt;
-      _state._currentSpeed = sample.speed;
-      sample.paint();
+      _state._stroke.paintReading((
+        pressure:
+            _state._pressure.recordedPressure(sample.at) ?? sample.pressure,
+        lean: tilt == null
+            ? null
+            : _state._pressure.recordedTilt(sample.at, tilt.azimuthDegrees) ??
+                  tilt,
+        speed: sample.speed,
+      ), sample.paint);
     }
-    _state._currentPressure = pressure;
-    _state._currentTilt = tilt;
-    _state._currentSpeed = speed;
   }
 
   /// The sample just noted, stamped [at] at [position], as it waits.

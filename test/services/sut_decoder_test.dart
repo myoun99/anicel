@@ -188,6 +188,15 @@ void main() {
     Uint8List? dualArray,
     int? patternOrderType,
     int? flickerReduction,
+    // F-418: the rest of the 補正 group, null where the file says nothing.
+    int? sharpenCorner,
+    int? flickerReductionBySpeed,
+    int? flickerReductionBySpeedType,
+    int? useRevision,
+    double? revision,
+    int? revisionBySpeed,
+    int? revisionByViewScale,
+    int? revisionBezier,
   }) async {
     // Unique per call: a test that builds several fixtures would otherwise
     // reopen the first one and fail on its existing tables.
@@ -218,7 +227,11 @@ void main() {
         BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER,
         BrushThicknessEffector BLOB, BrushIntervalEffector BLOB,
         CompositeMode INTEGER, AntiAlias INTEGER,
-        BrushPatternOrderType INTEGER, FlickerReduction INTEGER);
+        BrushPatternOrderType INTEGER, FlickerReduction INTEGER,
+        BrushSharpenCorner INTEGER, FlickerReductionBySpeed INTEGER,
+        FlickerReductionBySpeedType INTEGER, BrushUseRevision INTEGER,
+        BrushRevision REAL, BrushRevisionBySpeed INTEGER,
+        BrushRevisionByViewScale INTEGER, BrushRevisionBezier INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -248,10 +261,13 @@ void main() {
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
       'BrushMixColorExtension, BrushThicknessEffector, '
       'BrushIntervalEffector, CompositeMode, AntiAlias, '
-      'BrushPatternOrderType, FlickerReduction) '
+      'BrushPatternOrderType, FlickerReduction, BrushSharpenCorner, '
+      'FlickerReductionBySpeed, FlickerReductionBySpeedType, '
+      'BrushUseRevision, BrushRevision, BrushRevisionBySpeed, '
+      'BrushRevisionByViewScale, BrushRevisionBezier) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
       '?, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         tipArray ?? patternArray(catalogPath),
         effector(
@@ -300,6 +316,14 @@ void main() {
         antiAlias,
         patternOrderType,
         flickerReduction,
+        sharpenCorner,
+        flickerReductionBySpeed,
+        flickerReductionBySpeedType,
+        useRevision,
+        revision,
+        revisionBySpeed,
+        revisionByViewScale,
+        revisionBezier,
       ],
     );
     // Round brush without pattern data.
@@ -1069,6 +1093,73 @@ void main() {
       );
     }
   });
+
+  test('the rest of the 補正 group comes in, each column to its own part '
+      '(F-418)', () async {
+    Future<BrushCorrection> read(Future<String> fixture) async {
+      final result = await decodeSutBrushFile(
+        filePath: await fixture,
+        sourceName: 'fixture',
+      );
+      return result.presets.first.settings.correction;
+    }
+
+    final tip = await blackPng(4, 4);
+    expect(
+      await read(
+        buildFixture(
+          tipPng: tip,
+          sharpenCorner: 1,
+          flickerReductionBySpeed: 1,
+          flickerReductionBySpeedType: 2,
+          useRevision: 1,
+          revision: 37.5,
+          revisionBySpeed: 0,
+          revisionByViewScale: 1,
+          revisionBezier: 0,
+        ),
+      ),
+      const BrushCorrection(
+        sharpenCorners: true,
+        steadyingBySpeed: BrushSteadyingBySpeed.fast,
+        postStrength: 37.5,
+        postBySpeed: false,
+      ),
+    );
+    expect(
+      await read(
+        buildFixture(
+          tipPng: tip,
+          sharpenCorner: 0,
+          flickerReductionBySpeed: 1,
+          flickerReductionBySpeedType: 1,
+          useRevision: 1,
+          revision: 12,
+          revisionBySpeed: 1,
+          revisionByViewScale: 0,
+          revisionBezier: 1,
+        ),
+      ),
+      const BrushCorrection(
+        steadyingBySpeed: BrushSteadyingBySpeed.slow,
+        postStrength: 12,
+        postByViewScale: false,
+        postBezier: true,
+      ),
+    );
+    expect(
+      await read(buildFixture(tipPng: tip, useRevision: 0, revision: 50)),
+      const BrushCorrection(),
+      reason: 'a 後補正 switched off takes nothing out, whatever it keeps',
+    );
+    expect(
+      (await read(
+        buildFixture(tipPng: tip, useRevision: 1, revision: 250),
+      )).postStrength,
+      BrushCorrection.maxPostStrength,
+      reason: 'past the scale, it is the most there is',
+    );
+  }, timeout: const Timeout(Duration(minutes: 2)));
 
   test('ground-colour mixing imports behind its gate', () async {
     final path = await buildFixture(

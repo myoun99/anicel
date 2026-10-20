@@ -185,6 +185,10 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
         _ => false,
       };
 
+  /// The brush in hand, correcting its line as [correction] says (F-418).
+  void _correct(BrushCorrection correction) =>
+      onChanged(state.copyWith(correction: correction));
+
   /// The CSP-style per-setting pressure button (BB-3): sits at the right
   /// of each pressure-capable slider row and opens the shared curve popup.
   Widget _pressureButton(BrushPressureTarget target) {
@@ -533,18 +537,67 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             // setting kept out of presets (P7).
             _PanelSlider(
               label: AppText.strings.brStabilizer,
-              value: BrushToolState.clampStabilization(
+              value: BrushToolState.clampCorrection(
                 state.correction.stabilization,
+                BrushCorrection.maxStabilization,
               ),
               min: 0,
               max: BrushCorrection.maxStabilization,
               keyValue: 'brush-tool-stabilizer-slider',
-              onChanged: (value) => onChanged(
-                state.copyWith(
-                  correction: state.correction.copyWith(stabilization: value),
-                ),
-              ),
+              onChanged: (value) =>
+                  _correct(state.correction.copyWith(stabilization: value)),
             ),
+            // Clip Studio's switch and 補正タイプ under it, as one row — and
+            // dim where the line is not steadied, as Clip Studio greys what
+            // sits under a switch that is off (F-418).
+            _SteadyingBySpeedRow(
+              value: state.correction.steadyingBySpeed,
+              onPick: state.correction.steadies
+                  ? (value) => _correct(
+                      state.correction.copyWith(steadyingBySpeed: value),
+                    )
+                  : null,
+            ),
+            _PanelSlider(
+              label: AppText.strings.brPostCorrection,
+              value: BrushToolState.clampCorrection(
+                state.correction.postStrength,
+                BrushCorrection.maxPostStrength,
+              ),
+              min: 0,
+              max: BrushCorrection.maxPostStrength,
+              keyValue: 'brush-tool-post-correction-slider',
+              onChanged: (value) =>
+                  _correct(state.correction.copyWith(postStrength: value)),
+            ),
+            for (final (key, label, value, change) in [
+              (
+                'brush-tool-post-by-speed-toggle',
+                AppText.strings.brPostBySpeed,
+                state.correction.postBySpeed,
+                (bool on) => state.correction.copyWith(postBySpeed: on),
+              ),
+              (
+                'brush-tool-post-by-view-scale-toggle',
+                AppText.strings.brPostByViewScale,
+                state.correction.postByViewScale,
+                (bool on) => state.correction.copyWith(postByViewScale: on),
+              ),
+              (
+                'brush-tool-post-bezier-toggle',
+                AppText.strings.brPostBezier,
+                state.correction.postBezier,
+                (bool on) => state.correction.copyWith(postBezier: on),
+              ),
+            ])
+              SettingsSwitchRow(
+                tileKey: ValueKey<String>(key),
+                label: label,
+                value: value,
+                onChanged: state.correction.postStrength > 0
+                    ? (on) => _correct(change(on))
+                    : null,
+              ),
             // ⛔THE AUTO-FRAME TOGGLE IS NOT HERE ANY MORE (F-61, 유저:
             // 「프레임 자동생성 버튼 툴 설정에 있는데, **왜 이딴식으로
             // 결정한거지? 내가 분명 타임라인 헤더쪽에 두라하지않았나?** 프레임
@@ -681,6 +734,39 @@ class _AntiAliasRow extends StatelessWidget {
     ],
     onPick: (step) => () => onChanged(step),
   );
+}
+
+/// 速度による手ブレ補正 — none, or which way the pen's speed bends the
+/// steadying ([BrushSteadyingBySpeed]). Null [onPick] dims it: a brush that
+/// steadies nothing has nothing for the speed to bend.
+class _SteadyingBySpeedRow extends StatelessWidget {
+  const _SteadyingBySpeedRow({required this.value, required this.onPick});
+
+  final BrushSteadyingBySpeed value;
+  final ValueChanged<BrushSteadyingBySpeed>? onPick;
+
+  String _labelFor(BrushSteadyingBySpeed type) => switch (type) {
+    BrushSteadyingBySpeed.off => AppText.strings.commonNone,
+    BrushSteadyingBySpeed.slow => AppText.strings.brBySpeedSlow,
+    BrushSteadyingBySpeed.fast => AppText.strings.brBySpeedFast,
+  };
+
+  @override
+  Widget build(BuildContext context) =>
+      ToolSettingChoiceRow<BrushSteadyingBySpeed>(
+        tool: 'brush-tool',
+        name: 'steadying-by-speed',
+        label: AppText.strings.brStabilizerBySpeed,
+        current: value,
+        answers: [
+          for (final type in BrushSteadyingBySpeed.values)
+            (value: type, key: type.name, label: _labelFor(type)),
+        ],
+        onPick: (type) {
+          final pick = onPick;
+          return pick == null ? null : () => pick(type);
+        },
+      );
 }
 
 class _PanelSlider extends StatelessWidget {

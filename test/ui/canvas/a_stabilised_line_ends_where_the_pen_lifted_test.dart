@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
@@ -20,6 +21,9 @@ import '../brush_canvas_test_helpers.dart';
 /// 🗣️F-418 (유저 2026-10-20): Clip Studio's 손떨림 보정. Q2 「과거 결정
 /// 무시해도됨. 클튜는 100으로 하면 선을 떼면 바로 뗀 자리까지 선이 감」 · Q4
 /// 「곧장 커서로 간다 — 꺾임을 가로지른다」.
+///
+/// The lift is where the 後補正 lays the line again too (Q7 「뗄 때 다듬은
+/// 선으로 바뀐다」).
 ///
 /// ↩️This file pinned the opposite under H45 (2026-09-28): 「따라잡지
 /// 않는다 — 선은 붓이 있던 자리에서 끝난다」, while the brush hung a rope
@@ -91,7 +95,7 @@ void main() {
   testWidgets("the line's clock starts at the press", (tester) async {
     // The move comes 8 ms after the press: the line closes that much of
     // the way, not the share of the 16 ms since the clocks' zero.
-    final lag = const BrushCorrection(stabilization: 30).lag!;
+    final lag = const BrushCorrection(stabilization: 30).lagAt(0);
     final share = 1 - math.exp(-8000 / lag.inMicroseconds);
     final steadied = await _draw(tester, const [
       Offset(10, 20),
@@ -160,19 +164,154 @@ void main() {
     );
     expect(_reach(steadied.committed), closeTo(160, 1));
   });
+
+  // A wobble of 2 px either side of y = 20, a sample every 8 ms.
+  const wobbly = [
+    Offset(10, 20),
+    Offset(30, 22),
+    Offset(50, 18),
+    Offset(70, 22),
+    Offset(90, 18),
+    Offset(110, 22),
+    Offset(130, 18),
+    Offset(150, 20),
+  ];
+
+  testWidgets('the pen lifts and the line is laid again with its wobble '
+      'taken out (後補正, F-418-Q7)', (tester) async {
+    final smoothed = await _draw(
+      tester,
+      wobbly,
+      stabilization: 0,
+      postStrength: 40,
+    );
+    expect(
+      _wobble(smoothed.beforeLift),
+      greaterThan(1),
+      reason: 'drawn as the pen went',
+    );
+    expect(_wobble(smoothed.committed), lessThan(1e-6), reason: 'landed even');
+    expect(smoothed.committed.first.center.x, closeTo(10, 1e-6));
+    expect(_reach(smoothed.committed), closeTo(150, 1));
+  });
+
+  testWidgets('a brush that takes nothing out lands what it laid', (
+    tester,
+  ) async {
+    final plain = await _draw(tester, wobbly, stabilization: 0);
+    expect(
+      plain.committed.map((dab) => dab.center),
+      plain.beforeLift.map((dab) => dab.center),
+    );
+  });
+
+  testWidgets('the line laid again carries what the pen read along it', (
+    tester,
+  ) async {
+    const pressures = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
+    final smoothed = await _draw(
+      tester,
+      wobbly,
+      stabilization: 0,
+      postStrength: 40,
+      pressures: pressures,
+    );
+    final pressed = smoothed.committed.map((dab) => dab.pressure).toList();
+    expect(pressed.first, closeTo(0.1, 1e-9));
+    expect(pressed.last, closeTo(0.8, 1e-9));
+    for (var i = 1; i < pressed.length; i += 1) {
+      expect(pressed[i], greaterThanOrEqualTo(pressed[i - 1] - 1e-9));
+    }
+  });
+
+  testWidgets('by the speed, a line drawn slowly keeps the wobble a quick '
+      'one loses (速度による調整)', (tester) async {
+    Future<double> wobbleAt(Duration step) async => _wobble(
+      (await _draw(
+        tester,
+        wobbly,
+        stabilization: 0,
+        postStrength: 40,
+        postBySpeed: true,
+        step: step,
+      )).committed,
+    );
+    expect(await wobbleAt(const Duration(milliseconds: 8)), lessThan(1e-6));
+    expect(await wobbleAt(const Duration(milliseconds: 400)), greaterThan(1));
+  });
+
+  testWidgets('by the view, a wobble is measured on the screen: zoomed in, '
+      'the same wobble on the canvas is a bigger one and stays '
+      '(表示倍率による調整)', (tester) async {
+    Future<double> wobbleAt(double zoom, {bool byView = true}) async =>
+        _wobble(
+          (await _draw(
+            tester,
+            wobbly,
+            stabilization: 0,
+            postStrength: 10,
+            postByViewScale: byView,
+            zoom: zoom,
+          )).committed,
+        );
+    expect(await wobbleAt(1), lessThan(1e-6));
+    expect(await wobbleAt(4), greaterThan(1));
+    expect(
+      await wobbleAt(4, byView: false),
+      lessThan(1e-6),
+      reason: 'measured on the canvas, it is the wobble it was at 100%',
+    );
+  });
+
+  testWidgets('laid again, a stroke keeps its own roll of the dice: two '
+      'strokes along one line scatter apart, as any two strokes do', (
+    tester,
+  ) async {
+    Future<List<(double, double)>> laid(Duration start) async => [
+      for (final dab in (await _draw(
+        tester,
+        wobbly,
+        stabilization: 0,
+        postStrength: 40,
+        scatter: 2,
+        start: start,
+      )).committed)
+        (dab.center.x, dab.center.y),
+    ];
+    final first = await laid(Duration.zero);
+    expect(
+      await laid(Duration.zero),
+      first,
+      reason: 'fixture: one roll, one scatter',
+    );
+    expect(await laid(const Duration(seconds: 1)), isNot(first));
+  });
 }
+
+/// How far [dabs] stray from y = 20.
+double _wobble(List<BrushDab> dabs) => dabs
+    .map((dab) => (dab.center.y - 20).abs())
+    .reduce((a, b) => a > b ? a : b);
 
 double _reach(List<BrushDab> dabs) =>
     dabs.map((dab) => dab.center.x).reduce((a, b) => a > b ? a : b);
 
-/// Draws [hand] with a stylus, a sample every 8 ms, on a fresh canvas at
-/// 100%: the dabs laid before the lift and those the stroke committed.
-/// [rest] runs between the last move and the lift with the dabs laid so far;
-/// [pressures], one per point of [hand], are what the pen reads there.
+/// Draws [hand], points on the canvas, with a stylus — a sample every
+/// [step] from [start] — on a fresh canvas at [zoom]: the dabs laid before
+/// the lift and those the stroke committed. [rest] runs between the last
+/// move and the lift with the dabs laid so far; [pressures], one per point
+/// of [hand], are what the pen reads there.
 Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
   WidgetTester tester,
   List<Offset> hand, {
   required double stabilization,
+  double postStrength = 0,
+  bool postBySpeed = false,
+  bool postByViewScale = true,
+  double scatter = 0,
+  double zoom = 1,
+  Duration step = const Duration(milliseconds: 8),
+  Duration start = Duration.zero,
   ActiveStrokeOverlayModel? overlay,
   Future<void> Function(List<BrushDab> laid)? rest,
   List<double>? pressures,
@@ -193,9 +332,16 @@ Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
             celNow: () => cel,
             layerId: const LayerId('layer-a'),
             frameId: const FrameId('frame-a'),
+            viewport: CanvasViewport(zoom: zoom),
             inputSettings: () => BrushEditCanvasInputSettings(
               size: 4,
-              correction: BrushCorrection(stabilization: stabilization),
+              scatterRadiusRatio: scatter,
+              correction: BrushCorrection(
+                stabilization: stabilization,
+                postStrength: postStrength,
+                postBySpeed: postBySpeed,
+                postByViewScale: postByViewScale,
+              ),
             ),
             overlayModel: overlay,
             onSourceStrokeCommitted: (data) => committed.add(data.sourceDabs),
@@ -205,13 +351,13 @@ Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
     ),
   );
 
-  var time = Duration.zero;
+  var time = start;
   var sample = 0;
   PointerEvent at(Offset local, {required bool down}) {
     final pressure = pressures?[sample] ?? 1.0;
     sample += 1;
-    time += const Duration(milliseconds: 8);
-    final position = canvasGlobalOffset(tester, local);
+    time += step;
+    final position = canvasGlobalOffset(tester, local * zoom);
     return down
         ? PointerDownEvent(
             pointer: 1,
@@ -245,8 +391,8 @@ Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
     PointerUpEvent(
       pointer: 1,
       kind: PointerDeviceKind.stylus,
-      position: canvasGlobalOffset(tester, hand.last),
-      timeStamp: time + const Duration(milliseconds: 8),
+      position: canvasGlobalOffset(tester, hand.last * zoom),
+      timeStamp: time + step,
     ),
   );
   await tester.pump();

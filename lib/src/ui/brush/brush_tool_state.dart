@@ -600,7 +600,14 @@ class BrushToolState {
     textureBrightness: clampSignedUnit(s.textureBrightness),
     textureContrast: clampSignedUnit(s.textureContrast),
     correction: s.correction.copyWith(
-      stabilization: clampStabilization(s.correction.stabilization),
+      stabilization: clampCorrection(
+        s.correction.stabilization,
+        BrushCorrection.maxStabilization,
+      ),
+      postStrength: clampCorrection(
+        s.correction.postStrength,
+        BrushCorrection.maxPostStrength,
+      ),
     ),
   );
 
@@ -1396,12 +1403,12 @@ class BrushToolState {
     return value.clamp(0.05, 10.0).toDouble();
   }
 
-  /// Clamps the 손떨림 보정 into 0..[BrushCorrection.maxStabilization].
-  static double clampStabilization(double value) {
+  /// Clamps a correction value — the 손떨림 보정, the 후보정 — into 0..[max].
+  static double clampCorrection(double value, double max) {
     if (!value.isFinite) {
       return 0.0;
     }
-    return value.clamp(0.0, BrushCorrection.maxStabilization).toDouble();
+    return value.clamp(0.0, max).toDouble();
   }
 
   @override
