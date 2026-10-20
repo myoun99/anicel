@@ -4165,13 +4165,14 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     final audioPeaksFor = this.audioPeaksFor;
     if (audioPeaksFor != null) {
       for (final strip in seRowAudioStrips(
-        layer: layer,
-        frameStartIndex: 0,
-        axis: Axis.horizontal,
-        frameRate: projectFrameRate,
-        audioPeaksFor: audioPeaksFor,
-        // Ink on the paper spans, like the timeline SE rows.
-        color: timelineDrawingInkColor.withValues(alpha: 0.22),
+        layer,
+        ink: (
+          axis: Axis.horizontal,
+          frameRate: projectFrameRate,
+          audioPeaksFor: audioPeaksFor,
+          // Ink on the paper spans, like the timeline SE rows.
+          color: timelineDrawingInkColor.withValues(alpha: 0.22),
+        ),
       )) {
         spans.add(
           _frameSpan(

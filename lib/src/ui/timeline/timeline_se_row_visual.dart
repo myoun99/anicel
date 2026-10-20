@@ -164,13 +164,17 @@ List<Widget> timelineRowAudioOverlays({
   String keyPrefix = 'timeline',
 }) => [
   for (final strip in seRowAudioStrips(
-    layer: layer,
-    frameStartIndex: frameStartIndex,
-    frameEndIndexExclusive: frameEndIndexExclusive,
-    axis: axis,
-    frameRate: frameRate,
-    audioPeaksFor: audioPeaksFor,
-    color: color,
+    layer,
+    window: (
+      startIndex: frameStartIndex,
+      endIndexExclusive: frameEndIndexExclusive,
+    ),
+    ink: (
+      axis: axis,
+      frameRate: frameRate,
+      audioPeaksFor: audioPeaksFor,
+      color: color,
+    ),
     leadInAtStart: leadInAtStart,
   ))
     TimelineFrameSpan(
@@ -194,35 +198,44 @@ typedef SeRowAudioStrip = ({
   Widget strip,
 });
 
+/// How an SE row draws its sounds ([seRowAudioStrips]): the axis it lays
+/// them along, the rate its frames are counted at, each file's peaks, and
+/// the ink.
+typedef SeRowSoundInk = ({
+  Axis axis,
+  ProjectFrameRate frameRate,
+  AudioPeaks? Function(String filePath) audioPeaksFor,
+  Color color,
+});
+
 /// An SE row's waveform strips with the frames each covers and the name it
 /// is keyed by — what [timelineRowAudioOverlays] places on a cut's cells,
 /// and the storyboard's S row on the track's axis. One reading of a sound
 /// for both: where it starts, how much of it is heard, and its gain and
-/// fades drawn on it.
+/// fades drawn on it. Only the sounds over [window] when one is given —
+/// the whole row when none is.
 ///
 /// ↩️The storyboard's S row read them on its own, and drew no gain and no
 /// fade (I-89 ① ⓕ, 2026-10-20).
-List<SeRowAudioStrip> seRowAudioStrips({
-  required Layer layer,
-  required int frameStartIndex,
-  int frameEndIndexExclusive = 1 << 30,
-  required Axis axis,
-  required ProjectFrameRate frameRate,
-  required AudioPeaks? Function(String filePath) audioPeaksFor,
-  required Color color,
+List<SeRowAudioStrip> seRowAudioStrips(
+  Layer layer, {
+  ({int startIndex, int endIndexExclusive})? window,
+  required SeRowSoundInk ink,
   int leadInAtStart = 0,
 }) {
+  final (:axis, :frameRate, :audioPeaksFor, :color) = ink;
   final strips = <SeRowAudioStrip>[];
   for (final span in seAudioSpans(layer, leadInAtStart: leadInAtStart)) {
     // Windowed like every sibling builder: the open-ended SE display
     // clone carries every downstream sound now, and an off-window
     // waveform strip is layout weight nobody can see.
-    if (!frameRangesOverlap(
-      span.startFrame,
-      span.startFrame + span.lengthFrames,
-      frameStartIndex,
-      frameEndIndexExclusive,
-    )) {
+    if (window != null &&
+        !frameRangesOverlap(
+          span.startFrame,
+          span.startFrame + span.lengthFrames,
+          window.startIndex,
+          window.endIndexExclusive,
+        )) {
       continue;
     }
     final peaks = audioPeaksFor(span.clip.filePath);
