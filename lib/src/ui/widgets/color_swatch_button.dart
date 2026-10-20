@@ -11,6 +11,7 @@ import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import 'anchored_popup.dart';
 import 'field_slider.dart';
+import 'pill_strip.dart' show TogglePill;
 import '../repaint_props.dart';
 
 /// The ONE color-picking control (R28 #9): a round swatch that opens the
@@ -402,6 +403,14 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
   /// closes the window: it dims the bar in place, the bar stays draggable, and
   /// a drag lights it and brings the plane back. The bar's seat is dead where
   /// the host keeps no alpha, the way the button's is where none is no value.
+  ///
+  /// 🗣️F-425 (유저 2026-10-21): 「없음버튼 누르면 없음인데, 애초에 있는
+  /// 상태는 글자 있음, 강조색으로. 즉 누를때마다 토글이란느낌. 기존에
+  /// 누를때마다 글자색이나 색 변경하는거 버튼 있으니 공용/통일」. So the
+  /// button is the shared yes/no [TogglePill]: lit 「있음」 while the plane
+  /// is there, plain 「없음」 once it is not, and a press on 「없음」 brings
+  /// the plane back in the colour and opacity this window holds — the ones
+  /// it was before.
   Widget _noneRow() {
     final onNone = widget.onNone;
     return Row(
@@ -415,14 +424,23 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
           ),
         ),
         const SizedBox(width: 8),
-        _action(
+        TogglePill(
           keyValue: 'color-picker-none',
-          label: AppText.strings.colorNone,
-          onPressed: onNone == null
+          on: !_none,
+          words: (
+            on: AppText.strings.colorPresent,
+            off: AppText.strings.colorNone,
+          ),
+          onChanged: onNone == null
               ? null
-              : () {
-                  onNone();
-                  setState(() => _none = true);
+              : (present) {
+                  if (present) {
+                    setState(() => _none = false);
+                    _emit();
+                  } else {
+                    onNone();
+                    setState(() => _none = true);
+                  }
                 },
         ),
       ],

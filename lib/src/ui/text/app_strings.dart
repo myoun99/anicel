@@ -1740,6 +1740,7 @@ enum AppStrings {
   String get viewBackdropColor => _s('viewBackdropColor');
   String get colorUseCurrent => _s('colorUseCurrent');
   String get colorNone => _s('colorNone');
+  String get colorPresent => _s('colorPresent');
 
   // --- The layer-controls header (column toggles, solo, section fold) ---
   String get tlSections => _s('tlSections');
@@ -2889,6 +2890,7 @@ enum AppStrings {
     'viewBackdropColor': 'Backdrop color',
     'colorUseCurrent': 'Use current color',
     'colorNone': 'None',
+    'colorPresent': 'Present',
     'tlSections': 'Sections',
     'tlAllDisplayedLayers': 'All displayed layers',
     'tlShowAll': 'Show all',
@@ -4453,6 +4455,7 @@ enum AppStrings {
     'viewBackdropColor': '背景の色',
     'colorUseCurrent': '現在の色を適用',
     'colorNone': 'なし',
+    'colorPresent': 'あり',
     'tlSections': 'セクション',
     'tlAllDisplayedLayers': '表示中の全レイヤー',
     'tlShowAll': 'すべて表示',
@@ -6042,6 +6045,7 @@ enum AppStrings {
     'viewBackdropColor': '배경 색',
     'colorUseCurrent': '현재 색 반영',
     'colorNone': '없음',
+    'colorPresent': '있음',
     'tlSections': '섹션',
     'tlAllDisplayedLayers': '표시 중인 모든 레이어',
     'tlShowAll': '모두 표시',
@@ -7778,6 +7782,7 @@ enum AppStrings {
     'viewBackdropColor': 'Couleur de l\'arrière-plan',
     'colorUseCurrent': 'Utiliser la couleur actuelle',
     'colorNone': 'Aucune',
+    'colorPresent': 'Présente',
     'tlSections': 'Sections',
     'tlAllDisplayedLayers': 'Tous les calques affichés',
     'tlShowAll': 'Tout afficher',
@@ -9300,6 +9305,7 @@ enum AppStrings {
     'viewBackdropColor': '背景颜色',
     'colorUseCurrent': '使用当前颜色',
     'colorNone': '无',
+    'colorPresent': '有',
     'tlSections': '区段',
     'tlAllDisplayedLayers': '所有显示的图层',
     'tlShowAll': '全部显示',
