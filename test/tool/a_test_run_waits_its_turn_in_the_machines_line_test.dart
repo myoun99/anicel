@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../tool/flutter_room.dart' show FlutterRun;
 import '../../tool/test_queue.dart';
 import '../../tool/test_seconds.dart' show kUntimedFileMs;
+import '../helpers/project_scratch_folder.dart';
 import '../helpers/temp_dir.dart';
 
 /// A file by its name alone: Windows lists a folder with `\`, and the
@@ -117,7 +118,7 @@ void main() {
     test('the number is what the line folder\'s file says — ten when it '
         'says none', () {
       final line = Directory.systemTemp.createTempSync('queue_n');
-      addTearDown(() => deleteTempQuietly(line));
+      addTearDown(() => deleteAfterSessionEnds(line));
       expect(machineSuitesOf(line), kMachineSuites);
       final said = File('${line.path}/$kSuitesFile');
       said.writeAsStringSync('14\n');
