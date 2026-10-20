@@ -91,4 +91,128 @@ void main() {
     expect(rows(tester).pixels, 0, reason: 'and the first, back up');
     expect(session.workingPanel, WorkingPanel.storyboard);
   });
+
+
+  /// Where the stood cell lies along the rail's view: its top and bottom
+  /// from the view's top edge.
+  ({double top, double bottom}) standingInView(WidgetTester tester) {
+    final view = tester.getRect(
+      find
+          .descendant(
+            of: find.byKey(
+              const ValueKey<String>('storyboard-vertical-viewport'),
+            ),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    final cell = tester.getRect(
+      find.byKey(const ValueKey<String>('storyboard-standing-cell')),
+    );
+    return (top: cell.top - view.top, bottom: cell.bottom - view.top);
+  }
+
+  Future<EditorSessionManager> railPastTheView(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
+    final session = sessionOf(tester);
+    session.selectLayer(
+      session.layers.firstWhere((layer) => layer.kind == LayerKind.se).id,
+    );
+    for (var count = 0; count < 12; count += 1) {
+      session.layerStack.addLayerOfKind(LayerKind.se);
+    }
+    await showStoryboardPanel(tester);
+    return session;
+  }
+
+  // The timeline's walk keeps one row of neighbour in sight past the row it
+  // stands on ([revealSelectionOnBothAxes]); a reveal of any other row —
+  // the one above — would leave the stood row flush against the edge.
+  testWidgets('a walk past the foot of the view keeps one S row of margin '
+      'under the row it stands on', (tester) async {
+    final session = await railPastTheView(tester);
+    final track = session.repository.requireProject().tracks.single;
+    session.standOnRow(
+      LayerRowAddress(trackCameraRowId(track.id)),
+      panel: WorkingPanel.storyboard,
+    );
+    await tester.pumpAndSettle();
+    rows(tester).jumpTo(0);
+    await tester.pumpAndSettle();
+
+    for (var step = 0; step < 40 && rows(tester).pixels == 0; step += 1) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+    }
+    expect(rows(tester).pixels, greaterThan(0), reason: '⛔전제: it scrolled');
+    expect(
+      rows(tester).pixels,
+      lessThan(rows(tester).maxScrollExtent),
+      reason: '⛔전제: not held at the end, where any reveal stops',
+    );
+    final stood = session.currentRow;
+    expect(
+      stood is LayerRowAddress &&
+          session.layers.any(
+            (layer) => layer.id == stood.layerId && layer.kind == LayerKind.se,
+          ),
+      isTrue,
+      reason: '⛔전제: it stands on an S row, one margin tall',
+    );
+    final cell = standingInView(tester);
+    expect(
+      cell.bottom + (cell.bottom - cell.top),
+      moreOrLessEquals(rows(tester).viewportDimension, epsilon: 1),
+    );
+  });
+
+  // The session stands on a LANE while the rail's selected row stays the
+  // row the lanes belong to: the reveal follows where the walk stands.
+  testWidgets('a walk down an S row\'s lanes scrolls to the lane it stands '
+      'on, not to the row they hang from', (tester) async {
+    final session = await railPastTheView(tester);
+    final last = session.repository
+        .requireProject()
+        .tracks
+        .single
+        .seLayers
+        .last;
+    session.layerSwitches.toggleLayerLanes(last.id);
+    await tester.pumpAndSettle();
+    rows(tester).jumpTo(0);
+    await tester.pumpAndSettle();
+    // Brought into view from the top, the row stands at the foot with one
+    // row of margin under it — where its first lane is.
+    session.standOnRow(
+      LayerRowAddress(last.id),
+      panel: WorkingPanel.storyboard,
+    );
+    await tester.pumpAndSettle();
+    final before = rows(tester).pixels;
+
+    for (
+      var step = 0;
+      step < 40 && rows(tester).pixels == before;
+      step += 1
+    ) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      expect(
+        session.currentRow,
+        isA<LaneRowAddress>(),
+        reason: '⛔전제: the walk stays on the row\'s lanes',
+      );
+    }
+    expect(rows(tester).pixels, greaterThan(before));
+    final cell = standingInView(tester);
+    expect(cell.top, greaterThanOrEqualTo(0));
+    expect(
+      cell.bottom,
+      lessThanOrEqualTo(rows(tester).viewportDimension + 0.5),
+    );
+  });
 }
