@@ -40,13 +40,18 @@ import 'test_queue.dart';
 import 'test_results.dart';
 import 'test_seconds.dart';
 
-/// Changing one of these means the graph cannot answer, so we do not ask it.
+/// Changing one of these means the graph cannot answer, so we do not ask it:
+/// what every suite reads without naming it — the green record's own list
+/// ([kEveryTestReads], [kEveryTestReadsUnder]) — and the analysis options.
 ///
 /// Dependencies and toolchain change what every file compiles to; the native
-/// sources (`packages/`) sit behind FFI where no import edge reaches them;
-/// and `test/flutter_test_config.dart` is loaded by flutter_test before
+/// sources (`packages/`) sit behind FFI where no import edge reaches them,
+/// and the assets and shaders the pubspec bundles reach every suite the same
+/// way; and `test/flutter_test_config.dart` is loaded by flutter_test before
 /// every suite in the tree while nothing imports it — an edge the graph
-/// cannot see because it does not exist in the source.
+/// cannot see because it does not exist in the source. ↩️Until 10-20 this
+/// was a list of its own that left `assets/` and `shaders/` out, while the
+/// green record already ran every suite again for them.
 ///
 /// ↩️THE PLATFORM FOLDERS ARE NO LONGER HERE (유저 10-20,
 /// tests-crowd-the-machine-Q6 「전부」). `android/ ios/ linux/ macos/
@@ -56,14 +61,11 @@ import 'test_seconds.dart';
 /// load is the one [_engineCaveat] names. 🧪That day a lane that touched
 /// only `windows/runner/` ran all 2,561 files — eighty minutes of five
 /// suites, with eleven runs waiting behind it. A suite that reads a
-/// platform file as text is still chosen, by [scansReaching], like any scan.
+/// platform file as text is still chosen, by [selectTests], like any scan.
 const _runEverything = <String>[
-  'pubspec.yaml',
-  'pubspec.lock',
+  ...kEveryTestReads,
+  ...kEveryTestReadsUnder,
   'analysis_options.yaml',
-  'dart_test.yaml',
-  'packages/',
-  'test/flutter_test_config.dart',
 ];
 
 /// The tag [gcTagMarker] writes, as `dart_test.yaml` declares it.
@@ -109,37 +111,31 @@ const gcTagMarker = "@Tags(['$gcTag'])";
 }
 
 /// What a change to [changed] — every changed file, Dart or not — can have
-/// broken, out of [tests].
+/// broken, out of [tests]: what reaches a changed file ([Reaches]) — by its
+/// imports, however far away, or by a path it or anything it imports reads
+/// as text ([pathsReadAsText] has the rounds those reads were missing
+/// from) — the green record's own question.
+///
+/// 🚨flutter_test loads [kTestConfig] before every suite, and all it
+/// reaches with it, so a change the config reaches is every suite's. Until
+/// 10-20 the selection asked each test alone: a change to the session
+/// sandbox the config sets up chose only the few tests that import it —
+/// 15% of that month's lib changes touched what the config reaches.
 Set<String> selectTests({
   required Set<String> changed,
   required List<String> tests,
   required Map<String, Set<String>> imports,
   required String Function(String path) read,
-}) => {
-  // A changed test runs because it changed, whatever it imports.
-  ...changed.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
-  // Everything that can reach a changed file, however far away.
-  for (final test in tests)
-    if (closureOf(test, imports).any(changed.contains)) test,
-  // And every test that reads, as text, where a changed file lives — the one
-  // dependency no edge carries.
-  ...scansReaching(changed, tests, read),
-};
-
-/// The [tests] that read, as text, a path holding one of the [changed]
-/// files — the source scans and file reads no import edge reaches. See
-/// [pathsReadAsText] for the rounds they were missing from.
-List<String> scansReaching(
-  Set<String> changed,
-  Iterable<String> tests,
-  String Function(String path) read,
-) => [
-  for (final test in tests)
-    if (pathsReadAsText(read(test)).any(
-      (prefix) => changed.any((file) => file.startsWith(prefix)),
-    ))
-      test,
-];
+}) {
+  final reaches = Reaches(imports, read);
+  final everySuite = reachesAny(reaches.of(kTestConfig), changed);
+  return {
+    // A changed test runs because it changed, whatever it imports.
+    ...changed.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
+    for (final test in tests)
+      if (everySuite || reachesAny(reaches.of(test), changed)) test,
+  };
+}
 
 Future<void> main(List<String> args) async {
   final listOnly = args.contains('--list');

@@ -6,7 +6,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/affected_tests.dart'
-    show forcesFullRun, kGraphRoots, scansReaching, selectTests;
+    show forcesFullRun, kGraphRoots, selectTests;
 import '../../tool/import_graph.dart'
     show buildImportGraph, pathsReadAsText;
 
@@ -81,6 +81,7 @@ void main() {
     const plain = 'test/c_test.dart';
     const scanTests = 'test/d_test.dart';
     const readsScript = 'test/e_test.dart';
+    const config = 'test/flutter_test_config.dart';
     final sources = {
       scanAll: "for (final f in Directory('lib').listSync()) {}",
       scanServices: "dartFilesUnder('lib/src/services')",
@@ -88,63 +89,114 @@ void main() {
       scanTests: "for (final f in dartFilesUnder('test')) {}",
       readsScript: "File('tool/lane.sh').readAsStringSync()",
     };
-    List<String> reaching(Set<String> changed) =>
-        scansReaching(changed, sources.keys, (path) => sources[path]!);
+    Set<String> select(
+      Set<String> changed, {
+      Map<String, Set<String>> imports = const {},
+      Map<String, String> more = const {},
+    }) => selectTests(
+      changed: changed,
+      tests: [...sources.keys, ...more.keys.where((f) => f.endsWith('_test.dart'))],
+      imports: imports,
+      read: (path) => sources[path] ?? more[path] ?? '',
+    );
 
     test('a change under a walked directory selects the scan', () {
-      expect(reaching({'lib/src/ui/canvas/flip_hud_overlay.dart'}), [scanAll]);
-      expect(
-        reaching({'lib/src/services/x.dart'}),
-        [scanAll, scanServices],
-      );
+      expect(select({'lib/src/ui/canvas/flip_hud_overlay.dart'}), {scanAll});
+      expect(select({'lib/src/services/x.dart'}), {scanAll, scanServices});
     });
 
     test('🚨a changed TEST selects the scans that walk the tests', () {
-      expect(reaching({'test/helpers/x.dart'}), [scanTests]);
+      expect(select({'test/helpers/x.dart'}), {scanTests});
     });
 
     test('🚨a changed file that is not Dart selects what reads it', () {
-      expect(reaching({'tool/lane.sh'}), [readsScript]);
+      expect(select({'tool/lane.sh'}), {readsScript});
     });
 
     test('⛔a change nothing reads selects no scan', () {
-      expect(reaching({'docs/index.html'}), isEmpty);
+      expect(select({'docs/index.html'}), isEmpty);
     });
 
     test('🚨the run is handed the scans beside what the imports reach', () {
-      final selected = selectTests(
-        changed: {'lib/src/ui/x.dart', 'tool/lane.sh'},
-        tests: sources.keys.toList(),
-        imports: {
-          plain: {'lib/src/ui/x.dart'},
-        },
-        read: (path) => sources[path]!,
+      expect(
+        select(
+          {'lib/src/ui/x.dart', 'tool/lane.sh'},
+          imports: {
+            plain: {'lib/src/ui/x.dart'},
+          },
+        ),
+        {scanAll, plain, readsScript},
       );
-      expect(selected, {scanAll, plain, readsScript});
+    });
+
+    test('🚨a path a helper reads selects the tests that import the helper',
+        () {
+      // Until 10-20 the selection read only the test's own text, while the
+      // green record read the helpers' too.
+      const usesHelper = 'test/f_test.dart';
+      const helper = 'test/helpers/lane_script.dart';
+      expect(
+        select(
+          {'tool/lane.sh'},
+          imports: {
+            usesHelper: {helper},
+          },
+          more: {usesHelper: '', helper: "File('tool/lane.sh')"},
+        ),
+        {readsScript, usesHelper},
+      );
+    });
+
+    test("⛔a word in the app's code is no path it reads", () {
+      const usesBrush = 'test/g_test.dart';
+      const brush = 'lib/src/ui/brush/tool_choice.dart';
+      expect(
+        select(
+          {'tool/x.dart'},
+          imports: {
+            usesBrush: {brush},
+          },
+          more: {usesBrush: '', brush: "json['tool']"},
+        ),
+        isEmpty,
+      );
+    });
+
+    test('🚨what the test config reaches is every suite\'s — and what it '
+        'does not reach is not', () {
+      const sandbox = 'lib/src/services/persistence/session_scratch.dart';
+      final imports = {
+        config: {sandbox},
+        plain: {'lib/src/ui/x.dart'},
+      };
+      expect(select({sandbox}, imports: imports), sources.keys.toSet());
+      expect(select({'lib/src/ui/x.dart'}, imports: imports), {plain});
     });
   });
 
   test('🚨the scan that escaped is selected by the change that broke it', () {
     const law = 'test/ui/canvas/the_frame_axis_is_asked_in_one_place_test.dart';
     expect(
-      scansReaching(
-        {'lib/src/ui/canvas/flip_hud_overlay.dart'},
-        [law],
-        (path) => File(path).readAsStringSync(),
+      selectTests(
+        changed: {'lib/src/ui/canvas/flip_hud_overlay.dart'},
+        tests: [law],
+        imports: const {},
+        read: (path) => File(path).readAsStringSync(),
       ),
-      [law],
+      {law},
     );
   });
 
   test('🚨and the one that escaped a day later, by the test that broke it', () {
     const law = 'test/architecture/tests_do_not_race_the_code_test.dart';
     expect(
-      scansReaching(
-        {'test/services/persistence/save_failure_test.dart'},
-        [law],
-        (path) => File(path).readAsStringSync(),
+      selectTests(
+        changed: {'test/services/persistence/save_failure_test.dart'},
+        tests: [law],
+        imports: const {},
+        read: (path) => File(path).readAsStringSync(),
       ),
-      [law],
+      {law},
     );
   });
 
@@ -170,17 +222,22 @@ void main() {
       'dart_test.yaml',
       'packages/qa_native/src/brush.c',
       'test/flutter_test_config.dart',
+      // What the pubspec bundles into every suite, as the green record has
+      // always keyed it (10-20).
+      'assets/fonts/BIZUDPGothic-Regular.ttf',
+      'shaders/x.frag',
     ]) {
       expect(forcesFullRun(blanket), isTrue, reason: blanket);
     }
     const reader = 'test/ui/the_close_button_asks_the_app_test.dart';
     expect(
-      scansReaching(
-        {'windows/runner/flutter_window.cpp'},
-        [reader],
-        (path) => File(path).readAsStringSync(),
+      selectTests(
+        changed: {'windows/runner/flutter_window.cpp'},
+        tests: [reader],
+        imports: const {},
+        read: (path) => File(path).readAsStringSync(),
       ),
-      [reader],
+      {reader},
     );
     expect(
       pathsReadAsText("File('android/app/build.gradle.kts')"),

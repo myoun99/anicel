@@ -81,7 +81,7 @@ class Inputs {
   final Iterable<String> files;
   final String Function(String path) read;
 
-  final _readAsText = <String, Set<String>>{};
+  late final _reaches = Reaches(imports, read);
   final _under = <String, List<String>>{};
 
   /// What every test reads ([kEveryTestReads], [kEveryTestReadsUnder]) —
@@ -92,25 +92,13 @@ class Inputs {
     ...of(kTestConfig),
   };
 
-  /// [test], every file its imports reach ([closureOf]), and every file
-  /// under a path one of those reads as text ([pathsReadAsText] — the
-  /// selection's own reach, read here from the helpers too).
+  /// The files of [test]'s [Reach], and every file under a path it reads.
   Set<String> of(String test) {
-    final dart = {test, ...closureOf(test, imports)};
+    final reach = _reaches.of(test);
     return {
-      ...dart,
-      for (final file in dart)
-        for (final prefix in _readAsText.putIfAbsent(file, () => _texts(file)))
-          ..._filesUnder(prefix),
+      ...reach.files,
+      for (final prefix in reach.prefixes) ..._filesUnder(prefix),
     };
-  }
-
-  Set<String> _texts(String file) {
-    try {
-      return pathsReadAsText(read(file));
-    } on FileSystemException {
-      return const {};
-    }
   }
 
   List<String> _filesUnder(String prefix) => _under.putIfAbsent(

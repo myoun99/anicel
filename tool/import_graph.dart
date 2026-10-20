@@ -150,6 +150,56 @@ Set<String> closureOf(String start, Map<String, Set<String>> graph) {
   return seen;
 }
 
+/// What a file reads: the file and every file its imports reach, and every
+/// path one of those spells to read as text ([pathsReadAsText]).
+typedef Reach = ({Set<String> files, Set<String> prefixes});
+
+/// The [Reach] of each file asked — one law for what a test depends on,
+/// asked by the selection (`selectTests`) and by the green record
+/// (`Inputs.of`). ↩️Until 10-20 each walked it on its own: the record read
+/// the helpers' text reads and the selection read only the test's, so a
+/// test whose helper reads `tool/lane.sh` was keyed on the script and never
+/// chosen by a change to it.
+class Reaches {
+  Reaches(this.imports, this.read);
+
+  final Map<String, Set<String>> imports;
+  final String Function(String path) read;
+  final _texts = <String, Set<String>>{};
+  final _of = <String, Reach>{};
+
+  /// ⛔A file under `lib/` reads no path: it is the app's code, run where
+  /// no checkout exists, and a literal there is a word — the `'tool'` key
+  /// of `tool_choice.dart` once made every test that reaches it read all
+  /// of `tool/` (10-20, 392 files for a change to one tool).
+  Reach of(String start) => _of.putIfAbsent(start, () {
+    final files = {start, ...closureOf(start, imports)};
+    return (
+      files: files,
+      prefixes: {
+        for (final file in files)
+          if (!file.startsWith('lib/')) ..._textsOf(file),
+      },
+    );
+  });
+
+  Set<String> _textsOf(String file) => _texts.putIfAbsent(file, () {
+    try {
+      return pathsReadAsText(read(file));
+    } on FileSystemException {
+      // A file an edge names that is gone reads nothing.
+      return const {};
+    }
+  });
+}
+
+/// Whether one of [changed] lies in [reach]: one of its files, or under a
+/// path it reads.
+bool reachesAny(Reach reach, Set<String> changed) => changed.any(
+  (file) =>
+      reach.files.contains(file) || reach.prefixes.any(file.startsWith),
+);
+
 /// For each file in [graph], which of [starts] can reach it.
 ///
 /// ⚠️One pass per start, not per file: the closure of each start is walked
