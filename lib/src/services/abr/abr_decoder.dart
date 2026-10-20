@@ -660,7 +660,7 @@ BrushSettings _settingsForTip(
     hardness: hardness.isFinite ? hardness.clamp(0.0, 1.0).toDouble() : 1.0,
     opacity: opacity.isFinite ? opacity.clamp(0.0, 1.0).toDouble() : 1.0,
     flow: flow.isFinite ? flow.clamp(0.0, 1.0).toDouble() : 1.0,
-    tipMask: mask,
+    tips: [?mask],
     sizePressureCurve: sizePressureCurve,
     opacityPressureCurve: opacityPressureCurve,
     flowPressureCurve: flowPressureCurve,

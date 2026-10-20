@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/services/sut/sut_decoder.dart';
 import 'package:sqlite3/sqlite3.dart';
 import '../helpers/temp_dir.dart';
@@ -85,17 +86,45 @@ void main() {
     return bytes.buffer.asUint8List();
   }
 
-  /// UTF-16LE catalog reference blob, as CSP writes pattern arrays.
-  Uint8List patternArray(String catalogPath) {
-    final builder = BytesBuilder();
-    builder.add(Uint8List(16)); // framing header (ignored by the decoder)
-    for (final unit in catalogPath.codeUnits) {
-      builder.addByte(unit & 0xFF);
-      builder.addByte(unit >> 8);
+  Uint8List u32(int value) =>
+      (ByteData(4)..setUint32(0, value)).buffer.asUint8List();
+
+  Uint8List utf16le(String text) => Uint8List.fromList([
+    for (final unit in text.codeUnits) ...[unit & 0xFF, unit >> 8],
+  ]);
+
+  /// A Clip Studio material array naming [entries] in order, laid out the
+  /// way the user's files are (📏2026-10-18): a big-endian u32 saying where
+  /// the entries start and a u32 count, then each entry led by its own
+  /// length — its layer path, a name and its catalog path inside.
+  Uint8List patternArrayOf(List<({String layer, String catalog})> entries) {
+    final builder = BytesBuilder()
+      ..add(u32(8))
+      ..add(u32(entries.length));
+    for (final entry in entries) {
+      final layer = utf16le(entry.layer);
+      final catalog = utf16le(entry.catalog);
+      final body = BytesBuilder()
+        ..add(u32(layer.length))
+        ..add(layer)
+        ..add(u32(2))
+        ..add(u32(0))
+        ..add(u32(catalog.length))
+        ..add(catalog);
+      builder
+        ..add(u32(4 + body.length))
+        ..add(body.toBytes());
     }
-    builder.add(Uint8List(6));
     return builder.toBytes();
   }
+
+  /// One material's entry, its layer path under its catalog path.
+  ({String layer, String catalog}) entryOf(String catalogPath) =>
+      (layer: '$catalogPath:data:material_0.layer', catalog: catalogPath);
+
+  /// The array naming one material, as most brushes' do.
+  Uint8List patternArray(String catalogPath) =>
+      patternArrayOf([entryOf(catalogPath)]);
 
   /// PNG bytes for a [width]x[height] opaque black rectangle.
   Future<Uint8List> blackPng(int width, int height) async {
@@ -150,6 +179,13 @@ void main() {
     // Null stands for a file written before the column existed; 3 (強) is
     // what Clip Studio's own G펜 stores.
     int? antiAlias = 3,
+    // F-176-Q3: further tips' materials, the arrays to store in place of the
+    // ones naming one material alone, and the 繰り返し方法 number.
+    List<({String catalogPath, String originalPath, Uint8List png})>
+        moreTipMaterials = const [],
+    Uint8List? tipArray,
+    Uint8List? dualArray,
+    int? patternOrderType,
   }) async {
     // Unique per call: a test that builds several fixtures would otherwise
     // reopen the first one and fail on its existing tables.
@@ -179,7 +215,8 @@ void main() {
         BrushUseWaterColor INTEGER, BrushMixColor INTEGER,
         BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER,
         BrushThicknessEffector BLOB, BrushIntervalEffector BLOB,
-        CompositeMode INTEGER, AntiAlias INTEGER);
+        CompositeMode INTEGER, AntiAlias INTEGER,
+        BrushPatternOrderType INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -208,12 +245,13 @@ void main() {
       'DualPatternImageArray, DualSize, SyncDualBrushSize, DualFlow, '
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
       'BrushMixColorExtension, BrushThicknessEffector, '
-      'BrushIntervalEffector, CompositeMode, AntiAlias) '
+      'BrushIntervalEffector, CompositeMode, AntiAlias, '
+      'BrushPatternOrderType) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
       '?, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
-        patternArray(catalogPath),
+        tipArray ?? patternArray(catalogPath),
         effector(
           sizeEffectorFlags,
           minimumPercent: sizeEffectorMinimum,
@@ -235,7 +273,10 @@ void main() {
         rotationRandomInSpray,
         if (dualPng == null) 0 else 1,
         if (dualPng == null) 0 else 1,
-        if (dualPng == null) null else patternArray(dualCatalogPath),
+        if (dualPng == null)
+          null
+        else
+          dualArray ?? patternArray(dualCatalogPath),
         dualSize,
         syncDualBrushSize,
         dualFlow,
@@ -255,6 +296,7 @@ void main() {
         ),
         compositeMode,
         antiAlias,
+        patternOrderType,
       ],
     );
     // Round brush without pattern data.
@@ -284,6 +326,22 @@ void main() {
         'VALUES (?, ?, ?)',
         [catalogPath, '$catalogPath:data:material_0.layer', fileData.toBytes()],
       );
+      for (final material in moreTipMaterials) {
+        database.execute(
+          'INSERT INTO MaterialFile(CatalogPath, OriginalPath, FileData) '
+          'VALUES (?, ?, ?)',
+          [
+            material.catalogPath,
+            material.originalPath,
+            Uint8List.fromList([
+              ...ascii.encode('catalog.zip'),
+              ...Uint8List(17),
+              ...material.png,
+              ...Uint8List(3),
+            ]),
+          ],
+        );
+      }
       if (dualPng != null) {
         final dualData = BytesBuilder();
         dualData.add(ascii.encode('catalog.zip'));
@@ -383,6 +441,133 @@ void main() {
     expect(round.settings.size, 8.0);
     expect(round.settings.hardness, closeTo(0.9, 1e-9));
     expect(round.settings.sizePressureCurve, isNull);
+  });
+
+  test('🚨every tip a brush names comes in, in its array\'s order '
+      '(F-176-Q3)', () async {
+    const second = '.:36:44:second-tip';
+    const third = '.:36:45:third-tip';
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      moreTipMaterials: [
+        (
+          catalogPath: second,
+          originalPath: '$second:data:material_0.layer',
+          png: await blackPng(6, 6),
+        ),
+        (
+          catalogPath: third,
+          originalPath: '$third:data:material_0.layer',
+          png: await blackPng(8, 8),
+        ),
+      ],
+      tipArray: patternArrayOf([
+        entryOf(third),
+        entryOf('.:36:43:fixture-tip-catalog'),
+        entryOf(third),
+        entryOf(second),
+      ]),
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.warnings, isEmpty);
+    final tips = result.presets.first.settings.tips;
+    expect([for (final tip in tips) tip.size], [8, 4, 8, 6]);
+    const base = 'sut-0102030405060708090a0b0c0d0e0f10-tip';
+    expect(
+      [for (final tip in tips) tip.id],
+      [base, '$base-2', base, '$base-3'],
+    );
+    expect(identical(tips[0], tips[2]), isTrue, reason: 'one mask, twice');
+  });
+
+  test('⚠️an installed material is found by the catalog path its entry '
+      'spells — its layer path drops the Install:', () async {
+    const installed = '.:Install:Paint110:fixture-installed';
+    const layer = '.:Paint110:fixture-installed:data:material_0.layer';
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      moreTipMaterials: [
+        (
+          catalogPath: installed,
+          originalPath: layer,
+          png: await blackPng(6, 6),
+        ),
+      ],
+      tipArray: patternArrayOf([(layer: layer, catalog: installed)]),
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.warnings, isEmpty);
+    final tips = result.presets.first.settings.tips;
+    expect([for (final tip in tips) tip.size], [6]);
+  });
+
+  test('繰り返し方法 comes in by the number Clip Studio stores', () async {
+    // 0 and 3 are read off the user's brushes; the rest follow the order
+    // Clip Studio lists the six in (board F-176-Q5 asks Clip Studio).
+    final orders = <BrushTipOrder>[];
+    for (final stored in [null, 0, 1, 2, 3, 4, 5]) {
+      final path = await buildFixture(
+        tipPng: await blackPng(4, 4),
+        patternOrderType: stored,
+      );
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+      expect(result.warnings, isEmpty, reason: '$stored');
+      orders.add(result.presets.first.settings.tipOrder);
+    }
+
+    expect(orders, [
+      BrushTipOrder.repeat,
+      BrushTipOrder.repeat,
+      BrushTipOrder.pingPong,
+      BrushTipOrder.holdLast,
+      BrushTipOrder.random,
+      BrushTipOrder.oneLap,
+      BrushTipOrder.shuffledLap,
+    ]);
+  });
+
+  test('an unrecognised 繰り返し方法 warns and takes the tips in order', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      patternOrderType: 9,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.tipOrder, BrushTipOrder.repeat);
+    expect(result.warnings, [contains('BrushPatternOrderType 9')]);
+  });
+
+  test('a dual tip naming two images keeps the first, and says so', () async {
+    const dual = '.:77:88:fixture-dual-catalog';
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      dualPng: await blackPng(10, 10),
+      dualArray: patternArrayOf([
+        entryOf(dual),
+        entryOf('.:36:43:fixture-tip-catalog'),
+      ]),
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.dualMask!.size, 10);
+    expect(result.warnings, [contains('only the first is used')]);
   });
 
   test('the effector response curve imports as a curve', () async {

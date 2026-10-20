@@ -1618,6 +1618,13 @@ enum AppStrings {
   String get brRotationFixed => _s('brRotationFixed');
   String get brRotationDirection => _s('brRotationDirection');
   String get brRotationPenTilt => _s('brRotationPenTilt');
+  String get brTipOrder => _s('brTipOrder');
+  String get brTipOrderRepeat => _s('brTipOrderRepeat');
+  String get brTipOrderPingPong => _s('brTipOrderPingPong');
+  String get brTipOrderHoldLast => _s('brTipOrderHoldLast');
+  String get brTipOrderRandom => _s('brTipOrderRandom');
+  String get brTipOrderOneLap => _s('brTipOrderOneLap');
+  String get brTipOrderShuffledLap => _s('brTipOrderShuffledLap');
   String get brStabilizer => _s('brStabilizer');
   String get brGroupInk => _s('brGroupInk');
   String get brGroupTip => _s('brGroupTip');
@@ -2747,6 +2754,13 @@ enum AppStrings {
     'brRotationFixed': 'None',
     'brRotationDirection': 'Line Direction',
     'brRotationPenTilt': 'Pen Direction',
+    'brTipOrder': 'Repeat Method',
+    'brTipOrderRepeat': 'Repeat',
+    'brTipOrderPingPong': 'Back and Forth',
+    'brTipOrderHoldLast': 'No Repeat',
+    'brTipOrderRandom': 'Random',
+    'brTipOrderOneLap': 'Once Through',
+    'brTipOrderShuffledLap': 'Random Once Through',
     'brBrushTip': 'Brush Tip',
     'brTipNone': 'None',
     'brDualTip': 'Dual Tip',
@@ -4213,6 +4227,13 @@ enum AppStrings {
     'brRotationFixed': 'なし',
     'brRotationDirection': '線の方向',
     'brRotationPenTilt': 'ペンの方向',
+    'brTipOrder': '繰り返し方法',
+    'brTipOrderRepeat': '繰り返し',
+    'brTipOrderPingPong': '折り返し',
+    'brTipOrderHoldLast': '繰り返さない',
+    'brTipOrderRandom': 'ランダム',
+    'brTipOrderOneLap': '一巡のみ',
+    'brTipOrderShuffledLap': 'ランダムに一巡',
     'brBrushTip': 'ブラシ先端',
     'brTipNone': 'なし',
     'brDualTip': 'デュアル先端',
@@ -5777,6 +5798,13 @@ enum AppStrings {
     'brRotationFixed': '없음',
     'brRotationDirection': '선 방향',
     'brRotationPenTilt': '펜 방향',
+    'brTipOrder': '반복 방법',
+    'brTipOrderRepeat': '반복',
+    'brTipOrderPingPong': '왕복',
+    'brTipOrderHoldLast': '반복 안 함',
+    'brTipOrderRandom': '랜덤',
+    'brTipOrderOneLap': '한 바퀴만',
+    'brTipOrderShuffledLap': '랜덤 한 바퀴',
     'brBrushTip': '브러시 끝',
     'brTipNone': '없음',
     'brDualTip': '듀얼 끝',
@@ -7488,6 +7516,13 @@ enum AppStrings {
     'brRotationFixed': 'Aucune',
     'brRotationDirection': 'Sens du trait',
     'brRotationPenTilt': 'Sens du stylet',
+    'brTipOrder': 'Méthode de répétition',
+    'brTipOrderRepeat': 'Répéter',
+    'brTipOrderPingPong': 'Aller-retour',
+    'brTipOrderHoldLast': 'Sans répétition',
+    'brTipOrderRandom': 'Aléatoire',
+    'brTipOrderOneLap': 'Un seul tour',
+    'brTipOrderShuffledLap': 'Un tour aléatoire',
     'brBrushTip': 'Pointe',
     'brTipNone': 'Aucune',
     'brDualTip': 'Pointe double',
@@ -8990,6 +9025,13 @@ enum AppStrings {
     'brRotationFixed': '无',
     'brRotationDirection': '线条方向',
     'brRotationPenTilt': '笔的方向',
+    'brTipOrder': '重复方法',
+    'brTipOrderRepeat': '重复',
+    'brTipOrderPingPong': '往返',
+    'brTipOrderHoldLast': '不重复',
+    'brTipOrderRandom': '随机',
+    'brTipOrderOneLap': '仅一轮',
+    'brTipOrderShuffledLap': '随机一轮',
     'brBrushTip': '笔尖',
     'brTipNone': '无',
     'brDualTip': '双重笔尖',

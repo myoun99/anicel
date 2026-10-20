@@ -5,6 +5,7 @@ import 'brush_input_source.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
+import 'brush_tip_order.dart';
 import 'brush_tip_rotation_mode.dart';
 
 class BrushSettings {
@@ -26,7 +27,8 @@ class BrushSettings {
     Map<BrushDynamicsKey, BrushPressureCurve> curves = const {},
     double roundness = 1.0,
     double angleDegrees = 0.0,
-    BrushTipMask? tipMask,
+    List<BrushTipMask> tips = const [],
+    BrushTipOrder tipOrder = BrushTipOrder.repeat,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
@@ -66,7 +68,8 @@ class BrushSettings {
          },
          roundness: roundness,
          angleDegrees: angleDegrees,
-         tipMask: tipMask,
+         tips: tips,
+         tipOrder: tipOrder,
          rotationMode: rotationMode,
          angleJitter: angleJitter,
          scatterRadiusRatio: scatterRadiusRatio,
@@ -123,6 +126,9 @@ class BrushSettings {
 
   double get roundness => shape.roundness;
   double get angleDegrees => shape.angleDegrees;
+  /// See [BrushShape.tips] — and [tipMask], the first of them.
+  List<BrushTipMask> get tips => shape.tips;
+  BrushTipOrder get tipOrder => shape.tipOrder;
   BrushTipMask? get tipMask => shape.tipMask;
   BrushTipRotationMode get rotationMode => shape.rotationMode;
   double get angleJitter => shape.angleJitter;
@@ -183,7 +189,8 @@ class BrushSettings {
     BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask>? tips,
+    BrushTipOrder? tipOrder,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -230,7 +237,8 @@ class BrushSettings {
           shape.curves,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
-      tipMask: tipMask ?? this.tipMask,
+      tips: tips ?? this.tips,
+      tipOrder: tipOrder ?? this.tipOrder,
       rotationMode: rotationMode ?? this.rotationMode,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
@@ -255,7 +263,7 @@ class BrushSettings {
     );
   }
 
-  /// [withMasks] false leaves the three tips out — for comparing two
+  /// [withMasks] false leaves the masks out — for comparing two
   /// brushes' settings without writing every tip's pixels out as base64,
   /// which the hand bank does on every slider frame (H25-again). Every file
   /// writer takes the default.
@@ -278,7 +286,17 @@ class BrushSettings {
     ..._curvesToJson(_nonPressureCurves),
     'roundness': roundness,
     'angleDegrees': angleDegrees,
-    if (withMasks && tipMask != null) 'tipMask': tipMask!.toJson(),
+    if (withMasks && tips.isNotEmpty) 'tipMask': tips.first.toJson(),
+    // ⛔THE TIPS AFTER THE FIRST RIDE A KEY OF THEIR OWN, not one list of
+    // every tip: a file written while a brush had one tip keeps it at
+    // 'tipMask', and so reads unchanged with no code of its own — 유저
+    // 2026-09-24 wants no carry-forward code and no version bump, which
+    // would eat the library of their own brushes.
+    if (withMasks && tips.length > 1)
+      'moreTipMasks': [for (final tip in tips.skip(1)) tip.toJson()],
+    // 繰り返し is the default, so it writes nothing — presets saved before
+    // the setting existed round-trip byte-identically.
+    if (tipOrder != BrushTipOrder.repeat) 'tipOrder': tipOrder.name,
     'rotationMode': rotationMode.toJson(),
     'angleJitter': angleJitter,
     // 通常 is the default, so it writes nothing — presets saved before every
@@ -341,9 +359,15 @@ class BrushSettings {
       curves: _curvesFromJson(json['curves']),
       roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
       angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
-      tipMask: json['tipMask'] == null
-          ? null
-          : BrushTipMask.fromJson(json['tipMask'] as Map<String, dynamic>),
+      tips: [
+        if (json['tipMask'] case final Map<String, dynamic> first)
+          BrushTipMask.fromJson(first),
+        for (final more in json['moreTipMasks'] as List<dynamic>? ?? const [])
+          BrushTipMask.fromJson(more as Map<String, dynamic>),
+      ],
+      tipOrder:
+          BrushTipOrder.values.asNameMap()[json['tipOrder']] ??
+          BrushTipOrder.repeat,
       rotationMode: BrushTipRotationMode.fromJson(json['rotationMode']),
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
       // The legacy `lockedBlendMode` key reads straight in: a preset that

@@ -63,11 +63,13 @@ BrushPreset _sampled() {
     name: 'Sampled',
     settings: BrushSettings(
       size: 20,
-      tipMask: BrushTipMask(
-        id: 'test-mask',
-        size: 4,
-        alpha: Uint8List.fromList(List<int>.filled(16, 200)),
-      ),
+      tips: [
+        BrushTipMask(
+          id: 'test-mask',
+          size: 4,
+          alpha: Uint8List.fromList(List<int>.filled(16, 200)),
+        ),
+      ],
     ),
   );
 }

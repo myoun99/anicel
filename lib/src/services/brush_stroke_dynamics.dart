@@ -4,10 +4,12 @@ import '../models/brush_dab.dart';
 import '../models/brush_tip_rotation_mode.dart';
 import '../models/canvas_point.dart';
 import '../models/brush_edit_canvas_input_settings.dart';
+import 'brush_tip_turns.dart';
 
 /// Applies placement-time stroke dynamics — scatter, the tip's 向き (a fixed
-/// angle, the stroke's direction or the pen's, plus its random turn) — to
-/// interpolated dabs.
+/// angle, the stroke's direction or the pen's, plus its random turn), and
+/// which of several tips each dab takes ([BrushTipTurns]) — to interpolated
+/// dabs.
 ///
 /// Dynamics run once, when dabs are GENERATED: the emitted dabs carry their
 /// final randomized values, and since committed source dabs are the durable
@@ -19,18 +21,32 @@ import '../models/brush_edit_canvas_input_settings.dart';
 /// the ランダム row of each setting's curves now (F-176-Q2), thrown where the
 /// other inputs are read (`applyBrushInputDynamics`).
 class BrushStrokeDynamics {
-  BrushStrokeDynamics({required this.settings, math.Random? random})
-    : _random = random ?? math.Random();
+  /// [tipRandom] throws the tips' random turns apart from [random], so a
+  /// brush's scatter lands where it did whatever order its tips take.
+  BrushStrokeDynamics({
+    required this.settings,
+    math.Random? random,
+    math.Random? tipRandom,
+  }) : _random = random ?? math.Random(),
+       _tipTurns = BrushTipTurns.of(
+         settings.tips,
+         settings.tipOrder,
+         random: tipRandom ?? math.Random(),
+       );
 
   final BrushEditCanvasInputSettings settings;
   final math.Random _random;
+
+  /// One stroke's turns, so they start over with the stroke.
+  final BrushTipTurns? _tipTurns;
 
   /// Whether any dynamic is active for [settings]; when false the input
   /// dabs pass through untouched.
   bool get isActive =>
       settings.rotationMode != BrushTipRotationMode.fixed ||
       settings.angleJitter > 0.0 ||
-      (settings.scatterRadiusRatio > 0.0 || settings.scatterCount > 1);
+      (settings.scatterRadiusRatio > 0.0 || settings.scatterCount > 1) ||
+      _tipTurns != null;
 
   /// Whether a dab's placement turns on the stroke's DIRECTION — a tip that
   /// follows it, or scatter thrown across it rather than all around — so a
@@ -62,6 +78,12 @@ class BrushStrokeDynamics {
     for (final dab in dabs) {
       final copies = scatterActive ? settings.scatterCount : 1;
       for (var copy = 0; copy < copies; copy += 1) {
+        // Every dab takes a turn — each of a spray's too (F-176-Q3: 「dab
+        // 하나마다 다음 장으로」).
+        final tip = _tipTurns == null ? dab.tipMask : _tipTurns.next();
+        if (tip == null && _tipTurns != null) {
+          continue;
+        }
         var center = dab.center;
         if (scatterActive) {
           center = _scatteredCenter(
@@ -90,6 +112,7 @@ class BrushStrokeDynamics {
             center: center,
             angleDegrees: _normalizeAngle(angle),
             sequence: sequence,
+            tipMask: tip,
           ),
         );
         sequence += 1;

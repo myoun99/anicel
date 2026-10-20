@@ -2213,10 +2213,16 @@ class QaNativeEngine {
 
   /// Uploaded mask alphas keyed by the SOURCE Float64List's identity
   /// (BrushTipMask.alphaNormalized is `late final`, so the identity is
-  /// stable for a mask's lifetime). Small LRU — one stroke reuses the
-  /// same two or three masks for every dab.
+  /// stable for a mask's lifetime).
+  ///
+  /// 🚨ROOM FOR A WHOLE TIP LIST: a brush takes its tips in turn (F-176-Q3)
+  /// — Clip Studio's 遠くの雲 carries thirteen — and a stroke reuses every
+  /// one of them, its dual and its texture, dab after dab. ↩️Eight stood
+  /// here for "the same two or three masks", which a thirteen-tip stroke
+  /// would have evicted and uploaded again every few dabs, a batch cut at
+  /// each ([batchMaskAllowance]). The bytes stay the real bound.
   final _maskUploads = NativeUploadCache<Float64List>(
-    entryCap: 8,
+    entryCap: 64,
     byteBudget: stampUploadByteBudget,
   );
 

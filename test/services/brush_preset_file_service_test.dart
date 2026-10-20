@@ -10,6 +10,7 @@ import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_defaults.dart';
@@ -317,7 +318,7 @@ void main() {
       name: 'Sampled',
       settings: BrushSettings(
         size: 12,
-        tipMask: mask('tip-a'),
+        tips: [mask('tip-a')],
         dualMask: mask('tip-b'),
         textureMaskSource: mask('tip-c'),
       ),
@@ -369,6 +370,60 @@ void main() {
       expect(loaded.presets.single.settings.tipMask, isNull);
       expect(loaded.presets.single.settings.size, 12);
     });
+
+    // F-176-Q3: a brush carries several tips, which its dabs take in turn.
+    BrushPreset several() => BrushPreset(
+      id: const BrushPresetId('p2'),
+      name: 'Clouds',
+      settings: BrushSettings(
+        size: 12,
+        tips: [mask('cloud-1'), mask('cloud-2'), mask('cloud-3')],
+        tipOrder: BrushTipOrder.random,
+      ),
+    );
+
+    test('🚨several tips: the first keeps its own key, the rest go by their '
+        'ids in order, and they all come back so', () async {
+      final path = pathIn('several.json');
+      final service = BrushPresetFileService(filePath: path);
+      await service.save((groups: const [], presets: [several()]));
+
+      final written =
+          jsonDecode(await File(path).readAsString()) as Map<String, dynamic>;
+      final map =
+          ((written['presets'] as List<dynamic>).single
+                  as Map<String, dynamic>)['settings']
+              as Map<String, dynamic>;
+      expect(map['tipMaskId'], 'cloud-1');
+      expect(map['moreTipMasksId'], ['cloud-2', 'cloud-3']);
+      expect(map.containsKey('moreTipMasks'), isFalse, reason: 'ids only');
+
+      final loaded = await service.loadOrDefaults(resolveTip: mask);
+      final settings = loaded.presets.single.settings;
+      expect([for (final tip in settings.tips) tip.id], [
+        'cloud-1',
+        'cloud-2',
+        'cloud-3',
+      ]);
+      expect(settings.tipOrder, BrushTipOrder.random);
+    });
+
+    test('a library written while a brush had ONE tip reads as it was — no '
+        'carry-forward code, and no bump that eats it (유저 2026-09-24)', () {
+      // The shape every library on disk has today: one tip, by id, at
+      // 'tipMaskId', and no order (繰り返し, the default, writes nothing).
+      final settings = BrushSettings.fromJson({
+        'color': 0xFF000000,
+        'size': 7.0,
+        'opacity': 1.0,
+        'tipMask': mask('only').toJson(),
+      });
+
+      expect([for (final tip in settings.tips) tip.id], ['only']);
+      expect(settings.tipOrder, BrushTipOrder.repeat);
+      expect(settings.toJson().containsKey('moreTipMasks'), isFalse);
+      expect(settings.toJson().containsKey('tipOrder'), isFalse);
+    });
   });
 
   group('brushTipMasksIn', () {
@@ -382,7 +437,7 @@ void main() {
         BrushPreset(
           id: const BrushPresetId('a'),
           name: 'First',
-          settings: BrushSettings(size: 4, tipMask: tip),
+          settings: BrushSettings(size: 4, tips: [tip]),
         ),
         BrushPreset(
           id: const BrushPresetId('b'),
@@ -402,6 +457,48 @@ void main() {
 
     test('finds nothing in parametric presets', () {
       expect(brushTipMasksIn(defaultBrushPresets.take(1)), isEmpty);
+    });
+
+    test('finds every tip a brush takes in turn', () {
+      BrushTipMask tip(String id) =>
+          BrushTipMask(id: id, size: 1, alpha: Uint8List.fromList([7]));
+      final found = brushTipMasksIn([
+        BrushPreset(
+          id: const BrushPresetId('clouds'),
+          name: 'Clouds',
+          settings: BrushSettings(size: 4, tips: [tip('1'), tip('2')]),
+        ),
+      ]);
+
+      expect([for (final entry in found) entry.mask.id], ['1', '2']);
+    });
+
+    test('🚨adopts the paper texture AS PICKED, never its levelled bake — '
+        'the bake carries the source\'s id, and the next start would level '
+        'it twice', () {
+      final paper = BrushTipMask(
+        id: 'paper',
+        size: 2,
+        alpha: Uint8List.fromList([10, 60, 120, 240]),
+      );
+      final levelled = BrushSettings(
+        size: 4,
+        textureMaskSource: paper,
+        textureBrightness: 0.75,
+      );
+      // Fixture: the levels really do bake another mask under that id.
+      expect(levelled.textureMask?.id, 'paper');
+      expect(levelled.textureMask?.alpha, isNot(paper.alpha));
+
+      final found = brushTipMasksIn([
+        BrushPreset(
+          id: const BrushPresetId('wet'),
+          name: 'Wet',
+          settings: levelled,
+        ),
+      ]);
+
+      expect(found.single.mask, same(paper));
     });
   });
 

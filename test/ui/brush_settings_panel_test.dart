@@ -6,6 +6,7 @@ import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
@@ -449,6 +450,55 @@ void main() {
         find.byKey(const ValueKey<String>('brush-tool-dual-blend-add')),
         findsNothing,
         reason: 'with no dual tip there is nothing for a mode to combine',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('繰り返し方法 is picked by its row and reaches the shape '
+        '(F-176-Q3)', (tester) async {
+      BrushTipMask tip(String id) => BrushTipMask(
+        id: id,
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 200, 255]),
+      );
+      final read = await pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.copyWith(tips: [tip('a'), tip('b')]),
+      );
+      expect(read().tipOrder, BrushTipOrder.repeat);
+
+      final button = find.byKey(
+        const ValueKey<String>('brush-tool-tip-order-menu-button'),
+      );
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-tool-tip-order-pingPong')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(read().tipOrder, BrushTipOrder.pingPong);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('⛔the 繰り返し方法 row keeps its place with no tip picked', (
+      tester,
+    ) async {
+      // 「없다가 생기는 UI 금지」 again: the parametric tip has no tips to
+      // take turns, so the row is here and DEAD.
+      final read = await pumpPanel(tester);
+      expect(read().tips, isEmpty, reason: 'fixture premise');
+      final button = find.byKey(
+        const ValueKey<String>('brush-tool-tip-order-menu-button'),
+      );
+      expect(button, findsOneWidget, reason: 'the row must keep its place');
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('brush-tool-tip-order-pingPong')),
+        findsNothing,
       );
       expect(tester.takeException(), isNull);
     });

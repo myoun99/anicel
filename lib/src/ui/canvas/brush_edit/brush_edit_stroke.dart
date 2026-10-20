@@ -211,6 +211,7 @@ class _BrushEditStroke {
     _state._strokeDynamics = BrushStrokeDynamics(
       settings: strokeSettings,
       random: math.Random(dice + 2),
+      tipRandom: math.Random(dice + 4),
     );
     _state._lastDirectionDegrees = null;
     _state._previousBaseDab = null;

@@ -95,6 +95,10 @@ void main() {
     // (measured: three `brush_preset_panel_test` cases went red the moment
     // this row was wrapped).
     'brush-preset-chip-': 'its drag is its own verb (a reorder)',
+    // And a brush's tip in its tips' strip, in that list's own grid: the
+    // strip's drag is how the tips are put in order (F-176-Q3 「끌어서
+    // 순서」).
+    'brush-tip-turn-at-': 'its drag is its own verb (a reorder)',
     // 🚨AND THE PEG STRIP OWNS ITS VERTICAL DRAG, one level up: 「the strip
     // owns the vertical drag; each column owns its tap」 says so in the
     // panel's own comment. A claim inside the column ate that drag and the

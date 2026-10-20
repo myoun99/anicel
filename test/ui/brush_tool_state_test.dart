@@ -269,7 +269,7 @@ void main() {
       hardnessPressureCurve: BrushPressureCurve.identity(),
       roundness: 0.4,
       angleDegrees: 60,
-      tipMask: maskFor('tip'),
+      tips: [maskFor('tip')],
       rotationMode: BrushTipRotationMode.direction,
       angleJitter: 0.4,
       scatterRadiusRatio: 0.5,

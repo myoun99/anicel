@@ -4,6 +4,7 @@ import 'brush_blend_mode.dart';
 import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
+import 'brush_tip_order.dart';
 import 'brush_tip_rotation_mode.dart';
 
 /// What a response curve is FOR: the setting it drives, and the input that
@@ -11,8 +12,11 @@ import 'brush_tip_rotation_mode.dart';
 /// giving it a class would add a name nobody needs to learn.
 typedef BrushDynamicsKey = (BrushPressureTarget, BrushInputSource);
 
-/// Which of the three sampled-mask slots a write targets.
-enum BrushMaskSlot { tip, dual, texture }
+/// Which of the two one-mask slots a write targets.
+///
+/// ↩️The tip was a third slot until a brush could carry several tips
+/// (F-176-Q3); [BrushShape.tips] is written whole, with `copyWith`.
+enum BrushMaskSlot { dual, texture }
 
 /// The brush parameters shared, byte-for-byte, by every settings bag in the
 /// stroke chain: the UI's `BrushToolState`, the preset payload `BrushSettings`,
@@ -42,7 +46,8 @@ class BrushShape {
     this.curves = const {},
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
-    this.tipMask,
+    this.tips = const [],
+    this.tipOrder = BrushTipOrder.repeat,
     this.rotationMode = BrushTipRotationMode.fixed,
     this.angleJitter = 0.0,
     this.scatterRadiusRatio = 0.0,
@@ -132,9 +137,30 @@ class BrushShape {
   /// horizontal, in degrees.
   final double angleDegrees;
 
-  /// Sampled (bitmap) tip; when set it overrides the analytic round tip and
-  /// [hardness]. This and the round tip are the ONLY two shapes a brush has.
-  final BrushTipMask? tipMask;
+  /// Sampled (bitmap) tips, in the order the dabs take them ([tipOrder]);
+  /// any at all override the analytic round tip and [hardness]. These and
+  /// the round tip are the ONLY two shapes a brush has.
+  ///
+  /// 유저 2026-09-22: 「브러시 팁 이미지도 여러개 사용하게해서 여러개
+  /// 순차적으로 dab 떨굴지 랜덤하게할지 클튜보니 설정가능하니 도입」 —
+  /// Clip Studio's tip list (F-176-Q3).
+  ///
+  /// ⛔ONE LIST, NOT A TIP AND ITS FOLLOWERS. A first-tip field beside a
+  /// list of the rest could hold followers with no first; the list cannot.
+  /// [tipMask] reads the first, the way the four pressure-curve names read
+  /// [curves].
+  ///
+  /// ⚠️STORED BY REFERENCE, as [curves] is: every producer hands over a
+  /// fresh list it does not keep, and nobody mutates one afterwards.
+  final List<BrushTipMask> tips;
+
+  /// Which tip each dab of a stroke takes — see [BrushTipOrder].
+  final BrushTipOrder tipOrder;
+
+  /// The first tip, or `null` for the round one: what a single picture of
+  /// the brush shows (its cursor, its tip swatch) and what a dab takes when
+  /// nothing turns the tips.
+  BrushTipMask? get tipMask => tips.isEmpty ? null : tips.first;
 
   /// How dab angles are chosen at placement time.
   final BrushTipRotationMode rotationMode;
@@ -333,10 +359,11 @@ class BrushShape {
     BrushPressureCurve? curve,
   ) => withCurve(target, BrushInputSource.pressure, curve);
 
-  /// Replaces — or CLEARS, with null — one of the three sampled masks.
+  /// Replaces — or CLEARS, with null — the dual or the texture mask.
   ///
   /// [copyWith] deliberately preserves them so a slider tweak never drops a
   /// textured tip, which leaves no way to take one OFF. This is that way.
+  /// (The tips need none: `copyWith(tips: const [])` says "none" outright.)
   BrushShape withMask(BrushMaskSlot slot, BrushTipMask? mask) {
     return BrushShape(
       color: color,
@@ -348,7 +375,8 @@ class BrushShape {
       curves: curves,
       roundness: roundness,
       angleDegrees: angleDegrees,
-      tipMask: slot == BrushMaskSlot.tip ? mask : tipMask,
+      tips: tips,
+      tipOrder: tipOrder,
       blendMode: blendMode,
       antiAlias: antiAlias,
       mixesGroundColor: mixesGroundColor,
@@ -385,7 +413,8 @@ class BrushShape {
     Map<BrushDynamicsKey, BrushPressureCurve>? curves,
     double? roundness,
     double? angleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask>? tips,
+    BrushTipOrder? tipOrder,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -418,7 +447,8 @@ class BrushShape {
       curves: curves ?? this.curves,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
-      tipMask: tipMask ?? this.tipMask,
+      tips: tips ?? this.tips,
+      tipOrder: tipOrder ?? this.tipOrder,
       rotationMode: rotationMode ?? this.rotationMode,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
@@ -456,7 +486,8 @@ class BrushShape {
           _sameCurves(other.curves, curves) &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
-          other.tipMask == tipMask &&
+          _sameTips(other.tips, tips) &&
+          other.tipOrder == tipOrder &&
           other.rotationMode == rotationMode &&
           other.angleJitter == angleJitter &&
           other.scatterRadiusRatio == scatterRadiusRatio &&
@@ -492,7 +523,8 @@ class BrushShape {
     ]),
     roundness,
     angleDegrees,
-    tipMask,
+    Object.hashAll(tips),
+    tipOrder,
     rotationMode,
     angleJitter,
     scatterRadiusRatio,
@@ -520,7 +552,8 @@ class BrushShape {
       'BrushShape(color: $color, size: $size, opacity: $opacity, '
       'flow: $flow, hardness: $hardness, spacing: $spacing, '
       'curves: $curves, '
-      'roundness: $roundness, angleDegrees: $angleDegrees, tipMask: $tipMask, '
+      'roundness: $roundness, angleDegrees: $angleDegrees, tips: $tips, '
+      'tipOrder: $tipOrder, '
       'rotationMode: $rotationMode, angleJitter: $angleJitter, '
       'scatterRadiusRatio: $scatterRadiusRatio, scatterCount: $scatterCount, '
       'scatterBothAxes: $scatterBothAxes, dualMask: $dualMask, '
@@ -550,6 +583,23 @@ bool _sameCurves(
   }
   for (final entry in a.entries) {
     if (b[entry.key] != entry.value) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Whether two tip lists hold the same tips in the same order — `List ==`
+/// is identity, the trap [_sameCurves] spells out.
+bool _sameTips(List<BrushTipMask> a, List<BrushTipMask> b) {
+  if (identical(a, b)) {
+    return true;
+  }
+  if (a.length != b.length) {
+    return false;
+  }
+  for (var index = 0; index < a.length; index += 1) {
+    if (a[index] != b[index]) {
       return false;
     }
   }

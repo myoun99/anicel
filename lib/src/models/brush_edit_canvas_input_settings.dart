@@ -4,6 +4,7 @@ import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
+import 'brush_tip_order.dart';
 import 'brush_tip_rotation_mode.dart';
 
 class BrushEditCanvasInputSettings {
@@ -24,7 +25,8 @@ class BrushEditCanvasInputSettings {
     Map<BrushDynamicsKey, BrushPressureCurve> curves = const {},
     double roundness = 1.0,
     double angleDegrees = 0.0,
-    BrushTipMask? tipMask,
+    List<BrushTipMask> tips = const [],
+    BrushTipOrder tipOrder = BrushTipOrder.repeat,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
@@ -106,7 +108,8 @@ class BrushEditCanvasInputSettings {
         },
         roundness: roundness,
         angleDegrees: angleDegrees,
-        tipMask: tipMask,
+        tips: tips,
+        tipOrder: tipOrder,
         rotationMode: rotationMode,
         angleJitter: angleJitter,
         scatterRadiusRatio: scatterRadiusRatio,
@@ -201,6 +204,9 @@ class BrushEditCanvasInputSettings {
 
   double get roundness => shape.roundness;
   double get angleDegrees => shape.angleDegrees;
+  /// See [BrushShape.tips] — and [tipMask], the first of them.
+  List<BrushTipMask> get tips => shape.tips;
+  BrushTipOrder get tipOrder => shape.tipOrder;
   BrushTipMask? get tipMask => shape.tipMask;
   BrushTipRotationMode get rotationMode => shape.rotationMode;
   double get angleJitter => shape.angleJitter;
@@ -256,7 +262,8 @@ class BrushEditCanvasInputSettings {
     BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask>? tips,
+    BrushTipOrder? tipOrder,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -300,7 +307,8 @@ class BrushEditCanvasInputSettings {
           shape.curves,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
-      tipMask: tipMask ?? this.tipMask,
+      tips: tips ?? this.tips,
+      tipOrder: tipOrder ?? this.tipOrder,
       rotationMode: rotationMode ?? this.rotationMode,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,

@@ -8,6 +8,7 @@ import '../../models/brush_preset_id.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
+import '../../models/brush_tip_order.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
@@ -325,7 +326,8 @@ class BrushToolState {
     BrushPressureCurve? hardnessPressureCurve,
     double roundness = defaultRoundness,
     double angleDegrees = defaultAngleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask> tips = const [],
+    BrushTipOrder tipOrder = BrushTipOrder.repeat,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
@@ -370,7 +372,8 @@ class BrushToolState {
       hardnessPressureCurve: hardnessPressureCurve,
       roundness: roundness,
       angleDegrees: angleDegrees,
-      tipMask: tipMask,
+      tips: tips,
+      tipOrder: tipOrder,
       rotationMode: rotationMode,
       angleJitter: angleJitter,
       scatterRadiusRatio: scatterRadiusRatio,
@@ -478,7 +481,8 @@ class BrushToolState {
     BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask>? tips,
+    BrushTipOrder? tipOrder,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -530,7 +534,8 @@ class BrushToolState {
         ),
         roundness: roundness ?? defaultRoundness,
         angleDegrees: angleDegrees ?? defaultAngleDegrees,
-        tipMask: tipMask,
+        tips: tips ?? const [],
+        tipOrder: tipOrder ?? BrushTipOrder.repeat,
         rotationMode: rotationMode ?? BrushTipRotationMode.fixed,
         angleJitter: angleJitter ?? 0.0,
         scatterRadiusRatio: scatterRadiusRatio ?? 0.0,
@@ -650,7 +655,7 @@ class BrushToolState {
   /// BB-3 (R26 #11): per-setting pen-pressure response curves; `null` =
   /// the setting ignores pressure. Part of brush presets (they travel
   /// through [toBrushSettings]/[fromBrushSettings] like the sliders).
-  /// [copyWith] PRESERVES them (same contract as [tipMask]); clearing one
+  /// [copyWith] PRESERVES them (same contract as [tips]); clearing one
   /// goes through [withPressureCurve].
   BrushPressureCurve? get sizePressureCurve => shape.sizePressureCurve;
   BrushPressureCurve? get opacityPressureCurve => shape.opacityPressureCurve;
@@ -665,11 +670,17 @@ class BrushToolState {
   /// horizontal, in degrees (0-180; an ellipse repeats every 180).
   double get angleDegrees => shape.angleDegrees;
 
-  /// Sampled (bitmap) tip applied by a preset; `null` uses the analytic
-  /// ROUND tip — the two shapes a brush has, Photoshop's and Clip Studio's
-  /// pair. Masks arrive via presets and imports. Cleared only by applying a
-  /// preset without one ([BrushToolState.fromBrushSettings]); [copyWith] keeps
-  /// it so slider tweaks keep the textured tip.
+  /// Sampled (bitmap) tips, in the order the dabs take them; none uses the
+  /// analytic ROUND tip — the two shapes a brush has, Photoshop's and Clip
+  /// Studio's pair. Masks arrive via presets, imports and the tip list in
+  /// the panel. [copyWith] keeps them when not given, so slider tweaks keep
+  /// the textured tip. See `BrushShape.tips`.
+  List<BrushTipMask> get tips => shape.tips;
+
+  /// Which tip each dab takes — see `BrushTipOrder`.
+  BrushTipOrder get tipOrder => shape.tipOrder;
+
+  /// The first of [tips], or `null` for the round tip.
   BrushTipMask? get tipMask => shape.tipMask;
 
   /// The tip's 向き — the base it turns from and its random turn, the
@@ -1121,7 +1132,8 @@ class BrushToolState {
     BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask>? tips,
+    BrushTipOrder? tipOrder,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -1178,7 +1190,8 @@ class BrushToolState {
           ),
           roundness: roundness,
           angleDegrees: angleDegrees,
-          tipMask: tipMask,
+          tips: tips,
+          tipOrder: tipOrder,
           rotationMode: rotationMode,
           angleJitter: angleJitter,
           scatterRadiusRatio: scatterRadiusRatio,
@@ -1246,7 +1259,7 @@ class BrushToolState {
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
       shape.pressureCurveFor(target);
 
-  /// Replaces (or CLEARS, with null) one of the three sampled masks.
+  /// Replaces (or CLEARS, with null) the dual or the texture mask.
   /// [copyWith] preserves them so a slider tweak keeps a textured tip, which
   /// leaves no way to take one off; this is that way.
   ///

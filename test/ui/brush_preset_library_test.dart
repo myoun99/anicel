@@ -544,7 +544,7 @@ void main() {
       final imported = BrushPreset(
         id: const BrushPresetId('p1'),
         name: 'Wet wash',
-        settings: BrushSettings(size: 9, tipMask: tip),
+        settings: BrushSettings(size: 9, tips: [tip]),
       );
       await File(service.filePath).parent.create(recursive: true);
       await File(service.filePath).writeAsString(
@@ -602,7 +602,7 @@ void main() {
           BrushPreset(
             id: const BrushPresetId('p1'),
             name: 'Wet wash',
-            settings: BrushSettings(size: 9, tipMask: tip),
+            settings: BrushSettings(size: 9, tips: [tip]),
           ),
         ],
       ));

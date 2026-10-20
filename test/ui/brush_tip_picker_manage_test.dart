@@ -26,10 +26,10 @@ void main() {
 
   Future<void> pump(
     WidgetTester tester, {
-    required ValueChanged<BrushTipMask?> onPicked,
+    required ValueChanged<List<BrushTipMask>> onPicked,
     void Function(BrushTipEntry tip)? onRenameTip,
     void Function(BrushTipEntry tip)? onDeleteTip,
-    BrushTipMask? selected,
+    List<BrushTipMask> selected = const [],
   }) {
     return tester.pumpWidget(
       MaterialApp(
@@ -69,7 +69,10 @@ void main() {
 
   testWidgets('the pick applies when the popup is dismissed', (tester) async {
     final picked = <String?>[];
-    await pump(tester, onPicked: (mask) => picked.add(mask?.id));
+    await pump(
+      tester,
+      onPicked: (masks) => picked.add(masks.firstOrNull?.id),
+    );
     await tester.tap(find.byKey(swatch));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('brush-tip-cell-b')));
@@ -84,7 +87,10 @@ void main() {
 
   testWidgets('dismissing without picking applies nothing', (tester) async {
     final picked = <String?>[];
-    await pump(tester, onPicked: (mask) => picked.add(mask?.id));
+    await pump(
+      tester,
+      onPicked: (masks) => picked.add(masks.firstOrNull?.id),
+    );
     await tester.tap(find.byKey(swatch));
     await tester.pumpAndSettle();
     await tester.tapAt(const Offset(5, 5));

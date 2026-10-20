@@ -20,6 +20,7 @@ import '../../services/brush_dab_share.dart';
 import '../../services/brush_pixel_blend.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
+import '../../services/brush_tip_turns.dart';
 import 'brush_tool_state.dart';
 
 /// The APP-WIDE stroke-preview raster cache (UI-R18 R18-B).
@@ -473,6 +474,11 @@ Uint8List bakeBrushStrokeSample(
 /// draws with (R20-B: what the list shows is the quantized reality).
 /// Placement dynamics (scatter/jitter) stay intentionally off so the
 /// preview is deterministic.
+///
+/// ⛔THE TIPS' TURNS ARE NOT ONE OF THEM: which tip a dab takes is what a
+/// several-tip brush LOOKS like, and a swatch of the first tip alone would
+/// draw some other brush (F-176-Q3). They run on a fixed throw, so a random
+/// order shows its variety and still never moves between two bakes.
 Uint8List rasterizeBrushStrokeSample(
   BrushSettings settings,
   int width,
@@ -494,6 +500,11 @@ Uint8List rasterizeBrushStrokeSample(
   double? previousY;
   var pendingDistance = double.infinity;
   var sequence = 0;
+  final tipTurns = BrushTipTurns.of(
+    settings.tips,
+    settings.tipOrder,
+    random: math.Random(0),
+  );
   for (var step = 0; step <= curveSteps; step += 1) {
     final t = step / curveSteps;
     final x = margin + t * (width - margin * 2);
@@ -512,6 +523,10 @@ Uint8List rasterizeBrushStrokeSample(
     // (`BrushDab.pathStep`) — none for the first, which opens the stroke.
     final stretch = pendingDistance;
     pendingDistance = 0;
+    final tip = tipTurns == null ? settings.tipMask : tipTurns.next();
+    if (tipTurns != null && tip == null) {
+      continue;
+    }
 
     final pressure = math.sin(t * math.pi).clamp(0.08, 1.0).toDouble();
     // BB-3: the preview's synthetic pressure arc rides the SAME curves as
@@ -536,7 +551,7 @@ Uint8List rasterizeBrushStrokeSample(
         sequence: sequence,
         roundness: settings.roundness,
         angleDegrees: settings.angleDegrees,
-        tipMask: settings.tipMask,
+        tipMask: tip,
         dualMask: settings.dualMask,
         dualMaskScale: settings.dualMaskScale,
         dualDensity: settings.dualDensity,

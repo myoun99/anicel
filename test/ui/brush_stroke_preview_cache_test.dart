@@ -1,8 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
 
@@ -398,5 +402,59 @@ void main() {
       (0.3 * 255).round(),
       reason: 'piled to its opacity and no further',
     );
+  });
+
+  group('F-176-Q3: a swatch takes a brush\'s tips in turn, as its strokes '
+      'do', () {
+    bool atTheMiddle(int x, int y) => x >= 3 && x <= 4 && y >= 3 && y <= 4;
+    BrushTipMask tip(String id, {required bool whole}) => BrushTipMask(
+      id: id,
+      size: 8,
+      alpha: Uint8List.fromList([
+        for (var y = 0; y < 8; y += 1)
+          for (var x = 0; x < 8; x += 1)
+            if (whole || atTheMiddle(x, y)) 255 else 0,
+      ]),
+    );
+    final block = tip('block', whole: true);
+    final dot = tip('dot', whole: false);
+
+    // A whole tip apart, so each dab's shape is its own on the swatch.
+    Uint8List swatchOf(List<BrushTipMask> tips, BrushTipOrder order) =>
+        rasterizeBrushStrokeSample(
+          BrushSettings(spacing: 1, tips: tips, tipOrder: order),
+          96,
+          32,
+        );
+
+    test('each dab draws the tip its turn gives it', () {
+      final turns = swatchOf([block, dot], BrushTipOrder.repeat);
+      expect(turns, isNot(swatchOf([block], BrushTipOrder.repeat)));
+      expect(turns, isNot(swatchOf([dot, block], BrushTipOrder.repeat)));
+    });
+
+    test('a lap that ran out leaves the rest of the swatch bare', () {
+      bool inkedPast(Uint8List alpha, int column) => [
+        for (var y = 0; y < 32; y += 1)
+          for (var x = column; x < 96; x += 1) alpha[y * 96 + x],
+      ].any((value) => value > 0);
+
+      expect(
+        inkedPast(swatchOf([block, block], BrushTipOrder.repeat), 64),
+        isTrue,
+        reason: 'fixture premise: the stroke reaches that far',
+      );
+      expect(
+        inkedPast(swatchOf([block, block], BrushTipOrder.oneLap), 64),
+        isFalse,
+      );
+    });
+
+    test('a random order throws the same at every bake', () {
+      expect(
+        swatchOf([block, dot], BrushTipOrder.random),
+        swatchOf([block, dot], BrushTipOrder.random),
+      );
+    });
   });
 }

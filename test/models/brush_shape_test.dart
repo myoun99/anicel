@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 
 BrushTipMask _maskFor(String id) => BrushTipMask(
@@ -30,7 +31,8 @@ BrushShape _everyFieldNonDefault() => BrushShape(
   ),
   roundness: 0.4,
   angleDegrees: 60,
-  tipMask: _maskFor('tip'),
+  tips: [_maskFor('tip'), _maskFor('tip-2')],
+  tipOrder: BrushTipOrder.pingPong,
   rotationMode: BrushTipRotationMode.direction,
   angleJitter: 0.4,
   scatterRadiusRatio: 0.5,
@@ -69,7 +71,13 @@ void main() {
       expect(base.copyWith(spacing: 0.1), isNot(base));
       expect(base.copyWith(roundness: 1.0), isNot(base));
       expect(base.copyWith(angleDegrees: 0), isNot(base));
-      expect(base.copyWith(tipMask: _maskFor('other')), isNot(base));
+      expect(base.copyWith(tips: [_maskFor('other')]), isNot(base));
+      expect(
+        base.copyWith(tips: [_maskFor('tip-2'), _maskFor('tip')]),
+        isNot(base),
+        reason: 'the order the dabs take the tips in is the brush too',
+      );
+      expect(base.copyWith(tipOrder: BrushTipOrder.repeat), isNot(base));
       expect(
         base.copyWith(rotationMode: BrushTipRotationMode.fixed),
         isNot(base),

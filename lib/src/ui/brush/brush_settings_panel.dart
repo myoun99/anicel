@@ -1,10 +1,11 @@
-import 'package:flutter/foundation.dart' show mapEquals;
+import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart' show BrushMaskSlot, BrushShape;
 import '../../models/brush_tip_entry.dart';
+import '../../models/brush_tip_order.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
@@ -159,10 +160,12 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
     // forwarders ([_importTip] and its two siblings) — tear-offs of one
     // method on one state, equal across builds, reading the library's
     // callback at call time.
+    // ⚠️The masks ELEMENT BY ELEMENT: a one-mask slot hands its mask over
+    // in a list made for the row, which is never the list it had before.
     (final BrushTipPickerRow a, final BrushTipPickerRow b) =>
       a.label == b.label &&
           a.role == b.role &&
-          a.selected == b.selected &&
+          listEquals(a.selected, b.selected) &&
           identical(a.tips, b.tips) &&
           a.onImportRequested == b.onImportRequested &&
           a.onRenameTip == b.onRenameTip &&
@@ -228,17 +231,19 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             BrushTipPickerRow(
               label: AppText.strings.brBrushTip,
               role: BrushTipRole.tip,
-              selected: state.tipMask,
+              selected: state.tips,
               tips: tips,
               onImportRequested: _importTip,
               onRenameTip: _renameTip,
               onDeleteTip: _deleteTip,
-              // The sampled tip REPLACES hardness and tip shape, so clearing
-              // it is how a brush gets its parametric footprint back — which
-              // is why this goes through withTipMask rather than copyWith.
-              onPicked: (mask) =>
-                  onChanged(state.withMask(BrushMaskSlot.tip, mask)),
+              // The sampled tips REPLACE hardness and tip shape, so clearing
+              // them is how a brush gets its parametric footprint back — and
+              // an empty list says so outright, which `copyWith` keeps for a
+              // tip it is not given. ↩️One tip went through `withMask`.
+              onPicked: (masks) => onChanged(state.copyWith(tips: masks)),
             ),
+            // How the dabs take the tips above (F-176-Q3).
+            _TipOrderRow(state: state, onChanged: onChanged),
             _PanelSlider(
               label: AppText.strings.brHardness,
               unit: '%',
@@ -402,13 +407,14 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             BrushTipPickerRow(
               label: AppText.strings.brDualTip,
               role: BrushTipRole.dual,
-              selected: state.dualMask,
+              selected: [?state.dualMask],
               tips: tips,
               onImportRequested: _importTip,
               onRenameTip: _renameTip,
               onDeleteTip: _deleteTip,
-              onPicked: (mask) =>
-                  onChanged(state.withMask(BrushMaskSlot.dual, mask)),
+              onPicked: (masks) => onChanged(
+                state.withMask(BrushMaskSlot.dual, masks.firstOrNull),
+              ),
             ),
             _PanelSlider(
               label: AppText.strings.brScale,
@@ -446,13 +452,14 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
               // ⚠️The SOURCE, not the painted mask: the swatch answers "which
               // texture did I pick", and a levelled bake is a different object
               // that would never match a library entry.
-              selected: state.textureMaskSource,
+              selected: [?state.textureMaskSource],
               tips: tips,
               onImportRequested: _importTip,
               onRenameTip: _renameTip,
               onDeleteTip: _deleteTip,
-              onPicked: (mask) =>
-                  onChanged(state.withMask(BrushMaskSlot.texture, mask)),
+              onPicked: (masks) => onChanged(
+                state.withMask(BrushMaskSlot.texture, masks.firstOrNull),
+              ),
             ),
             _PanelSlider(
               label: AppText.strings.brScale,
@@ -581,6 +588,45 @@ class _RotationModeRow extends StatelessWidget {
         keyPrefix: 'brush-tool-rotation-',
         labelOf: _labelFor,
         onPicked: (mode) => onChanged(state.copyWith(rotationMode: mode)),
+      ),
+    ),
+  );
+}
+
+/// Which tip each dab takes — Clip Studio's 繰り返し方法, all six (F-176-Q3
+/// 「클튜 여섯 전부 + 끌어서 순서」), in the order Clip Studio lists them.
+///
+/// ⛔ALWAYS HERE, and DEAD for the round tip, which has no tips to take
+/// turns — 「없다가 생기는 UI 금지」, the shape [_DualBlendRow] takes. One
+/// tip keeps it live: the two laps still draw that tip once.
+class _TipOrderRow extends StatelessWidget {
+  const _TipOrderRow({required this.state, required this.onChanged});
+
+  final BrushToolState state;
+  final ValueChanged<BrushToolState> onChanged;
+
+  String _labelFor(BrushTipOrder order) => switch (order) {
+    BrushTipOrder.repeat => AppText.strings.brTipOrderRepeat,
+    BrushTipOrder.pingPong => AppText.strings.brTipOrderPingPong,
+    BrushTipOrder.holdLast => AppText.strings.brTipOrderHoldLast,
+    BrushTipOrder.random => AppText.strings.brTipOrderRandom,
+    BrushTipOrder.oneLap => AppText.strings.brTipOrderOneLap,
+    BrushTipOrder.shuffledLap => AppText.strings.brTipOrderShuffledLap,
+  };
+
+  @override
+  Widget build(BuildContext context) => ToolSettingRow(
+    label: AppText.strings.brTipOrder,
+    child: PanelFlyoutButton(
+      key: const ValueKey<String>('brush-tool-tip-order-menu-button'),
+      label: _labelFor(state.tipOrder),
+      expand: true,
+      enabled: state.tips.isNotEmpty,
+      entriesBuilder: () => BrushTipOrder.values.asFlyoutChoices(
+        current: state.tipOrder,
+        keyPrefix: 'brush-tool-tip-order-',
+        labelOf: _labelFor,
+        onPicked: (order) => onChanged(state.copyWith(tipOrder: order)),
       ),
     ),
   );

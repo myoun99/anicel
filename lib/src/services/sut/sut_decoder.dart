@@ -13,6 +13,7 @@ import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
+import '../../models/brush_tip_order.dart';
 import '../../models/import/import_warning.dart';
 import '../brush_tip_image_codec.dart';
 
@@ -136,9 +137,9 @@ Future<SutImportResult> _decode(
         : 'sut-$sourceName-$nodeIndex';
     final presetId = mint.next(idBase);
 
-    BrushTipMask? mask;
+    var tips = const <BrushTipMask>[];
     if (_intOf(variant['BrushUsePatternImage']) == 1) {
-      mask = await _tipMaskFromPatternArray(
+      tips = await _tipMasksFromPatternArray(
         variant['BrushPatternImageArray'],
         materials: materials,
         maskId: '$idBase-tip',
@@ -154,10 +155,15 @@ Future<SutImportResult> _decode(
     var textureBrightness = 0.0;
     var textureContrast = 0.0;
     if (variant['TextureImage'] != null) {
-      textureMask = await _tipMaskFromPatternArray(
-        variant['TextureImage'],
-        materials: materials,
-        maskId: '$idBase-texture',
+      textureMask = _theOneOf(
+        await _tipMasksFromPatternArray(
+          variant['TextureImage'],
+          materials: materials,
+          maskId: '$idBase-texture',
+          brushName: name,
+          describe: 'paper texture',
+          warnings: warnings,
+        ),
         brushName: name,
         describe: 'paper texture',
         warnings: warnings,
@@ -191,10 +197,15 @@ Future<SutImportResult> _decode(
     BrushTipMask? dualMask;
     if (_intOf(variant['UseDualBrush']) == 1 &&
         _intOf(variant['DualUsePatternImage']) == 1) {
-      dualMask = await _tipMaskFromPatternArray(
-        variant['DualPatternImageArray'],
-        materials: materials,
-        maskId: '$idBase-dual',
+      dualMask = _theOneOf(
+        await _tipMasksFromPatternArray(
+          variant['DualPatternImageArray'],
+          materials: materials,
+          maskId: '$idBase-dual',
+          brushName: name,
+          describe: 'dual brush tip',
+          warnings: warnings,
+        ),
         brushName: name,
         describe: 'dual brush tip',
         warnings: warnings,
@@ -207,7 +218,7 @@ Future<SutImportResult> _decode(
         name: name,
         settings: _settingsFromVariant(
           variant,
-          mask: mask,
+          tips: tips,
           textureMaskSource: textureMask,
           textureInvert: textureInvert,
           textureBrightness: textureBrightness,
@@ -233,7 +244,7 @@ Future<SutImportResult> _decode(
 
 BrushSettings _settingsFromVariant(
   Map<String, Object?> variant, {
-  required BrushTipMask? mask,
+  required List<BrushTipMask> tips,
   required String brushName,
   required List<String> warnings,
   BrushTipMask? textureMaskSource,
@@ -356,7 +367,8 @@ BrushSettings _settingsFromVariant(
     roundness: (thicknessPercent / 100.0).clamp(0.01, 1.0).toDouble(),
     angleDegrees: rotation.isFinite ? ((rotation % 180.0) + 180.0) % 180.0 : 0,
     curves: curves,
-    tipMask: mask,
+    tips: tips,
+    tipOrder: _tipOrderOf(variant, brushName: brushName, warnings: warnings),
     angleJitter: angleJitter,
     scatterRadiusRatio: scatterRadiusRatio,
     scatterCount: scatterCount,
@@ -851,7 +863,13 @@ double _effectorMinimumRatio(Object? blob, int sourceIndex) {
   return (minimum / 100.0).clamp(0.0, 1.0).toDouble();
 }
 
-Future<BrushTipMask?> _tipMaskFromPatternArray(
+/// Every mask [patternArray] names, in its order — the first under [maskId],
+/// each further material under `[maskId]-2`, `-3`, … (a material named twice
+/// is one mask, taken twice).
+///
+/// ↩️Only the earliest material was read, so a brush of several tips came
+/// in with its first alone (F-176-Q3).
+Future<List<BrushTipMask>> _tipMasksFromPatternArray(
   Object? patternArray, {
   required List<({String path, Uint8List data})> materials,
   required String maskId,
@@ -866,30 +884,146 @@ Future<BrushTipMask?> _tipMaskFromPatternArray(
         'imported without it.',
       );
     }
-    return null;
+    return const [];
   }
-  // The array blob carries UTF-16BE catalog paths; match them against the
-  // embedded material files. The earliest referenced material is the
-  // primary tip (pattern brushes with several tips use only the first).
-  final text = _utf16Runs(patternArray);
-  ({String path, Uint8List data})? tipMaterial;
-  var bestIndex = -1;
-  for (final material in materials) {
-    final index = text.indexOf(material.path);
-    if (index >= 0 && (bestIndex == -1 || index < bestIndex)) {
-      bestIndex = index;
-      tipMaterial = material;
-    }
-  }
-  if (tipMaterial == null) {
+  final named = _materialsNamedBy(patternArray, materials);
+  if (named.isEmpty) {
     warnings.add(
       'Brush "$brushName": $describe reference not found; '
       'imported without it.',
     );
-    return null;
+    return const [];
   }
+  final masks = <({String path, Uint8List data}), BrushTipMask?>{};
+  final tips = <BrushTipMask>[];
+  for (final material in named) {
+    if (!masks.containsKey(material)) {
+      masks[material] = await _tipMaskOf(
+        material,
+        id: masks.isEmpty ? maskId : '$maskId-${masks.length + 1}',
+        brushName: brushName,
+        describe: describe,
+        warnings: warnings,
+      );
+    }
+    if (masks[material] case final mask?) {
+      tips.add(mask);
+    }
+  }
+  return tips;
+}
 
-  final png = _largestPng(tipMaterial.data);
+/// What a one-mask slot — the paper texture, the dual tip — keeps of
+/// [masks]: the first, said aloud when the file names more (Clip Studio
+/// lets a dual tip take turns too).
+BrushTipMask? _theOneOf(
+  List<BrushTipMask> masks, {
+  required String brushName,
+  required String describe,
+  required List<String> warnings,
+}) {
+  if (masks.length > 1) {
+    warnings.add(
+      'Brush "$brushName": $describe has ${masks.length} images; '
+      'only the first is used.',
+    );
+  }
+  return masks.firstOrNull;
+}
+
+/// 繰り返し方法, from `BrushPatternOrderType`.
+///
+/// ⚠️THE NUMBERS ARE READ IN THE ORDER CLIP STUDIO LISTS THE SIX — 繰り返し ·
+/// 折り返し · 繰り返さない · ランダム · 一巡のみ · ランダムに一巡 — which two
+/// facts bear out without pinning: each one-tip brush of the user's stores
+/// 0, the first, and all six of their Cloud brushes, which scatter their
+/// tips at random, store 3, the fourth (📏2026-10-18, ten brushes). Board
+/// F-176-Q5 asks Clip Studio itself. `BrushPatternOrderType2` beside it
+/// holds the same number in all ten and is left unread.
+BrushTipOrder _tipOrderOf(
+  Map<String, Object?> variant, {
+  required String brushName,
+  required List<String> warnings,
+}) {
+  final stored = _intOf(variant['BrushPatternOrderType']) ?? 0;
+  final order = switch (stored) {
+    0 => BrushTipOrder.repeat,
+    1 => BrushTipOrder.pingPong,
+    2 => BrushTipOrder.holdLast,
+    3 => BrushTipOrder.random,
+    4 => BrushTipOrder.oneLap,
+    5 => BrushTipOrder.shuffledLap,
+    _ => null,
+  };
+  if (order == null) {
+    warnings.add(
+      'Brush "$brushName": its tips take turns in an unrecognised order '
+      '(BrushPatternOrderType $stored); imported taking them in order.',
+    );
+  }
+  return order ?? BrushTipOrder.repeat;
+}
+
+/// The material each entry of a Clip Studio material array names, in the
+/// array's order.
+///
+/// The array is a big-endian u32 saying where its entries start, a u32
+/// count, and the entries, each led by a u32 of its own length in bytes
+/// that counts those four; an entry spells its material's paths in
+/// UTF-16. 📏Read 2026-10-18 off the user's five brush files, tips,
+/// textures and dual tips alike — 遠くの雲's array counts thirteen entries
+/// and names thirteen materials.
+///
+/// ⚠️AN ENTRY IS MATCHED BY THE CATALOG PATH IT SPELLS, not by its layer
+/// path: an installed material's layer path drops the `Install:` its
+/// catalog path carries (ウェット水彩: `.:Paint110:…:data:material_0.layer`
+/// beside `.:Install:Paint110:…`), so only the catalog path finds it.
+List<({String path, Uint8List data})> _materialsNamedBy(
+  Uint8List array,
+  List<({String path, Uint8List data})> materials,
+) {
+  if (array.length < 8) {
+    return const [];
+  }
+  final view = ByteData.sublistView(array);
+  final count = view.getUint32(4);
+  final named = <({String path, Uint8List data})>[];
+  var offset = view.getUint32(0);
+  for (var entry = 0; entry < count && offset + 4 <= array.length; entry += 1) {
+    final length = view.getUint32(offset);
+    if (length < 4 || offset + length > array.length) {
+      break;
+    }
+    final text = _utf16Runs(
+      Uint8List.sublistView(array, offset, offset + length),
+    );
+    ({String path, Uint8List data})? material;
+    var earliest = -1;
+    for (final candidate in materials) {
+      final index = text.indexOf(candidate.path);
+      if (index >= 0 && (earliest == -1 || index < earliest)) {
+        earliest = index;
+        material = candidate;
+      }
+    }
+    if (material != null) {
+      named.add(material);
+    }
+    offset += length;
+  }
+  return named;
+}
+
+/// [material]'s image as a mask, or `null` — with a warning — when it holds
+/// none that reads.
+Future<BrushTipMask?> _tipMaskOf(
+  ({String path, Uint8List data}) material, {
+  required String id,
+  required String brushName,
+  required String describe,
+  required List<String> warnings,
+}) async {
+  final png = _largestPng(material.data);
   if (png == null) {
     warnings.add(
       'Brush "$brushName": $describe material holds no readable '
@@ -898,7 +1032,7 @@ Future<BrushTipMask?> _tipMaskFromPatternArray(
     return null;
   }
   try {
-    return await decodeBrushTipImage(png, id: maskId);
+    return await decodeBrushTipImage(png, id: id);
   } on Object catch (error) {
     warnings.add(
       'Brush "$brushName": $describe image could not be decoded '

@@ -191,7 +191,7 @@ void main() {
     final read = await pumpPanel(
       tester,
       tips: [_entry('tip-1', 'Mine')],
-      initial: BrushToolState.defaults.copyWith(tipMask: _mask('tip-1')),
+      initial: BrushToolState.defaults.copyWith(tips: [_mask('tip-1')]),
     );
     expect(read().tipMask, isNotNull);
 

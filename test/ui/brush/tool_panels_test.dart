@@ -492,12 +492,19 @@ void main() {
           .withActiveBlendMode(BrushBlendMode.multiply)
           .copyWith(tool: CanvasTool.cutStamp)
           .withActiveBlendMode(BrushBlendMode.behind);
-      final after = before.withMask(BrushMaskSlot.tip, null);
-      expect(after.selectShape, CanvasShapeKind.lasso);
-      expect(after.cutShape, CanvasShapeKind.polygon);
-      expect(after.fillBlendMode, BrushBlendMode.multiply);
-      expect(after.cutStampBlendMode, BrushBlendMode.behind);
-      expect(after.tool, CanvasTool.cutStamp);
+      // ↩️A tip went through `withMask` too; the tips are a list written
+      // with `copyWith` now (F-176-Q3), and a mask still takes `withMask` —
+      // both are a pick, so both are held to it.
+      for (final after in [
+        before.withMask(BrushMaskSlot.dual, null),
+        before.copyWith(tips: const []),
+      ]) {
+        expect(after.selectShape, CanvasShapeKind.lasso);
+        expect(after.cutShape, CanvasShapeKind.polygon);
+        expect(after.fillBlendMode, BrushBlendMode.multiply);
+        expect(after.cutStampBlendMode, BrushBlendMode.behind);
+        expect(after.tool, CanvasTool.cutStamp);
+      }
     });
   });
 
