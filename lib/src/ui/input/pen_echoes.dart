@@ -42,8 +42,18 @@ import 'package:flutter/gestures.dart';
 /// ⚠️What it costs, taken knowingly (F-400-Q1): a real mouse is not heard
 /// while a pen is in range over the window — Windows gives the cursor to
 /// the pen then too.
+///
+/// 🚨★★★F-427 (유저 2026-10-21): 「펜으로는 그리거나 패널열거나 다
+/// 가능한데 마우스로 아무 조작도 안먹히는 상황이 찾아옴」. The range ends
+/// at the pen's removal, and a window Windows has disabled — under a file
+/// dialog the pen tapped open — hears no pen leave: the app held the pen in
+/// range until it restarted, and kept every real mouse out as its echo. So
+/// when the window hears again, every pen the record holds leaves
+/// ([leavesUnheard]; `windows/runner/flutter_window.cpp` says why).
 final class PenEchoes {
-  final Set<int> _pensInRange = {};
+  /// Each pen in range, by device, and the last of its events — what its
+  /// leave is made from where the app could not hear it ([leavesUnheard]).
+  final Map<int, PointerEvent> _pensInRange = {};
 
   /// Each mouse's press an echo began, kept out through its lift. ONE per
   /// mouse: the engine makes every further echo a new pointer and never
@@ -63,7 +73,7 @@ final class PenEchoes {
     if (event is PointerRemovedEvent) {
       _pensInRange.remove(event.device);
     } else {
-      _pensInRange.add(event.device);
+      _pensInRange[event.device] = event;
     }
     return true;
   }
@@ -83,4 +93,18 @@ final class PenEchoes {
     _echoPresses[event.device] = event.pointer;
     return true;
   }
+
+  /// The leave of every pen in range, made from its last event — for a
+  /// window that could not hear them go. Each comes in through [admit], as
+  /// a pen's own leave does, so the record lets the pen go with it.
+  List<PointerRemovedEvent> leavesUnheard() => [
+    for (final last in _pensInRange.values)
+      PointerRemovedEvent(
+        viewId: last.viewId,
+        timeStamp: last.timeStamp,
+        kind: last.kind,
+        device: last.device,
+        position: last.position,
+      ),
+  ];
 }

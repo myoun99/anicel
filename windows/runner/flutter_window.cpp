@@ -10,7 +10,6 @@
 #include <variant>
 
 #include "flutter/generated_plugin_registrant.h"
-#include "pen_leaves.h"
 
 namespace {
 
@@ -59,6 +58,30 @@ constexpr UINT kCloseApproved = WM_APP + 0x128;
 // flag again. test/ui/windows_takes_semantics_only_for_a_screen_reader_test.dart
 // reads this literal and sends it to the app.
 constexpr char kScreenReaderChannel[] = "anicel/screen_reader";
+
+// 🚨★★★F-427 — A WINDOW THAT HEARS AGAIN SAYS SO.
+//
+// 유저 2026-10-21: 「펜으로는 그리거나 패널열거나 다 가능한데 마우스로 아무
+// 조작도 안먹히는 상황이 찾아옴 … 입력 인스펙터 켜보니 펜은 정상인데
+// 마우스는 움직여도 아예 아무 줄도 갱신안됨」.
+//
+// The app keeps a mouse out while a pen is in range (F-400,
+// lib/src/ui/input/pen_echoes.dart): Windows echoes the pen as a mouse. A
+// pen's range ends at the removal the engine (Flutter 3.47.4,
+// flutter_window.cc) sends on the view's WM_POINTERLEAVE — and a window
+// Windows has disabled, under a file dialog a pen tapped open, hears no
+// WM_POINTERLEAVE. A pen that left while the dialog was up stayed in range
+// to the app until it restarted, and every real mouse was its echo.
+// 🧪tool/probe/pen_probe_main.dart drives that into this runner.
+//
+// So when the window is enabled again the runner says so on this channel,
+// and every pen the app holds in range leaves; one still over the window
+// comes back with its next move. ⛔Not by handing the engine the leave it
+// missed: the engine reads the pointer's information for it, and Windows
+// drops that for a pen pressed as the dialog came up — the probe kept that
+// pen in range so. test/ui/input/pen_echoes_test.dart reads this literal
+// and sends it to the app.
+constexpr char kWindowHearsAgainChannel[] = "anicel/window_hears_again";
 
 // 🚨★★★I-19 ④ — THE IME LISTENS ONLY WHILE A TEXT FIELD DOES.
 //
@@ -252,9 +275,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   switch (message) {
     case WM_ENABLE:
-      // F-427 — pen_leaves.h says why.
       if (wparam && flutter_controller_) {
-        LetPensGo(flutter_controller_->view()->GetNativeWindow());
+        flutter_controller_->engine()->messenger()->Send(
+            kWindowHearsAgainChannel, nullptr, 0);
       }
       break;
     case WM_FONTCHANGE:
@@ -293,7 +316,6 @@ LRESULT CALLBACK FlutterWindow::LetGoWithWindows(HWND view, UINT message,
                                                  WPARAM wparam, LPARAM lparam,
                                                  UINT_PTR id,
                                                  DWORD_PTR window) {
-  NotePenPointer(message, wparam);
   if (message == WM_NCDESTROY) {
     ::RemoveWindowSubclass(view, LetGoWithWindows, id);
   } else if (IsKeyMessage(message)) {

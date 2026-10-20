@@ -1,3 +1,4 @@
+import 'dart:io' show File;
 import 'dart:ui' as ui show PointerChange, PointerData, PointerDataPacket;
 
 import 'package:flutter/gestures.dart';
@@ -10,8 +11,15 @@ import 'package:anicel/src/ui/input/pen_echoes.dart';
 import '../../helpers/scaled_test_binding.dart';
 
 /// 🗣️F-400 — what a pen in range keeps out, and where; see [PenEchoes].
+/// 🗣️F-427 — and how it leaves where the window could not hear it go.
 void main() {
   final binding = ScaledTestBinding.ensureInitialized();
+  // The runner's own channel, read from it: the app is told on this.
+  final windowHearsAgain = RegExp(
+    r'kWindowHearsAgainChannel\[\] = "([^"]*)";',
+  ).firstMatch(
+    File('windows/runner/flutter_window.cpp').readAsStringSync(),
+  )?.group(1);
 
   const pen = PointerDeviceKind.stylus;
   const mouse = PointerDeviceKind.mouse;
@@ -168,6 +176,45 @@ void main() {
       expect(admit(const PointerMoveEvent(pointer: 40, kind: mouse)), isTrue);
       expect(admit(const PointerCancelEvent(pointer: 40, kind: mouse)), isTrue);
     });
+
+    test('🚨F-427: the leave of every pen in range, made for a window that '
+        'could not hear them go — and with them in, the mouse is back', () {
+      admit(const PointerAddedEvent(kind: pen, device: penDevice));
+      admit(
+        const PointerHoverEvent(
+          kind: pen,
+          device: penDevice,
+          position: Offset(5, 6),
+        ),
+      );
+      admit(
+        const PointerHoverEvent(
+          kind: PointerDeviceKind.invertedStylus,
+          device: 4,
+          position: Offset(7, 8),
+        ),
+      );
+      final leaves = echoes.leavesUnheard();
+      expect(
+        [
+          for (final leave in leaves)
+            (leave.kind, leave.device, leave.position),
+        ],
+        [
+          (pen, penDevice, const Offset(5, 6)),
+          (PointerDeviceKind.invertedStylus, 4, const Offset(7, 8)),
+        ],
+      );
+      expect(
+        admit(const PointerHoverEvent(kind: mouse)),
+        isFalse,
+        reason: 'made, not yet in',
+      );
+
+      expect(leaves.every(admit), isTrue);
+      expect(admit(const PointerHoverEvent(kind: mouse)), isTrue);
+      expect(echoes.leavesUnheard(), isEmpty);
+    });
   });
 
   group('where it stands — the binding, where the platform\'s events come '
@@ -253,6 +300,42 @@ void main() {
           reason: 'the echo\'s lift stays out; the mouse after the pen is in',
         );
         expect(InputInspector.echoes, 3);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+
+    testWidgets(
+      '🚨F-427: a window that hears again — the runner says so — lets every '
+      'pen it held go, as the pen\'s own leave would: its hover ends and the '
+      'mouse is heard again',
+      (tester) async {
+        final heard = <String>[];
+        await tester.pumpWidget(
+          MouseRegion(
+            onExit: (event) => heard.add('${event.kind.name} exit'),
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerHover: (event) => heard.add('${event.kind.name} hover'),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+        send([
+          at(tester, ui.PointerChange.add, pen, device: penDevice),
+          at(tester, ui.PointerChange.hover, pen, device: penDevice),
+          at(tester, ui.PointerChange.add, mouse),
+          at(tester, ui.PointerChange.hover, mouse),
+        ]);
+        expect(heard, ['stylus hover']);
+
+        await binding.defaultBinaryMessenger.handlePlatformMessage(
+          windowHearsAgain!,
+          null,
+          (_) {},
+        );
+        send([at(tester, ui.PointerChange.hover, mouse)]);
+        expect(heard, ['stylus hover', 'stylus exit', 'mouse hover']);
+        send([at(tester, ui.PointerChange.remove, mouse)]);
       },
       variant: TargetPlatformVariant.only(TargetPlatform.windows),
     );

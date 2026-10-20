@@ -21,8 +21,8 @@
 // 마우스로 아무 조작도 안먹히는 상황이 찾아옴 … 입력 인스펙터 켜보니 펜은
 // 정상인데 마우스는 움직여도 아예 아무 줄도 갱신안됨」. Of every way a pen
 // here goes, only a window that could not hear it go kept it in range
-// (windows/runner/pen_leaves.h says why) — and every case after a stuck one
-// fails too, as the app did until it restarted.
+// (windows/runner/flutter_window.cpp says why) — and every case after a
+// stuck one fails too, as the app did until it restarted.
 //
 // ⚠️A pen is placed from the VIRTUAL screen's corner, not the primary
 // monitor's ([_virtualScreen]); placed at the view's screen point on a desk

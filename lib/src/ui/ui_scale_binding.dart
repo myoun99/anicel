@@ -14,6 +14,11 @@ import 'present_pacing.dart';
 import 'ui_scale.dart';
 import 'session/cache_budgets.dart';
 
+/// The channel the Windows runner says its window hears again on, once a
+/// modal window let it go (`windows/runner/flutter_window.cpp`, F-427):
+/// every pen held in range then leaves.
+const String windowHearsAgainChannel = 'anicel/window_hears_again';
+
 /// The binding that puts [AppUiScale] into the root device matrix.
 ///
 /// ## Why the binding and not a `Transform` at the top of the tree
@@ -87,6 +92,12 @@ mixin UiScaleViewConfiguration on RendererBinding {
     // `GestureBinding.initInstances` installed its own handler on the way
     // up; take it over now that it is there.
     platformDispatcher.onPointerDataPacket = _handleScaledPointerDataPacket;
+    defaultBinaryMessenger.setMessageHandler(windowHearsAgainChannel, (
+      _,
+    ) async {
+      _letUnheardPensGo();
+      return null;
+    });
     // ⛔The subscription lives HERE and not in `AnicelBinding`, so the
     // test binding cannot wear a copy of it. It used to, and that made the
     // wire untestable: deleting the production `addListener` left every
@@ -114,6 +125,18 @@ mixin UiScaleViewConfiguration on RendererBinding {
   /// ([InputInspector.echoes]): a mouse row that stopped coming must be
   /// told from one the app dropped.
   final PenEchoes _penEchoes = PenEchoes();
+
+  /// 🚨F-427 — the window hears again ([windowHearsAgainChannel]): every
+  /// pen in range left while it could not hear, and leaves now, as a pen's
+  /// own leave does.
+  void _letUnheardPensGo() {
+    _pendingScaledPointerEvents.addAll(
+      _penEchoes.leavesUnheard().where(_letIn),
+    );
+    if (!locked) {
+      _flushScaledPointerEvents();
+    }
+  }
 
   bool _letIn(PointerEvent event) {
     if (defaultTargetPlatform != TargetPlatform.windows ||
