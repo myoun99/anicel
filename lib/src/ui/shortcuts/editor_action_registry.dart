@@ -759,6 +759,7 @@ abstract final class EditorActionIds {
   static const toolCutStamp = 'tool-cut-stamp';
   static const selectionDeselect = 'selection-deselect';
   static const selectionInvert = 'selection-invert';
+  static const selectionInvertInCanvas = 'selection-invert-in-canvas';
   static const layerUp = 'layer-up';
   static const layerDown = 'layer-down';
   static const selectionTransformCancel = 'selection-transform-cancel';
@@ -1600,7 +1601,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 🗣️선택 반전 is not pressed AS the settings: it answers whatever tool is
   // in hand, as 선택 해제 does (유저 2026-10-11, I-40-Q8: 「어느
   // 도구에서나(선택 해제처럼)」). Its button keeps its place in the Select
-  // tool's settings and runs the same verb.
+  // tool's settings and runs the same verb. Its two walls are two actions
+  // (I-108); the keys it had stay with the wall it had.
+  EditorActionDefinition.composed(
+    id: EditorActionIds.selectionInvertInCanvas,
+    name: (language) => AppStrings.of(language).selectionInvertInCanvas,
+    shelf: ShortcutShelf.selection,
+    defaultActivators: const [],
+  ),
   EditorActionDefinition.composed(
     id: EditorActionIds.selectionInvert,
     name: (language) => AppStrings.of(language).selectionInvert,

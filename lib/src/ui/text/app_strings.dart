@@ -294,6 +294,7 @@ enum AppStrings {
   /// 선택 반전 (I-23) — the selection tool's settings button that selects
   /// what is not selected, out to the pasteboard wall.
   String get selectionInvert => _s('selectionInvert');
+  String get selectionInvertInCanvas => _s('selectionInvertInCanvas');
   String get toolSelectionMode => _s('toolSelectionMode');
 
   // --- Shared window verbs (the AppWindow action row) ---
@@ -1921,7 +1922,8 @@ enum AppStrings {
     'fpsAudioKeep': 'Keep audio timing',
     'fpsAudioPull': 'Pull audio 0.1%',
     'selectionClosePolygon': 'Close shape',
-    'selectionInvert': 'Invert Selection',
+    'selectionInvert': 'Invert Selection Beyond Canvas',
+    'selectionInvertInCanvas': 'Invert Selection in Canvas',
     'toolSelectionMode': 'Mode',
     'commonSave': 'Save',
     'commonDelete': 'Delete',
@@ -3120,7 +3122,8 @@ enum AppStrings {
     'fpsAudioKeep': '音のタイミングを維持',
     'fpsAudioPull': '音を0.1%プル',
     'selectionClosePolygon': '形を閉じる',
-    'selectionInvert': '選択範囲を反転',
+    'selectionInvert': 'カンバス外も選択範囲を反転',
+    'selectionInvertInCanvas': 'カンバス内で選択範囲を反転',
     'toolSelectionMode': 'モード',
     'commonSave': '保存',
     'commonDelete': '削除',
@@ -4714,7 +4717,8 @@ enum AppStrings {
     'fpsAudioKeep': '오디오 타이밍 유지',
     'fpsAudioPull': '오디오 0.1% 당김',
     'selectionClosePolygon': '도형 닫기',
-    'selectionInvert': '선택 반전',
+    'selectionInvert': '캔버스 밖도 선택 반전',
+    'selectionInvertInCanvas': '캔버스 안 선택 반전',
     'toolSelectionMode': '모드',
     'commonSave': '저장',
     'commonDelete': '삭제',
@@ -6299,7 +6303,8 @@ enum AppStrings {
     'fpsAudioKeep': 'Garder le timing audio',
     'fpsAudioPull': 'Tirer l\'audio de 0,1 %',
     'selectionClosePolygon': 'Fermer la forme',
-    'selectionInvert': 'Inverser la sélection',
+    'selectionInvert': 'Inverser la sélection au-delà du canevas',
+    'selectionInvertInCanvas': 'Inverser la sélection dans le canevas',
     'toolSelectionMode': 'Mode',
     'commonSave': 'Enregistrer',
     'commonDelete': 'Supprimer',
@@ -8008,7 +8013,8 @@ enum AppStrings {
     'fpsAudioKeep': '保持音频时间',
     'fpsAudioPull': '拉伸音频 0.1%',
     'selectionClosePolygon': '闭合形状',
-    'selectionInvert': '反选',
+    'selectionInvert': '反选到画布之外',
+    'selectionInvertInCanvas': '在画布内反选',
     'toolSelectionMode': '模式',
     'commonSave': '保存',
     'commonDelete': '删除',

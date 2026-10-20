@@ -45,7 +45,10 @@ void main() {
     commands.setRegion(selected);
     final inverse = CanvasSelectionRegion.invertedWithin(selected, wall);
 
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      canvasSize: canvas,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(history.undoCount, 1);
     expect(commands.region, inverse);
@@ -58,7 +61,10 @@ void main() {
   test('with nothing selected it selects the whole wall', () {
     final (:commands, :history) = wired();
 
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      canvasSize: canvas,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(commands.region, wholeWall());
     expect(history.undoCount, 1);
@@ -69,8 +75,14 @@ void main() {
   test('pressed twice from nothing it comes back to nothing', () {
     final (:commands, :history) = wired();
 
-    commands.invertSelection(canvasSize: canvas);
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      canvasSize: canvas,
+      reach: InvertReach.pasteboard,
+    );
+    commands.invertSelection(
+      canvasSize: canvas,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(commands.region, isNull, reason: 'the inverse of everything');
     expect(history.undoCount, 2, reason: 'each press is its own step');
@@ -84,7 +96,10 @@ void main() {
       implicit: true,
     );
 
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      canvasSize: canvas,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(commands.region, wholeWall());
     expect(history.undoCount, 1);
@@ -116,7 +131,10 @@ void main() {
     );
     addTearDown(() => commands.unbind(owner));
 
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      canvasSize: canvas,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(history.undoCount, 2, reason: 'the landing, then the inverse');
     expect(
@@ -128,10 +146,37 @@ void main() {
     expect(commands.region, landed, reason: 'one undo: the inverse only');
   });
 
+  test('🎯in the canvas, the inverse stops at the canvas\'s edge, and to the '
+      'pasteboard at the pasteboard\'s (I-108)', () {
+    final selected = CanvasSelectionRegion.shape(rect(2, 3, 12, 9));
+    CanvasSelectionRegion? invertedTo(InvertReach reach) {
+      final commands = CanvasSelectionCommands()..setRegion(selected);
+      commands.invertSelection(canvasSize: canvas, reach: reach);
+      return commands.region;
+    }
+
+    expect(
+      invertedTo(InvertReach.canvas),
+      CanvasSelectionRegion.invertedWithin(selected, canvas.canvasRect),
+    );
+    expect(
+      invertedTo(InvertReach.pasteboard),
+      CanvasSelectionRegion.invertedWithin(selected, wall),
+    );
+    expect(
+      invertedTo(InvertReach.canvas),
+      isNot(invertedTo(InvertReach.pasteboard)),
+      reason: 'two walls',
+    );
+  });
+
   test('without a history host it applies directly', () {
     final commands = CanvasSelectionCommands();
 
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      canvasSize: canvas,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(commands.region, wholeWall());
   });

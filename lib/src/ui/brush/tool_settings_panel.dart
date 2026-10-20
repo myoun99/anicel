@@ -790,9 +790,10 @@ class _SelectionSettings extends StatelessWidget {
     final onMask = onMaskOptionsChanged;
     final commands = selectionCommands;
     final canvas = canvasSize;
-    final invert = commands == null || canvas == null
+    VoidCallback? invert(InvertReach reach) =>
+        commands == null || canvas == null
         ? null
-        : () => commands.invertSelection(canvasSize: canvas);
+        : () => commands.invertSelection(canvasSize: canvas, reach: reach);
     // R26 #12: the rectangle/lasso CHOICE lives in the tool library
     // (two tools there), so the settings panel no longer duplicates
     // it — only the mask knobs remain.
@@ -861,19 +862,32 @@ class _SelectionSettings extends StatelessWidget {
                 shapeKind: state.activeShapeKind,
                 traces: traces,
               ),
-              // 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능 … 위치는
-              // 선택툴일때의 툴설정. 버튼.」 In its place whatever is
-              // selected (with nothing selected it selects the whole wall),
-              // and greyed — never gone — when there is no canvas to take
-              // the wall from. Its key answers under every tool, in the
-              // shell (I-40-Q8), and runs this same verb.
-              if (commands != null)
+            ],
+            // 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능 … 위치는
+            // 선택툴일때의 툴설정. 버튼.」 In its place whatever is selected
+            // (with nothing selected it selects the whole wall), and greyed
+            // — never gone — when there is no canvas to take the wall from.
+            // Each key answers under every tool, in the shell (I-40-Q8), and
+            // runs this same verb. Two walls, two buttons (I-108), each on a
+            // line of its own — ⚠️my call: their names are long, and a
+            // shared line would cut them.
+            if (commands != null) ...[
+              [
+                ToolSettingAction(
+                  keyValue: 'selection-invert-in-canvas-button',
+                  label: AppText.strings.selectionInvertInCanvas,
+                  shortcuts: const [EditorActionIds.selectionInvertInCanvas],
+                  onPressed: invert(InvertReach.canvas),
+                ),
+              ],
+              [
                 ToolSettingAction(
                   keyValue: 'selection-invert-button',
                   label: AppText.strings.selectionInvert,
                   shortcuts: const [EditorActionIds.selectionInvert],
-                  onPressed: invert,
+                  onPressed: invert(InvertReach.pasteboard),
                 ),
+              ],
             ],
           ],
         ),

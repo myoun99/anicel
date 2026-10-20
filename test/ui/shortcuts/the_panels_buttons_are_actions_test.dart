@@ -19,7 +19,9 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show defaultCutCanvasSize;
@@ -547,6 +549,27 @@ void main() {
         await pressKeyOf(tester, EditorActionIds.selectionInvert);
         expect(commands.region, isNull, reason: tool);
       }
+    });
+
+    testWidgets('🎯its two walls are two keys: in the canvas, it stops at '
+        'the canvas\'s edge (I-108)', (tester) async {
+      await pumpHome(tester);
+      final workspace = tester.widget<EditorWorkspace>(
+        find.byType(EditorWorkspace),
+      );
+      final commands = workspace.canvasSelectionCommands!;
+      final canvas = workspace.session.requireActiveCut.canvasSize;
+
+      await pressKeyOf(
+        tester,
+        EditorActionIds.selectionInvertInCanvas,
+        settle: false,
+      );
+
+      expect(
+        commands.region,
+        CanvasSelectionRegion.invertedWithin(null, canvas.canvasRect),
+      );
     });
 
     testWidgets('🚨the transform\'s flips and 초기화 — at the foot of a list '

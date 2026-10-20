@@ -88,6 +88,7 @@ void main() {
     'fpsAudioPull': (s) => s.fpsAudioPull,
     'selectionClosePolygon': (s) => s.selectionClosePolygon,
     'selectionInvert': (s) => s.selectionInvert,
+    'selectionInvertInCanvas': (s) => s.selectionInvertInCanvas,
     'toolSelectionMode': (s) => s.toolSelectionMode,
     'commonSave': (s) => s.commonSave,
     'commonDelete': (s) => s.commonDelete,

@@ -615,10 +615,15 @@ void main() {
   });
 
   // 🚨I-23 — 유저 2026-09-12: 「선택반전기능. 내용은 선택되지 않은 부분을
-  // 선택함. 위치는 선택툴일때의 툴설정. 버튼.」
+  // 선택함. 위치는 선택툴일때의 툴설정. 버튼.」 Two walls, two buttons
+  // (I-108, 유저 2026-10-18: 「버튼 나눠서 용지 내 선택 반전, 용지 밖까지?
+  // 선택 반전 이렇게 버튼 두개로」).
   group('선택 반전 in the selection tool\'s settings', () {
-    const buttonKey = ValueKey<String>('selection-invert-button');
     const canvas = CanvasSize(width: 20, height: 15);
+    final walls = {
+      'selection-invert-in-canvas-button': canvas.canvasRect,
+      'selection-invert-button': canvas.pasteboardRect,
+    };
 
     CanvasSelectionRegion selected() => CanvasSelectionRegion.shape(
       CanvasSelectionShape.rect(left: 2, top: 3, right: 12, bottom: 9),
@@ -644,56 +649,58 @@ void main() {
       await tester.pump();
     }
 
-    ToolSettingAction button(WidgetTester tester) =>
-        tester.toolSettingAction(find.byKey(buttonKey));
+    for (final MapEntry(key: keyValue, value: wall) in walls.entries) {
+      final buttonKey = ValueKey<String>(keyValue);
+      ToolSettingAction button(WidgetTester tester) =>
+          tester.toolSettingAction(find.byKey(buttonKey));
 
-    testWidgets('stands in one place, live, with a selection and without', (
-      tester,
-    ) async {
-      final commands = CanvasSelectionCommands();
-      await pumpSelectSettings(tester, commands: commands);
-      final without = tester.getRect(find.byKey(buttonKey));
-      expect(
-        button(tester).onPressed,
-        isNotNull,
-        reason: 'nothing selected still inverts — to the whole wall',
-      );
+      group(keyValue, () {
+        testWidgets('stands in one place, live, with a selection and '
+            'without', (tester) async {
+          final commands = CanvasSelectionCommands();
+          await pumpSelectSettings(tester, commands: commands);
+          final without = tester.getRect(find.byKey(buttonKey));
+          expect(
+            button(tester).onPressed,
+            isNotNull,
+            reason: 'nothing selected still inverts — to the whole wall',
+          );
 
-      commands.setRegion(selected());
-      await tester.pump();
+          commands.setRegion(selected());
+          await tester.pump();
 
-      expect(tester.getRect(find.byKey(buttonKey)), without);
-      expect(button(tester).onPressed, isNotNull);
-    });
+          expect(tester.getRect(find.byKey(buttonKey)), without);
+          expect(button(tester).onPressed, isNotNull);
+        });
 
-    testWidgets('a tap inverts the selection', (tester) async {
-      final commands = CanvasSelectionCommands()..setRegion(selected());
-      await pumpSelectSettings(tester, commands: commands);
+        testWidgets('a tap inverts the selection within its wall', (
+          tester,
+        ) async {
+          final commands = CanvasSelectionCommands()..setRegion(selected());
+          await pumpSelectSettings(tester, commands: commands);
 
-      await tester.tap(find.byKey(buttonKey));
-      await tester.pump();
+          await tester.tap(find.byKey(buttonKey));
+          await tester.pump();
 
-      expect(
-        commands.region,
-        CanvasSelectionRegion.invertedWithin(
-          selected(),
-          canvas.pasteboardRect,
-        ),
-      );
-    });
+          expect(
+            commands.region,
+            CanvasSelectionRegion.invertedWithin(selected(), wall),
+          );
+        });
 
-    testWidgets('is greyed, never gone, with no canvas to take a wall from', (
-      tester,
-    ) async {
-      await pumpSelectSettings(
-        tester,
-        commands: CanvasSelectionCommands(),
-        canvasSize: null,
-      );
+        testWidgets('is greyed, never gone, with no canvas to take a wall '
+            'from', (tester) async {
+          await pumpSelectSettings(
+            tester,
+            commands: CanvasSelectionCommands(),
+            canvasSize: null,
+          );
 
-      expect(find.byKey(buttonKey), findsOneWidget);
-      expect(button(tester).onPressed, isNull);
-    });
+          expect(find.byKey(buttonKey), findsOneWidget);
+          expect(button(tester).onPressed, isNull);
+        });
+      });
+    }
   });
 
   group('shape memory (유저 확정: 도형은 동사별로 기억)', () {

@@ -1146,8 +1146,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // button's five kinds — the button was wrong, not the key.
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
+      case EditorActionIds.selectionInvertInCanvas:
+        _invertSelection(InvertReach.canvas);
       case EditorActionIds.selectionInvert:
-        _invertSelection();
+        _invertSelection(InvertReach.pasteboard);
       case EditorActionIds.layerUp:
         _timelineLayerNav.step(-1);
         _session.revealSelection();
@@ -1270,13 +1272,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// 선택 반전 by key, whatever tool is in hand (I-40-Q8) — out to the
-  /// pasteboard wall of the cut on screen, as its button in the Select
+  /// 선택 반전 by key, whatever tool is in hand (I-40-Q8) — out to
+  /// [reach]'s wall of the cut on screen, as its button in the Select
   /// tool's settings does; nothing without a cut to take the wall from.
-  void _invertSelection() {
+  void _invertSelection(InvertReach reach) {
     final canvas = _session.activeCutOrNull?.canvasSize;
     if (canvas != null) {
-      _canvasSelectionCommands.invertSelection(canvasSize: canvas);
+      _canvasSelectionCommands.invertSelection(
+        canvasSize: canvas,
+        reach: reach,
+      );
     }
   }
 

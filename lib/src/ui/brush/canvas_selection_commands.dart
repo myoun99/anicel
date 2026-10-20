@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Rect;
 
 import 'package:flutter/foundation.dart';
 
@@ -9,6 +10,20 @@ import '../../models/transform_values.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import 'transform_tool_options.dart';
+
+/// How far 선택 반전 reaches (I-108): the wall it inverts within.
+enum InvertReach {
+  /// The canvas itself — 「용지 내」.
+  canvas,
+
+  /// Out to the pasteboard's wall — everything a selection tool can reach.
+  pasteboard;
+
+  Rect wallOf(CanvasSize size) => switch (this) {
+    InvertReach.canvas => size.canvasRect,
+    InvertReach.pasteboard => size.pasteboardRect,
+  };
+}
 
 /// A shape on the canvas, and whether a TOOL synthesized it rather than the
 /// user choosing it (F-108) — one value, so neither travels without the
@@ -446,8 +461,13 @@ class CanvasSelectionCommands extends ChangeNotifier {
 
   /// 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능. 내용은 선택되지
   /// 않은 부분을 선택함. 위치는 선택툴일때의 툴설정. 버튼.」 Selects what is
-  /// NOT selected, out to [canvasSize]'s pasteboard wall (I-23-Q1
-  /// 「페이스트보드 벽까지」: 「선택도구로 사용할수있는 모든부분까지임」).
+  /// NOT selected, out to [reach]'s wall of [canvasSize].
+  ///
+  /// 🗣️TWO WALLS, ONE VERB (I-108, 유저 2026-10-18: 「용지 내에서만
+  /// 작동하게하고싶을때의 방법이 필요하니 버튼 나눠서 용지 내 선택 반전, 용지
+  /// 밖까지? 선택 반전 이렇게 버튼 두개로」). ↩️It reached the pasteboard's
+  /// wall alone (I-23-Q1 「페이스트보드 벽까지」: 「선택도구로 사용할수있는
+  /// 모든부분까지임」) — still [InvertReach.pasteboard], and its key's.
   ///
   /// ONE undo step, through [regionHistoryRecorder] like every selection
   /// change. An open box or a pending move lands FIRST, as its own entry:
@@ -459,12 +479,15 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// the user never chose. ⛔And it writes through [applyRegion], never a
   /// bare [setRegion] — the mounted layer has to hear it (see the note in
   /// `_adoptChannelRegion`).
-  void invertSelection({required CanvasSize canvasSize}) {
+  void invertSelection({
+    required CanvasSize canvasSize,
+    required InvertReach reach,
+  }) {
     confirmPendingMove();
     final before = region;
     final after = CanvasSelectionRegion.invertedWithin(
       before,
-      canvasSize.pasteboardRect,
+      reach.wallOf(canvasSize),
     );
     if (after == before) {
       return;
