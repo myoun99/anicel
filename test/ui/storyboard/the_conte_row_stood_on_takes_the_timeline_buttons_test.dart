@@ -247,8 +247,8 @@ void main() {
       expect(session.trackFrameRangeSelection.value, isNull);
     });
 
-    test('🗣️I-58: the ● every n koma dots the panel stood on from its head, '
-        'as the timeline\'s press on that cell does', () {
+    test('🗣️I-58: the ● every n koma dots the panel stood on from the cell '
+        'stood on (F-402), as the timeline\'s press on that cell does', () {
       final session = onTheConteRow(18);
       StoryboardToolbarPanelContext(session).markEvery(3);
 
@@ -257,7 +257,11 @@ void main() {
 
       List<int>? marksOf(EditorSessionManager s) =>
           conteOf(s).timeline[16]?.breakdownOffsets;
-      expect(marksOf(session), [3, 6], reason: 'the third panel, 16..24');
+      expect(
+        marksOf(session),
+        [2, 5],
+        reason: 'the third panel, 16..24, from 18',
+      );
       expect(marksOf(session), marksOf(timeline));
     });
 

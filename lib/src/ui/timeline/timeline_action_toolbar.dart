@@ -53,7 +53,9 @@ Future<void> showTimelineCommaCountDialog(
 
 /// 🗣️I-58 (유저 2026-10-01): 「버튼누르면 창 열려서 숫자만 입력가능한창.
 /// 3적고 확인누르면 현재 블록에서 헤더부터 시작해서 3코마마다 점 찍음」 — the
-/// ● every n koma, pressed on [panel] as the N commas are.
+/// ● every n koma, pressed on [panel] as the N commas are. With no band it
+/// counts from the playhead's cell, and it toggles as the ● does (F-402 —
+/// `LayerMarks.markEvery`).
 Future<void> showMarkEveryDialog(
   BuildContext context,
   EditorSessionManager session, {

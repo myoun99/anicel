@@ -31,6 +31,11 @@ import '../../helpers/run_edge_fixtures.dart';
 /// 안에서 블록이 끝날때까지, n코마마다 중간나누기 마크 추가 … 3적고
 /// 확인누르면 현재 블록에서 헤더부터 시작해서 3코마마다 점 찍음. 즉
 /// 1--------- 이렇게있으면, 1--.--.--.」
+///
+/// 🗣️F-402 (유저 2026-10-19): 「선택된대상 블록이 있을때의 동작은 지금과
+/// 같음. 다만 선택된게 없는 상황에서 … 현재 인덱스부터 시작해서 마크를
+/// 추가함. 참고로 현재 인덱스에도 마크찍도록」 · 「중간나누기 마크는 토글이기
+/// 때문에 마크가 존재하는 곳은 토글규칙에 따라서 마크 삭제」.
 void main() {
   const idA = LayerId('every-a');
   const idB = LayerId('every-b');
@@ -148,15 +153,16 @@ void main() {
     }
   });
 
-  test('「1--------- 이렇게있으면, 1--.--.--.」: 3 dots the block under the '
-      'playhead from its HEAD, wherever in it the playhead stands', () {
+  test('「현재 인덱스부터 … 현재 인덱스에도 마크찍도록」: with no band, 3 dots '
+      'the block under the playhead from the playhead\'s cell to its end',
+      () {
     final session = rig();
-    standOn(session, idA, 7);
+    standOn(session, idA, 2);
 
     expect(session.layerMarks.canMarkEvery, isTrue);
     session.layerMarks.markEvery(3);
 
-    expect(marksAt(session, idA, 0), [3, 6, 9]);
+    expect(marksAt(session, idA, 0), [2, 5, 8]);
     expect(
       [marksAt(session, idB, 0), marksAt(session, idB, 4)],
       everyElement(isEmpty),
@@ -164,15 +170,42 @@ void main() {
     );
   });
 
-  test('it ADDS: a mark the block already carries stays', () {
+  test('「1--------- 이렇게있으면, 1--.--.--.」: standing on the head, the '
+      'head is passed by — the drawing itself takes no mark', () {
     final session = rig();
-    standOn(session, idA, 4);
-    session.layerMarks.toggleMarkAtCurrentFrame();
-    expect(marksAt(session, idA, 0), [4], reason: 'premise');
+    standOn(session, idA, 0);
 
     session.layerMarks.markEvery(3);
 
-    expect(marksAt(session, idA, 0), [3, 4, 6, 9]);
+    expect(marksAt(session, idA, 0), [3, 6, 9]);
+  });
+
+  test('「토글규칙에 따라서」: it toggles as the ● does over a band — a mix is '
+      'marked whole, and all marked are cleared', () {
+    final session = rig();
+    standOn(session, idA, 4);
+    session.layerMarks.toggleMarkAtCurrentFrame();
+    expect(marksAt(session, idA, 0), [4], reason: '⛔전제');
+
+    standOn(session, idA, 1);
+    session.layerMarks.markEvery(3);
+    expect(marksAt(session, idA, 0), [1, 4, 7], reason: 'a mix: all marked');
+
+    session.layerMarks.markEvery(3);
+    expect(marksAt(session, idA, 0), isEmpty, reason: 'all marked: cleared');
+  });
+
+  test('a band toggles by the same law', () {
+    final session = rig();
+    sweep(session, [idA, idB], from: 0, toExclusive: 10);
+    session.layerMarks.markEvery(3);
+    expect(marksAt(session, idA, 0), [3, 6, 9], reason: '⛔전제');
+
+    session.layerMarks.markEvery(3);
+
+    for (final (id, start) in [(idA, 0), (idB, 0), (idB, 4)]) {
+      expect(marksAt(session, id, start), isEmpty);
+    }
   });
 
   test('「선택된블록들」: every block the band takes, each from its OWN head',
@@ -366,7 +399,7 @@ void main() {
       order.indexOf('toggle-mark-button') - 1,
     );
 
-    standOn(session, idA, 7);
+    standOn(session, idA, 1);
     await tester.pumpAndSettle();
     await tester.tap(inThePill('mark-every-button'));
     await tester.pumpAndSettle();
@@ -383,7 +416,7 @@ void main() {
     await typeAndApply(tester, '3');
 
     expect(window, findsNothing);
-    expect(marksAt(session, idA, 0), [3, 6, 9]);
+    expect(marksAt(session, idA, 0), [1, 4, 7]);
     session.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -419,7 +452,7 @@ void main() {
     expect(window, findsOneWidget);
     await typeAndApply(tester, '2');
 
-    expect(marksAt(session, idA, 0), [2, 4, 6, 8]);
+    expect(marksAt(session, idA, 0), [7, 9]);
     session.playbackRig.prerenderScheduler.cancel();
   });
 }

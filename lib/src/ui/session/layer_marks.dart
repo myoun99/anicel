@@ -98,14 +98,7 @@ class LayerMarks {
   void toggleMarkAtCurrentFrame() {
     final banded = _markableFramesForSelection();
     if (banded.isNotEmpty) {
-      // SET the whole band one way, never toggle each frame: a mixed band
-      // would invert under the hand and hand back the complement of what
-      // was there. All marked → clear; anything unmarked → mark them all.
-      _controllers.timelineController.setMarksForFrames(
-        banded,
-        marked: !_controllers.timelineController.bandFramesAreAllMarked(banded),
-      );
-      _changes.notifyChanged();
+      _toggleMarksOf(banded);
       return;
     }
     final layer = _selection.activeLayer;
@@ -117,19 +110,39 @@ class LayerMarks {
     _changes.notifyChanged();
   }
 
+  /// The ●'s law over many cells — what a press that toggles [frames] does
+  /// to them, as ONE undo step. SET them one way, never toggle each: a mix
+  /// would invert under the hand and hand back the complement of what was
+  /// there. All marked → clear; anything unmarked → mark them all.
+  void _toggleMarksOf(Map<LayerId, List<int>> frames) {
+    final timeline = _controllers.timelineController;
+    timeline.setMarksForFrames(
+      frames,
+      marked: !timeline.bandFramesAreAllMarked(frames),
+    );
+    _changes.notifyChanged();
+  }
+
   /// 🗣️I-58 (유저 2026-10-01): 「중간나누기 마크 자동추가. 대상은 중간나누기
   /// 마크가 적용가능한 행의 선택된블록들or현재 인덱스 블록, 각자 현재 블록
   /// 안에서 블록이 끝날때까지, n코마마다 중간나누기 마크 추가 … 3적고
   /// 확인누르면 현재 블록에서 헤더부터 시작해서 3코마마다 점 찍음. 즉
   /// 1--------- 이렇게있으면, 1--.--.--.」
   ///
-  /// The cells [every] koma apart from the head of each block the press
-  /// takes, to the block's end, per row. It climbs the ● ladder
+  /// 🗣️F-402 (유저 2026-10-19): 「선택된대상 블록이 있을때의 동작은 지금과
+  /// 같음. 다만 선택된게 없는 상황에서, 지금 헤드부터 시작해서 마크
+  /// 추가하는데, 그게아니라 현재 인덱스부터 시작해서 마크를 추가함. 참고로
+  /// 현재 인덱스에도 마크찍도록. 즉 마크를 중간부터 일정하게 찍고싶을때 쓰는
+  /// 동작」.
+  ///
+  /// The cells [every] koma apart, to the block's end, per row: in each
+  /// block the band takes, from its head; with no band, in the block under
+  /// the playhead, from the playhead's cell. It climbs the ● ladder
   /// ([canToggleMarkAtCurrentFrame]) in blocks rather than cells: the
   /// band's blocks on the rows that take marks — the blocks the comma
   /// press takes there ([RangeSelections.selectionBlockStarts]) — else the
   /// block under the playhead on the active row. A ghost is no block of
-  /// its own.
+  /// its own. ↩️With no band it counted from the block's head too (I-58).
   Map<LayerId, List<int>> _framesEvery(int every) {
     final banded = _selection.bandRowsForSelection(
       _markable,
@@ -142,7 +155,7 @@ class LayerMarks {
                 band.startIndex,
                 band.endIndexExclusive,
               ))
-                ..._everyFromTheHead(layer, start, every),
+                ..._everyFrom(layer, start, from: start, every: every),
             ],
       }),
     );
@@ -153,29 +166,34 @@ class LayerMarks {
     if (layer == null || !_markable(layer)) {
       return const {};
     }
-    final block = coveringDrawingBlockAt(
-      layer.timeline,
-      _controllers.timelineController.currentFrameIndex,
-    );
+    final here = _controllers.timelineController.currentFrameIndex;
+    final block = coveringDrawingBlockAt(layer.timeline, here);
     if (block == null || block.entry.ghost) {
       return const {};
     }
     return _withFrames({
-      layer.id: [..._everyFromTheHead(layer, block.startIndex, every)],
+      layer.id: [
+        ..._everyFrom(layer, block.startIndex, from: here, every: every),
+      ],
     });
   }
 
-  /// The cells [every] koma apart from the head of [layer]'s block at
-  /// [start], to its end — held cells all, where a mark stands
-  /// ([TimelineController.canToggleMarkAt]).
-  static Iterable<int> _everyFromTheHead(
+  /// The cells [every] koma apart from [from], to the end of [layer]'s
+  /// block at [start] — held cells all, where a mark stands
+  /// ([TimelineController.canToggleMarkAt]): the head, the drawing itself,
+  /// is passed by when the count starts on it (F-402: 「현재 인덱스가
+  /// 헤드면 자연스럽게 무시」).
+  static Iterable<int> _everyFrom(
     Layer layer,
-    int start,
-    int every,
-  ) sync* {
+    int start, {
+    required int from,
+    required int every,
+  }) sync* {
     final end = start + (layer.timeline[start]?.length ?? 1);
-    for (var frame = start + every; frame < end; frame += every) {
-      yield frame;
+    for (var frame = from; frame < end; frame += every) {
+      if (frame != start) {
+        yield frame;
+      }
     }
   }
 
@@ -186,12 +204,15 @@ class LayerMarks {
       if (frames.isNotEmpty) id: frames,
   };
 
-  /// Lit while a block the press takes has a cell past its head — what a
-  /// press of 1 would dot.
+  /// Lit while the press names a cell to dot — what a press of 1 would.
   bool get canMarkEvery => _framesEvery(1).isNotEmpty;
 
-  /// Dots the blocks [_framesEvery] names, keeping every mark they carry —
-  /// 「추가」. One undo step.
+  /// Toggles the cells [_framesEvery] names by the ●'s law over many
+  /// ([_toggleMarksOf]). One undo step.
+  ///
+  /// 🗣️F-402 (유저 2026-10-19): 「중간나누기 마크는 토글이기 때문에 마크가
+  /// 존재하는 곳은 토글규칙에 따라서 마크 삭제」. ↩️It only added, keeping
+  /// every mark the cells carried (I-58 「추가」).
   void markEvery(int every) {
     if (every < 1) {
       return;
@@ -200,8 +221,7 @@ class LayerMarks {
     if (frames.isEmpty) {
       return;
     }
-    _controllers.timelineController.setMarksForFrames(frames, marked: true);
-    _changes.notifyChanged();
+    _toggleMarksOf(frames);
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {

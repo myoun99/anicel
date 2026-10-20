@@ -1796,8 +1796,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
-  // 🗣️I-58 (유저 2026-10-01): the ● every n koma, from each block's head —
-  // 「중간나누기 마크 자동추가」. No key was said for it.
+  // 🗣️I-58 (유저 2026-10-01): the ● every n koma — 「중간나누기 마크
+  // 자동추가」 — from each selected block's head, else from the playhead's
+  // cell (F-402). No key was said for it.
   const EditorActionDefinition(
     id: EditorActionIds.frameMarkEvery,
     label: 'Auto-add In-between Marks',
