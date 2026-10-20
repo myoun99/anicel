@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
-import 'package:anicel/src/models/key_range_move.dart' show unionMixedKeyName;
+import 'package:anicel/src/models/key_mark.dart' show unionMixedKeyName;
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/ui/dialogs/rename_frame_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
