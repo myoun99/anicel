@@ -478,6 +478,19 @@ void main() {
     expect(keysFor([0, 0, 1000, 0, 1200, 998, 200, 1000]), [
       'clipTextDistorted',
     ]);
+
+    // Edges along one line, the fourth corner where they meet again: no box
+    // stands on them, and nothing is leaned on them either.
+    final flat = read(
+      textLayer([
+        lettering(
+          'a',
+          clipTextAttributesBytes(corners: [0, 0, 1000, 0, 2000, 0, 1000, 0]),
+        ),
+      ]),
+    );
+    expect(keysOf(flat.warnings), ['clipTextDistorted']);
+    expect(flat.texts.single.content.skewDegrees, 0);
   });
 
   test('🎯a frame comes in turned, leaned and mirrored as the file\'s '
