@@ -107,4 +107,16 @@ void main() {
     final data = PngImageData(width: width, bytesPerPixel: 3);
     expect(() => data.add(Uint8List(stride - 1)), throwsArgumentError);
   });
+
+  /// The writer filters by it and the reader (`readPngRows`) unfilters by
+  /// it, so a tie broken another way reads our own files back whole and
+  /// every other encoder's wrong — no round trip sees it.
+  test('Paeth predicts the neighbour nearest a + b - c, a tie going to a, '
+      'then b', () {
+    expect(pngPaeth(30, 20, 10), 30);
+    expect(pngPaeth(20, 10, 30), 10);
+    expect(pngPaeth(10, 20, 15), 15);
+    expect(pngPaeth(6, 0, 2), 6, reason: 'a and c tie');
+    expect(pngPaeth(0, 6, 2), 6, reason: 'b and c tie');
+  });
 }

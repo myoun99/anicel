@@ -337,7 +337,8 @@ Future<BitmapSurface> _rastered(
 /// A picture held off the engine, laid where [placement] resamples it: read
 /// whole, and drawn a block at a time from the part of it each block
 /// reaches, which is all that is ever uploaded ([_partUploaded]) — by the
-/// engine's own resampler, as a picture it holds is laid.
+/// engine's own resampler, as a picture it holds is laid, each part read on
+/// the grid the picture whole is mipped on ([_mipGrid]).
 ///
 /// ⛔Not halved first to hold a quarter of it, as a mip chain is read: 🔬a
 /// lay at 0.3 came out up to 86/255 apart in `flutter test` from the same
@@ -452,15 +453,37 @@ Iterable<TileRange> _partsFitting(
     math.sqrt(placement.c * placement.c + placement.d * placement.d),
   );
   final reach = shrink <= 0 ? 0 : (2 / math.min(shrink, 1)).ceil() + 2;
-  final left = math.max(0, over.left.floor() - reach);
-  final top = math.max(0, over.top.floor() - reach);
-  final right = math.min(picture.width, over.right.ceil() + reach);
-  final bottom = math.min(picture.height, over.bottom.ceil() + reach);
+  final grid = _mipGrid(shrink);
+  final left = math.max(0, over.left.floor() - reach) ~/ grid * grid;
+  final top = math.max(0, over.top.floor() - reach) ~/ grid * grid;
+  final right = math.min(
+    picture.width,
+    (over.right.ceil() + reach + grid - 1) ~/ grid * grid,
+  );
+  final bottom = math.min(
+    picture.height,
+    (over.bottom.ceil() + reach + grid - 1) ~/ grid * grid,
+  );
   if (left >= right || top >= bottom) {
     return null;
   }
   return (left: left, top: top, width: right - left, height: bottom - top);
 }
+
+/// The grid of the picture's pixels a part of it is read on where [shrink]
+/// lays it smaller: the texels of the deepest mip level a draw at that
+/// shrink samples. A part read from anywhere else is mipped on another grid
+/// than the picture whole is, and resamples to other pixels.
+///
+/// 🔬On the Surface's engine (Impeller, 2026-10-20, a throwaway probe: an
+/// 8000×1080 picture laid from parts against the engine's lay of it whole)
+/// unaligned parts came out up to 95/255 apart at 0.096, 0.24, 0.3 and 0.6
+/// — all over, not at their seams; on this grid 4 at most, 1 on a smooth
+/// picture, and on the grid a level deeper no closer. The test engine
+/// samples `high` without mips and sees neither ([debugLayFilterQuality]).
+int _mipGrid(double shrink) => shrink <= 0 || shrink >= 1
+    ? 1
+    : 1 << (math.log(1 / shrink) / math.ln2).ceil();
 
 /// The part of [pixels] that [part]'s raster reaches ([_reachedBy]),
 /// uploaded for that raster alone — at no more than a lay's raster a side
@@ -585,9 +608,15 @@ ui.Paint _layPaint(LayerPlacement placement) {
   return ui.Paint()
     ..filterQuality = _copiesPixels(placement)
         ? ui.FilterQuality.none
-        : ui.FilterQuality.high
+        : debugLayFilterQuality ?? ui.FilterQuality.high
     ..isAntiAlias = true;
 }
+
+/// The quality a test resamples a lay at in place of `high` — `medium`,
+/// which mips on the test engine as `high` does on this device's
+/// ([_mipGrid]) — or null.
+@visibleForTesting
+ui.FilterQuality? debugLayFilterQuality;
 
 /// What one block of a lay draws: an image, where it lies among the
 /// picture's own pixels — the picture whole at its origin, or the part of a
