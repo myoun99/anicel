@@ -1608,27 +1608,28 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   late final _StoryboardFolded _folded = _StoryboardFolded(this);
 
   /// R5: the same "bring the selection back into view" tick the timeline
-  /// answers, in THIS surface's terms — the strips run on the GLOBAL frame
-  /// axis, so the playhead frame is what the reveal aims at.
+  /// answers, by the timeline's own function — the strips run on the GLOBAL
+  /// frame axis, so the playhead frame is what the frames aim at, and the
+  /// row you stand on is what the rows do (F-361,
+  /// [_StoryboardStanding.standingRowItem]). One S row of margin, as the
+  /// timeline keeps one layer row.
   ///
-  /// After the frame, because the row list this pass built is what any
-  /// row-side reveal would count in.
+  /// After the frame, because the row list this pass built is what the
+  /// row-side reveal counts in.
   void _handleRevealSelection() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_horizontalController.hasClients) {
+      if (!mounted) {
         return;
       }
-      final frame = widget.playheadFrame?.value;
-      final cell = widget.pixelsPerFrame;
-      if (frame == null || cell <= 0) {
-        return;
-      }
-      jumpToReveal(
-        _horizontalController,
-        (
-          start: frame * cell,
-          extent: cell,
-          margin: cell,
+      revealSelectionOnBothAxes(
+        frames: (
+          controller: _horizontalController,
+          extent: widget.pixelsPerFrame,
+          at: widget.playheadFrame?.value ?? -1,
+        ),
+        rows: (
+          controller: _verticalController,
+          item: _standing.standingRowItem(_rowHeights.se),
         ),
       );
     });

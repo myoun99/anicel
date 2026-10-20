@@ -1612,23 +1612,35 @@ class _StoryboardRailRows {
   /// is drawn from (F-322: 「타임라인이랑 완벽통일」). ↩️This rail drew none,
   /// so a span it selected could not be seen.
   Widget rowSelectionBands(List<TimelineRowAddress> selected) {
-    final slots = [
-      for (final track in _state.widget.project.tracks)
-        ..._trackGroupRowGeometry(track),
-    ];
+    final table = _railTable();
     return TimelineRowSelectionBands(
       selectedFlags: [
-        for (final slot in slots)
+        for (final slot in table.slots)
           switch (_standingAddressOf(slot)) {
             final address? => selected.contains(address),
             null => false,
           },
       ],
+      edges: table.edges,
+      crossExtent: _state._naturalRailWidth - layerSectionLabelSlotWidth,
+    );
+  }
+
+  /// Every slot of the rail, track group after track group, and where each
+  /// lies along it — the WHOLE rail as [_trackGroupRowGeometry] lays it,
+  /// which the row selection's bands and the reveal's row
+  /// ([_StoryboardStanding.standingRowItem]) are both laid on.
+  ({List<_StoryboardRailSlot> slots, TimelineRowEdges edges}) _railTable() {
+    final slots = [
+      for (final track in _state.widget.project.tracks)
+        ..._trackGroupRowGeometry(track),
+    ];
+    return (
+      slots: slots,
       edges: TimelineRowEdges([
         for (final slot in slots)
           (extent: slot.height, room: 0, joinsNext: false),
       ]),
-      crossExtent: _state._naturalRailWidth - layerSectionLabelSlotWidth,
     );
   }
 

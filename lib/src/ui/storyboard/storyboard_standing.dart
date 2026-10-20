@@ -99,13 +99,40 @@ class _StoryboardStanding {
     Track track,
     TimelineRowAddress? current,
   ) {
-    for (final row in [current, _state.widget.selectedRow]) {
-      if (row == null) {
-        continue;
-      }
+    for (final row in _standingCandidates(current)) {
       final band = _trackRowBand(track, row);
       if (band != null) {
         return (row: row, band: band);
+      }
+    }
+    return null;
+  }
+
+  /// The rows the rail may stand you on, in the order it asks them: the
+  /// session's [current] row, then the rail's own
+  /// [StoryboardPanel.selectedRow] (see [trackStandingCell]).
+  List<TimelineRowAddress> _standingCandidates(TimelineRowAddress? current) =>
+      [?current, ?_state.widget.selectedRow];
+
+  /// The row you stand on as a reveal brings it into view, [margin] of
+  /// neighbour kept in sight — at its place along the WHOLE rail, every
+  /// track group above it counted; null where the rail draws neither row
+  /// it would stand you on ([_standingCandidates]).
+  ///
+  /// 🗣️F-361 (유저 2026-10-14): 「콘티패널만 위아래 플립할때 스크롤바 알아서
+  /// 작동안함. 법 통일」 — the row half of the reveal the timeline's grid
+  /// answers ([revealSelectionOnBothAxes]). ↩️This panel answered the tick
+  /// on its frames alone, so a walk off the rows it showed went unseen.
+  RevealedItem? standingRowItem(double margin) {
+    final table = _state._railRows._railTable();
+    final addresses = [
+      for (final slot in table.slots) _standingAddressOf(slot),
+    ];
+    final current = _state.widget.currentRowHooks?.currentRow.value;
+    for (final row in _standingCandidates(current)) {
+      final at = addresses.indexOf(row);
+      if (at >= 0) {
+        return revealedRowOf(table.edges, at, margin);
       }
     }
     return null;
