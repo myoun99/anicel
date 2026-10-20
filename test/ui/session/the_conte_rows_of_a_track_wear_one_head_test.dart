@@ -501,6 +501,13 @@ void main() {
     test('a conte born into a cut afterwards ghosts with the rest', () {
       final session = sessionOf(film());
       session.onionSkin.toggleLayerOnionSkin(const LayerId('a-conte'));
+      // Asked once before the birth, as the rail and the canvas ask it of
+      // every row they draw: the answer read then is not the one after.
+      expect(
+        session.onionSkin.isLayerOnionSkinEnabled(const LayerId('b-conte')),
+        isTrue,
+        reason: '⛔전제',
+      );
 
       session.selectCut(const CutId('c'));
       session.layerStack.addLayerOfKind(LayerKind.storyboard);

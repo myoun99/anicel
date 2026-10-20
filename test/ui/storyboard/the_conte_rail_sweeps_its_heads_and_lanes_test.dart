@@ -94,7 +94,8 @@ void main() {
     ],
   );
 
-  Project film() => Project(
+  /// [conteOnT2]: t2's cut holds a camera and a conte of its own too.
+  Project film({bool conteOnT2 = false}) => Project(
     id: const ProjectId('conte-sweep'),
     name: 'Conte sweep',
     createdAt: DateTime.utc(2026, 10, 17),
@@ -113,15 +114,20 @@ void main() {
         id: const TrackId('t2'),
         name: 'V2',
         seLayers: [se('t2-s1')],
-        cuts: [cutOf('c', projections: false)],
+        cuts: [cutOf('c', projections: conteOnT2)],
       ),
     ],
   );
 
-  Future<EditorSessionManager> pump(WidgetTester tester) async {
+  Future<EditorSessionManager> pump(
+    WidgetTester tester, {
+    bool conteOnT2 = false,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(initialProject: film());
+    final session = EditorSessionManager(
+      initialProject: film(conteOnT2: conteOnT2),
+    );
     addTearDown(session.dispose);
     await tester.pumpWidget(
       MaterialApp(
@@ -555,5 +561,33 @@ void main() {
     );
     expect([ghosts('a-conte'), ghosts('b-conte')], [false, false]);
     expect(session.onionSkin.layerIds.value, isEmpty);
+  });
+
+  testWidgets('🚨the ONION column sweeps on to the next track\'s conte head, '
+      'read off the conte in hand as the press left it', (tester) async {
+    final session = await pump(tester, conteOnT2: true);
+    bool ghosts(String id) =>
+        session.onionSkin.isLayerOnionSkinEnabled(LayerId(id));
+    expect(
+      find.named('storyboard-layer-onion-c-conte'),
+      findsOneWidget,
+      reason: 'the fixture: t2\'s head wears its cut\'s conte',
+    );
+    expect([ghosts('a-conte'), ghosts('c-conte')], [false, false]);
+
+    await sweep(
+      tester,
+      'storyboard-layer-onion-a-conte',
+      'storyboard-layer-onion-c-conte',
+    );
+
+    expect(
+      [ghosts('a-conte'), ghosts('b-conte'), ghosts('c-conte')],
+      [true, true, true],
+      reason:
+          'the press turned t1\'s head on, and the sweep the head it reached '
+          '— the start read by the conte in hand: by its own id the host finds '
+          'no row, and the sweep would spread off',
+    );
   });
 }
