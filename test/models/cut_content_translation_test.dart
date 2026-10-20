@@ -11,6 +11,8 @@ import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
+const _canvas = CanvasSize(width: 1920, height: 1080);
+
 /// D5 (R7): the model half of a canvas resize — everything stored in
 /// canvas coordinates moves by the anchor's content offset, and nothing
 /// else changes (zoom/scale/rotation are a crop's invariants).
@@ -27,7 +29,14 @@ void main() {
       },
     );
 
-    final moved = translateCutCamera(camera, -40, 25);
+    final moved = translateCutCamera(
+      camera,
+      -40,
+      25,
+      from: _canvas,
+      centreDx: -40,
+      centreDy: 25,
+    );
 
     expect(moved.keyframeAt(0)!.center.x, 60);
     expect(moved.keyframeAt(0)!.center.y, 75);
@@ -37,10 +46,79 @@ void main() {
     expect(moved.keyframeAt(8)!.center.y, 225);
   });
 
-  test('an empty camera returns identically — the default pose recomputes '
-      'the canvas centre itself', () {
+  test('an empty camera on a resize that moves the centre with the content '
+      'returns identically — the default pose recomputes the same place', () {
     final camera = CutCamera.empty();
-    expect(identical(translateCutCamera(camera, 10, 10), camera), isTrue);
+    expect(
+      identical(
+        translateCutCamera(
+          camera,
+          10,
+          10,
+          from: _canvas,
+          centreDx: 10,
+          centreDy: 10,
+        ),
+        camera,
+      ),
+      isTrue,
+    );
+  });
+
+  // F-362: off the centre anchor the canvas centre moves by another offset
+  // than the content, and an unkeyed camera re-read it — it left its picture.
+  test('an unkeyed camera off the centre anchor is keyed where it stood and '
+      'moves with the content', () {
+    final moved = translateCutCamera(
+      CutCamera.empty(),
+      0,
+      0,
+      from: _canvas,
+      centreDx: 100,
+      centreDy: 50,
+    );
+
+    expect(moved.track.position.keyAt(0)!.value, CanvasPoint(x: 960, y: 540));
+    expect(moved.track.position.keys.length, 1);
+    expect(moved.track.scale.isEmpty, isTrue);
+    expect(moved.track.rotation.isEmpty, isTrue);
+  });
+
+  test('a camera keyed on other lanes alone keeps them and gains only the '
+      'position it stood at, moved with the content', () {
+    final camera = CutCamera.fromTrack(
+      TransformTrack.empty().copyWith(
+        rotation: PropertyTrack(
+          keys: {3: const PropertyKey(10.0), 9: const PropertyKey(40.0)},
+        ),
+      ),
+    );
+
+    final moved = translateCutCamera(
+      camera,
+      -200,
+      -100,
+      from: _canvas,
+      centreDx: -100,
+      centreDy: -50,
+    );
+
+    expect(moved.track.position.keyAt(0)!.value, CanvasPoint(x: 760, y: 440));
+    expect(moved.track.rotation, camera.track.rotation);
+  });
+
+  test('a centre resize by an odd size keys the camera on the content '
+      'rounded half a pixel off the centre', () {
+    final moved = translateCutCamera(
+      CutCamera.empty(),
+      1,
+      0,
+      from: _canvas,
+      centreDx: 0.5,
+      centreDy: 0,
+    );
+
+    expect(moved.track.position.keyAt(0)!.value, CanvasPoint(x: 961, y: 540));
   });
 
   test('guides move: symmetry axis origin, perspective eye level, placed '
@@ -123,6 +201,7 @@ void main() {
 
     final moved = translateLayerForResize(
       keyed,
+      from: _canvas,
       dx: 5,
       dy: 6,
       centreDx: 99,
@@ -149,6 +228,7 @@ void main() {
     );
     final followed = translateLayerForResize(
       nullAnchored,
+      from: _canvas,
       dx: 0,
       dy: 0,
       centreDx: 200,
@@ -168,6 +248,7 @@ void main() {
       identical(
         translateLayerForResize(
           unkeyed,
+          from: _canvas,
           dx: 5,
           dy: 6,
           centreDx: 3,
@@ -177,6 +258,42 @@ void main() {
       ),
       isTrue,
       reason: 'no canvas-coordinate keys = nothing to move',
+    );
+  });
+
+  // F-362: an explicit anchor moves by the content offset, and an UNKEYED
+  // position read the canvas centre — which walked by Δcentre instead.
+  test('an unkeyed position under a keyed anchor is keyed where it stood '
+      'and moves with the content', () {
+    final anchored = Layer(
+      id: const LayerId('anchored'),
+      name: 'A',
+      frames: const [],
+      timeline: const {},
+      transformTrack: TransformTrack.empty().copyWith(
+        anchorPoint: PropertyTrack(
+          keys: {0: PropertyKey(CanvasPoint(x: 12, y: 13))},
+        ),
+      ),
+    );
+
+    final moved = translateLayerForResize(
+      anchored,
+      from: _canvas,
+      dx: 5,
+      dy: 6,
+      centreDx: 99,
+      centreDy: 99,
+    );
+
+    expect(
+      moved.transformTrack.position.keyAt(0)!.value,
+      CanvasPoint(x: 965, y: 546),
+    );
+    expect(moved.transformTrack.position.keys.length, 1);
+    expect(
+      moved.transformTrack.anchorPoint.keyAt(0)!.value,
+      CanvasPoint(x: 17, y: 19),
     );
   });
 
@@ -206,6 +323,7 @@ void main() {
 
     final moved = translateLayerForResize(
       reference,
+      from: _canvas,
       dx: 600,
       dy: -40,
       centreDx: 300,
@@ -252,6 +370,7 @@ void main() {
 
     final moved = translateLayerForResize(
       reference,
+      from: _canvas,
       dx: 600,
       dy: -40,
       centreDx: 300,
@@ -284,7 +403,14 @@ void main() {
       ),
     );
 
-    final moved = translateCutCamera(camera, 10, -5);
+    final moved = translateCutCamera(
+      camera,
+      10,
+      -5,
+      from: _canvas,
+      centreDx: 10,
+      centreDy: -5,
+    );
     final position = moved.track.position;
     expect(position.keyAt(0)!.value.x, 110);
     expect(
@@ -311,6 +437,19 @@ void main() {
     final camera = CutCamera(
       keyframes: {0: CameraPose(center: CanvasPoint(x: 1, y: 2))},
     );
-    expect(identical(translateCutCamera(camera, 0, 0), camera), isTrue);
+    expect(
+      identical(
+        translateCutCamera(
+          camera,
+          0,
+          0,
+          from: _canvas,
+          centreDx: 0,
+          centreDy: 0,
+        ),
+        camera,
+      ),
+      isTrue,
+    );
   });
 }

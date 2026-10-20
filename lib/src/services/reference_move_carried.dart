@@ -8,7 +8,6 @@ import '../models/property_track.dart';
 import '../models/transform_track.dart';
 import 'cut_frame_composite_plan.dart'
     show
-        layerIdentityPose,
         referenceMoveAt,
         resolveLayerAnchorPointAt,
         resolveLayerPoseAt;

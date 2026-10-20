@@ -1,4 +1,5 @@
 import 'canvas_point.dart';
+import 'canvas_size.dart';
 
 /// A camera placement over a cut's canvas.
 ///
@@ -67,4 +68,14 @@ class CameraPose {
   String toString() =>
       'CameraPose(center: $center, zoom: $zoom, '
       'rotationDegrees: $rotationDegrees)';
+}
+
+/// The camera pose used when a cut has no keyframes: centered on the canvas,
+/// zoom 1, no rotation. A model's own fact — a canvas resize keys an unkeyed
+/// camera where this put it (`translateCutCamera`), and models may not
+/// import the resolver that reads it.
+CameraPose defaultCameraPoseFor(CanvasSize canvasSize) {
+  return CameraPose(
+    center: CanvasPoint(x: canvasSize.width / 2, y: canvasSize.height / 2),
+  );
 }

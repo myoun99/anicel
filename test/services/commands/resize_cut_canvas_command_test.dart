@@ -23,10 +23,15 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/camera_pose_resolver.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/cut_frame_composite_plan.dart'
+    show layerPlacementAt;
 import 'package:anicel/src/services/commands/resize_cut_canvas_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
+
+import '../../helpers/placement_reading.dart' show nearPoint;
 
 void main() {
   group('ResizeCutCanvasCommand', () {
@@ -164,6 +169,121 @@ void main() {
 
       expect(_inkAt(store, 600, 350), isNonZero);
       expect(_inkAt(store, 500, 400), anyOf(isNull, 0));
+    });
+
+    // F-362 (유저 2026-10-20): 「소재는 기존 위치에 존재하는게 규칙」 — the
+    // camera is anchored with the picture, as After Effects anchors layers.
+    test('an unkeyed camera stays over its picture on every anchor; it is '
+        'keyed only where the centre would walk it off, and undo takes '
+        'the key back', () {
+      for (final anchor in CanvasResizeAnchor.values) {
+        final repository = _repository();
+        final historyManager = HistoryManager();
+        final before = repository.requireProject();
+        historyManager.execute(
+          command(
+            repository: repository,
+            store: _storeWithInkAt(x: 500, y: 400),
+            anchor: anchor,
+          ),
+        );
+
+        final cut = repository.requireProject().tracks.single.cuts.first;
+        final offset = anchor.contentOffset(
+          from: const CanvasSize(width: 1920, height: 1080),
+          to: shrunkenSize,
+        );
+        final pose = resolveCameraPoseAt(
+          camera: cut.camera,
+          canvasSize: cut.canvasSize,
+          frameIndex: 0,
+        );
+        expect(
+          pose.center,
+          CanvasPoint(x: 960 + offset.dx, y: 540 + offset.dy),
+          reason: '$anchor: the camera moves with the picture',
+        );
+        expect(
+          cut.camera.isEmpty,
+          anchor == CanvasResizeAnchor.center,
+          reason: '$anchor: the centre anchor needs no key',
+        );
+
+        historyManager.undo();
+        expect(repository.requireProject(), before);
+      }
+    });
+
+    // F-362: a row whose anchor is keyed and whose position is not re-read
+    // the canvas centre the same way the camera did.
+    test('every row stays drawn on its picture on every anchor — an '
+        'anchor keyed with no position keyed among them', () {
+      Layer row(String id, {CanvasPoint? anchor, CanvasPoint? position}) =>
+          Layer(
+            id: LayerId(id),
+            name: id,
+            frames: const [],
+            timeline: const {},
+            transformTrack: TransformTrack.empty().copyWith(
+              anchorPoint: anchor == null
+                  ? null
+                  : PropertyTrack(keys: {0: PropertyKey(anchor)}),
+              position: position == null
+                  ? null
+                  : PropertyTrack(keys: {0: PropertyKey(position)}),
+              rotation: anchor == null
+                  ? null
+                  : PropertyTrack(keys: {0: const PropertyKey(30.0)}),
+            ),
+          );
+      final rows = [
+        row('anchor-only', anchor: CanvasPoint(x: 100, y: 100)),
+        row('position-only', position: CanvasPoint(x: 700, y: 300)),
+        row(
+          'both',
+          anchor: CanvasPoint(x: 100, y: 100),
+          position: CanvasPoint(x: 700, y: 300),
+        ),
+        row('neither'),
+      ];
+      CanvasPoint drawn(Cut cut, Layer layer, CanvasPoint artwork) =>
+          layerPlacementAt(cut: cut, layer: layer, frameIndex: 0)
+              ?.apply(artwork) ??
+          artwork;
+      final artwork = CanvasPoint(x: 500, y: 400);
+
+      for (final anchor in CanvasResizeAnchor.values) {
+        final repository = _repository(
+          target: _targetCut.copyWith(layers: rows),
+        );
+        final before = repository.requireProject().tracks.single.cuts.first;
+        command(
+          repository: repository,
+          store: _storeWithInkAt(x: 500, y: 400),
+          anchor: anchor,
+        ).execute();
+        final after = repository.requireProject().tracks.single.cuts.first;
+        final offset = anchor.contentOffset(
+          from: before.canvasSize,
+          to: shrunkenSize,
+        );
+
+        for (final layer in rows) {
+          final was = drawn(before, layer, artwork);
+          expect(
+            drawn(
+              after,
+              after.layers.firstWhere((each) => each.id == layer.id),
+              CanvasPoint(x: artwork.x + offset.dx, y: artwork.y + offset.dy),
+            ),
+            nearPoint(
+              CanvasPoint(x: was.x + offset.dx, y: was.y + offset.dy),
+              within: 1e-6,
+            ),
+            reason: '$anchor · ${layer.name}',
+          );
+        }
+      }
     });
 
     test('top-left anchor leaves pixels untouched', () {
@@ -377,7 +497,7 @@ final _otherCut = Cut(
   canvasSize: const CanvasSize(width: 1280, height: 720),
 );
 
-ProjectRepository _repository() {
+ProjectRepository _repository({Cut? target}) {
   return ProjectRepository(
     initialProject: Project(
       id: const ProjectId('project-1'),
@@ -386,7 +506,7 @@ ProjectRepository _repository() {
         Track(
           id: const TrackId('track-1'),
           name: 'Video',
-          cuts: [_targetCut, _otherCut],
+          cuts: [target ?? _targetCut, _otherCut],
         ),
       ],
       createdAt: DateTime.utc(2024),

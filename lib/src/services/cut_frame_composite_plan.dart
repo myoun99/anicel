@@ -74,13 +74,6 @@ class CutFrameCompositeLayer {
   final List<ResolvedLayerEffect> effects;
 }
 
-/// A layer's identity pose: content centered, unscaled, unrotated — the
-/// same canvas-centered shape the camera defaults to, so an empty track
-/// composites exactly as before.
-TransformPose layerIdentityPose(CanvasSize canvasSize) => TransformPose(
-  center: CanvasPoint(x: canvasSize.width / 2, y: canvasSize.height / 2),
-);
-
 /// The layer's resolved GEOMETRIC pose at [frameIndex]; null while the
 /// geometric tracks (anchor/position/scale/rotation) are empty — an
 /// animated Opacity alone never forces the transform path. Shared by the

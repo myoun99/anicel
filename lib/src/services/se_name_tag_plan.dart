@@ -5,7 +5,7 @@ import '../models/layer.dart';
 import '../models/se_name_tag.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
-import 'cut_frame_composite_plan.dart' show layerIdentityPose;
+import '../models/transform_pose.dart' show layerIdentityPose;
 import 'layer_pose_matrix.dart' show LayerPlacement;
 
 /// PURE resolution of the on-canvas SE name tags for one (cut, frame) —

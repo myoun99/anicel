@@ -1,5 +1,6 @@
 import 'camera_pose.dart';
 import 'canvas_point.dart';
+import 'canvas_size.dart';
 
 /// ONE scale along both axes, as the Scale lane keys it — a camera's zoom,
 /// or a layer scaled evenly.
@@ -152,3 +153,10 @@ class TransformPose {
       'TransformPose(center: $center, scaleX: $scaleX, scaleY: $scaleY, '
       'rotationDegrees: $rotationDegrees)';
 }
+
+/// A layer's identity pose: content centered, unscaled, unrotated — the
+/// same canvas-centered shape the camera defaults to, so an empty track
+/// composites exactly as before.
+TransformPose layerIdentityPose(CanvasSize canvasSize) => TransformPose(
+  center: CanvasPoint(x: canvasSize.width / 2, y: canvasSize.height / 2),
+);

@@ -33,8 +33,6 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart'
-    show layerIdentityPose;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart'
