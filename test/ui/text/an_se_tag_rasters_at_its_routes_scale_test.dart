@@ -7,16 +7,32 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/models/layer_effect.dart'
-    show EffectKind, ResolvedLayerEffect;
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_size_mode.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
     show debugLastSubtreeRaster;
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 
 /// An SE tag that has to be one picture — its row's effects on it (F-387)
@@ -68,5 +84,75 @@ void main() {
     image.dispose();
 
     expect(handed, 3);
+  });
+
+  testWidgets('an export: the scale of the picture it makes', (tester) async {
+    await tester.runAsync(() async {
+      const cutId = CutId('cut');
+      const se = LayerId('se');
+      final s = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('project'),
+          name: 'Project',
+          cameraSize: frame,
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'V',
+              cuts: [
+                Cut(
+                  id: cutId,
+                  name: 'Cut',
+                  duration: 24,
+                  canvasSize: frame,
+                  layers: [createCameraLayer(cutId: cutId)],
+                ),
+              ],
+              seLayers: [
+                Layer(
+                  id: se,
+                  name: 'S1',
+                  kind: LayerKind.se,
+                  frames: [
+                    Frame(
+                      id: const FrameId('line'),
+                      duration: 24,
+                      strokes: const [],
+                      name: 'the line',
+                      seName: 'who',
+                    ),
+                  ],
+                  timeline: const {
+                    0: TimelineExposure.drawing(FrameId('line'), length: 24),
+                  },
+                ),
+              ],
+            ),
+          ],
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      addTearDown(s.dispose);
+      s.effectsAndFx.updateLayerEffects(se, [
+        LayerEffect(
+          id: const EffectId('blur'),
+          kind: EffectKind.blur,
+          parameters: {'blurX': EffectParameter(value: 2)},
+        ),
+      ]);
+      final renderer = ExportFrameRenderer(session: s);
+      addTearDown(renderer.dispose);
+
+      debugLastSubtreeRaster = null;
+      (await renderer.renderComposite(
+        ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
+        ExportSizeMode.camera,
+        outputSize: const CanvasSize(width: 960, height: 540),
+        withNameTags: true,
+      )).dispose();
+
+      expect(debugLastSubtreeRaster, isNotNull, reason: 'one picture');
+      expect(debugLastSubtreeRaster!.rasterScale, 3);
+    });
   });
 }

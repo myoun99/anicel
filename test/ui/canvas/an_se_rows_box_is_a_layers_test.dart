@@ -23,6 +23,7 @@ import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPlacement, placedCorners;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_offset.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
@@ -58,7 +59,11 @@ void main() {
   ResolvedSeNameTag tagOf(EditorSessionManager s) =>
       s.seEntries.seNameTagsForCutFrame(s.requireActiveCut, 0).single;
 
-  Future<void> pumpArea(WidgetTester tester, EditorSessionManager s) async {
+  Future<void> pumpArea(
+    WidgetTester tester,
+    EditorSessionManager s, {
+    CanvasViewCommands? view,
+  }) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -76,6 +81,7 @@ void main() {
             brushToolState: brushTool,
             cameraViewEnabled: cameraView,
             cameraDimOpacity: cameraDim,
+            canvasViewCommands: view,
           ),
         ),
       ),
@@ -213,17 +219,25 @@ void main() {
         parameters: {'blurX': EffectParameter(value: 2)},
       ),
     ]);
-    await pumpArea(tester, s);
-    // The same window in logical pixels, at twice the device pixels.
+    final view = CanvasViewCommands();
+    await pumpArea(tester, s, view: view);
+    // The same window in logical pixels, at twice the device pixels — and
+    // a step in: the view it opens on shows a canvas pixel a device pixel
+    // at any ratio (measured: at 2 and at 3), which a raster at 1 would
+    // match by chance.
     tester.view.physicalSize = const Size(3200, 2000);
     tester.view.devicePixelRatio = 2;
+    await tester.pump();
+    view.zoomStep(zoomIn: true);
     debugLastSubtreeRaster = null;
     await tester.pump();
 
+    final scale = boxOf(tester).viewport.zoom * 2;
+    expect(scale, isNot(closeTo(1, 0.05)), reason: '⛔premise: not 1');
     expect(debugLastSubtreeRaster, isNotNull, reason: 'one picture');
     expect(
       debugLastSubtreeRaster!.rasterScale,
-      boxOf(tester).viewport.zoom * 2,
+      closeTo(scale, 1e-9),
       reason: 'device pixels per canvas pixel',
     );
     await drain(tester);
@@ -282,6 +296,8 @@ void main() {
       double opacity = 1,
       LayerBlendMode blendMode = LayerBlendMode.normal,
       List<ResolvedLayerEffect> effects = const [],
+      String text = 'A',
+      TextCelStyle style = SeNameTag.defaultStyle,
     }) => ResolvedSeNameTag(
       layerId: 's1',
       widthBudget: 400,
@@ -290,10 +306,10 @@ void main() {
       opacity: opacity,
       blendMode: blendMode,
       effects: effects,
-      content: const TextCelContent(
-        text: 'A',
-        style: SeNameTag.defaultStyle,
-        position: Offset(100, 100),
+      content: TextCelContent(
+        text: text,
+        style: style,
+        position: const Offset(100, 100),
       ),
     );
 
@@ -324,6 +340,43 @@ void main() {
         ],
       );
       expect((await colourAt(blurred, beside)).a, greaterThan(0));
+    });
+
+    test('through the row\'s blur — as far as it spreads, past where the '
+        'letters reach', () async {
+      final far =
+          tagBox().centerRight +
+          Offset(SeNameTag.defaultStyle.fontSize + 6, 0);
+      expect((await colourAt(tag(), far)).a, 0);
+      final blurred = tag(
+        effects: [
+          ResolvedLayerEffect(kind: EffectKind.blur, values: const [90, 90]),
+        ],
+      );
+      expect((await colourAt(blurred, far)).a, greaterThan(0));
+    });
+
+    test('as one picture, the whole of every letter — set closer than they '
+        'are wide, a letter reaches past the line\'s ink', () async {
+      // No box round them: the box would hold what they reach (measured —
+      // set at -20, they reach 10 past the line each side, 2 past the box).
+      const close = TextCelStyle(
+        fontSize: 34,
+        letterSpacing: -20,
+        color: 0xFFFFFFFF,
+      );
+      final box = seNameTagBoxBounds(
+        tag(text: 'AA', style: close),
+        canvasSize: size,
+      );
+      final past = Offset(box.right + 3, box.center.dy);
+      expect(
+        (await colourAt(tag(text: 'AA', style: close), past)).a,
+        1,
+        reason: '⛔premise: drawn straight on, the letter is there',
+      );
+      final seeThrough = tag(text: 'AA', style: close, opacity: 0.5);
+      expect((await colourAt(seeThrough, past)).a, closeTo(0.5, 0.02));
     });
 
     test('through the row\'s colour', () async {
