@@ -83,8 +83,9 @@ void main() {
         reason: '⛔전제: the window shows the key on 0 and not the one on 40',
       );
       expect(again, switch (mode) {
-        // Each time once, and the key it marks.
-        LaneGraphMode.value => times + 1,
+        // Each time once. The key it marks is read once for its window,
+        // with the handles, since a mouse asks for it on every move (I-3).
+        LaneGraphMode.value => times,
         // Each time and a step ahead of it — on the key on 0, the speed it
         // leaves at alone: it arrives from nowhere, and marks nothing.
         LaneGraphMode.speed => 2 * times,

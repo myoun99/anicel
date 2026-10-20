@@ -56,10 +56,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final picked = s.laneRangeSelection.value!;
-    expect(
-      (picked.layerId, picked.spanLaneIds, picked.startIndex),
-      (_drawId, ['rotation'], 8),
-    );
+    expect((picked.layerId, picked.startIndex), (_drawId, 8));
+    expect(picked.spanLaneIds, ['rotation']);
     expect(picked.endIndexExclusive, 9);
     expect(_keyedFrames(s), [0, 8]);
     expect(s.currentFrameIndex, standing, reason: 'AE\'s click leaves it');
@@ -137,7 +135,16 @@ void main() {
       'row', (tester) async {
     final s = await _pump(tester);
     await _openTheGraph(tester, s);
-    final ring = paints..path(style: PaintingStyle.stroke, strokeWidth: 8 / 3);
+    // Any path stroked as the ring is, past the line and the marks.
+    final ring = paints
+      ..something((method, arguments) {
+        if (method != #drawPath) {
+          return false;
+        }
+        final paint = arguments[1] as Paint;
+        return paint.style == PaintingStyle.stroke &&
+            paint.strokeWidth == 8 / 3;
+      });
     expect(_paintOf(tester), isNot(ring), reason: '⛔전제: none picked');
 
     s.updateLaneRangeSelectionDrag(
