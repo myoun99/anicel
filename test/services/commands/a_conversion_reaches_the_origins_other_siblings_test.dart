@@ -2,8 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -11,6 +13,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/commands/cut_command_coordinator.dart';
+import 'package:anicel/src/services/editing/default_layer_helpers.dart'
+    show coveringCelFor;
 import 'package:anicel/src/services/editing/editing_session_state.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
@@ -41,58 +45,55 @@ void main() {
     layerId: LayerId(layer),
   );
 
+  /// [cuts] on one track, their A rows linked as [linkedA] says.
+  ProjectRepository repositoryOf(
+    List<Cut> cuts,
+    List<LayerLinkMember> linkedA,
+  ) => ProjectRepository(
+    initialProject: Project(
+      id: const ProjectId('p'),
+      name: 'P',
+      createdAt: DateTime.utc(2026, 10, 21),
+      tracks: [Track(id: const TrackId('t'), name: 'V', cuts: cuts)],
+      linkRegistry: LayerLinkRegistry(
+        groups: [LayerLinkGroup(id: 'link-a', members: linkedA)],
+      ),
+    ),
+  );
+
+  void convert(ProjectRepository repository, [HistoryManager? history]) =>
+      CutCommandCoordinator(
+        repository: repository,
+        editingSession: EditingSessionState(activeCutId: origin),
+        historyManager: history ?? HistoryManager(),
+        brushFrameStore: BrushFrameStore(),
+      ).convertCutToLinked(originCutId: origin, targetCutId: target);
+
+  List<Layer> layersIn(ProjectRepository repository, CutId id) => repository
+      .requireProject()
+      .tracks
+      .single
+      .cuts
+      .firstWhere((cut) => cut.id == id)
+      .layers;
+
   List<LayerId> idsIn(ProjectRepository repository, CutId id) => [
-    for (final layer
-        in repository
-            .requireProject()
-            .tracks
-            .single
-            .cuts
-            .firstWhere((cut) => cut.id == id)
-            .layers)
-      layer.id,
+    for (final layer in layersIn(repository, id)) layer.id,
   ];
 
   test('a row only the target holds lands in the origin\'s sibling too, '
       'linked with it — and the undo takes it back', () {
-    final repository = ProjectRepository(
-      initialProject: Project(
-        id: const ProjectId('p'),
-        name: 'P',
-        createdAt: DateTime.utc(2026, 10, 21),
-        tracks: [
-          Track(
-            id: const TrackId('t'),
-            name: 'V',
-            cuts: [
-              cut(origin, [row('a-origin', 'A')]),
-              cut(sibling, [row('a-sibling', 'A')]),
-              cut(target, [row('a-target', 'A'), row('b-target', 'B')]),
-            ],
-          ),
-        ],
-        linkRegistry: LayerLinkRegistry(
-          groups: [
-            LayerLinkGroup(
-              id: 'link-a',
-              members: [
-                member(origin, 'a-origin'),
-                member(sibling, 'a-sibling'),
-              ],
-            ),
-          ],
-        ),
-      ),
+    final repository = repositoryOf(
+      [
+        cut(origin, [row('a-origin', 'A')]),
+        cut(sibling, [row('a-sibling', 'A')]),
+        cut(target, [row('a-target', 'A'), row('b-target', 'B')]),
+      ],
+      [member(origin, 'a-origin'), member(sibling, 'a-sibling')],
     );
     final history = HistoryManager();
-    final coordinator = CutCommandCoordinator(
-      repository: repository,
-      editingSession: EditingSessionState(activeCutId: origin),
-      historyManager: history,
-      brushFrameStore: BrushFrameStore(),
-    );
 
-    coordinator.convertCutToLinked(originCutId: origin, targetCutId: target);
+    convert(repository, history);
 
     final registry = repository.requireProject().linkRegistry;
     final inOrigin = registry.counterpartIn(
@@ -129,41 +130,62 @@ void main() {
     expect(idsIn(repository, sibling).last, inSibling, reason: 'the same row');
   });
 
-  test('a target the origin is 겸용 with already is no sibling of its own: '
-      'its row is not copied into it again', () {
-    final repository = ProjectRepository(
-      initialProject: Project(
-        id: const ProjectId('p'),
-        name: 'P',
-        createdAt: DateTime.utc(2026, 10, 21),
-        tracks: [
-          Track(
-            id: const TrackId('t'),
-            name: 'V',
-            cuts: [
-              cut(origin, [row('a-origin', 'A')]),
-              cut(target, [row('a-target', 'A'), row('b-target', 'B')]),
-            ],
+  test('a conte row only the target holds is born covering the origin and '
+      'its sibling alike, each over a fresh panel of its own (F-99)', () {
+    const targetPanel = FrameId('panel-target');
+    final cel = coveringCelFor(frameId: targetPanel, cutDuration: 12);
+    final repository = repositoryOf(
+      [
+        cut(origin, [row('a-origin', 'A')]),
+        cut(sibling, [row('a-sibling', 'A')]),
+        cut(target, [
+          row('a-target', 'A'),
+          Layer(
+            id: const LayerId('conte-target'),
+            name: 'Conte',
+            kind: LayerKind.storyboard,
+            frames: [cel.frame],
+            timeline: cel.timeline,
           ),
-        ],
-        linkRegistry: LayerLinkRegistry(
-          groups: [
-            LayerLinkGroup(
-              id: 'link-a',
-              members: [member(origin, 'a-origin'), member(target, 'a-target')],
-            ),
-          ],
-        ),
-      ),
-    );
-    final coordinator = CutCommandCoordinator(
-      repository: repository,
-      editingSession: EditingSessionState(activeCutId: origin),
-      historyManager: HistoryManager(),
-      brushFrameStore: BrushFrameStore(),
+        ]),
+      ],
+      [member(origin, 'a-origin'), member(sibling, 'a-sibling')],
     );
 
-    coordinator.convertCutToLinked(originCutId: origin, targetCutId: target);
+    convert(repository);
+
+    final registry = repository.requireProject().linkRegistry;
+    final panels = <FrameId?>{targetPanel};
+    for (final into in [origin, sibling]) {
+      final copyId = registry.counterpartIn(
+        cutId: target,
+        layerId: const LayerId('conte-target'),
+        targetCutId: into,
+      );
+      final copy = layersIn(repository, into).singleWhere(
+        (layer) => layer.id == copyId,
+      );
+      expect(copy.timeline.keys, [0], reason: '${into.value}: born covering');
+      expect(copy.timeline[0]!.length, 12, reason: '${into.value}: its cut');
+      expect(
+        panels.add(copy.timeline[0]!.frameId),
+        isTrue,
+        reason: '${into.value}: a panel no other copy is on',
+      );
+    }
+  });
+
+  test('a target the origin is 겸용 with already is no sibling of its own: '
+      'its row is not copied into it again', () {
+    final repository = repositoryOf(
+      [
+        cut(origin, [row('a-origin', 'A')]),
+        cut(target, [row('a-target', 'A'), row('b-target', 'B')]),
+      ],
+      [member(origin, 'a-origin'), member(target, 'a-target')],
+    );
+
+    convert(repository);
 
     expect(idsIn(repository, target), [
       const LayerId('a-target'),
