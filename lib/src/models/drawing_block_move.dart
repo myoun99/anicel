@@ -7,7 +7,6 @@ import 'cel_rekey.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
-import 'storyboard_coverage.dart' show storyboardConteStart;
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart' show ghostFreeTimeline;
@@ -21,16 +20,10 @@ import 'timeline_repeat.dart' show ghostFreeTimeline;
 /// the file. Every other row may sit past the end, which is data the cut
 /// simply does not show.
 ///
-/// Both ends are the CONTE's, in the cut's own frames: a cut an O.L arrives
-/// into keeps its panels after the のりしろ it owes ([storyboardConteStart],
-/// F-227) — the frames in front are its first panel held back, not room for
-/// a panel to slide into.
-int _axisStartFor(Layer layer) =>
-    layerCoversWithoutGaps(layer) ? storyboardConteStart(layer.timeline) : 0;
-
+/// Both ends are the CONTE's, in the cut's own frames ([layerBlockFloor]).
 int? _axisEndFor(Layer layer, int? cutFrameCount) =>
     layerCoversWithoutGaps(layer) && cutFrameCount != null
-    ? _axisStartFor(layer) + cutFrameCount
+    ? layerBlockFloor(layer) + cutFrameCount
     : null;
 
 /// The resolved result of a whole-block move drag (R10-④b): the affected
@@ -156,7 +149,7 @@ DrawingBlockMovePlan? planDrawingRangeMove({
       runStart: runStart,
       runEnd: runStart + moved.length - 1,
       frameDelta: frameDelta,
-      axisStart: _axisStartFor(source),
+      axisStart: layerBlockFloor(source),
       axisEndExclusive: _axisEndFor(source, cutFrameCount),
     );
     if (landed == null) {

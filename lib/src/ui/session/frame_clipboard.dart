@@ -223,7 +223,7 @@ class FrameClipboard implements BringsMedia {
     // ([_keepsNamesOn]). ↩️Every other row was turned away here: 「is that
     // cel in THIS row」 was the whole of what a link could mean.
     if (layer.id != copiedFrame.layerId) {
-      return _keepsNamesOn(layer, copiedFrame) && place._index >= 0;
+      return _keepsNamesOn(layer, copiedFrame) && place._onRoom;
     }
 
     // 🚨T3 — the clipboard may be holding cels the layer no longer has: a
@@ -232,7 +232,7 @@ class FrameClipboard implements BringsMedia {
     // still has it" would have made cut-then-paste-back impossible while
     // the button sat lit.
     if (copiedFrame.cels.any((cel) => cel.id == copiedFrame.frameId)) {
-      return place._index >= 0;
+      return place._onRoom;
     }
 
     return _controllers.timelineController.canPasteLinkedFrameAt(
@@ -697,7 +697,7 @@ class FrameClipboard implements BringsMedia {
     if (!rowTakesNewCels(layer)) {
       return false;
     }
-    return place._index >= 0;
+    return place._onRoom;
   }
 
   void pasteIndependentFrameAtCurrentFrame() =>
@@ -1348,6 +1348,11 @@ class ClipboardPlace {
   final int _index;
 
   final _ClipboardBand? _band;
+
+  /// Whether a cel may land where the cursor stands on [_row]: at or past
+  /// the row's floor — a conte's held-back のりしろ is no room (F-339,
+  /// [layerBlockFloor]).
+  bool get _onRoom => _index >= layerBlockFloor(_row);
 
   /// Whether THE selection names rows this press would MISS — the law
   /// [SelectionAccess.bandNamesRowsThisPressWouldMiss] states for the cut's

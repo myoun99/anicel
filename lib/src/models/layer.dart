@@ -21,6 +21,7 @@ import 'layer_process.dart';
 import 'media_reference.dart';
 import 'non_negative_index_map.dart';
 import 'se_name_tag.dart';
+import 'storyboard_coverage.dart' show storyboardConteStart;
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'timeline_run_behavior.dart';
@@ -662,6 +663,22 @@ bool isAttachedLayer(Layer layer) => layer.attachedToLayerId != null;
 bool layerCoversWithoutGaps(Layer layer) =>
     layer.kind.coversWithoutGaps &&
     !(layer.kind.isSingletonPerCut && isAttachedLayer(layer));
+
+/// The first frame a block of [layer] may stand on — what a block moved,
+/// a cel made and a cel pasted all ask.
+///
+/// 0 on every row but one that TILES its cut ([layerCoversWithoutGaps]),
+/// whose blocks start where its conte does: a cut an O.L arrives into keeps
+/// its panels after the のりしろ it owes ([storyboardConteStart], F-227) —
+/// the frames in front are its first panel held back, not room for a panel.
+///
+/// 🗣️F-339 (유저 2026-10-11): 「OL있어서 콘티레이어의 앞부분에 서있을때
+/// 프레임 추가버튼 활성화되고 눌러도 아무반응없는데 추가나 붙여넣기나
+/// 관련로직 해당부분에서 못하게 하는게 맞는거같은데」. ↩️Only the move asked
+/// it: the ＋ and the paste took the held-back frames for room, and the
+/// conte's write folded what they made back onto its first panel.
+int layerBlockFloor(Layer layer) =>
+    layerCoversWithoutGaps(layer) ? storyboardConteStart(layer.timeline) : 0;
 
 /// Whether [layers] already hold the ONE row a singleton kind allows a cut
 /// ([LayerKind.isSingletonPerCut]).

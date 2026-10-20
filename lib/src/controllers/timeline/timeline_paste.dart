@@ -15,7 +15,8 @@ class _TimelinePaste {
     required int frameIndex,
     required FrameId copiedFrameId,
   }) {
-    if (frameIndex < 0) {
+    // F-339: a conte's held-back のりしろ is no room ([layerBlockFloor]).
+    if (frameIndex < layerBlockFloor(layer)) {
       return false;
     }
     return _controller._frameOrNull(layer: layer, frameId: copiedFrameId) !=

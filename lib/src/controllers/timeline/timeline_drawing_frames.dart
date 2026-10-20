@@ -32,7 +32,8 @@ class _TimelineDrawingFrames {
   /// ghost's start one cell after a held block (D21 — the same predicate,
   /// which is why fixing one fixes both) are authoring room.
   bool canCreateDrawingAt({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0) {
+    // F-339: a conte's held-back のりしろ is no room ([layerBlockFloor]).
+    if (frameIndex < layerBlockFloor(layer)) {
       return false;
     }
     final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
