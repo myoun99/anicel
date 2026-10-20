@@ -170,7 +170,11 @@ void main() {
         plain: {'lib/src/ui/x.dart'},
       };
       expect(select({sandbox}, imports: imports), sources.keys.toSet());
-      expect(select({'lib/src/ui/x.dart'}, imports: imports), {plain});
+      // Not every suite's: what reaches it, and the scan that walks lib.
+      expect(
+        select({'lib/src/ui/x.dart'}, imports: imports),
+        {scanAll, plain},
+      );
     });
   });
 
@@ -196,7 +200,8 @@ void main() {
         imports: const {},
         read: (path) => File(path).readAsStringSync(),
       ),
-      {law},
+      // The changed test too: it runs because it changed.
+      {law, 'test/services/persistence/save_failure_test.dart'},
     );
   });
 
