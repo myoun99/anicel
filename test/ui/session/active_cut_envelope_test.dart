@@ -218,6 +218,44 @@ void main() {
     );
   });
 
+  // camera-key-edit-clears-the-frame-range (10-17): a key edited on a row's
+  // lanes is one edit whichever row it is — the camera's or a layer's.
+  test('a lane key edit leaves the frame-range selection standing, on the '
+      'camera row as on a layer', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final layerId = session.layers.first.id;
+    final cameraId = session.layers
+        .firstWhere((layer) => layer.kind == LayerKind.camera)
+        .id;
+    final band = TimelineFrameRangeSelection(
+      layerId: layerId,
+      startIndex: 0,
+      endIndexExclusive: 1,
+    );
+    for (final (name, edit) in [
+      ('a layer', () => session.laneVerbs.updateLayerTransformTrack(
+        layerId,
+        turned,
+      )),
+      ('the camera row', () => session.camera.updateCameraTrack(
+        cameraId,
+        turned,
+      )),
+    ]) {
+      session.frameRangeSelection.value = band;
+      edit();
+      expect(session.frameRangeSelection.value, band, reason: name);
+    }
+    expect(
+      session.requireActiveCut.camera.track.rotation.keyAt(0)?.value,
+      30,
+      reason: '⛔전제: the camera was written',
+    );
+  });
+
   test('every active-cut verb NOTIFIES once it has a cut to act on', () {
     final probe = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(probe.dispose);

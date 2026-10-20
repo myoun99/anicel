@@ -198,11 +198,18 @@ class Camera {
   /// edit was made on: a header graph's line of another cut wrote nothing
   /// (I-89-Q23 — that cut is edited where it is:
   /// [ActiveCutEdits.onCutOfRow]).
+  ///
+  /// QUIET, as a layer's transform lanes are
+  /// (`LaneVerbs.updateLayerTransformTrack`): a key is the row's attribute,
+  /// and nothing the controllers hold reads the camera. ↩️It took the
+  /// structural refresh, so a key edited on the camera row dropped the
+  /// frame range a key edited on a layer's lanes keeps — one edit with two
+  /// after-maths (camera-key-edit-clears-the-frame-range, 10-17).
   void updateCameraTrack(
     LayerId cameraRow,
     TransformTrack track, {
     String description = 'Edit camera keyframes',
-  }) => _activeCut.onCutOfRow(
+  }) => _activeCut.onCutOfRowQuietly(
     cameraRow,
     (cutId) => _project.cutCommandCoordinator.updateCutCamera(
       cutId: cutId,
