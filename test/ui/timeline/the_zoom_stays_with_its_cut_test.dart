@@ -99,4 +99,35 @@ void main() {
     await open('cut-b');
     expect(zoom(), zoomB, reason: 'and B at its own');
   });
+
+  testWidgets('a project with no cut opens its timeline at the zoom to work '
+      'at too', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: HomePage(
+          initialProject: Project(
+            id: const ProjectId('no-cut'),
+            name: 'No cut',
+            createdAt: DateTime.utc(2026, 10, 21),
+            tracks: [
+              Track(id: const TrackId('t'), name: 'Video', cuts: const []),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    expect(session.activeCutId, isNull, reason: '⛔전제: no cut is open');
+
+    expect(
+      tester.widget<TimelinePanel>(find.byType(TimelinePanel)).pixelsPerFrame,
+      TimelineZoomLimits.referencePixelsPerFrame,
+    );
+  });
 }

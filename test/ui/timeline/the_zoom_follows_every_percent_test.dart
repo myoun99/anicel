@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart'
     show DragVerbClaim;
+import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
@@ -74,6 +75,9 @@ void main() {
         TimelineZoomLimits.clamped(400, framesPerSecond: fps),
         TimelineZoomLimits.maxPixelsPerFrame,
       );
+      // Past 156 fps — a rate the custom field takes — ten minutes would
+      // ask for less than a step; the floor stays a step.
+      expect(shown(TimelineZoomLimits.minPixelsPerFrameAt(240)), '0.1');
     });
   });
 
@@ -83,6 +87,11 @@ void main() {
     expect(shown(TimelineZoomLimits.maxPixelsPerFrame), '250.0');
     expect(reference, closeTo(0.8 * 24, 1e-9));
     expect(shown(reference), '100.0');
+    expect(
+      shown(PanelViewMemory.defaultStoryboardPixelsPerFrame),
+      '40.0',
+      reason: 'the conte opens at 40%, a number the bar writes',
+    );
   });
 
   test('at the widest zoom ten minutes fit 1,800px at every rate, and a '
@@ -149,6 +158,17 @@ void main() {
         TimelineZoomLimits.stepped(single, zoomIn: true, framesPerSecond: 120),
       ),
       '0.2',
+    );
+    expect(
+      shown(
+        TimelineZoomLimits.stepped(
+          2 * single,
+          zoomIn: false,
+          framesPerSecond: 120,
+        ),
+      ),
+      '0.1',
+      reason: '÷1.25 rounds back onto the second step, and − still moves',
     );
   });
 
@@ -235,6 +255,17 @@ void main() {
       );
       return zooms.last;
     }
+
+    testWidgets('the bar writes the zoom to work at as 100%', (tester) async {
+      await pump(tester, pixelsPerFrame: reference);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('timeline-zoom-slider')),
+          matching: find.text('100.0%'),
+        ),
+        findsOneWidget,
+      );
+    });
 
     testWidgets('the + and − buttons step ×1.25 onto the bar\'s numbers', (
       tester,
