@@ -793,11 +793,13 @@ void main() {
   });
 
   test('a leaned or mirrored text\'s picture, as a turned one\'s, is the one '
-      'nearest its box as its frame sets it, within a pixel and a half', () {
+      'nearest its box as its frame sets it, within a pixel and a half — and '
+      'one that does not say where it stands is set by the app', () {
     String? pictureAmong(
       List<int> corners,
-      List<ClipPictureSource> pictures,
-    ) => read(
+      List<ClipPictureSource> pictures, {
+      (int, int)? offset = (0, 0),
+    }) => read(
       textLayer(
         [
           lettering(
@@ -806,7 +808,7 @@ void main() {
               box: (x0: 0, y0: 0, x1: 100, y1: 100),
               boxSize: (width: 100, height: 100),
               corners: corners,
-              pictureOffset: (0, 0),
+              pictureOffset: offset,
             ),
           ),
         ],
@@ -815,12 +817,17 @@ void main() {
     ).texts.single.picture?.blocksId;
 
     // Its foot 17.63 px right of its head: 118.63 × 101 with its pixel.
+    const leaned = [0, 0, 10000, 0, 11763, 10000, 1763, 10000];
     expect(
-      pictureAmong(
-        const [0, 0, 10000, 0, 11763, 10000, 1763, 10000],
-        [pictureOf(101, 101, 'the box upright'), pictureOf(119, 101, 'leaned')],
-      ),
+      pictureAmong(leaned, [
+        pictureOf(101, 101, 'the box upright'),
+        pictureOf(119, 101, 'leaned'),
+      ]),
       'leaned',
+    );
+    expect(
+      pictureAmong(leaned, [pictureOf(119, 101, 'leaned')], offset: null),
+      isNull,
     );
     expect(
       pictureAmong(
