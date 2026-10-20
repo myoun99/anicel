@@ -4045,6 +4045,44 @@ void main() {
     );
   });
 
+  // 🚨F-412 (유저 2026-10-19): 「자유변형으로 그림 크게 조정하면, 사각형 도구
+  // ui 밖을 클릭한게 아닌데도 회전이 작동함. … 일반변형은 문제없으니 그부분
+  // 법 통일하면서 해결」. A corner pulled out grows the outline past the box
+  // it was pulled from; a press in the grown part is inside what is drawn,
+  // so it is the move — in 퍼스 and in 메쉬 alike.
+  for (final mode in [TransformMode.perspective, TransformMode.mesh]) {
+    testWidgets('$mode: inside the outline a corner was pulled out to is '
+        'the move', (tester) async {
+      final env = await pumpSelectionPanel(tester, transformMode: mode);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+
+      // Stamp rect (20,20)-(71,71): its bottom-right is a quad corner in
+      // 퍼스 and the grid's last point in 메쉬.
+      await dragOnLayer(tester, const Offset(71, 71), const Offset(120, 120));
+      final pulled = antsOnScreen(tester)!.transformChrome!.box;
+      expect(
+        pulled,
+        contains(const Offset(120, 120)),
+        reason: 'the premise: the outline grew to the pulled corner',
+      );
+
+      // Inside the grown outline, past the box it was pulled from (x > 71).
+      await dragOnLayer(tester, const Offset(85, 80), const Offset(95, 80));
+      final moved = antsOnScreen(tester)!.transformChrome!.box;
+      expect(moved, hasLength(pulled.length));
+      for (var i = 0; i < pulled.length; i += 1) {
+        expect(
+          moved[i] - pulled[i],
+          const Offset(10, 0),
+          reason: 'point $i rides the move — a turn would swing it',
+        );
+      }
+    });
+  }
+
   testWidgets('메쉬 mode: the control grid comes up WITH the box, a dragged '
       'point + Enter commits ONE warped entry', (tester) async {
     final env = await pumpSelectionPanel(

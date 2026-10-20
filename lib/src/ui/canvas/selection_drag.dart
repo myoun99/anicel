@@ -326,11 +326,10 @@ final class WarpPointDrag extends TransformDrag {
   /// moves?" — and the day they disagreed the drag would move a corner AND
   /// an edge ([[make-the-invariant-unrepresentable]]).
   ///
-  /// ⚠️NULL IS REACHABLE and means something: the press landed INSIDE the
-  /// mesh boundary but not on a point. It carried no point before this
-  /// field became a list, and it still carries none — `[null]` would make
-  /// the update move offset 0.
-  final List<int>? points;
+  /// ↩️It could be null — a 메쉬 press inside the grid but on no point,
+  /// which then moved nothing. Inside is the move in every mode now
+  /// (`BoxOnScreen.grabAt`, F-412), so a warp drag always carries a point.
+  final List<int> points;
 
   /// The offsets as the press found them — the drag adds ONE displacement
   /// to these rather than accumulating frame by frame.

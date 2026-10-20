@@ -9,7 +9,7 @@ import '../../services/selection_affine.dart';
 import '../brush/transform_tool_options.dart';
 import 'canvas_viewport_offset.dart';
 import 'float_warp.dart';
-import 'box_chrome.dart' show SelectionTransformChrome, boxHandleFootprint;
+import 'box_chrome.dart' show SelectionTransformChrome;
 import 'box_press.dart';
 import 'selection_drag.dart';
 import 'transform_box.dart';
@@ -44,22 +44,10 @@ class BoxOnScreen {
   /// The open box over the float — where 퍼스 puts its quad corners.
   final FloatWarp warp;
 
-  /// Which of [points] — a quad's corners, a mesh's grid — a press at
-  /// [local] lands on: the square the chrome draws for it, as every handle
-  /// is taken ([boxHandleFootprint], F-262).
-  int? hitTestPlacedPoint(Offset local, List<CanvasPoint>? points) {
-    if (points == null) {
-      return null;
-    }
-    for (var i = 0; i < points.length; i += 1) {
-      final mapped = viewport.canvasToViewportOffset(points[i]);
-      if (boxHandleFootprint(mapped).contains(local)) {
-        return i;
-      }
-    }
-    return null;
-  }
-
+  /// The warp's own points as drawn — a 퍼스 quad's corners or a 메쉬
+  /// grid — or none in 일반 (and on a box that is not open).
+  List<CanvasPoint> get _warpPoints =>
+      warp.placedMeshPoints ?? warp.placedCorners ?? const [];
 
   /// A base-local point mapped through [affine] into viewport space.
   Offset _mapLocalToViewport(SelectionAffine affine, CanvasPoint local) {
@@ -144,9 +132,28 @@ class BoxOnScreen {
     ];
   }
 
-  /// The transformed box as a canvas-space polygon (inside = translate).
-  CanvasSelectionShape _transformedBoxShape(TransformBox box) =>
-      _boxShapeFor(box.affine, box.baseWidth, box.baseHeight);
+  /// The box's outline as it is DRAWN, on the canvas: a 메쉬 grid's warped
+  /// boundary, a 퍼스 quad, or the affine box — the one polygon the chrome
+  /// strokes and a press asks 「inside?」 of.
+  ///
+  /// 🚨★★★F-412 (유저 2026-10-19): 「자유변형으로 그림 크게 조정하면, 사각형
+  /// 도구 ui 밖을 클릭한게 아닌데도 회전이 작동함. 그림 조정되기 전 박스를
+  /// 기준으로 작동해서 그 밖을 회전으로 삼아버리는 버그인듯. 일반변형은
+  /// 문제없으니 그부분 법 통일하면서 해결」. The quad and the grid were drawn
+  /// along their own points while the press asked the affine box their
+  /// corners had been pulled away from, so the grown picture's inside was
+  /// the turn. What you see is what you grab (F-262), in every mode.
+  List<CanvasPoint> outline(
+    SelectionAffine affine,
+    double width,
+    double height,
+  ) {
+    final mesh = warp.placedMeshPoints;
+    if (mesh != null) {
+      return warp.meshBoundary(mesh);
+    }
+    return warp.placedCorners ?? _boxShapeFor(affine, width, height).points;
+  }
 
   /// The box as it stood when its session opened — the untouched rectangle
   /// the transform began from, in canvas space: the TRANSFORM TOOL's own
@@ -204,24 +211,33 @@ class BoxOnScreen {
     return _mapLocalToViewport(affine, handleLocal(handle, width, height)!);
   }
 
-  /// Where a press lands on the open box — through the one order every box
-  /// keeps ([boxPressAt]).
+  /// What a press lands on — through the one order every box keeps
+  /// ([boxPressAt]): the cross, then a point the warp drew or a grip, then
+  /// inside the [outline], and outside is the turn.
+  ///
+  /// ⛔**THE WARP'S POINTS ARE HANDLES LIKE THE REST.** The layer asked them
+  /// first, ahead of this order, so a 퍼스 corner or a grid point under the
+  /// cross took the press from the cross drawn over it, and a 메쉬 press off
+  /// every point found no move and no turn at all — three press laws for
+  /// one box, one per mode.
   ///
   /// ⚠️The stage gate is the one the move already asked for — see the
   /// `onStage` check on the move path. ⛔Not a new rule: the same sentence,
   /// asked once instead of twice.
-  TransformHandle? hitTestTransformHandle(Offset local, TransformBox box) {
+  BoxGrab? grabAt(Offset local, TransformBox box) {
     final affine = box.affine;
+    final points = _warpPoints;
     final handles = scaleHandles;
     final hit = boxPressAt(
       local,
       anchor: viewport.canvasToViewportOffset(affine.anchorCanvas),
       handles: [
+        for (final point in points) viewport.canvasToViewportOffset(point),
         for (final handle in handles)
           scaleHandleViewport(handle, affine, box.baseWidth, box.baseHeight),
       ],
-      inside: (press) => _transformedBoxShape(
-        box,
+      inside: (press) => CanvasSelectionShape(
+        outline(affine, box.baseWidth, box.baseHeight),
       ).containsPoint(viewport.viewportOffsetToCanvas(press)),
       onStage: (press) {
         final at = viewport.viewportOffsetToCanvas(press);
@@ -230,102 +246,81 @@ class BoxOnScreen {
     );
     return switch (hit?.press) {
       null => null,
-      BoxPress.anchor => TransformHandle.anchor,
-      BoxPress.handle => handles[hit!.handle],
-      BoxPress.inside => TransformHandle.inside,
-      BoxPress.turn => TransformHandle.rotate,
+      BoxPress.anchor => const HandleGrab(TransformHandle.anchor),
+      BoxPress.handle when hit!.handle < points.length => WarpPointGrab(
+        hit.handle,
+      ),
+      BoxPress.handle => HandleGrab(handles[hit!.handle - points.length]),
+      BoxPress.inside => const HandleGrab(TransformHandle.inside),
+      BoxPress.turn => const HandleGrab(TransformHandle.rotate),
       // A row's position path is bent on its row's box (I-89 ④); the tool's
       // box is handed no tangents.
       BoxPress.tangent => throw StateError('The tool box bends no path.'),
     };
   }
 
-  /// What the ants painter draws over the box: the outline, the grips and
-  /// the anchor cross, in viewport space.
+  /// What the ants painter draws over the box: the [outline], the handles
+  /// and the anchor cross, in viewport space — what [grabAt] takes, drawn.
   ///
-  /// THREE SHAPES, one per what the box currently IS — a mesh's warped
-  /// boundary, a 퍼스 quad, or the plain affine box — and each is its own
-  /// builder. ↩️They were one nested ternary holding all three record
-  /// literals, which scored 29 against a warning line of 15: every reader
-  /// had to unwind the whole chain to find out what one mode draws.
+  /// The handles are the warp's own points (a 퍼스 quad's corners, a 메쉬
+  /// grid), then the grips the mode offers ([scaleHandles]). 퍼스 keeps its
+  /// edge grips under the quad, because they carry the edges and hiding
+  /// them would hide half the tool; an open 메쉬 offers none.
+  ///
+  /// ⚠️The warp's points are the PLACED ones rather than the resample's, so
+  /// the handles are on screen from the moment the mode is armed instead
+  /// of appearing only once the first offset makes the warp real.
+  ///
+  /// ↩️THREE SHAPES were three builders, one per mode, each spelling its
+  /// own outline — and the press asked a fourth, the affine box, for its
+  /// inside (F-412). One outline, one list of handles: a mode differs only
+  /// in which points it has.
   SelectionTransformChrome? transformChrome(
-    List<CanvasPoint>? placedMesh,
-    List<CanvasPoint>? placedCorners,
     SelectionAffine? chromeAffine,
     double chromeWidth,
     double chromeHeight,
   ) {
-    // ⚠️ONE anchor for all three chromes. The cross is the ROTATION's
-    // centre and every mode can be turned (outside the box is the
-    // rotation, whatever mode is armed), so hiding it in 퍼스/메쉬 would
-    // be a rule about the modes that the rotation does not have.
-    final anchor = chromeAffine == null
-        ? null
-        : viewport.canvasToViewportOffset(chromeAffine.anchorCanvas);
-    if (placedMesh != null) {
-      return _meshChrome(placedMesh, anchor);
-    }
     if (chromeAffine == null) {
       return null;
     }
-    // The affine box's own grips, which BOTH remaining shapes wear: 퍼스
-    // keeps them under its quad, because non-uniform scaling lives there
-    // and hiding them would hide half the tool.
-    final grips = [
-      for (final handle in scaleHandles)
-        scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
-    ];
-    if (placedCorners != null) {
-      return _quadChrome(placedCorners, grips, anchor);
-    }
-    return _boxChrome(chromeAffine, chromeWidth, chromeHeight, grips, anchor);
+    Offset onScreen(CanvasPoint point) =>
+        viewport.canvasToViewportOffset(point);
+    return (
+      box: [
+        for (final point in outline(chromeAffine, chromeWidth, chromeHeight))
+          onScreen(point),
+      ],
+      handles: [
+        for (final point in _warpPoints) onScreen(point),
+        for (final handle in scaleHandles)
+          scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
+      ],
+      // ⚠️ONE anchor for every mode. The cross is the ROTATION's centre
+      // and every mode can be turned (outside the box is the rotation,
+      // whatever mode is armed), so hiding it in 퍼스/메쉬 would be a rule
+      // about the modes that the rotation does not have.
+      anchor: onScreen(chromeAffine.anchorCanvas),
+    );
   }
+}
 
-  /// 메쉬: the control points ARE the handles, and the outline is the grid's
-  /// warped boundary.
-  SelectionTransformChrome _meshChrome(
-    List<CanvasPoint> placedMesh,
-    Offset? anchor,
-  ) => (
-    box: [
-      for (final point in warp.meshBoundary(placedMesh))
-        viewport.canvasToViewportOffset(point),
-    ],
-    handles: [
-      for (final point in placedMesh) viewport.canvasToViewportOffset(point),
-    ],
-    anchor: anchor,
-  );
+/// What a press on the open box takes hold of ([BoxOnScreen.grabAt]).
+sealed class BoxGrab {
+  const BoxGrab();
+}
 
-  /// 퍼스: the quad, its four corners, and the affine box's grips beneath.
-  SelectionTransformChrome _quadChrome(
-    List<CanvasPoint> placedCorners,
-    List<Offset> grips,
-    Offset? anchor,
-  ) => (
-    box: [
-      for (final point in placedCorners) viewport.canvasToViewportOffset(point),
-    ],
-    handles: [
-      for (final point in placedCorners) viewport.canvasToViewportOffset(point),
-      ...grips,
-    ],
-    anchor: anchor,
-  );
+/// One of the box's own handles: a grip, the cross, the inside (the move)
+/// or the stage outside it (the turn).
+final class HandleGrab extends BoxGrab {
+  const HandleGrab(this.handle);
 
-  /// 일반: the affine box and nothing else.
-  SelectionTransformChrome _boxChrome(
-    SelectionAffine affine,
-    double width,
-    double height,
-    List<Offset> grips,
-    Offset? anchor,
-  ) => (
-    box: [
-      for (final point in _boxShapeFor(affine, width, height).points)
-        viewport.canvasToViewportOffset(point),
-    ],
-    handles: grips,
-    anchor: anchor,
-  );
+  final TransformHandle handle;
+}
+
+/// One of the warp's own points — a 퍼스 corner or a 메쉬 grid point, by
+/// its index in the warp's offsets.
+final class WarpPointGrab extends BoxGrab {
+  const WarpPointGrab(this.index);
+
+  final int index;
 }

@@ -2475,10 +2475,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // The box already on screen, asked before it is open: a handle press
     // makes it the open one, anything else leaves it unopened.
     final candidate = _boxOver(implicitRegion);
-    final handle = _onScreen.hitTestTransformHandle(
-      event.localPosition,
-      candidate,
-    );
+    // A box that is not open has no warp, so nothing but its handles.
+    final handle = switch (_onScreen.grabAt(event.localPosition, candidate)) {
+      HandleGrab(:final handle) => handle,
+      _ => null,
+    };
     if (handle == null || handle == TransformHandle.inside) {
       // Inside/miss: fall through to the ordinary move-drag flow — but
       // remember WHICH (TP4). "Inside" is the box the user can see, and
@@ -2529,7 +2530,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       //
       // The pasteboard, not the canvas rect: the box this press opens
       // frames pasteboard ink now, and its HANDLES were already
-      // grabbable out there (BoxOnScreen.hitTestTransformHandle has no such
+      // grabbable out there (BoxOnScreen.grabAt has no such
       // gate), so a canvas-only gate meant the drawing you could see
       // framed was one you could not grab by pressing on it.
       final onStage = widget.canvasSize.containsPasteboardPoint(
@@ -2592,73 +2593,43 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return true;
   }
 
-  void _beginTransformDrag(TransformBox box, PointerDownEvent event, CanvasPoint canvasPoint) {
+  void _beginTransformDrag(
+    TransformBox box,
+    PointerDownEvent event,
+    CanvasPoint canvasPoint,
+  ) {
     final openTransform = box.affine;
-    // 메쉬: the control points ARE the handles. Nothing else on the box
-    // has a grid meaning, so a press is either a point or inside.
-    final meshPlaced = floatWarp.placedMeshPoints;
-    if (meshPlaced != null) {
-      final pointIndex = _onScreen.hitTestPlacedPoint(
-        event.localPosition,
-        meshPlaced,
-      );
-      if (pointIndex == null &&
-          !CanvasSelectionShape(
-            floatWarp.meshBoundary(meshPlaced),
-          ).containsPoint(canvasPoint)) {
-        return;
-      }
+    // ONE press order for every mode ([BoxOnScreen.grabAt]): the warp's own
+    // points are handles like the rest, the inside is the outline drawn,
+    // and outside it is the turn.
+    //
+    // ↩️퍼스 and 메쉬 asked their points here first, each with a press law
+    // of its own: 메쉬 ended a press off every point (no move, no turn), and
+    // 퍼스 called the gap between a pulled quad and the affine box a miss —
+    // while inside the quad grown past that box was the turn (F-412).
+    final grab = _onScreen.grabAt(event.localPosition, box);
+    if (grab is WarpPointGrab) {
+      // 퍼스: the four corners move freely — no modifier, because the MODE
+      // is the door now (the Ctrl+corner gesture this replaces could not
+      // be reached at all on a tablet). 메쉬: the control points ARE the
+      // handles.
+      final offsets = _mode == TransformMode.mesh
+          ? box.warp.mesh
+          : box.warp.corners;
       _startTransformDrag(
         WarpPointDrag(
           pointer: event.pointer,
           startPointer: canvasPoint,
-          points: pointIndex == null ? null : [pointIndex],
-          startOffsets: List.of(box.warp.mesh ?? const []),
+          points: [grab.index],
+          startOffsets: List.of(offsets ?? const []),
         ),
       );
       return;
     }
-    // 퍼스: the four corners move freely — no modifier, because the MODE
-    // is the door now (the Ctrl+corner gesture this replaces could not
-    // be reached at all on a tablet). The edge handles and the rotate
-    // knob keep their affine meaning underneath, which is where
-    // non-uniform scaling lives.
-    //
-    // ↩️「The edge handles … keep their affine meaning」 stopped being true
-    // with F-42-Q1 (an edge carries its two quad corners), and F-42's 08-31
-    // report moved where they STAND too: the middle of their quad edge
-    // ([BoxOnScreen.scaleHandleViewport]). The rotate knob keeps the affine
-    // box's.
-    final cornersPlaced = floatWarp.placedCorners;
-    if (cornersPlaced != null) {
-      final cornerIndex = _onScreen.hitTestPlacedPoint(
-        event.localPosition,
-        cornersPlaced,
-      );
-      if (cornerIndex != null) {
-        _startTransformDrag(
-          WarpPointDrag(
-            pointer: event.pointer,
-            startPointer: canvasPoint,
-            points: [cornerIndex],
-            startOffsets: List.of(box.warp.corners ?? const []),
-          ),
-        );
-        return;
-      }
-      // A warped quad's inside is the quad, not the affine box the edge
-      // handles frame — a press in the gap between them is a miss.
-      if (!BoxWarp.offsetsAreZero(box.warp.corners) &&
-          !CanvasSelectionShape(cornersPlaced).containsPoint(canvasPoint) &&
-          _onScreen.hitTestTransformHandle(event.localPosition, box) ==
-              TransformHandle.inside) {
-        return;
-      }
-    }
-    final handle = _onScreen.hitTestTransformHandle(event.localPosition, box);
-    if (handle == null) {
+    if (grab is! HandleGrab) {
       return;
     }
+    final handle = grab.handle;
     // 🚨F-42 (유저 2026-08-29): 「오른쪽 중앙 조절시 **상하가 안바뀌게
     // 스냅되있는데 스냅해제. 자유롭게 바뀌게**」.
     //
@@ -2676,7 +2647,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final edgePair = _mode == TransformMode.perspective
         ? BoxOnScreen.edgeCornerPair(handle)
         : null;
-    if (edgePair != null && cornersPlaced != null) {
+    if (edgePair != null && floatWarp.placedCorners != null) {
       _startTransformDrag(
         WarpPointDrag(
           pointer: event.pointer,
@@ -2815,9 +2786,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     CanvasPoint pointer,
   ) {
     final dragPoints = drag.points;
-    if (dragPoints == null) {
-      return;
-    }
     final startOffsets = drag.startOffsets;
     final affine = box.affine;
     final from = affine.applyInverse(drag.startPointer);
@@ -3488,19 +3456,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       chromeWidth = bounds.width;
       chromeHeight = bounds.height;
     }
-    // 메쉬 chrome: the warped boundary with EVERY control point as a
-    // handle. 퍼스 chrome: the quad, its four corners, AND the affine
-    // box's edge handles and rotate knob underneath — those still work in
-    // that mode, so hiding them would hide half the tool.
-    //
-    // Both read the PLACED points rather than the resample's, so the
-    // handles are on screen from the moment the mode is armed instead of
-    // appearing only once the first offset makes the warp real.
-    final placedMesh = floatWarp.placedMeshPoints;
-    final placedCorners = floatWarp.placedCorners;
     final chrome = _onScreen.transformChrome(
-      placedMesh,
-      placedCorners,
       chromeAffine,
       chromeWidth,
       chromeHeight,
