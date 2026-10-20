@@ -17,9 +17,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️F-322 (유저 2026-10-09): 「더블클릭으로 레이어 이름바꾸는거나 …
 /// 통일」.
@@ -80,27 +79,15 @@ Project _project() => Project(
   ],
 );
 
-EditorSessionManager _sessionOf(WidgetTester tester) =>
-    tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-
-Future<EditorSessionManager> _pump(WidgetTester tester) async {
+/// The conte as its tab hosts it ([pumpStoryboardHost]), the whole height
+/// its own.
+Future<EditorSessionManager> _pump(WidgetTester tester) {
   TimelineDoubleTapGate.reset();
-  await tester.binding.setSurfaceSize(const Size(1400, 1300));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
+  return pumpStoryboardHost(
+    tester,
+    _project(),
+    surface: const Size(1400, 1300),
   );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
-  await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    const Offset(0, -700),
-  );
-  await tester.pumpAndSettle();
-  return _sessionOf(tester);
 }
 
 final _rail = find.byKey(const ValueKey<String>('storyboard-track-label-rail'));

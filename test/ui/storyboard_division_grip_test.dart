@@ -15,6 +15,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
@@ -26,6 +27,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
     show TimelineRowChromeResolver, TimelineRowGripTarget;
 
+import '../helpers/storyboard_host.dart';
 import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
@@ -153,25 +155,12 @@ Project _mixedProject() => Project(
   ],
 );
 
-Future<void> _openStoryboard(WidgetTester tester, {Project? project}) async {
-  // 1500 → 1900. The storyboard's bar grew the timeline's four command pills
-  // (2026-08-10), so at 1500 the region's own two-thirds width put the row
-  // steppers past the bar's right edge — laid out, scrolled out of view, and
-  // a tap on them silently missed. Widening is the honest fix: the bar is
-  // SUPPOSED to overflow into its scroller when the room runs out (유저:
-  // 버튼이 잘리는 건 이해한다), and this file is about the row heights, not
-  // about how narrow a window that starts happening in.
-  await tester.binding.setSurfaceSize(const Size(1900, 800));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: project ?? _project())),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
-}
+/// The conte as its tab hosts it ([pumpStoryboardHost]) — every grip here
+/// is the panel's; the app's own two below start on the timeline tab.
+Future<EditorSessionManager> _openStoryboard(
+  WidgetTester tester, {
+  Project? project,
+}) => pumpStoryboardHost(tester, project ?? _project());
 
 double _pixelsPerFrame(WidgetTester tester) =>
     tester.widget<StoryboardPanel>(find.byType(StoryboardPanel)).pixelsPerFrame;
@@ -430,13 +419,13 @@ void main() {
 
   testWidgets('the inner-comma drag is ONE undo step — row and cut length '
       'restore together', (tester) async {
-    await _openStoryboard(tester);
+    final session = await _openStoryboard(tester);
 
     await _dragGrip(tester, _panelGrip('end', 0), 2);
     expect(_divisionsOf(tester, 'cut-1'), [0, 7]);
     expect(_cutById(tester, 'cut-1').duration, 12);
 
-    await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+    session.undo();
     await tester.pumpAndSettle();
 
     expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
@@ -619,7 +608,7 @@ void main() {
         'grows the cut at its TAIL, the front grip trades inside it', (
       tester,
     ) async {
-      await _openStoryboard(tester);
+      final session = await _openStoryboard(tester);
 
       // Panel 0's trailing edge and panel 1's leading edge sit on the same
       // boundary, and both move it. They are still two edits: the back grip
@@ -631,7 +620,7 @@ void main() {
       expect(_cutById(tester, 'cut-1').duration, 12);
       expect(_cutById(tester, 'cut-1').leadingGapFrames, 0);
 
-      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+      session.undo();
       await tester.pumpAndSettle();
 
       await _dragGrip(tester, _panelGrip('start', 1), 2);
@@ -643,13 +632,13 @@ void main() {
     testWidgets('ONE undo restores the cut length and the head together', (
       tester,
     ) async {
-      await _openStoryboard(tester);
+      final session = await _openStoryboard(tester);
 
       await _dragGrip(tester, _panelGrip('start', 0), 2);
       expect(_cutById(tester, 'cut-1').duration, 8);
       expect(_cutById(tester, 'cut-1').leadingGapFrames, 2);
 
-      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+      session.undo();
       await tester.pumpAndSettle();
 
       expect(_cutById(tester, 'cut-1').duration, 10);

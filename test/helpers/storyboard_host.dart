@@ -11,7 +11,8 @@ import 'storyboard_twirls.dart';
 /// THE STORYBOARD TAB AS THE WORKSPACE HOSTS IT (`workspace_tabs.dart`),
 /// with nothing of the app around it: [project] opened in a session, the
 /// rows' twirls, attach folds and header graphs the session's own
-/// ([withStoryboardTwirls]), the conte at the zoom it opens at.
+/// ([withStoryboardTwirls]), the conte at the zoom it opens at unless
+/// [pixelsPerFrame] names another.
 ///
 /// 📏heavy-tests-timeline (2026-10-20): opening the app and turning to the
 /// conte was two of a storyboard test's three seconds — 2.1s, against 0.45s
@@ -21,6 +22,7 @@ Future<EditorSessionManager> pumpStoryboardHost(
   WidgetTester tester,
   Project project, {
   Size surface = const Size(1500, 800),
+  double pixelsPerFrame = PanelViewMemory.defaultStoryboardPixelsPerFrame,
 }) async {
   await tester.binding.setSurfaceSize(surface);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -48,7 +50,7 @@ Future<EditorSessionManager> pumpStoryboardHost(
               onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               laneGraphs: rail.laneGraphs.value,
               laneGraphVerbs: presses.laneGraphVerbs,
-              pixelsPerFrame: PanelViewMemory.defaultStoryboardPixelsPerFrame,
+              pixelsPerFrame: pixelsPerFrame,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
               onShowSecondsChanged: (_) {},

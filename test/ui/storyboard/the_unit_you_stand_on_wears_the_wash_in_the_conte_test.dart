@@ -21,14 +21,13 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt;
 
 import '../storyboard_cut_block_probe.dart';
+import '../../helpers/storyboard_host.dart';
 import '../../helpers/named_finders.dart';
 
 /// 🗣️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색 표시.
@@ -123,19 +122,9 @@ void main() {
     ],
   );
 
-  Future<EditorSessionManager> openConte(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: project())),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-    );
-    await tester.pumpAndSettle();
-    return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-  }
+  /// The conte as its tab hosts it ([pumpStoryboardHost]).
+  Future<EditorSessionManager> openConte(WidgetTester tester) =>
+      pumpStoryboardHost(tester, project(), surface: const Size(1400, 900));
 
   Future<EditorSessionManager> standOnTheSRow(WidgetTester tester) async {
     final session = await openConte(tester);

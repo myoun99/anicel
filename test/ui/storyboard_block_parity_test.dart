@@ -23,7 +23,6 @@ import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart'
 import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart'
     show SeInstanceDialog;
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
@@ -33,6 +32,7 @@ import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show BlockEdgeGripInk, BlockEdgeGripPainter, TimelineBlockEdgeGrip;
 
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_host.dart';
 
 /// B5/B6 (2026-08-17): the storyboard's TRANSITION and SE blocks behave
 /// like FRAME BLOCKS — the same double-tap gate (same cell twice, or it is
@@ -104,18 +104,9 @@ Project _project() => Project(
   ],
 );
 
-Future<void> _openStoryboard(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 800));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
-}
+/// The conte as its tab hosts it ([pumpStoryboardHost]).
+Future<void> _openStoryboard(WidgetTester tester) =>
+    pumpStoryboardHost(tester, _project(), surface: const Size(1400, 800));
 
 StoryboardPanel _panel(WidgetTester tester) =>
     tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));

@@ -13,7 +13,6 @@ import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart'
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/transitions.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
@@ -23,23 +22,22 @@ import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart'
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart'
     show StoryboardToolbarPanelContext;
 
+import '../helpers/storyboard_host.dart';
 import 'flyout_test_helpers.dart' show readCommandEnabled;
 
 /// The GLOBAL surface authors transitions. The transition row is track-owned
 /// and its spans address the track's frame axis, so this panel — not the cut
 /// timeline, which shows the same spans read-only — is where an O.L is made,
 /// sized and named.
+///
+/// The conte as its tab hosts it ([pumpStoryboardHost]) — its bar is the
+/// tab's own.
 Future<StoryboardPanel> _openStoryboard(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 800));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+  await pumpStoryboardHost(
+    tester,
+    createDefaultProject(),
+    surface: const Size(1400, 800),
   );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
   return tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
 }
 

@@ -17,10 +17,10 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart'
     show InstantTapRegion;
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️F-322 (유저 2026-10-09): 「콘티패널 지금 옛날부터 몇번말해도 계속
 /// 레이어의 선택범위 작동안하고 바로 드래그방식인데 작동하도록.
@@ -89,25 +89,16 @@ final _conteRow = LayerRowAddress(trackConteRowId(_trackId));
 final _overRow = LayerRowAddress(trackConteRowId(_trackId, seat: 1));
 
 EditorSessionManager _sessionOf(WidgetTester tester) =>
-    tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+    tester.widget<StoryboardTabHost>(find.byType(StoryboardTabHost)).session;
 
-Future<void> _pump(WidgetTester tester, {bool conte = true}) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 1300));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project(conte: conte))),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
-  await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    const Offset(0, -700),
-  );
-  await tester.pumpAndSettle();
-}
+/// The conte as its tab hosts it ([pumpStoryboardHost]), the whole height
+/// its own.
+Future<void> _pump(WidgetTester tester, {bool conte = true}) =>
+    pumpStoryboardHost(
+      tester,
+      _project(conte: conte),
+      surface: const Size(1400, 1300),
+    );
 
 final _rail = find.byKey(const ValueKey<String>('storyboard-track-label-rail'));
 

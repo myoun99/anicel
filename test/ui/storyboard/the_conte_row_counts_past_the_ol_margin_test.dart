@@ -21,11 +21,10 @@ import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/dialogs/rename_frame_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 
+import '../../helpers/storyboard_host.dart';
 import '../storyboard_conte_row_probe.dart';
 
 /// 🧪I-73 (2026-10-08, measured before the row was built): a cut an O.L
@@ -67,34 +66,21 @@ void main() {
   /// Cuts a [0, 24) and b [24, 48), two panels of twelve each, joined by an
   /// O.L over [18, 30): six frames of it are b's のりしろ.
   Future<EditorSessionManager> open(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(
-          initialProject: Project(
-            id: const ProjectId('ol-project'),
-            name: 'O.L',
-            createdAt: DateTime.utc(2026, 10, 8),
-            tracks: [
-              Track(
-                id: const TrackId(trackId),
-                name: 'Video',
-                cuts: [cut('a'), cut('b')],
-              ),
-            ],
+    final session = await pumpStoryboardHost(
+      tester,
+      Project(
+        id: const ProjectId('ol-project'),
+        name: 'O.L',
+        createdAt: DateTime.utc(2026, 10, 8),
+        tracks: [
+          Track(
+            id: const TrackId(trackId),
+            name: 'Video',
+            cuts: [cut('a'), cut('b')],
           ),
-        ),
+        ],
       ),
     );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-    );
-    await tester.pumpAndSettle();
-    final session = tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
     session.transitions.updateTransitionInstructions({
       18: const InstructionEvent(instructionId: 'ol', length: 12),
     });
