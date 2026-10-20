@@ -39,17 +39,18 @@ void main() {
   });
 
   test('a click inside the span comes back where it sat in it', () async {
-    final encoder = QaVideoEncoder.instance;
-    if (encoder == null || !encoder.isSupported) {
-      expect(Platform.isLinux, isTrue, reason: 'no OS encoder only on Linux');
-      return;
-    }
     // A movie read and written through the engine can stop inside a native
     // call under load (board the-trimmed-movie-test-can-hang-on-windows-ci —
     // this test, unwatched, held a whole run once): the watch names the
     // step and ends the file instead.
     final watch = await NativeCallWatch.start('a movie piece keeps its sound');
     addTearDown(watch.stop);
+    watch.step('asking for the encoder');
+    final encoder = QaVideoEncoder.instance;
+    if (encoder == null || !encoder.isSupported) {
+      expect(Platform.isLinux, isTrue, reason: 'no OS encoder only on Linux');
+      return;
+    }
     watch.step('writing the take');
     final directory = Directory.systemTemp.createTempSync('qa_movie_piece');
     deleteAfterSessionEnds(directory);

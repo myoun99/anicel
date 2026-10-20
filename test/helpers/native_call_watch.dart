@@ -16,6 +16,12 @@ import 'dart:isolate';
 /// by another within the limit is named on stderr and the process ends —
 /// the run goes on to the next file, red, with the step that stopped.
 ///
+/// ⚠️Started BEFORE the test's first native call — asking for the encoder
+/// is one (the library opened, the OS asked whether it has one). A test
+/// that asked first stood for 30 minutes on 10-20 with nothing named and
+/// nothing dumped, so where it stood is not known (the board card's eighth
+/// sighting).
+///
 /// 🗣️On Windows it leaves the process's threads behind first (Q1, 유저
 /// 2026-10-16: 「예외 하나 — 감시가 멈춤을 본 뒤 한 번만, 바깥에서 덤프」): the
 /// step named, the stop would not show again — forty real runs and 13,000

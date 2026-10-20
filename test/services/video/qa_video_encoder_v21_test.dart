@@ -82,15 +82,16 @@ void main() {
   });
 
   test('HEVC: open succeeds exactly when the probe says so', () async {
-    final encoder = encoderOrSkip();
-    if (encoder == null) {
-      return;
-    }
     // It stood under load too (2026-10-16, board
     // the-trimmed-movie-test-can-hang-on-windows-ci): the watch names the
     // call.
     final watch = await NativeCallWatch.start('HEVC: open as the probe says');
     addTearDown(watch.stop);
+    watch.step('asking for the encoder');
+    final encoder = encoderOrSkip();
+    if (encoder == null) {
+      return;
+    }
     watch.step('probing for an HEVC encoder');
     final probed = encoder.probe(container: 0, codec: 1);
     final temp = Directory.systemTemp.createTempSync('qa-v21-hevc');
