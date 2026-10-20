@@ -45,6 +45,8 @@ void main() {
       expect(BrushSettings.fromJson(both.toJson()), both);
       expect(plain.toJson().containsKey('folded'), isFalse);
       expect(BrushSettings.fromJson(plain.toJson()).folded, isEmpty);
+      expect(both, isNot(tipFolded), reason: 'two brushes, told apart');
+      expect(tipFolded, isNot(both));
     });
 
     test('a fold is what the hand changed on the brush: it comes back with '
@@ -80,6 +82,12 @@ void main() {
       );
       expect(held.folded, {BrushSettingsGroup.tip});
       expect(held.toBrushSettings().folded, {BrushSettingsGroup.tip});
+      expect(
+        held.copyWith(flow: 0.3).folded,
+        {BrushSettingsGroup.tip},
+        reason: 'a setting moved leaves the folds as they were',
+      );
+      expect(held, isNot(held.copyWith(folded: const {})));
       expect(BrushToolState.fromBrushSettings(tipFolded).folded, {
         BrushSettingsGroup.tip,
       });
