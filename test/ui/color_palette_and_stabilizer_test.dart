@@ -42,7 +42,8 @@ void main() {
       BrushToolState()
           .copyWith(correction: const BrushCorrection(stabilization: -5))
           .correction,
-      BrushCorrection.none,
+      const BrushCorrection(stabilization: 0),
+      reason: "the scale's foot is Clip Studio's 0, still on",
     );
   });
 

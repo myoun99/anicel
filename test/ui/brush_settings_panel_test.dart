@@ -140,6 +140,38 @@ void main() {
     expect(read().toBrushSettings().correction, read().correction);
   });
 
+  testWidgets('손떨림 보정 적용 switched off dims the slider and the speed row '
+      'under it, and keeps what they hold (유저 2026-10-20)', (tester) async {
+    Future<void> tap(String key) async {
+      final target = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(target);
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
+
+    final read = await _pumpPanel(
+      tester,
+      initial: BrushToolState.defaults.copyWith(
+        correction: const BrushCorrection(stabilization: 40),
+      ),
+    );
+    const off = BrushCorrection(steadies: false, stabilization: 40);
+    await tap('brush-tool-stabilizer-on');
+    expect(read().correction, off);
+
+    final slider = find.byKey(
+      const ValueKey<String>('brush-tool-stabilizer-slider'),
+    );
+    await tester.ensureVisible(slider);
+    await tester.drag(slider, const Offset(80, 0));
+    await tester.pumpAndSettle();
+    await tap('brush-tool-steadying-by-speed-slow');
+    expect(read().correction, off, reason: 'dim: neither moves');
+
+    await tap('brush-tool-stabilizer-on');
+    expect(read().correction, const BrushCorrection(stabilization: 40));
+  });
+
   testWidgets('BrushSettingsPanel updates hardness and flow (the tip '
       'shape segment left with R26 #11 — presets own the tip)', (tester) async {
     final read = await _pumpPanel(tester);

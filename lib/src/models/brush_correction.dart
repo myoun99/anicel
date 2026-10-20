@@ -14,6 +14,9 @@
 /// has a switch and a value under it, ours is the value with nothing at the
 /// bottom of its scale — as [stabilization]'s 0 already is (F-418-Q6). A
 /// switch that is off cannot keep a value that does nothing.
+/// ↩️Not the 手ブレ補正 since 유저 2026-10-20 「손떨림보정 수치를 클튜랑
+/// 맞추고싶어서」: its scale is Clip Studio's, and nothing is a switch over
+/// it ([steadies]). The 後補正 is still the value alone.
 ///
 /// ↩️The stabilizer was the tool state's, shared by every brush and kept
 /// out of presets as a hand-feel setting (P7, 2026-07-11, mine), and it
@@ -21,6 +24,7 @@
 class BrushCorrection {
   const BrushCorrection({
     this.sharpenCorners = false,
+    this.steadies = true,
     this.stabilization = defaultStabilization,
     this.steadyingBySpeed = BrushSteadyingBySpeed.off,
     this.postStrength = 0,
@@ -32,14 +36,26 @@ class BrushCorrection {
   /// 角をとがらせる — 「角のある線を描いた時に角を立てます」.
   final bool sharpenCorners;
 
-  /// 손떨림 보정 — 0 steadies nothing; 1..100 are Clip Studio's 0..100,
-  /// spread evenly ([fromClipStudio]).
+  /// 손떨림 보정 적용 — whether the line is steadied at all. Off, the
+  /// [stabilization] and the [steadyingBySpeed] under it are kept and do
+  /// nothing.
   ///
-  /// 🗣️유저 2026-10-20 (F-418-Q6): 「클튜는 0이라도 보정이 있는모양인데,
+  /// 🗣️유저 2026-10-20: 「손떨림보정 수치를 클튜랑 맞추고싶어서. 0을 그냥
+  /// 클튜 0으로 하고, 진짜 끄고싶을때를 위해 손떨림보정 적용 토글버튼
+  /// 넣자. 적용해제면 손떨림보정쪽 다른 버튼 규칙처럼 비활성화」 — Clip
+  /// Studio has no setting that steadies nothing, so ours is a switch over
+  /// its scale.
+  final bool steadies;
+
+  /// 손떨림 보정, Clip Studio's 0..100 as it is: its 0 still steadies a
+  /// little ([lagAtClipStudioZero]).
+  ///
+  /// ↩️🗣️유저 2026-10-20 (F-418-Q6): 「클튜는 0이라도 보정이 있는모양인데,
   /// 없는 상태를 만들고싶으니까 클립의 0을 우리의 1정도? 2나 3? 그정도로
   /// 알아서 하고, 0을 진짜 없는상태로」 — Clip Studio has no setting that
-  /// steadies nothing, so ours has one below its scale. 0 is nothing at
-  /// all: [steadyingBySpeed] adjusts a correction there is, and adds none.
+  /// steadies nothing, so ours had one below its scale: 1..100 were Clip
+  /// Studio's 0..100 and 0 was nothing at all. The same day's 「수치를
+  /// 클튜랑 맞추고싶어서」 put the nothing on a switch instead ([steadies]).
   final double stabilization;
 
   /// 速度による手ブレ補正 and its 補正タイプ, as one.
@@ -62,11 +78,12 @@ class BrushCorrection {
   final bool postBezier;
 
   /// Clip Studio's 0 (유저 F-418-Q6: 「없으면 클튜 0인거랑 동일한 우리의
-  /// 값으로 기본값으로」) — and [[F-258]]'s 「기본값 1.0」.
-  static const double defaultStabilization = 1.0;
+  /// 값으로 기본값으로」) — and [[F-258]]'s 「기본값 1.0」, which was that 0
+  /// on the scale before Clip Studio's own.
+  static const double defaultStabilization = 0;
 
   /// A brush that corrects nothing.
-  static const BrushCorrection none = BrushCorrection(stabilization: 0);
+  static const BrushCorrection none = BrushCorrection(steadies: false);
 
   /// The highest [stabilization]: Clip Studio's 100.
   static const double maxStabilization = 100.0;
@@ -98,13 +115,6 @@ class BrushCorrection {
   /// says what its numbers measure.
   static const double _postPixelsPerStep = 0.25;
 
-  /// Clip Studio's 手ブレ補正 (`FlickerReduction`, 0..100) on our scale.
-  static double fromClipStudio(num flickerReduction) =>
-      1.0 + flickerReduction.clamp(0, 100).toDouble() * 0.99;
-
-  /// Whether a line drawn with this brush is steadied at all.
-  bool get steadies => stabilization > 0;
-
   /// How far behind the pen the line runs, in time, while the pen moves
   /// at [speed] (normalised, 0..1) — for a brush that [steadies].
   ///
@@ -116,7 +126,7 @@ class BrushCorrection {
   /// type lifts a setting under 30 toward 30 as the pen slows, the quick
   /// type halves the setting at the quickest.
   Duration lagAt(double speed) {
-    final set = ((stabilization - 1.0) / 0.99).clamp(0.0, 100.0);
+    final set = stabilization.clamp(0.0, maxStabilization);
     final clipStudio = switch (steadyingBySpeed) {
       BrushSteadyingBySpeed.off => set,
       BrushSteadyingBySpeed.slow when set < _slowTypeReaches =>
@@ -147,6 +157,7 @@ class BrushCorrection {
 
   BrushCorrection copyWith({
     bool? sharpenCorners,
+    bool? steadies,
     double? stabilization,
     BrushSteadyingBySpeed? steadyingBySpeed,
     double? postStrength,
@@ -155,6 +166,7 @@ class BrushCorrection {
     bool? postBezier,
   }) => BrushCorrection(
     sharpenCorners: sharpenCorners ?? this.sharpenCorners,
+    steadies: steadies ?? this.steadies,
     stabilization: stabilization ?? this.stabilization,
     steadyingBySpeed: steadyingBySpeed ?? this.steadyingBySpeed,
     postStrength: postStrength ?? this.postStrength,
@@ -165,6 +177,7 @@ class BrushCorrection {
 
   Map<String, Object?> toJson() => {
     'sharpenCorners': sharpenCorners,
+    'steadies': steadies,
     'stabilization': stabilization,
     'steadyingBySpeed': steadyingBySpeed.name,
     'postStrength': postStrength,
@@ -185,6 +198,7 @@ class BrushCorrection {
         (json[key] as num?)?.toDouble() ?? otherwise;
     return BrushCorrection(
       sharpenCorners: flag('sharpenCorners', fallback.sharpenCorners),
+      steadies: flag('steadies', fallback.steadies),
       stabilization: number('stabilization', fallback.stabilization),
       steadyingBySpeed: BrushSteadyingBySpeed.values.firstWhere(
         (type) => type.name == json['steadyingBySpeed'],
@@ -202,6 +216,7 @@ class BrushCorrection {
       identical(this, other) ||
       other is BrushCorrection &&
           other.sharpenCorners == sharpenCorners &&
+          other.steadies == steadies &&
           other.stabilization == stabilization &&
           other.steadyingBySpeed == steadyingBySpeed &&
           other.postStrength == postStrength &&
@@ -212,6 +227,7 @@ class BrushCorrection {
   @override
   int get hashCode => Object.hash(
     sharpenCorners,
+    steadies,
     stabilization,
     steadyingBySpeed,
     postStrength,
@@ -223,6 +239,7 @@ class BrushCorrection {
   @override
   String toString() =>
       'BrushCorrection(sharpenCorners: $sharpenCorners, '
+      'steadies: $steadies, '
       'stabilization: $stabilization, '
       'steadyingBySpeed: ${steadyingBySpeed.name}, '
       'postStrength: $postStrength, postBySpeed: $postBySpeed, '

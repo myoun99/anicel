@@ -620,6 +620,15 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       onChanged: (on) =>
           _correct(state.correction.copyWith(sharpenCorners: on)),
     ),
+    // Over the 手ブレ補正 and what sits under it, which it dims when off
+    // (유저 2026-10-20 「적용해제면 손떨림보정쪽 다른 버튼 규칙처럼
+    // 비활성화」).
+    SettingsSwitchRow(
+      tileKey: const ValueKey<String>('brush-tool-stabilizer-on'),
+      label: AppText.strings.brStabilizerOn,
+      value: state.correction.steadies,
+      onChanged: (on) => _correct(state.correction.copyWith(steadies: on)),
+    ),
     // The brush's own, kept in its preset as Clip Studio keeps it
     // (F-418-Q6). ↩️It was the pull string's rope, a hand-feel
     // setting kept out of presets (P7).
@@ -632,8 +641,10 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       min: 0,
       max: BrushCorrection.maxStabilization,
       keyValue: 'brush-tool-stabilizer-slider',
-      onChanged: (value) =>
-          _correct(state.correction.copyWith(stabilization: value)),
+      onChanged: state.correction.steadies
+          ? (value) =>
+                _correct(state.correction.copyWith(stabilization: value))
+          : null,
     ),
     // Clip Studio's switch and 補正タイプ under it, as one row — and
     // dim where the line is not steadied, as Clip Studio greys what

@@ -3,41 +3,32 @@ import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 
 void main() {
-  group('the 손떨림 보정 scale (F-418-Q6)', () {
-    test('0 steadies nothing', () {
+  group('the 손떨림 보정 scale is Clip Studio\'s, and nothing is a switch '
+      '(유저 2026-10-20)', () {
+    test('switched off, it steadies nothing — at any value', () {
       expect(BrushCorrection.none.steadies, isFalse);
       expect(const BrushCorrection().steadies, isTrue);
+      expect(
+        const BrushCorrection(stabilization: 60).copyWith(steadies: false),
+        isNot(BrushCorrection.none),
+        reason: 'the value is kept under the switch',
+      );
     });
 
-    test("1 is Clip Studio's 0, and 100 its 100", () {
-      expect(BrushCorrection.fromClipStudio(0), 1);
-      expect(BrushCorrection.fromClipStudio(100), 100);
-      expect(BrushCorrection.fromClipStudio(50), closeTo(50.5, 1e-9));
-      expect(BrushCorrection.fromClipStudio(-3), 1, reason: 'clamped');
-      expect(BrushCorrection.fromClipStudio(250), 100, reason: 'clamped');
-    });
-
-    test("the line lags Clip Studio's own at its ends, evenly between", () {
+    test("the line lags Clip Studio's own at its ends, evenly between — "
+        'its 0 is our 0, still steadying a little', () {
       Duration lagAt(double stabilization) =>
           BrushCorrection(stabilization: stabilization).lagAt(0.5);
-      expect(lagAt(1), BrushCorrection.lagAtClipStudioZero);
+      expect(lagAt(0), BrushCorrection.lagAtClipStudioZero);
+      expect(lagAt(0), greaterThan(Duration.zero));
       expect(lagAt(100), BrushCorrection.lagAtClipStudioHundred);
-      final halfway = BrushCorrection.fromClipStudio(50);
       final from = BrushCorrection.lagAtClipStudioZero.inMicroseconds;
       final to = BrushCorrection.lagAtClipStudioHundred.inMicroseconds;
-      expect(
-        lagAt(halfway).inMicroseconds,
-        ((from + to) / 2).round(),
-      );
-      expect(
-        lagAt(0.5),
-        BrushCorrection.lagAtClipStudioZero,
-        reason: "below 1 is still Clip Studio's 0",
-      );
+      expect(lagAt(50).inMicroseconds, ((from + to) / 2).round());
     });
 
     test("a brush that says nothing steadies as Clip Studio's 0", () {
-      expect(const BrushCorrection().stabilization, 1);
+      expect(const BrushCorrection().stabilization, 0);
       expect(BrushSettings().correction, const BrushCorrection());
       expect(BrushCorrection.fromJson(null), const BrushCorrection());
       expect(BrushCorrection.fromJson(const {}), const BrushCorrection());
@@ -92,10 +83,7 @@ void main() {
     int lagOf(BrushCorrection correction, double speed) =>
         correction.lagAt(speed).inMicroseconds;
     BrushCorrection at(double clipStudio, BrushSteadyingBySpeed bySpeed) =>
-        BrushCorrection(
-          stabilization: BrushCorrection.fromClipStudio(clipStudio),
-          steadyingBySpeed: bySpeed,
-        );
+        BrushCorrection(stabilization: clipStudio, steadyingBySpeed: bySpeed);
     final zero = BrushCorrection.lagAtClipStudioZero.inMicroseconds;
     final hundred = BrushCorrection.lagAtClipStudioHundred.inMicroseconds;
     int lagAtClipStudio(double value) =>
@@ -197,6 +185,7 @@ void main() {
     expect(_every.copyWith().hashCode, _every.hashCode);
     for (final other in [
       _every.copyWith(sharpenCorners: false),
+      _every.copyWith(steadies: true),
       _every.copyWith(stabilization: 23),
       _every.copyWith(steadyingBySpeed: BrushSteadyingBySpeed.slow),
       _every.copyWith(postStrength: 36),
@@ -235,6 +224,7 @@ void main() {
 /// A correction with every part off its default.
 const _every = BrushCorrection(
   sharpenCorners: true,
+  steadies: false,
   stabilization: 22,
   steadyingBySpeed: BrushSteadyingBySpeed.fast,
   postStrength: 35,

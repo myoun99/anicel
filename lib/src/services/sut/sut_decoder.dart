@@ -458,9 +458,10 @@ BrushCorrection _correctionOf(Map<String, Object?> variant) {
   };
   return BrushCorrection(
     sharpenCorners: flag('BrushSharpenCorner', fallback.sharpenCorners),
-    stabilization: BrushCorrection.fromClipStudio(
-      finite('FlickerReduction', 0),
-    ),
+    stabilization: finite(
+      'FlickerReduction',
+      0,
+    ).clamp(0.0, BrushCorrection.maxStabilization),
     steadyingBySpeed: BrushSteadyingBySpeed.fromClipStudio(
       bySpeed: _intOf(variant['FlickerReductionBySpeed']),
       type: _intOf(variant['FlickerReductionBySpeedType']),

@@ -50,14 +50,19 @@ void main() {
     Offset(160, 20),
   ];
 
-  testWidgets('the line runs behind a quick pen; 0 steadies nothing', (
+  testWidgets('the line runs behind a quick pen; switched off, nothing '
+      'steadies it — and Clip Studio\'s 0 is still a little behind', (
     tester,
   ) async {
     final steadied = await _draw(tester, straight, stabilization: 100);
     expect(_reach(steadied.beforeLift), lessThan(100));
 
-    final plain = await _draw(tester, straight, stabilization: 0);
+    final plain = await _draw(tester, straight, stabilization: null);
     expect(_reach(plain.beforeLift), closeTo(160, 1));
+
+    final atZero = await _draw(tester, straight, stabilization: 0);
+    expect(_reach(atZero.beforeLift), lessThan(159));
+    expect(_reach(atZero.beforeLift), greaterThan(150));
   });
 
   testWidgets('the pen lifts and the line goes to where it lifted '
@@ -85,7 +90,7 @@ void main() {
     expect(end.y, closeTo(32, 1e-6));
     expect(steadied.committed.where(insideTheCorner), isNotEmpty);
 
-    final plain = await _draw(tester, corner, stabilization: 0);
+    final plain = await _draw(tester, corner, stabilization: null);
     expect(
       plain.committed.where(insideTheCorner),
       isEmpty,
@@ -127,7 +132,7 @@ void main() {
     final plain = await _draw(
       tester,
       straight,
-      stabilization: 0,
+      stabilization: null,
       pressures: pressures,
     );
     expect(
@@ -203,7 +208,7 @@ void main() {
     final smoothed = await _draw(
       tester,
       wobbly,
-      stabilization: 0,
+      stabilization: null,
       postStrength: 40,
     );
     expect(
@@ -219,7 +224,7 @@ void main() {
   testWidgets('a brush that takes nothing out lands what it laid', (
     tester,
   ) async {
-    final plain = await _draw(tester, wobbly, stabilization: 0);
+    final plain = await _draw(tester, wobbly, stabilization: null);
     expect(
       plain.committed.map((dab) => dab.center),
       plain.beforeLift.map((dab) => dab.center),
@@ -233,7 +238,7 @@ void main() {
     final smoothed = await _draw(
       tester,
       wobbly,
-      stabilization: 0,
+      stabilization: null,
       postStrength: 40,
       pressures: pressures,
     );
@@ -257,7 +262,7 @@ void main() {
       (await _draw(
         tester,
         wobbly,
-        stabilization: 0,
+        stabilization: null,
         postStrength: 40,
         postBySpeed: true,
         step: step,
@@ -316,13 +321,13 @@ void main() {
     final kept = await _draw(
       tester,
       v,
-      stabilization: 0,
+      stabilization: null,
       postStrength: 100,
       sharpenCorners: true,
     );
     expect(nearest(kept.committed), lessThan(1.5));
 
-    final cut = await _draw(tester, v, stabilization: 0, postStrength: 100);
+    final cut = await _draw(tester, v, stabilization: null, postStrength: 100);
     expect(nearest(cut.committed), greaterThan(15));
   });
 
@@ -334,7 +339,7 @@ void main() {
           (await _draw(
             tester,
             wobbly,
-            stabilization: 0,
+            stabilization: null,
             postStrength: 10,
             postByViewScale: byView,
             zoom: zoom,
@@ -357,7 +362,7 @@ void main() {
       for (final dab in (await _draw(
         tester,
         wobbly,
-        stabilization: 0,
+        stabilization: null,
         postStrength: 40,
         scatter: 2,
         start: start,
@@ -390,7 +395,7 @@ double _reach(List<BrushDab> dabs) =>
 Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
   WidgetTester tester,
   List<Offset> hand, {
-  required double stabilization,
+  required double? stabilization,
   double postStrength = 0,
   bool postBySpeed = false,
   bool postByViewScale = true,
@@ -424,7 +429,8 @@ Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
               size: 4,
               scatterRadiusRatio: scatter,
               correction: BrushCorrection(
-                stabilization: stabilization,
+                steadies: stabilization != null,
+                stabilization: stabilization ?? 0,
                 postStrength: postStrength,
                 postBySpeed: postBySpeed,
                 postByViewScale: postByViewScale,

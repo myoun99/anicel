@@ -1057,9 +1057,9 @@ void main() {
     expect(result.presets.first.settings.antiAlias, BrushAntiAlias.none);
   });
 
-  test("손떨림 보정 comes in on our scale: Clip Studio's 0..100 is our "
-      '1..100 (F-418-Q6)', () async {
-    const expected = <int, double>{0: 1, 4: 4.96, 100: 100};
+  test("손떨림 보정 comes in as Clip Studio's own number, switched on "
+      '(유저 2026-10-20 「수치를 클튜랑 맞추고싶어서」)', () async {
+    const expected = <int, double>{0: 0, 4: 4, 100: 100};
     for (final entry in expected.entries) {
       final path = await buildFixture(
         tipPng: await blackPng(4, 4),
@@ -1073,6 +1073,11 @@ void main() {
         result.presets.first.settings.correction.stabilization,
         closeTo(entry.value, 1e-9),
         reason: 'FlickerReduction ${entry.key}',
+      );
+      expect(
+        result.presets.first.settings.correction.steadies,
+        isTrue,
+        reason: "Clip Studio's 0 still steadies",
       );
     }
   }, timeout: const Timeout(Duration(minutes: 2)));

@@ -698,8 +698,9 @@ final _cel = BitmapSurface(
   tileSize: 16,
 );
 
+/// [stabilizer] null: switched off.
 BrushEditCanvasInputSettings _brush({
-  double stabilizer = 0,
+  double? stabilizer,
   double postStrength = 0,
   BrushTipRotationMode rotation = BrushTipRotationMode.fixed,
 }) => BrushToolState.defaults
@@ -707,7 +708,8 @@ BrushEditCanvasInputSettings _brush({
       size: 6,
       roundness: 0.5,
       correction: BrushCorrection(
-        stabilization: stabilizer,
+        steadies: stabilizer != null,
+        stabilization: stabilizer ?? 0,
         postStrength: postStrength,
         postBySpeed: false,
       ),

@@ -1635,6 +1635,7 @@ enum AppStrings {
   String get brTipOrderOneLap => _s('brTipOrderOneLap');
   String get brTipOrderShuffledLap => _s('brTipOrderShuffledLap');
   String get brStabilizer => _s('brStabilizer');
+  String get brStabilizerOn => _s('brStabilizerOn');
   String get brStabilizerBySpeed => _s('brStabilizerBySpeed');
   String get brBySpeedSlow => _s('brBySpeedSlow');
   String get brBySpeedFast => _s('brBySpeedFast');
@@ -2799,6 +2800,7 @@ enum AppStrings {
     'brRenameTip': 'Rename tip',
     'brDeleteTip': 'Delete tip',
     'brStabilizer': 'Stabilizer',
+    'brStabilizerOn': 'Apply stabilizer',
     'brStabilizerBySpeed': 'By speed',
     'brBySpeedSlow': 'Slow',
     'brBySpeedFast': 'Fast',
@@ -4289,6 +4291,7 @@ enum AppStrings {
     'brRenameTip': '先端の名前を変更',
     'brDeleteTip': '先端を削除',
     'brStabilizer': '手ブレ補正',
+    'brStabilizerOn': '手ブレ補正を適用',
     'brStabilizerBySpeed': '速度で補正',
     'brBySpeedSlow': 'ゆっくり',
     'brBySpeedFast': 'すばやく',
@@ -5877,6 +5880,7 @@ enum AppStrings {
     'brRenameTip': '끝 이름 변경',
     'brDeleteTip': '끝 삭제',
     'brStabilizer': '손떨림 보정',
+    'brStabilizerOn': '손떨림 보정 적용',
     'brStabilizerBySpeed': '속도에 따라',
     'brBySpeedSlow': '느릴 때',
     'brBySpeedFast': '빠를 때',
@@ -7608,6 +7612,7 @@ enum AppStrings {
     'brRenameTip': 'Renommer la pointe',
     'brDeleteTip': 'Supprimer la pointe',
     'brStabilizer': 'Stabilisateur',
+    'brStabilizerOn': 'Appliquer le stabilisateur',
     'brStabilizerBySpeed': 'Selon la vitesse',
     'brBySpeedSlow': 'Lent',
     'brBySpeedFast': 'Rapide',
@@ -9134,6 +9139,7 @@ enum AppStrings {
     'brRenameTip': '重命名笔尖',
     'brDeleteTip': '删除笔尖',
     'brStabilizer': '防抖',
+    'brStabilizerOn': '应用防抖',
     'brStabilizerBySpeed': '按速度',
     'brBySpeedSlow': '慢',
     'brBySpeedFast': '快',

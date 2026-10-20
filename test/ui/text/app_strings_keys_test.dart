@@ -772,6 +772,7 @@ void main() {
     'brRoundness': (s) => s.brRoundness,
     'brScale': (s) => s.brScale,
     'brStabilizer': (s) => s.brStabilizer,
+    'brStabilizerOn': (s) => s.brStabilizerOn,
     'brStabilizerBySpeed': (s) => s.brStabilizerBySpeed,
     'brBySpeedSlow': (s) => s.brBySpeedSlow,
     'brBySpeedFast': (s) => s.brBySpeedFast,
