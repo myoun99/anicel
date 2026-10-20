@@ -704,8 +704,8 @@ void main() {
     expect(anchors, [CanvasPoint(x: 290, y: 140)]);
   });
 
-  testWidgets('a box that does not scale has no corners to grab — an SE '
-      'tag\'s: the press on its corner is the move', (tester) async {
+  testWidgets('a box that does not scale has no corners to grab: the press '
+      'on its corner is the move', (tester) async {
     final moves = <CanvasPoint>[];
     await pumpBox(tester, box(moves: moves));
 
