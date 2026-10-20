@@ -400,7 +400,10 @@ class TimelineLegendMenus {
   );
 
   /// The onion column's flyout (UI-R17 #5) — only where the host wires the
-  /// sweep: the storyboard's rail carries no onion column.
+  /// sweep. The storyboard's does not: the sweep is the open cut's drawing
+  /// rows, which its rail does not show, and 「공통으로 안되는건 애초에
+  /// 콘티패널에 버튼두지않음」 (I-89-Q22) — its heading stands over its conte
+  /// rows' onions, as the x-sheet's does over its own.
   LegendFlyout? get onion {
     final legend = this.legend;
     final toggle = legend?.onToggleOnionSkinForDisplayed;

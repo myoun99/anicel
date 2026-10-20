@@ -1052,6 +1052,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // this rail too — the same session verb.
                     onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
                     layerOnTimesheetOf: _session.layerSwitches.isLayerOnTimesheet,
+                    // The conte rows' onion (I-89-Q22), the timeline's verb:
+                    // one for the track's cuts, as the session reads it.
+                    onToggleLayerOnionSkin: _rowPresses.toggleOnionSkin,
+                    layerOnionSkinEnabledOf:
+                        _session.onionSkin.isLayerOnionSkinEnabled,
                     layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
                     layerLanesOpenOf: _session.layerSwitches.isLayerLanesOpen,
                     layerFxStateOf: _session.effectsAndFx.layerFxState,

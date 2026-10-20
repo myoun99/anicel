@@ -573,6 +573,21 @@ void main() {
       final relaid = write(read);
       expect(identical(relaid, read), isTrue);
     });
+
+    test('off the sheet, reads back off it — the head\'s, not the rows\' '
+        '(I-89-Q22)', () {
+      final laid = write(
+        trackOf([
+          cutOf('a', [conte('a').copyWith(onTimesheet: false)]),
+          cutOf('b', [conte('b').copyWith(onTimesheet: false)]),
+        ]),
+      );
+      expect(laid.conte.base?.onTimesheet, isFalse, reason: '⛔전제');
+
+      final read = Track.fromJson(laid.toJson());
+
+      expect(read.conte.base?.onTimesheet, isFalse);
+    });
   });
 
   test('a row it gives takes the next free id when the cut holds one with '

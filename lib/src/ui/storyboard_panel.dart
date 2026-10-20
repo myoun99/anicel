@@ -653,6 +653,8 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerMarkSelected,
     this.onToggleLayerTimesheet,
     this.layerOnTimesheetOf,
+    this.onToggleLayerOnionSkin,
+    this.layerOnionSkinEnabledOf,
     this.layerEyeOnOf,
     this.layerLanesOpenOf,
     this.layerFxStateOf,
@@ -741,9 +743,10 @@ class StoryboardPanel extends StatefulWidget {
   //
   // ⛔ NOT `timelineLayerControlsWidth`, deliberately. The user asked for
   // the same NUMBER and explicitly NOT for one source: "다만 코드상 독립.
-  // 하나 바꾼다고 다른게 바뀌지않도록." The two rails carry different
-  // columns — this one had no blend cell, and has no onion — so the day
-  // either needs a new one, the other must be free to stay put. The
+  // 하나 바꾼다고 다른게 바뀌지않도록." The two rails carried different
+  // columns — this one had no blend cell and no onion, both of which came
+  // later (I-73, I-89-Q22) — so the day either needs a new one, the other
+  // must be free to stay put. The
   // repetition is the point; do not "clean it up" into a shared constant.
   //
   // 434 → 443 (text-scale-rail-opac, 유저 2026-09-25): the opacity column
@@ -767,14 +770,20 @@ class StoryboardPanel extends StatefulWidget {
   // 519 → 461 (F-409, 유저 2026-10-19): the timeline's names went to two
   // thirds, and 「이런 개선들은 말 안해도 콘티패널이랑 법 통일」 — the same
   // number again.
+  //
+  // 2026-10-20 (I-89-Q22): the day came for the ONION cell — 「어니언도
+  // 콘티행 기본적으로 버튼 글로벌이니까 넣음」. The number stays again, and
+  // the room comes out of the name, which is now the timeline's to the
+  // pixel: the two rails carry the same columns.
   static const double _trackLabelWidth = 461;
 
   /// Which optional columns this rail's rows keep — the host's answer every
-  /// row and the legend above them read ([layerRailTrailingCells]): a BLEND
-  /// slot after the opacity's, which a row with no blend to show reserves,
-  /// empty, as it does every column it has nothing in; and no onion.
+  /// row and the legend above them read ([layerRailTrailingCells]): an
+  /// ONION slot (I-89-Q22 — a conte row's, one for the track's cuts) and a
+  /// BLEND slot after the opacity's, which a row with nothing to show in
+  /// them reserves, empty, as it does every column it has nothing in.
   static const LayerRailOptionalColumns optionalRailColumns = (
-    onion: false,
+    onion: true,
     blend: true,
   );
 
@@ -1256,6 +1265,15 @@ class StoryboardPanel extends StatefulWidget {
   /// last frame had, and the sweep would spread the opposite of what the
   /// press just set.
   final bool Function(LayerId layerId)? layerOnTimesheetOf;
+
+  /// The timeline rows' onion on this rail's rows — the SAME session verb
+  /// the timeline wires. Only a conte row's kind ghosts, and its onion is
+  /// its head's, one for the track's cuts (🗣️I-89-Q22, 유저 2026-10-19:
+  /// 「어니언도 콘티행 기본적으로 버튼 글로벌이니까 넣음」).
+  final ValueChanged<LayerId>? onToggleLayerOnionSkin;
+
+  /// A LIVE read of a row's onion — see [layerOnTimesheetOf].
+  final bool Function(LayerId layerId)? layerOnionSkinEnabledOf;
 
   /// A LIVE read of a layer’s own eye — see [layerOnTimesheetOf].
   final bool Function(LayerId layerId)? layerEyeOnOf;
@@ -3258,6 +3276,8 @@ class _StoryboardRailHead extends KeptPiece {
     this.onLayerOpacityChanged,
     this.onLayerMarkSelected,
     this.onToggleLayerTimesheet,
+    this.onToggleLayerOnionSkin,
+    this.onionSkinEnabled = false,
     this.onOpenLayerMixer,
     this.soloed = false,
     this.onLayerBlendModeSelected,
@@ -3313,10 +3333,20 @@ class _StoryboardRailHead extends KeptPiece {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
   final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
 
-  /// The sheet toggle — the track's own rows' so far: a head is one row for
-  /// every cut while the flag is each cut's own, and which of the two a
-  /// head's toggle writes is the user's to say (I-89-Q22).
+  /// The sheet toggle, where the row is handed one
+  /// ([_StoryboardRailSweep.handsSheetToggle]): a conte row's writes its
+  /// head's flag, one for every cut ([ConteHead.onTimesheet]).
+  /// ↩️The track's own rows' alone until I-89-Q22 made the flag the
+  /// head's.
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
+
+  /// The onion toggle and whether the row ghosts — a conte row's for every
+  /// cut, as its onion is one (`OnionSkin.isLayerOnionSkinEnabled`, I-89-Q22).
+  /// Its column stands on every row of this rail
+  /// ([StoryboardPanel.optionalRailColumns]); a row whose kind cannot ghost
+  /// keeps its slot empty.
+  final ValueChanged<LayerId>? onToggleLayerOnionSkin;
+  final bool onionSkinEnabled;
 
   /// An S row's speaker, opening its mixer under itself, and whether the
   /// row is soloed (the speaker's accent).
@@ -3365,6 +3395,8 @@ class _StoryboardRailHead extends KeptPiece {
     onLayerOpacityChangeEnd != null,
     onLayerMarkSelected != null,
     onToggleLayerTimesheet != null,
+    onToggleLayerOnionSkin != null,
+    onionSkinEnabled,
     onOpenLayerMixer != null,
     soloed,
     onLayerBlendModeSelected != null,
@@ -3414,6 +3446,10 @@ class _StoryboardRailHead extends KeptPiece {
       onToggleLayerTimesheet: toggleSheet == null
           ? null
           : (_) => toggleSheet(rowId),
+      // Handed whatever the host wired: the column is this rail's, so a
+      // head stands it as every other row does.
+      onToggleLayerOnionSkin: (_) => onToggleLayerOnionSkin?.call(rowId),
+      onionSkinEnabled: onionSkinEnabled,
       onOpenLayerMixer: openMixer == null
           ? null
           : (anchorContext, _) => openMixer(anchorContext, rowId),

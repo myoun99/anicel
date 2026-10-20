@@ -25,8 +25,13 @@ export 'conte_key.dart';
 /// each is filed in, and the head each one wears ([ConteHead]) — is the
 /// track's, written here once. What a cut's conte keeps of its own is what
 /// its rows HOLD: their panels and pictures, the values and keys of their
-/// fx, whether they print on its timesheet. A row says which row of this it
-/// is by its [Layer.conteKey].
+/// fx. A row says which row of this it is by its [Layer.conteKey].
+///
+/// ↩️Whether a row prints on its cut's timesheet was each cut's own too,
+/// until the conte panel's head took the sheet switch: 🗣️I-89-Q22 (유저
+/// 2026-10-19): 「공통으로 안되는건 애초에 콘티패널에 버튼두지않음 … 콘티행은
+/// 그런부분 글로벌이니까 아니면 글로벌시키고 넣고 머리로 하나」 — the head
+/// wears it ([ConteHead.onTimesheet]).
 ///
 /// Every write of the project lays each cut's conte group from this
 /// (`trackWithItsConteLaid`), so two cuts cannot show two shapes — whatever
@@ -191,7 +196,8 @@ final class ConteEntry {
 /// group's fold, its lanes' twirl and the lane groups open in them. The fx
 /// are worn as a SHAPE — which effects, in what order, each on or off
 /// ([effectChainWithSharedShape]); their numbers stay each row's own
-/// (「칸 — 칸의 자리와 길이, fx 의 값과 키 — 컷마다」).
+/// (「칸 — 칸의 자리와 길이, fx 의 값과 키 — 컷마다」). And whether the row
+/// prints on the timesheet ([onTimesheet], I-89-Q22).
 final class ConteHead {
   const ConteHead({
     required this.name,
@@ -199,6 +205,7 @@ final class ConteHead {
     this.blendMode = LayerBlendMode.normal,
     this.opacity = 1.0,
     this.isVisible = true,
+    this.onTimesheet = true,
     this.transformEnabled = true,
     this.effects = const [],
     this.collapsed = false,
@@ -213,6 +220,7 @@ final class ConteHead {
     blendMode: layer.blendMode,
     opacity: layer.opacity,
     isVisible: layer.isVisible,
+    onTimesheet: layer.onTimesheet,
     transformEnabled: layer.transformEnabled,
     effects: layer.effects,
     collapsed: layer.collapsed,
@@ -225,6 +233,12 @@ final class ConteHead {
   final LayerBlendMode blendMode;
   final double opacity;
   final bool isVisible;
+
+  /// Whether the row prints on its cut's timesheet — ONE for every cut of
+  /// the track, as the conte panel's head draws it once (🗣️I-89-Q22, 유저
+  /// 2026-10-19: 「콘티행은 그런부분 글로벌이니까 아니면 글로벌시키고 넣고
+  /// 머리로 하나」). ↩️Each cut's own until then.
+  final bool onTimesheet;
   final bool transformEnabled;
 
   /// The chain whose SHAPE is worn — its numbers are whichever row's gave
@@ -241,6 +255,7 @@ final class ConteHead {
       row.blendMode == blendMode &&
       row.opacity == opacity &&
       row.isVisible == isVisible &&
+      row.onTimesheet == onTimesheet &&
       row.transformEnabled == transformEnabled &&
       row.collapsed == collapsed &&
       row.lanesExpanded == lanesExpanded &&
@@ -257,6 +272,7 @@ final class ConteHead {
           blendMode: blendMode,
           opacity: opacity,
           isVisible: isVisible,
+          onTimesheet: onTimesheet,
           transformEnabled: transformEnabled,
           effects: effectChainWithSharedShape(effects, onto: row.effects),
           collapsed: collapsed,
@@ -275,6 +291,7 @@ final class ConteHead {
       blendMode: changed((layer) => layer.blendMode, blendMode),
       opacity: changed((layer) => layer.opacity, opacity),
       isVisible: changed((layer) => layer.isVisible, isVisible),
+      onTimesheet: changed((layer) => layer.onTimesheet, onTimesheet),
       transformEnabled: changed(
         (layer) => layer.transformEnabled,
         transformEnabled,
@@ -298,6 +315,7 @@ final class ConteHead {
     if (blendMode != LayerBlendMode.normal) 'blendMode': blendMode.toJson(),
     if (opacity != 1.0) 'opacity': opacity,
     if (!isVisible) 'isVisible': false,
+    if (!onTimesheet) 'onTimesheet': false,
     if (!transformEnabled) 'transformEnabled': false,
     if (effects.isNotEmpty)
       'effects': [for (final effect in effects) effect.toJson()],
@@ -315,6 +333,7 @@ final class ConteHead {
     blendMode: LayerBlendMode.fromJson(json['blendMode']),
     opacity: (json['opacity'] as num?)?.toDouble() ?? 1.0,
     isVisible: json['isVisible'] as bool? ?? true,
+    onTimesheet: json['onTimesheet'] as bool? ?? true,
     transformEnabled: json['transformEnabled'] as bool? ?? true,
     effects: [
       for (final effect in json['effects'] as List<dynamic>? ?? const [])
@@ -338,6 +357,7 @@ final class ConteHead {
           other.blendMode == blendMode &&
           other.opacity == opacity &&
           other.isVisible == isVisible &&
+          other.onTimesheet == onTimesheet &&
           other.transformEnabled == transformEnabled &&
           listEquals(other.effects, effects) &&
           other.collapsed == collapsed &&
@@ -351,6 +371,7 @@ final class ConteHead {
     blendMode,
     opacity,
     isVisible,
+    onTimesheet,
     transformEnabled,
     Object.hashAll(effects),
     collapsed,

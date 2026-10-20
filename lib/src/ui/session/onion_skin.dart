@@ -1,14 +1,16 @@
 import 'package:flutter/foundation.dart';
 
-import '../../core/set_toggle.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/onion_skin_settings.dart';
+import '../../models/project.dart';
 import '../canvas/canvas_layer_stack_view.dart';
+import '../../services/commands/link_mirror.dart' show conteHeadTargets;
 import '../../services/onion_skin_plan.dart';
+import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, celPixelsRowOf, cutShowingDragPreview;
 import 'active_cut_controllers.dart';
@@ -68,13 +70,68 @@ class OnionSkin {
     layerIds.dispose();
   }
 
+  /// Whether [layerId]'s ghosts composite — its own entry in [layerIds],
+  /// or one of the rows its onion is one with ([_onionRowsOf]).
   bool isLayerOnionSkinEnabled(LayerId layerId) =>
-      layerIds.value.contains(layerId);
+      _ghosting.contains(layerId);
+
+  /// The rows whose onion is ONE with [layerId]'s: a row of its track's
+  /// conte, the rows at its place of the conte in every cut of the track
+  /// ([conteHeadTargets]); any other row, itself alone.
+  ///
+  /// 🗣️I-89-Q22 (유저 2026-10-19): 「어니언도 콘티행 기본적으로 버튼
+  /// 글로벌이니까 넣음」 — the conte panel draws the row once for every cut,
+  /// and its onion with it. ⛔Not a set written once per cut: a conte born
+  /// into a cut afterwards wears the row's onion as it wears its head,
+  /// because the set is READ through the row ([_ghosting]).
+  List<LayerId> _onionRowsOf(LayerId layerId) =>
+      switch (conteHeadTargets(_project.repository.requireProject(), layerId)) {
+        [] => [layerId],
+        final rows => [for (final row in rows) row.layerId],
+      };
+
+  /// [layerIds] with every row whose onion is one with an entry of it
+  /// ([_onionRowsOf]) — what ghosts — read again only when the set or the
+  /// project is another one: the walk is the track's cuts, and the rail and
+  /// the canvas ask it of every row they draw.
+  Set<LayerId> get _ghosting {
+    final ids = layerIds.value;
+    if (ids.isEmpty) {
+      return ids;
+    }
+    final project = _project.repository.requireProject();
+    final read = _ghostingRead;
+    if (read != null &&
+        identical(read.ids, ids) &&
+        identical(read.project, project)) {
+      return read.rows;
+    }
+    final rows = {for (final id in ids) ..._onionRowsOf(id)};
+    _ghostingRead = (ids: ids, project: project, rows: rows);
+    return rows;
+  }
+
+  ({Set<LayerId> ids, Project project, Set<LayerId> rows})? _ghostingRead;
+
+  /// [next] with [layerId]'s onion set to [on]: on, the row's own entry;
+  /// off, every row its onion is one with, whichever of them holds it.
+  Set<LayerId> _withOnion(Set<LayerId> next, LayerId layerId, bool on) {
+    if (on) {
+      return {...next, layerId};
+    }
+    return next.difference(_onionRowsOf(layerId).toSet());
+  }
 
   void toggleLayerOnionSkin(LayerId layerId) {
     // F-145: the verb refuses a row that cannot ghost, so no door — a button,
     // a key, a sweep — has to remember to ([LayerKind.takesOnionSkin]).
-    if (_project.layerById(layerId)?.kind.takesOnionSkin != true) {
+    //
+    // The row is found ANYWHERE: the conte panel's head is pressed wherever
+    // the session stands, on the conte of a cut that is not the one stood in
+    // (I-89-Q22). ↩️It was looked for in the active cut alone, and that press
+    // was refused.
+    final project = _project.repository.requireProject();
+    if (layerAnywhereOrNull(project, layerId)?.kind.takesOnionSkin != true) {
       return;
     }
     // 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). ⛔I
@@ -89,7 +146,11 @@ class OnionSkin {
     // it shows the drawing, it is not an edit of it, so a Ctrl+Z after a
     // stroke takes the stroke back and leaves the ghosts alone. The other
     // row buttons of 08-29 — the eye, the opacity, the twirl — stay undoable.
-    layerIds.value = toggledSet(layerIds.value, layerId);
+    layerIds.value = _withOnion(
+      layerIds.value,
+      layerId,
+      !isLayerOnionSkinEnabled(layerId),
+    );
     // Row/legend toggle glyphs read through the session listenable.
     _changes.notifyChanged();
   }
@@ -133,13 +194,9 @@ class OnionSkin {
     // ↩️F-162 (유저 2026-09-24): the onion left the undo history, the row
     // toggle and this sweep together — one law for the one bit. The sweep
     // writes the set directly again, now on purpose.
-    final next = Set<LayerId>.of(layerIds.value);
+    var next = layerIds.value;
     for (final layer in targets) {
-      if (enable) {
-        next.add(layer.id);
-      } else {
-        next.remove(layer.id);
-      }
+      next = _withOnion(next, layer.id, enable);
     }
     layerIds.value = next;
     _changes.notifyChanged();
@@ -183,7 +240,7 @@ class OnionSkin {
   List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
     final pegs = settings.value;
     final committed = _project.activeCutOrNull;
-    final enabledIds = layerIds.value;
+    final enabledIds = _ghosting;
     if (committed == null || enabledIds.isEmpty) {
       return const [];
     }

@@ -86,8 +86,8 @@ class _StoryboardRailSweep {
       optionalColumns: StoryboardPanel.optionalRailColumns,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
       layerEyeOnOf: _readHeld(widget.layerEyeOnOf),
-      onToggleLayerOnionSkin: null,
-      layerOnionSkinEnabledOf: null,
+      onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
+      layerOnionSkinEnabledOf: _readHeld(widget.layerOnionSkinEnabledOf),
       onToggleLayerFx:
           widget.onToggleLayerFx == null && widget.onToggleTrackFx == null
           ? null
@@ -134,12 +134,13 @@ class _StoryboardRailSweep {
 
   /// Whether [rowId]'s row is handed the sheet toggle — what its label
   /// mounts the toggle by and the sweep paints by: every row its kind
-  /// gives one, but the V row, whose subject is its TRACK, and a
-  /// projection head — the camera's a record of its cut's own
-  /// (I-89-Q22: 「시트토글은 카메라는 로컬기록이니까 없음」), the conte row's
-  /// not yet the track's (Q22: 「글로벌시키고 넣고」).
+  /// gives one, but the V row, whose subject is its TRACK, and the camera
+  /// row, whose flag is a record of its cut's own (🗣️I-89-Q22, 유저
+  /// 2026-10-19: 「시트토글은 카메라는 로컬기록이니까 없음」). The conte rows
+  /// take it: their flag is their head's, one for the track's cuts
+  /// ([ConteHead.onTimesheet] — Q22: 「글로벌시키고 넣고 머리로 하나」).
   bool handsSheetToggle(LayerId rowId) =>
-      !_carriesATrack(rowId) && trackIdOfProjectionRow(rowId) == null;
+      !_carriesATrack(rowId) && trackIdOfCameraRow(rowId) == null;
 
   /// The layer [rowId]'s row wears — a projection row's in hand, every
   /// other row's its own — which the host reads its flags off.

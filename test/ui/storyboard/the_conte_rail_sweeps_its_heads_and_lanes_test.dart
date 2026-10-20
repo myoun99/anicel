@@ -21,9 +21,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphsView;
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_twirls.dart';
@@ -463,17 +465,27 @@ void main() {
     );
   });
 
-  testWidgets('⛔the SHEET column passes the projection heads by — they are '
-      'handed no toggle (I-89-Q22)', (tester) async {
+  testWidgets('⛔the SHEET column passes the camera head by — it is handed no '
+      'toggle — and turns the conte head\'s, one for the track\'s cuts '
+      '(I-89-Q22)', (tester) async {
     final session = await pump(tester);
-    for (final head in ['a-cam', 'a-conte']) {
-      expect(
-        find.named('storyboard-layer-timesheet-$head'),
-        findsNothing,
-        reason: '「시트토글은 카메라는 로컬기록이니까 없음」',
-      );
-    }
-    final sheeted = [transitionOf(session), 'a-cam', 't2-s1', 'a-conte'];
+    expect(
+      find.named('storyboard-layer-timesheet-a-cam'),
+      findsNothing,
+      reason: '「시트토글은 카메라는 로컬기록이니까 없음」',
+    );
+    expect(
+      find.named('storyboard-layer-timesheet-a-conte'),
+      findsOneWidget,
+      reason: '「콘티행은 그런부분 글로벌이니까 아니면 글로벌시키고 넣고 머리로 하나」',
+    );
+    final sheeted = [
+      transitionOf(session),
+      'a-cam',
+      't2-s1',
+      'a-conte',
+      'b-conte',
+    ];
     expect(
       [for (final id in sheeted) row(session, id).onTimesheet],
       everyElement(isTrue),
@@ -495,10 +507,53 @@ void main() {
 
     expect(
       [for (final id in sheeted) row(session, id).onTimesheet],
-      [false, true, false, true],
+      [false, true, false, false, false],
       reason:
-          'the presses\' rows and the transition row went off the sheet; '
-          'the heads the strokes crossed kept theirs',
+          'the presses\' rows and the transition row went off the sheet, '
+          'and the conte head — every cut\'s conte with it; the camera head '
+          'the first stroke crossed kept its',
     );
+  });
+
+  testWidgets('🚨the ONION column turns the conte head\'s onion — every cut\'s '
+      'conte ghosts — and the conte head\'s own button does too '
+      '(I-89-Q22)', (tester) async {
+    final session = await pump(tester);
+    bool ghosts(String id) =>
+        session.onionSkin.isLayerOnionSkinEnabled(LayerId(id));
+    expect(
+      find.named('storyboard-layer-onion-a-cam'),
+      findsNothing,
+      reason: 'a camera cannot ghost: its slot stays empty',
+    );
+
+    String onionTip() => tester
+        .widget<RailGlyphButton>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is RailGlyphButton &&
+                widget.name == 'storyboard-layer-onion-a-conte',
+          ),
+        )
+        .tooltip;
+    expect(onionTip(), AppText.strings.railOnionSkin, reason: '⛔전제');
+
+    await tap(tester, 'storyboard-layer-onion-a-conte');
+    expect(
+      [ghosts('a-conte'), ghosts('b-conte')],
+      [true, true],
+      reason: '「어니언도 콘티행 기본적으로 버튼 글로벌이니까 넣음」',
+    );
+    expect(onionTip(), AppText.strings.railOnionSkinOn, reason: 'it lights');
+
+    // Down from the conte head's onion over the S row and the V row: the
+    // press turns it off, and nothing it crossed can ghost.
+    await sweep(
+      tester,
+      'storyboard-layer-onion-a-conte',
+      'storyboard-layer-visibility-t1-s1',
+    );
+    expect([ghosts('a-conte'), ghosts('b-conte')], [false, false]);
+    expect(session.onionSkin.layerIds.value, isEmpty);
   });
 }

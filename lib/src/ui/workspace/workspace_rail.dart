@@ -125,7 +125,7 @@ class _WorkspaceRail {
           // thing the `O` action toggles, not the legend's bulk sweep.
           onionOn:
               layer != null &&
-              session.onionSkin.layerIds.value.contains(layer.id),
+              session.onionSkin.isLayerOnionSkinEnabled(layer.id),
           canToggleOnion: session.onionSkin.canToggleOnionSkin,
           hasMarquee: selection?.hasRegion ?? false,
           canConfirm: confirm?.canConfirm ?? false,

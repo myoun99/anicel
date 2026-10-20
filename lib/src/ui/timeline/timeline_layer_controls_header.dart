@@ -544,9 +544,9 @@ class TimelineLayerControlsHeader extends KeptPiece {
                     fillReference: _buildFillReference(menus, restColor),
                     fx: _buildFx(context, menus),
                     // Onion legend (UI-R17 #5): bulk apply/clear over the
-                    // displayed layers + the panel reveal. Hosts without
-                    // the callback (storyboard rail) skip the COLUMN so
-                    // their row columns stay aligned.
+                    // displayed layers + the panel reveal. A host that
+                    // carries no onion column skips the CELL so its row
+                    // columns stay aligned.
                     //
                     // The HEADING follows the COLUMN, and only the flyout
                     // follows the callbacks. It used to be the other way

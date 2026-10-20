@@ -497,7 +497,8 @@ enum LayerRailTrailingSlot {
 /// Which of the rail's OPTIONAL columns a HOST carries — its answer, as
 /// distinct from a row that merely has nothing to put in one: a null cell
 /// reserves its slot, a column the host does not carry is not there at all
-/// (the storyboard rail carries no onion).
+/// (a timeline host that hands no onion verb carries no onion). ↩️The
+/// storyboard rail carried none until I-89-Q22.
 ///
 /// ONE answer to every question asked of the run — the cells a row lays
 /// out, what the run costs, where a swipe finds a column, how tall the
