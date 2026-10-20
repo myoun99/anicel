@@ -215,13 +215,20 @@ class _Keyboard {
 
   final int view;
   _Held _atD = (logical: const {}, physical: const {});
+  final _wentUp = <PhysicalKeyboardKey>{};
 
   bool _note(KeyEvent event) {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.keyD) {
       _atD = _record();
     }
+    if (event is KeyUpEvent) {
+      _wentUp.add(event.physicalKey);
+    }
     return false;
   }
+
+  /// Whether [key] has gone up since the last modifier went [down].
+  bool wentUp(PhysicalKeyboardKey key) => _wentUp.contains(key);
 
   Future<void> send(int message, int key, int lparam) async {
     _sendMessage(view, message, key, lparam);
@@ -236,6 +243,7 @@ class _Keyboard {
   }
 
   Future<void> down(_Modifier modifier) async {
+    _wentUp.clear();
     _windowsHolds(modifier.heldAs);
     await send(
       modifier.downMessage,
@@ -287,8 +295,8 @@ String _shapeName(_Shape shape) =>
 Future<List<String>> _cases(_Keyboard keys) async {
   final lines = <String>[];
 
-  /// Held: the record names [modifier] and holds its own key. Let go of:
-  /// the record names it no more.
+  /// Held: the record names [modifier] and holds its own key, which has
+  /// not gone up meanwhile. Let go of: the record names it no more.
   void expectHeld(
     String name,
     _Modifier modifier,
@@ -296,10 +304,14 @@ Future<List<String>> _cases(_Keyboard keys) async {
     required bool isHeld,
   }) {
     final named = held.logical.any(modifier.named.contains);
+    final wentUp = keys.wentUp(modifier.physical);
     final passed = isHeld
-        ? named && held.physical.contains(modifier.physical)
+        ? named && held.physical.contains(modifier.physical) && !wentUp
         : !named;
-    lines.add('${passed ? 'PASS' : 'FAIL'} $name: ${_shown(held)}');
+    lines.add(
+      '${passed ? 'PASS' : 'FAIL'} $name: ${_shown(held)}'
+      '${isHeld && wentUp ? ' — its key went up meanwhile' : ''}',
+    );
   }
 
   final shift = _rightShift;
