@@ -24,55 +24,82 @@ void main() {
   testWidgets('a size drag the late finger holds lands on the rack', (
     tester,
   ) async {
-    // The engine stands down while one finger draws — the corpus baseline.
-    AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
-      touchDragOneFinger: CanvasTouchDragAction.flip,
-    );
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
-    final brushTool = ValueNotifier<BrushToolState>(
-      BrushToolState.defaults.withActiveSize(10),
-    );
-    final cameraView = ValueNotifier<bool>(false);
-    final cameraDim = ValueNotifier<double>(0.5);
-    addTearDown(brushTool.dispose);
-    addTearDown(cameraView.dispose);
-    addTearDown(cameraDim.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: EditorCanvasArea(
-            session: session,
-            brushToolState: brushTool,
-            onBrushToolStateChanged: (next) => brushTool.value = next,
-            cameraViewEnabled: cameraView,
-            cameraDimOpacity: cameraDim,
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final fingers = await fingersDown(tester, const [
-      Offset(300, 300),
-      Offset(360, 300),
-      Offset(420, 300),
-    ]);
-    // The lock batch: the drag starts here.
-    await batch(tester, moveAll(fingers, const Offset(0, -30)));
-    final late = TestPointer(9, PointerDeviceKind.touch);
-    await tester.sendEventToBinding(late.down(const Offset(600, 450)));
-    await tester.pump();
-    await batch(tester, moveAll(fingers, const Offset(0, -30)));
+    final size = await sizeAfterAHeldDrag(tester, from: 10, upward: 30);
 
     // 10 × 2^(30/120) ≈ 11.9, which the rack holds as 12 — not the 11.9 the
     // drag made, and not the 8 of the ladder the settings kept.
     expect(ToolSizePresetPanel.presets, contains(12));
-    expect(brushTool.value.activeSize, 12);
-
-    await tester.sendEventToBinding(late.up());
-    await liftAll(tester, fingers);
+    expect(size, 12);
   });
+
+  // 🗣️size-rack-0-7-under-the-brush-floor (유저 2026-10-12 · 10-17): a brush
+  // reaches a tenth of a pixel, so a snap under one is a size as well.
+  // ↩️That was pinned on the settings' size snap list, written 「0.5」 and not
+  // 「1」 — the list went with F-391, and the rack it reads now holds 0.7.
+  testWidgets('a held drag lands on the rack under a pixel too', (
+    tester,
+  ) async {
+    final size = await sizeAfterAHeldDrag(tester, from: 1, upward: -60);
+
+    // 1 × 2^(-60/120) ≈ 0.71, which the rack holds as 0.7 — not a pixel.
+    expect(ToolSizePresetPanel.presets, contains(0.7));
+    expect(size, 0.7);
+  });
+}
+
+/// The brush size after the canvas's three-finger size drag moves [upward]
+/// pixels from [from] while a late finger holds it — the hold that snaps.
+Future<double> sizeAfterAHeldDrag(
+  WidgetTester tester, {
+  required double from,
+  required double upward,
+}) async {
+  // The engine stands down while one finger draws — the corpus baseline.
+  AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+    touchDragOneFinger: CanvasTouchDragAction.flip,
+  );
+  final session = EditorSessionManager(
+    initialProject: createDefaultProject(),
+  );
+  addTearDown(session.dispose);
+  final brushTool = ValueNotifier<BrushToolState>(
+    BrushToolState.defaults.withActiveSize(from),
+  );
+  final cameraView = ValueNotifier<bool>(false);
+  final cameraDim = ValueNotifier<double>(0.5);
+  addTearDown(brushTool.dispose);
+  addTearDown(cameraView.dispose);
+  addTearDown(cameraDim.dispose);
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: EditorCanvasArea(
+          session: session,
+          brushToolState: brushTool,
+          onBrushToolStateChanged: (next) => brushTool.value = next,
+          cameraViewEnabled: cameraView,
+          cameraDimOpacity: cameraDim,
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+
+  final fingers = await fingersDown(tester, const [
+    Offset(300, 300),
+    Offset(360, 300),
+    Offset(420, 300),
+  ]);
+  // The lock batch: the drag starts here, the way it goes.
+  final way = Offset(0, -30 * upward.sign);
+  await batch(tester, moveAll(fingers, way));
+  final late = TestPointer(9, PointerDeviceKind.touch);
+  await tester.sendEventToBinding(late.down(const Offset(600, 450)));
+  await tester.pump();
+  await batch(tester, moveAll(fingers, Offset(0, -upward)));
+  final size = brushTool.value.activeSize;
+
+  await tester.sendEventToBinding(late.up());
+  await liftAll(tester, fingers);
+  return size;
 }

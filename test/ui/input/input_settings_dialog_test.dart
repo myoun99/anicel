@@ -401,25 +401,4 @@ void main() {
     expect(AppInput.settings.value.strokeFingerModifier, isTrue);
     expect(AppInput.settings.value.extraFingerModifier, navigation);
   });
-
-  // 🗣️size-rack-0-7-under-the-brush-floor (유저 2026-10-12 · 10-17): a brush
-  // reaches a tenth of a pixel, so a snap under one is a size as well.
-  testWidgets('a size snap under a pixel reads as itself, not a whole '
-      'pixel', (tester) async {
-    AppInput.settings.value = AppInput.settings.value.copyWith(
-      brushSizeSnaps: const [0.5, 2, 4],
-    );
-    await pumpDialog(tester);
-
-    expect(
-      tester
-          .widget<TextField>(
-            find.byKey(const ValueKey<String>('settings-snap-size')),
-          )
-          .controller!
-          .text,
-      '0.5, 2, 4',
-      reason: '↩️0.5 was written 「1」 — every snap rounded to a pixel',
-    );
-  });
 }
