@@ -220,6 +220,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   // #844's point survives on that channel: the labels subscribe, and a
   // committed seek repaints those cells instead of rebuilding the panel.
 
+  /// F-357: the unworked-block tint's fact for the conte row, which crosses
+  /// every cut — and its event, bound once like the timeline host's
+  /// (a fresh record per build would re-subscribe the row's painter).
+  late final ConteCelContent _conteCelContent = (
+    holdsAPicture: _session.layerStack.celHoldsAPicture,
+    revision: _session.layerStack.celTintRevision,
+  );
+
   /// Whatever can change a frame's cached-ness — warm progress AND pixel
   /// edits (composites self-validate by signature, so an edit raises no
   /// event of its own). The ruler's green bar repaints off this; the
@@ -665,6 +673,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     laneGraphsNow: () => _session.railView.laneGraphs.value,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                     dragPreview: _session.dragPreview,
+                    conteCelContent: _conteCelContent,
                     // ↩️While playing, this named the PLAYING cut and the
                     // stop caught the active cut up; a run's crossing lands
                     // the cut it reaches since I-57 ②, so they are one.

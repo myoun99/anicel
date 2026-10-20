@@ -240,6 +240,39 @@ void main() {
       expect(s.layerStack.celHasContentForLayer(camera, 0), isTrue);
     });
 
+    test('F-357: a cut the editor is NOT on answers by its own pixels — '
+        'and the pen down on the active cut counts only there', () {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.createDrawingAtCurrentFrame();
+      final away = s.activeCutOrNull!;
+      final row = s.activeLayer!.id;
+      final cel = s.activeLayer!.frames.single.id;
+      s.cutVerbs.createCut();
+      expect(s.activeCutOrNull!.id, isNot(away.id), reason: '⛔전제');
+
+      expect(s.layerStack.celHoldsAPicture(away, row, cel), isFalse);
+      s.renderCaches.brushFrameStore.storeBakedSurface(
+        s.brushFrameKeyForCut(away, row, cel),
+        surfaceWithInk(),
+      );
+      expect(s.layerStack.celHoldsAPicture(away, row, cel), isTrue);
+
+      s.createDrawingAtCurrentFrame();
+      final here = s.activeCutOrNull!;
+      final liveRow = s.activeLayer!.id;
+      final liveCel = s.activeLayer!.frames.single.id;
+      s.setBrushInputActive(true);
+      expect(s.layerStack.celHoldsAPicture(here, liveRow, liveCel), isTrue);
+      expect(
+        s.layerStack.celHoldsAPicture(away, liveRow, liveCel),
+        isFalse,
+        reason:
+            'the live stroke is on the active cut; a cel of another cut '
+            'the same names reach keeps its own pixels',
+      );
+    });
+
     test('🚨R27 #16: the direction row can actually BE GIVEN a cel', () {
       // 유저 2026-08-27: 「그림은 그려지지도않아. **프레임이 없다고 뜨거든**」.
       //

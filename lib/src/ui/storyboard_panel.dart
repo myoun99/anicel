@@ -16,6 +16,7 @@ import '../models/canvas_size.dart';
 import '../models/conte_group.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
+import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
@@ -30,6 +31,7 @@ import '../models/timeline_coverage.dart'
     show
         TimelineBlockEdge,
         TimelineDrawingBlock,
+        coveringDrawingBlockAt,
         drawingBlocks;
 import '../models/camera_row_reach.dart';
 import '../models/track.dart';
@@ -124,6 +126,7 @@ import 'timeline/layer_row_drag.dart'
         effectRowDragChip,
         layerRowDragChips,
         timelineRowAddressOfDragSubject;
+import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'input/arena_tap_hold.dart';
@@ -559,6 +562,15 @@ typedef StoryboardMediaDrop =
 typedef StoryboardMediaDropAccepts =
     bool Function(TimelineRowAddress row, int globalFrame, String path);
 
+/// The unworked-block tint's source for the conte rows, which cross every
+/// cut (F-357): whether one cut's cel holds a picture, and the signal that
+/// an answer may have moved — the timeline's own
+/// ([TimelineCelContentSource]), asked of the cut a frame stands in.
+typedef ConteCelContent = ({
+  bool Function(Cut cut, LayerId row, FrameId cel) holdsAPicture,
+  ValueListenable<int> revision,
+});
+
 class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
     super.key,
@@ -657,6 +669,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onEditSeEntry,
     this.onEditCutBlock,
     this.onEditConteBlock,
+    this.conteCelContent,
     this.onCameraCutPress,
     this.onEditCameraCell,
     this.cutFrameCursor,
@@ -1397,6 +1410,11 @@ class StoryboardPanel extends StatefulWidget {
   /// of its cut's storyboard row [LayerId], at this GLOBAL frame.
   final void Function(TrackId trackId, LayerId layerId, int globalFrame)?
   onEditConteBlock;
+
+  /// Whether a conte block's cel holds a picture, cut by cut — the
+  /// timeline's unworked-block tint on the conte rows (F-357). Null = no
+  /// tint.
+  final ConteCelContent? conteCelContent;
 
   /// A press on the CAMERA row's cells that lands in a cut (I-73 ④): the
   /// cut whose own frames hold the pointer — over an O.L, the one on the

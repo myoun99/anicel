@@ -66,6 +66,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     this.stripSelect,
     this.onCreateStoryboardLayer,
     this.onEditConteBlock,
+    this.conteCelContent,
   });
 
   /// The track whose row this is — its keys' and its verbs' word.
@@ -132,6 +133,10 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   /// ([StoryboardPanel.onEditConteBlock]). Null keeps the block without one.
   final void Function(TrackId trackId, LayerId layerId, int globalFrame)?
   onEditConteBlock;
+
+  /// The unworked-block tint ([StoryboardPanel.conteCelContent]). Null
+  /// tints nothing.
+  final ConteCelContent? conteCelContent;
 
   /// The panels under [frame]: the covering cut and its layer at this row's
   /// seat — null in gaps and on cuts without one. The panels' GESTURE and
@@ -290,6 +295,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     stripSelect != null,
     onCreateStoryboardLayer != null,
     onEditConteBlock != null,
+    conteCelContent != null,
   );
 
   @override
@@ -403,12 +409,58 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
               paperGround: law?.ground,
               blockFrameLines: law?.blockFrameLines ?? false,
               framesPerSecond: law?.framesPerSecond ?? 0,
+              celContent: _celContent(shown),
             ),
           ),
         ),
       ),
     );
   }
+
+  /// The timeline's unworked-block tint (R26 #44) on this row's blocks,
+  /// each one's cel asked of the cut it stands in and that cut's row at
+  /// this seat ([_stripAt]) — the timeline's rows ask the active cut
+  /// alone, and this row crosses every cut. None without
+  /// [conteCelContent].
+  ///
+  /// 🗣️F-357 (유저 2026-10-14): 「콘티패널의 콘티레이어 프레임블록,
+  /// 타임라인패널처럼 그림없으면 연해지는거 왜 통일안했는지? 법 통일해서
+  /// 적용」. ↩️The row was laid over the film (I-73) with no tint at all.
+  ///
+  /// 🚨ONE SOURCE FOR ONE LAYING, kept on [shown] — which is itself kept
+  /// while the cuts lie alike ([trackConteRowShown]), so the frames name
+  /// the same cuts. The painter compares the fact by value, and a closure
+  /// made on each build is a new fact every time: the row painted the
+  /// whole film's conte cells again for a build that moved none of them
+  /// (I-57).
+  TimelineCelContentSource? _celContent(Layer shown) {
+    final content = conteCelContent;
+    if (content == null) {
+      return null;
+    }
+    final kept = _celContents[shown];
+    if (kept != null && kept.content == content) {
+      return kept.source;
+    }
+    final source = TimelineCelContentSource(
+      hasContent: (row, frame) {
+        final cel = coveringDrawingBlockAt(row.timeline, frame)?.frameId;
+        final strip = _stripAt(frame);
+        return cel == null ||
+            strip == null ||
+            content.holdsAPicture(strip.entry.cut, strip.layer.id, cel);
+      },
+      revision: content.revision,
+    );
+    _celContents[shown] = (content: content, source: source);
+    return source;
+  }
+
+  /// [_celContent]'s source for each row as laid, with what it asks.
+  static final Expando<
+    ({ConteCelContent content, TimelineCelContentSource source})
+  >
+  _celContents = Expando('conte cel contents');
 
   /// The button of every cut that has no conte layer
   /// ([StoryboardConteCreatePainter]) — drawn, never pressed: the cells'

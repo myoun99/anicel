@@ -313,20 +313,31 @@ class LayerStack {
       // comes from the unworked-cel rule below, like any empty cel's.
       return null;
     }
+    return celHoldsAPicture(cut, layer.id, frame.id);
+  }
+
+  /// Whether [row]'s cel [cel] in [cut] holds a picture — the fact of the
+  /// unworked-block tint (R26 #44), for one cel of any cut: the active
+  /// cut's rows ask it through [celHasContentForLayer], and the conte row
+  /// the storyboard lays over the whole film asks it of each cut it
+  /// crosses (F-357).
+  bool celHoldsAPicture(Cut cut, LayerId row, FrameId cel) {
     // A LIVE stroke already counts. The store only learns about pixels at
     // commit (`markCelEdited` on pen-up), so waiting for it left the block
     // grey for the whole stroke — the user asked for it to go white the
     // moment the line starts, which is also when the cel stops being
     // "unworked" in any sense that matters.
-    if (_brushInputActive.value && _liveStrokeCel == (layer.id, frame.id)) {
+    if (_brushInputActive.value &&
+        cut.id == _project.activeCutOrNull?.id &&
+        _liveStrokeCel == (row, cel)) {
       return true;
     }
-    // A cel a drag carries onto [layer] is drawn where its pixels still are:
+    // A cel a drag carries onto [row] is drawn where its pixels still are:
     // under the row it came from ([celPixelsRowOf]).
     return _storeHoldsAPicture(
       cut,
-      celPixelsRowOf(_dragPreview.value, layer.id, frame.id),
-      frame.id,
+      celPixelsRowOf(_dragPreview.value, row, cel),
+      cel,
     );
   }
 

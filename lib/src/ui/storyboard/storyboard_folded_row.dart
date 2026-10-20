@@ -104,6 +104,7 @@ class _StoryboardFolded {
       viewportWidth: 0,
       showSeconds: _state.widget.showSeconds,
       projectFrameRate: _state.widget.projectFrameRate,
+      conteCelContent: _state.widget.conteCelContent,
     ),
   );
 

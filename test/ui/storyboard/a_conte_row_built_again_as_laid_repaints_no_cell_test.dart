@@ -21,6 +21,13 @@ void main() {
       'nothing to paint again and nothing to say again', (tester) async {
     final showSeconds = ValueNotifier<bool>(false);
     addTearDown(showSeconds.dispose);
+    // F-357: with the unworked-block tint on, as the storyboard tab gives it.
+    final revision = ValueNotifier<int>(0);
+    addTearDown(revision.dispose);
+    final ConteCelContent content = (
+      holdsAPicture: (cut, row, cel) => false,
+      revision: revision,
+    );
     final project = conteTrackProject();
     await tester.pumpWidget(
       MaterialApp(
@@ -31,6 +38,7 @@ void main() {
               project: project,
               activeCutId: const CutId('cut-1'),
               showSeconds: seconds,
+              conteCelContent: content,
             ),
           ),
         ),
@@ -49,6 +57,7 @@ void main() {
             as TimelineRowCellsPainter;
     final before = conteCells();
     expect(before.layer.timeline, isNotEmpty, reason: 'premise: panels');
+    expect(before.celContent, isNotNull, reason: 'premise: the tint');
 
     showSeconds.value = true;
     await tester.pump();
