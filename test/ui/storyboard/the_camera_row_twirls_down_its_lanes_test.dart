@@ -24,7 +24,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart' show StoryboardPanel;
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
-    show TimelineLaneKeyMarker;
+    show TimelineLaneKeyMarker, timelineLaneKeyMarkerSizeOf;
 
 import '../../helpers/named_finders.dart';
 
@@ -425,6 +425,38 @@ void main() {
         reason: 'b arrives, below',
       );
     });
+
+    // F-367-Q4 (user, 2026-10-18): 「세로 유지 · 가로만 줄임(프레임 블록처럼)」
+    // — a member's key reads its cell along the track, as the band's does
+    // ([timelineLaneKeyMarkerSizeOf]).
+    testWidgets('🚨a member key keeps the lane\'s height and narrows with its '
+        'cell, as the band\'s do', (tester) async {
+      await pumpPanel(tester);
+      final span = markRect(tester, 'position', 'a-cam', 12);
+      final drawn = tester.getRect(
+        find.descendant(
+          of: key('storyboard-camera-lane-key-a-cam-position-12'),
+          matching: find.byType(CustomPaint),
+        ),
+      );
+      final wanted = timelineLaneKeyMarkerSizeOf(
+        span.height,
+        frameCellExtent: ppf(tester),
+        heads: false,
+      );
+      expect(
+        timelineLaneKeyMarkerSizeOf(
+          span.height,
+          frameCellExtent: span.height,
+          heads: false,
+        ).width,
+        isNot(moreOrLessEquals(wanted.width)),
+        reason: '⛔전제: a cell narrower than the lane is high',
+      );
+      expect(drawn.width, moreOrLessEquals(wanted.width));
+      expect(drawn.height, moreOrLessEquals(wanted.height));
+    });
+
   });
 
   group('pressing a lane', () {
