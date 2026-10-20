@@ -8,6 +8,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timesheet_document.dart' show sheetArtistMark;
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -188,6 +189,32 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(session.cutVerbs.activeCutNoteOf(0), 'カットO.L');
+    });
+
+    // 🗣️I-112 (유저 2026-10-19): 「원화 이름 클릭해서 변경가능하게. 변경한게
+    // 러프원화 스태프 이름에 연동? … 동기화되있는듯한?」.
+    testWidgets('🎯the name box types the cut\'s 러프원화 worker — Enter '
+        'lands it, and 컷 설정 reads the same name', (tester) async {
+      await pumpHost(tester, brushAllowed: false);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-name-edit-p0')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(_editorKey), '大川');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(_editorKey), findsNothing, reason: 'Enter lands it');
+      expect(
+        session.requireActiveCut.metadata.staffNameFor(sheetArtistMark),
+        '大川',
+      );
+      expect(
+        session.cutVerbs.addressedCutStaff?[sheetArtistMark.keySlug],
+        '大川',
+        reason: 'one name — the one 컷 설정 shows',
+      );
     });
   });
 }

@@ -4,6 +4,16 @@ import 'package:flutter/services.dart';
 import '../../models/canvas_viewport.dart';
 import '../input/control_press_claim.dart';
 
+/// How a sheet sets the words of a [SheetTextTarget] — the form the field
+/// types them in, so the editing happens on the printed glyphs.
+enum SheetTextForm {
+  /// From the top left of the rect, wrapped at its width: a memo, an ACTION.
+  paragraph,
+
+  /// One line centred across the rect, from its top: a header box's value.
+  centredLine,
+}
+
 /// One place on a sheet whose typed text a tap edits in place.
 class SheetTextTarget {
   const SheetTextTarget({
@@ -13,7 +23,11 @@ class SheetTextTarget {
     required this.text,
     required this.style,
     required this.onCommitted,
+    this.form = SheetTextForm.paragraph,
   });
+
+  /// How the sheet sets these words.
+  final SheetTextForm form;
 
   /// The tap zone's key.
   final String keyValue;
@@ -44,9 +58,10 @@ class SheetTextTarget {
 /// ONE in-place editor for the sheets: the timesheet's memo band and the
 /// conte's ACTION (유저 2026-09-25: 「액션은 콘티프리뷰에서 해당 칸 누르면
 /// 텍스트 편집할수있게」). It was the timesheet's own layer; the conte's
-/// ACTION had a field that mounted under the page instead. Both are
-/// paragraphs, so the field is always one: the header boxes it once took
-/// single lines for are printed, not edited, since 09-25.
+/// ACTION had a field that mounted under the page instead. Those are
+/// paragraphs; the timesheet's name box is a line ([SheetTextForm]) — the
+/// one header box edited in place again (I-112, 유저 2026-10-19), after
+/// 09-25 printed every header box and edited none.
 ///
 /// The layer sits UNDER the ink layer in a sheet's stack, so the sheet's
 /// brush switch is the mode switch: brush on → the pen draws (taps
@@ -231,6 +246,10 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
   /// the box, beside the sheet's own lines.
   List<Widget> _editor(SheetTextTarget target) {
     final paper = target.textRect;
+    // The field's caret room stands after the words whichever way they are
+    // set: centred in the rect it is laid in less that room, a line
+    // centres where the printer centres it.
+    final line = target.form == SheetTextForm.centredLine;
     return [
       Positioned.fromRect(
         rect: _onScreen(_printedWords(target)),
@@ -279,8 +298,9 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
                     controller: _controller,
                     focusNode: _focusNode,
                     autofocus: true,
-                    maxLines: null,
-                    expands: true,
+                    maxLines: line ? 1 : null,
+                    expands: !line,
+                    textAlign: line ? TextAlign.center : TextAlign.start,
                     // The printer's style and nothing else: a field lays
                     // its words out in the theme's input style with this
                     // one over it, and whatever this leaves unset — the
@@ -326,12 +346,15 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
   /// it for the edges of the glyphs.
   Rect _printedWords(SheetTextTarget target) {
     final slot = target.textRect;
+    final line = target.form == SheetTextForm.centredLine;
     final painter = TextPainter(
       text: TextSpan(text: target.text, style: target.style),
       textDirection: TextDirection.ltr,
+      maxLines: line ? 1 : null,
+      ellipsis: line ? '…' : null,
     )..layout(maxWidth: slot.width);
     final printed = Rect.fromLTWH(
-      slot.left,
+      line ? slot.center.dx - painter.width / 2 : slot.left,
       slot.top,
       painter.width,
       painter.height,

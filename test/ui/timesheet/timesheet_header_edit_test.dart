@@ -40,6 +40,8 @@ const _editorKey = ValueKey<String>('timesheet-header-edit-field');
 
 void main() {
   late List<(int, String)> committedMemos;
+  late List<String> committedNames;
+  late TimesheetDocumentLayout layout;
   late Offset layerOrigin;
 
   Future<void> pumpLayer(
@@ -48,7 +50,8 @@ void main() {
     int duration = 24,
   }) async {
     committedMemos = [];
-    final layout = TimesheetDocumentLayout(
+    committedNames = [];
+    layout = TimesheetDocumentLayout(
       document: _document(notes: notes, duration: duration),
     );
     final documentSize = layout.documentSize;
@@ -71,6 +74,7 @@ void main() {
                 viewport: CanvasViewport(),
                 onMemoCommitted: (page, memo) =>
                     committedMemos.add((page, memo)),
+                onNameCommitted: committedNames.add,
               ),
             ),
           ),
@@ -150,19 +154,38 @@ void main() {
       expect(find.byKey(_editorKey), findsNothing);
     });
 
-    testWidgets('⛔no header box takes a tap — the header is printed, not '
-        'edited', (tester) async {
-      // 유저 09-25: 「작품명/화수는 이제 타임시트패널같은곳에서 편집안하게.
-      // 작업자든 뭐든. 해당 설정은 프로젝트 설정쪽에」.
+    testWidgets('🎯the NAME box edits its worker in place — one line, centred '
+        'as printed, Enter lands it (I-112); ⛔every other header box is '
+        'printed, not edited', (tester) async {
       await pumpLayer(tester);
 
-      for (final field in TimesheetHeaderField.values) {
-        expect(
-          find.byKey(ValueKey<String>('timesheet-header-edit-${field.name}-p0')),
-          findsNothing,
-          reason: field.name,
-        );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-name-edit-p0')),
+      );
+      await tester.pumpAndSettle();
+      final editor = tester.widget<TextField>(find.byKey(_editorKey));
+      expect(editor.controller!.text, '大川');
+      expect(editor.maxLines, 1);
+      expect(editor.textAlign, TextAlign.center);
+
+      await tester.enterText(find.byKey(_editorKey), 'ユキ');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(committedNames, ['ユキ']);
+      expect(find.byKey(_editorKey), findsNothing);
+
+      // 유저 09-25: 「작품명/화수는 이제 타임시트패널같은곳에서 편집안하게.
+      // 작업자든 뭐든. 해당 설정은 프로젝트 설정쪽에」 — I-112 took the name
+      // back alone.
+      for (final box in layout.headerFieldBoxes(0)) {
+        if (box.field == TimesheetHeaderField.name) {
+          continue;
+        }
+        await tester.tapAt(layerOrigin + box.rect.center);
+        await tester.pumpAndSettle();
+        expect(find.byKey(_editorKey), findsNothing, reason: box.field.name);
       }
+      expect(committedMemos, isEmpty);
     });
   });
 

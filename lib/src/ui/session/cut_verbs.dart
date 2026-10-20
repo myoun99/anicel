@@ -12,6 +12,7 @@ import '../../models/envelope/cut_envelope_ink_keys.dart'
     show envelopeInkKeyOfCut;
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../../models/timesheet_document.dart' show sheetArtistMark;
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
 import '../../services/brush_frame_store.dart' show BrushFrameStore;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
@@ -259,6 +260,16 @@ class CutVerbs {
   /// The active cut's memo on page [page] of its timesheet (F-301).
   String? activeCutNoteOf(int page) =>
       _project.activeCutOrNull?.metadata.noteOf(page);
+
+  /// Names the active cut's sheet worker — the 러프원화 a sheet's name box
+  /// prints ([sheetArtistMark]) — on it and its 겸용 siblings, as 컷 설정
+  /// names a stage (I-112: the box and the setting are one name).
+  void setActiveCutSheetArtist(String name) => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.setCutStaffNames(
+      cutIds: [cutId],
+      names: {sheetArtistMark: name},
+    ),
+  );
 
   void updateActiveCutNote({required int page, required String note}) =>
       _activeCut.onActiveCut(
