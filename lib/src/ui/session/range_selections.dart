@@ -666,40 +666,23 @@ class RangeSelections {
         : <LayerId>[
             ...{for (final row in spanRows) ?row.blockLayerId},
           ];
-    // Union-snap over those rows alone, from the raw span: expand until no
-    // swept row's block is cut. A lane's keys are points — raw cells, the
-    // lane domain's own rule — so a span of lanes alone IS the raw span.
-    // Each pass can only grow the range, so the loop terminates.
-    var start = math.max(0, math.min(anchorIndex, headIndex));
-    var end = math.max(anchorIndex, headIndex) + 1;
-    if (end <= start) {
+    // Union-snap over those rows alone, from the raw span: no swept row's
+    // block is cut. A lane's keys are points — raw cells, the lane domain's
+    // own rule — so a span of lanes alone IS the raw span.
+    final span = snapSpanToRowsBlocks(
+      rows: [
+        for (final id in blockIds)
+          if (_project.rangeLayerById(id) case final spanned?)
+            (layer: spanned, runs: _rowSpans.aggregateRunsForRow(spanned)),
+      ],
+      anchorIndex: anchorIndex,
+      headIndex: headIndex,
+    );
+    if (span == null) {
       _selection.frameRangeSelection.value = null;
       return;
     }
-    var changed = true;
-    while (changed) {
-      changed = false;
-      for (final id in blockIds) {
-        final spanned = _project.rangeLayerById(id);
-        if (spanned == null) {
-          continue;
-        }
-        final snapped = snapFrameRangeToBlocks(
-          layer: spanned,
-          anchorIndex: start,
-          headIndex: end - 1,
-          aggregateRuns: _rowSpans.aggregateRunsForRow(spanned),
-        );
-        if (snapped == null) {
-          continue;
-        }
-        if (snapped.startIndex < start || snapped.endIndexExclusive > end) {
-          start = math.min(start, snapped.startIndex);
-          end = math.max(end, snapped.endIndexExclusive);
-          changed = true;
-        }
-      }
-    }
+    final (startIndex: start, endIndexExclusive: end) = span;
     _selection.frameRangeSelection.value = TimelineFrameRangeSelection(
       // The row a single-row flow reads: the drag's own when its blocks were
       // swept, else the first row whose were. A span of lanes alone keeps
@@ -1026,7 +1009,7 @@ class RangeSelections {
   /// never costs you the layer.
   ///
   /// The extremes are read off the SAME three lanes the range snap uses
-  /// ([snapFrameRangeToBlocks]): exposure blocks (ghosts are derived
+  /// ([snapSpanToRowsBlocks]): exposure blocks (ghosts are derived
   /// projections, not authored cells), instruction chips, and a folder
   /// row's aggregate runs — so the gate answers true exactly where a drag
   /// would select something (T25).

@@ -148,35 +148,7 @@ class CellVerbs {
   }
 
   void deleteCellAtCurrentFrame() {
-    // A live selection routes the delete to EVERY selected block on
-    // EVERY spanned layer (UI-R17 #2/#8) and to the transition spans it
-    // holds, in one composite undo; the leftover selection covers empty
-    // cells so it clears with the delete.
-    // 🚨F-87 (유저 2026-10-18): and to every LANE it swept, as a range over
-    // that lane deletes — 「fx를 넘어서 뭐든 선택된 대상으로」.
-    final selectionTargets = _rangeSelections.selectionBlocksToDeleteByLayer();
-    final transitionTargets = _selectionTransitionStarts;
-    final laneTargets = _laneVerbs.bandLanesToDelete;
-    if (selectionTargets != null ||
-        transitionTargets != null ||
-        laneTargets.isNotEmpty) {
-      _project.historyManager.runAsOneStep('Delete selected cells', () {
-        if (selectionTargets != null) {
-          _controllers.timelineController.deleteBlocksForLayers(
-            selectionTargets,
-          );
-        }
-        if (transitionTargets != null) {
-          _transitions.removeTransitionSpans(transitionTargets);
-        }
-        _laneVerbs.deleteForBandLanes(laneTargets);
-      });
-      // Whichever axis answered: the leftover span covers empty cells now —
-      // and the band's transform tail, keys it no longer has.
-      _selection.clearFrameRangeSelection();
-      _rangeSelections.clearLaneRangeSelection();
-      _selection.clearStoryboardCutSelection();
-      _changes.notifyChanged();
+    if (_deleteWhatTheBandHolds()) {
       return;
     }
     if (cellSelectionClaimsSubject) {
@@ -212,6 +184,44 @@ class CellVerbs {
 
     _controllers.timelineController.deleteCellForLayer(layerId: layer.id);
     _changes.notifyChanged();
+  }
+
+  /// A live selection routes the delete to EVERY selected block on
+  /// EVERY spanned layer (UI-R17 #2/#8) and to the transition spans it
+  /// holds, in one composite undo; the leftover selection covers empty
+  /// cells so it clears with the delete.
+  /// 🚨F-87 (유저 2026-10-18): and to every LANE it swept, as a range over
+  /// that lane deletes — 「fx를 넘어서 뭐든 선택된 대상으로」.
+  ///
+  /// Whether the band held anything — false leaves the press to the row
+  /// stood on.
+  bool _deleteWhatTheBandHolds() {
+    final selectionTargets = _rangeSelections.selectionBlocksToDeleteByLayer();
+    final transitionTargets = _selectionTransitionStarts;
+    final laneTargets = _laneVerbs.bandLanesToDelete;
+    if (selectionTargets == null &&
+        transitionTargets == null &&
+        laneTargets.isEmpty) {
+      return false;
+    }
+    _project.historyManager.runAsOneStep('Delete selected cells', () {
+      if (selectionTargets != null) {
+        _controllers.timelineController.deleteBlocksForLayers(
+          selectionTargets,
+        );
+      }
+      if (transitionTargets != null) {
+        _transitions.removeTransitionSpans(transitionTargets);
+      }
+      _laneVerbs.deleteForBandLanes(laneTargets);
+    });
+    // Whichever axis answered: the leftover span covers empty cells now —
+    // and the band's transform tail, keys it no longer has.
+    _selection.clearFrameRangeSelection();
+    _rangeSelections.clearLaneRangeSelection();
+    _selection.clearStoryboardCutSelection();
+    _changes.notifyChanged();
+    return true;
   }
 
   // --- 링크 독립 (I-45): the frame-axis rung --------------------------------

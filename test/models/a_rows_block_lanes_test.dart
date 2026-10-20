@@ -10,7 +10,7 @@ import 'package:anicel/src/models/timeline_frame_range.dart';
 
 /// A ROW'S LANES OF BLOCKS — its exposures, its instruction events, and for
 /// a folder the runs its members make — are ONE list, read by the drag that
-/// snaps to them ([snapFrameRangeToBlocks]) and by the wash that stands on
+/// snaps to them ([snapSpanToRowsBlocks]) and by the wash that stands on
 /// them ([standingUnitOnRow], F-248 · F-268).
 ///
 /// Each lane's own resolver was pinned, and the rule that snaps a span to a
@@ -39,11 +39,10 @@ void main() {
     int cell, {
     List<({int start, int endExclusive})> runs = const [],
   }) {
-    final span = snapFrameRangeToBlocks(
-      layer: row,
+    final span = snapSpanToRowsBlocks(
+      rows: [(layer: row, runs: runs)],
       anchorIndex: cell,
       headIndex: cell,
-      aggregateRuns: runs,
     );
     return span == null
         ? null
@@ -69,6 +68,31 @@ void main() {
       snapped(4, runs: runs),
       (start: 3, end: 6),
       reason: 'the row\'s own lanes still answer beside it',
+    );
+  });
+
+  test('a band over two rows cuts neither row\'s block', () {
+    // A band over [7, 10): the second row's block [6, 8) takes its start to
+    // 6, the first row's event over [8, 13) its end to 13 — neither row
+    // alone reaches both.
+    final other = Layer(
+      id: const LayerId('other'),
+      name: 'other',
+      frames: [Frame(id: const FrameId('b'), duration: 1, strokes: const [])],
+      timeline: {
+        6: const TimelineExposure.drawing(FrameId('b'), length: 2),
+      },
+    );
+    final band = snapSpanToRowsBlocks(
+      rows: [(layer: row, runs: const []), (layer: other, runs: const [])],
+      anchorIndex: 7,
+      headIndex: 9,
+    );
+    expect(band, (startIndex: 6, endIndexExclusive: 13));
+    expect(
+      snapSpanToRowsBlocks(rows: const [], anchorIndex: 9, headIndex: 7),
+      (startIndex: 7, endIndexExclusive: 10),
+      reason: 'no rows — a band of lanes alone — is the raw span',
     );
   });
 

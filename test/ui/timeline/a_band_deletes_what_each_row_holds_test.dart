@@ -25,6 +25,8 @@ import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, partAcross, partAlong;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart'
@@ -521,6 +523,8 @@ void main() {
 
   for (final vertical in [false, true]) {
     final where = vertical ? 'the X-sheet' : 'the timeline';
+    // The frame axis: down the sheet, across the timeline.
+    final axis = vertical ? Axis.vertical : Axis.horizontal;
     for (final fromTheFx in [false, true]) {
       final how = fromTheFx
           ? 'from the fx row up into its layer'
@@ -581,14 +585,14 @@ void main() {
 
           /// The middle of [row] across, at [frame] along — the frame axis
           /// read off the header, which every row of the grid shares.
-          Offset at(Finder row, int frame) {
-            final along = tester.getTopLeft(header);
-            final across = tester.getCenter(row);
-            final offset = cell * frame + cell / 2;
-            return vertical
-                ? Offset(across.dx, along.dy + offset)
-                : Offset(along.dx + offset, across.dy);
-          }
+          Offset at(Finder row, int frame) => offsetAlong(
+            axis,
+            along:
+                partAlong(axis, tester.getTopLeft(header)) +
+                cell * frame +
+                cell / 2,
+            across: partAcross(axis, tester.getCenter(row)),
+          );
 
           final (from, to) = fromTheFx
               ? (at(header, 0), at(cells, 2))
@@ -597,9 +601,7 @@ void main() {
             from,
             kind: PointerDeviceKind.mouse,
           );
-          await finger.moveBy(
-            vertical ? const Offset(0, cell) : const Offset(cell, 0),
-          );
+          await finger.moveBy(offsetAlong(axis, along: cell, across: 0));
           await tester.pump();
           await finger.moveTo(to);
           await tester.pump();
