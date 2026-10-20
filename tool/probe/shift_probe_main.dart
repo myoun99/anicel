@@ -221,13 +221,21 @@ class _Keyboard {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.keyD) {
       _atD = _record();
     }
-    if (event is KeyUpEvent) {
+    if (event is KeyUpEvent && !event.synthesized) {
       _wentUp.add(event.physicalKey);
     }
     return false;
   }
 
-  /// Whether [key] has gone up since the last modifier went [down].
+  /// Whether [key] has gone up since the last modifier went [down], by a
+  /// key-up the engine was handed.
+  ///
+  /// ⚠️Not one the engine made up to sync itself (`synthesized`): a mouse
+  /// message carries the modifiers the hand holds, none here, and the
+  /// engine lets Shift go and presses it again at the next key — measured
+  /// on this runner as the window comes up under the pointer. That is the
+  /// engine's own, before and after the runner's answer; what the runner
+  /// hands it is a key-up like a keyboard's.
   bool wentUp(PhysicalKeyboardKey key) => _wentUp.contains(key);
 
   Future<void> send(int message, int key, int lparam) async {
