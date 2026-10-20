@@ -1,12 +1,15 @@
 import 'dart:convert' show utf8;
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show Offset;
 
 import '../../models/canvas_point.dart';
 import '../../models/cel_text.dart';
 import '../../models/import/import_warning.dart';
 import '../../models/text_cel_style.dart';
-import '../cel_text_box_edits.dart' show celTextTurnedAbout;
+import '../cel_text_box_edits.dart'
+    show celTextFlippedAbout, celTextLeanedAbout, celTextTurnedAbout;
+import '../cel_text_frame.dart';
 import 'clip_container.dart' show ClipFormatException;
 import 'clip_document.dart';
 import 'clip_offscreen.dart' show parseClipOffscreenAttribute;
@@ -25,9 +28,9 @@ typedef ClipCelText = ({
 /// [layer]'s texts as the app's own — F-370-Q3 (유저 2026-10-17: 「이제
 /// 들인다(앱의 글자로)」): what each says, in its faces, sizes, colours,
 /// weights, leans and lines, its paragraphs aligned and spaced as each is,
-/// written across or in columns and turned as it stands — at [alpha], the
-/// opacity its cel bakes it at — and what of its setting the app cannot
-/// keep said by [name] into [warnings].
+/// written across or in columns, its frame turned, leaned and mirrored as
+/// it stands — at [alpha], the opacity its cel bakes it at — and what of
+/// its setting the app cannot keep said by [name] into [warnings].
 ///
 /// 🎯THE LOOK IS CLIP STUDIO'S OWN. The file keeps a picture of every text
 /// ([ClipLayer.textPictures]), and a plate is a text's picture wherever it
@@ -96,7 +99,9 @@ List<ClipCelText> clipCelTextsOf(
 /// (parameter 63; all 15 of the samples' upright texts), and a turned
 /// text's as wide and as tall as that box turned — to within a pixel, as it
 /// rounds a turned picture its own way, so the nearest within
-/// [_turnedSlack] is its own.
+/// [_turnedSlack] is its own. A leaned or mirrored text's is taken to be
+/// its box as its frame sets it, as a turned one's is — no sample has one
+/// (board `the-clip-text-keeps-its-lean-and-flip`).
 ClipPictureSource? _takePictureOf(
   _ClipTextSetting setting,
   List<ClipPictureSource> pictures,
@@ -105,11 +110,13 @@ ClipPictureSource? _takePictureOf(
   if (size == null) {
     return null;
   }
-  final turn = setting.frame.turn;
-  final (along, across) = (math.cos(turn).abs(), math.sin(turn).abs());
-  final width = size.width * along + size.height * across + 1;
-  final height = size.width * across + size.height * along + 1;
-  final slack = turn == 0 ? 0 : _turnedSlack;
+  final frame = setting.frame;
+  // The box's two edges as its frame sets them, and the box around them.
+  final along = frame.shape.onCanvas(Offset(size.width.toDouble(), 0));
+  final down = frame.shape.onCanvas(Offset(0, size.height.toDouble()));
+  final width = along.dx.abs() + down.dx.abs() + 1;
+  final height = along.dy.abs() + down.dy.abs() + 1;
+  final slack = frame.upright ? 0 : _turnedSlack;
   int? nearest;
   var nearestMiss = double.infinity;
   for (var i = 0; i < pictures.length; i += 1) {
@@ -288,9 +295,10 @@ final class _ClipTextSetting {
       x: (layer.x + frame.origin.x).toDouble(),
       y: (layer.y + frame.origin.y).toDouble(),
     );
-    // Set upright in its frame, then turned with the frame about its origin
-    // — as a text the person turns on the canvas is.
-    return celTextTurnedAbout(
+    // Set upright in its frame, then turned, leaned and mirrored with the
+    // frame about its origin — as a text the person turns, leans and mirrors
+    // on the canvas is.
+    final turned = celTextTurnedAbout(
       CelTextContent(
         spans: _spansOf(text, size, alpha),
         anchor: CanvasPoint(x: origin.x + x, y: origin.y + y),
@@ -298,9 +306,15 @@ final class _ClipTextSetting {
         letterWidth: across > 0 && across.isFinite ? across / 100 : 1,
         vertical: columns,
       ),
-      frame.turn * 180 / math.pi,
+      frame.degrees,
       origin,
     );
+    final leaned = frame.skewDegrees == 0
+        ? turned
+        : celTextLeanedAbout(turned, frame.skewDegrees, origin);
+    return frame.flipped
+        ? celTextFlippedAbout(leaned, origin, flipped: true)
+        : leaned;
   }
 
   /// The line spacing of a text that names none: CLIP STUDIO's own
@@ -415,19 +429,24 @@ final class _ClipTextSetting {
   }
 }
 
-/// Where a text's frame stands on its layer and how it is turned: the
-/// text's box stands upright in it, and the frame turns about its origin.
+/// Where a text's frame stands on its layer and how it stands: the text's
+/// box stands upright in it, and the frame is turned, leaned and mirrored
+/// about its origin as a text's own frame is ([CelTextFrame]).
 ///
 /// Parameter 64 is the box's four corners, clockwise from the top-left in
-/// hundredths of a pixel, measured from the origin and turned with the
-/// frame; parameter 72 is how far the origin stands right of and below the
+/// hundredths of a pixel, measured from the origin and set with the frame;
+/// parameter 72 is how far the origin stands right of and below the
 /// top-left of the picture CLIP STUDIO drew (F-370-Q4 — the sample's
 /// turned texts keep their upright box, parameter 42, and their corners
 /// alone turn).
 final class _ClipTextFrame {
   const _ClipTextFrame._({
     required this.origin,
-    required this.turn,
+    required this.shape,
+    required this.degrees,
+    required this.skewDegrees,
+    required this.flipped,
+    required this.upright,
     required this.corner,
     required this.pictureAt,
     required this.distorted,
@@ -442,53 +461,92 @@ final class _ClipTextFrame {
     required List<int>? offset,
   }) {
     final (width, height) = (100 * (box.x1 - box.x0), 100 * (box.y1 - box.y0));
-    // The top edge runs from a to b, the left edge from a to d.
-    final [ax, ay, bx, by, _, _, dx, dy] = [
+    // The top edge runs from a to b, the left edge from a to d, and the two
+    // meet again at c.
+    final [ax, ay, bx, by, cx, cy, dx, dy] = [
       for (final value
           in corners ?? [0, 0, width, 0, width, height, 0, height])
         value / 100,
     ];
-    final turn = math.atan2(by - ay, bx - ax);
-    final (cos, sin) = (math.cos(turn), math.sin(turn));
-    // The box's top-left in the frame, turned back upright.
-    final corner = (
-      x: (ax * cos + ay * sin).round(),
-      y: (ay * cos - ax * sin).round(),
+    final (topX, topY, sideX, sideY) = (bx - ax, by - ay, dx - ax, dy - ay);
+    // How far the left edge stands to the right of the top one, as a box's
+    // does — to its left where the frame is mirrored — and how far it runs
+    // along it as it goes: a lean, none where the two stand square.
+    final cross = topX * sideY - topY * sideX;
+    final flipped = cross < 0;
+    final mirror = flipped ? -1.0 : 1.0;
+    final lean = cross == 0 || _isSquare(topX, topY, sideX, sideY)
+        ? 0.0
+        : (topX * sideX + topY * sideY) / cross.abs();
+    final degrees = math.atan2(mirror * topY, mirror * topX) * 180 / math.pi;
+    // The lean runs a point along the lines as it goes DOWN, and a text's
+    // skew as it goes up ([CelTextFrame]).
+    final skewDegrees = lean == 0 ? 0.0 : -math.atan(lean) * 180 / math.pi;
+    final upright = degrees == 0 && skewDegrees == 0 && !flipped;
+    final shape = CelTextFrame.set(
+      anchor: Offset.zero,
+      rotationDegrees: degrees,
+      skewDegrees: skewDegrees,
+      flipped: flipped,
     );
-    // Where the origin stood upright, and where turning it takes it.
-    final (ux, uy) = (box.x0 - corner.x, box.y0 - corner.y);
-    final (px, py) = (
+    // The box's top-left in the frame, set back upright.
+    final topLeft = shape.inFrame(Offset(ax, ay));
+    final corner = (x: topLeft.dx.round(), y: topLeft.dy.round());
+    // Where the origin stood upright, and where setting the frame takes it.
+    final stood = Offset(
+      (box.x0 - corner.x).toDouble(),
+      (box.y0 - corner.y).toDouble(),
+    );
+    final pivot = Offset(
       (box.x0 + box.x1) / 2 + _pivotRight,
       (box.y0 + box.y1) / 2,
     );
-    final origin = (
-      x: (px + (ux - px) * cos - (uy - py) * sin).round(),
-      y: (py + (ux - px) * sin + (uy - py) * cos).round(),
-    );
+    final set = pivot + shape.onCanvas(stood - pivot);
+    final origin = (x: set.dx.round(), y: set.dy.round());
     final picture = switch (offset) {
       [final x, final y] => (x: x, y: y),
       // Upright, its picture stands at its box (wamsoft `clipparse`: 「この
       // (x0, y0) にオブジェクト Offscreen をそのまま置く」, and so it lies on
       // the samples' own canvas preview, 10-17); turned, nobody says where.
-      _ when turn == 0 => (x: -corner.x, y: -corner.y),
+      _ when upright => (x: -corner.x, y: -corner.y),
       _ => null,
     };
     return _ClipTextFrame._(
       origin: origin,
-      turn: turn,
+      shape: shape,
+      degrees: degrees,
+      skewDegrees: skewDegrees,
+      flipped: flipped,
+      upright: upright,
       corner: corner,
       pictureAt: picture == null
           ? null
           : (x: origin.x - picture.x, y: origin.y - picture.y),
-      distorted: !_isSquare(bx - ax, by - ay, dx - ax, dy - ay),
+      distorted:
+          cross == 0 ||
+          (cx - (bx + dx - ax)).abs() > _cornerSlack ||
+          (cy - (by + dy - ay)).abs() > _cornerSlack,
     );
   }
 
   /// Where the frame's origin stands on the layer.
   final ({int x, int y}) origin;
 
-  /// How far the frame is turned, clockwise in radians.
-  final double turn;
+  /// How the frame stands: a text's own frame ([CelTextFrame]), its anchor
+  /// at the frame's origin.
+  final CelTextFrame shape;
+
+  /// How far the frame is turned, clockwise in degrees.
+  final double degrees;
+
+  /// How far it leans ([CelTextContent.skewDegrees]).
+  final double skewDegrees;
+
+  /// Whether it is mirrored ([CelTextContent.flipped]).
+  final bool flipped;
+
+  /// Whether it is none of these: its box stands as the layer does.
+  final bool upright;
 
   /// The box's top-left in the frame, upright: where its letters begin.
   final ({int x, int y}) corner;
@@ -497,7 +555,8 @@ final class _ClipTextFrame {
   /// does not say.
   final ({int x, int y})? pictureAt;
 
-  /// Whether its corners stand other than square: slanted, or flipped.
+  /// Whether its corners stand where no text's frame can: four no
+  /// parallelogram stands on, or edges with no room between them.
   final bool distorted;
 }
 
@@ -510,7 +569,9 @@ final class _ClipTextFrame {
 /// pixel, all three do — as they do about any from 1.0 to 1.48 px right,
 /// whose middle this is (fourteen rules of this shape fit, and none turns
 /// about the middle itself). ⚠️A turned text of another file may stand a
-/// pixel off: board `a-turned-clip-text-may-stand-a-pixel-off`.
+/// pixel off: board `a-turned-clip-text-may-stand-a-pixel-off`. A leaned or
+/// mirrored frame is set about the same point — no sample has one (board
+/// `the-clip-text-keeps-its-lean-and-flip`).
 const double _pivotRight = 1.25;
 
 /// 🔬How far a text's box runs past its first column's letters, written in
@@ -526,14 +587,21 @@ const double _squareTurn = 0.01;
 
 /// Whether a frame whose top edge runs ([topX], [topY]) and whose left edge
 /// runs ([sideX], [sideY]) is square: its left edge its top one turned a
-/// right angle clockwise, to within [_squareTurn].
+/// right angle — clockwise, or back where the frame is mirrored — to within
+/// [_squareTurn].
 bool _isSquare(double topX, double topY, double sideX, double sideY) {
   final lengths =
       math.sqrt(topX * topX + topY * topY) *
       math.sqrt(sideX * sideX + sideY * sideY);
   return lengths > 0 &&
-      (topX * sideY - topY * sideX) / lengths >= math.cos(_squareTurn);
+      (topX * sideY - topY * sideX).abs() / lengths >= math.cos(_squareTurn);
 }
+
+/// How far a frame's fourth corner may stand from where its other three put
+/// it, either way, and the four still stand on a parallelogram: the floored
+/// hundredths the corners are kept in put it a hundredth off at most, and
+/// the half past that is the float's.
+const double _cornerSlack = 0.015;
 
 /// Parameter 33's bit for a text written in columns (F-370-Q4: set on all
 /// four of the sample's columned texts and on none of its eight others, nor

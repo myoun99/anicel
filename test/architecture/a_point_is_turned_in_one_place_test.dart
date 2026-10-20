@@ -26,10 +26,6 @@ void main() {
 
   /// Files that still turn a point by hand. Only shrinks.
   const stillByHand = <String>{
-    // The CLIP STUDIO lettering's frame — its box's corner turned back
-    // upright, and its origin turned. The save session's (저장) lane,
-    // which found the card; handed over there.
-    'lib/src/services/import/clip_lettering.dart',
     // A pixel turned into tip space, four times over, in the dab's
     // per-pixel loop — the brush session's (브러시/렌더링), and timed
     // against the native kernel; handed over there.
@@ -180,6 +176,6 @@ void main() {
         if (turnsIn(File(path).readAsStringSync()).isEmpty) path,
     ];
     expect(paid, isEmpty, reason: 'delete these lines from stillByHand');
-    expect(stillByHand, hasLength(3));
+    expect(stillByHand, hasLength(2));
   });
 }

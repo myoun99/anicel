@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
+import 'package:anicel/src/services/cel_text_frame.dart';
 import 'package:anicel/src/services/import/clip_document.dart';
 import 'package:anicel/src/services/import/clip_lettering.dart';
 
@@ -419,9 +421,9 @@ void main() {
 
   test('🎯what the app cannot set is said by the layer\'s name, once a layer '
       'however many of its texts it is true of — two alignments or two '
-      'spacings in one paragraph, a frame not square', () {
-    // Its top edge runs straight across, and its left edge leans.
-    final slanted = [0, 0, 1000, 0, 1200, 1000, 200, 1000];
+      'spacings in one paragraph, corners no frame stands on', () {
+    // Its fourth corner a pixel right of where the other three put it.
+    final askew = [0, 0, 1000, 0, 1300, 1000, 200, 1000];
     final result = read(
       textLayer([
         for (var i = 0; i < 2; i += 1)
@@ -439,7 +441,7 @@ void main() {
                 (start: 2, length: 4, spacing: 140),
                 (start: 6, length: 2, spacing: 200),
               ],
-              corners: slanted,
+              corners: askew,
             ),
           ),
       ]),
@@ -454,7 +456,9 @@ void main() {
     expect(result.texts, hasLength(2), reason: 'both still come in');
   });
 
-  test('a frame flipped is not square; one only turned is', () {
+  test('corners a parallelogram stands on are a frame, mirrored, turned or '
+      'leaned — to within the hundredth the file\'s floored hundredths may '
+      'put the fourth off', () {
     List<String> keysFor(List<int> corners) => keysOf(
       read(
         textLayer([
@@ -463,10 +467,83 @@ void main() {
       ).warnings,
     );
 
-    expect(keysFor([1000, 0, 0, 0, 0, 1000, 1000, 1000]), [
+    expect(keysFor([1000, 0, 0, 0, 0, 1000, 1000, 1000]), isEmpty);
+    expect(keysFor([0, 0, 1000, 500, 500, 1500, -500, 1000]), isEmpty);
+    expect(keysFor([0, 0, 1000, 0, 1200, 1000, 200, 1000]), isEmpty);
+    expect(keysFor([0, 0, 1000, 0, 1201, 1000, 200, 1000]), isEmpty);
+    expect(keysFor([0, 0, 1000, 0, 1200, 999, 200, 1000]), isEmpty);
+    expect(keysFor([0, 0, 1000, 0, 1202, 1000, 200, 1000]), [
       'clipTextDistorted',
     ]);
-    expect(keysFor([0, 0, 1000, 500, 500, 1500, -500, 1000]), isEmpty);
+    expect(keysFor([0, 0, 1000, 0, 1200, 998, 200, 1000]), [
+      'clipTextDistorted',
+    ]);
+  });
+
+  test('🎯a frame comes in turned, leaned and mirrored as the file\'s '
+      'corners set it — the text\'s own frame stands its box on them, and '
+      'one that stands square leans none at all', () {
+    for (final (degrees, skew, flipped) in [
+      (0.0, 0.0, true),
+      (90.0, 0.0, true),
+      (-60.0, 0.0, true),
+      (26.6, 0.0, false),
+      (0.0, -11.3, false),
+      (30.0, 15.0, true),
+      (-160.0, 35.0, false),
+    ]) {
+      // A 100 px box's corners where a frame of that pose sets them, in
+      // hundredths floored as CLIP STUDIO keeps them.
+      final pose = CelTextFrame.set(
+        anchor: ui.Offset.zero,
+        rotationDegrees: degrees,
+        skewDegrees: skew,
+        flipped: flipped,
+      );
+      final corners = [
+        for (final corner in const [
+          ui.Offset.zero,
+          ui.Offset(100, 0),
+          ui.Offset(100, 100),
+          ui.Offset(0, 100),
+        ]) ...[
+          (pose.onCanvas(corner).dx * 100).floor(),
+          (pose.onCanvas(corner).dy * 100).floor(),
+        ],
+      ];
+      final result = read(
+        textLayer([
+          lettering(
+            'a',
+            clipTextAttributesBytes(
+              box: (x0: 0, y0: 0, x1: 100, y1: 100),
+              corners: corners,
+            ),
+          ),
+        ]),
+      );
+      final content = result.texts.single.content;
+      final why = '$degrees° · $skew° · ${flipped ? 'mirrored' : 'not'}';
+
+      expect(result.warnings, isEmpty, reason: why);
+      expect(content.flipped, flipped, reason: why);
+      expect(content.rotationDegrees, closeTo(degrees, 0.05), reason: why);
+      expect(content.skewDegrees, closeTo(skew, 0.05), reason: why);
+      expect(content.skewDegrees == 0, skew == 0, reason: why);
+      final frame = CelTextFrame.of(content);
+      for (final (edge, to) in const [
+        (ui.Offset(100, 0), 2),
+        (ui.Offset(0, 100), 6),
+      ]) {
+        final step = frame.onCanvas(edge);
+        final (x, y) = (
+          (corners[to] - corners[0]) / 100,
+          (corners[to + 1] - corners[1]) / 100,
+        );
+        expect(step.dx, closeTo(x, 0.03), reason: why);
+        expect(step.dy, closeTo(y, 0.03), reason: why);
+      }
+    }
   });
 
   test('⛔what the file writes as set to nothing, or as the same, is not '
@@ -712,6 +789,45 @@ void main() {
     expect(
       [for (final text in result.texts) text.picture?.blocksId],
       ['first', 'second', null],
+    );
+  });
+
+  test('a leaned or mirrored text\'s picture, as a turned one\'s, is the one '
+      'nearest its box as its frame sets it, within a pixel and a half', () {
+    String? pictureAmong(
+      List<int> corners,
+      List<ClipPictureSource> pictures,
+    ) => read(
+      textLayer(
+        [
+          lettering(
+            'a',
+            clipTextAttributesBytes(
+              box: (x0: 0, y0: 0, x1: 100, y1: 100),
+              boxSize: (width: 100, height: 100),
+              corners: corners,
+              pictureOffset: (0, 0),
+            ),
+          ),
+        ],
+        pictures: pictures,
+      ),
+    ).texts.single.picture?.blocksId;
+
+    // Its foot 17.63 px right of its head: 118.63 × 101 with its pixel.
+    expect(
+      pictureAmong(
+        const [0, 0, 10000, 0, 11763, 10000, 1763, 10000],
+        [pictureOf(101, 101, 'the box upright'), pictureOf(119, 101, 'leaned')],
+      ),
+      'leaned',
+    );
+    expect(
+      pictureAmong(
+        const [10000, 0, 0, 0, 0, 10000, 10000, 10000],
+        [pictureOf(101, 101, 'mirrored')],
+      ),
+      'mirrored',
     );
   });
 

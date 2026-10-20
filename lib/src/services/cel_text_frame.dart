@@ -14,27 +14,43 @@ import '../models/cel_text.dart';
 ///
 /// ⛔THE ONE PLACE A TEXT'S FRAME IS WORKED OUT — what draws the text
 /// ([applyTo] · [applyToMatrix]), what asks a press where on it it fell
-/// ([toLocal]), and what reads a hand's travel along its own lines
-/// ([inFrame]) all stand on it, so none of them can stand the text where
-/// another does not.
+/// ([toLocal]), what reads a hand's travel along its own lines
+/// ([inFrame]), and what reads a CLIP STUDIO text's frame off its corners
+/// ([CelTextFrame.set]) all stand on it, so none of them can stand the
+/// text where another does not.
 class CelTextFrame {
-  factory CelTextFrame.of(CelTextContent content) {
-    final turn = PlaneTurn(content.rotationDegrees);
-    final mirror = content.flipped ? -1.0 : 1.0;
+  factory CelTextFrame.of(CelTextContent content) => CelTextFrame.set(
+    anchor: ui.Offset(content.anchor.x, content.anchor.y),
+    rotationDegrees: content.rotationDegrees,
+    skewDegrees: content.skewDegrees,
+    flipped: content.flipped,
+  );
+
+  /// The frame of a text at [anchor] leaned [skewDegrees], mirrored where
+  /// [flipped] and turned [rotationDegrees], as [CelTextContent] says them
+  /// — for what works a frame out before it has a text to set in it.
+  factory CelTextFrame.set({
+    required ui.Offset anchor,
+    required double rotationDegrees,
+    required double skewDegrees,
+    required bool flipped,
+  }) {
+    final turn = PlaneTurn(rotationDegrees);
+    final mirror = flipped ? -1.0 : 1.0;
     // As italic letters lean: a point stands further along the lines the
     // HIGHER it stands, and the frame's y runs down.
-    final lean = content.skewDegrees == 0
+    final lean = skewDegrees == 0
         ? 0.0
-        : -math.tan(content.skewDegrees * math.pi / 180);
+        : -math.tan(skewDegrees * math.pi / 180);
     // The two steps leaned and mirrored, then turned as a point is
     // ([PlaneTurn]).
     final along = turn.apply(mirror, 0);
     final down = turn.apply(mirror * lean, 1);
     return CelTextFrame._(
-      anchor: ui.Offset(content.anchor.x, content.anchor.y),
+      anchor: anchor,
       xStep: ui.Offset(along.x, along.y),
       yStep: ui.Offset(down.x, down.y),
-      radians: content.rotationDegrees * math.pi / 180,
+      radians: rotationDegrees * math.pi / 180,
       mirror: mirror,
       lean: lean,
     );
