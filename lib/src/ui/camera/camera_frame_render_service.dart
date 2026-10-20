@@ -129,6 +129,12 @@ Uint8List _assemblePremultipliedRgba(
   return buffer;
 }
 
+/// What a render lays over its picture, in CANVAS space under the camera's
+/// projection — handed the scale that projection rasters a canvas pixel at,
+/// which a `Canvas` will not tell anyone: a pass that rasters a picture of
+/// its own (an SE tag with its row's effects) asks it as a folder does.
+typedef CameraOverlayPass = void Function(ui.Canvas canvas, double rasterScale);
+
 /// Renders a composited cut frame as seen through the camera.
 ///
 /// The output shows the camera view rect (the camera frame silhouette from
@@ -195,7 +201,7 @@ class CameraFrameRenderService {
     required CameraPose pose,
     required CanvasSize cameraFrameSize,
     CanvasSize? outputSize,
-    void Function(ui.Canvas canvas)? overlayPass,
+    CameraOverlayPass? overlayPass,
     CanvasSize? cutTo,
     ProjectBackground? paper,
     RowPictures? rows,
@@ -514,7 +520,7 @@ class CameraFrameRenderService {
         cameraFrameSize,
         outputSize: resolvedOutput,
       );
-      overlayPass(canvas);
+      overlayPass(canvas, cameraRasterScale);
     }
 
     final picture = recorder.endRecording();

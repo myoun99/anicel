@@ -8,6 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart'
+    show EffectKind, ResolvedLayerEffect;
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -16,6 +19,7 @@ import 'package:anicel/src/services/layer_pose_matrix.dart'
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_offset.dart';
+import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -195,7 +199,12 @@ void main() {
 
     Future<int> alphaAt(ResolvedSeNameTag tag, int x, int y) async {
       final recorder = ui.PictureRecorder();
-      paintSeNameTags(ui.Canvas(recorder), tags: [tag], canvasSize: size);
+      paintSeNameTags(
+        ui.Canvas(recorder),
+        tags: [tag],
+        canvasSize: size,
+        rasterScale: 1,
+      );
       final picture = recorder.endRecording();
       final image = picture.toImageSync(size.width, size.height);
       picture.dispose();
@@ -204,15 +213,48 @@ void main() {
       return rgba.getUint8((y * size.width + x) * 4 + 3);
     }
 
+    /// The pixel at [at] with [tag] painted over [under].
+    Future<ui.Color> colourAt(
+      ResolvedSeNameTag tag,
+      Offset at, {
+      ui.Color under = const ui.Color(0x00000000),
+    }) async {
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder)
+        ..drawColor(under, ui.BlendMode.src);
+      paintSeNameTags(
+        canvas,
+        tags: [tag],
+        canvasSize: size,
+        rasterScale: 1,
+      );
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(size.width, size.height);
+      picture.dispose();
+      final rgba = (await image.toByteData())!;
+      image.dispose();
+      final i = (at.dy.round() * size.width + at.dx.round()) * 4;
+      return ui.Color.fromARGB(
+        rgba.getUint8(i + 3),
+        rgba.getUint8(i),
+        rgba.getUint8(i + 1),
+        rgba.getUint8(i + 2),
+      );
+    }
+
     ResolvedSeNameTag tag({
       LayerPlacement inShot = const LayerPlacement.identity(),
       double opacity = 1,
+      LayerBlendMode blendMode = LayerBlendMode.normal,
+      List<ResolvedLayerEffect> effects = const [],
     }) => ResolvedSeNameTag(
       layerId: 's1',
       widthBudget: 400,
       shot: const LayerPlacement.identity(),
       inShot: inShot,
       opacity: opacity,
+      blendMode: blendMode,
+      effects: effects,
       content: const TextCelContent(
         text: 'A',
         style: SeNameTag.defaultStyle,
@@ -229,6 +271,73 @@ void main() {
     test('at the row\'s opacity — as one picture', () async {
       expect(await alphaAt(tag(opacity: 0.5), 100, 100), closeTo(128, 2));
       expect(await alphaAt(tag(opacity: 0), 100, 100), 0);
+    });
+
+    // F-387 (유저 2026-10-19): 「다른것도 확인해서 통일」 — the rest of the
+    // row's fx reach the tag as a layer's reach its picture.
+    Rect tagBox() => seNameTagBoxBounds(tag(), canvasSize: size);
+    // In the box's pad, where no letter is: the box's own red.
+    Offset inTheBox() => tagBox().topLeft + const Offset(2, 2);
+
+    test('through the row\'s blur — past the box, as a layer\'s spreads',
+        () async {
+      final beside = tagBox().centerRight + const Offset(4, 0);
+      expect((await colourAt(tag(), beside)).a, 0);
+      final blurred = tag(
+        effects: [
+          ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 12]),
+        ],
+      );
+      expect((await colourAt(blurred, beside)).a, greaterThan(0));
+    });
+
+    test('through the row\'s colour', () async {
+      final red = await colourAt(tag(), inTheBox());
+      expect(red.r, greaterThan(red.g + 0.2), reason: 'the box is red');
+      final grey = await colourAt(
+        tag(
+          effects: [
+            ResolvedLayerEffect(
+              kind: EffectKind.hueSaturation,
+              values: const [0, -100, 0],
+            ),
+          ],
+        ),
+        inTheBox(),
+      );
+      expect(grey.r, closeTo(grey.g, 0.02), reason: 'desaturated');
+      expect(grey.g, closeTo(grey.b, 0.02));
+    });
+
+    test('in the row\'s blend, over what is under it', () async {
+      const blue = ui.Color(0xFF0000FF);
+      final over = await colourAt(tag(), inTheBox(), under: blue);
+      expect(over.r, greaterThan(0.7), reason: 'normal: the box covers');
+      final multiplied = await colourAt(
+        tag(blendMode: LayerBlendMode.multiply),
+        inTheBox(),
+        under: blue,
+      );
+      expect(multiplied.r, lessThan(0.05), reason: 'red × no red');
+      expect(multiplied.b, closeTo(0x5C / 255, 0.03), reason: 'its blue');
+    });
+
+    test('through the row\'s colour key — a picture of its own', () async {
+      await ColourKeyShader.load();
+      final keyed = tag(
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.deleteColor,
+            values: const [0xC9, 0x5C, 0x5C, 8, 100],
+          ),
+        ],
+      );
+      expect((await colourAt(tag(), inTheBox())).a, 1);
+      expect(
+        (await colourAt(keyed, inTheBox())).a,
+        0,
+        reason: 'the box was its key colour',
+      );
     });
   });
 }

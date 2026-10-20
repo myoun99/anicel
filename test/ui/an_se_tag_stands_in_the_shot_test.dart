@@ -106,7 +106,12 @@ void main() {
       ),
     );
     final recorder = ui.PictureRecorder();
-    paintSeNameTags(ui.Canvas(recorder), tags: [tag], canvasSize: size);
+    paintSeNameTags(
+      ui.Canvas(recorder),
+      tags: [tag],
+      canvasSize: size,
+      rasterScale: 1,
+    );
     final picture = recorder.endRecording();
     final image = picture.toImageSync(size.width, size.height);
     picture.dispose();

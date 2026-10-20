@@ -448,10 +448,11 @@ class ExportFrameRenderer {
       rows: rows,
       overlayPass: nameTags.isEmpty
           ? null
-          : (canvas) => paintSeNameTags(
+          : (canvas, rasterScale) => paintSeNameTags(
               canvas,
               tags: nameTags,
               canvasSize: cut.canvasSize,
+              rasterScale: rasterScale,
             ),
     );
   }
@@ -1145,16 +1146,16 @@ class ExportFrameRenderer {
   ///
   /// ⚠️The order is my call, not the user's (I-105): the camera's marks are
   /// what is said of the drawing, the guides what it was drawn over.
-  void Function(ui.Canvas canvas)? _laidOver(
-    List<void Function(ui.Canvas canvas)?> passes,
+  CameraOverlayPass? _laidOver(
+    List<CameraOverlayPass?> passes,
   ) {
     final laid = passes.nonNulls.toList();
     if (laid.isEmpty) {
       return null;
     }
-    return (canvas) {
+    return (canvas, rasterScale) {
       for (final pass in laid) {
-        pass(canvas);
+        pass(canvas, rasterScale);
       }
     };
   }
@@ -1169,7 +1170,7 @@ class ExportFrameRenderer {
   /// 🗣️I-105-Q2 (유저 2026-10-16): 「래스터라이즈와 같은 … 모습」 — and
   /// 「애초에 래스터라이즈도 캔버스에 보이는 옅은선 그대로 래스터라이즈하도록
   /// 법 통일」: one picture, drawn by one function.
-  void Function(ui.Canvas canvas)? _guidesOver(
+  CameraOverlayPass? _guidesOver(
     ExportCelGroupTask task,
     CameraView view,
     ui.Color color,
@@ -1181,7 +1182,7 @@ class ExportFrameRenderer {
     if (guides.isEmpty) {
       return null;
     }
-    return (canvas) => paintGuidesAtRest(
+    return (canvas, _) => paintGuidesAtRest(
       canvas,
       guides,
       canvasSize: cut.canvasSize,
@@ -1204,7 +1205,7 @@ class ExportFrameRenderer {
   /// 🗣️I-89-Q20 (유저 2026-10-12): 「캔버스와 같은 픽셀 수」 — ⛔not grown with
   /// the camera's frame as the conte sheet's are, though a large frame
   /// prints them small.
-  void Function(ui.Canvas canvas)? _cameraWorkOver(
+  CameraOverlayPass? _cameraWorkOver(
     ExportCelGroupTask task,
     CameraView view,
   ) {
@@ -1226,7 +1227,7 @@ class ExportFrameRenderer {
       cut.canvasSize.width.toDouble(),
       cut.canvasSize.height.toDouble(),
     );
-    return (canvas) => const SheetCanvasPrinter(style: conteTextStyle).paint(
+    return (canvas, _) => const SheetCanvasPrinter(style: conteTextStyle).paint(
       canvas,
       paper,
       (viewport: null, devicePixelRatio: 1, paper: paper),

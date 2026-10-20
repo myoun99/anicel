@@ -107,15 +107,20 @@ CanvasPoint? resolveLayerAnchorPointAt({
 }
 
 /// The layer's effective opacity at [frameIndex]: static layer opacity ×
-/// the animated Opacity sample (1 while unkeyed), clamped to 0..1.
+/// the animated Opacity sample (1 while unkeyed), clamped to 0..1 — the
+/// sample only while its fx is on: the Opacity lane is the TRANSFORM
+/// group's, and the switch bypasses it as the composite does (R8).
+///
+/// ↩️The switch was read beside this by the caller that knew of it, and
+/// the SE name tag did not (F-387: 「같은 fx인데 다른건 말이안됨」).
 double resolveLayerEffectiveOpacityAt({
   required Layer layer,
   required int frameIndex,
 }) {
-  return (layer.opacity *
-          resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex))
-      .clamp(0.0, 1.0)
-      .toDouble();
+  final sample = layer.transformEnabled
+      ? resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex)
+      : 1.0;
+  return (layer.opacity * sample).clamp(0.0, 1.0).toDouble();
 }
 
 /// Resolves the drawable surface for a layer's frame (e.g. by replaying the
@@ -389,13 +394,23 @@ LayerPoseSample? _folderPoseAt(
   );
 }
 
-/// [carrier]'s own placement: its pose and anchor while its fx is on, null
-/// when the switch bypasses them or the track carries no geometry.
-LayerPoseSample? _ownPlacementAt(Cut cut, Layer carrier, int frameIndex) {
+/// [carrier]'s own placement in [space] — the space its pose is keyed in:
+/// its pose and anchor while its fx is on, null when the switch bypasses
+/// them or the track carries no geometry.
+///
+/// ONE gate for every picture a row's transform lays: a layer's artwork on
+/// the canvas, and an SE row's name tag in the shot (F-387: 「같은 fx인데
+/// 다른건 말이안됨」). ↩️The tag read the transform track itself, so its
+/// row's fx switch turned off nothing it drew.
+LayerPoseSample? layerOwnPlacementAt({
+  required Layer carrier,
+  required CanvasSize space,
+  required int frameIndex,
+}) {
   final pose = carrier.transformEnabled
       ? resolveLayerPoseAt(
           layer: carrier,
-          canvasSize: cut.canvasSize,
+          canvasSize: space,
           frameIndex: frameIndex,
         )
       : null;
@@ -430,7 +445,11 @@ LayerPlacement? layerPlacementAt({
   required int frameIndex,
 }) => placementUnderFolders(
   folderPoses: _folderPosesAbove(cut, layer, frameIndex),
-  layerSample: _ownPlacementAt(cut, _fxCarrierOf(cut, layer), frameIndex),
+  layerSample: layerOwnPlacementAt(
+    carrier: _fxCarrierOf(cut, layer),
+    space: cut.canvasSize,
+    frameIndex: frameIndex,
+  ),
   canvasSize: cut.canvasSize,
   within: referenceMoveAt(layer, frameIndex),
 );
@@ -445,7 +464,11 @@ LayerPlacement? layerReferenceSpaceAt({
   required int frameIndex,
 }) => placementUnderFolders(
   folderPoses: _folderPosesAbove(cut, layer, frameIndex),
-  layerSample: _ownPlacementAt(cut, _fxCarrierOf(cut, layer), frameIndex),
+  layerSample: layerOwnPlacementAt(
+    carrier: _fxCarrierOf(cut, layer),
+    space: cut.canvasSize,
+    frameIndex: frameIndex,
+  ),
   canvasSize: cut.canvasSize,
 );
 
@@ -701,7 +724,11 @@ CutFrameCompositeRow? _resolveLayerNode(
   // folder poses this walk already gathered with the chain's gates.
   final combined = placementUnderFolders(
     folderPoses: folderChain.poses,
-    layerSample: _ownPlacementAt(cut, fxCarrier, frameIndex),
+    layerSample: layerOwnPlacementAt(
+      carrier: fxCarrier,
+      space: cut.canvasSize,
+      frameIndex: frameIndex,
+    ),
     canvasSize: cut.canvasSize,
     within: referenceMoveAt(layer, frameIndex),
   );

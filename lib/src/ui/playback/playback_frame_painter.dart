@@ -261,7 +261,17 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
         // whole (🧪10-13: 15,008 pixels at 1, none at a half).
         canvas.saveLayer(null, Paint()..color = alphaOnly(imageOpacity));
       }
-      paintSeNameTags(canvas, tags: seNameTags, canvasSize: canvasSize);
+      paintSeNameTags(
+        canvas,
+        tags: seNameTags,
+        canvasSize: canvasSize,
+        // Device pixels per canvas pixel under the view and, through the
+        // camera, its projection — whose turn keeps scale, so its zoom is
+        // the whole of it (as `renderThroughCamera` reads it).
+        rasterScale:
+            displayScaleOf(resolvedViewport?.zoom ?? 1, devicePixelRatio) *
+            (pose?.zoom.abs() ?? 1),
+      );
       if (thinning) {
         canvas.restore();
       }

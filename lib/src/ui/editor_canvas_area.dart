@@ -37,6 +37,7 @@ import 'brush/cel_text_commands.dart';
 import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
+import 'canvas/display_resample.dart' show displayScaleOf;
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'brush/brush_canvas_panel.dart' show BrushCanvasPanel, CanvasFloats;
@@ -1962,7 +1963,12 @@ class _SeNameTagOverlayPainter extends CustomPainter with RepaintOnProps {
       viewport,
       devicePixelRatio: devicePixelRatio,
     );
-    paintSeNameTags(canvas, tags: tags, canvasSize: canvasSize);
+    paintSeNameTags(
+      canvas,
+      tags: tags,
+      canvasSize: canvasSize,
+      rasterScale: displayScaleOf(viewport.zoom, devicePixelRatio),
+    );
     canvas.restore();
   }
 

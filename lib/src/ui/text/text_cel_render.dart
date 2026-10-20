@@ -79,15 +79,13 @@ class TextCelLayout {
         background,
       );
     }
-    // ⚠️A letter's size past the ink the layout counts: that box is the
-    // lines' own, and a glyph reaches out of its line.
-    _letters.paintAt(
-      canvas,
-      topLeft,
-      within: inkBounds.inflate(style.fontSize),
-      lines: _lines,
-    );
+    _letters.paintAt(canvas, topLeft, within: paintBounds, lines: _lines);
   }
+
+  /// Where the block may paint, in canvas coordinates: ⚠️a letter's size
+  /// past the ink the layout counts — that box is the lines' own, and a
+  /// glyph reaches out of its line.
+  ui.Rect get paintBounds => inkBounds.inflate(style.fontSize);
 
   void dispose() => _letters.dispose();
 }

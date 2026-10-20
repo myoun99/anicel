@@ -4,6 +4,8 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -13,6 +15,8 @@ import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/services/camera_projection_matrix.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart'
+    show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 
 /// The on-canvas SE name tag resolution (R5b, §6-z15): which rows show
@@ -232,6 +236,64 @@ void main() {
       tag.shot.compose(tag.inShot),
       reason: 'laid in the shot, the shot on the canvas',
     );
+  });
+
+  test('🎯its fx switch bypasses its transform as a layer\'s does — the '
+      'pose and the animated opacity, never the row\'s own (F-387)', () {
+    final bypassed = seRow(id: 's1', name: 'S1', seName: 'タモツ').copyWith(
+      opacity: 0.8,
+      transformEnabled: false,
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 400, y: 900),
+        ),
+        opacity: PropertyTrack<double>().withKey(0, 0.5),
+      ),
+    );
+    final tag = resolve([bypassed]).single;
+
+    expect(tag.inShot, const LayerPlacement.identity());
+    expect(tag.opacity, closeTo(0.8, 1e-9));
+    final on = resolve([bypassed.copyWith(transformEnabled: true)]).single;
+    expect(inTheShot(on), CanvasPoint(x: 400, y: 900), reason: 'on, it is');
+    expect(on.opacity, closeTo(0.4, 1e-9));
+  });
+
+  test('🎯its blend and its effect chain are the row\'s, each effect by '
+      'its own switch (F-387)', () {
+    final dressed = seRow(id: 's1', name: 'S1', seName: 'タモツ').copyWith(
+      blendMode: LayerBlendMode.multiply,
+      effects: [
+        LayerEffect(
+          id: const EffectId('blur'),
+          kind: EffectKind.blur,
+          parameters: {'blurX': EffectParameter(value: 4)},
+        ),
+        LayerEffect(
+          id: const EffectId('off'),
+          kind: EffectKind.blur,
+          enabled: false,
+          parameters: {'blurY': EffectParameter(value: 9)},
+        ),
+      ],
+    );
+    final tag = resolve([dressed]).single;
+    final plain = resolve([seRow(id: 's1', name: 'S1', seName: 'タモツ')]);
+
+    expect(tag.blendMode, LayerBlendMode.multiply);
+    expect(tag.effects, hasLength(1), reason: 'the switched-off one drops');
+    expect(tag.effects.single.parameter('blurX'), 4);
+    // What is drawn changed either way, so the repaint has to know.
+    for (final one in [
+      dressed.copyWith(blendMode: LayerBlendMode.normal),
+      dressed.copyWith(effects: const []),
+    ]) {
+      expect(
+        seNameTagSignature(resolve([one])),
+        isNot(seNameTagSignature(plain)),
+      );
+    }
   });
 
   test('a style-only tag round-trips and never places', () {

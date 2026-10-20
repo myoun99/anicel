@@ -316,9 +316,10 @@ class EditingCanvas {
       if (!layer.isVisible || layer.opacity <= 0) {
         continue;
       }
-      final opacity = layer.transformEnabled
-          ? resolveLayerEffectiveOpacityAt(layer: layer, frameIndex: frameIndex)
-          : layer.opacity.clamp(0.0, 1.0).toDouble();
+      final opacity = resolveLayerEffectiveOpacityAt(
+        layer: layer,
+        frameIndex: frameIndex,
+      );
       // The ANIMATED opacity reaching zero, which the flag above cannot
       // see (that one reads the row's static value). ⚠️Untested: it needs
       // a transform track whose opacity curve hits 0 while the row's own

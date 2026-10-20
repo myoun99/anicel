@@ -1,10 +1,13 @@
 import 'dart:ui' as ui;
 
 import '../../models/canvas_size.dart';
+import '../../models/composite_tree.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/text_cel_style.dart' show TextCelContent;
-import '../../services/composite_effect_paint.dart' show alphaOnly;
+import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart' show placementMatrix;
 import '../../services/se_name_tag_plan.dart';
+import '../canvas/subtree_image_composite.dart';
 import 'text_cel_render.dart';
 
 /// Draws the SE name tags (R5b, §6-z15) — the one implementation every
@@ -16,7 +19,9 @@ import 'text_cel_render.dart';
 /// screen (viewport, camera projection, cut pose); each tag is laid by its
 /// row's transform in its shot, and this lays it on the canvas through the
 /// tag's own [ResolvedSeNameTag.placement] before it paints (I-67-Q1,
-/// F-387). Positions and sizes below are the tag's own.
+/// F-387). Positions and sizes below are the tag's own. [rasterScale] is
+/// how many device pixels a canvas pixel covers under that transform — the
+/// scale a tag that has to be one picture rasters at.
 ///
 /// GEOMETRY (R5 #7, the user's rule, corrected twice on the mockup):
 /// the tag's stored position is the name BOX's exact geometric centre, and
@@ -30,100 +35,162 @@ void paintSeNameTags(
   ui.Canvas canvas, {
   required List<ResolvedSeNameTag> tags,
   required CanvasSize canvasSize,
+  required double rasterScale,
 }) {
   for (final tag in tags) {
     if (tag.opacity <= 0) {
       continue;
     }
-    final layouts = <TextCelLayout>[];
-    final anchor = seNameTagAnchorOf(tag, canvasSize: canvasSize);
-    canvas.save();
-    canvas.transform(placementMatrix(tag.placement).storage);
-    // The row's opacity takes the tag as ONE picture, as a layer's takes
-    // its own: the box under the name is not seen through the name.
-    if (tag.opacity < 1) {
-      canvas.saveLayer(null, ui.Paint()..color = alphaOnly(tag.opacity));
-    }
+    final layouts = _layoutsOf(tag, canvasSize: canvasSize);
     try {
-      // The name is laid out once to measure, then MOVED so its ink (box
-      // included) is centred on the anchor.
-      var nameInk = ui.Rect.fromLTWH(anchor.dx, anchor.dy, 0, 0);
-      if (tag.content.text.isNotEmpty) {
-        final probe = layoutTextCel(
-          content: tag.content.copyWith(position: anchor),
-          canvas: canvasSize,
-          maxWidth: tag.widthBudget,
-        );
-        final drift = probe.inkBounds.center - anchor;
-        probe.dispose();
-        final name = layoutTextCel(
-          content: tag.content.copyWith(position: anchor - drift),
-          canvas: canvasSize,
-          maxWidth: tag.widthBudget,
-        );
-        layouts.add(name);
-        nameInk = name.inkBounds;
-      }
-      // With no name the box is a zero-width sliver AT the anchor, so the
-      // line still hangs off "the box's right edge" — one rule, not two.
-
-      // I-20: the delivery tag, centred over the box — measured the way the
-      // line is, since neither knows where it goes until the box has a size.
-      final delivery = tag.delivery;
-      if (delivery != null && delivery.text.isNotEmpty) {
-        layouts.add(
-          layoutTextCel(
-            content: delivery.copyWith(
-              position: _deliveryPosition(
-                tag,
-                delivery,
-                box: nameInk,
-                canvasSize: canvasSize,
-              ),
-            ),
-            canvas: canvasSize,
-            maxWidth: tag.widthBudget,
-          ),
-        );
-      }
-
-      final line = tag.line;
-      if (line != null && line.text.isNotEmpty) {
-        final probe = layoutTextCel(
-          content: line.copyWith(position: anchor),
-          canvas: canvasSize,
-          maxWidth: tag.widthBudget,
-        );
-        final gap = line.style.fontSize * 0.3;
-        // Left edge on the box's right edge; vertically centred on the box
-        // so a taller line reads as sitting beside the name, not under it.
-        final shift = ui.Offset(
-          nameInk.right + gap - probe.inkBounds.left,
-          nameInk.center.dy - probe.inkBounds.center.dy,
-        );
-        probe.dispose();
-        layouts.add(
-          layoutTextCel(
-            content: line.copyWith(position: anchor + shift),
-            canvas: canvasSize,
-            maxWidth: tag.widthBudget,
-          ),
-        );
-      }
-
-      for (final layout in layouts) {
-        layout.paint(canvas);
-      }
+      _composite(canvas, tag, layouts, rasterScale: rasterScale);
     } finally {
-      if (tag.opacity < 1) {
-        canvas.restore();
-      }
-      canvas.restore();
       for (final layout in layouts) {
         layout.dispose();
       }
     }
   }
+}
+
+/// [tag]'s picture composited as a layer's is — its opacity, its blend and
+/// its effect chain on the tag as ONE picture, the way a folder takes its
+/// members: a sub-tree rastered whole ([drawSubtreeAsImage]), so the box
+/// under the name is not seen through the name, and a blur reads both.
+///
+/// 🗣️F-387 (유저 2026-10-19): 「같은 fx인데 다른건 말이안됨. 다른것도
+/// 확인해서 통일」. ↩️The row's opacity alone reached the tag, through a
+/// `saveLayer` of its own; its blend and its effects reached nothing.
+///
+/// A tag the row composites plainly draws straight on: a raster of it would
+/// be the same pixels.
+void _composite(
+  ui.Canvas canvas,
+  ResolvedSeNameTag tag,
+  List<TextCelLayout> layouts, {
+  required double rasterScale,
+}) {
+  final placement = placementMatrix(tag.placement);
+  void paintTag(ui.Canvas into) {
+    into.save();
+    into.transform(placement.storage);
+    for (final layout in layouts) {
+      layout.paint(into);
+    }
+    into.restore();
+  }
+
+  final effects = resolveCompositeEffectPlan(tag.effects);
+  if (tag.opacity >= 1 &&
+      tag.blendMode == LayerBlendMode.normal &&
+      effects.isSingleDraw &&
+      effects.finalPaint.isEmpty) {
+    paintTag(canvas);
+    return;
+  }
+  if (layouts.isEmpty) {
+    return;
+  }
+  final drawn = layouts
+      .map((layout) => layout.paintBounds)
+      .reduce((union, rect) => union.expandToInclude(rect));
+  drawSubtreeAsImage(
+    canvas: canvas,
+    bounds: effectBufferBounds(
+      subtreeBufferBounds(
+        CompositeLeaf(tag),
+        within: canvas.getLocalClipBounds(),
+        extentOf: (_) => drawn,
+        placementOf: (tag) => tag.placement,
+      ),
+      effects.outsetPixels,
+    ),
+    rasterScale: rasterScale,
+    paintSubtree: (into, _) => paintTag(into),
+    compose: (blit) => blit(
+      layerCompositePaint(
+        opacity: tag.opacity,
+        blendMode: tag.blendMode,
+        effects: effects.finalPaint,
+      ),
+    ),
+    steps: effects.preSteps,
+  );
+}
+
+/// [tag]'s text blocks, laid out where they stand in the tag's own space —
+/// the caller's to dispose.
+List<TextCelLayout> _layoutsOf(
+  ResolvedSeNameTag tag, {
+  required CanvasSize canvasSize,
+}) {
+  final layouts = <TextCelLayout>[];
+  final anchor = seNameTagAnchorOf(tag, canvasSize: canvasSize);
+  // The name is laid out once to measure, then MOVED so its ink (box
+  // included) is centred on the anchor.
+  var nameInk = ui.Rect.fromLTWH(anchor.dx, anchor.dy, 0, 0);
+  if (tag.content.text.isNotEmpty) {
+    final probe = layoutTextCel(
+      content: tag.content.copyWith(position: anchor),
+      canvas: canvasSize,
+      maxWidth: tag.widthBudget,
+    );
+    final drift = probe.inkBounds.center - anchor;
+    probe.dispose();
+    final name = layoutTextCel(
+      content: tag.content.copyWith(position: anchor - drift),
+      canvas: canvasSize,
+      maxWidth: tag.widthBudget,
+    );
+    layouts.add(name);
+    nameInk = name.inkBounds;
+  }
+  // With no name the box is a zero-width sliver AT the anchor, so the
+  // line still hangs off "the box's right edge" — one rule, not two.
+
+  // I-20: the delivery tag, centred over the box — measured the way the
+  // line is, since neither knows where it goes until the box has a size.
+  final delivery = tag.delivery;
+  if (delivery != null && delivery.text.isNotEmpty) {
+    layouts.add(
+      layoutTextCel(
+        content: delivery.copyWith(
+          position: _deliveryPosition(
+            tag,
+            delivery,
+            box: nameInk,
+            canvasSize: canvasSize,
+          ),
+        ),
+        canvas: canvasSize,
+        maxWidth: tag.widthBudget,
+      ),
+    );
+  }
+
+  final line = tag.line;
+  if (line != null && line.text.isNotEmpty) {
+    final probe = layoutTextCel(
+      content: line.copyWith(position: anchor),
+      canvas: canvasSize,
+      maxWidth: tag.widthBudget,
+    );
+    final gap = line.style.fontSize * 0.3;
+    // Left edge on the box's right edge; vertically centred on the box
+    // so a taller line reads as sitting beside the name, not under it.
+    final shift = ui.Offset(
+      nameInk.right + gap - probe.inkBounds.left,
+      nameInk.center.dy - probe.inkBounds.center.dy,
+    );
+    probe.dispose();
+    layouts.add(
+      layoutTextCel(
+        content: line.copyWith(position: anchor + shift),
+        canvas: canvasSize,
+        maxWidth: tag.widthBudget,
+      ),
+    );
+  }
+  return layouts;
 }
 
 /// Where [delivery] is laid out to sit over [box]: centred on it and a

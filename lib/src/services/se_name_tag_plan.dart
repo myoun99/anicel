@@ -2,12 +2,15 @@ import 'dart:ui' show Offset;
 
 import '../models/canvas_size.dart';
 import '../models/layer.dart';
+import '../models/layer_blend_mode.dart';
+import '../models/layer_effect.dart'
+    show ResolvedLayerEffect, resolveLayerEffectsAt;
 import '../models/se_name_tag.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../models/transform_pose.dart' show layerIdentityPose;
 import 'cut_frame_composite_plan.dart'
-    show resolveLayerAnchorPointAt, resolveLayerEffectiveOpacityAt;
+    show layerOwnPlacementAt, resolveLayerEffectiveOpacityAt;
 import 'layer_pose_matrix.dart' show LayerPlacement, placementOf;
 
 /// PURE resolution of the on-canvas SE name tags for one (cut, frame) —
@@ -25,6 +28,8 @@ class ResolvedSeNameTag {
     required this.shot,
     this.inShot = const LayerPlacement.identity(),
     this.opacity = 1,
+    this.blendMode = LayerBlendMode.normal,
+    this.effects = const [],
     this.line,
     this.delivery,
   });
@@ -61,6 +66,18 @@ class ResolvedSeNameTag {
   /// The row's effective opacity at this frame — what a layer's multiplies
   /// its picture by ([resolveLayerEffectiveOpacityAt]).
   final double opacity;
+
+  /// The row's blend — what a layer composites its picture with.
+  final LayerBlendMode blendMode;
+
+  /// The row's effect chain at this frame ([resolveLayerEffectsAt]) — what
+  /// a layer's picture takes before it is composited.
+  ///
+  /// 🗣️F-387 (유저 2026-10-19): 「다른것도 확인해서 통일」. ↩️The chain was
+  /// sampled for the row's own picture, which an SE row never draws, and
+  /// the tag painted after the composite took none of it: an SE row
+  /// carried effects that changed nothing.
+  final List<ResolvedLayerEffect> effects;
 
   /// The DIALOGUE run, or null when there is none to show.
   ///
@@ -149,9 +166,10 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
     // its artwork: in the shot (I-67-Q1). ↩️The canvas centre.
     final space = layer.kind.poseSpace(shot: cameraFrame)!;
     final rest = layerIdentityPose(space).center;
-    final pose = layer.transformTrack.resolveAt(
+    final own = layerOwnPlacementAt(
+      carrier: layer,
+      space: space,
       frameIndex: globalFrame,
-      orElse: () => layerIdentityPose(space),
     );
     final anchor = Offset(rest.x, rest.y);
     final nameStyle = tag?.style ?? SeNameTag.defaultStyle;
@@ -160,15 +178,16 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
         layerId: layer.id.value,
         widthBudget: budget,
         shot: shot,
-        inShot: placementOf((
-          pose: pose,
-          anchorPoint: resolveLayerAnchorPointAt(
-            layer: layer,
-            frameIndex: globalFrame,
-          ),
-        ), space),
+        inShot: own == null
+            ? const LayerPlacement.identity()
+            : placementOf(own, space),
         opacity: resolveLayerEffectiveOpacityAt(
           layer: layer,
+          frameIndex: globalFrame,
+        ),
+        blendMode: layer.blendMode,
+        effects: resolveLayerEffectsAt(
+          effects: layer.effects,
           frameIndex: globalFrame,
         ),
         content: TextCelContent(
@@ -207,5 +226,7 @@ Object seNameTagSignature(List<ResolvedSeNameTag> tags) => Object.hashAll([
       tag.shot,
       tag.inShot,
       tag.opacity,
+      tag.blendMode,
+      Object.hashAll(tag.effects),
     ),
 ]);
