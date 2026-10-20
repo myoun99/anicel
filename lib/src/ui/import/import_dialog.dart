@@ -878,25 +878,7 @@ class _ImportDialogState extends State<ImportDialog> {
     // which is every desktop import and every drop.
     widget.session.mediaGrants.rememberMediaGrants(_pickedGrants);
     final tally = _ImportTally();
-    // 🗣️유저 2026-10-08 (F-282-Q1, 「굽기 · 저장과 같은 기다림 창에」): the
-    // whole run stands behind the app's one wait window. Its % counts the
-    // files, and the one being placed as far as that one says (a movie's
-    // frames, a PDF's pages, a folder's scans); a cloud file's wait is its
-    // status line, and its Cancel gives that file up. ↩️Only a movie that
-    // baked stood behind one — a window of its own for every movie — and
-    // the rest said 「임포트하는 중…」 on this window's status line.
-    final finished = await runWithAppProgress<bool>(
-      context: context,
-      title: AppText.strings.imImport,
-      titleIcon: Icons.download_outlined,
-      runningLabel: AppText.strings.imStatusImporting,
-      doneLabel: AppText.strings.imStatusDone,
-      windowKey: const ValueKey<String>('import-progress-dialog'),
-      runningStatus: _wait.status,
-      onCancel: _wait.cancel,
-      cancelLive: _wait.waiting,
-      task: (report) => _importAll(tally, report),
-    );
+    final finished = await _importBehindTheWaitWindow(tally);
     // What landed is folded however the run ended — a batch that stopped
     // part-way is still one press.
     history.foldSince(pressed, 'Import');
@@ -917,6 +899,30 @@ class _ImportDialogState extends State<ImportDialog> {
           : _Warnings(tally.warnings);
     });
   }
+
+  /// Every file of the press, imported into [tally] — false when this
+  /// window went away part-way ([_importAll]).
+  ///
+  /// 🗣️유저 2026-10-08 (F-282-Q1, 「굽기 · 저장과 같은 기다림 창에」): the
+  /// whole run stands behind the app's one wait window. Its % counts the
+  /// files, and the one being placed as far as that one says (a movie's
+  /// frames, a PDF's pages, a folder's scans); a cloud file's wait is its
+  /// status line, and its Cancel gives that file up. ↩️Only a movie that
+  /// baked stood behind one — a window of its own for every movie — and
+  /// the rest said 「임포트하는 중…」 on this window's status line.
+  Future<bool> _importBehindTheWaitWindow(_ImportTally tally) =>
+      runWithAppProgress<bool>(
+        context: context,
+        title: AppText.strings.imImport,
+        titleIcon: Icons.download_outlined,
+        runningLabel: AppText.strings.imStatusImporting,
+        doneLabel: AppText.strings.imStatusDone,
+        windowKey: const ValueKey<String>('import-progress-dialog'),
+        runningStatus: _wait.status,
+        onCancel: _wait.cancel,
+        cancelLive: _wait.waiting,
+        task: (report) => _importAll(tally, report),
+      );
 
   /// 🗣️import-movie-fps-mismatch-notice (유저 10-06: 「알리는게 좋겠어」 ·
   /// 「셋다 맞고」, 10-10 「1번」 — asked when Import is pressed): a movie
