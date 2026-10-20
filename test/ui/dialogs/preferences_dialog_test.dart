@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 
@@ -29,9 +30,11 @@ void main() {
   Future<void> pumpPreferences(
     WidgetTester tester, {
     PreferencesSection initialSection = PreferencesSection.input,
+    ScrollBehavior? scrollBehavior,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
+        scrollBehavior: scrollBehavior,
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
@@ -121,7 +124,8 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await pumpPreferences(tester);
+    // The bars are the app root's ([AppScrollBehavior]), as in the app.
+    await pumpPreferences(tester, scrollBehavior: const AppScrollBehavior());
     final bars = find.descendant(
       of: find.byKey(const ValueKey<String>('preferences-dialog')),
       matching: find.byType(AppControllerScrollbar),
