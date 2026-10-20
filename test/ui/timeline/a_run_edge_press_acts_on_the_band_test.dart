@@ -260,6 +260,32 @@ void main() {
       expect(drawnStarts(layerOf(s, a)), [0, 2, 5]);
       expect(drawnStarts(layerOf(s, b)), [0, 2, 5, 7]);
     });
+
+    test('a row that refuses holds and repeats is passed by — its blocks '
+        'move, but the conte row shows no run edge to add at', () {
+      final s = session();
+      final (a, _) = twoRows(s);
+      s.layerStack.addLayerOfKind(LayerKind.storyboard);
+      final conte = s.activeLayer!;
+      expect(
+        (conte.kind.acceptsRepeatRegions, s.blockMoveEligible(conte.id)),
+        (false, true),
+        reason: '⛔전제: only the kind\'s refusal passes it by',
+      );
+      s.repository.replaceLayer(layer: laid(conte));
+      band(s, [a, conte.id], 0, 2);
+
+      s.runFramesAdd.beginRunFramesAddDrag(
+        layerId: a,
+        blockStartIndex: 0,
+        atEnd: true,
+      );
+      s.runFramesAdd.updateRunFramesAddDrag(2);
+      s.runFramesAdd.endRunFramesAddDrag();
+
+      expect(drawnStarts(layerOf(s, a)), [0, 2, 3, 4, 5]);
+      expect(drawnStarts(layerOf(s, conte.id)), [0, 2, 5]);
+    });
   });
 
   testWidgets('🚨the tag pressed on the timeline keeps the band it is pressed '
