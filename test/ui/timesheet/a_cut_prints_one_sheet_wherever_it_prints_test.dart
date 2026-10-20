@@ -86,7 +86,7 @@ void main() {
       column!.cells
           .firstWhere((cell) => cell.kind == TimesheetCellKind.instructionStart)
           .label,
-      'カットO.L',
+      'カット O.L',
     );
   });
 

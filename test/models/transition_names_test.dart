@@ -33,18 +33,18 @@ void main() {
       row: track.transitionLayer.copyWith(instructions: spans),
       cuts: cutSpansOf(track),
       vocabulary: CameraInstructionSet.standard,
-      olWord: '컷O.L.',
+      olWord: '컷 O.L',
     );
   }
 
   test('an O.L starts at the cut it leaves and ends at the cut it enters — '
-      'each a c before its name — and is named 컷O.L.', () {
+      'each a c before its name — and is named 컷 O.L', () {
     final event = named({
       18: const InstructionEvent(instructionId: 'ol', length: 12),
     }).instructions[18]!;
     expect(event.valueA, 'c301');
     expect(event.valueB, 'c302');
-    expect(event.text, '컷O.L.');
+    expect(event.text, '컷 O.L');
   });
 
   test('an O.L into a gap has no cut to end at; one out of a gap none to '
@@ -99,7 +99,7 @@ void main() {
           row: once,
           cuts: cutSpansOf(track),
           vocabulary: CameraInstructionSet.standard,
-          olWord: '컷O.L.',
+          olWord: '컷 O.L',
         ),
         once,
       ),

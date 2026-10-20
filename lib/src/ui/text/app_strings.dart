@@ -250,7 +250,10 @@ enum AppStrings {
   String get tlTransitionCrossingWarning => _s('tlTransitionCrossingWarning');
 
   /// An O.L's name on the transition row — not the user's to set (F-229,
-  /// 유저: 「이름부분은 그냥 컷O.L. 일본어론 カットO.L」).
+  /// 유저: 「이름부분은 그냥 컷O.L. 일본어론 カットO.L」). 🗣️F-339 (유저
+  /// 2026-10-11): 「O.L 오르쪽에 . 이라는 의문의 점이 있음. 그리고 컷이랑
+  /// O.L이랑 띄우도록. 관련된것도 규칙 마찬가지」 — the term the word ends
+  /// in is the vocabulary's `O.L`; ↩️the dot was the sentence's.
   String get tlTransitionCutOl => _s('tlTransitionCutOl');
   String get audioMicGainLabel => _s('audioMicGainLabel');
   String get audioInputChannelLabel => _s('audioInputChannelLabel');
@@ -1911,7 +1914,7 @@ enum AppStrings {
     'recordTakeClipped': 'The take clipped — the red corner marks the block.',
     'recordClipMarkerTooltip': 'This take clipped (recorded too hot)',
     'tlTransitionCrossingWarning': 'Crosses the cut boundary — not applied',
-    'tlTransitionCutOl': 'Cut O.L.',
+    'tlTransitionCutOl': 'Cut O.L',
     'audioMicGainLabel': 'Mic gain (dB)',
     'audioInputChannelLabel': 'Input channels',
     'audioInputChannelDevice': 'As device',
@@ -3126,7 +3129,7 @@ enum AppStrings {
     'recordTakeClipped': 'テイクがクリッピングしました — ブロックの赤い角が目印です。',
     'recordClipMarkerTooltip': 'このテイクはクリッピングしています（入力過大）',
     'tlTransitionCrossingWarning': 'カット境界を越えています — 適用されません',
-    'tlTransitionCutOl': 'カットO.L',
+    'tlTransitionCutOl': 'カット O.L',
     'audioMicGainLabel': 'マイクゲイン（dB）',
     'audioInputChannelLabel': '入力チャンネル',
     'audioInputChannelDevice': '装置のまま',
@@ -4735,7 +4738,7 @@ enum AppStrings {
     'recordTakeClipped': '테이크에 클리핑이 감지되었습니다 — 블록의 빨간 모서리가 표시입니다.',
     'recordClipMarkerTooltip': '이 테이크는 클리핑되었습니다(입력 과대)',
     'tlTransitionCrossingWarning': '컷 경계를 넘어 적용되지 않습니다',
-    'tlTransitionCutOl': '컷O.L.',
+    'tlTransitionCutOl': '컷 O.L',
     'audioMicGainLabel': '마이크 게인(dB)',
     'audioInputChannelLabel': '입력 채널',
     'audioInputChannelDevice': '장치 그대로',
@@ -6333,7 +6336,7 @@ enum AppStrings {
     'recordTakeClipped': 'La prise a saturé — le coin rouge marque le bloc.',
     'recordClipMarkerTooltip': 'Prise saturée (niveau trop fort)',
     'tlTransitionCrossingWarning': 'Dépasse la limite du plan — non appliqué',
-    'tlTransitionCutOl': 'O.L. de plan',
+    'tlTransitionCutOl': 'O.L de plan',
     'audioMicGainLabel': 'Gain micro (dB)',
     'audioInputChannelLabel': 'Canaux d\'entrée',
     'audioInputChannelDevice': 'Tel quel',
@@ -8059,7 +8062,7 @@ enum AppStrings {
     'recordTakeClipped': '录音发生削波 — 块上的红角为标记。',
     'recordClipMarkerTooltip': '该录音已削波（电平过高）',
     'tlTransitionCrossingWarning': '超出镜头边界 — 未应用',
-    'tlTransitionCutOl': '镜头O.L.',
+    'tlTransitionCutOl': '镜头 O.L',
     'audioMicGainLabel': '麦克风增益（dB）',
     'audioInputChannelLabel': '输入声道',
     'audioInputChannelDevice': '按设备',
