@@ -968,6 +968,11 @@ class TimesheetDocumentPainter extends CustomPainter
     bool centeredAtY = false,
     double? maxWidth,
   }) {
+    // A word's room is its column's less a margin, and the S group's
+    // columns share the form's fixed width: past twenty of them that room
+    // went below zero and stopped the sheet on an assertion (2026-10-21,
+    // 26 S rows). No room at all is the least a word is laid in.
+    final room = math.max(0.0, maxWidth ?? double.infinity);
     final painter = TextPainter(
       text: TextSpan(
         text: text,
@@ -976,7 +981,7 @@ class TimesheetDocumentPainter extends CustomPainter
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: '…',
-    )..layout(maxWidth: maxWidth ?? double.infinity);
+    )..layout(maxWidth: room);
     final across = centeredAtX
         ? anchor - Offset(painter.width / 2, 0)
         : rightAlignedAtX
