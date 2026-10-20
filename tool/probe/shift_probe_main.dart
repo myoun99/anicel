@@ -221,21 +221,29 @@ class _Keyboard {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.keyD) {
       _atD = _record();
     }
-    if (event is KeyUpEvent && !event.synthesized) {
-      _wentUp.add(event.physicalKey);
+    if (event is KeyUpEvent) {
+      (event.synthesized ? _syncedUp : _wentUp).add(event.physicalKey);
     }
     return false;
   }
 
+  final _syncedUp = <PhysicalKeyboardKey>{};
+
+  /// Whether the engine let [key] go to sync itself since the last
+  /// modifier went [down] — said in the report, not judged.
+  bool syncedUp(PhysicalKeyboardKey key) => _syncedUp.contains(key);
+
   /// Whether [key] has gone up since the last modifier went [down], by a
   /// key-up the engine was handed.
   ///
-  /// ⚠️Not one the engine made up to sync itself (`synthesized`): a mouse
-  /// message carries the modifiers the hand holds, none here, and the
-  /// engine lets Shift go and presses it again at the next key — measured
-  /// on this runner as the window comes up under the pointer. That is the
-  /// engine's own, before and after the runner's answer; what the runner
-  /// hands it is a key-up like a keyboard's.
+  /// ⚠️Not one the engine made up to sync itself (`synthesized`): a pointer
+  /// move carries the modifiers the hand holds, none here, and the engine
+  /// syncs Shift and Ctrl to it (`FlutterWindowsView::OnPointerMove`), then
+  /// presses them again at the next key from GetKeyState. Measured on this
+  /// runner in the first case, as the window comes up (the report says
+  /// 「the engine let it go to sync」). That is the engine's own, before
+  /// and after the runner's answer; what the runner hands it is a key-up
+  /// like a keyboard's.
   bool wentUp(PhysicalKeyboardKey key) => _wentUp.contains(key);
 
   Future<void> send(int message, int key, int lparam) async {
@@ -252,6 +260,7 @@ class _Keyboard {
 
   Future<void> down(_Modifier modifier) async {
     _wentUp.clear();
+    _syncedUp.clear();
     _windowsHolds(modifier.heldAs);
     await send(
       modifier.downMessage,
@@ -316,9 +325,11 @@ Future<List<String>> _cases(_Keyboard keys) async {
     final passed = isHeld
         ? named && held.physical.contains(modifier.physical) && !wentUp
         : !named;
+    final synced = isHeld && keys.syncedUp(modifier.physical);
     lines.add(
       '${passed ? 'PASS' : 'FAIL'} $name: ${_shown(held)}'
-      '${isHeld && wentUp ? ' — its key went up meanwhile' : ''}',
+      '${isHeld && wentUp ? ' — its key went up meanwhile' : ''}'
+      '${synced ? ' — the engine let it go to sync' : ''}',
     );
   }
 
