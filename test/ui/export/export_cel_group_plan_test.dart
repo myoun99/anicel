@@ -1998,8 +1998,8 @@ void main() {
     });
 
     test('겸용: under the project scope a group is ONE entry — a timesheet '
-        'for EACH of its cuts, and one envelope, its owner\'s; under the cut '
-        'scope the cut stood on has its own sheet', () {
+        'for EACH of its cuts, and one envelope, its owner\'s; 🎯and under '
+        'the cut scope the same, listed in the cut stood on (F-415)', () {
       final project = Project(
         id: const ProjectId('project'),
         name: 'Project',
@@ -2077,9 +2077,18 @@ void main() {
             (sheet.listedIn.id.value, sheet.of.id.value, sheet.fileName),
         ],
         [
+          ('c2', 'c1', '_TSC1.png'),
           ('c2', 'c2', '_TSC2.png'),
           ('c2', 'c1', '_CUTC1_envelope.png'),
         ],
+      );
+      expect(
+        [
+          for (final sheet in built(ExportScopeKind.cut, 'c3').documents)
+            sheet.fileName,
+        ],
+        ['_TSC3.png', '_CUTC3_envelope.png'],
+        reason: 'a cut alone is its own group',
       );
 
       // The plan READS the delta of the cut a document is of: C2's sheet

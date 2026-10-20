@@ -1055,14 +1055,17 @@ Iterable<ExportDocumentSheet> _documentsOf(
   }
 }
 
-/// The cuts [entry] stands for: its own under the cut scope — and under the
-/// project scope every cut of its 겸용 group, in track order (the group is
-/// walked once, from its owner, and each of its cuts keeps a timesheet of
-/// its own).
+/// The cuts [entry] stands for: every cut of its 겸용 group, in track order,
+/// under either scope — each keeps a timesheet of its own.
+///
+/// 🗣️F-415 (유저 2026-10-19): 「셀 소재는 정상적으로 겸용컷 다 등록되서
+/// 출력되는데 타임시트는 현재컷 타임시트만 출력리스트에 올라가있음. 타임시트던
+/// 컷봉투던 뭐던 다 겸용컷 다 소재 출력리스트에 올라가야함」. ↩️Under the cut
+/// scope it was the cut stood on alone — a rule no one had asked for, which
+/// split the group the export treats as one cut (2026-09-09: 「겸용컷은
+/// 하나라는 느낌이야」).
 List<Cut> _cutsOf(_CutRun entry) =>
-    entry.run.spec.scope == ExportScopeKind.project
-    ? linkedCutGroupInTrackOrder(entry.run.project, cutId: entry.cut.id)
-    : [entry.cut];
+    linkedCutGroupInTrackOrder(entry.run.project, cutId: entry.cut.id);
 
 /// The files of [document], listed in [entry]'s cut. Each answers to the
 /// delta of the cut the document is OF: the file turned off there — its
