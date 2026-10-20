@@ -13,13 +13,14 @@ void main() {
     tester,
   ) async {
     final names = <ExportSequenceNaming>[];
-    final baseName = TextEditingController(text: 'frame');
+    final baseName = TextEditingController();
     addTearDown(baseName.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: ExportSequenceNamingModule(
             naming: const ExportSequenceNaming(),
+            ghost: 'C001',
             enabled: true,
             onChanged: names.add,
             baseNameController: baseName,

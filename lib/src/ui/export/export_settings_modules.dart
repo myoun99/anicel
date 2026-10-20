@@ -816,16 +816,25 @@ class ExportSizeModule extends StatelessWidget {
 /// 🗣️F-221 (유저 2026-10-06): 「이름칸은 확장자랑 텍스트가 같이있는데 확장자는
 /// 따로 나눠서 편집불가하게 그냥 띄우기만하고, 이름만 딱 있도록. 그렇게
 /// 설정한대로 내보낼때 이름 지정되는 방식이지」.
+///
+/// 🗣️F-404 (유저 2026-10-19): the field opens EMPTY, and what the file is
+/// called while it stays so shows faintly behind it — 「텍스트로 인식안되는데
+/// 아무것도 안써져있으면 뒤에 흐리게 텍스트 보이게하는거」.
 class ExportFileNameModule extends StatelessWidget {
   const ExportFileNameModule({
     super.key,
     required this.controller,
+    required this.ghost,
     required this.extension,
     required this.enabled,
     required this.onChanged,
   });
 
   final TextEditingController controller;
+
+  /// What the file is called while nothing is typed — the name the run
+  /// writes then, shown behind the empty field.
+  final String ghost;
 
   /// The format's own, without its dot.
   final String extension;
@@ -846,6 +855,7 @@ class ExportFileNameModule extends StatelessWidget {
               key: const ValueKey<String>('export-file-name-field'),
               controller: controller,
               enabled: enabled,
+              decoration: InputDecoration(hintText: ghost),
               onChanged: (_) => onChanged(),
             ),
           ),
@@ -863,23 +873,26 @@ class ExportFileNameModule extends StatelessWidget {
   }
 }
 
-/// Sequence numbering: `<base>_0001.<ext>`.
+/// Sequence numbering: `<base>_0001.<ext>` — the base empty until one is
+/// typed, and what the stills are called meanwhile behind it, as a lone
+/// file's name is ([ExportFileNameModule], F-404).
 class ExportSequenceNamingModule extends StatelessWidget {
   const ExportSequenceNamingModule({
     super.key,
     required this.naming,
+    required this.ghost,
     required this.enabled,
     required this.onChanged,
     required this.baseNameController,
   });
 
   final ExportSequenceNaming naming;
+
+  /// The base the stills are numbered under while none is typed.
+  final String ghost;
   final bool enabled;
   final ValueChanged<ExportSequenceNaming> onChanged;
   final TextEditingController baseNameController;
-
-  static String summarize(ExportSequenceNaming naming, String extension) =>
-      '${naming.baseName}_${'1'.padLeft(naming.digits, '0')}.$extension';
 
   @override
   Widget build(BuildContext context) {
@@ -893,11 +906,9 @@ class ExportSequenceNamingModule extends StatelessWidget {
               key: const ValueKey<String>('export-naming-base-field'),
               controller: baseNameController,
               enabled: enabled,
-              onChanged: (value) => onChanged(
-                naming.copyWith(
-                  baseName: value.trim().isEmpty ? 'frame' : value.trim(),
-                ),
-              ),
+              decoration: InputDecoration(hintText: ghost),
+              onChanged: (value) =>
+                  onChanged(naming.copyWith(baseName: value.trim())),
             ),
           ),
         ),

@@ -50,7 +50,7 @@ void main() {
   ExportJob enqueue(ExportQueueModel queue, {String? name}) => queue.enqueue(
     spec: const ImageExportSpec(),
     destination: const ExportIntoFolder('/out'),
-    fileName: name,
+    typedName: name,
     now: () => DateTime.utc(2026, 9, 5),
   );
 

@@ -211,10 +211,11 @@ class ExportDialogState extends State<ExportDialog> {
   final Map<String, bool> _expanded = {};
   final ExportQueueModel _queue = ExportQueueModel();
 
-  late final TextEditingController _sequenceFileController;
-  late final TextEditingController _imageFileController;
-  late final TextEditingController _conteFileController =
-      TextEditingController(text: 'conte');
+  // A lone file's name, typed — empty until it is, and what the file is
+  // called meanwhile shows behind it ([_nameFieldOf], F-404).
+  final TextEditingController _sequenceFileController = TextEditingController();
+  final TextEditingController _imageFileController = TextEditingController();
+  final TextEditingController _conteFileController = TextEditingController();
   late final TextEditingController _namingBaseController;
   late final TextEditingController _celSuffixController;
 
@@ -299,11 +300,6 @@ class ExportDialogState extends State<ExportDialog> {
     _specs = restored.lastSpecs;
     _presetsOpen = restored.presetsDrawerOpen;
     _queueOpen = restored.queueDrawerOpen;
-    final projectName = sanitizeExportFileComponent(
-      _session.repository.requireProject().name,
-    );
-    _sequenceFileController = TextEditingController(text: projectName);
-    _imageFileController = TextEditingController(text: projectName);
     _namingBaseController = TextEditingController(
       text: _specs.sequence.naming.baseName,
     );
@@ -965,7 +961,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   String _contePageFileName(int index, int pageCount) {
     final extension = _specs.conte.image.stillFormat.fileExtension;
-    final name = _typedName(_conteFileController);
+    final name = _typedName(ExportTab.conte);
     return pageCount == 1
         ? '$name.$extension'
         : '${name}_p${index + 1}.$extension';
@@ -1279,9 +1275,12 @@ class ExportDialogState extends State<ExportDialog> {
 
   String _sequenceFileNameFor(int index) {
     final naming = _specs.sequence.naming;
+    final base = naming.baseName.isEmpty
+        ? _nameFieldOf(ExportTab.sequence)!.unnamed
+        : naming.baseName;
     final number = '${index + 1}'.padLeft(naming.digits, '0');
     final extension = _specs.sequence.format.stillFormat.fileExtension;
-    return '${naming.baseName}_$number.$extension';
+    return '${base}_$number.$extension';
   }
 
   /// The two sentences EVERY export ends with. Six routines wrote the
@@ -1670,12 +1669,9 @@ class ExportDialogState extends State<ExportDialog> {
     if (_tab == ExportTab.conte && _conteSheet().$2.isEmpty) {
       return (name: null, more: false);
     }
-    final lone = _loneFile();
+    final lone = _loneFileName();
     if (lone != null) {
-      return (
-        name: _singleFileName(lone.controller, lone.extension),
-        more: false,
-      );
+      return (name: lone, more: false);
     }
     switch (_tab) {
       case ExportTab.cels:
@@ -1716,24 +1712,20 @@ class ExportDialogState extends State<ExportDialog> {
     return name;
   }
 
-  /// The name typed for a lone file — the project's while the field is
-  /// empty. An extension typed after it is not part of it: the format names
-  /// the extension, so a stale one swaps instead of stacking (`name.mp4` +
-  /// MOV → `name.mov`, never `name.mp4.mov`).
-  String _typedName(TextEditingController controller) {
-    final typed = controller.text.trim();
-    return _withoutKnownExtension(
-      typed.isEmpty
-          ? sanitizeExportFileComponent(
-              _session.repository.requireProject().name,
-            )
-          : typed,
-    );
+  /// The name typed for [tab]'s lone file — or, while its field is empty,
+  /// what the file is called meanwhile, the name shown behind the field
+  /// ([_nameFieldOf]). An extension typed after it is not part of it: the
+  /// format names the extension, so a stale one swaps instead of stacking
+  /// (`name.mp4` + MOV → `name.mov`, never `name.mp4.mov`).
+  String _typedName(ExportTab tab) {
+    final field = _nameFieldOf(tab)!;
+    final typed = field.controller.text.trim();
+    return _withoutKnownExtension(typed.isEmpty ? field.unnamed : typed);
   }
 
   /// A lone file's name with the CURRENT format's extension.
-  String _singleFileName(TextEditingController controller, String extension) =>
-      '${_typedName(controller)}.$extension';
+  String _singleFileName(ExportTab tab, String extension) =>
+      '${_typedName(tab)}.$extension';
 
   bool get _canExport => !_isExporting && _writesAnything;
 
@@ -1991,43 +1983,57 @@ class ExportDialogState extends State<ExportDialog> {
 
   // --- the render queue (EX7) -----------------------------------------------
 
-  TextEditingController? _fileControllerFor(ExportTab tab) => switch (tab) {
-    ExportTab.sequence => _sequenceFileController,
-    ExportTab.image => _imageFileController,
-    ExportTab.conte => _conteFileController,
-    ExportTab.cels => null,
-  };
+  /// The field [tab]'s files are named in, and what they are called while
+  /// it is empty — the name shown behind it: what the export covers
+  /// ([unnamedExportName]). The sequence covers the cut or the project, as
+  /// its scope says; the image, the cut it is a frame of; the conte, the
+  /// project. Null for the cels tab, whose files a rule names.
+  ({TextEditingController controller, String unnamed})? _nameFieldOf(
+    ExportTab tab,
+  ) {
+    final project = _session.repository.requireProject();
+    return switch (tab) {
+      ExportTab.sequence => (
+        controller: _sequenceFileController,
+        unnamed: unnamedExportName(
+          project,
+          cut: _specs.sequence.scope == ExportScopeKind.project
+              ? null
+              : _activeCut,
+        ),
+      ),
+      ExportTab.image => (
+        controller: _imageFileController,
+        unnamed: unnamedExportName(project, cut: _activeCut),
+      ),
+      ExportTab.conte => (
+        controller: _conteFileController,
+        unnamed: unnamedExportName(project),
+      ),
+      ExportTab.cels => null,
+    };
+  }
 
-  /// The LONE FILE this tab writes under a name typed for it — its field,
-  /// and the extension its format gives it — or null for a tab that writes
-  /// files a rule names.
+  /// The name of the LONE FILE this tab writes under a name typed for it —
+  /// its field's, with the extension its format gives it — or null for a
+  /// tab that writes files a rule names.
   ///
   /// ONE answer to "is this a single named file": the first file's name,
   /// the name a queued job carries and whether a place is asked with one
   /// file in mind each worked it out for themselves.
-  ({TextEditingController controller, String extension})? _loneFile() =>
-      switch (_tab) {
-        ExportTab.image => (
-          controller: _imageFileController,
-          extension: _specs.image.format.stillFormat.fileExtension,
-        ),
-        ExportTab.sequence when _specs.sequence.format.isVideo => (
-          controller: _sequenceFileController,
-          extension: _specs.sequence.format.container.fileExtension,
-        ),
-        ExportTab.conte when _specs.conte.format == ExportConteFormat.pdf => (
-          controller: _conteFileController,
-          extension: 'pdf',
-        ),
-        _ => null,
-      };
-
-  String? _singleFileNameForCurrentTab() {
-    final lone = _loneFile();
-    return lone == null
-        ? null
-        : _singleFileName(lone.controller, lone.extension);
-  }
+  String? _loneFileName() => switch (_tab) {
+    ExportTab.image => _singleFileName(
+      ExportTab.image,
+      _specs.image.format.stillFormat.fileExtension,
+    ),
+    ExportTab.sequence when _specs.sequence.format.isVideo => _singleFileName(
+      ExportTab.sequence,
+      _specs.sequence.format.container.fileExtension,
+    ),
+    ExportTab.conte when _specs.conte.format == ExportConteFormat.pdf =>
+      _singleFileName(ExportTab.conte, 'pdf'),
+    _ => null,
+  };
 
   /// Add to Queue: the current tab's spec and where it goes, frozen as a
   /// job. The picture renders at RUN time — the spec is the restorable part.
@@ -2048,7 +2054,11 @@ class ExportDialogState extends State<ExportDialog> {
     _queue.enqueue(
       spec: _specs.specFor(_tab),
       destination: destination,
-      fileName: _singleFileNameForCurrentTab(),
+      // What was typed, not what it makes: a field left empty comes back
+      // empty, its file still called what the export covers.
+      typedName: _loneFileName() == null
+          ? null
+          : _nameFieldOf(_tab)!.controller.text.trim(),
     );
     _takeDestination(destination);
   }
@@ -2065,10 +2075,10 @@ class ExportDialogState extends State<ExportDialog> {
       _tab = job.tab;
       _specs = _specs.withSpec(job.spec);
       _destination = job.destination;
-      final controller = _fileControllerFor(job.tab);
-      final fileName = job.fileName;
-      if (controller != null && fileName != null) {
-        controller.text = _withoutKnownExtension(fileName);
+      final field = _nameFieldOf(job.tab);
+      final typed = job.typedName;
+      if (field != null && typed != null) {
+        field.controller.text = typed;
       }
       _syncControllersFromSpecs();
     });
@@ -2105,6 +2115,13 @@ class ExportDialogState extends State<ExportDialog> {
     final snapshotTab = _tab;
     final snapshotSpecs = _specs;
     final snapshotDestination = _destination;
+    // The names typed are the user's setup as much as the specs: each job
+    // puts its own into its field while it runs ([_loadJobIntoForm]), and a
+    // field left empty must come back empty, its name shown behind it.
+    final snapshotNames = {
+      for (final field in ExportTab.values.map(_nameFieldOf).nonNulls)
+        field.controller: field.controller.text,
+    };
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
@@ -2145,6 +2162,10 @@ class ExportDialogState extends State<ExportDialog> {
           _tab = snapshotTab;
           _specs = snapshotSpecs;
           _destination = snapshotDestination;
+          for (final MapEntry(key: controller, value: text)
+              in snapshotNames.entries) {
+            controller.text = text;
+          }
           _syncControllersFromSpecs();
           if (ran) {
             _statusMessage =
@@ -2421,12 +2442,15 @@ class ExportDialogState extends State<ExportDialog> {
       words: words,
     );
     final file = File(
-      _joinLocation(_singleFileName(_conteFileController, 'pdf')),
+      _joinLocation(_singleFileName(ExportTab.conte, 'pdf')),
     );
     await file.parent.create(recursive: true);
     await file.writeAsBytes(bytes, flush: true);
     _reportProgress(pages.length + 1, pages.length + 1);
+    // Named as written: the sentence once said 'conte.pdf' whatever was
+    // typed, true only while the field came filled with 'conte' (F-404).
     return AppText.strings.exDoneContePdf(
+      fileNameOfPath(file.path),
       AppText.strings.exPageCount(pages.length),
     );
   }
@@ -2443,7 +2467,7 @@ class ExportDialogState extends State<ExportDialog> {
       alphaVideo: alphaVideo,
     );
     final videoPath = _joinLocation(
-      _singleFileName(_sequenceFileController, format.container.fileExtension),
+      _singleFileName(ExportTab.sequence, format.container.fileExtension),
     );
     final audioMixPath = spec.includeAudio ? await _renderAudioMix(plan) : null;
     // Opaque codecs bake the cut fade/pose into RGB; ProRes 4444 α keeps
@@ -2526,10 +2550,7 @@ class ExportDialogState extends State<ExportDialog> {
     // ([_placedName]) — the sentence below names the file that was written.
     final fileName =
         _placedName ??
-        _singleFileName(
-          _imageFileController,
-          spec.format.stillFormat.fileExtension,
-        );
+        _singleFileName(ExportTab.image, spec.format.stillFormat.fileExtension);
     final written = await writeFrameImage(_session, task, spec, (
       directory: _outputDirectory,
       name: fileName,
@@ -2774,9 +2795,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// The name of the only file this tab's run writes, folders of its rule's
   /// making included — or null when it writes several, or none.
   String? _onlyOutputName() {
-    final lone = _loneFile();
+    final lone = _loneFileName();
     if (lone != null) {
-      return _singleFileName(lone.controller, lone.extension);
+      return lone;
     }
     switch (_tab) {
       case ExportTab.sequence:
@@ -3096,19 +3117,23 @@ class ExportDialogState extends State<ExportDialog> {
   /// where every other name is set: the name typed alone, and beside it the
   /// extension its format gives it ([ExportFileNameModule]).
   ExportAccordion _nameAccordion({
-    required TextEditingController controller,
+    required ExportTab tab,
     required String extension,
-  }) => ExportAccordion(
-    title: AppText.strings.commonNameField,
-    summary: _patternPreview(),
-    expansion: _expansion('name', open: true),
-    child: ExportFileNameModule(
-      controller: controller,
-      extension: extension,
-      enabled: !_isExporting,
-      onChanged: () => setState(() {}),
-    ),
-  );
+  }) {
+    final field = _nameFieldOf(tab)!;
+    return ExportAccordion(
+      title: AppText.strings.commonNameField,
+      summary: _patternPreview(),
+      expansion: _expansion('name', open: true),
+      child: ExportFileNameModule(
+        controller: field.controller,
+        ghost: field.unnamed,
+        extension: extension,
+        enabled: !_isExporting,
+        onChanged: () => setState(() {}),
+      ),
+    );
+  }
 
   /// The first file's name alone — what a naming module says in its head.
   String _patternPreview() => _firstOutputFile().name ?? _nothingToWriteText();
@@ -3275,22 +3300,22 @@ class ExportDialogState extends State<ExportDialog> {
       // rule its numbered stills are named by.
       if (spec.format.isVideo)
         _nameAccordion(
-          controller: _sequenceFileController,
+          tab: ExportTab.sequence,
           extension: spec.format.container.fileExtension,
         )
       else
         _namingAccordion(
-          summary: ExportSequenceNamingModule.summarize(
-            spec.naming,
-            spec.format.stillFormat.fileExtension,
-          ),
+          summary: _patternPreview(),
           isDefault: spec.naming == const ExportSequenceNaming(),
           onReset: () {
             _updateSpec(spec.copyWith(naming: const ExportSequenceNaming()));
-            _namingBaseController.text = 'frame';
+            _namingBaseController.text = const ExportSequenceNaming().baseName;
           },
           child: ExportSequenceNamingModule(
             naming: spec.naming,
+            // The stills are the sequence's files as its video is: the one
+            // name behind both fields ([_nameFieldOf]).
+            ghost: _nameFieldOf(ExportTab.sequence)!.unnamed,
             enabled: !_isExporting,
             baseNameController: _namingBaseController,
             onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
@@ -3375,7 +3400,7 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.image;
     return [
       _nameAccordion(
-        controller: _imageFileController,
+        tab: ExportTab.image,
         extension: spec.format.stillFormat.fileExtension,
       ),
       _formatAccordion(
@@ -4003,7 +4028,7 @@ class ExportDialogState extends State<ExportDialog> {
       // its pages' as pictures — the module keeps its place when the format
       // changes.
       _nameAccordion(
-        controller: _conteFileController,
+        tab: ExportTab.conte,
         extension: pictured ? spec.image.stillFormat.fileExtension : 'pdf',
       ),
       ExportAccordion(

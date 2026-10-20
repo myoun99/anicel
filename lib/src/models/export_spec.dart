@@ -58,8 +58,11 @@ enum ExportScopeKind {
 
 /// Numbered-sequence file naming: `<baseName>_0001.<ext>`. The digit width
 /// clamps to 1..8 on write.
+///
+/// An empty [baseName] is one nobody typed: the stills are numbered under
+/// the name of what they cover, as any unnamed export is called (F-404).
 class ExportSequenceNaming {
-  const ExportSequenceNaming({this.baseName = 'frame', this.digits = 4});
+  const ExportSequenceNaming({this.baseName = '', this.digits = 4});
 
   final String baseName;
   final int digits;
@@ -71,13 +74,13 @@ class ExportSequenceNaming {
       );
 
   Map<String, dynamic> toJson() => {
-    if (baseName != 'frame') 'baseName': baseName,
+    if (baseName.isNotEmpty) 'baseName': baseName,
     if (digits != 4) 'digits': digits,
   };
 
   static ExportSequenceNaming fromJson(Map<String, dynamic> json) =>
       ExportSequenceNaming(
-        baseName: json['baseName'] as String? ?? 'frame',
+        baseName: json['baseName'] as String? ?? '',
         digits: ((json['digits'] as num?)?.round() ?? 4).clamp(1, 8),
       );
 

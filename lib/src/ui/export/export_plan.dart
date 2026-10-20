@@ -521,3 +521,15 @@ String sanitizeExportFileComponent(String value) {
       .trim();
   return sanitized.isEmpty ? 'untitled' : sanitized;
 }
+
+/// What an export is called while nobody has named it: what it covers —
+/// [cut]'s name when it is of one cut, the project's when it is of the
+/// whole (no [cut]).
+///
+/// 🗣️F-404 (유저 2026-10-19): 「시퀀스에서 범위 컷이면 파일 고스트텍스트를
+/// 컷이름으로. 범위 프로젝트면 고스트텍스트 지금처럼 작품명_화수명으로.
+/// 이미지는 기본적으로 현재컷이 대상인거니 고스트텍스트 컷이름. 콘티용지는
+/// 범위 기본 프로젝트니 고스트텍스트를 똑같이 작품명_화수명으로」. 작품명_화수명
+/// is the project's name as it is now — the name of the file it is saved as.
+String unnamedExportName(Project project, {Cut? cut}) =>
+    sanitizeExportFileComponent(cut?.name ?? project.name);

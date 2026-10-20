@@ -59,7 +59,11 @@ import '../export/export_dialog.dart';
 import '../workspace/workspace_door_commands.dart';
 import '../export/export_format_availability.dart' show stillFormatWritable;
 import '../export/export_plan.dart'
-    show ExportSizeMode, sanitizeExportFileComponent;
+    show
+        ExportFrameTask,
+        ExportSizeMode,
+        sanitizeExportFileComponent,
+        unnamedExportName;
 import '../export/frame_image_file.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_spec.dart' show ImageExportSpec;
@@ -2565,12 +2569,16 @@ Future<void> saveFrameAsImage(
   EditorSessionManager session,
   ExportStillFormat format,
 ) async {
-  final writePicture = _pictureSaveAsWrites(session, format);
-  if (writePicture == null) {
+  final frame = frameUnderThePlayhead(session);
+  if (frame == null) {
     return;
   }
-  final name = sanitizeExportFileComponent(
-    session.repository.requireProject().name,
+  final writePicture = _pictureSaveAsWrites(session, frame, format);
+  // The export window's image, and named as it is: after the cut it is a
+  // frame of (F-404 — 「이미지는 기본적으로 현재컷이 대상인거니 … 컷이름」).
+  final name = unnamedExportName(
+    session.repository.requireProject(),
+    cut: frame.cut,
   );
   final strings = AppText.strings;
   // ⚠️The order Save As keeps (유저 2026-08-31): where the file is written
@@ -2608,9 +2616,8 @@ Future<void> saveFrameAsImage(
   }
 }
 
-/// What [saveFrameAsImage] writes as [format] — the frame under the
-/// playhead at the canvas's size — as a writer of it to a path: null where
-/// there is no cut to take it of.
+/// What [saveFrameAsImage] writes as [format] — [task], the frame under the
+/// playhead, at the canvas's size — as a writer of it to a path.
 ///
 /// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재
 /// 보이는대로 png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로
@@ -2635,14 +2642,11 @@ Future<void> saveFrameAsImage(
 /// 기본으로」.
 /// ↩️F-335 (유저 10-10) had made the PNG RGB on white, as the JPG was:
 /// 「다른이름저장의 png, 형식 기본값 RGB의 배경흰색으로」.
-Future<bool> Function(String path)? _pictureSaveAsWrites(
+Future<bool> Function(String path) _pictureSaveAsWrites(
   EditorSessionManager session,
+  ExportFrameTask task,
   ExportStillFormat format,
 ) {
-  final task = frameUnderThePlayhead(session);
-  if (task == null) {
-    return null;
-  }
   final spec = ImageExportSpec(
     format: ExportFormatSelection(
       kind: ExportMediaKind.still,

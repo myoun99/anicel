@@ -357,7 +357,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesWrittenUnder(temp), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(temp), ['Cut_0001.png', 'Cut_0002.png']);
       expect(statusText(tester), 'Exported 2 frames.');
     });
 
@@ -417,7 +417,7 @@ void main() {
       await tester.pump();
 
       final [first, second] = [
-        for (final name in ['frame_0001.png', 'frame_0002.png'])
+        for (final name in ['Cut_0001.png', 'Cut_0002.png'])
           File('${temp.path}${Platform.pathSeparator}$name').readAsBytesSync(),
       ];
       expect(second, first, reason: 'LIVENESS: one drawing held for both');
@@ -471,7 +471,7 @@ void main() {
       );
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(filesWrittenUnder(temp), ['frame_0001.png']);
+      expect(filesWrittenUnder(temp), ['Cut_0001.png']);
     });
 
     testWidgets('IN and OUT cannot cross: the span that is kept is always '
@@ -514,11 +514,11 @@ void main() {
       await tester.pump();
 
       expect(filesWrittenUnder(temp), [
-        'frame_0001.png',
-        'frame_0002.png',
-        'frame_0003.png',
-        'frame_0004.png',
-        'frame_0005.png',
+        'Project_0001.png',
+        'Project_0002.png',
+        'Project_0003.png',
+        'Project_0004.png',
+        'Project_0005.png',
       ]);
     });
   });
@@ -556,7 +556,7 @@ void main() {
       expect(HeldPictures.debugHeld, 0);
       expect(
         capturedArgs.last.replaceAll('\\', '/'),
-        endsWith('/Project.mp4'),
+        endsWith('/Cut.mp4'),
       );
       expect(statusText(tester), 'Exported video (2 frames).');
     });
@@ -593,8 +593,8 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesWrittenUnder(temp), ['Project.png']);
-      expect(statusText(tester), 'Exported Project.png.');
+      expect(filesWrittenUnder(temp), ['Cut.png']);
+      expect(statusText(tester), 'Exported Cut.png.');
     });
 
     testWidgets('the size accordion offers the cut\'s canvas (one cut, no '
@@ -645,7 +645,7 @@ void main() {
       // The tab opens on video — one file, so the first module names a
       // file; the still format numbers them, and the same place holds the
       // rule they are named by.
-      expect(find.text('이름 — Project.mp4'), findsNothing, reason: 'open');
+      expect(find.text('이름 — Cut.mp4'), findsNothing, reason: 'open');
       expect(find.text('이름'), findsOneWidget);
       expect(find.text('파일'), findsOneWidget);
       expect(find.text('프리셋 · 시퀀스'), findsOneWidget);
@@ -679,7 +679,7 @@ void main() {
 
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(statusText(tester), 'Project.png 내보냈습니다.');
+      expect(statusText(tester), 'Cut.png 내보냈습니다.');
     });
 
     testWidgets('a sheet page is counted with the files of its run', (
@@ -993,11 +993,11 @@ void main() {
       await tester.pump();
       expect(state.debugImageFrame, 1);
       expect(tester.exportTransport.currentFrame, 1);
-      expect(tester.exportPreviewName, 'Project.png');
+      expect(tester.exportPreviewName, 'Cut.png');
 
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(filesWrittenUnder(temp), ['Project.png']);
+      expect(filesWrittenUnder(temp), ['Cut.png']);
     });
 
     testWidgets('the image tab opens on the frame under the playhead — the '
@@ -1026,9 +1026,9 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
       expect(filesWrittenUnder(temp), [
-        'frame_0001.png',
-        'frame_0002.png',
-        'frame_0003.png',
+        'Project_0001.png',
+        'Project_0002.png',
+        'Project_0003.png',
       ]);
     });
 
@@ -1036,7 +1036,7 @@ void main() {
         'the plate names the still that frame is', (tester) async {
       await pumpDialog(tester, exportSession());
       await pickStillPng(tester);
-      expect(tester.exportPreviewName, 'frame_0001.png');
+      expect(tester.exportPreviewName, 'Cut_0001.png');
       final track = find.byKey(
         const ValueKey<String>('export-transport-track'),
       );
@@ -1044,7 +1044,7 @@ void main() {
       await tester.tapAt(Offset(rect.right - 2, rect.center.dy));
       await tester.pump();
       expect(tester.exportTransport.currentFrame, 1);
-      expect(tester.exportPreviewName, 'frame_0002.png');
+      expect(tester.exportPreviewName, 'Cut_0002.png');
       expect(tester.exportPreviewNameAbsent, isFalse);
     });
 
@@ -1060,7 +1060,7 @@ void main() {
       expect(tester.exportPreviewNameAbsent, isTrue);
 
       await tester.seekExportPreview(1);
-      expect(tester.exportPreviewName, 'frame_0001.png');
+      expect(tester.exportPreviewName, 'Cut_0001.png');
       expect(tester.exportPreviewNameAbsent, isFalse);
     });
 
@@ -1082,9 +1082,9 @@ void main() {
     testWidgets('a video is one file: the plate names it whatever frame is '
         'stood on', (tester) async {
       await pumpDialog(tester, exportSession());
-      expect(tester.exportPreviewName, 'Project.mp4');
+      expect(tester.exportPreviewName, 'Cut.mp4');
       await tester.seekExportPreview(1);
-      expect(tester.exportPreviewName, 'Project.mp4');
+      expect(tester.exportPreviewName, 'Cut.mp4');
     });
 
     testWidgets('the timesheet stands in the Cels list — its row, a block a '
@@ -1177,7 +1177,7 @@ void main() {
       expect(capturedArgs, contains('libx265'));
       expect(
         capturedArgs.last.replaceAll('\\', '/'),
-        endsWith('/Project.mp4'),
+        endsWith('/Cut.mp4'),
       );
     });
 
@@ -1217,7 +1217,7 @@ void main() {
       expect(capturedArgs, isNot(contains('aac')));
       expect(
         capturedArgs.last.replaceAll('\\', '/'),
-        endsWith('/Project.mov'),
+        endsWith('/Cut.mov'),
       );
     });
 
@@ -1316,8 +1316,8 @@ void main() {
       await tester.pump();
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(filesWrittenUnder(temp), ['frame_0001.jpg', 'frame_0002.jpg']);
-      final bytes = File('${temp.path}/frame_0001.jpg').readAsBytesSync();
+      expect(filesWrittenUnder(temp), ['Cut_0001.jpg', 'Cut_0002.jpg']);
+      final bytes = File('${temp.path}/Cut_0001.jpg').readAsBytesSync();
       expect(bytes.sublist(0, 2), [0xFF, 0xD8]);
     });
   });
@@ -1351,10 +1351,10 @@ void main() {
         find.byKey(const ValueKey<String>('export-format-container-mp4')),
       );
       await tester.pump();
-      expect(find.textContaining('frame_0001.png …'), findsNothing);
+      expect(find.textContaining('Cut_0001.png …'), findsNothing);
       await tester.tap(find.text('납품 PNG'));
       await tester.pump();
-      expect(tester.exportPreviewName, 'frame_0001.png');
+      expect(tester.exportPreviewName, 'Cut_0001.png');
     });
 
     testWidgets('presets persist through the injected store', (tester) async {

@@ -1238,8 +1238,9 @@ enum AppStrings {
       _s('exDoneFileTemplate').replaceAll('{name}', name);
   String exDoneVideo(String count) =>
       _s('exDoneVideoTemplate').replaceAll('{count}', count);
-  String exDoneContePdf(String count) =>
-      _s('exDoneContePdfTemplate').replaceAll('{count}', count);
+  String exDoneContePdf(String name, String count) => _s(
+    'exDoneContePdfTemplate',
+  ).replaceAll('{name}', name).replaceAll('{count}', count);
   String get exNothingInFrame => _s('exNothingInFrame');
   String exFailed(Object error) =>
       _s('exFailedTemplate').replaceAll('{error}', '$error');
@@ -2516,7 +2517,7 @@ enum AppStrings {
     'exDoneSkippedTemplate': 'Exported {count} ({skipped} empty skipped).',
     'exDoneFileTemplate': 'Exported {name}.',
     'exDoneVideoTemplate': 'Exported video ({count}).',
-    'exDoneContePdfTemplate': 'Exported conte.pdf ({count}).',
+    'exDoneContePdfTemplate': 'Exported {name} ({count}).',
     'exNothingInFrame': 'Nothing to export (empty frame).',
     'exFailedTemplate': 'Export failed: {error}',
     'exQueueRestTemplate': 'Queue: {count} done{failed}{rest}.',
@@ -3985,7 +3986,7 @@ enum AppStrings {
     'exDoneSkippedTemplate': '{count}を書き出しました（空の{skipped}件は飛ばしました）。',
     'exDoneFileTemplate': '{name}を書き出しました。',
     'exDoneVideoTemplate': '動画を書き出しました（{count}）。',
-    'exDoneContePdfTemplate': 'conte.pdfを書き出しました（{count}）。',
+    'exDoneContePdfTemplate': '{name}を書き出しました（{count}）。',
     'exNothingInFrame': '書き出すものがありません（空のフレーム）。',
     'exFailedTemplate': '書き出しに失敗しました: {error}',
     'exQueueRestTemplate': 'キュー: {count}完了{failed}{rest}。',
@@ -5556,7 +5557,7 @@ enum AppStrings {
     'exDoneSkippedTemplate': '{count} 내보냈습니다(빈 것 {skipped}개는 건너뜀).',
     'exDoneFileTemplate': '{name} 내보냈습니다.',
     'exDoneVideoTemplate': '영상을 내보냈습니다({count}).',
-    'exDoneContePdfTemplate': 'conte.pdf를 내보냈습니다({count}).',
+    'exDoneContePdfTemplate': '{name} 내보냈습니다({count}).',
     'exNothingInFrame': '내보낼 것이 없습니다(빈 프레임).',
     'exFailedTemplate': '내보내기 실패: {error}',
     'exQueueRestTemplate': '대기열: {count} 완료{failed}{rest}.',
@@ -7254,7 +7255,7 @@ enum AppStrings {
     'exDoneSkippedTemplate': 'Exporté : {count} ({skipped} vides ignorés).',
     'exDoneFileTemplate': 'Exporté : {name}.',
     'exDoneVideoTemplate': 'Vidéo exportée ({count}).',
-    'exDoneContePdfTemplate': 'conte.pdf exporté ({count}).',
+    'exDoneContePdfTemplate': 'Exporté : {name} ({count}).',
     'exNothingInFrame': 'Rien à exporter (image vide).',
     'exFailedTemplate': 'Échec de l\'export : {error}',
     'exQueueRestTemplate': 'File : {count} terminé{failed}{rest}.',
@@ -8771,7 +8772,7 @@ enum AppStrings {
     'exDoneSkippedTemplate': '已导出{count}（跳过{skipped}个空白）。',
     'exDoneFileTemplate': '已导出 {name}。',
     'exDoneVideoTemplate': '已导出视频（{count}）。',
-    'exDoneContePdfTemplate': '已导出 conte.pdf（{count}）。',
+    'exDoneContePdfTemplate': '已导出 {name}（{count}）。',
     'exNothingInFrame': '没有可导出的内容（空帧）。',
     'exFailedTemplate': '导出失败：{error}',
     'exQueueRestTemplate': '队列：已完成{count}{failed}{rest}。',

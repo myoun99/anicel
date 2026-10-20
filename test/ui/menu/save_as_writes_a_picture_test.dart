@@ -265,10 +265,15 @@ void main() {
       () => File(target).existsSync() && noWindowUp(),
     );
 
+    final cutName = session.requireActiveCut.name;
+    expect(
+      cutName,
+      isNot(session.repository.requireProject().name),
+      reason: '⛔premise: the cut\'s name is told apart from the project\'s',
+    );
     expect(asked, [
-      '${sanitizeExportFileComponent(session.repository.requireProject().name)}'
-          '.png',
-    ]);
+      '${sanitizeExportFileComponent(cutName)}.png',
+    ], reason: 'F-404: named as the export window\'s image is — after its cut');
     final bytes = File(target).readAsBytesSync();
     expect(bytes.sublist(1, 4), 'PNG'.codeUnits, reason: 'a PNG file');
     expect(

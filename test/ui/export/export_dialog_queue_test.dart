@@ -111,7 +111,7 @@ void main() {
     final state = await pumpDialog(tester, session());
     await pickPng(tester);
 
-    // Job 1: base name 'frame'. Then edit the base and queue job 2.
+    // Job 1: no base typed — the cut's name. Then type one and queue job 2.
     await tester.tap(
       find.byKey(const ValueKey<String>('export-queue-add-button')),
     );
@@ -146,8 +146,8 @@ void main() {
     await tester.pump();
 
     expect(filesWrittenUnder(temp), [
-      'frame_0001.png',
-      'frame_0002.png',
+      'Cut_0001.png',
+      'Cut_0002.png',
       'shot_0001.png',
       'shot_0002.png',
     ]);
@@ -194,9 +194,9 @@ void main() {
       findsOneWidget,
     );
     expect(filesWrittenUnder(temp), [
+      'Cut_0001.png',
+      'Cut_0002.png',
       'blocker',
-      'frame_0001.png',
-      'frame_0002.png',
     ]);
   });
 
@@ -221,7 +221,7 @@ void main() {
       find.byKey(const ValueKey<String>('export-queue-job-1')),
       findsNothing,
     );
-    expect(tester.exportPreviewName, 'frame_0001.png');
+    expect(tester.exportPreviewName, 'Cut_0001.png');
     expect(state.debugImageFrame, isNotNull);
   });
 }

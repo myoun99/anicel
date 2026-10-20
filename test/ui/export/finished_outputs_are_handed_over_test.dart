@@ -254,7 +254,7 @@ void main() {
       await tester.pump();
 
       expect(madeWhenAsked, isEmpty, reason: 'asked before anything was made');
-      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(placed), ['Cut_0001.png', 'Cut_0002.png']);
       expect(leftIn(outbox()), isEmpty, reason: 'it wrote straight there');
     });
 
@@ -312,7 +312,7 @@ void main() {
       await tester.pump();
 
       expect(madeWhenAsked, isEmpty);
-      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(placed), ['Cut_0001.png', 'Cut_0002.png']);
       expect(leftIn(outbox()), isEmpty);
     });
 
@@ -335,8 +335,8 @@ void main() {
       await tester.pump();
 
       expect(asked, 2, reason: 'the run asks nothing more');
-      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
-      expect(filesWrittenUnder(second), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(placed), ['Cut_0001.png', 'Cut_0002.png']);
+      expect(filesWrittenUnder(second), ['Cut_0001.png', 'Cut_0002.png']);
     });
 
     testWidgets('a job whose folder window is backed out of is not queued', (
@@ -419,7 +419,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(windows.names, ['Project.png']);
+      expect(windows.names, ['Cut.png']);
       expect(windows.folders, isEmpty, reason: 'one file asks no folder');
       expect(windows.madeWhenAsked.single, isEmpty);
       expect(filesWrittenUnder(placed), ['renamed.png']);
@@ -438,7 +438,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(windows.names, ['frame_0001.png']);
+      expect(windows.names, ['Cut_0001.png']);
       expect(windows.folders, isEmpty);
       expect(filesWrittenUnder(placed), ['only.png']);
     });
@@ -462,7 +462,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(windows.names, ['Project.mp4']);
+      expect(windows.names, ['Cut.mp4']);
       expect(encoderArguments!.last, '${placed.path}/rush.mp4');
     });
 
@@ -479,7 +479,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(windows.names, ['Project.png']);
+      expect(windows.names, ['Cut.png']);
       expect(windows.folders, isEmpty);
       expect(windows.madeWhenAsked.single, isEmpty);
       expect(filesWrittenUnder(placed), ['renamed.png']);
@@ -595,7 +595,7 @@ void main() {
       await showTab(tester, 'image');
 
       await tapKey(tester, 'export-queue-add-button');
-      expect(windows.names, ['Project.png'], reason: 'asked as it is queued');
+      expect(windows.names, ['Cut.png'], reason: 'asked as it is queued');
       expect(filesWrittenUnder(placed), isEmpty);
 
       await tester.runAsync(state.runQueue);
@@ -620,9 +620,9 @@ void main() {
       await tester.pump();
 
       expect(handed, [
-        ['frame_0001.png', 'frame_0002.png'],
+        ['Cut_0001.png', 'Cut_0002.png'],
       ]);
-      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(placed), ['Cut_0001.png', 'Cut_0002.png']);
       expect(leftIn(outbox()), isEmpty);
       expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
     });
@@ -642,17 +642,17 @@ void main() {
 
       expect(find.byKey(question), findsOneWidget);
       expect(namesOf(filesWrittenUnder(outbox())), [
-        'frame_0001.png',
-        'frame_0002.png',
+        'Cut_0001.png',
+        'Cut_0002.png',
       ], reason: 'backing out let nothing go');
       await tapKey(tester, 'hand-over-pending-pick-again');
       await ended(tester, exporting);
 
       expect(handed, [
-        ['frame_0001.png', 'frame_0002.png'],
-        ['frame_0001.png', 'frame_0002.png'],
+        ['Cut_0001.png', 'Cut_0002.png'],
+        ['Cut_0001.png', 'Cut_0002.png'],
       ]);
-      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(placed), ['Cut_0001.png', 'Cut_0002.png']);
       expect(leftIn(outbox()), isEmpty);
       expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
     });
@@ -735,7 +735,7 @@ void main() {
       await tester.pump();
 
       expect(askedFolder, 0, reason: 'one file is not asked a folder');
-      expect(saved, ['Project.png']);
+      expect(saved, ['Cut.png']);
       expect(filesWrittenUnder(placed), saved);
       expect(leftIn(outbox()), isEmpty);
     });
@@ -764,7 +764,7 @@ void main() {
       await tester.pump();
 
       expect(handed, [
-        ['frame_0001.png', 'frame_0002.png', 'shot_0001.png', 'shot_0002.png'],
+        ['Cut_0001.png', 'Cut_0002.png', 'shot_0001.png', 'shot_0002.png'],
       ]);
       expect(leftIn(outbox()), isEmpty);
     });
@@ -785,9 +785,9 @@ void main() {
       await tester.pump();
 
       expect(handed, [
-        ['Project.png', 'Project_2.png'],
+        ['Cut.png', 'Cut_2.png'],
       ]);
-      expect(filesWrittenUnder(placed), ['Project.png', 'Project_2.png']);
+      expect(filesWrittenUnder(placed), ['Cut.png', 'Cut_2.png']);
       expect(leftIn(outbox()), isEmpty);
     });
 
@@ -803,7 +803,7 @@ void main() {
       );
       await tester.enterText(
         find.byKey(const ValueKey<String>('export-file-name-field')),
-        'project',
+        'cut',
       );
       await tester.pump();
       await tapKey(tester, 'export-queue-add-button');
@@ -812,7 +812,7 @@ void main() {
       await tester.pump();
 
       expect(handed, [
-        ['Project.png', 'project_2.png'],
+        ['Cut.png', 'cut_2.png'],
       ]);
     });
 
@@ -830,7 +830,7 @@ void main() {
       await tester.runAsync(state.runQueue);
       await tester.pump();
 
-      expect(filesWrittenUnder(placed), ['Project.png', 'Project_2.png']);
+      expect(filesWrittenUnder(placed), ['Cut.png', 'Cut_2.png']);
       expect(leftIn(outbox()), isEmpty);
     });
 
@@ -869,7 +869,7 @@ void main() {
 
       expect(folders, hasLength(1));
       expect(saved, 0);
-      expect(filesWrittenUnder(placed), ['Project.png', 'frame_0001.png']);
+      expect(filesWrittenUnder(placed), ['Cut.png', 'Cut_0001.png']);
       expect(leftIn(outbox()), isEmpty);
     });
 
@@ -894,7 +894,7 @@ void main() {
       await tapKey(tester, 'hand-over-pending-pick-again');
       await ended(tester, running);
 
-      const all = ['Project.png', 'frame_0001.png', 'frame_0002.png'];
+      const all = ['Cut.png', 'Cut_0001.png', 'Cut_0002.png'];
       expect(handed, [all, all]);
       expect(filesWrittenUnder(placed), all);
       expect(leftIn(outbox()), isEmpty);

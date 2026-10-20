@@ -68,6 +68,10 @@ void main() {
     deleteTempQuietly(temp);
   });
 
+  // The project's name — what the conte's files are called while nobody
+  // names them (F-404).
+  const sheet = 'Conte Export';
+
   Layer storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
     id: LayerId('$cutId-sb'),
     name: 'SB',
@@ -92,7 +96,7 @@ void main() {
   /// font fallback is exercised for real.
   Project project({CutCamera? camera40}) => Project(
     id: const ProjectId('conte-export'),
-    name: 'Conte Export',
+    name: sheet,
     cameraSize: const CanvasSize(width: 32, height: 18),
     createdAt: DateTime.utc(2026, 7, 29),
     tracks: [
@@ -428,8 +432,8 @@ void main() {
     );
   });
 
-  testWidgets('the dialog\'s Conte tab exports conte.pdf into the chosen '
-      'location', (tester) async {
+  testWidgets('the dialog\'s Conte tab exports the project\'s PDF into the '
+      'chosen location', (tester) async {
     final session = EditorSessionManager(initialProject: project());
     addTearDown(session.dispose);
     await tester.binding.setSurfaceSize(const Size(1120, 660));
@@ -455,13 +459,13 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
 
-    final pdf = File('${temp.path}${Platform.pathSeparator}conte.pdf');
+    final pdf = File('${temp.path}${Platform.pathSeparator}$sheet.pdf');
     expect(pdf.existsSync(), isTrue);
     expect(isPdf(pdf.readAsBytesSync()), isTrue);
     final status = tester.widget<Text>(
       find.byKey(const ValueKey<String>('export-status')),
     );
-    expect(status.data, contains('conte.pdf'));
+    expect(status.data, contains('$sheet.pdf'));
   });
 
   testWidgets('🗣️the PDF carries every cell\'s picture at the camera frame\'s '
@@ -494,7 +498,7 @@ void main() {
     await tester.pump();
 
     final sizes = pdfImageSizes(
-      File('${temp.path}${Platform.pathSeparator}conte.pdf').readAsBytesSync(),
+      File('${temp.path}${Platform.pathSeparator}$sheet.pdf').readAsBytesSync(),
     );
     expect(sizes, isNotEmpty, reason: 'fixture: the cells print pictures');
     expect(sizes.toSet(), {(32, 18)});
@@ -546,7 +550,7 @@ void main() {
     await tester.pump();
 
     final sizes = pdfImageSizes(
-      File('${temp.path}${Platform.pathSeparator}conte.pdf').readAsBytesSync(),
+      File('${temp.path}${Platform.pathSeparator}$sheet.pdf').readAsBytesSync(),
     );
     expect(
       sizes.toSet(),
@@ -593,7 +597,7 @@ void main() {
         .toList();
     expect(
       files,
-      containsAll(['conte_p1.png', 'conte_p2.png', 'conte_p3.png']),
+      containsAll(['${sheet}_p1.png', '${sheet}_p2.png', '${sheet}_p3.png']),
       reason: 'the whole book: the cover, its blank back, then the body',
     );
     expect(
@@ -647,7 +651,7 @@ void main() {
           if (file.path.endsWith('.png'))
             file.path.split(Platform.pathSeparator).last,
       },
-      {'conte_p1.png', 'conte_p2.png'},
+      {'${sheet}_p1.png', '${sheet}_p2.png'},
     );
   });
 
@@ -753,13 +757,13 @@ void main() {
           words: conteWordsIn(AppLanguage.ja),
         ).whereType<SheetImage>().single.slot;
     final onCover = await pageAt(
-      'conte_p1.png',
+      '${sheet}_p1.png',
       imageOn(0).center.dx,
       imageOn(0).center.dy,
     );
     expect(onCover, (0, 255, 0), reason: 'the cover picture ships');
     final onBody = await pageAt(
-      'conte_p3.png',
+      '${sheet}_p3.png',
       imageOn(2).center.dx,
       imageOn(2).center.dy,
     );
@@ -773,7 +777,7 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
     final pdf = File(
-      '${temp.path}${Platform.pathSeparator}conte.pdf',
+      '${temp.path}${Platform.pathSeparator}$sheet.pdf',
     ).readAsBytesSync();
     expect(pdfImageSizes(pdf), containsAll([(8, 8), (6, 6)]));
   });
@@ -819,7 +823,7 @@ void main() {
     // 100%크기인채로 출력해야」).
     await tester.runAsync(state.export);
     await tester.pump();
-    expect(pngWidth('conte_p3.png'), 2480);
+    expect(pngWidth('${sheet}_p3.png'), 2480);
     expect(
       find.byKey(const ValueKey<String>('export-contescale-2')),
       findsNothing,
@@ -834,7 +838,7 @@ void main() {
     expect(state.debugSpecs.conte.image.stillFormat, ExportStillFormat.jpg);
     await tester.runAsync(state.export);
     await tester.pump();
-    final jpg = File('${temp.path}${Platform.pathSeparator}conte_p3.jpg');
+    final jpg = File('${temp.path}${Platform.pathSeparator}${sheet}_p3.jpg');
     expect(jpg.existsSync(), isTrue);
     expect(
       jpg.readAsBytesSync().take(3),
@@ -907,7 +911,7 @@ void main() {
     final image = (await tester.runAsync(
       () => decodeImageFromList(
         File(
-          '${temp.path}${Platform.pathSeparator}conte_p${body + 1}.png',
+          '${temp.path}${Platform.pathSeparator}${sheet}_p${body + 1}.png',
         ).readAsBytesSync(),
       ),
     ))!;
@@ -952,7 +956,7 @@ void main() {
         );
     expect(
       pdfClosedPaths(
-        File('${temp.path}${Platform.pathSeparator}conte.pdf')
+        File('${temp.path}${Platform.pathSeparator}$sheet.pdf')
             .readAsBytesSync(),
         then: 'W*',
       ).where(isTheOutline),
@@ -1042,7 +1046,7 @@ void main() {
     final image = (await tester.runAsync(
       () => decodeImageFromList(
         File(
-          '${temp.path}${Platform.pathSeparator}conte_p${body + 1}.png',
+          '${temp.path}${Platform.pathSeparator}${sheet}_p${body + 1}.png',
         ).readAsBytesSync(),
       ),
     ))!;
@@ -1062,7 +1066,7 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
     final pdf = File(
-      '${temp.path}${Platform.pathSeparator}conte.pdf',
+      '${temp.path}${Platform.pathSeparator}$sheet.pdf',
     ).readAsBytesSync();
     expect(pdfImageSizes(pdf), contains((4, 4)));
     final corner = placement.paperOf(beside - const Offset(8, 8));

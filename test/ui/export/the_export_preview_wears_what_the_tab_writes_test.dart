@@ -287,14 +287,14 @@ void main() {
     await pumpWindow(tester, session);
     await openTab(tester, 'conte');
 
-    expect(tester.exportPreviewName, 'conte.pdf');
+    expect(tester.exportPreviewName, 'Project.pdf');
     await press(tester, 'export-preview-next-page-button');
-    expect(tester.exportPreviewName, 'conte.pdf');
+    expect(tester.exportPreviewName, 'Project.pdf');
 
     await press(tester, 'export-conteformat-png');
-    expect(tester.exportPreviewName, 'conte_p2.png');
+    expect(tester.exportPreviewName, 'Project_p2.png');
     await press(tester, 'export-preview-previous-page-button');
-    expect(tester.exportPreviewName, 'conte_p1.png');
+    expect(tester.exportPreviewName, 'Project_p1.png');
     session.playbackRig.prerenderScheduler.cancel();
   });
 
