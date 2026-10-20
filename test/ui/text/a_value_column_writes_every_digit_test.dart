@@ -86,4 +86,22 @@ void main() {
       '10.50°',
     );
   });
+
+  test('ONE reader takes back what a column writes — with its unit or '
+      'without, and a two-number column\'s two', () {
+    for (final unit in const ['', '%', '°', 'px', ' px']) {
+      expect(
+        columnValueOf('${columnValueText(-1218.37)}$unit'),
+        -1218.37,
+        reason: 'unit "$unit"',
+      );
+    }
+    expect(columnValueOf('bold'), isNull);
+    expect(columnValueOf(''), isNull);
+
+    expect(columnPairOf('${columnValueText(120)}, 45.50%'), (120.0, 45.5));
+    expect(columnPairOf('120'), isNull);
+    expect(columnPairOf('1, 2, 3'), isNull);
+    expect(columnPairOf('120, x'), isNull);
+  });
 }

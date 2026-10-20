@@ -603,7 +603,7 @@ class _FieldSliderState extends State<FieldSlider> {
   /// over as a drag's release is — one complete edit.
   void _typed(String text) {
     setState(() => _typing = false);
-    final typed = double.tryParse(text.trim());
+    final typed = columnValueOf(text);
     if (typed == null || !_enabled) {
       return;
     }

@@ -437,7 +437,7 @@ class _BottomBarBuild {
           textStyle: const TextStyle(fontSize: 11),
           onDragDelta: _bar.onRotateByDrag!,
           onEditSubmit: (text) {
-            final parsed = double.tryParse(text);
+            final parsed = columnValueOf(text);
             if (parsed != null && _bar.onRotateByDrag != null) {
               _bar.onRotateByDrag!(parsed - viewport.rotationDegrees);
             }
@@ -561,7 +561,7 @@ class _BottomBarBuild {
       onDragDelta: (units) =>
           _bar.onZoomSet(_zoomScale.render((displayPercent + units) / 100)),
       onEditSubmit: (text) {
-        final parsed = double.tryParse(text.replaceAll('%', '').trim());
+        final parsed = columnValueOf(text);
         if (parsed != null) {
           _bar.onZoomSet(_zoomScale.render(parsed / 100));
         }

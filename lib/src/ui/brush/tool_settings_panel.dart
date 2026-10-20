@@ -1111,9 +1111,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
       // this is the same announcement from the other entrance.
       onOperationStart: widget.selectionCommands?.beginTransformStep,
       onEditSubmit: (raw) {
-        final typed = double.tryParse(
-          raw.replaceAll('%', '').replaceAll('°', '').trim(),
-        );
+        final typed = columnValueOf(raw);
         if (typed != null) {
           _write((now) => value.write(now, typed * value.perUnit));
         }
@@ -1144,7 +1142,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
       TransformToolOptions.clampMeshCells(value + units.round()),
     ),
     onEditSubmit: (raw) {
-      final typed = double.tryParse(raw.trim());
+      final typed = columnValueOf(raw);
       if (typed != null) {
         onChanged(TransformToolOptions.clampMeshCells(typed.round()));
       }

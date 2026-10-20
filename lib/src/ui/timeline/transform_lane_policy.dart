@@ -410,29 +410,22 @@ String? scrubTransformLaneValue(
   String currentLabel,
   Offset dragDelta,
 ) {
-  double? parse(String raw) =>
-      double.tryParse(raw.replaceAll('%', '').replaceAll('°', '').trim());
   switch (laneId) {
     case 'position':
     case 'anchor-point':
-      final parts = currentLabel.split(',');
-      if (parts.length != 2) {
-        return null;
-      }
-      final x = parse(parts[0]);
-      final y = parse(parts[1]);
-      if (x == null || y == null) {
-        return null;
-      }
-      return '${columnValueText(x + dragDelta.dx)}, ${columnValueText(y + dragDelta.dy)}';
+      return switch (columnPairOf(currentLabel)) {
+        (final x, final y) =>
+          '${columnValueText(x + dragDelta.dx)}, ${columnValueText(y + dragDelta.dy)}',
+        null => null,
+      };
     case 'rotation':
-      final degrees = parse(currentLabel);
+      final degrees = columnValueOf(currentLabel);
       if (degrees == null) {
         return null;
       }
       return '${columnValueText(scrubbedNumber(degrees, dragDelta))}°';
     case 'opacity':
-      final percent = parse(currentLabel);
+      final percent = columnValueOf(currentLabel);
       if (percent == null) {
         return null;
       }

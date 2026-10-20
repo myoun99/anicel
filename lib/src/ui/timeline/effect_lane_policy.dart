@@ -185,12 +185,7 @@ String formatEffectLaneValue(EffectParameterSpec spec, double value) {
 /// parse failure (the editor then ignores the input, like the transform
 /// lanes).
 double? parseEffectLaneValue(EffectParameterSpec spec, String input) {
-  final raw = input
-      .replaceAll('°', '')
-      .replaceAll('px', '')
-      .replaceAll('%', '')
-      .trim();
-  final value = double.tryParse(raw);
+  final value = columnValueOf(input);
   if (value == null) {
     return null;
   }

@@ -6,6 +6,7 @@
 import '../../models/property_track.dart';
 import '../../models/se_name_tag.dart';
 import '../../models/text_cel_style.dart' show TextCelStyle;
+import '../text/readout_text.dart' show columnValueOf;
 import 'se_name_tag_lane_policy.dart';
 
 /// Adds a key at [frameIndex] holding the member's RESOLVED value there
@@ -164,7 +165,7 @@ SeNameTag? seNameTagWithLaneValueEdited(
     PropertyTrack<double> lane,
     SeNameTagTrack Function(PropertyTrack<double>) putKey,
   ) {
-    final value = double.tryParse(text.replaceAll('%', '').trim());
+    final value = columnValueOf(text);
     if (value == null) {
       return null;
     }

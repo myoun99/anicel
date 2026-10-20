@@ -9,6 +9,7 @@ import '../../models/transform_track.dart';
 import 'lane_span_keys_shift.dart';
 import 'property_lane_lens.dart';
 import 'scale_lane_form.dart';
+import '../text/readout_text.dart' show columnPairOf, columnValueOf;
 
 /// Adds a key at [frameIndex] with the property's RESOLVED value there
 /// (AE behavior: keying a property freezes its current value), or removes
@@ -172,7 +173,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
       }
       return track.copyWith(scale: track.scale.withKey(frameIndex, scale));
     case 'rotation':
-      final degrees = _parseDegrees(input);
+      final degrees = columnValueOf(input);
       if (degrees == null) {
         return null;
       }
@@ -183,7 +184,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         ),
       );
     case 'opacity':
-      final percent = double.tryParse(input.replaceAll('%', '').trim());
+      final percent = columnValueOf(input);
       if (percent == null) {
         return null;
       }
@@ -279,21 +280,10 @@ TransformTrack transformTrackWithAnchorDragged(
 // lane's value is [transformTrackWithLaneValueEdited] on its fx now, and a
 // second reader of the same three inputs is how the two would drift.
 
-CanvasPoint? _parsePoint(String input) {
-  final parts = input.split(',');
-  if (parts.length != 2) {
-    return null;
-  }
-  final x = double.tryParse(parts[0].trim());
-  final y = double.tryParse(parts[1].trim());
-  if (x == null || y == null) {
-    return null;
-  }
-  return CanvasPoint(x: x, y: y);
-}
-
-double? _parseDegrees(String input) =>
-    double.tryParse(input.replaceAll('°', '').trim());
+CanvasPoint? _parsePoint(String input) => switch (columnPairOf(input)) {
+  (final x, final y) => CanvasPoint(x: x, y: y),
+  null => null,
+};
 
 
 /// AE's group Reset, for the Transform group (R5, user 2026-08-09).

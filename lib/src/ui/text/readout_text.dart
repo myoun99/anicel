@@ -54,6 +54,32 @@ String readoutText(num value, {required int decimals, String unit = ''}) {
 String columnValueText(num value) =>
     readoutText(value, decimals: CanvasViewport.readoutDecimals);
 
+/// The number a value column's text holds — [columnValueText] read back,
+/// with or without the column's unit (`%`, `°`, `px`). Null when the text
+/// is not a number. Whatever the column then makes of it (a percent over
+/// 100, a range's clamp, a whole cell count) stays at the call site.
+///
+/// The same law the other way: a number reads the same in every value
+/// column (2026-09-07). ↩️Each column read its own — twelve copies of
+/// `double.tryParse(text.replaceAll('%', '')…)`, each knowing a different
+/// set of units, until F-407's made the clone scan name two of them.
+double? columnValueOf(String text) => double.tryParse(
+  text.replaceAll('%', '').replaceAll('°', '').replaceAll('px', '').trim(),
+);
+
+/// The two numbers a two-number column's text holds — `120, 45`, each read
+/// by [columnValueOf]. Null unless it holds exactly two. ↩️The position's
+/// editor, its scrub and the scale's scrub each split it on their own.
+(double, double)? columnPairOf(String text) {
+  final pieces = text.split(',');
+  if (pieces.length != 2) {
+    return null;
+  }
+  final first = columnValueOf(pieces[0]);
+  final second = columnValueOf(pieces[1]);
+  return first == null || second == null ? null : (first, second);
+}
+
 /// ONE editable piece of a readout: the number a person types, and the
 /// FIXED text that trails it.
 typedef ReadoutPart = ({String number, String unit});

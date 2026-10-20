@@ -121,7 +121,7 @@ import '../canvas/canvas_capsule.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/page_turn_bar.dart';
 import '../widgets/tick_layer.dart';
-import '../text/readout_text.dart' show readoutText;
+import '../text/readout_text.dart' show columnValueOf, readoutText;
 import '../widgets/panel_flyout.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';

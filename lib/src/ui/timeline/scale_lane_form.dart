@@ -59,9 +59,6 @@ ScaleLaneForm scaleLaneFormOf(Layer row) =>
 /// scrubbed at.
 const double _percentPerPixel = 0.5;
 
-double? _percent(String text) =>
-    double.tryParse(text.replaceAll('%', '').trim());
-
 /// A CAMERA's scale: ONE zoom, above zero — `150%`.
 final class OneZoom extends ScaleLaneForm {
   const OneZoom();
@@ -79,7 +76,7 @@ final class OneZoom extends ScaleLaneForm {
     required CanvasPoint current,
     required bool linked,
   }) {
-    final percent = _percent(input);
+    final percent = columnValueOf(input);
     return percent == null || !percent.isFinite || percent <= 0
         ? null
         : uniformScale(percent / 100);
@@ -87,7 +84,7 @@ final class OneZoom extends ScaleLaneForm {
 
   @override
   String? scrubbed(String label, Offset dragDelta) {
-    final percent = _percent(label);
+    final percent = columnValueOf(label);
     return percent == null
         ? null
         : '${columnValueText(percent + dragDelta.dx * _percentPerPixel)}%';
@@ -127,7 +124,7 @@ final class TwoScales extends ScaleLaneForm {
     required CanvasPoint current,
     required bool linked,
   }) {
-    final percents = [for (final piece in input.split(',')) _percent(piece)];
+    final percents = [for (final piece in input.split(',')) columnValueOf(piece)];
     if (percents.length > 2 ||
         percents.any((percent) => percent == null || !percent.isFinite)) {
       return null;
@@ -164,15 +161,11 @@ final class TwoScales extends ScaleLaneForm {
   /// hand that drifts off its line does not move both.
   @override
   String? scrubbed(String label, Offset dragDelta) {
-    final pieces = label.split(',');
-    if (pieces.length != 2) {
+    final pair = columnPairOf(label);
+    if (pair == null) {
       return null;
     }
-    final across = _percent(pieces[0]);
-    final down = _percent(pieces[1]);
-    if (across == null || down == null) {
-      return null;
-    }
+    final (across, down) = pair;
     final alongAcross = dragDelta.dx.abs() >= dragDelta.dy.abs();
     final dx = alongAcross ? dragDelta.dx : 0.0;
     final dy = alongAcross ? 0.0 : dragDelta.dy;

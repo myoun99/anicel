@@ -12,7 +12,7 @@ import '../sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import '../text/app_strings.dart';
 import '../text/canvas_letter_faces.dart';
 import '../text/imported_fonts.dart';
-import '../text/readout_text.dart' show columnValueText;
+import '../text/readout_text.dart' show columnValueOf, columnValueText;
 import '../theme/app_theme.dart';
 import '../timeline/axis_turn.dart' show partAlong;
 import '../widgets/app_icon_button.dart';
@@ -873,7 +873,7 @@ class _BoxRows extends StatelessWidget {
       onDragDelta: (units) => write(read(reading.now) + units, settled: false),
       onOperationEnd: () => reading.now.settle(),
       onEditSubmit: (raw) {
-        final typed = double.tryParse(raw.replaceAll('°', '').trim());
+        final typed = columnValueOf(raw);
         if (typed != null) {
           write(typed, settled: true);
         }
@@ -952,7 +952,7 @@ class _BoxRows extends StatelessWidget {
           : reading.now.carryBy(dy: units.round()),
       onOperationEnd: () => reading.now.settle(),
       onEditSubmit: (raw) {
-        final typed = double.tryParse(raw.trim());
+        final typed = columnValueOf(raw);
         if (typed == null) {
           return;
         }

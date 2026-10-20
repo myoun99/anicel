@@ -435,8 +435,24 @@ import '../../tool/refactor/clone_scan.dart';
 ///
 /// 🔬Measured on the lane against master (`9705c2b3a`, at 89): none added,
 /// that one gone.
+///
+/// 88 → 87 (2026-10-20, a-name-tag-value-is-a-key — F-407: a typed member
+/// keys as an fx's parameter does). Keying always left the name tag's
+/// typed number one walk with the transform's opacity: parse the number
+/// with its `%`, key it at the frame. It was not two — twelve value
+/// columns each read their typed number back by their own
+/// `double.tryParse(…replaceAll('%', '')…)`, each with its own units. One
+/// reader now stands beside the one writer (`columnValueOf` by
+/// `columnValueText`), and its two-number form (`columnPairOf`) took a
+/// standing pair with it:
+///
+///     lib/src/ui/timeline/scale_lane_form.dart      TwoScales.scrubbed
+///     lib/src/ui/timeline/transform_lane_policy.dart scrubTransformLaneValue
+///
+/// 🔬Measured on the lane against master (`942ad5e5c`, at 88): none added,
+/// that one gone.
 void main() {
-  const ceiling = 88;
+  const ceiling = 87;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

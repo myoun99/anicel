@@ -249,7 +249,7 @@ String? scrubSeNameTagLaneValue(
   String currentLabel,
   Offset dragDelta,
 ) {
-  final value = double.tryParse(currentLabel.trim());
+  final value = columnValueOf(currentLabel);
   if (value == null) {
     return null;
   }
