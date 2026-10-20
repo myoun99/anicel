@@ -79,6 +79,14 @@ class _AMovieOfOneByte extends VideoExportService {
 /// reader.
 typedef _Taker = ({Element holder, String key, String also, String said});
 
+/// The export window under test: its state, how many times it has handed
+/// its files over, and the answer that lets the hand-over held go.
+typedef _Window = ({
+  ExportDialogState state,
+  int Function() handedOver,
+  void Function() release,
+});
+
 /// 🚨WHILE AN EXPORT IS UNDER WAY, THE WINDOW TAKES NO PRESS BUT ONE THAT
 /// MOVES IT ABOUT — a module or a drawer folded open or shut, the preview
 /// framed (fit, 1:1, the zoom), a scrollbar — and Cancel.
@@ -498,17 +506,9 @@ void main() {
   ];
 
   /// The window over a fresh session on a surface it opens its drawers
-  /// in, its runs handed over as iOS hands them: the run stays under way
-  /// until [release] answers the hand-over.
-  Future<
-    ({
-      ExportDialogState state,
-      Future<void> Function() run,
-      int Function() handedOver,
-      void Function() release,
-    })
-  >
-  openWindow(WidgetTester tester) async {
+  /// in, its runs handed over as iOS hands them: a run stays under way
+  /// until the window's release answers the hand-over.
+  Future<_Window> openWindow(WidgetTester tester) async {
     debugOperatingSystemOverride = 'ios';
     FolderPicker.debugOperatingSystem = 'ios';
     final held = Completer<FolderGrant>();
@@ -534,13 +534,53 @@ void main() {
       ),
     );
     await tester.pump();
-    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     return (
-      state: state,
-      run: state.export,
+      state: tester.state<ExportDialogState>(find.byType(ExportDialog)),
       handedOver: () => handedOver,
       release: () => held.complete(FolderGrant.granted(path: temp.path)),
     );
+  }
+
+  /// Runs what [start] starts in [window], holds it at its hand-over and
+  /// reads the window then: nothing in it takes a press that would change
+  /// the run, and Cancel and the bar stand in its footer — and once the
+  /// run is let go, they leave it again.
+  Future<void> holdTheRun(
+    WidgetTester tester,
+    _Window window,
+    Future<void> Function() start,
+  ) async {
+    expect(keyed('export-cancel-button'), findsNothing);
+    expect(keyed('export-progress'), findsNothing);
+
+    late Future<void> whole;
+    await tester.runAsync(() async {
+      whole = start();
+      expect(await pollUntil(() => window.handedOver() == 1), isTrue);
+    });
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      [
+        for (final taker in pressesThatChangeTheRun(tester))
+          '${taker.key} "${taker.said}"',
+      ],
+      isEmpty,
+      reason:
+          'a run in flight owns the spec, and the preview shows what it '
+          'writes',
+    );
+    expect(keyed('export-cancel-button'), findsOneWidget);
+    expect(keyed('export-progress'), findsOneWidget);
+
+    await tester.runAsync(() async {
+      window.release();
+      await whole;
+    });
+    await tester.pump();
+    expect(keyed('export-cancel-button'), findsNothing);
+    expect(keyed('export-progress'), findsNothing);
   }
 
   for (final MapEntry(key: tab, value: (:setUp, :offers)) in tabs.entries) {
@@ -569,38 +609,21 @@ void main() {
           'app-window-close',
         ]),
       );
-      expect(keyed('export-cancel-button'), findsNothing);
-      expect(keyed('export-progress'), findsNothing);
 
-      late Future<void> whole;
-      await tester.runAsync(() async {
-        whole = window.run();
-        expect(await pollUntil(() => window.handedOver() == 1), isTrue);
-      });
-      await tester.pump();
-      await tester.pump();
-
-      expect(
-        [
-          for (final taker in pressesThatChangeTheRun(tester))
-            '${taker.key} "${taker.said}"',
-        ],
-        isEmpty,
-        reason:
-            'a run in flight owns the spec, and the preview shows what it '
-            'writes',
-      );
-      expect(keyed('export-cancel-button'), findsOneWidget);
-      expect(keyed('export-progress'), findsOneWidget);
-
-      await tester.runAsync(() async {
-        window.release();
-        await whole;
-      });
-      await tester.pump();
+      await holdTheRun(tester, window, window.state.export);
       semantics.dispose();
     });
   }
+
+  testWidgets('while the queue is writing, nothing in the window takes a '
+      'press that would change what it writes', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final window = await openWindow(tester);
+    await tabs['the Sequence tab writing stills']!.setUp(tester);
+    await tapKey(tester, 'export-queue-add-button');
+    await holdTheRun(tester, window, window.state.runQueue);
+    semantics.dispose();
+  });
 
   testWidgets('premise: a Reset lit takes a press of its own, apart from '
       'its module\'s head — the Sequence tab lights two', (tester) async {
@@ -631,12 +654,14 @@ void main() {
     );
     final job = column.queue.jobs.single;
 
+    // Each refused at once: one that ran would wait on the hand-over held.
+    const atOnce = Duration(seconds: 5);
     late Future<void> whole;
     await tester.runAsync(() async {
-      whole = window.run();
+      whole = window.state.export();
       expect(await pollUntil(() => window.handedOver() == 1), isTrue);
-      await window.run();
-      await window.state.runQueue();
+      await window.state.export().timeout(atOnce);
+      await window.state.runQueue().timeout(atOnce);
     });
     column.onRestore!(job);
     await tester.pump();
