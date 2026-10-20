@@ -55,12 +55,16 @@ void main() {
           state: state,
           onToggle: () {},
         );
-    Widget blend(String key, {required bool isGroup}) => LayerBlendModeChip(
-      name: key,
-      optionKeyPrefix: '$key-option-',
-      blendMode: LayerBlendMode.normal,
-      isGroup: isGroup,
-      onBlendModeSelected: (_) {},
+    // The chip is as long as its slot lets it be; this is the slot.
+    Widget blend(String key, {required bool isGroup}) => SizedBox(
+      width: layerBlendSlotWidth,
+      child: LayerBlendModeChip(
+        name: key,
+        optionKeyPrefix: '$key-option-',
+        blendMode: LayerBlendMode.normal,
+        isGroup: isGroup,
+        onBlendModeSelected: (_) {},
+      ),
     );
     Widget sheet(String key, bool on) => LayerTimesheetToggleButton(
       keyPrefix: 'probe',

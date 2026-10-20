@@ -235,9 +235,9 @@ void main() {
       expect(splitter, findsOneWidget);
       expect(
         tester.getTopLeft(splitter).dx,
-        panel.left + 519,
+        panel.left + 461,
         reason:
-            'the splitter follows the 519px rail — the timeline\'s number '
+            'the splitter follows the 461px rail — the timeline\'s number '
             'since 2026-08-04, though still this panel\'s own constant',
       );
       expect(

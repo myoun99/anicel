@@ -8,6 +8,7 @@ import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
+import 'axis_turn.dart' show alongBox;
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'memo_token.dart' show BySet, KeptPiece;
@@ -280,8 +281,16 @@ class TimelineLayerControlsHeader extends KeptPiece {
     );
   }
 
+  /// The label pair's column: the colour label's icon over the colour
+  /// label, and the take's half held empty over the take — the rows' pair
+  /// ([LayerMarkChip]), cell for cell.
+  ///
+  /// 🚨F-409 (유저 2026-10-19): 「레전드의 왼쪽 버튼(섹션버튼,색라벨버튼)이랑
+  /// 밑의 색라벨이랑 테이크등의 위치가 어긋나서 행/열 구조란 느낌이 안듬」.
+  /// ↩️The icon stood in the middle of the pair's slot, on the line between
+  /// the two plates under it.
   Widget _buildMark(TimelineLegendMenus menus, Color restColor) {
-    return _cell(
+    final markCell = _cell(
       keyValue: 'legend-mark',
       tooltip: AppText.strings.tlColMark,
       entriesBuilder: menus.mark,
@@ -290,6 +299,13 @@ class TimelineLayerControlsHeader extends KeptPiece {
         restColor: restColor,
         engaged: rowFilter.markColors.isNotEmpty,
       ),
+    );
+    return Flex(
+      direction: axis,
+      children: [
+        alongBox(axis, layerMarkSlotWidth, child: markCell),
+        alongBox(axis, layerTakeSlotWidth),
+      ],
     );
   }
 
@@ -391,6 +407,14 @@ class TimelineLayerControlsHeader extends KeptPiece {
     );
   }
 
+  /// The opacity column's heading — the master bar's resting text, and the
+  /// heading where there is no bar.
+  ///
+  /// OPAC → OP (F-409, 유저 2026-10-19: 「100이라는 숫자가 딱 들어갈 정도면 됨.
+  /// 레전드도 그로인해 OPAC라는 글자가 OPA나 OP로 되도됨」): the bar is as wide
+  /// as 「100」, and of the two offered OP is the one that fits it.
+  static const String _opacityHeading = 'OP';
+
   Widget _buildOpacity(
     BuildContext context,
     LayerLegendCallbacks? legend,
@@ -406,7 +430,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
               // The COLUMN's name while it rests, its number while it is
               // dragged (R4 #6) — the one bar whose resting text is not
               // its value.
-              restingText: 'OPAC',
+              restingText: _opacityHeading,
               height: 18 + FieldSlider.growthIn(context),
               restingAccent: colorScheme.onSurfaceVariant.withValues(
                 alpha: 0.45,
@@ -420,7 +444,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
         : _cell(
             keyValue: 'legend-opacity',
             tooltip: AppText.strings.tlColOpacity,
-            child: _columnHeading('OPAC', colorScheme, axis),
+            child: _columnHeading(_opacityHeading, colorScheme, axis),
           );
   }
 
@@ -602,7 +626,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
     );
   }
 
-  /// A column's four-letter heading, written the way its rail runs.
+  /// A column's short heading, written the way its rail runs.
   ///
   /// R5 #1: on the sheet these were the last two labels still lying down.
   /// Every other piece of text in that column stands up — the row names,

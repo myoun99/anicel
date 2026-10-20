@@ -15,7 +15,12 @@ import '../../helpers/named_finders.dart';
 /// 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서」): the
 /// camera's row alone carries it, on the timeline and on the sheet, and it
 /// opens how the canvas shows the camera's path — one value for the whole
-/// app (「이 경로도 글로벌 취급」) — lit while the list is open.
+/// app (「이 경로도 글로벌 취급」).
+///
+/// 🚨F-409 (유저 2026-10-19): 「카메라랑 참조레이어의 참조버튼. 얘네만 다른
+/// 버튼 사용하는거 눈에띄는게 얘네만 누르면 버튼 실루엣이 강조색됨. 같은버튼
+/// 공용화된거 쓰도록」 — the rail's shared button, in the box every button at
+/// the end of a name stands in, and nothing lit while its list is open.
 void main() {
   void reset() =>
       CameraPathSettings.settings.value = const CameraPathSettings();
@@ -27,8 +32,8 @@ void main() {
     (TimelineOrientation.vertical, 'xsheet'),
   ]) {
     testWidgets('the $prefix\'s camera row carries it and no other row; '
-        'pressed, it opens the path settings and is lit while they are '
-        'open, and a pick writes them', (tester) async {
+        'pressed, it opens the path settings and stays at rest while they '
+        'are open, and a pick writes them', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -70,6 +75,13 @@ void main() {
           )
           .isSelected;
       expect(lit(), isFalse);
+      expect(
+        tester.getSize(button),
+        orientation == TimelineOrientation.horizontal
+            ? const Size(22, 26)
+            : const Size(26, 22),
+        reason: 'the box a name\'s buttons stand in, turned with the rail',
+      );
 
       await tester.tap(button);
       await tester.pumpAndSettle();
@@ -77,7 +89,11 @@ void main() {
         find.byKey(const ValueKey<String>('camera-path-show')),
         findsOneWidget,
       );
-      expect(lit(), isTrue, reason: 'lit while the list is open');
+      expect(
+        lit(),
+        isFalse,
+        reason: 'nothing lit while the list is open — the shared button',
+      );
 
       await tester.tap(
         find.byKey(const ValueKey<String>('camera-path-show-space')),
@@ -92,7 +108,7 @@ void main() {
         findsNothing,
         reason: '⛔전제: closed',
       );
-      expect(lit(), isFalse, reason: 'and out once it closes');
+      expect(lit(), isFalse, reason: 'nor once it closes');
     });
   }
 }

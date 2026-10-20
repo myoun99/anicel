@@ -18,7 +18,8 @@ void main() {
       // 519 → 563 (I-89 ③): a lane's chips and pin for the header graph,
       // and a header's graph button out of them.
       // 563 → 519 (I-89 Q1): a row's own buttons come out of its name.
-      expect(metrics.layerControlsWidth, 519);
+      // 519 → 461 (F-409): a layer row's name went to two thirds.
+      expect(metrics.layerControlsWidth, 461);
       // 24×28 — the R-toolbar slim round (CSP/TVPaint density).
       expect(metrics.frameCellWidth, 24);
       expect(metrics.layerRowHeight, 28);

@@ -452,11 +452,28 @@ List<Widget> layerRailTrailingCells({
         layerRailSlot(axis, layerOnionSlotWidth, onion),
       layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
       layerRailSlot(axis, layerMuteSlotWidth, mute),
-      layerRailSlot(axis, columns.opacity, opacity),
-      if (optionalColumns.blend) layerRailSlot(axis, columns.blend, blend),
+      layerRailSlot(axis, columns.opacity, _plateIn(axis, opacity)),
+      if (optionalColumns.blend)
+        layerRailSlot(axis, columns.blend, _plateIn(axis, blend)),
     ],
   ];
 }
+
+/// A PLATE in its slot — the opacity bar, the blend chip — with half the
+/// rail's [layerControlChipGap] at each end of it along the rail, so a
+/// plate stands off what is beside it as the buttons stand off each other.
+///
+/// 🚨F-409 (유저 2026-10-19): 「불투명도랑 합성모드 버튼이랑 이상하게 얘네만
+/// 딱붙어있음. 다른것처럼 통일해서 패딩주도록」. ↩️Each plate filled its slot
+/// to the edge, so the two met.
+Widget? _plateIn(Axis axis, Widget? plate) => plate == null
+    ? null
+    : Padding(
+        padding: axis == Axis.horizontal
+            ? const EdgeInsets.symmetric(horizontal: layerControlChipGap / 2)
+            : const EdgeInsets.symmetric(vertical: layerControlChipGap / 2),
+        child: plate,
+      );
 
 /// The trailing run's slots, in the order [layerRailTrailingCells] emits
 /// them. Naming them lets a host LOCATE a column instead of re-adding the

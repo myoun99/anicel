@@ -158,8 +158,9 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// ★ The header block is the timeline's rail, turned on its side — EVERY
   /// control single file, plus a name as generous as the rail's own name
-  /// column. That equality is the point: making the rail compact makes the
-  /// sheet's header shallow, with nothing to remember.
+  /// column and the third of it the rail gave up ([_nameTheRailGaveUp]).
+  /// A control the rail gains or sheds the block gains or sheds with it,
+  /// with nothing to remember; the rail's names are the rail's own.
   ///
   /// R10 R6 shed columns a short panel could not afford; the user's call
   /// was the opposite — "타임라인에 있는거 싹다 넣어. 뭐 빼지말고" — and
@@ -214,13 +215,21 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// (2026-10-11). Asked with the rail's full length on offer, the user
   /// kept this one (유저 2026-10-11 「여쭐것 둘다 문제없음」).
   static double _naturalNameExtent(LayerRailColumnWidths columns) =>
-      timelineLayerControlsWidthFor(columns) -
+      timelineLayerControlsWidthFor(columns) +
+      _nameTheRailGaveUp -
       layerLaneValueHandsWidth -
       layerRailLeadingWidth -
       layerRailTrailingWidth(
         columns: columns,
         optionalColumns: (onion: true, blend: true),
       );
+
+  /// What the rail's names gave up and the sheet's kept (F-409, 유저
+  /// 2026-10-19: 「x시트는 가로모드랑 레이어영역 총 길이 안맞춰도됨. 버튼이나
+  /// 패딩개선등 통일할건 통일하지만 x시트는 애초에 지금도 fx부분 보면 공간
+  /// 부족하거나 하니 총 길이는 유지해도됨」): the rail went 519 → 461 for its
+  /// names alone, and the block keeps the length it had.
+  static const double _nameTheRailGaveUp = 58;
 
   /// The column header's own hairlines, top and bottom.
   static const double _headerBorderExtent = 2;

@@ -1,7 +1,12 @@
 // THE REFERENCE ROW'S FILE BUTTON (유저 2026-09-11, 미디어 배치 라운드 3~5):
 // icon only, at the name area's far end right before the fold slot, only on
 // a row that points at a file, pressed on the DOWN inside a rail column like
-// every rail button, and lit while its popover is open.
+// every rail button.
+//
+// 🚨F-409 (유저 2026-10-19): 「카메라랑 참조레이어의 참조버튼. 얘네만 다른
+// 버튼 사용하는거 눈에띄는게 얘네만 누르면 버튼 실루엣이 강조색됨. 같은버튼
+// 공용화된거 쓰도록」. ↩️It wore the box's edge and lit while its popover was
+// open (the 09-11 mockup).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -164,20 +169,22 @@ void main() {
     expect(anchor, rectMoreOrLessEquals(tester.getRect(button('ref'))));
   });
 
-  testWidgets('it is lit while its popover is open and back at rest when it '
-      'closes — selection by colour only', (tester) async {
+  testWidgets('it is the rail\'s shared button: the box a name\'s buttons '
+      'stand in, and at rest while its popover is open', (
+    tester,
+  ) async {
     final closed = Completer<void>();
     await tester.pumpWidget(
       row(layerNamed('ref', file: 'bg.png'), onOpen: (_, _) => closed.future),
     );
     Color glyph() => tester.glyphInkOf(button('ref'))!;
+    expect(tester.getSize(button('ref')), const Size(22, 26));
 
     final rest = glyph();
-    expect(rest, isNot(AppColors.accent), reason: 'the premise');
-
     await tester.tap(button('ref'));
     await tester.pump();
-    expect(glyph(), AppColors.accent);
+    expect(glyph(), rest, reason: 'nothing lit while the popover is open');
+    expect(glyph(), isNot(AppColors.accent));
 
     closed.complete();
     await tester.pumpAndSettle();
@@ -211,7 +218,7 @@ void main() {
     expect(
       glyph(),
       AppColors.danger,
-      reason: 'lit is the transient fact; short is the standing one',
+      reason: 'short is the standing fact, the popover open or not',
     );
     expect(glyph(), isNot(AppColors.accent));
 

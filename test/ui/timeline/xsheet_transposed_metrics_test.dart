@@ -139,8 +139,11 @@ void main() {
       // under its name — paid, the block outgrew the tallest dock. And it
       // keeps the 22 a header graph's slot gave it, where a stood-up lane
       // stands its pin and chips (I-89-Q17 A: 「시트 머리는 지금 높이
-      // 그대로(+22)」).
-      const carried = timelineLayerControlsWidth -
+      // 그대로(+22)」). And it keeps the 58 the rail's names gave up (F-409,
+      // 유저 2026-10-19: 「x시트는 … 총 길이는 유지해도됨」) — the length it
+      // had, below.
+      const carried = timelineLayerControlsWidth +
+          58 -
           layerLaneValueHandsWidth +
           22 +
           2;
@@ -180,7 +183,8 @@ void main() {
           columns: grown,
           optionalColumns: (onion: true, blend: true),
         ),
-        timelineLayerControlsWidthFor(grown) -
+        timelineLayerControlsWidthFor(grown) +
+            58 -
             layerLaneValueHandsWidth +
             22 +
             2,

@@ -762,7 +762,11 @@ class StoryboardPanel extends StatefulWidget {
   // boxes took their ± and pencil, and the timeline's rail pays the 76
   // (「레일도 그만큼 넓어집니다」 — 「문제없는데」). This rail's camera and
   // conte rows twirl down the same lanes, so the same number.
-  static const double _trackLabelWidth = 519;
+  //
+  // 519 → 461 (F-409, 유저 2026-10-19): the timeline's names went to two
+  // thirds, and 「이런 개선들은 말 안해도 콘티패널이랑 법 통일」 — the same
+  // number again.
+  static const double _trackLabelWidth = 461;
 
   /// Which optional columns this rail's rows keep — the host's answer every
   /// row and the legend above them read ([layerRailTrailingCells]): a BLEND

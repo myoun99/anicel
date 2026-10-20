@@ -276,7 +276,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerLinks;
 
-  /// The camera row's path button ([CameraPathButton], I-89 ④): how the
+  /// The camera row's path button ([_cameraPathButton], I-89 ④): how the
   /// canvas shows the camera's path, opened under the button. Null mounts
   /// none.
   final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
@@ -753,26 +753,40 @@ class TimelineLayerControlsRow extends StatelessWidget {
     ),
   );
 
+  /// The box every button at the end of the name stands in — the link
+  /// badge, a reference row's file, the camera's path — the header graph's
+  /// ([LaneGraphToggle]), so the four are one button.
+  ///
+  /// 🚨F-409 (유저 2026-10-19): 「카메라랑 참조레이어의 참조버튼. 얘네만 다른
+  /// 버튼 사용하는거 눈에띄는게 얘네만 누르면 버튼 실루엣이 강조색됨.
+  /// 같은버튼 공용화된거 쓰도록」. ↩️The reference and the path wore the box's
+  /// edge in an 18px box and lit while their window was open (the 09-11
+  /// mockup: beside the name a button had to read as a button, not as a
+  /// badge), and the badge stood in an 18px box of its own.
+  AppIconButtonBox get _nameButtonBox => railSlotBox(
+    axis,
+    slot: layerGraphSlotWidth,
+    across: 26,
+    iconSize: 15,
+  );
+
   /// 🗣️I-25 (유저 2026-09-14): 「레이어도 똑같이 버튼누르면 링크 대상 리스트
   /// 표시」 — the badge is the entrance to the link window, a rail button
   /// like the reference button beside it.
   Widget? _linkBadge(ColorScheme colorScheme) {
     if (linkPartners.isEmpty) return null;
     final onOpen = onOpenLayerLinks;
-    return Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Builder(
-        builder: (context) => RailGlyphButton(
-          name: '$keyPrefix-layer-link-badge-${layer.id}',
-          tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
-          size: const AppIconButtonBox(width: 18, height: 18, iconSize: 14),
-          // The link reads in the accent whatever the button's own rest
-          // colour: it says the row is linked before anything is pressed.
-          glyph: RailIconGlyph(Icons.link, color: colorScheme.primary),
-          onPressed: onOpen == null
-              ? null
-              : () => onOpen(context, layerIdNow(context, layer.id)),
-        ),
+    return Builder(
+      builder: (context) => RailGlyphButton(
+        name: '$keyPrefix-layer-link-badge-${layer.id}',
+        tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
+        size: _nameButtonBox,
+        // The link reads in the accent whatever the button's own rest
+        // colour: it says the row is linked before anything is pressed.
+        glyph: RailIconGlyph(Icons.link, color: colorScheme.primary),
+        onPressed: onOpen == null
+            ? null
+            : () => onOpen(context, layerIdNow(context, layer.id)),
       ),
     );
   }
@@ -781,30 +795,56 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// right before the fold slot (「레이어 이름 영역의 오른쪽정렬. 최종적으로
   /// 폴더 접기 펼치기가 오른쪽정렬로 마지막에 있을텐데, 그거 왼쪽」) — so it
   /// stands at one x on every reference row, whatever the row is called.
+  ///
+  /// The FILE glyph, icon only (미디어 배치 라운드 3~5 — 「아이콘만(이름은
+  /// 툴팁)」), and the press opens the row's reference popover instead of
+  /// baking at once. Not the chain: the chain already means "linked layer"
+  /// on this same label.
+  ///
+  /// A row that asks its file for more film than the file has wears
+  /// [AppColors.danger] (유저 2026-09-12: 「참조버튼을 빨갛게 만들고, 그걸
+  /// 누르면 팝오버 항목중 하나로 내용 띄우도록 하자」). ⛔The BUTTON says it,
+  /// not a new badge beside it: the slot is already there on every reference
+  /// row, and red on a control the user can press is what makes the popover
+  /// the place the detail lives.
   Widget? _referenceButton() {
     final onOpen = onOpenLayerReference;
     if (layer.mediaReference == null || onOpen == null) {
       return null;
     }
-    return LayerReferenceButton(
-      name: '$keyPrefix-layer-reference-${layer.id}',
-      isSourceShort: isReferenceSourceShort,
-      onOpen: (anchorContext) =>
-          onOpen(anchorContext, layerIdNow(anchorContext, layer.id)),
+    return Builder(
+      builder: (context) => RailGlyphButton(
+        name: '$keyPrefix-layer-reference-${layer.id}',
+        tooltip: AppText.strings.tlLayerReference,
+        size: _nameButtonBox,
+        glyph: const RailIconGlyph(Icons.insert_drive_file_outlined),
+        danger: isReferenceSourceShort,
+        // The popover lands on the button: it opens under THIS context.
+        onPressed: () => onOpen(context, layerIdNow(context, layer.id)),
+      ),
     );
   }
 
-  /// The camera row's path button (I-89 ④), among the name's buttons — the
-  /// camera's row is never a reference row, so the two never stand
-  /// together.
+  /// The camera row's path button (I-89 ④, 유저 2026-10-12: 「카메라
+  /// 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서. 카메라는
+  /// 지금 비지블이랑 불투명도가 어차피 글로벌이라서 이 경로도 글로벌 취급」):
+  /// it opens how the canvas shows the camera's path under itself — one value
+  /// for every open project, as the row's eye and its dim are. Among the
+  /// name's buttons — the camera's row is never a reference row, so the two
+  /// never stand together.
   Widget? _cameraPathButton() {
     final onOpen = onOpenCameraPath;
     if (!layer.kind.carriesCameraPath || onOpen == null) {
       return null;
     }
-    return CameraPathButton(
-      name: '$keyPrefix-layer-camera-path-${layer.id}',
-      onOpen: onOpen,
+    return Builder(
+      builder: (context) => RailGlyphButton(
+        name: '$keyPrefix-layer-camera-path-${layer.id}',
+        tooltip: AppText.strings.cameraPath,
+        size: _nameButtonBox,
+        glyph: const RailIconGlyph(Icons.route),
+        onPressed: () => onOpen(context),
+      ),
     );
   }
 
@@ -1016,7 +1056,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
       optionKeyPrefix: '$keyPrefix-layer-blend-option-',
       blendMode: layer.blendMode,
       isGroup: isGroup,
-      slotExtent: metrics.railColumns.blend,
       onBlendModeSelected: (mode) =>
           onSelected(layerIdNow(context, layer.id), mode),
     );
