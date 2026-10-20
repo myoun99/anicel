@@ -3,6 +3,7 @@ import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'drags/run_frames_add_drag.dart';
 import '../../models/layer_id.dart';
 import 'active_cut_controllers.dart';
+import 'range_selections.dart';
 import 'session_roles.dart';
 
 /// The RUN FRAMES ADD DRAG — dragging the end of a run to add frames to
@@ -16,18 +17,18 @@ class RunFramesAddDragVerbs {
     required ProjectAccess project,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required RetimeLaw retime,
+    required RangeSelections rangeSelections,
     required ValueNotifier<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _changes = changes,
        _controllers = controllers,
-       _retime = retime,
+       _rangeSelections = rangeSelections,
        _dragPreview = dragPreview;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final RetimeLaw _retime;
+  final RangeSelections _rangeSelections;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
   /// The in-flight "+ add frames" drag ([RunFramesAddDrag]), or null. The
@@ -36,25 +37,22 @@ class RunFramesAddDragVerbs {
   RunFramesAddDrag? _runFramesAddDrag;
 
   /// Starts a "+ add frames" drag at the run edge (UI-R8): [atEnd] picks
-  /// the side. Returns false when the row stands down or there is no run.
+  /// the side, and the runs it adds to are the press's
+  /// ([RangeSelections.runsActedOnBy], F-410). Returns false when the row
+  /// stands down or there is no run.
   bool beginRunFramesAddDrag({
     required LayerId layerId,
     required int blockStartIndex,
     required bool atEnd,
   }) {
     final drag = RunFramesAddDrag.begin(
-      layerId: layerId,
-      blockStartIndex: blockStartIndex,
+      runs: _rangeSelections.runsActedOnBy(layerId, blockStartIndex),
       atEnd: atEnd,
-      blockMoveEligible: _retime.blockMoveEligible,
       layerById: _project.layerById,
       drawnFrameCount: () => _project.activeCutDrawnFrameCount,
       preview: _dragPreview,
-      commitLayerDrag: ({required before, required after}) {
-        _controllers.timelineController.commitLayerTimelineDrag(
-          before: before,
-          after: after,
-        );
+      commitLayerDrags: (edits) {
+        _controllers.timelineController.commitLayerTimelineDrags(edits);
         _changes.warmActiveCut();
         _changes.notifyChanged();
       },

@@ -34,29 +34,29 @@ void main() {
   ({
     RunFramesAddDrag? drag,
     ValueNotifier<TimelineDragPreview?> preview,
-    List<({Layer before, Layer after})> commits,
+    List<List<({Layer before, Layer after})>> commits,
   })
   open({
     Layer? layer,
-    bool eligible = true,
+    bool stands = true,
     int blockStartIndex = 0,
+    bool actsOnARun = true,
     bool atEnd = true,
   }) {
     final before = layer ?? row();
     final preview = ValueNotifier<TimelineDragPreview?>(null);
     addTearDown(preview.dispose);
-    final commits = <({Layer before, Layer after})>[];
+    final commits = <List<({Layer before, Layer after})>>[];
     return (
       drag: RunFramesAddDrag.begin(
-        layerId: const LayerId('l'),
-        blockStartIndex: blockStartIndex,
+        runs: {
+          if (actsOnARun) const LayerId('l'): [blockStartIndex],
+        },
         atEnd: atEnd,
-        blockMoveEligible: (_) => eligible,
-        layerById: (_) => before,
+        layerById: (_) => stands ? before : null,
         drawnFrameCount: () => 12,
         preview: preview,
-        commitLayerDrag: ({required before, required after}) =>
-            commits.add((before: before, after: after)),
+        commitLayerDrags: commits.add,
       ),
       preview: preview,
       commits: commits,
@@ -64,14 +64,23 @@ void main() {
   }
 
   Layer previewLayerOf(ValueNotifier<TimelineDragPreview?> preview) =>
-      (preview.value! as ExposureEdgeDragPreview).previewLayer;
+      timelineDragPreviewLayerFor(preview.value, const LayerId('l'))!;
 
-  test('⛔a row that stands down gives no object — no object, no drag', () {
-    expect(open(eligible: false).drag, isNull);
+  test('⛔a press that acts on no run gives no object — no object, no '
+      'drag', () {
+    expect(open(actsOnARun: false).drag, isNull);
   });
 
-  test('⛔no run at that index gives no object', () {
-    expect(open(blockStartIndex: 99).drag, isNull);
+  test('⛔a row no longer there gives no object', () {
+    expect(open(stands: false).drag, isNull);
+  });
+
+  test('a run no longer there takes nothing', () {
+    final session = open(blockStartIndex: 99);
+
+    session.drag!.update(3);
+
+    expect(session.preview.value, isNull);
   });
 
   test('🚨a count of ZERO shows the COMMITTED state — the input is a count, '
@@ -146,8 +155,8 @@ void main() {
     session.drag!.commit();
 
     expect(session.commits, hasLength(1));
-    expect(session.commits.single.before.frames, hasLength(2));
-    expect(session.commits.single.after.frames, hasLength(5));
+    expect(session.commits.single.single.before.frames, hasLength(2));
+    expect(session.commits.single.single.after.frames, hasLength(5));
     expect(session.preview.value, isNull);
   });
 

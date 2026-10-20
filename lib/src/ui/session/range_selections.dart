@@ -8,6 +8,8 @@ import '../../models/layer_id.dart';
 import '../../models/range_snap.dart';
 import '../../models/timeline_selection_kind.dart';
 import '../../models/timeline_frame_range.dart';
+import '../../models/timeline_repeat.dart'
+    show gluedRunAt, gluedRunsByBlockStart;
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
 import '../../models/track_projection_row.dart'
@@ -280,6 +282,76 @@ class RangeSelections {
           !entry.value.ghost)
         entry.key,
   ];
+
+  /// The RUNS a press on a run edge of [layerId]'s run at [blockStartIndex]
+  /// acts on, by row, each named by its first block's start: every run the
+  /// live band holds a block of, on every row whose runs take the press,
+  /// when the pressed run is one of them — the pressed run alone when it is
+  /// not, and none on a row that takes no run-edge press.
+  ///
+  /// 🗣️F-410 (유저 2026-10-19): 「여러 프레임 블록(여러 행이든 뭐든)
+  /// 선택됬을때, 여러 레이어 선택하고 버튼 동작하는 규칙 그대로, 선택된 여러
+  /// 프레임에 성질 바꾸는거 적용되도록. 프레임추가도.」 — the rows' rule
+  /// (`RowSelection.rowsActedOnBy`: inside the selection, all of it; outside,
+  /// that one alone), stated in the runs a band names. The run edge's two
+  /// buttons, the N/H/R tag and the ＋, both ask this, so how many rows or
+  /// runs a band holds never picks the code that answers.
+  Map<LayerId, List<int>> runsActedOnBy(LayerId layerId, int blockStartIndex) {
+    final pressed = _project.rangeLayerById(layerId);
+    final run = pressed == null || !_takesRunEdges(pressed)
+        ? null
+        : gluedRunAt(pressed, blockStartIndex);
+    if (run == null) {
+      return const {};
+    }
+    final band = _runsInBand();
+    return band[layerId]?.contains(run.startIndex) ?? false
+        ? band
+        : {
+            layerId: [run.startIndex],
+          };
+  }
+
+  /// The runs the live band holds a block of ([selectionBlockStarts]), by
+  /// row, in frame order; a row whose runs take no run-edge press is passed
+  /// by.
+  Map<LayerId, List<int>> _runsInBand() {
+    final band = _selection.frameRangeSelection.value;
+    if (band == null) {
+      return const {};
+    }
+    final byRow = <LayerId, List<int>>{};
+    for (final id in band.spanLayerIds) {
+      final layer = _project.rangeLayerById(id);
+      if (layer == null || !_takesRunEdges(layer)) {
+        continue;
+      }
+      final runs = gluedRunsByBlockStart(layer);
+      final starts = {
+        for (final start in selectionBlockStarts(
+          layer,
+          band.startIndex,
+          band.endIndexExclusive,
+        ))
+          ?runs[start]?.startIndex,
+      };
+      if (starts.isNotEmpty) {
+        byRow[id] = [...starts]..sort();
+      }
+    }
+    return byRow;
+  }
+
+  /// Whether [layer]'s runs take a run-edge press: its blocks move
+  /// ([RetimeLaw.blockMoveEligible]) and it may hold a hold or a repeat
+  /// ([LayerKind.acceptsRepeatRegions]) — what each of the two buttons
+  /// asked of its own row before a band could reach others.
+  ///
+  /// Design E: the storyboard row refuses repeat/hold regions outright — a
+  /// derived instance would look exactly like a panel while owning no memo
+  /// of its own. Copy the frames instead.
+  bool _takesRunEdges(Layer layer) =>
+      _retime.blockMoveEligible(layer.id) && layer.kind.acceptsRepeatRegions;
 
   /// Which rows of a live span a retime may touch, in BOTH the forms a
   /// retime needs — the display form it reads timing off and the COMMIT

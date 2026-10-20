@@ -3038,7 +3038,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     changes: this,
     controllers: activeCutControllers,
-    retime: this,
+    rangeSelections: rangeSelections,
     dragPreview: dragPreview,
   );
 
@@ -3057,7 +3057,9 @@ class EditorSessionManager extends ChangeNotifier
   /// Whether the live frame-range selection can SCOPE a repeat pattern on
   /// this run edge (UI-R10 #5 rules: the selection must cover the edge
   /// block and cut the run short of the other end) — the tag flyout shows
-  /// its explicit "Repeat selection" entry from this (UI-R19 #2).
+  /// its explicit "Repeat selection" entry from this (UI-R19 #2). Any row
+  /// the selection spans asks it, not only the one its drag began on
+  /// (F-410).
   bool canScopeRepeatToSelection({
     required LayerId layerId,
     required int blockStartIndex,
@@ -3069,7 +3071,7 @@ class EditorSessionManager extends ChangeNotifier
     }
     final run = gluedRunAt(layer, blockStartIndex);
     final selection = frameRangeSelection.value;
-    if (run == null || selection == null || selection.layerId != layerId) {
+    if (run == null || selection == null || !selection.coversLayer(layerId)) {
       return false;
     }
     if (side == TimelineRunEdgeSide.end) {
