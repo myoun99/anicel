@@ -312,6 +312,41 @@ void main() {
       expect(host.askedForACel, 1, reason: 'asked once');
     });
 
+    testWidgets('🗣️I-113: on a held cel that gives way it asks for a cel of '
+        'its own, and draws once that is there — never on the held one', (
+      tester,
+    ) async {
+      final host = _Host();
+      // It gives way until the stroke has made its own cel: that one stands
+      // on its block's head, where a mark goes on the cel.
+      bool givesWay() => host.askedForACel == 0;
+      await _pump(
+        tester,
+        host,
+        _brush(),
+        celAnswer: true,
+        markMakesItsOwnCel: givesWay,
+      );
+
+      expect(host.show!.landStroke(corner), isTrue, reason: 'it will be drawn');
+      expect(host.askedForACel, 1);
+      expect(host.committed, isEmpty, reason: 'not on the held cel');
+
+      // The frame that brings the cel it made.
+      await _pump(
+        tester,
+        host,
+        _brush(),
+        celAnswer: true,
+        markMakesItsOwnCel: givesWay,
+        frame: 'frame-b',
+      );
+      await tester.pump();
+
+      expect(host.committed, hasLength(1));
+      expect(host.askedForACel, 1, reason: 'asked once');
+    });
+
     testWidgets('⛔refused a cel, it draws nothing — then or later', (
       tester,
     ) async {
@@ -724,6 +759,7 @@ Future<void> _pump(
   bool editable = true,
   bool rowAcceptsStrokes = true,
   bool? celAnswer,
+  bool Function()? markMakesItsOwnCel,
   CutGuides? guides,
   ActiveStrokeOverlayModel? overlay,
   String frame = 'frame-a',
@@ -750,6 +786,7 @@ Future<void> _pump(
                   host.askedForACel += 1;
                   return celAnswer;
                 },
+          markMakesItsOwnCel: markMakesItsOwnCel,
           onActiveStrokeChanged: host.active.add,
           onShapeShowChanged: (show) => host.show = show,
           onStrokeLanderChanged: (lander) => host.lander = lander,
