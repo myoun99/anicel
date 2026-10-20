@@ -99,7 +99,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onDrawShapeDragged,
     this.shapeKeepsRatio = false,
     this.onPressNeedsCel,
-    this.symmetry,
+    this.guides,
     this.selectionCommands,
     this.onDragActiveChanged,
     this.onModifierTouchDragActiveChanged,
@@ -214,7 +214,8 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// 「설정 스위치 + Shift」): a shape being DRAWN is a square, a circle, a
   /// line on one of the eight 45° ways. The modifier — Shift, or a finger
   /// laid on the glass — turns it the other way round for as long as it is
-  /// held. Read by no other verb: a selection's Shift is its combine mode.
+  /// held. Read by no other verb: a selection's Shift held at the press is
+  /// its combine mode, and a lasso's pressed during the drag its 45° lock.
   final bool shapeKeepsRatio;
 
   /// Asks the host for a cel to draw on, for a press of the SHAPE tool on a
@@ -232,13 +233,14 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// settled as a step of its own before the shape could claim it.
   final bool Function()? onPressNeedsCel;
 
-  /// The symmetry guide acting right now, in CANVAS coordinates — an
-  /// outline drawn here is copied by it the same way a stroke is.
+  /// The cut's guides, in CANVAS coordinates — an outline drawn here is
+  /// copied by the acting symmetry, and a lasso traced here is locked by
+  /// the snapping perspectives (I-110-Q2), the same way a stroke is.
   ///
   /// ⚠️Canvas space, not the artwork space the drawing view's guides are
   /// mapped into: this layer's geometry never leaves canvas coordinates
-  /// (see the class doc), so the axis must not either.
-  final SymmetryShape? symmetry;
+  /// (see the class doc), so the guides must not either.
+  final CutGuides? guides;
 
   final CanvasSelectionCommands? selectionCommands;
 
@@ -930,8 +932,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// held before the press and pressed during the drag are one question.
   bool get _shapeKeepsRatioNow =>
       widget.tool == CanvasSelectionTool.drawShape &&
-      widget.shapeKeepsRatio !=
-          (ModifierKeys.isShiftPressed || _modifierTouch != null);
+      widget.shapeKeepsRatio != _shiftHeld;
+
+  /// Whether the drag's Shift is held now — the key, or the finger the drag
+  /// reads as one ([_dragTakesAModifierTouch]).
+  bool get _shiftHeld => ModifierKeys.isShiftPressed || _modifierTouch != null;
 
   /// A selection the USER made.
   ///
@@ -2426,19 +2431,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         return;
       }
       _confirmMoveSession();
+      final folds = _toolFolds;
       setState(() {
         _drag = MarqueeDrag(
           pointer: event.pointer,
           shapeKind: widget.shapeKind,
           // Nothing to stash for the verbs that never touch the region: the
           // drag leaves it alone, so a cancel has nothing to put back.
-          before:
-              widget.tool == CanvasSelectionTool.cut ||
-                  widget.tool == CanvasSelectionTool.fillShape ||
-                  widget.tool == CanvasSelectionTool.drawShape
-              ? null
-              : _region,
+          before: folds ? _region : null,
           at: canvasPoint,
+          guides: widget.guides ?? CutGuides(),
+          zoom: widget.viewport.zoom,
+          combine: folds ? _foldModeNow() : null,
+          shiftAtThePress: ModifierKeys.isShiftPressed,
           byTouch: event.kind == PointerDeviceKind.touch,
         );
       });
@@ -2707,6 +2712,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             ..update(
               _toCanvas(event.localPosition),
               keepsRatio: _shapeKeepsRatioNow,
+              shift: _shiftHeld,
             ),
         );
         if (widget.tool == CanvasSelectionTool.drawShape) {
@@ -3005,7 +3011,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // a pending move confirms rather than reverts (R16-①).
       _confirmMoveSession();
     }
-    commands.addPolygonPoint(tapped);
+    // The first vertex is where the outline begins, so the chord is read
+    // at it (I-110-Q1) — a tap's press and its lift are one moment.
+    commands.addPolygonPoint(
+      tapped,
+      combine: _toolFolds ? _foldModeNow() : null,
+    );
   }
 
   /// Closes an open polygon trace: the outline goes wherever this verb
@@ -3020,9 +3031,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (commands == null || !commands.hasOpenPolygon) {
       return false;
     }
+    final combine = commands.polygonCombine;
     final drawn = commands.takePolygonShape();
     if (drawn != null) {
-      _commitDrawnOutline(drawn, before: _region);
+      _commitDrawnOutline(drawn, before: _region, combine: combine);
     }
     _syncAnts();
     return true;
@@ -3110,15 +3122,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
   }
 
-  /// The mode this drag folds under (R26 #16): the tool setting, unless
-  /// the PS/CSP modifier chord overrides it for this one drag — Shift
-  /// adds, Alt subtracts, Shift+Alt intersects. The modifiers are read at
-  /// RELEASE, matching how both apps behave when you change your mind
-  /// mid-drag. (Neither key means anything else on a marquee: Alt's held
-  /// eyedropper stands down for the tools whose drag reads Alt
-  /// (`canvasToolReadsAlt` — this one and the transform), and Shift/Alt
-  /// only steer an OPEN transform box, never a marquee.)
-  SelectionCombineMode _marqueeMode() {
+  /// Whether the tool in hand folds what it traces into the region — the
+  /// select tool alone; the others hand their outline on and leave the
+  /// region as they found it.
+  bool get _toolFolds => widget.tool == CanvasSelectionTool.select;
+
+  /// The mode an outline begun now folds under (R26 #16): the tool
+  /// setting, unless the PS/CSP modifier chord overrides it for this one
+  /// outline — Shift adds, Alt subtracts, Shift+Alt intersects.
+  ///
+  /// 🗣️READ WHERE THE OUTLINE BEGINS — a drag's press, a polygon's first
+  /// vertex (I-110-Q1, 유저 2026-10-20: 「누른 시점으로 가른다」): a Shift
+  /// pressed while a lasso runs is its 45° lock ([MarqueeDrag.update]), as
+  /// a stroke's is. ↩️It was read at the RELEASE, for changing one's mind
+  /// mid-drag, until the lasso's Shift came to lock the trace. (Alt's held
+  /// eyedropper stands down for the tools whose drag reads Alt —
+  /// `canvasToolReadsAlt`, this one and the transform.)
+  SelectionCombineMode _foldModeNow() {
     final shift = ModifierKeys.isShiftPressed;
     final alt = ModifierKeys.isAltPressed;
     if (shift && alt) {
@@ -3130,11 +3150,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (alt) {
       return SelectionCombineMode.subtract;
     }
-    return widget.selectionCommands?.combineMode ??
-        SelectionCombineMode.defaultMode;
+    return _toolsFoldMode;
   }
 
+  /// The tool setting's mode, which no chord has overridden.
+  SelectionCombineMode get _toolsFoldMode =>
+      widget.selectionCommands?.combineMode ??
+      SelectionCombineMode.defaultMode;
+
   void _finishMarquee(MarqueeDrag drag) {
+    drag.lift();
     if (widget.tool == CanvasSelectionTool.drawShape) {
       // The one verb that takes the PATH: a line has no outline to commit,
       // and what the drag traced is drawn rather than folded into anything.
@@ -3146,7 +3171,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       return;
     }
-    _commitDrawnOutline(drag.shape(), before: drag.before);
+    _commitDrawnOutline(
+      drag.shape(),
+      before: drag.before,
+      combine: drag.combine,
+    );
   }
 
   /// A shape drag still running ends without a shape — its tool switched
@@ -3176,9 +3205,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// Where every finished outline lands, whoever traced it — a marquee
   /// drag, a lasso, or a closed polygon. The tracing is the only part that
   /// differs between shapes; what a finished outline MEANS is the verb's.
+  ///
+  /// [combine] is the mode read where the outline began ([_foldModeNow]);
+  /// a trace that began with none folds under the tool's own.
   void _commitDrawnOutline(
     CanvasSelectionShape? drawn, {
     required CanvasSelectionRegion? before,
+    required SelectionCombineMode? combine,
   }) {
     // CUT and SHAPE FILL stop here: the outline goes to the slot or to the
     // paint, and the selection is left alone. 유저 확정: "잘라내기는
@@ -3206,7 +3239,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final folded = CanvasSelectionRegion.combineCopies(
       before,
       _symmetryCopies(drawn),
-      _marqueeMode(),
+      combine ?? _toolsFoldMode,
     );
     if (identical(folded, before)) {
       // Nothing folded (a click in add/subtract/intersect, or with nothing
@@ -3287,7 +3320,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// The carries [_guideCopiesOf] makes its copies by, in its order — the
   /// first the identity; none without a guide.
   List<GuideTransform> get _guideCarries {
-    final symmetry = widget.symmetry;
+    final symmetry = widget.guides?.actingSymmetry;
     return symmetry == null ? const [] : symmetryTransforms(symmetry);
   }
 

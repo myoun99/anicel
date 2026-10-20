@@ -7,6 +7,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
@@ -63,6 +64,8 @@ void main() {
     // a-marquee-on-a-posed-row: where the row stands on the canvas. Null =
     // unposed.
     LayerPoseSample? placement,
+    // The shape the tool traces. Null = the tool's own default.
+    CanvasShapeKind? shape,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -81,7 +84,11 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               historyManager: history,
               brushToolState: ValueNotifier(
-                BrushToolState.defaults.copyWith(tool: tool),
+                shape == null
+                    ? BrushToolState.defaults.copyWith(tool: tool)
+                    : BrushToolState.defaults
+                          .copyWith(tool: tool)
+                          .withShapeKind(shape, forTool: tool),
               ),
               selectionCommands: commands,
               interactiveContentPose: placementOfSample(
@@ -351,6 +358,159 @@ void main() {
       SelectionCombineMode.replace,
       reason: 'the chord overrides the drag, never the setting',
     );
+  });
+
+  group('🗣️I-110-Q1 (유저 2026-10-20: 「누른 시점으로 가른다」): the chord is '
+      'read where the outline begins', () {
+    const shift = LogicalKeyboardKey.shiftLeft;
+
+    testWidgets('a drag\'s at its press: a Shift pressed during it does not '
+        'add, and one let go during it still does', (tester) async {
+      final env = await pumpPanel(tester);
+      final layer = find.byKey(layerKey);
+      env.commands.combineMode = SelectionCombineMode.replace;
+      await tester.pump();
+      await dragOnLayer(
+        tester,
+        layer,
+        const Offset(10, 10),
+        const Offset(40, 40),
+      );
+
+      Future<void> shiftingDrag(
+        Offset from,
+        Offset to, {
+        required bool heldAtThePress,
+      }) async {
+        final origin = tester.getTopLeft(layer);
+        if (heldAtThePress) {
+          await tester.sendKeyDownEvent(shift);
+        }
+        final gesture = await tester.startGesture(
+          origin + from,
+          kind: PointerDeviceKind.mouse,
+          buttons: kPrimaryButton,
+        );
+        await tester.pump();
+        await gesture.moveTo(origin + (from + to) / 2);
+        await tester.pump();
+        if (heldAtThePress) {
+          await tester.sendKeyUpEvent(shift);
+        } else {
+          await tester.sendKeyDownEvent(shift);
+        }
+        await gesture.moveTo(origin + to);
+        await tester.pump();
+        await gesture.up();
+        await tester.pump();
+        if (!heldAtThePress) {
+          await tester.sendKeyUpEvent(shift);
+        }
+      }
+
+      await shiftingDrag(
+        const Offset(80, 10),
+        const Offset(110, 40),
+        heldAtThePress: false,
+      );
+      var region = env.commands.region!;
+      expect(
+        region.containsPoint(CanvasPoint(x: 25, y: 25)),
+        isFalse,
+        reason: 'held only at the release: the setting\'s 갱신',
+      );
+      expect(region.containsPoint(CanvasPoint(x: 95, y: 25)), isTrue);
+
+      await shiftingDrag(
+        const Offset(140, 10),
+        const Offset(170, 40),
+        heldAtThePress: true,
+      );
+      region = env.commands.region!;
+      expect(region.containsPoint(CanvasPoint(x: 95, y: 25)), isTrue);
+      expect(region.containsPoint(CanvasPoint(x: 155, y: 25)), isTrue);
+    });
+
+    testWidgets('a polygon\'s at its first vertex', (tester) async {
+      final env = await pumpPanel(tester, shape: CanvasShapeKind.polygon);
+      final layer = find.byKey(layerKey);
+      env.commands.combineMode = SelectionCombineMode.replace;
+      await tester.pump();
+
+      Future<void> tapOut(
+        List<Offset> vertices, {
+        required bool shiftAtTheFirst,
+      }) async {
+        final origin = tester.getTopLeft(layer);
+        for (final (index, vertex) in [...vertices, vertices.first].indexed) {
+          final first = index == 0;
+          if (first == shiftAtTheFirst) {
+            await tester.sendKeyDownEvent(shift);
+          }
+          await tester.tapAt(origin + vertex, kind: PointerDeviceKind.mouse);
+          await tester.pump();
+          if (first == shiftAtTheFirst) {
+            await tester.sendKeyUpEvent(shift);
+          }
+        }
+      }
+
+      const firstBox = [Offset(10, 10), Offset(40, 10), Offset(40, 40)];
+      const secondBox = [Offset(80, 10), Offset(110, 10), Offset(110, 40)];
+      const thirdBox = [Offset(140, 10), Offset(170, 10), Offset(170, 40)];
+      await tapOut(firstBox, shiftAtTheFirst: false);
+      expect(
+        env.commands.region!.containsPoint(CanvasPoint(x: 35, y: 15)),
+        isTrue,
+      );
+
+      // Shift at every vertex but the first: the setting's 갱신.
+      await tapOut(secondBox, shiftAtTheFirst: false);
+      var region = env.commands.region!;
+      expect(region.containsPoint(CanvasPoint(x: 35, y: 15)), isFalse);
+      expect(region.containsPoint(CanvasPoint(x: 105, y: 15)), isTrue);
+
+      // Shift at the first alone: 추가.
+      await tapOut(thirdBox, shiftAtTheFirst: true);
+      region = env.commands.region!;
+      expect(region.containsPoint(CanvasPoint(x: 105, y: 15)), isTrue);
+      expect(region.containsPoint(CanvasPoint(x: 165, y: 15)), isTrue);
+    });
+  });
+
+  testWidgets('🗣️I-110: a Shift pressed while a lasso runs locks it to the '
+      'eight ways, as a stroke\'s — and let go, it runs free', (tester) async {
+    final env = await pumpPanel(tester, shape: CanvasShapeKind.lasso);
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    final gesture = await tester.startGesture(
+      origin + const Offset(20, 20),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    Future<void> handTo(double x, double y) async {
+      await gesture.moveTo(origin + Offset(x, y));
+      await tester.pump();
+    }
+
+    await handTo(100, 20);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await handTo(140, 30);
+    await handTo(180, 40);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await handTo(180, 100);
+    await handTo(20, 100);
+    await gesture.up();
+    await tester.pump();
+
+    final region = env.commands.region!;
+    expect(
+      region.containsPoint(CanvasPoint(x: 170, y: 25)),
+      isTrue,
+      reason: 'the run held level from (100, 20): the hand went below it',
+    );
+    expect(region.containsPoint(CanvasPoint(x: 60, y: 60)), isTrue);
+    expect(region.containsPoint(CanvasPoint(x: 170, y: 105)), isFalse);
   });
 
   testWidgets('every fold is ONE undo step, and undo restores the region '

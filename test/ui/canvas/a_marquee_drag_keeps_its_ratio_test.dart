@@ -1,5 +1,6 @@
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/canvas/selection_drag.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,8 +10,14 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   CanvasPoint p(double x, double y) => CanvasPoint(x: x, y: y);
 
-  MarqueeDrag pressedAt100(CanvasShapeKind kind) =>
-      MarqueeDrag(pointer: 1, shapeKind: kind, before: null, at: p(100, 100));
+  MarqueeDrag pressedAt100(CanvasShapeKind kind) => MarqueeDrag(
+    pointer: 1,
+    shapeKind: kind,
+    before: null,
+    at: p(100, 100),
+    guides: CutGuides(),
+    zoom: 1,
+  );
 
   List<(double, double)> placesOf(Iterable<CanvasPoint> points) => [
     for (final point in points) (point.x, point.y),

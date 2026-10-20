@@ -1953,9 +1953,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // guides ride
               // into artwork
               // coordinates.
-              symmetry: widget
-                  .guides
-                  ?.actingSymmetry,
+              guides: widget.guides,
               viewport: _viewportState._viewport,
               canvasSize: widget
                   .canvasSize,

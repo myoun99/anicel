@@ -103,6 +103,11 @@ final class CanvasSelectionDocument {
   /// the next real vertex, the way every redo stack is.
   final List<CanvasPoint> _polygonRedo = [];
 
+  /// The mode the open trace folds under once it closes, read at its FIRST
+  /// vertex as a drag's is read at its press (I-110-Q1) — and kept here
+  /// with the vertices, which outlive the layer that read it.
+  SelectionCombineMode? _polygonCombine;
+
   /// When the trace was last added to or taken back from, on one clock for
   /// every document: which of the open traces is the newest (`CanvasTraces`
   /// — a viewer keeps a trace of its own).
@@ -208,7 +213,16 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// When the trace was last added to or taken back from — later is larger.
   int get traceTouchedAt => _document._traceTouchedAt;
 
-  void addPolygonPoint(CanvasPoint point) {
+  /// The mode the open trace folds under when it closes — null for a trace
+  /// begun by a verb that folds nothing.
+  SelectionCombineMode? get polygonCombine => _document._polygonCombine;
+
+  /// [point] goes on the open trace; the FIRST vertex of a trace takes
+  /// [combine] with it ([polygonCombine]).
+  void addPolygonPoint(CanvasPoint point, {SelectionCombineMode? combine}) {
+    if (_document._polygonPoints.isEmpty) {
+      _document._polygonCombine = combine;
+    }
     _document._polygonPoints.add(point);
     _document._polygonRedo.clear();
     _document._touchTrace();
@@ -276,6 +290,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     }
     _document._polygonPoints.clear();
     _document._polygonRedo.clear();
+    _document._polygonCombine = null;
     notifySessionChanged();
   }
 

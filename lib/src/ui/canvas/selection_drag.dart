@@ -2,8 +2,10 @@ import 'dart:ui' show Offset;
 
 import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/drawing_guide.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/guide_stroke_input.dart';
 import '../../services/shape_ratio_lock.dart';
 
 /// ONE in-flight selection drag, as its own object — begun by CONSTRUCTING
@@ -52,10 +54,18 @@ final class MarqueeDrag extends SelectionDrag {
     required this.shapeKind,
     required this.before,
     required CanvasPoint at,
+    required CutGuides guides,
+    required double zoom,
+    this.combine,
+    bool shiftAtThePress = false,
     this.byTouch = false,
   }) : start = at,
        _current = at,
-       _traced = tracesPointerPath(shapeKind) ? [at] : const [];
+       _traced = tracesPointerPath(shapeKind) ? [at] : const [],
+       _lock = tracesPointerPath(shapeKind)
+           ? StrokeLock(guides: guides, start: at, zoom: zoom)
+           : null,
+       _shiftIsTheFolds = combine != null && shiftAtThePress;
 
   /// Which outline this drag traces — fixed at the press, because the tool
   /// setting must not change what a gesture already started drawing.
@@ -67,6 +77,24 @@ final class MarqueeDrag extends SelectionDrag {
   /// Null for the verbs that never touch the region (cut, shape fill): the
   /// drag leaves it alone, so a cancel has nothing to put back.
   final CanvasSelectionRegion? before;
+
+  /// The mode the outline folds into the region under — read at the PRESS
+  /// (🗣️I-110-Q1, 유저 2026-10-20: 「누른 시점으로 가른다」), so a Shift
+  /// pressed while the drag runs is the trace's and not the fold's. Null
+  /// for the verbs that fold nothing (cut, shape fill, the shape tool).
+  final SelectionCombineMode? combine;
+
+  /// The traced path's lock — the stroke's own ([StrokeLock]): Shift's
+  /// eight ways while it is held, the snapping perspectives' rays where it
+  /// is not (🗣️I-110 「프리핸드로 하는 모든것들도 스냅되도록. 최대한 법
+  /// 통일」 · I-110-Q2 「따른다」). Null for the shapes read from their
+  /// corners, which have no path to lock.
+  final StrokeLock? _lock;
+
+  /// Whether the Shift held now is still the one the FOLD took at the
+  /// press (I-110-Q1 — Photoshop's read: held before the drag it adds, and
+  /// only a Shift pressed again during it locks the trace).
+  bool _shiftIsTheFolds;
 
   /// Where the drag went down, in canvas space.
   final CanvasPoint start;
@@ -102,17 +130,39 @@ final class MarqueeDrag extends SelectionDrag {
   /// The hand has moved to [at]. With [keepsRatio] the shape ends where
   /// its ratio is kept instead ([ratioKeptEnd]) — asked at every move, so
   /// it can come and go under the hand; a shape that is the hand's own
-  /// path has none to keep.
-  void update(CanvasPoint at, {bool keepsRatio = false}) {
+  /// path has none to keep, and goes where its lock takes it, [shift]
+  /// being whether Shift is held now ([StrokeLock.follow]).
+  void update(
+    CanvasPoint at, {
+    bool keepsRatio = false,
+    bool shift = false,
+  }) {
     _current = keepsRatio
         ? ratioKeptEnd(from: start, to: at, shape: shapeKind)
         : at;
-    if (tracesPointerPath(shapeKind)) {
-      _traced = [..._traced, at];
+    final lock = _lock;
+    if (lock != null) {
+      if (!shift) {
+        _shiftIsTheFolds = false;
+      }
+      _traced = [
+        ..._traced,
+        ...lock.follow(at, shift: shift && !_shiftIsTheFolds),
+      ];
     } else if (shapeKind == CanvasShapeKind.line) {
       // The line has no outline for the ants to walk; what they draw while
       // it is dragged is the line itself, end to end.
       _traced = [start, _current];
+    }
+  }
+
+  /// The hand has lifted: what the lock still holds lands on the path
+  /// ([StrokeLock.finish]) — before the release reads the shape, as a
+  /// stroke's lands before its commit.
+  void lift() {
+    final held = _lock?.finish() ?? const [];
+    if (held.isNotEmpty) {
+      _traced = [..._traced, ...held];
     }
   }
 
