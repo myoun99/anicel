@@ -483,73 +483,120 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
   required Project project,
   required CutId cutId,
   required Layer layer,
+}) => planAddLayersCommandInput(
+  project: project,
+  cutId: cutId,
+  layers: [layer],
+).single;
+
+/// [layers] added to [cutId] in ONE step, each planned as
+/// [planAddLayerCommandInput] plans a row — the plans in [layers]' order.
+///
+/// 🗣️F-398 (유저 2026-10-18): 「배치 통해 만들어진 레이어(이미지,애니메이션?)가
+/// 겸용컷에서 링크가 안됨. 관련 링크안되는것들 다른것도 조사 법 통일」 — an
+/// import put its rows in the one cut. An import lands a BATCH, and a PSD's
+/// folder rows come with the rows they hold: an anchor can be a row of the
+/// batch, whose copy in a sibling is that row's own copy there — and a copy
+/// whose anchor is dropped is dropped with it.
+///
+/// ⚠️The rows' own ids are taken before any copy's: a pasted row's is the
+/// project's first free `layer-N`, the very id the first copy would get.
+List<AddLayerCommandInputPlan> planAddLayersCommandInput({
+  required Project project,
+  required CutId cutId,
+  required List<Layer> layers,
 }) {
-  if (!layer.kind.linksIntoLinkedCut) {
-    return AddLayerCommandInputPlan.none;
-  }
   final siblings = linkedCutSiblings(project, cutId: cutId);
   if (siblings.isEmpty) {
-    return AddLayerCommandInputPlan.none;
+    return List.filled(layers.length, AddLayerCommandInputPlan.none);
   }
-  final ids = _ProjectIdSnapshot.fromProject(project);
-
-  LayerId? counterpart(LayerId anchor, CutId sibling) => linkCounterpartIn(
+  final batch = {for (final layer in layers) layer.id};
+  LayerId? outside(LayerId anchor, CutId sibling) => linkCounterpartIn(
     project,
     cutId: cutId,
     layerId: anchor,
     targetCutId: sibling,
   );
 
-  final mirrors = <AddLayerMirror>[];
-  for (final sibling in siblings) {
-    // The ONE row of its kind, that is — a row riding another is not it
-    // ([holdsSingletonOfKind]), so the conte row's attach rows mirror like
-    // any drawing row's.
-    if (layer.kind.isSingletonPerCut &&
-        !isAttachedLayer(layer) &&
-        holdsSingletonOfKind(
-          requireCut(project, sibling).layers,
-          layer.kind,
-        )) {
-      continue;
+  final copied = <(LayerId, CutId)>{
+    for (final layer in layers)
+      if (layer.kind.linksIntoLinkedCut)
+        for (final sibling in siblings)
+          if (!_keepsItsOwnSingleton(project, sibling, layer))
+            (layer.id, sibling),
+  };
+  bool reaches(LayerId? anchor, CutId sibling) =>
+      anchor == null ||
+      (batch.contains(anchor)
+          ? copied.contains((anchor, sibling))
+          : outside(anchor, sibling) != null);
+  for (var dropped = true; dropped;) {
+    dropped = false;
+    for (final layer in layers) {
+      for (final sibling in siblings) {
+        final anchored =
+            reaches(layer.folderId, sibling) &&
+            reaches(layer.attachedToLayerId, sibling);
+        if (!anchored && copied.remove((layer.id, sibling))) {
+          dropped = true;
+        }
+      }
     }
-    final folder = layer.folderId;
-    final base = layer.attachedToLayerId;
-    final mirroredFolder = folder == null ? null : counterpart(folder, sibling);
-    final mirroredBase = base == null ? null : counterpart(base, sibling);
-    if ((folder != null && mirroredFolder == null) ||
-        (base != null && mirroredBase == null)) {
-      continue;
-    }
-    final mirrorId = ids.nextLayerId();
-    mirrors.add(
-      AddLayerMirror(
-        cutId: sibling,
-        layerId: mirrorId,
-        folderId: mirroredFolder,
-        attachedToLayerId: mirroredBase,
-        coveringFrameId: _bornWithAFreshPanel(layer)
-            ? mintFrameId(mirrorId)
-            : null,
-      ),
-    );
-  }
-  if (mirrors.isEmpty) {
-    return AddLayerCommandInputPlan.none;
   }
 
-  return AddLayerCommandInputPlan(
-    mirrors: mirrors,
-    linkGroupId: ids.nextLinkGroupId(),
-  );
+  final ids = _ProjectIdSnapshot.fromProject(project)
+    ..layerIds.addAll([for (final id in batch) id.value]);
+  final copyIds = {for (final copy in copied) copy: ids.nextLayerId()};
+  LayerId? copyOf(LayerId? anchor, CutId sibling) => anchor == null
+      ? null
+      : batch.contains(anchor)
+      ? copyIds[(anchor, sibling)]
+      : outside(anchor, sibling);
+  AddLayerCommandInputPlan planOf(Layer layer) {
+    final mirrors = [
+      for (final sibling in siblings)
+        if (copyIds[(layer.id, sibling)] case final copyId?)
+          AddLayerMirror(
+            cutId: sibling,
+            layerId: copyId,
+            folderId: copyOf(layer.folderId, sibling),
+            attachedToLayerId: copyOf(layer.attachedToLayerId, sibling),
+            coveringFrameId: _bornWithAFreshPanel(layer)
+                ? mintFrameId(copyId)
+                : null,
+          ),
+    ];
+    return mirrors.isEmpty
+        ? AddLayerCommandInputPlan.none
+        : AddLayerCommandInputPlan(
+            mirrors: mirrors,
+            linkGroupId: ids.nextLinkGroupId(),
+          );
+  }
+
+  return [for (final layer in layers) planOf(layer)];
 }
+
+/// Whether [sibling] keeps its own row of [layer]'s SINGLETON kind, and so
+/// takes no copy — the ONE row of its kind, that is: a row riding another
+/// is not it ([holdsSingletonOfKind]), so the conte row's attach rows
+/// mirror like any drawing row's.
+bool _keepsItsOwnSingleton(Project project, CutId sibling, Layer layer) =>
+    layer.kind.isSingletonPerCut &&
+    !isAttachedLayer(layer) &&
+    holdsSingletonOfKind(requireCut(project, sibling).layers, layer.kind);
 
 /// [layer] added to [cutId] at [insertionIndex], and to the 겸용 siblings
 /// [planAddLayerCommandInput] plans against the project as it stands.
 ///
 /// ONE recipe for every way a row is added to a cut: the layer panel's Add
-/// Layer, on the cut the canvas stands on, and the conte row a picture's
-/// first stroke makes, on the picture's cut.
+/// Layer, on the cut the canvas stands on, the conte row a picture's first
+/// stroke makes, on the picture's cut, and a pasted or duplicated row. An
+/// import's rows take the same plans, a batch at a time
+/// ([planAddLayersCommandInput], `ImportMediaCommand`).
+///
+/// ↩️A pasted row went into its one cut (`PasteLayerCommand`), and so did
+/// an import's — no copy in a 겸용 sibling (F-398).
 ///
 /// ↩️A row added to a track's conte was planted in every other cut's here,
 /// wearing the head of its seat, and a conte born into the track was born

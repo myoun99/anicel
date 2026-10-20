@@ -64,7 +64,6 @@ import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
 import 'link_duplicate_layer_command.dart';
 import 'unlink_layer_command.dart';
-import 'paste_layer_command.dart';
 import 'rename_cut_command.dart';
 import 'update_cut_durations_command.dart';
 import 'reorder_cut_command.dart';
@@ -748,8 +747,10 @@ class CutCommandCoordinator {
       insertionIndex: insertionIndex,
     );
 
+    // A pasted row is an added row: in a 겸용 cut its siblings get it too
+    // (F-398).
     historyManager.execute(
-      PasteLayerCommand(
+      plannedAddLayerCommand(
         repository: repository,
         cutId: cutId,
         layer: plan.layer,

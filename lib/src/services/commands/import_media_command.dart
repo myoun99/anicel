@@ -6,6 +6,8 @@ import '../../models/media_asset.dart';
 import '../../models/track_id.dart';
 import '../command.dart';
 import '../project_repository.dart';
+import 'add_layer_command.dart';
+import 'cut_command_input_planner.dart' show AddLayerCommandInputPlan;
 import 'cut_insertion.dart';
 
 /// ONE import lands as ONE undo step: prebuilt cuts insert into the
@@ -23,6 +25,7 @@ class ImportMediaCommand implements Command {
     this.newCutIndex,
     this.targetCutId,
     this.newLayers = const [],
+    this.layerPlans = const [],
     this.layerInsertionIndex,
     this.assetAdditions = const [],
     String? description,
@@ -45,6 +48,12 @@ class ImportMediaCommand implements Command {
   final CutId? targetCutId;
   final List<Layer> newLayers;
 
+  /// [newLayers]' copies in [targetCutId]'s 겸용 siblings, one plan per row
+  /// ([planAddLayersCommandInput]) — none for a cut that has none. Each row
+  /// goes in as an added row does ([AddLayerCommand]), copies and all
+  /// (F-398).
+  final List<AddLayerCommandInputPlan> layerPlans;
+
   /// The cut-list slot the first of [newLayers] takes, the rest following
   /// it in order — a canvas drop's "directly above the active layer". Null
   /// is the top.
@@ -62,6 +71,9 @@ class ImportMediaCommand implements Command {
   /// The new cuts' insertions, made once so a redo takes exactly the room
   /// the first run took ([CutInsertion]).
   List<CutInsertion>? _cutInsertions;
+
+  /// The new rows' adds, made once for the same reason.
+  List<AddLayerCommand>? _layerAdds;
 
   @override
   String get description => _description;
@@ -105,12 +117,23 @@ class ImportMediaCommand implements Command {
         throw StateError('Importing layers needs a target cut id.');
       }
       final at = layerInsertionIndex;
-      for (var index = 0; index < newLayers.length; index += 1) {
-        repository.insertLayer(
-          cutId: cutId,
-          layer: newLayers[index],
-          index: at == null ? null : at + index,
-        );
+      final adds = _layerAdds ??= [
+        for (var index = 0; index < newLayers.length; index += 1)
+          AddLayerCommand(
+            repository: repository,
+            cutId: cutId,
+            layer: newLayers[index],
+            insertionIndex: at == null ? null : at + index,
+            mirrors: index < layerPlans.length
+                ? layerPlans[index].mirrors
+                : const [],
+            linkGroupId: index < layerPlans.length
+                ? layerPlans[index].linkGroupId
+                : null,
+          ),
+      ];
+      for (final add in adds) {
+        add.execute();
       }
     }
     _hasExecuted = true;
@@ -123,8 +146,8 @@ class ImportMediaCommand implements Command {
     if (!_hasExecuted || poolBefore == null) {
       throw StateError('Command has not been executed.');
     }
-    for (final layer in newLayers) {
-      repository.deleteLayer(cutId: targetCutId!, layerId: layer.id);
+    for (final add in (_layerAdds ?? const <AddLayerCommand>[]).reversed) {
+      add.undo();
     }
     for (final insertion in (_cutInsertions ?? const <CutInsertion>[]).reversed) {
       insertion.revert(repository);

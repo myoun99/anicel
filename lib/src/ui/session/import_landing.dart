@@ -21,6 +21,8 @@ import '../../models/se_take_placement.dart';
 import '../../models/timeline_coverage.dart' show drawingBlocks;
 import '../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
+import '../../services/commands/cut_command_input_planner.dart'
+    show planAddLayersCommandInput;
 import '../../services/commands/import_media_command.dart';
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
@@ -312,22 +314,28 @@ class ImportLanding {
         _ => null,
       };
       final folderId = placement?.folderId;
+      // The batch's own top rows join; rows an imported folder holds keep
+      // pointing at it.
+      final rows = folderId == null
+          ? layers
+          : [
+              for (final layer in layers)
+                if (layer.folderId == null)
+                  layer.copyWith(folderId: folderId)
+                else
+                  layer,
+            ];
       _project.historyManager.execute(
         ImportMediaCommand(
           repository: _project.repository,
           editingSession: _timeline.editingSession,
           targetCutId: arrival.cutId,
-          // The batch's own top rows join; rows an imported folder holds
-          // keep pointing at it.
-          newLayers: folderId == null
-              ? layers
-              : [
-                  for (final layer in layers)
-                    if (layer.folderId == null)
-                      layer.copyWith(folderId: folderId)
-                    else
-                      layer,
-                ],
+          newLayers: rows,
+          layerPlans: planAddLayersCommandInput(
+            project: _project.repository.requireProject(),
+            cutId: arrival.cutId,
+            layers: rows,
+          ),
           layerInsertionIndex: placement?.index,
           assetAdditions: assets,
           description: description,
