@@ -18,7 +18,8 @@
 //
 // 🗣️유저 2026-10-20 (tests-crowd-the-machine-Q8 「나눈다」): before a lane
 // lands it runs the tests NEAR its change — no more than [kNearImports]
-// imports away, and what reads the changed paths as text. Every landing
+// imports away, what reads the changed paths as text, and every suite only
+// for the test config file itself (Q11 「설정 파일 자신만」). Every landing
 // since the last check is then run WIDE together, once, by `master_check`,
 // which walks a red back to the landing that made it; a red it put on a
 // landing this checkout carries holds no verdict back here.
@@ -131,6 +132,16 @@ const gcTagMarker = "@Tags(['$gcTag'])";
 /// import chose (459 of 720 machine-hours), one import 22%.
 const kNearImports = 2;
 
+/// How many imports from [kTestConfig] a change may stand and still be
+/// every suite's in the near run: none — the config file alone, which
+/// [forcesFullRun] already runs everything for. 🗣️유저 2026-10-20,
+/// tests-crowd-the-machine-Q11 「설정 파일 자신만」. The config imports
+/// `app_strings.dart` one step away, so a string changed made every suite
+/// run at two steps: 🧪over that day's 120 landings two steps saved 20% of
+/// the wide run's machine-hours, the config alone 32%. What the config
+/// reaches is still every suite's in the wide run (`master_check`).
+const kNearConfigImports = 0;
+
 /// What a change to [changed] — every changed file, Dart or not — can have
 /// broken, out of [tests]: what reaches a changed file ([Reaches]) — by its
 /// imports, however far away or no more than [within] of them, or by a path
@@ -138,19 +149,24 @@ const kNearImports = 2;
 /// rounds those reads were missing from) — the green record's own question.
 ///
 /// 🚨flutter_test loads [kTestConfig] before every suite, and all it
-/// reaches with it, so a change the config reaches is every suite's. Until
-/// 10-20 the selection asked each test alone: a change to the session
-/// sandbox the config sets up chose only the few tests that import it —
-/// 15% of that month's lib changes touched what the config reaches.
+/// reaches with it — however far away or no more than [configWithin] of its
+/// imports — so a change the config reaches is every suite's. Until 10-20
+/// the selection asked each test alone: a change to the session sandbox the
+/// config sets up chose only the few tests that import it — 15% of that
+/// month's lib changes touched what the config reaches.
 Set<String> selectTests({
   required Set<String> changed,
   required List<String> tests,
   required Map<String, Set<String>> imports,
   required String Function(String path) read,
   int? within,
+  int? configWithin,
 }) {
   final reaches = Reaches(imports, read, within: within);
-  final everySuite = reachesAny(reaches.of(kTestConfig), changed);
+  final everySuite = reachesAny(
+    Reaches(imports, read, within: configWithin).of(kTestConfig),
+    changed,
+  );
   return {
     // A changed test runs because it changed, whatever it imports.
     ...changed.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
@@ -162,7 +178,9 @@ Set<String> selectTests({
 Future<void> main(List<String> args) async {
   final listOnly = args.contains('--list');
   final runAll = args.contains('--all');
-  final within = args.contains('--wide') ? null : kNearImports;
+  final wide = args.contains('--wide');
+  final within = wide ? null : kNearImports;
+  final configWithin = wide ? null : kNearConfigImports;
   // ↩️`origin/master` until 10-20. Since PRs go up in bundles (08-31) the
   // local master runs days ahead of origin — 454 commits that day — and a
   // run given no base ran every landing since the last PR as its own. A
@@ -233,6 +251,7 @@ Future<void> main(List<String> args) async {
       imports: imports,
       read: (path) => File(path).readAsStringSync(),
       within: within,
+      configWithin: configWithin,
     ),
     ...named,
   };

@@ -6,7 +6,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/affected_tests.dart'
-    show forcesFullRun, kNearImports, selectTests;
+    show forcesFullRun, kNearConfigImports, kNearImports, selectTests;
 import '../../tool/import_graph.dart'
     show buildImportGraph, kGraphRoots, pathsReadAsText;
 
@@ -184,15 +184,15 @@ void main() {
       expect(chosen('lib/b.dart'), {plain});
     });
 
-    test('🗣️Q8: the config is asked as near as the tests — the scans that '
-        'read the path are chosen at any distance', () {
+    test('🗣️Q11: before landing the config is its file alone — what it '
+        'imports is every suite\'s only in the wide run', () {
       const sandbox = 'lib/src/services/persistence/session_scratch.dart';
       final imports = {
-        config: {'lib/a.dart'},
-        'lib/a.dart': {'lib/b.dart'},
-        'lib/b.dart': {sandbox},
+        config: {sandbox},
       };
+      expect(kNearConfigImports, 0);
       expect(select({sandbox}, imports: imports), sources.keys.toSet());
+      // The scans that read the path are chosen at any distance.
       expect(
         selectTests(
           changed: {sandbox},
@@ -200,6 +200,7 @@ void main() {
           imports: imports,
           read: (path) => sources[path] ?? '',
           within: kNearImports,
+          configWithin: kNearConfigImports,
         ),
         {scanAll, scanServices},
       );
