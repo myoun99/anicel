@@ -136,6 +136,26 @@ void main() {
     );
   });
 
+  testWidgets('a resting pen\'s line goes on reading what the pen read '
+      'where the line is, frame by frame', (tester) async {
+    late List<double> resting;
+    await _draw(
+      tester,
+      straight,
+      stabilization: 100,
+      pressures: const [0.2, 0.2, 0.2, 1.0, 1.0, 1.0],
+      rest: (laid) async {
+        final before = laid.length;
+        for (var frame = 0; frame < 4; frame += 1) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        resting = [for (final dab in laid.skip(before)) dab.pressure];
+      },
+    );
+    expect(resting, isNotEmpty, reason: 'the frames moved the line');
+    expect(resting.reduce(math.max), lessThan(0.7));
+  });
+
   testWidgets('a resting pen is reached before it lifts — the line keeps '
       'going, on screen the frame it moves, and then asks for no more '
       'frames', (tester) async {

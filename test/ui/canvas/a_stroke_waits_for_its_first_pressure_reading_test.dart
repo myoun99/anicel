@@ -469,6 +469,47 @@ void main() {
     );
 
     testWidgets(
+      'a steadied line lifts reading what its last sample was measured '
+      'with, not the stand-in the pen still reads — UIKit measured the '
+      'short stroke only after its last move (F-418)',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await _pump(
+          tester,
+          _pressureBrush.copyWith(
+            correction: const BrushCorrection(stabilization: 40),
+          ),
+          results,
+        );
+        ledger[_ms(0)] = _estimatedReading;
+        ledger[_ms(8)] = _estimatedReading;
+        _down(
+          tester,
+          const Offset(4, 8),
+          time: _ms(0),
+          force: 0.5,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _move(
+          tester,
+          const Offset(20, 8),
+          time: _ms(8),
+          force: 0.5,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        ledger[_ms(0)] = measured(1.2);
+        ledger[_ms(8)] = measured(1.0);
+        _up(tester, const Offset(20, 8), time: _ms(12));
+        await tester.pump();
+
+        expect(results.single.last.pressure, closeTo(_ipad(1.0), 1e-9));
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
       'on a Mac the event\'s own record decides — a tablet\'s pressure, or '
       'full pressure for a mouse',
       (tester) async {

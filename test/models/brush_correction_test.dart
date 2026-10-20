@@ -159,7 +159,12 @@ void main() {
         postByViewScale: false,
       );
       final within = plain.postWithin(zoom: 1, speed: 0.3)!;
-      expect(within, greaterThan(0));
+      expect(
+        within,
+        closeTo(10, 1e-9),
+        reason: 'a quarter of a pixel a step — mine, until it is matched '
+            'by hand against Clip Studio',
+      );
       expect(plain.postWithin(zoom: 4, speed: 1), within);
       expect(
         plain.copyWith(postStrength: 80).postWithin(zoom: 1, speed: 0),
