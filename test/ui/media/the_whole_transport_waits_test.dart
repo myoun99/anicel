@@ -194,9 +194,14 @@ void main() {
     // right after pressing play measures nothing about the buffer. What
     // separates 「waiting for these frames」 from 「waiting once, always」 is
     // that real time passes here and the playhead still does not move.
-    await settleAsync(
+    //
+    // ⛔A WINDOW, not a wait ([lendBothClocks] — its 60 rounds are the ones
+    // this watch had before 10-16): a wait for the playhead to move asks for
+    // what the law says never comes, and so ran its whole patience, 60
+    // seconds, on every run (measured 66.2s for this test, 10-21).
+    await lendBothClocks(
       tester,
-      () => slot.position.value > 0,
+      rounds: 60,
       step: tick,
       everyFrame: () => sound.playOn(tick),
     );
