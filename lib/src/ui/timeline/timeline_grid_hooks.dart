@@ -14,6 +14,7 @@ import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_frame_range_gesture.dart';
+import 'timeline_grid_legend.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -139,6 +140,7 @@ class TimelineGridHooks {
     this.onResetLaneGroup,
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
+    this.legend = const TimelineGridLegend(),
     this.collapsedAttachBaseIds = const {},
     this.onToggleAttachGroup,
     this.dragPreview,
@@ -504,6 +506,10 @@ class TimelineGridHooks {
   /// the active layer is exempt.
   final TimelineRowFilter rowFilter;
 
+  /// What the legend over the rail is told — the x-sheet's corner the same
+  /// ([TimelineGridLegend], F-408 ②).
+  final TimelineGridLegend legend;
+
   /// Bases whose attach group is twirled shut (UI-R20 #9): their attach
   /// rows contribute no display rows; the base row's chevron reflects it.
   ///
@@ -562,6 +568,11 @@ class TimelineGridHooks {
   /// through the one rule ([fxEnabledFromState]); no resolver means on.
   bool isLayerFxEnabled(LayerId layerId) =>
       fxEnabledFromState(layerFxStateOf?.call(layerId));
+
+  /// The lanes [layer]'s header shows — [lanesForLayer]'s answer; none
+  /// where the host gives no provider.
+  List<PropertyLaneRow> lanesOf(Layer layer) =>
+      lanesForLayer?.call(layer) ?? const [];
 
   /// The optional columns this host's rail carries — each one as far as the
   /// host handed over its verb. Read here once for the rows, the legend,

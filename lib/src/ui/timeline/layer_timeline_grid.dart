@@ -4,9 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../../models/layer.dart';
-import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
-import '../../models/layer_mark.dart';
 import 'held_row_pin.dart';
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
@@ -42,7 +39,7 @@ import 'timeline_horizontal_scrollbar_rail.dart';
 import 'property_lane_model.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
-import 'timeline_legend_menus.dart';
+import 'timeline_grid_legend_rail.dart';
 import 'timeline_layer_frame_body_layout.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/named.dart';
@@ -69,7 +66,6 @@ import 'timeline_swipe_columns.dart';
 part 'layer_grid/layer_grid_rail_rows.dart';
 part 'layer_grid/layer_grid_scroll.dart';
 part 'layer_grid/layer_grid_row_drags.dart';
-part 'layer_grid/layer_grid_lanes.dart';
 
 class LayerTimelineGrid extends StatefulWidget {
   const LayerTimelineGrid({
@@ -79,13 +75,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.railExtent,
     this.frameAxisOffset,
     this.layerAxisOffset,
-    this.displayedOnionSkinOn = false,
     this.metrics = TimelineGridMetrics.defaults,
-    this.onToggleSection,
-    this.legend,
-    this.onLegendMenus,
-    this.visibilitySoloEnabled = false,
-    this.masterOpacityValue = 1.0,
   });
 
   final List<Layer> layers;
@@ -116,32 +106,15 @@ class LayerTimelineGrid extends StatefulWidget {
   /// them writes it. Null = nobody keeps it; the rows start at the top.
   final ValueNotifier<double>? layerAxisOffset;
 
-  final bool displayedOnionSkinOn;
-
   /// Grid geometry; the frame-axis cell width carries the panel zoom.
   final TimelineGridMetrics metrics;
-
-  /// Folds/unfolds a hideable section (the legend corner's sections cell).
-  final ValueChanged<TimelineSection>? onToggleSection;
-
-  /// The rail legend's bulk commands; null renders a display-only legend.
-  final LayerLegendCallbacks? legend;
-
-  /// Told the menus the legend header opens each time it is built, and null
-  /// when the grid goes — what a key presses one of (I-40, `RailLegends`).
-  final ValueChanged<TimelineLegendMenus?>? onLegendMenus;
-
-  /// Whether the visibility solo mode is engaged (legend eye state color).
-  final bool visibilitySoloEnabled;
-
-  /// The master bar's resting value (the LAST committed sweep, UI-R6 #2).
-  final double masterOpacityValue;
 
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
 }
 
-class _LayerTimelineGridState extends State<LayerTimelineGrid> {
+class _LayerTimelineGridState extends State<LayerTimelineGrid>
+    implements TimelineLegendHost {
   /// The integer rate the grid COUNTS with — the ruler's second marks
   /// and row labels are frame arithmetic, never real time (see
   /// [ProjectFrameRate.countingBase]).
@@ -360,7 +333,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   @override
   void dispose() {
-    widget.onLegendMenus?.call(null);
     widget.hooks.revealSelectionTick?.removeListener(_handleRevealSelection);
     widget.hooks.frameCursor.removeListener(_handlePlaybackPage);
     _frameAxis.dispose();
@@ -469,42 +441,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     ),
   );
 
-  // ── the lanes: their own object, in their own file ──────────────────
-  //
-  // A collaborator (timeline/layer_grid/layer_grid_lanes.dart, a part of this
-  // library). The State keeps the entry points its build tree calls.
-  late final _LayerGridLanes _lanes = _LayerGridLanes(this);
+  /// The legend over the rail, the x-sheet's hand ([TimelineGridLegendRail]).
+  late final TimelineGridLegendRail _legendRail = TimelineGridLegendRail(this);
 
-  /// Marks assigned across the current layer list — the mark-solo menu's
-  /// "solo color X" list is built from these.
-  Set<LayerMark> _marksInUse() => {
-    for (final layer in widget.layers)
-      if (layer.mark != LayerMark.none) layer.mark,
-  };
+  @override
+  TimelineGridHooks get hooks => widget.hooks;
 
-  /// The rows the rail currently DISPLAYS (layer rows only, camera
-  /// excluded) — the master opacity bar's target set (R4 #6).
-  Set<LayerId> _displayedLayerIds(List<TimelineDisplayRow> rows) => {
-    for (final row in rows)
-      if (!row.isLane && row.layer.kind.hasPictureOpacity)
-        row.layer.id,
-  };
+  @override
+  List<Layer> get layers => widget.layers;
 
-  /// Whether every SE row is muted — the legend mute cell's toggle state
-  /// (no SE rows reads as unmuted, so the first tap mutes).
-  bool _allSeMuted() {
-    var sawSe = false;
-    for (final layer in widget.layers) {
-      if (layer.kind != LayerKind.se) {
-        continue;
-      }
-      sawSe = true;
-      if (!layer.muted) {
-        return false;
-      }
-    }
-    return sawSe;
-  }
+  @override
+  List<TimelineDisplayRow> get drawnRows => _dragRows;
 
   /// The display rows of the pass in flight — see [_effectHeaderRows].
   List<TimelineDisplayRow> _dragRows = const [];
@@ -897,7 +844,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     const bottomScrollbarRailHeight = timelineBottomScrollbarRailHeight;
     final rows = widget.hooks.displayRows(
       widget.layers,
-      lanesForLayer: _lanes.lanesFor,
+      lanesForLayer: widget.hooks.lanesOf,
     );
     // The row drag counts ROWS and lands on SLOTS, and only this list knows
     // how many rows sit between two fx headers (their members may be

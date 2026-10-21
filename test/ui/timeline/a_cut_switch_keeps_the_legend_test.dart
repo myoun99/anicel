@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 /// 🚨I-57 ㉢-2 (10-13, measured on the user's project): the rail's legend
 /// header was kept by every fact it shows — and by the set of layers on
@@ -27,23 +28,77 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 /// and kind flyouts list: a cut of other marks or kinds — most of them —
 /// built it again whole, 221 widgets of a crossing's 821. They are read
 /// when a flyout opens.
+///
+/// 🗣️F-408 ② (유저 2026-10-19): 「다른 레전드 행도 점검하면서 법 통일」 — the
+/// x-sheet's corner is the same legend, kept the same way.
 void main() {
-  testWidgets('a cut switch builds nothing of the legend header again', (
-    tester,
-  ) async {
-    await _show(tester, _panel('one', []));
-    expect(
-      find.byType(TimelineLayerControlsHeader),
-      findsOneWidget,
-      reason: 'LIVENESS: the legend stands',
-    );
+  for (final orientation in TimelineOrientation.values) {
+    testWidgets('$orientation: a cut switch builds nothing of the legend '
+        'header again', (tester) async {
+      await _show(tester, _panel('one', [], orientation: orientation));
+      expect(
+        find.byType(TimelineLayerControlsHeader),
+        findsOneWidget,
+        reason: 'LIVENESS: the legend stands',
+      );
 
-    final built = await _legendBuildsWhile(
-      () => _show(tester, _panel('two', [])),
-    );
+      final built = await _legendBuildsWhile(
+        () => _show(tester, _panel('two', [], orientation: orientation)),
+        around: _gridOf(orientation),
+      );
 
-    expect(built.grids, greaterThan(0), reason: 'LIVENESS: the grid was built');
-    expect(built.inLegend, isEmpty);
+      expect(
+        built.grids,
+        greaterThan(0),
+        reason: 'LIVENESS: the grid was built',
+      );
+      expect(built.inLegend, isEmpty);
+    });
+
+    testWidgets('$orientation: the master opacity bar acts on the layers on '
+        'display NOW', (tester) async {
+      final committed = <Set<LayerId>>[];
+      await _show(tester, _panel('one', committed, orientation: orientation));
+      await _show(tester, _panel('two', committed, orientation: orientation));
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('legend-opacity')),
+        orientation == TimelineOrientation.horizontal
+            ? const Offset(-40, 0)
+            : const Offset(0, 40),
+      );
+      await tester.pumpAndSettle();
+
+      expect(committed, isNotEmpty, reason: 'LIVENESS: the bar committed');
+      expect(committed.last, {
+        const LayerId('two-1'),
+        const LayerId('two-2'),
+        const LayerId('two-3'),
+      });
+    });
+  }
+
+  testWidgets('the menus the header tells go with the panel — not with a '
+      'turn, which builds the other grid\'s header before the grid it '
+      'replaces goes', (tester) async {
+    final told = <TimelineLegendMenus?>[];
+    await _show(tester, _panel('one', [], onMenus: told.add));
+    expect(told.last, isNotNull, reason: '⛔premise: the rail told them');
+
+    await _show(
+      tester,
+      _panel(
+        'one',
+        [],
+        orientation: TimelineOrientation.vertical,
+        onMenus: told.add,
+      ),
+    );
+    expect(find.byType(XSheetTimelineGrid), findsOneWidget);
+    expect(told.last, isNotNull, reason: 'the corner\'s, last');
+
+    await tester.pumpWidget(const SizedBox());
+    expect(told.last, isNull, reason: 'the panel went, and they with it');
   });
 
   testWidgets('nor a switch to a cut of other marks and kinds, whose flyouts '
@@ -129,27 +184,13 @@ void main() {
     expect(built.inLegend, isEmpty);
   });
 
-  testWidgets('the master opacity bar acts on the layers on display NOW', (
-    tester,
-  ) async {
-    final committed = <Set<LayerId>>[];
-    await _show(tester, _panel('one', committed));
-    await _show(tester, _panel('two', committed));
-
-    await tester.drag(
-      find.byKey(const ValueKey<String>('legend-opacity')),
-      const Offset(-40, 0),
-    );
-    await tester.pumpAndSettle();
-
-    expect(committed, isNotEmpty, reason: 'LIVENESS: the bar committed');
-    expect(committed.last, {
-      const LayerId('two-1'),
-      const LayerId('two-2'),
-      const LayerId('two-3'),
-    });
-  });
 }
+
+/// The grid [orientation] stands up.
+Type _gridOf(TimelineOrientation orientation) => switch (orientation) {
+  TimelineOrientation.horizontal => LayerTimelineGrid,
+  TimelineOrientation.vertical => XSheetTimelineGrid,
+};
 
 const _layout = LayerMark(process: LayerProcess.layout);
 
@@ -215,6 +256,8 @@ Widget _panel(
   List<Set<LayerId>> committed, {
   bool marked = false,
   int rows = 3,
+  TimelineOrientation orientation = TimelineOrientation.horizontal,
+  ValueChanged<TimelineLegendMenus?>? onMenus,
 }) => MaterialApp(
   home: Scaffold(
     body: TimelinePanel(
@@ -231,8 +274,9 @@ Widget _panel(
       onLayerOpacityChanged: (_, _) {},
       onToggleLayerTimesheet: (_) {},
       onLayerMarkSelected: (_, _) {},
-      orientation: TimelineOrientation.horizontal,
+      orientation: orientation,
       onOrientationChanged: (_) {},
+      onLegendMenus: onMenus,
       legend: LayerLegendCallbacks(
         onShowAllLayers: () {},
         onHideAllLayers: () {},

@@ -52,6 +52,7 @@ import 'xsheet_timeline_grid.dart';
 
 import '../../models/project_frame_rate.dart';
 import 'timeline_grid_hooks.dart';
+import 'timeline_grid_legend.dart';
 
 class TimelinePanel extends StatefulWidget {
   const TimelinePanel({
@@ -577,6 +578,16 @@ class _TimelinePanelState extends State<TimelinePanel> {
   /// The pieces this panel keeps across its host's rebuilds (F-244 ⑧).
   final Map<Type, Kept<TimelineViewClusterFacts>> _kept = {};
 
+  /// The legend's menus go with the panel, not with a grid: a turn to the
+  /// other orientation builds the other grid's header, which tells its
+  /// menus, before the grid it replaces goes — and a grid that took its
+  /// menus with it took the new header's (F-408 ②).
+  @override
+  void dispose() {
+    widget.onLegendMenus?.call(null);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -703,6 +714,15 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onResetLaneGroup: widget.onResetLaneGroup,
       hiddenSections: widget.hiddenSections,
       rowFilter: widget.rowFilter,
+      // The legend over either grid's rail (F-408 ②).
+      legend: TimelineGridLegend(
+        verbs: widget.legend,
+        onMenus: widget.onLegendMenus,
+        onToggleSection: widget.onToggleSection,
+        visibilitySoloEnabled: widget.visibilitySoloEnabled,
+        displayedOpacity: widget.masterOpacityValue,
+        displayedOnionSkinOn: widget.displayedOnionSkinOn,
+      ),
       collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
       onToggleAttachGroup: widget.onToggleAttachGroup,
       opacityDragPreview: widget.opacityDragPreview,
@@ -799,13 +819,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       railExtent: widget.timelineRailExtent,
                       frameAxisOffset: widget.timelineFrameAxisOffset,
                       layerAxisOffset: widget.timelineLayerAxisOffset,
-                      displayedOnionSkinOn: widget.displayedOnionSkinOn,
                       metrics: horizontalMetrics,
-                      onToggleSection: widget.onToggleSection,
-                      legend: widget.legend,
-                      onLegendMenus: widget.onLegendMenus,
-                      visibilitySoloEnabled: widget.visibilitySoloEnabled,
-                      masterOpacityValue: widget.masterOpacityValue,
                     )
                   : XSheetTimelineGrid(
                       hooks: hooks,

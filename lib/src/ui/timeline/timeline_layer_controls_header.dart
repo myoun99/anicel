@@ -401,14 +401,14 @@ class TimelineLayerControlsHeader extends KeptPiece {
   Widget _buildOpacity(
     BuildContext context,
     LayerLegendCallbacks? legend,
-    bool isVertical,
     ColorScheme colorScheme,
   ) {
-    return legend != null && displayedLayerIds != null && !isVertical
+    return legend != null && displayedLayerIds != null
         ? AppTooltip(
             message: AppText.strings.tlAllDisplayedOpacity,
             child: FieldSlider.opacity(
               key: const ValueKey<String>('legend-opacity'),
+              axis: axis,
               value: displayedOpacity.clamp(0.0, 1.0).toDouble(),
               // The COLUMN's name while it rests, its number while it is
               // dragged (R4 #6) — the one bar whose resting text is not
@@ -568,7 +568,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
                     // The HEADING follows the COLUMN, and only the flyout
                     // follows the callbacks. It used to be the other way
                     // round, which is why the x-sheet — whose rows carry
-                    // onion but which passes no legend bulk commands —
+                    // onion but which passed no legend bulk commands then —
                     // reserved the slot and left it blank: the one column
                     // on that surface with no heading over it.
                     onion: _buildOnion(menus, optional.onion, restColor),
@@ -582,16 +582,13 @@ class TimelineLayerControlsHeader extends KeptPiece {
                     // first to scope it). Gray at rest on the LAST
                     // committed value (UI-R6 #2); accent + live % while
                     // adjusting; preview per move, ONE write on release.
-                    // Stood up, the bar stands down: a 28px-wide column is
-                    // not a slider, and a rotated one would lose the arena
-                    // (a vertical screen drag never reaches a horizontal
-                    // recognizer). The column keeps its heading.
-                    opacity: _buildOpacity(
-                      context,
-                      legend,
-                      isVertical,
-                      colorScheme,
-                    ),
+                    // ↩️Stood up, the bar stood down (R10 R6, 08-01): a
+                    // 28px-wide column was no slider, and a rotated one
+                    // lost the arena. A bar runs down a column now, as the
+                    // x-sheet's own rows' bars do ([FieldSlider.axis]), and
+                    // the corner opens what the rail's header opens
+                    // (F-408 ②).
+                    opacity: _buildOpacity(context, legend, colorScheme),
                     // R27 #6: the BLEND column header — one pick applies
                     // the mode to every displayed compositing row, the
                     // master opacity bar's logic in a flyout. A host that

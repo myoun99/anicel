@@ -87,7 +87,7 @@ class _LayerGridRailRows {
       row,
       grid,
       fold: fold,
-      hasLanes: _state._lanes.lanesFor(row.layer).isNotEmpty,
+      hasLanes: _state.widget.hooks.lanesOf(row.layer).isNotEmpty,
     );
     return _state._railRowMemo.keep(
       berths,
@@ -137,44 +137,8 @@ class _LayerGridRailRows {
   /// The legend header — which keeps itself while what it shows holds
   /// ([TimelineLayerControlsHeader.facts]): zoom steps, unrelated notifies
   /// and cut switches hand back the cells it had.
-  Widget legendHeader() => _published(
-    TimelineLayerControlsHeader(
-      metrics: _state._metrics,
-      optionalColumns: _state.widget.hooks.optionalRailColumns,
-      legend: _state.widget.legend,
-      hiddenSections: _state.widget.hooks.hiddenSections,
-      onToggleSection: _state.widget.onToggleSection,
-      rowFilter: _state.widget.hooks.rowFilter,
-      marksInUse: _state._marksInUse,
-      kinds: timelineRailKinds,
-      visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
-      anyLanesExpanded: _state.widget.hooks.expandedLaneLayerIds.isNotEmpty,
-      allSeMuted: _state._allSeMuted(),
-      // The set a bulk verb ACTS on, read at the press — of the rows the
-      // latest pass drew. 🚨I-57 ㉢-2 (10-13, measured on the user's
-      // project): captured here and kept fresh by the token, it changed at
-      // every cut switch and built the whole header again — 223 widgets of
-      // a crossing's 855, for a set no cell of the header shows.
-      displayedLayerIds: () => _state._displayedLayerIds(_state._dragRows),
-      displayedOpacity: _state.widget.masterOpacityValue,
-      displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
-      onExpandAllLanes: _state.widget.hooks.onToggleLayerLanes == null
-          ? null
-          : _state._lanes._expandAllLanes,
-      onCollapseAllLanes: _state.widget.hooks.onToggleLayerLanes == null
-          ? null
-          : _state._lanes._collapseAllLanes,
-    ),
-  );
-
-  /// [header], its menus handed to whoever presses its rows by key (I-40):
-  /// the very menus it opens, counted on this grid's rows.
-  TimelineLayerControlsHeader _published(TimelineLayerControlsHeader header) {
-    _state.widget.onLegendMenus?.call(
-      header.legend == null ? null : header.menus,
-    );
-    return header;
-  }
+  Widget legendHeader() =>
+      _state._legendRail.header(metrics: _state._metrics);
 
   /// One lane label row, extracted so the windowed rail loop stays
   /// readable. Rows reserve an empty leading section slot — the section
@@ -198,7 +162,7 @@ class _LayerGridRailRows {
         lane: previewedLaneRow(
           row: row,
           previewLayer: layer,
-          lanesForLayer: _state._lanes.lanesFor,
+          lanesForLayer: _state.widget.hooks.lanesOf,
         ),
         metrics: _state._metrics,
         frameCursor: _state.widget.hooks.frameCursor,

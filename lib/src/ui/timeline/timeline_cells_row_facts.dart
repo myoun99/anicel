@@ -378,8 +378,7 @@ Widget timelineLaneRowFrom(
           lane: previewedLaneRow(
             row: row,
             previewLayer: layer,
-            lanesForLayer: (layer) =>
-                hooks.lanesForLayer?.call(layer) ?? const [],
+            lanesForLayer: hooks.lanesOf,
           ),
           frameStartIndex: span.startIndex,
           frameEndIndexExclusive: span.endIndexExclusive,

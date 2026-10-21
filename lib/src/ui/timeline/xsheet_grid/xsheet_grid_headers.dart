@@ -69,7 +69,7 @@ class _XSheetGridHeaders {
         lane: previewedLaneRow(
           row: entry,
           previewLayer: layer,
-          lanesForLayer: _state._lanesFor,
+          lanesForLayer: _state.widget.hooks.lanesOf,
         ),
         metrics: _state._metrics,
         width: timelineDisplayRowExtent(entry, _state._metrics),
@@ -108,7 +108,7 @@ class _XSheetGridHeaders {
       entry,
       grid,
       fold: fold,
-      hasLanes: _state._lanesFor(entry.layer).isNotEmpty,
+      hasLanes: _state.widget.hooks.lanesOf(entry.layer).isNotEmpty,
     );
     final drag = layerRowDragInputs(
       row: entry,

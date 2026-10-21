@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 
 import '../../helpers/named_finders.dart';
 
@@ -14,6 +15,9 @@ import '../../helpers/named_finders.dart';
 /// thirty-nine lane tests stayed green — every one of them opened lanes
 /// through the per-layer twirl, and none pressed the legend. So this
 /// presses it and counts the lane rows the rail then shows.
+///
+/// The x-sheet's corner presses the same sweep (F-408 ②), so it is pressed
+/// there too.
 void main() {
   Finder laneRows() => find.namedWhere(
     (name) =>
@@ -52,5 +56,33 @@ void main() {
           'the toggle asked the grid to expand every layer that has '
           'lanes; a rail with none open afterwards means it asked nothing',
     );
+  });
+
+  testWidgets('…and one on the x-sheet\'s corner opens every lane column', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey<String>('dock-resize-bottom')),
+      const Offset(0, -520),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final lanes = find.byType(TimelineLaneControlsRow);
+    expect(lanes, findsNothing, reason: 'premise — no lane is open');
+
+    await tester.tap(find.byKey(const ValueKey<String>('legend-lanes-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(lanes, findsAtLeastNWidgets(1));
   });
 }

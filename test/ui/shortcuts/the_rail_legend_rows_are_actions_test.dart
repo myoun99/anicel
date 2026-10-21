@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 const k = LogicalKeyboardKey.keyK;
 
@@ -278,32 +279,49 @@ void main() {
       );
     });
 
-    testWidgets('a header that goes takes its rows with it — stood up as the '
-        'x-sheet, whose corner opens no menu, the timeline has none for a '
-        'key, and laid down again it has them back', (tester) async {
+    // 🗣️F-408 ② (유저 2026-10-19): 「다른 레전드 행도 점검하면서 법 통일」.
+    // ↩️Stood up as the x-sheet the corner opened no menu, so a key had no
+    // row to press there.
+    testWidgets('stood up as the x-sheet, the corner opens the rail\'s rows '
+        '— its kind column lists them, a key presses them — and laid down '
+        'again they are the rail\'s', (tester) async {
       await pumpApp(tester);
       final session = sessionOf(tester);
       final turn = find.byKey(
         const ValueKey<String>('timeline-orientation-toggle-button'),
       );
-      expect(
-        session.railLegends.rowsOf(WorkingPanel.timeline),
-        isNotEmpty,
-        reason: '⛔premise: the timeline\'s header told its rows',
-      );
+      List<bool> eyes() => [
+        for (final layer in session.activeCutOrNull!.layers)
+          if (layer.kind != LayerKind.camera) layer.isVisible,
+      ];
 
       await tester.tap(turn);
       await tester.pumpAndSettle();
-      expect(session.railLegends.rowsOf(WorkingPanel.timeline), isEmpty);
-      final hidden = [
-        for (final layer in session.activeCutOrNull!.layers) layer.isVisible,
-      ];
-      await pressKeyOf(tester, RailLegendActionIds.eyeHideAll);
       expect(
-        [for (final layer in session.activeCutOrNull!.layers) layer.isVisible],
-        hidden,
-        reason: 'no row is shown, so the key presses none',
+        find.byType(XSheetTimelineGrid),
+        findsOneWidget,
+        reason: '⛔premise: the sheet stands',
       );
+      expect(
+        session.railLegends.rowsOf(WorkingPanel.timeline),
+        isNotEmpty,
+        reason: 'the corner told its rows — and the rail it stood in for '
+            'took none of them as it went',
+      );
+      await pressKeyOf(tester, RailLegendActionIds.eyeHideAll);
+      expect(eyes(), everyElement(isFalse));
+      await pressKeyOf(tester, RailLegendActionIds.eyeShowAll);
+      expect(eyes(), everyElement(isTrue));
+
+      await tester.tap(find.byKey(const ValueKey<String>('legend-kind')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          ValueKey<String>('legend-filter-kind-${LayerKind.animation.name}'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(session.railView.rowFilter.value.kinds, {LayerKind.animation});
 
       await tester.tap(turn);
       await tester.pumpAndSettle();
