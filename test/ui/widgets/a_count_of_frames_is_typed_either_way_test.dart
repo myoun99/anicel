@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/frame_count_field.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/ime_draft.dart';
 
 /// 🗣️I-24 (유저 2026-09-14): 「코마 수 설정창에서 기존처럼 프레임수로 정하는거랑
@@ -142,6 +143,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: createDefaultProject())),
     );
+    // 5 is anicel's key for the N window; Clip Studio's layout has none
+    // (F-417-Q1).
+    await useAnicelKeys(tester);
     await tester.pumpAndSettle();
     final s = tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
     s.selectFrameIndex(0);
@@ -180,6 +184,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: createDefaultProject())),
     );
+    // 5 is anicel's key for the N window; Clip Studio's layout has none
+    // (F-417-Q1).
+    await useAnicelKeys(tester);
     await tester.pumpAndSettle();
     final s = tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
     // The window opens over a block to apply to, as in the test above.

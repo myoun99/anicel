@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/home_page_probes.dart';
 
 /// 🗣️F-261 (유저 2026-10-02): 「자주쓰는 버튼 그냥 직관적이지 않더라도
@@ -64,6 +65,9 @@ Future<EditorSessionManager> _pump(WidgetTester tester, Project project) async {
     MaterialApp(home: HomePage(initialProject: project)),
   );
   await tester.pumpAndSettle();
+  // The keys these tests press are anicel's: an install's Clip Studio
+  // layout has none for play or Edit (F-417-Q1 · Q2).
+  await useAnicelKeys(tester);
   return tester
       .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
       .session;

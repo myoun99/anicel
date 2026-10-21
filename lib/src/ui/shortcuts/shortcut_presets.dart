@@ -16,11 +16,11 @@ import 'shortcut_activator_codec.dart';
 /// words named a 「일반」 preset (「범용적으로 쓰기 쉬운 일반적인 프리셋」);
 /// the two programs' layouts are what it became.
 ///
-/// ★A PRESET HOLDS ONLY THE KEYS ITS PROGRAMS NAME ([_programsOf]). Every
-/// other action keeps the registry's key, so a default that moves in the
-/// registry moves in every preset no program of it named — and the rule for
-/// a key two actions would share is said once ([presetActivators]), not
-/// listed per loser.
+/// ★A PRESET HOLDS ONLY THE KEYS ITS PROGRAMS NAME ([_programsOf]); an
+/// action none of them names has no key under it (F-417-Q1), and only
+/// [ShortcutPreset.anicel], which has no program, ships the registry's.
+/// The rule for a key two actions would share is said once
+/// ([presetActivators]), not listed per loser.
 ///
 /// 🗣️I-88 (유저 2026-10-09): 「이런 키는 물론 클튜나 tvp 알아서 그거에맞춰서
 /// 기록. 앞으로 단축키 관련은 그게 기본임. 내가 제안하는건 다 anicel용」 — a
@@ -55,96 +55,75 @@ enum ShortcutPreset {
 /// 「초안대로 — 그 프로그램을 최대한 닮게」 = 「공식 키가 있는 줄은 그
 /// 프로그램의 키로(「비슷한 명령」 줄 포함), 없는 줄은 anicel 의 키 그대로.
 /// 키가 부딪히면 그 프로그램의 뜻을 따른다」. So an action the program names
-/// takes the program's keys AND NO OTHER, less a key a program before it
-/// gave to something else.
+/// takes the program's keys AND NO OTHER.
 ///
 /// ↩️🗣️F-417 (유저 2026-10-20) turned the rows the program does not name:
 /// 「A나 D로 플립하는건 내가 생각한 anicel기반임. 그러니 클튜기반에서
 /// 그런식으로 클튜에서 확인안된것들은 tvp기반, tvp에서 확인안된건
 /// 클튜기반으로 우선 그렇게 지정. anicel은 내가 혼자 쓰려고 생각한거라
 /// 범용적이지 않기때문」. Such a row takes the OTHER program's keys, as that
-/// program names them; only a row neither program names keeps the
-/// registry's — less any key either program gave to something else.
-/// ⚠️That last tail is the old answer's, kept where the new words say
-/// nothing — asked on the board (F-417-Q1).
-/// ⚠️MY READING, not said: a row whose every key a program before took is
-/// as one the program does not name — Clip Studio's hand holds Space, which
-/// is TVPaint's play, so under Clip Studio the play keeps anicel's Shift+X
-/// rather than no key.
+/// program names them.
+///
+/// 🗣️F-417-Q1 (유저 2026-10-21 「키 없이 둔다」): a row NEITHER program
+/// names has no key — the registry's are anicel's own, not a general
+/// layout. ↩️It kept the registry's (the old answer's tail) until then:
+/// voice recording, the lasso tools, the blend F keys and the timesheet's
+/// comma keys among the twenty rows that had one.
+/// 🗣️F-417-Q2 (same day, 「키 없이 둔다」): a key the preset's own program
+/// took leaves the other program's row with nothing in its place.
+/// ↩️A row so emptied went on to anicel's keys until then (my reading):
+/// under Clip Studio, whose hand holds Space, TVPaint's play had anicel's
+/// Shift+X; it has no key now, nor do the new frame (I, the eyedropper's)
+/// and the Color blend (F2, Cut's).
+/// 🪦With nothing to fall to past the other program, the rows went from a
+/// list of programs read in turn, each less the keys of those before, to
+/// the two a preset is: a third program would only ever be read past the
+/// second, and no preset has one.
 List<SingleActivator> presetActivators(
   ShortcutPreset preset,
   EditorActionDefinition definition,
 ) {
-  final takenThrough = _takenThrough[preset]!;
-  for (final (index, program) in _programsOf[preset]!.indexed) {
-    final named = program[definition.id];
-    if (named != null) {
-      final shipped = _without(
-        named,
-        index == 0 ? const {} : takenThrough[index - 1],
-      );
-      if (shipped.isNotEmpty) {
-        return shipped;
-      }
-    }
+  final programs = _programsOf[preset];
+  if (programs == null) {
+    return definition.defaultActivators;
   }
-  return _without(
-    definition.defaultActivators,
-    takenThrough.lastOrNull ?? const {},
-  );
+  final own = programs.own[definition.id];
+  if (own != null) {
+    return own;
+  }
+  final ownKeys = _ownKeysOf[preset]!;
+  return [
+    for (final activator in programs.other[definition.id] ?? const [])
+      if (!ownKeys.contains(activatorKey(activator))) activator,
+  ];
 }
-
-List<SingleActivator> _without(
-  List<SingleActivator> activators,
-  Set<String> taken,
-) => [
-  for (final activator in activators)
-    if (!taken.contains(activatorKey(activator))) activator,
-];
 
 /// Every action id [preset]'s own program names a key for — what a test
 /// holds against the registry, so an action renamed there cannot fall out
 /// of a preset unseen.
 Iterable<String> presetNamedActionIds(ShortcutPreset preset) =>
-    _programsOf[preset]!.firstOrNull?.keys ?? const [];
+    _programsOf[preset]?.own.keys ?? const [];
 
-/// The programs each preset reads its keys from, first to last (F-417).
-final Map<ShortcutPreset, List<Map<String, List<SingleActivator>>>>
+typedef _ProgramKeys = Map<String, List<SingleActivator>>;
+
+/// The program each preset is, and the one it takes the rows its own does
+/// not name from (F-417); none for [ShortcutPreset.anicel], the registry.
+final Map<ShortcutPreset, ({_ProgramKeys own, _ProgramKeys other})?>
 _programsOf = {
-  ShortcutPreset.anicel: const [],
-  ShortcutPreset.clipStudio: [_clipStudioKeys, _tvpaintKeys],
-  ShortcutPreset.tvpaint: [_tvpaintKeys, _clipStudioKeys],
+  ShortcutPreset.anicel: null,
+  ShortcutPreset.clipStudio: (own: _clipStudioKeys, other: _tvpaintKeys),
+  ShortcutPreset.tvpaint: (own: _tvpaintKeys, other: _clipStudioKeys),
 };
 
-/// The keys each preset ships through each of its programs, as
-/// [activatorKey] spells them: after its first program, after its second
-/// one too — the rows each program ships keys on, as [presetActivators]
-/// reads them, and no row twice.
-final Map<ShortcutPreset, List<Set<String>>> _takenThrough = {
+/// The keys each preset's own program holds, as [activatorKey] spells them.
+final Map<ShortcutPreset, Set<String>> _ownKeysOf = {
   for (final MapEntry(key: preset, value: programs) in _programsOf.entries)
-    preset: _takenByEach(programs),
+    if (programs != null)
+      preset: {
+        for (final activators in programs.own.values)
+          for (final activator in activators) activatorKey(activator),
+      },
 };
-
-List<Set<String>> _takenByEach(
-  List<Map<String, List<SingleActivator>>> programs,
-) {
-  final shipped = <String>{};
-  var taken = <String>{};
-  final through = <Set<String>>[];
-  for (final program in programs) {
-    final before = taken;
-    taken = {...before};
-    for (final MapEntry(key: id, value: activators) in program.entries) {
-      final keys = _without(activators, before);
-      if (!shipped.contains(id) && keys.isNotEmpty) {
-        shipped.add(id);
-        taken.addAll(keys.map(activatorKey));
-      }
-    }
-    through.add(taken);
-  }
-  return through;
-}
 
 /// CLIP STUDIO PAINT's default key for each action it has one for — the
 /// 클립 스튜디오 column of the table the user answered (I-63-Q3), row for
