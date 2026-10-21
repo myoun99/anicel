@@ -577,6 +577,7 @@ void main() {
     await drawBox(tester, cameraGraph, 10, 22);
 
     expect(session.trackFrameRangeSelection.value, isNull);
+    expect(session.laneRangeSelection.value, isNotNull);
     final picked = session.laneRangeSelection.value!;
     expect(
       (picked.layerId, picked.startIndex, picked.endIndexExclusive),
@@ -632,6 +633,7 @@ void main() {
     await drawBox(tester, key, 3, 10);
 
     expect(session.laneRangeSelection.value, isNull);
+    expect(session.trackFrameRangeSelection.value, isNotNull);
     final picked = session.trackFrameRangeSelection.value!;
     expect(picked.rows, const [
       LaneRowAddress(s1, 'rotation'),
