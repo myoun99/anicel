@@ -200,6 +200,39 @@ void main() {
     );
   });
 
+  test('ink the wall cut away on the thaw stays away, whatever the move '
+      'carries inside the new wall', () async {
+    // Wholly past the quarter wall of the paper (x -8..-5, the wall at -4),
+    // and a grow of six about the centre carries it three to the right —
+    // to where the wider paper's wall reaches.
+    const grown = CanvasSize(width: 22, height: 8);
+    BitmapSurface pastTheWall() => BitmapSurface(
+      canvasSize: canvas,
+      tileSize: tileSize,
+    ).putTiles([(coord: TileCoord(x: -2, y: 0), tile: tile(60))]);
+    final here = BrushFrameStore();
+    final ahead = BrushFrameStore();
+    for (final store in [here, ahead]) {
+      keepInAFile(store, {drawnCel: pastTheWall()}, pasteboardReach: reach);
+    }
+    await ahead.moveCutCelsAhead(const [
+      CutId('c'),
+    ], (canvasSize: grown, dx: 3, dy: 0));
+    for (final store in [here, ahead]) {
+      store.adoptCutCanvasSize(
+        cutId: const CutId('c'),
+        canvasSize: grown,
+        dx: 3,
+        dy: 0,
+      );
+    }
+    expect(ahead.celsMovedHere, 0);
+    expectSamePicture(
+      ahead.bakedSurfaceOrNull(drawnCel),
+      here.bakedSurfaceOrNull(drawnCel)!,
+    );
+  });
+
   test('a cel drawn on since is moved as it stands now', () async {
     final store = BrushFrameStore();
     keepInAFile(store, {drawnCel: drawn()}, pasteboardReach: reach);
