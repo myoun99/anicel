@@ -8,6 +8,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 
 import '../canvas/shown_cels.dart';
+import '../canvas/view_hand.dart';
 import '../timeline/memo_token.dart' show ByList;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
@@ -2258,7 +2259,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       onStrokeLanderChanged: (lander) =>
           widget.onStrokeLanderChanged?.call(_text.landerBeside(lander)),
       // I-69: the shape tool has the view draw what its drag traced.
-      onShapeShowChanged: (show) => _shapeShow = show,
+      onShapeShowChanged: _shapeShow.call,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
@@ -2583,8 +2584,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// The drawing view's [ShapeShow] while it is mounted — how a shape being
   /// dragged shows its actual result, and lands as shown
-  /// ([_showTracedShape], [_drawTracedShape]).
-  ShapeShow? _shapeShow;
+  /// ([_showTracedShape], [_drawTracedShape]). ⛔Kept by [ViewHand]'s count,
+  /// not the last word: the view is built anew whenever the active row's
+  /// opacity crosses 1 (the wrap in [_buildViewportContent]), and the old
+  /// view's goodbye comes after the new one's hello (F-419).
+  final ViewHand<ShapeShow> _shapeShow = ViewHand();
 
   /// Where the shape being dragged lands on content that is not one cel
   /// ([BrushCanvasPanel.contentShapeTargetAt]) — taken at the press, gone
@@ -2641,7 +2645,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   ///   is covered once (유저 답 I-69-Q6: 「따른다 — 도형 채우기도 같이
   ///   맞춘다」).
   void _drawTracedShape(List<DrawnShapePath> copies) {
-    final show = _contentShape?.show ?? _shapeShow;
+    final show = _contentShape?.show ?? _shapeShow.now;
     final onTheRow = _onTheRow(copies);
     _contentShape = null;
     if (show == null) {
@@ -2663,7 +2667,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// land, or taken back when there is none (유저 답 I-69-Q4ⓒ: 「윤곽선은 손을
   /// 따라오고, 실제 결과는 따라 그린다」).
   void _showTracedShape(List<DrawnShapePath>? copies) {
-    final show = _contentShape?.show ?? _shapeShow;
+    final show = _contentShape?.show ?? _shapeShow.now;
     if (copies == null) {
       // The drag is over without a shape: what its press took goes too.
       _contentShape = null;

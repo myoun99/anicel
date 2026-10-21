@@ -86,11 +86,11 @@ void main() {
     addTearDown(session.dispose);
     var landed = 0;
     // The canvas publishes exactly this while it is mounted.
-    session.liveStrokeLanding.lander = () {
+    session.liveStrokeLanding.lander(() {
       landed += 1;
       inkTheCel(session, key);
       return true;
-    };
+    });
 
     final path = '${directory.path}/scene.anicel';
     await session.projectDoor.saveProjectToFile(
@@ -120,11 +120,11 @@ void main() {
     final (session, key) = sessionWithADrawing();
     addTearDown(session.dispose);
     var landed = 0;
-    session.liveStrokeLanding.lander = () {
+    session.liveStrokeLanding.lander(() {
       landed += 1;
       inkTheCel(session, key);
       return true;
-    };
+    });
 
     await session.projectDoor.saveProjectToFile(
       '${directory.path}/tick.anicel',
@@ -144,7 +144,11 @@ void main() {
   test('a save with no canvas up saves normally', () async {
     final (session, _) = sessionWithADrawing();
     addTearDown(session.dispose);
-    expect(session.liveStrokeLanding.lander, isNull, reason: 'nothing registered');
+    expect(
+      session.liveStrokeLanding.lander.now,
+      isNull,
+      reason: 'nothing registered',
+    );
 
     final path = '${directory.path}/headless.anicel';
     await session.projectDoor.saveProjectToFile(

@@ -28,6 +28,7 @@ import '../brush/brush_tool_state.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../canvas/view_hand.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../session/sheet_photo_hold.dart';
 import '../sheet_painting.dart'
@@ -776,11 +777,12 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// The history as it stood before the stroke's first landing.
   HistoryMark? _strokeStart;
 
-  /// Each window's view's hand for a shape (F-420), and how many of its
-  /// views have one up: a view built anew comes up before the one it
-  /// replaces goes down, and the one going down must not take the new
-  /// one's away.
-  final Map<String, ({ShapeShow show, int up})> _shapeShows = {};
+  /// Each window's view's hand for a shape (F-420), counted: a view built
+  /// anew comes up before the one it replaces goes down, and the one going
+  /// down must not take the new one's away ([ViewHand] — this count came
+  /// first; the main canvas panel's, which took the last word, lost its
+  /// shapes for a session, F-419).
+  final Map<String, ViewHand<ShapeShow>> _shapeShows = {};
 
   /// Where the sheet's panel asks what takes a shape (F-420).
   SheetShapeTargets? _shapeTargets;
@@ -832,13 +834,9 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   }
 
   void _shapeShowOf(String id, ShapeShow? show) {
-    final was = _shapeShows[id];
-    final up = (was?.up ?? 0) + (show == null ? -1 : 1);
-    final now = show ?? was?.show;
-    if (up <= 0 || now == null) {
+    final hand = _shapeShows.putIfAbsent(id, ViewHand.new)..call(show);
+    if (hand.now == null) {
       _shapeShows.remove(id);
-    } else {
-      _shapeShows[id] = (show: now, up: up);
     }
   }
 
@@ -860,7 +858,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       _refuseAt(at);
       return null;
     }
-    final show = _shapeShows[window.id]?.show;
+    final show = _shapeShows[window.id]?.now;
     return show == null
         ? null
         : (

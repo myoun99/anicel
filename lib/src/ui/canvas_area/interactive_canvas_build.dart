@@ -397,8 +397,7 @@ class _InteractiveCanvasBuild {
       // The canvas hands the session its stroke lander so a SAVE can land
       // the pen before it snapshots — the same registration shape
       // `onCoordinatorChanged` above uses.
-      onStrokeLanderChanged: (lander) =>
-          session.liveStrokeLanding.lander = lander,
+      onStrokeLanderChanged: session.liveStrokeLanding.lander.call,
       // A selection drag holds the prerender's warming. ↩️F-196: it also
       // blocked seeks and cut switches (R15-⑤) — only a stroke does now.
       onSelectionInteractionChanged: (active) => active

@@ -1,4 +1,5 @@
 import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
+import '../canvas/view_hand.dart';
 
 /// Where the canvas leaves the one verb a save needs: land the stroke the
 /// pen is in the middle of — and, since the text tool (R9-rest), the text
@@ -25,11 +26,13 @@ import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
 /// the moments between layer switches all really are. [landNow] answers
 /// false there rather than making every caller ask first.
 class LiveStrokeLanding {
-  /// Set by the mounted canvas view and cleared when it goes — see
+  /// Held up by the mounted canvas view and taken back when it goes — see
   /// [InteractiveBrushEditCanvasView.onStrokeLanderChanged], which explains
-  /// why clearing it is not optional.
-  StrokeLander? lander;
+  /// why taking it back is not optional. ⛔Counted ([ViewHand]), not the
+  /// last word: the view built anew comes up before the one it replaces
+  /// goes down, and the last word was the old one's null (F-419).
+  final ViewHand<StrokeLander> lander = ViewHand();
 
   /// Lands the stroke in flight, if any. Answers whether anything landed.
-  bool landNow() => lander?.call() ?? false;
+  bool landNow() => lander.now?.call() ?? false;
 }

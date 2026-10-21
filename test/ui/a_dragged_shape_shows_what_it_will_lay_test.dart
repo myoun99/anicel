@@ -53,6 +53,7 @@ void main() {
       HistoryManager history,
       ActiveStrokeOverlayModel overlay,
       ValueNotifier<BrushToolState> brush,
+      ValueNotifier<double> opacity,
     })
   >
   pumpPanel(WidgetTester tester, {ShapeToolOptions options = plain}) async {
@@ -71,29 +72,39 @@ void main() {
         shapeOptions: options,
       ),
     );
+    // The active row's opacity, as the editor hands it to the panel.
+    final opacity = ValueNotifier(1.0);
+    addTearDown(opacity.dispose);
+    final sink = BrushEditCacheInvalidationSink();
+    final selection = CanvasSelectionCommands();
+    final viewport = seedFromRender(tester, CanvasViewport());
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: BrushCanvasPanel(
-            coordinator: coordinator,
-            canvasSize: size,
-            availableFrameKeys: keys,
-            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            historyManager: history,
-            brushToolState: brush,
-            selectionCommands: CanvasSelectionCommands(),
-            viewport: seedFromRender(tester, CanvasViewport()),
-            activeStrokeOverlayModel: overlay,
-            viewportUnderlayBuilder: (context, viewport, painter, float) =>
-                painter == null
-                ? const SizedBox.shrink()
-                : CustomPaint(
-                    painter: painter,
-                    size: Size(
-                      size.width.toDouble(),
-                      size.height.toDouble(),
+          body: ValueListenableBuilder<double>(
+            valueListenable: opacity,
+            builder: (context, contentOpacity, _) => BrushCanvasPanel(
+              coordinator: coordinator,
+              canvasSize: size,
+              availableFrameKeys: keys,
+              cacheInvalidationSink: sink,
+              historyManager: history,
+              brushToolState: brush,
+              selectionCommands: selection,
+              viewport: viewport,
+              activeStrokeOverlayModel: overlay,
+              interactiveContentOpacity: contentOpacity,
+              viewportUnderlayBuilder: (context, viewport, painter, float) =>
+                  painter == null
+                  ? const SizedBox.shrink()
+                  : CustomPaint(
+                      painter: painter,
+                      size: Size(
+                        size.width.toDouble(),
+                        size.height.toDouble(),
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
       ),
@@ -104,6 +115,7 @@ void main() {
       history: history,
       overlay: overlay,
       brush: brush,
+      opacity: opacity,
     );
   }
 
@@ -208,6 +220,46 @@ void main() {
       reason: 'what landed is the shape tool\'s own area, exactly',
     );
   });
+
+  // 🗣️F-419 (유저 2026-10-21): 「현재 선 레이어 불투명도 100에서 80정도로
+  // 내렷다가 100으로 올리니 안그려지기 시작했어」 — the drawing view is built
+  // anew each time the row's opacity crosses 1, and the shape it shows and
+  // lands is the new view's, whichever way it crossed.
+  for (final crossings in [
+    [0.8],
+    [0.8, 1.0],
+  ]) {
+    testWidgets('with the row\'s opacity taken through $crossings, a dragged '
+        'shape still shows under its outline and lands', (tester) async {
+      final env = await pumpPanel(tester);
+      final before = celOf(env.coordinator);
+      for (final opacity in crossings) {
+        env.opacity.value = opacity;
+        await tester.pump();
+      }
+
+      final gesture = await press(tester, const Offset(50, 50));
+      await moveTo(tester, gesture, const Offset(330, 250));
+      for (
+        var frame = 0;
+        frame < 40 && !env.overlay.hasStrokeContent;
+        frame++
+      ) {
+        await tester.pump();
+      }
+      expect(env.overlay.hasStrokeContent, isTrue, reason: 'it shows');
+      await gesture.up();
+      await tester.pump();
+      expect(
+        firstDifference(
+          celOf(env.coordinator),
+          laidStraight(before, 330, 250),
+        ),
+        isNull,
+        reason: 'it lands as on a view never built anew',
+      );
+    });
+  }
 
   // 🗣️size-rack-0-7-under-the-brush-floor (유저 2026-10-17 「다른부분
   // 발견되는거있으면 법 통일」): a line under a pixel lands as the brush's
