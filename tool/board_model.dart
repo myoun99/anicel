@@ -1336,6 +1336,36 @@ void placeByStory(BoardCard e) {
   e.state = section;
 }
 
+/// The four verdicts an AI hands-on check writes (law `law-검증`), as the
+/// story line starts with them once its `**` are dropped — and the chip each
+/// draws. ⚠️The longer 「증거 있음」 first: it starts with the plain one.
+const kAiVerdicts = <(String, String)>[
+  ('🤖AI 검증완료 · 증거 있음', 'evidence'),
+  ('🤖AI 검증완료', 'done'),
+  ('🤖AI 검증 실패', 'failed'),
+  ('👤유저 확인 필요', 'user'),
+];
+
+/// 🗣️유저 2026-10-22 (via the Surface's verify session): 「ai 검증을 제목쪽에
+/// 태그로 넣어서 카드 안누르고도 어떤결과인지 확인가능하게 해줘」.
+///
+/// The card's NEWEST story line that opens with one of [kAiVerdicts] — its
+/// key and the day it was written (`MM-DD`) — or null. No field of its own:
+/// the verdict is already the line's first words, and a later verdict line
+/// replaces an earlier one the way the story always reads.
+({String verdict, String day})? aiVerdictOf(BoardCard e) {
+  for (final entry in e.log.reversed) {
+    final opening = entry.text.replaceAll('**', '');
+    for (final (words, verdict) in kAiVerdicts) {
+      if (opening.startsWith(words)) {
+        final day = entry.ts.length >= 10 ? entry.ts.substring(5, 10) : '';
+        return (verdict: verdict, day: day);
+      }
+    }
+  }
+  return null;
+}
+
 /// 🚨★★★HOW MANY HANDS-ON CHECKS ON THIS CARD ARE STILL WAITING.
 ///
 /// ⚠️Read by the TICK HANDLER, not by [placeByStory]. 유저 2026-08-31:

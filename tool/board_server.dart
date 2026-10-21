@@ -1796,6 +1796,10 @@ Map<String, Object?> _headOf(BoardCard e, Set<int> openPrs) {
     'created': e.created,
     'updated': e.updated,
     'gap': _isGap(e),
+    'ai': switch (aiVerdictOf(e)) {
+      final v? => {'v': v.verdict, 'd': v.day},
+      null => null,
+    },
     'prs': [
       for (final n in e.prs) {'n': n, 'state': _prState[n] ?? ''},
     ],
@@ -2856,6 +2860,8 @@ function countFor(view){
 // a card with one part landed and another still to do read there exactly
 // like a finished one. The fact is the head's (`workLeft`): in the card's
 // own list the news is the check, in the 검증 list it is the work.
+var AI_WORD = {evidence: '🤖검증완료 · 증거', done: '🤖검증완료', failed: '🤖검증 실패', user: '👤유저 확인 필요'};
+var AI_TONE = {evidence: 'ok', done: 'ok', failed: 'bad', user: 'run'};
 function flagsOf(c, g){
   var f = [];
   if (c.q.length) f.push(['decide', '결정 필요' + (c.q.length > 1 ? ' ' + c.q.length : ''), 'run']);
@@ -2863,6 +2869,9 @@ function flagsOf(c, g){
   if (c.me && c.status !== 'triage') f.push(['me', '제 차례', 'live']);
   if (c.arrival) f.push(['arrival', c.arrival, c.arrival === '대답' ? 'ok' : 'bad']);
   if (c.gap) f.push(['gap', '카드 없음', 'bad']);
+  // The AI hands-on verdict (law-검증, 유저 2026-10-22: 「카드 안누르고도
+  // 어떤결과인지」) — the head's `ai`, read from the card's newest verdict line.
+  if (c.ai) f.push(['ai', AI_WORD[c.ai.v] + ' ' + c.ai.d, AI_TONE[c.ai.v]]);
   return f;
 }
 
