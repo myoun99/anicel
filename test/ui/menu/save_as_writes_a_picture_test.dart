@@ -7,7 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/native/qa_image_encoder.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
@@ -62,11 +64,16 @@ void main() {
     deleteAfterSessionEnds(folder);
   });
 
-  Future<EditorTopStrip> pumpApp(WidgetTester tester) async {
+  Future<EditorTopStrip> pumpApp(
+    WidgetTester tester, {
+    Project? project,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      MaterialApp(
+        home: HomePage(initialProject: project ?? createDefaultProject()),
+      ),
     );
     await tester.pumpAndSettle();
     return tester.widget<EditorTopStrip>(find.byType(EditorTopStrip));
@@ -376,7 +383,27 @@ void main() {
   testWidgets('🚨I-117-Q1: BMP, TGA, TIFF and WEBP are written as their rows '
       'say, on the paper as the PNG is — its colour, and nothing where the '
       'paper is absent', (tester) async {
-    final strip = await pumpApp(tester);
+    // A small canvas: the eight pictures go through writers the engine
+    // has none of, which walk every pixel in Dart, and under a busy
+    // machine's eighteen suites one WEBP at the default canvas outwaited
+    // the wait (2026-10-22). What is pinned is the paper at a corner,
+    // which a canvas of any size has.
+    final bare = createDefaultProject();
+    final track = bare.tracks.single;
+    final strip = await pumpApp(
+      tester,
+      project: bare.copyWith(
+        tracks: [
+          track.copyWith(
+            cuts: [
+              track.cuts.single.copyWith(
+                canvasSize: const CanvasSize(width: 64, height: 48),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
     final session = strip.projects.active;
     drawOnCurrentFrame(session);
 
