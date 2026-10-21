@@ -5,6 +5,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -98,6 +99,60 @@ void main() {
     expect(find.byKey(window), findsNothing);
     expect(rowOf(s, to).timeline[4]?.frameId, held);
     expect(rowOf(s, to).frames, hasLength(1), reason: 'nothing born');
+    expect(s.historyManager.undoCount, steps + 1);
+  });
+
+  // 🗣️F-388 (유저 2026-10-17): 「키도 복붙기능 제대로 만들고 기존것들이랑 법
+  // 통일하고」 — keys in hand ask the same way, in the same window.
+  testWidgets('KEYS under a name their lane holds at another value: the '
+      'window asks once — Cancel writes nothing, Link takes the name\'s '
+      'value', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 950));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
+    await tester.pumpAndSettle();
+    final s = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    final id = s.activeLayer!.id;
+    final track = rowOf(s, id).transformTrack;
+    s.laneVerbs.updateLayerTransformTrack(
+      id,
+      track.copyWith(
+        rotation: track.rotation.withKey(7, 0.8).withKeyName(7, 'A'),
+        opacity: track.opacity.withKey(20, 0.3).withKeyName(20, 'A'),
+      ),
+    );
+    s.selectFrameIndex(7);
+    s.standOnRow(LaneRowAddress(id, 'rotation'));
+    s.keyClipboard.copy();
+    s.selectFrameIndex(2);
+    s.standOnRow(LaneRowAddress(id, 'opacity'));
+    await tester.pumpAndSettle();
+    final steps = s.historyManager.undoCount;
+    Map<int, double> opacity() => {
+      for (final MapEntry(key: frame, value: key)
+          in rowOf(s, id).transformTrack.opacity.keys.entries)
+        frame: key.value,
+    };
+
+    await tapToolbarButton(tester, paste);
+    expect(find.byKey(window), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(opacity(), {20: 0.3}, reason: 'Cancel writes nothing');
+    expect(s.historyManager.undoCount, steps);
+
+    await tapToolbarButton(tester, paste);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(opacity(), {2: 0.3, 21: 0.3});
     expect(s.historyManager.undoCount, steps + 1);
   });
 
