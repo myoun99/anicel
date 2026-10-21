@@ -57,7 +57,14 @@ String buildXdtsContent({
     cutStartFrame: cutStartFrame,
     transitionSpans: transitionSpans,
   );
-  final duration = sources.playbackFrameCount;
+  // The rows the printed sheet DRAWS: its conte 尺 and the のりしろ an O.L
+  // asks of either side (I-73-ol-xdts-duration — 저장 2026-10-20, by the
+  // sheet's 「컷 엔드라인(OL여백이든 뭐든 총합적인 엔드라인)」). The XDTS
+  // has no column to say O.L in, so it is handed every row drawn rather
+  // than lose what is on the のりしろ. ↩️It ran the conte 尺, and a cut an
+  // O.L arrives into — its own frame 0 that much before its conte — lost
+  // its last のりしろ rows, the pictures and the sounds on them.
+  final duration = sources.drawnFrameCount;
   final celLayers = sources.celLayers;
   final seLayers = [for (final slot in sources.seLayers) slot.layer];
   final instructionLayers = sources.instructionLayers;
