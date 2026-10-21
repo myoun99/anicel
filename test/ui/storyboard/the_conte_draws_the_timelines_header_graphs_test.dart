@@ -561,6 +561,40 @@ void main() {
     expect(stripKeys(saturation), {5});
   });
 
+  // I-89 ① ⓕ: 「S 레인 띠가 키 끌기 미리보기 … 를 따라가는지」 — the strips
+  // with no graph open over them, as the V row's do above.
+  testWidgets('an S row\'s strips follow a key in flight as the V row\'s '
+      'do', (tester) async {
+    final preview = ValueNotifier<TimelineDragPreview?>(null);
+    addTearDown(preview.dispose);
+    final session = await pump(tester, project(), dragPreview: preview);
+    Set<int> stripKeys() => tester
+        .widget<TimelineLaneFrameRow>(
+          find.descendant(
+            of: find.byKey(
+              const ValueKey<String>('storyboard-se-lane-row-0-1-rotation'),
+            ),
+            matching: find.byType(TimelineLaneFrameRow),
+          ),
+        )
+        .lane
+        .keyedFrames;
+    expect(stripKeys(), isEmpty, reason: 'premise');
+
+    final se = session.repository.requireProject().tracks.single.seLayers;
+    preview.value = LaneEditPreview.row(
+      row: se.single,
+      globalRow: se.single.copyWith(
+        transformTrack: se.single.transformTrack.copyWith(
+          rotation: se.single.transformTrack.rotation.withKey(4, 30),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(stripKeys(), {4});
+  });
+
   testWidgets('a handle pulled in a graph writes its key as the timeline\'s '
       'does — an S row\'s and the V row\'s fx alike, by the edits their '
       'strips key by', (tester) async {

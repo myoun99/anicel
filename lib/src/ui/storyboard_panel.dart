@@ -4587,8 +4587,8 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// Wires the band's range-select/move gesture (the timeline's lane
-  /// machinery, carrier-routed in the session); null keeps the band
-  /// display-only (SE lanes, v1).
+  /// machinery, carrier-routed in the session) — an S row's lanes too
+  /// (R5 ③b); null keeps the band display-only.
   final TimelineLaneRangeCallbacks? laneRange;
 
   /// The Audio band's sound edits and the peaks it draws — what the

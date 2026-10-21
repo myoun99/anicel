@@ -770,20 +770,7 @@ class _StoryboardRailRows {
       carrier: layer,
       groupKeyOf: (lane) => laneGroupKey(layer.id, lane.laneId),
       lanes: lanes,
-      // F-195: a value scrubbed here, or on the timeline's copy of this row,
-      // is shown in its GLOBAL form — the axis this rail draws.
-      follow: (_, lane, row) => TimelineDragPreviewRowGate(
-        dragPreview: _state.widget.dragPreview,
-        layer: layer,
-        useGlobalForm: true,
-        slice: (shown) => laneRowSlice(shown, lane.laneId),
-        rowBuilder: (context, shown) => row(
-          shown,
-          identical(shown, layer)
-              ? lane
-              : laneAsPreviewed(lane, _seLanesOf(track, shown)),
-        ),
-      ),
+      follow: (_, lane, row) => _followingSeLane(track, layer, lane, row),
       laneEdit: _state.widget.layerLaneEdit,
       onToggleGroupEnabled: onToggleEnabled == null
           ? null
@@ -803,6 +790,33 @@ class _StoryboardRailRows {
     );
     return _state._rows.laneRows(layer.id, lanes, labels, chainId: layer.id);
   }
+
+  /// [lane] of [layer], an S row of [track], built by [build] as an edit in
+  /// flight shows it — a value scrubbed here or on the timeline's copy of
+  /// the row, a key range slid — in its GLOBAL form, the axis this rail
+  /// draws (F-195). Its label and its strip read the lane through here, so
+  /// the two cannot show different keys mid-drag.
+  ///
+  /// ↩️The strip read the lane as committed: a key slid along an S row's
+  /// lane stood still on its strip until the release, while the label and
+  /// the V row's strips moved (I-89 ⓕ, 2026-10-21).
+  Widget _followingSeLane(
+    Track track,
+    Layer layer,
+    PropertyLaneRow lane,
+    Widget Function(Layer shown, PropertyLaneRow lane) build,
+  ) => TimelineDragPreviewRowGate(
+    dragPreview: _state.widget.dragPreview,
+    layer: layer,
+    useGlobalForm: true,
+    slice: (shown) => laneRowSlice(shown, lane.laneId),
+    rowBuilder: (context, shown) => build(
+      shown,
+      identical(shown, layer)
+          ? lane
+          : laneAsPreviewed(lane, _seLanesOf(track, shown)),
+    ),
+  );
 
   /// The camera row's lane labels, row for row with its lane strips
   /// (I-73 ④ⓔ): the timeline's camera lanes ([_cameraLanes]), on the camera
@@ -2949,24 +2963,28 @@ class _StoryboardRailRows {
           ),
         ];
       },
-      strip: (row, height) => _StoryboardLaneStripRow(
-        rowKey:
-            'storyboard-se-lane-row-$trackIndex-${slot + 1}-'
-            '${row.lane!.laneId}',
-        // The Audio band draws the in-flight take while one rolls (REC1-C,
-        // `_seDisplayAt`); the list — and so the strip count — stays the
-        // repository row's, in lockstep with the labels.
-        carrier: laneIsSeAudio(row.lane!)
-            ? (_state._seDisplayAt(track, slot) ?? layer)
-            : layer,
-        lane: row.lane!,
-        width: width,
-        height: height,
-        timelineScale: scale,
-        projectFrameRate: _state.widget.projectFrameRate,
-        laneRange: laneRange,
-        audioLane: _state.widget.audioLane,
-        audioPeaksFor: _state.widget.audioPeaksFor,
+      strip: (row, height) => _followingSeLane(
+        track,
+        layer,
+        row.lane!,
+        (shown, lane) => _StoryboardLaneStripRow(
+          rowKey:
+              'storyboard-se-lane-row-$trackIndex-${slot + 1}-${lane.laneId}',
+          // The Audio band draws the in-flight take while one rolls (REC1-C,
+          // `_seDisplayAt`); the list — and so the strip count — stays the
+          // repository row's, in lockstep with the labels.
+          carrier: laneIsSeAudio(lane)
+              ? (_state._seDisplayAt(track, slot) ?? layer)
+              : shown,
+          lane: lane,
+          width: width,
+          height: height,
+          timelineScale: scale,
+          projectFrameRate: _state.widget.projectFrameRate,
+          laneRange: laneRange,
+          audioLane: _state.widget.audioLane,
+          audioPeaksFor: _state.widget.audioPeaksFor,
+        ),
       ),
     ));
   }

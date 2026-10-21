@@ -17,6 +17,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 
@@ -312,5 +313,47 @@ void main() {
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
     await tester.pumpAndSettle();
+  });
+
+  // I-89 ① ⓕ: 「레인 칸 더블클릭이 그 프레임으로 가는지(콘티 패널은 첫
+  // 클릭이 선 곳에 기댄다)」 — a cell past the first cut, on the V row's
+  // lane and on an S row's.
+  testWidgets('a DOUBLE tap on a lane keys the cell it lands on — past the '
+      'first cut, on the V row and an S row alike', (tester) async {
+    final repository = (await pumpStoryboard(tester)).repository;
+    final ppf = tester
+        .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+        .pixelsPerFrame;
+    Future<void> doubleTapAt(String rowKey, int frame) async {
+      final row = find.byKey(ValueKey<String>(rowKey));
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(row);
+      final at = Offset(rect.left + (frame + 0.5) * ppf, rect.center.dy);
+      await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+    }
+
+    Track track() => repository.requireProject().tracks.single;
+    final brightness = effectLaneId(_trackEffect, 'brightness');
+
+    await twirlOpenVLanes(tester);
+    await doubleTapAt('storyboard-track-lane-row-0-$brightness', 10);
+    expect([
+      ...track().effects.single.parameterOf('brightness').track.keys.keys,
+    ], [10]);
+
+    await tester.tap(find.named('storyboard-lane-toggle-se-row-1'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.named('storyboard-lane-group-toggle-se-row-1-transform-group'),
+    );
+    await tester.pumpAndSettle();
+    await doubleTapAt('storyboard-se-lane-row-0-1-rotation', 11);
+    expect([...track().seLayers.single.transformTrack.rotation.keys.keys], [
+      11,
+    ]);
   });
 }
