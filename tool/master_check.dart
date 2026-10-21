@@ -40,6 +40,15 @@ import 'test_seconds.dart';
 /// The lane the check runs in.
 const kCheckLane = 'master-check';
 
+/// What every `affected_tests` the check makes — the wide run and each one
+/// that walks a red back — says, to stand at the head of the machine's line.
+///
+/// 🗣️유저 2026-10-22, tests-crowd-the-machine-Q18 「맨 앞에 세우고, 칸 몫은
+/// 지금 법대로」 (「빌드는 애초에 대기열 끝에 안 서고 제일 앞으로 끼워넣게」):
+/// the build waits on this check, and that morning it waited four hours
+/// behind the lanes' runs (`waitingInTurn` in `test_queue.dart`).
+const kWideCheckStandsFirst = '--first-in-line';
+
 /// A landing on master: the commit it left master at, and the lane's name.
 typedef Landing = ({String sha, String name});
 
@@ -319,7 +328,10 @@ Future<Set<String>> _redsAt(String root, String lane, List<String> args) async {
   if (out.existsSync()) out.deleteSync();
   final run = await Process.start(
     'bash',
-    ['$root/tool/run.sh', 'affected_tests', '--reds-to', out.path, ...args],
+    [
+      '$root/tool/run.sh', 'affected_tests', kWideCheckStandsFirst, //
+      '--reds-to', out.path, ...args,
+    ],
     workingDirectory: lane,
     mode: ProcessStartMode.inheritStdio,
   );

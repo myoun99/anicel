@@ -47,12 +47,14 @@ void main() {
       '${ago(waited).microsecondsSinceEpoch.toString().padLeft(17, '0')}-$who';
   String whoOf(String name) => name.substring(name.indexOf('-') + 1);
   /// [old]: its tool is from before the line handed out what is left.
+  /// [first]: it stands at the head of the line — the build's wide check.
   Standing waiting(
     String who, {
     int? files,
     int? work,
     int waited = 0,
     bool old = false,
+    bool first = false,
   }) => (
     name: askedAs(who, waited),
     suites: null,
@@ -60,6 +62,7 @@ void main() {
     work: work,
     since: null,
     takesWhatIsLeft: !old,
+    first: first,
   );
   Standing runningAt(String who, int suites, {int? files, int? work}) => (
     name: askedAs(who, 0),
@@ -68,6 +71,7 @@ void main() {
     work: work,
     since: null,
     takesWhatIsLeft: true,
+    first: false,
   );
   int? decide(
     String mine,
@@ -211,9 +215,45 @@ void main() {
         work: null,
         since: ago(10),
         takesWhatIsLeft: true,
+        first: false,
       );
       expect(turnOrder([old, waiting('new', waited: 100)]), ['new', 'old']);
       expect(turnOrder([waiting('new', waited: 5), old]), ['old', 'new']);
+    });
+
+    test("🗣️the build's wide check stands at the head, however long the "
+        'others waited and however short they are', () {
+      // 유저 10-22, tests-crowd-the-machine-Q18 「맨 앞에 세우고, 칸 몫은 지금
+      // 법대로」: that morning it stood seventeenth after four hours.
+      final line = [
+        waiting('lane', work: 20000, waited: 4 * 3600),
+        waiting('short', files: 1, work: 30, waited: 600),
+        waiting('wide', work: 44000, first: true),
+      ];
+      expect(turnOrder(line), ['wide', 'short', 'lane']);
+    });
+
+    test("🗣️…takes no running batch's suites — what stands free, at the "
+        'share every run has — and the rest goes on down the line', () {
+      final busy = [
+        runningAt('r', 6, work: 3000),
+        runningAt('q', 3),
+        waiting('s', files: 1, work: 30, waited: 600),
+        waiting('wide', work: 44000, first: true),
+      ];
+      expect(decide('wide', busy), 1);
+      expect(decide('s', busy), isNull);
+      // Half beside another long run, not the machine; the rest is the
+      // next run's.
+      final freed = [
+        runningAt('r', 2, work: 3000),
+        waiting('wide', work: 44000, first: true),
+        waiting('a', waited: 600),
+      ];
+      expect(decide('wide', freed), 5);
+      expect(decide('a', freed), 3);
+      // Alone, the whole machine.
+      expect(decide('wide', [waiting('wide', work: 44000, first: true)]), 10);
     });
 
     test('beside the first in line a run starts when both fit now — and '
@@ -475,6 +515,7 @@ void main() {
         work: 300,
         since: null,
         takesWhatIsLeft: true,
+        first: false,
       ));
       // A tool from before says nothing of how it takes: all or nothing.
       expect(standingOf(line, 'b.ticket'), (
@@ -484,6 +525,7 @@ void main() {
         work: null,
         since: t0,
         takesWhatIsLeft: false,
+        first: false,
       ));
       expect(standingOf(line, 'c.ticket').suites, isNull);
       expect(standingOf(line, 'd.ticket'), (
@@ -493,7 +535,29 @@ void main() {
         work: null,
         since: null,
         takesWhatIsLeft: false,
+        first: false,
       ));
+      ticket('e.ticket', told: {'state': 'waiting', 'first': true});
+      expect(standingOf(line, 'e.ticket').first, isTrue);
+    });
+
+    test("--list shows the build's wide check at the head of the waiting, "
+        'and says so', () {
+      ticket(ticketName(ago(3600).microsecondsSinceEpoch, 1), told: {
+        'state': 'waiting',
+        'what': 'lane',
+        'work': 600,
+      });
+      ticket(ticketName(t0.microsecondsSinceEpoch, 2), told: {
+        'state': 'waiting',
+        'what': 'wide',
+        'work': 44000,
+        'first': true,
+      });
+      final rows = describeLine(line, now: t0);
+      expect(rows[0], startsWith('1. waiting · first in line · '));
+      expect(rows[0], contains(' · wide · '));
+      expect(rows[1], isNot(contains('first in line')));
     });
 
     test('--list shows the running runs, then the waiting ones in turn', () {
@@ -787,6 +851,22 @@ void main() {
         // takes the nine beside it, never waiting.
         'short runs at 1', 'batch at 9',
       ]);
+    });
+
+    test("a run that stands first says so on its ticket — the line's every "
+        'run of this tool reads it at the head; any other says not', () async {
+      Future<Standing> told({required bool first}) => standInLine(
+        'a run',
+        (turn) async {
+          await turn.take(files: 1);
+          return standingOf(line, tickets().single);
+        },
+        first: first,
+        line: line,
+        room: () async => true,
+      );
+      expect((await told(first: true)).first, isTrue);
+      expect((await told(first: false)).first, isFalse);
     });
 
     test('a run that asked for fewer is handed fewer', () async {

@@ -141,9 +141,10 @@ const kUnknownWork = 3600;
 /// machine-seconds that `flutter test` should take ([workOf]) — null when
 /// it cannot say; since when a run of a tool from before 2026-10-21 says it
 /// has waited ([Standing.since]) — null for every run of this tool, which
-/// stands from its [name] ([askedAt]); and whether its tool takes what is
+/// stands from its [name] ([askedAt]); whether its tool takes what is
 /// left of its share ([suitesToRun]) — false for a tool from before, which
-/// takes all of it or waits.
+/// takes all of it or waits; and whether it stands at the head of the line
+/// ([Standing.first], [waitingInTurn]).
 ///
 /// ⚠️[Standing.since] IS READ, NEVER WRITTEN: a run of a tool from before
 /// the run kept its place (tests-crowd-the-machine-Q15) counts its own wait
@@ -153,7 +154,11 @@ const kUnknownWork = 3600;
 /// fifteen runs waiting. Once no such run is left it reads null for
 /// everyone. ⚠️Whatever changes how the line orders its runs has to give
 /// the order a run of the tool before it gives, for as long as one is in
-/// line: each run decides its own turn.
+/// line: each run decides its own turn. [Standing.first] alone may differ,
+/// because only a run of a tool that reads it says it: that run reads
+/// itself first and takes what is left, so the runs that hold back for it
+/// hold back for one that takes, and a run of a tool from before that does
+/// not hold back takes what it finds — no suite stands free either way.
 typedef Standing = ({
   String name,
   int? suites,
@@ -161,6 +166,7 @@ typedef Standing = ({
   int? work,
   DateTime? since,
   bool takesWhatIsLeft,
+  bool first,
 });
 
 /// When the ticket [name] was asked, read off its name ([ticketName]).
@@ -218,6 +224,15 @@ double _forwardness(
 
 /// The waiting runs in [line], the first in line first ([_forwardness]),
 /// on a machine of [machine] suites.
+///
+/// 🗣️THE BUILD'S WIDE CHECK STANDS AT THE HEAD ([Standing.first]; 유저
+/// 2026-10-22, tests-crowd-the-machine-Q18 「맨 앞에 세우고, 칸 몫은 지금
+/// 법대로」 — 「빌드는 애초에 대기열 끝에 안 서고 제일 앞으로 끼워넣게」):
+/// that day's wide check waited four hours behind the lanes' runs, sixteen
+/// ahead of it at 07:28 and no test run — at 734 machine-minutes it came
+/// forward slower than every run that asked after it. It takes no running
+/// batch's suites, only those the next ones free, and its share is anyone's
+/// ([_wants]).
 List<Standing> waitingInTurn(
   List<Standing> line,
   DateTime now, {
@@ -232,6 +247,7 @@ List<Standing> waitingInTurn(
     for (final s in line)
       if (s.suites == null) s,
   ]..sort((a, b) {
+    if (a.first != b.first) return a.first ? -1 : 1;
     final ahead = forward[b.name]!.compareTo(forward[a.name]!);
     return ahead != 0 ? ahead : a.name.compareTo(b.name);
   });
@@ -448,6 +464,7 @@ Standing standingOf(Directory line, String name) {
         work: about['work'] as int?,
         since: DateTime.tryParse('${about['since'] ?? ''}'),
         takesWhatIsLeft: about['takesWhatIsLeft'] == true,
+        first: about['first'] == true,
       );
     }
   } on Object {
@@ -460,6 +477,7 @@ Standing standingOf(Directory line, String name) {
     work: null,
     since: null,
     takesWhatIsLeft: false,
+    first: false,
   );
 }
 
@@ -490,8 +508,9 @@ bool runHasEnded(File ticket) {
 class Ticket {
   Ticket._(this.file, this._lock, this._about);
 
-  /// Takes a ticket at the back of [line] for a run that does [what].
-  factory Ticket.take(Directory line, String what) {
+  /// Takes a ticket at the back of [line] for a run that does [what] — at
+  /// its head when it is [first] ([waitingInTurn]).
+  factory Ticket.take(Directory line, String what, {bool first = false}) {
     line.createSync(recursive: true);
     final file = File(
       '${line.path}/${ticketName(DateTime.now().microsecondsSinceEpoch, pid)}',
@@ -507,6 +526,7 @@ class Ticket {
       'where': Directory.current.path,
       'asked': DateTime.now().toIso8601String(),
       'takesWhatIsLeft': true,
+      'first': first,
     };
     final ticket = Ticket._(file, lock, about);
     ticket.waiting(null);
@@ -602,11 +622,17 @@ class Turn {
     required this.say,
     required this.lookAgain,
     required this.askAgain,
-  }) : _ticket = _folder == null ? null : Ticket.take(_folder, _what);
+    this.first = false,
+  }) : _ticket = _folder == null
+           ? null
+           : Ticket.take(_folder, _what, first: first);
 
   final Directory? _folder;
   final String _what;
   Ticket? _ticket;
+
+  /// Whether this run stands at the head of the line ([waitingInTurn]).
+  final bool first;
 
   /// The most suites this run asked for, whatever the line would give.
   final int? asked;
@@ -638,6 +664,7 @@ class Turn {
             work: work,
             since: null,
             takesWhatIsLeft: true,
+            first: first,
           )
         else
           standingOf(folder, name),
@@ -648,7 +675,8 @@ class Turn {
       // A ticket swept in the instant between being made and being locked
       // stands nowhere; it takes another at the back.
       if (!_ticket!.file.existsSync()) {
-        _ticket = Ticket.take(folder, _what)..waiting(files, work: work);
+        _ticket = Ticket.take(folder, _what, first: first)
+          ..waiting(files, work: work);
       }
       final line = standings();
       final machine = machineSuitesOf(folder);
@@ -712,12 +740,14 @@ class Turn {
   }
 }
 
-/// Runs [run] with a place in the machine's line ([Turn]) — never more than
-/// [asked] suites for any of its `flutter test`s.
+/// Runs [run] with a place in the machine's line ([Turn]) — at its head
+/// when [first] — never more than [asked] suites for any of its
+/// `flutter test`s.
 Future<T> standInLine<T>(
   String what,
   Future<T> Function(Turn turn) run, {
   int? asked,
+  bool first = false,
   Directory? line,
   Future<bool> Function()? room,
   bool Function(File ticket) ended = runHasEnded,
@@ -734,6 +764,7 @@ Future<T> standInLine<T>(
     say: say,
     lookAgain: lookAgain,
     askAgain: askAgain,
+    first: first,
   );
   try {
     return await run(turn);
@@ -927,7 +958,8 @@ String _about(File ticket) {
     final work = about['work'] == null
         ? ''
         : ' · ~${((about['work'] as int) / 60).ceil()} machine-min';
-    return '${about['state']}$suites$files$work · pid ${about['pid']} · '
+    final head = about['first'] == true ? ' · first in line' : '';
+    return '${about['state']}$head$suites$files$work · pid ${about['pid']} · '
         'since ${about['asked']} · ${about['what']} · ${about['where']}';
   } on Object {
     return ticket.uri.pathSegments.last;

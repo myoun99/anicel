@@ -17,6 +17,7 @@ import '../../tool/affected_tests.dart'
         nextBatch,
         partitionByGcTag,
         runInBatches;
+import '../../tool/master_check.dart' show kWideCheckStandsFirst;
 import '../../tool/test_queue.dart' show kMachineSuites, outsideTheLine;
 
 /// 🚨★★★**A PIN THAT WAITS FOR THE COLLECTOR CANNOT RUN IN A CROWD.**
@@ -259,6 +260,25 @@ void main() {
       );
       expect(lane, contains(r'[ "${2:-}" = gates ] && line=--outside-the-line'));
       expect(lane, contains(r'--files-from "$list" ${line:+"$line"})'));
+    });
+
+    test("🗣️the build's wide check stands at the head of the line — every "
+        'run master_check makes says so, and no other run does', () {
+      // 유저 10-22, tests-crowd-the-machine-Q18 「맨 앞에 세우고, 칸 몫은 지금
+      // 법대로」.
+      expect(lineFor([kWideCheckStandsFirst, '--wide']).first, isTrue);
+      expect(lineFor(['--wide']).first, isFalse);
+      expect(lineFor(const []).first, isFalse);
+      final check = File('tool/master_check.dart').readAsStringSync();
+      expect(
+        RegExp("'affected_tests'").allMatches(check),
+        hasLength(1),
+        reason: 'master_check runs affected_tests in one place',
+      );
+      expect(
+        check,
+        matches(RegExp(r"'affected_tests',\s*kWideCheckStandsFirst,")),
+      );
     });
 
     test('⛔any other run asked outside the line is refused — it is a '

@@ -37,6 +37,7 @@
 //   bash tool/run.sh affected_tests --concurrency 4   # fewer than its turn gives
 //   bash tool/run.sh affected_tests --no-cache        # run the record's greens too
 //   bash tool/run.sh affected_tests --reds-to <file>  # write the reds there
+//   bash tool/run.sh affected_tests --first-in-line   # the wide check's own
 //   bash tool/run.sh affected_tests --files-from parity.txt  # a given list
 //   bash tool/run.sh affected_tests --files-from parity.txt --outside-the-line
 //
@@ -210,18 +211,24 @@ const kNearConfigImports = 0;
 /// the land's turn all the while, and every other lane's land behind it. So
 /// the gates say `--outside-the-line` — ⛔for a list run only: any other run
 /// is a session's, and stands in the line.
-({bool inTheLine, String? refusal}) lineFor(List<String> args) {
+///
+/// A run that says `--first-in-line` stands at its head — the build's wide
+/// check, which `master_check` asks for (유저 10-22, tests-crowd-the-machine-
+/// Q18; `waitingInTurn` has why).
+({bool inTheLine, bool first, String? refusal}) lineFor(List<String> args) {
+  final first = args.contains('--first-in-line');
   if (!args.contains('--outside-the-line')) {
-    return (inTheLine: true, refusal: null);
+    return (inTheLine: true, first: first, refusal: null);
   }
   if (!args.contains('--files-from')) {
     return (
       inTheLine: true,
+      first: first,
       refusal: "--outside-the-line is a land's gates' own, for a "
           '--files-from list',
     );
   }
-  return (inTheLine: false, refusal: null);
+  return (inTheLine: false, first: first, refusal: null);
 }
 
 /// What a change to [changed] — every changed file, Dart or not — can have
@@ -310,6 +317,7 @@ Future<void> main(List<String> args) async {
       useCache: useCache,
       redsTo: redsTo,
       inTheLine: turn.inTheLine,
+      firstInLine: turn.first,
     ),
   );
 
@@ -726,6 +734,7 @@ Future<int> _runTests(
   bool useCache = true,
   String? redsTo,
   bool inTheLine = true,
+  bool firstInLine = false,
 }) async {
   final selected = useCache && cache != null
       ? _withoutStillGreen(files, cache)
@@ -830,13 +839,15 @@ Future<int> _runTests(
   // ⚠️No pin reaches this one line, and its mutant lives (10-21): a pin
   // would run a whole list. Each hop beside it is pinned — the gates pass
   // the flag (lane.sh, scanned), [lineFor] answers it, and [outsideTheLine]
-  // holds what it asked at once.
+  // holds what it asked at once. `first` likewise: master_check asks it
+  // ([kWideCheckStandsFirst]), [lineFor] answers it, the line reads it.
   if (inTheLine) {
     await standInLine(
       'affected_tests',
       runBatches,
       say: _report,
       asked: concurrency,
+      first: firstInLine,
     );
   } else {
     await outsideTheLine(
