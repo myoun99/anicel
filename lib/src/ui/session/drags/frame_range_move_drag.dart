@@ -1635,7 +1635,6 @@ class FrameRangeMoveDrag {
   /// the session's `dragPreview` (repository untouched), the selection
   /// outline riding the previewed landing.
   void update({required int frameDelta, LayerId? targetLayerId}) {
-    final selection = _selectionBefore;
     // 🚨F-276: the row pointed at is read as its SEAT — over a mirror, the
     // hand is over its base ([_seatRowOf]). Every step below reads this.
     final pointedAt = targetLayerId == null
@@ -1671,22 +1670,7 @@ class FrameRangeMoveDrag {
       return;
     }
     final source = singleRow.layer;
-    final target = _singleRowMoveTarget(
-      source,
-      _carriedRow(source.id, pointedAt),
-    );
-    final plan = target == null
-        ? null
-        : planDrawingRangeMove(
-            source: source,
-            target: target,
-            rangeStartIndex: selection.startIndex,
-            rangeEndIndexExclusive: selection.endIndexExclusive,
-            frameDelta: frameDelta,
-            sourceBank: _controllers.timelineController.bankLanesOf(source.id),
-            landing: _swapsOn(target.id),
-            cutFrameCount: _project.activeCutFrameCount,
-          );
+    final plan = _singleRowPlan(source, pointedAt, frameDelta);
     if (plan == null) {
       // UI-R23 #10: a blocked / incompatible landing HOLDS the last valid
       // preview, outline and plan — the move stops at the last legal spot
@@ -1694,6 +1678,34 @@ class FrameRangeMoveDrag {
       return;
     }
     _publishSingleRowMove(plan, source, singleRow.groupStart);
+  }
+
+  /// [source]'s span [frameDelta] frames along, onto the row the hand is
+  /// over where it may land there ([_singleRowMoveTarget]) — null where it
+  /// lands nowhere.
+  DrawingBlockMovePlan? _singleRowPlan(
+    Layer source,
+    LayerId? pointedAt,
+    int frameDelta,
+  ) {
+    final target = _singleRowMoveTarget(
+      source,
+      _carriedRow(source.id, pointedAt),
+    );
+    if (target == null) {
+      return null;
+    }
+    final selection = _selectionBefore;
+    return planDrawingRangeMove(
+      source: source,
+      target: target,
+      rangeStartIndex: selection.startIndex,
+      rangeEndIndexExclusive: selection.endIndexExclusive,
+      frameDelta: frameDelta,
+      sourceBank: _controllers.timelineController.bankLanesOf(source.id),
+      landing: _swapsOn(target.id),
+      cutFrameCount: _project.activeCutFrameCount,
+    );
   }
 
   /// The row a single-row range move lands on: [source] itself, or the

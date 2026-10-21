@@ -128,6 +128,13 @@ class _MultiRowRangeMovePlanner {
   /// The cels the rebuild carries onto another row ([CelRekey]).
   final rekeys = <CelRekey>[];
 
+  /// The rows the rebuild has taken in hand, by index — each taken the
+  /// first time it is asked for ([_rowAt]).
+  final _rows = <int, _RowInHand>{};
+
+  _RowInHand _rowAt(int index) =>
+      _rows[index] ??= _RowInHand(orderedLayers[index]);
+
   /// Phase 1: each source row's selected blocks + travelling cels,
   /// validating the block-snap and the link-safety of every cel that
   /// would travel. False when a rule voids the whole move.
@@ -167,7 +174,7 @@ class _MultiRowRangeMovePlanner {
     if (_linkedFromOutside(base, selected, frameIds, bankOf(sourceId))) {
       return false;
     }
-    final frames = _framesOf(source, frameIds);
+    final frames = framesNamed(source, frameIds);
     if (frames == null) {
       return false;
     }
@@ -220,82 +227,83 @@ class _MultiRowRangeMovePlanner {
     return frameIds.any((frameId) => bank.exposes(frameId, lane: rest));
   }
 
-  /// The source's frames for [frameIds]; null when one is missing.
-  List<Frame>? _framesOf(Layer source, Set<FrameId> frameIds) {
-    final frames = <Frame>[];
-    for (final frameId in frameIds) {
-      Frame? found;
-      found = source.frameById(frameId);
-      if (found == null) {
-        return null;
-      }
-      frames.add(found);
-    }
-    return frames;
-  }
-
   /// Phase 2: every affected row rebuilt — sources lose their selected
   /// blocks, targets receive the mapped source's, and the blocks those land
   /// on go back to the rows the move left ([returnRowOf]). Null when an
   /// incoming block dips below frame 0, or a cel going back is one another
   /// lane of its row still shows (F-136).
   MultiRowRangeMovePlan? rebuild() {
-    final rows = <int, _RowInHand>{};
-    _RowInHand rowAt(int index) =>
-        rows[index] ??= _RowInHand(orderedLayers[index]);
-
     // Every SOURCE: its own selected blocks (and cels) leave.
     for (final sourceIndex in sourceIndexes) {
       final id = orderedLayers[sourceIndex].id;
-      rowAt(
+      _rowAt(
         sourceIndex,
       ).lift(selectedByLayer[id]!, cels: frameIdsByLayer[id]!);
     }
 
     // Every TARGET: what its blocks land on is lifted, then they arrive.
-    final landedOn =
-        <int, ({List<TimelineDrawingBlock> blocks, _Lifted cels})>{};
+    final landedOn = <int, _LandedOn>{};
     for (final sourceIndex in sourceIndexes) {
-      final from = orderedLayers[sourceIndex];
-      final targetIndex = sourceIndex + rowDelta;
-      final onto = rowAt(targetIndex);
-      final incoming = selectedByLayer[from.id]!;
-      final spans = [
-        for (final block in incoming)
-          (start: block.startIndex + frameDelta, length: block.length),
-      ];
-      if (spans.any((span) => span.start < 0)) {
+      final landed = _arrive(sourceIndex);
+      if (landed == null) {
         return null;
       }
-      final covered = blocksLandedOn(drawingBlocks(onto.timeline), spans);
-      final coveredCels = {for (final block in covered) block.frameId};
-      final lifted = onto.lift(covered, cels: coveredCels);
-      final bank = bankOf(onto.layer.id);
-      if (coveredCels.any((id) => bank.exposes(id, lane: onto.timeline))) {
-        return null;
-      }
-      landedOn[targetIndex] = (blocks: covered, cels: lifted);
-      final frameIds = frameIdsByLayer[from.id]!;
-      onto.lay(
-        [
-          for (final (position, block) in incoming.indexed)
-            TimelineDrawingBlock(
-              startIndex: spans[position].start,
-              entry: block.entry,
-            ),
-        ],
-        cels: (
-          frames: framesByLayer[from.id]!,
-          clips: clipsAnchoredTo(from.audioClips, frameIds),
-        ),
-      );
-      for (final frameId in frameIds) {
-        rekeys.add((from: from.id, to: onto.layer.id, frameId: frameId));
-      }
+      landedOn[sourceIndex + rowDelta] = landed;
     }
+    _sendBack(landedOn);
 
-    // And the blocks landed on go back — the rows the move enters first,
-    // whose blocks have a row left empty each.
+    return MultiRowRangeMovePlan(
+      layersAfter: {for (final row in _rows.values) row.layer.id: row.after},
+      rekeys: rekeys,
+    );
+  }
+
+  /// [sourceIndex]'s selected blocks laid on the row [rowDelta] from it,
+  /// what they land on lifted first: what they landed on, to go back — null
+  /// when one dips below frame 0, or a cel landed on is one another lane of
+  /// that row still shows (F-136).
+  _LandedOn? _arrive(int sourceIndex) {
+    final from = orderedLayers[sourceIndex];
+    final onto = _rowAt(sourceIndex + rowDelta);
+    final incoming = selectedByLayer[from.id]!;
+    final spans = [
+      for (final block in incoming)
+        (start: block.startIndex + frameDelta, length: block.length),
+    ];
+    if (spans.any((span) => span.start < 0)) {
+      return null;
+    }
+    final covered = blocksLandedOn(drawingBlocks(onto.timeline), spans);
+    final coveredCels = {for (final block in covered) block.frameId};
+    final lifted = onto.lift(covered, cels: coveredCels);
+    final bank = bankOf(onto.layer.id);
+    if (coveredCels.any((id) => bank.exposes(id, lane: onto.timeline))) {
+      return null;
+    }
+    final frameIds = frameIdsByLayer[from.id]!;
+    onto.lay(
+      [
+        for (final (position, block) in incoming.indexed)
+          TimelineDrawingBlock(
+            startIndex: spans[position].start,
+            entry: block.entry,
+          ),
+      ],
+      cels: (
+        frames: framesByLayer[from.id]!,
+        clips: clipsAnchoredTo(from.audioClips, frameIds),
+      ),
+    );
+    for (final frameId in frameIds) {
+      rekeys.add((from: from.id, to: onto.layer.id, frameId: frameId));
+    }
+    return (blocks: covered, cels: lifted);
+  }
+
+  /// The blocks [landedOn] holds, by the row they were landed on, go back
+  /// to the rows the move left ([returnRowOf]) — the rows the move enters
+  /// first, whose blocks have a row left empty each.
+  void _sendBack(Map<int, _LandedOn> landedOn) {
     final entered = _entered;
     final order = [...landedOn.keys]
       ..sort((a, b) {
@@ -309,7 +317,7 @@ class _MultiRowRangeMovePlanner {
       if (blocks.isEmpty) {
         continue;
       }
-      final back = rowAt(returnRowOf(targetIndex));
+      final back = _rowAt(returnRowOf(targetIndex));
       back.takeBack(blocks, cels: cels);
       for (final frame in cels.frames) {
         rekeys.add((
@@ -319,11 +327,6 @@ class _MultiRowRangeMovePlanner {
         ));
       }
     }
-
-    return MultiRowRangeMovePlan(
-      layersAfter: {for (final row in rows.values) row.layer.id: row.after},
-      rekeys: rekeys,
-    );
   }
 
   /// The rows the moved blocks land on.
@@ -363,6 +366,9 @@ class _MultiRowRangeMovePlanner {
 
 /// The cels a row gives up, and the sounds anchored to them.
 typedef _Lifted = ({List<Frame> frames, List<AudioClip> clips});
+
+/// The blocks a move landed on a row, and the cels they took off it.
+typedef _LandedOn = ({List<TimelineDrawingBlock> blocks, _Lifted cels});
 
 /// One row of a multi-row move while the rebuild works on it: what it
 /// shows, the cels it owns and the sounds anchored to them.

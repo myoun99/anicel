@@ -1108,6 +1108,20 @@ TimelineExposure _exposureFromRawItem(
   return exposure;
 }
 
+/// The frames of [layer] that [ids] name, in their order — null where one
+/// is not [layer]'s.
+List<Frame>? framesNamed(Layer layer, Iterable<FrameId> ids) {
+  final found = <Frame>[];
+  for (final id in ids) {
+    final frame = layer.frameById(id);
+    if (frame == null) {
+      return null;
+    }
+    found.add(frame);
+  }
+  return found;
+}
+
 SplayTreeMap<int, TimelineExposure> _timelineFromJson(Object? json) {
   final rawItems = _rawTimelineItems(json).values.toList(growable: false);
   return SplayTreeMap.of({
