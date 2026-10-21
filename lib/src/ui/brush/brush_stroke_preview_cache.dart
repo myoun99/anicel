@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/bake_once_lru.dart';
 import '../../core/worker_count.dart';
 import '../../models/brush_dab.dart';
+import '../../models/brush_edit_canvas_input_settings.dart';
 import '../../models/brush_settings.dart';
 import '../../models/canvas_point.dart';
 import '../../models/rgba_image_bytes.dart';
@@ -19,8 +20,8 @@ import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_dab_share.dart';
 import '../../services/brush_pixel_blend.dart';
 import '../../services/brush_pressure_dynamics.dart';
+import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
-import '../../services/brush_tip_turns.dart';
 import 'brush_tool_state.dart';
 
 /// The APP-WIDE stroke-preview raster cache (UI-R18 R18-B).
@@ -472,13 +473,16 @@ Uint8List bakeBrushStrokeSample(
 /// can run it): a synthetic S-curve with a 0-1-0 pressure arc, resolved
 /// through the SAME tip-stamp cache + pixel-coverage oracle the canvas
 /// draws with (R20-B: what the list shows is the quantized reality).
-/// Placement dynamics (scatter/jitter) stay intentionally off so the
-/// preview is deterministic.
 ///
-/// ⛔THE TIPS' TURNS ARE NOT ONE OF THEM: which tip a dab takes is what a
-/// several-tip brush LOOKS like, and a swatch of the first tip alone would
-/// draw some other brush (F-176-Q3). They run on a fixed throw, so a random
-/// order shows its variety and still never moves between two bakes.
+/// 🚨AND PLACED BY THE CANVAS'S OWN [BrushStrokeDynamics] (F-434 — 유저
+/// 2026-10-21: 「브러시 도구설정의 프리뷰가 브러시 끝 모양을 안따라감? 즉
+/// 실제 브러시랑 다른모양?」): the tip's 向き — fixed, the stroke's
+/// direction or the pen's — its random turn, the scatter and which of
+/// several tips each dab takes, on fixed throws, so two bakes of one brush
+/// are one picture. ↩️Placement was left out to keep the preview
+/// deterministic (R18-B, 07-18), and the tips' turns came back in as a copy
+/// of their own (F-176-Q3) — so a tip that follows the stroke never turned
+/// on the swatch, and a spray drew one dab where the canvas throws several.
 Uint8List rasterizeBrushStrokeSample(
   BrushSettings settings,
   int width,
@@ -494,21 +498,23 @@ Uint8List rasterizeBrushStrokeSample(
     BrushToolState.clampSpacing(settings.spacing),
   );
   final margin = baseSize * 0.5 + 1;
+  final run = width - margin * 2;
+  final swing = height * 0.18;
 
   const curveSteps = 512;
   double? previousX;
   double? previousY;
   var pendingDistance = double.infinity;
   var sequence = 0;
-  final tipTurns = BrushTipTurns.of(
-    settings.tips,
-    settings.tipOrder,
+  final dynamics = BrushStrokeDynamics(
+    settings: BrushEditCanvasInputSettings.fromShape(settings.shape),
     random: math.Random(0),
+    tipRandom: math.Random(0),
   );
   for (var step = 0; step <= curveSteps; step += 1) {
     final t = step / curveSteps;
-    final x = margin + t * (width - margin * 2);
-    final y = height / 2 + math.sin(t * math.pi * 2) * height * 0.18;
+    final x = margin + t * run;
+    final y = height / 2 + math.sin(t * math.pi * 2) * swing;
     if (previousX != null && previousY != null) {
       final dx = x - previousX;
       final dy = y - previousY;
@@ -523,10 +529,6 @@ Uint8List rasterizeBrushStrokeSample(
     // (`BrushDab.pathStep`) — none for the first, which opens the stroke.
     final stretch = pendingDistance;
     pendingDistance = 0;
-    final tip = tipTurns == null ? settings.tipMask : tipTurns.next();
-    if (tipTurns != null && tip == null) {
-      continue;
-    }
 
     final pressure = math.sin(t * math.pi).clamp(0.08, 1.0).toDouble();
     // BB-3: the preview's synthetic pressure arc rides the SAME curves as
@@ -551,7 +553,7 @@ Uint8List rasterizeBrushStrokeSample(
         sequence: sequence,
         roundness: settings.roundness,
         angleDegrees: settings.angleDegrees,
-        tipMask: tip,
+        tipMask: settings.tipMask,
         dualMask: settings.dualMask,
         dualMaskScale: settings.dualMaskScale,
         dualDensity: settings.dualDensity,
@@ -568,61 +570,24 @@ Uint8List rasterizeBrushStrokeSample(
       ),
       shape: settings.shape,
     );
-    // 🚨THE FLOORS ARE THE PREVIEW'S OWN, and that is why they stayed here
-    // rather than moving into the law: a swatch has to show the brush's
-    // SHAPE at any setting, so it never fades to nothing and never thins
-    // below one pixel. The canvas has no such duty.
-    final dab = BrushTipStampCache.instance.resolveDab(
-      curved.copyWith(
-        size: math.max(1.0, curved.size),
-        opacity: curved.opacity.clamp(0.05, 1.0),
-        flow: curved.flow.clamp(0.05, 1.0),
+    // The curve's own heading here: the canvas reads the pen's last move,
+    // and its opening dab waits for the first (H43) — which is this.
+    final heading = strokeDirectionDegrees(
+      from: CanvasPoint(x: x, y: y),
+      to: CanvasPoint(
+        x: x + run,
+        y: y + math.cos(t * math.pi * 2) * math.pi * 2 * swing,
       ),
     );
-    sequence += 1;
-
-    // 🚨THE VISITOR, NOT THE LIST. This fold is the whole consumer: a pixel
-    // arrives, it is added to the plane, and nothing ever looks at it again.
-    // The list form allocates a `BrushPixelCoverage` for every one of them
-    // and copies the lot for `List.unmodifiable` — measured 2026-09-10, one
-    // bake of the 53-preset roster at a DPR-2 one-column cell made 8,480,380
-    // of those objects, and the container was 127 ms of an 833 ms raster.
-    // ⛔The arithmetic is unchanged: same walk, same cascade, same order —
-    // see `forEachBrushPixelCoverage`, which the list form now also runs.
-    //
-    // 🚨THE DAB SETTLES AT ITS OPACITY, as it does on the canvas (F-205,
-    // [settledDabAlpha]). ↩️The swatch multiplied it in —
-    // `coverage * dab.flow * dab.opacity`, kept in that order for the
-    // preview's byte pins — until 2026-10-01, so a pressure-opacity brush's
-    // swatch went on darkening where its dabs crossed while the canvas
-    // stopped at the press. An opacity of one still lays those same bytes:
-    // `coverage * dab.flow` is that product with its factor of one gone.
-    //
-    // 🚨AND IT LAYS ITS SHARE, as it does on the canvas (`stampShareOf`): a
-    // swatch row's nib is 0.62 of the row, so without it a tall row piled
-    // up darker than a short one.
-    final opacity = dab.opacity;
-    final evening = eveningTableOf(dab);
-    forEachBrushPixelCoverage(dab, (x, y, coverage) {
-      if (x >= width || y >= height) {
-        return;
-      }
-      final index = y * width + x;
-      final whole = coverage * dab.flow;
-      final laid = evening == null ? whole : evenedLaid(evening, whole);
-      final under = accumulated[index];
-      final dabAlpha = opacity >= 1.0
-          ? laid
-          : settledDabAlpha(
-              laid: laid,
-              opacity: opacity,
-              destinationAlpha: under,
-            );
-      if (dabAlpha == null) {
-        return;
-      }
-      accumulated[index] = under + dabAlpha * (1 - under);
-    });
+    final placed = dynamics.apply(
+      [curved],
+      firstSequence: sequence,
+      directionDegrees: heading,
+    );
+    sequence += placed.length;
+    for (final dab in placed) {
+      _layPreviewDab(accumulated, width, height, dab);
+    }
   }
 
   // The ceiling, once, on what the dabs accumulated. Floored the way the
@@ -634,4 +599,68 @@ Uint8List rasterizeBrushStrokeSample(
     bytes[index] = (accumulated[index].clamp(0.0, 1.0) * ceiling * 255).round();
   }
   return bytes;
+}
+
+/// Lays [placed], one dab as the stroke placed it, into [accumulated] — a
+/// [width] × [height] plane of alpha.
+void _layPreviewDab(
+  Float64List accumulated,
+  int width,
+  int height,
+  BrushDab placed,
+) {
+  // 🚨THE FLOORS ARE THE PREVIEW'S OWN, and that is why they stayed here
+  // rather than moving into the law: a swatch has to show the brush's
+  // SHAPE at any setting, so it never fades to nothing and never thins
+  // below one pixel. The canvas has no such duty.
+  final dab = BrushTipStampCache.instance.resolveDab(
+    placed.copyWith(
+      size: math.max(1.0, placed.size),
+      opacity: placed.opacity.clamp(0.05, 1.0),
+      flow: placed.flow.clamp(0.05, 1.0),
+    ),
+  );
+
+  // 🚨THE VISITOR, NOT THE LIST. This fold is the whole consumer: a pixel
+  // arrives, it is added to the plane, and nothing ever looks at it again.
+  // The list form allocates a `BrushPixelCoverage` for every one of them
+  // and copies the lot for `List.unmodifiable` — measured 2026-09-10, one
+  // bake of the 53-preset roster at a DPR-2 one-column cell made 8,480,380
+  // of those objects, and the container was 127 ms of an 833 ms raster.
+  // ⛔The arithmetic is unchanged: same walk, same cascade, same order —
+  // see `forEachBrushPixelCoverage`, which the list form now also runs.
+  //
+  // 🚨THE DAB SETTLES AT ITS OPACITY, as it does on the canvas (F-205,
+  // [settledDabAlpha]). ↩️The swatch multiplied it in —
+  // `coverage * dab.flow * dab.opacity`, kept in that order for the
+  // preview's byte pins — until 2026-10-01, so a pressure-opacity brush's
+  // swatch went on darkening where its dabs crossed while the canvas
+  // stopped at the press. An opacity of one still lays those same bytes:
+  // `coverage * dab.flow` is that product with its factor of one gone.
+  //
+  // 🚨AND IT LAYS ITS SHARE, as it does on the canvas (`stampShareOf`): a
+  // swatch row's nib is 0.62 of the row, so without it a tall row piled
+  // up darker than a short one.
+  final opacity = dab.opacity;
+  final evening = eveningTableOf(dab);
+  forEachBrushPixelCoverage(dab, (x, y, coverage) {
+    if (x >= width || y >= height) {
+      return;
+    }
+    final index = y * width + x;
+    final whole = coverage * dab.flow;
+    final laid = evening == null ? whole : evenedLaid(evening, whole);
+    final under = accumulated[index];
+    final dabAlpha = opacity >= 1.0
+        ? laid
+        : settledDabAlpha(
+            laid: laid,
+            opacity: opacity,
+            destinationAlpha: under,
+          );
+    if (dabAlpha == null) {
+      return;
+    }
+    accumulated[index] = under + dabAlpha * (1 - under);
+  });
 }

@@ -7,6 +7,7 @@ import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
 
@@ -455,6 +456,63 @@ void main() {
         swatchOf([block, dot], BrushTipOrder.random),
         swatchOf([block, dot], BrushTipOrder.random),
       );
+    });
+  });
+
+  // 유저 2026-10-21 (F-434): 「브러시 도구설정의 프리뷰가 브러시 끝 모양을
+  // 안따라감? 즉 실제 브러시랑 다른모양?」 — the swatch skipped the stroke's
+  // placement: a tip that follows the stroke never turned on it.
+  group('F-434: a swatch places its dabs as its strokes do', () {
+    // A hard, flat nib, one pixel apart, on a row tall enough to see it lie.
+    Uint8List swatchOf({
+      BrushTipRotationMode rotation = BrushTipRotationMode.fixed,
+      double angle = 0,
+      double jitter = 0,
+      int scatter = 1,
+    }) => rasterizeBrushStrokeSample(
+      BrushSettings(
+        spacing: 0.02,
+        roundness: 0.2,
+        angleDegrees: angle,
+        rotationMode: rotation,
+        angleJitter: jitter,
+        scatterRadiusRatio: scatter > 1 ? 1 : 0,
+        scatterCount: scatter,
+      ),
+      192,
+      64,
+    );
+    int inkOf(Uint8List alpha) => alpha.fold(0, (sum, value) => sum + value);
+
+    test('a tip that follows the stroke turns with the curve', () {
+      // Which of the two square angles lays the nib along the row: the one
+      // whose fixed line is the thinner — whatever way an angle runs.
+      final along = inkOf(swatchOf(angle: 0)) < inkOf(swatchOf(angle: 90))
+          ? 0.0
+          : 90.0;
+      final across = 90 - along;
+      expect(
+        inkOf(
+          swatchOf(rotation: BrushTipRotationMode.direction, angle: along),
+        ),
+        lessThan(inkOf(swatchOf(angle: along))),
+        reason: 'turned along the bends too, its line is thinner still',
+      );
+      expect(
+        inkOf(
+          swatchOf(rotation: BrushTipRotationMode.direction, angle: across),
+        ),
+        greaterThan(inkOf(swatchOf(angle: across))),
+        reason: 'and turned across them, broader',
+      );
+    });
+
+    test('a turn thrown at random and a spray are thrown, the same at every '
+        'bake', () {
+      expect(swatchOf(jitter: 1), isNot(swatchOf()));
+      expect(swatchOf(jitter: 1), swatchOf(jitter: 1));
+      expect(swatchOf(scatter: 3), isNot(swatchOf()));
+      expect(swatchOf(scatter: 3), swatchOf(scatter: 3));
     });
   });
 }
