@@ -576,6 +576,7 @@ void main() {
 
     await drawBox(tester, cameraGraph, 10, 22);
 
+    expect(session.trackFrameRangeSelection.value, isNull);
     final picked = session.laneRangeSelection.value!;
     expect(
       (picked.layerId, picked.startIndex, picked.endIndexExclusive),
@@ -586,7 +587,6 @@ void main() {
         if (line.layer.id == aCam && line.lane.keyedFrames.contains(12))
           line.lane.laneId,
     ]);
-    expect(session.trackFrameRangeSelection.value, isNull);
   });
 
   testWidgets('a box on an S row\'s graph over a pinned row\'s keys as well '
@@ -631,13 +631,13 @@ void main() {
 
     await drawBox(tester, key, 3, 10);
 
+    expect(session.laneRangeSelection.value, isNull);
     final picked = session.trackFrameRangeSelection.value!;
     expect(picked.rows, const [
       LaneRowAddress(s1, 'rotation'),
       LaneRowAddress(s2, 'rotation'),
     ]);
     expect((picked.startFrame, picked.endFrameExclusive), (3, 11));
-    expect(session.laneRangeSelection.value, isNull);
   });
 
   group('the conte row', () {

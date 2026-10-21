@@ -600,7 +600,10 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       onStart: _openBox,
       onUpdate: _drawBox,
       onEnd: _closeBox,
-      onCancel: _closeBox,
+      // Nothing to close: the recogniser cancels only a press it never
+      // accepted, before [_openBox] — a pointer cancelled after it ends the
+      // drag through onEnd.
+      onCancel: () {},
     ),
   );
 
