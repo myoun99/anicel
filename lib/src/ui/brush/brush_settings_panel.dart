@@ -640,6 +640,9 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       ),
       min: 0,
       max: BrushCorrection.maxStabilization,
+      // Whole numbers, as Clip Studio sets it (유저 2026-10-21, F-435:
+      // 「클튜에선 소수점자리가 없음. 거기까지 조절안함. 우리도 정수로만」).
+      divisions: BrushCorrection.maxStabilization.toInt(),
       keyValue: 'brush-tool-stabilizer-slider',
       onChanged: state.correction.steadies
           ? (value) =>
@@ -665,6 +668,9 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       ),
       min: 0,
       max: BrushCorrection.maxPostStrength,
+      // Whole numbers too: Clip Studio's 後補正 is the same whole 0..100
+      // (F-435, by F-34's 「데이터적으로 소수점이 필요없는것들 정수화」).
+      divisions: BrushCorrection.maxPostStrength.toInt(),
       keyValue: 'brush-tool-post-correction-slider',
       onChanged: (value) =>
           _correct(state.correction.copyWith(postStrength: value)),

@@ -140,6 +140,38 @@ void main() {
     expect(read().toBrushSettings().correction, read().correction);
   });
 
+  testWidgets('손떨림 보정 and 後補正 land on whole numbers, as Clip Studio '
+      'sets them (F-435)', (tester) async {
+    // 유저 2026-10-21: 「손떨림 보정, 클튜에선 소수점자리가 없음. 거기까지
+    // 조절안함. 우리도 정수로만」.
+    final read = await _pumpPanel(tester);
+    final rows = <String, double Function()>{
+      'brush-tool-stabilizer-slider': () => read().correction.stabilization,
+      'brush-tool-post-correction-slider': () =>
+          read().correction.postStrength,
+    };
+    for (final MapEntry(key: key, value: valueOf) in rows.entries) {
+      final slider = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(slider);
+      await tester.pumpAndSettle();
+      final box = tester.getRect(slider);
+      final seen = <double>[];
+      // Deliberately awkward places — taps that landed on whole numbers by
+      // luck would prove nothing.
+      for (final along in [0.213, 0.347, 0.461, 0.589]) {
+        await tester.tapAt(
+          Offset(box.left + box.width * along, box.center.dy),
+        );
+        await tester.pumpAndSettle();
+        seen.add(valueOf());
+      }
+      expect(seen.toSet(), hasLength(4), reason: '⛔premise: $key moved');
+      for (final value in seen) {
+        expect(value, value.roundToDouble(), reason: '$key held $value');
+      }
+    }
+  });
+
   testWidgets('손떨림 보정 적용 switched off dims the slider and the speed row '
       'under it, and keeps what they hold (유저 2026-10-20)', (tester) async {
     Future<void> tap(String key) async {
