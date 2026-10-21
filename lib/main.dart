@@ -261,11 +261,13 @@ class AnicelApp extends StatelessWidget {
             child: child ?? const SizedBox.shrink(),
           ),
         ),
-        home: HomePage(
-          battery: DeviceBattery.shown,
-          handedAtLaunch: handedAtLaunch,
-        ),
+        home: _home(),
       ),
     );
   }
+
+  Widget _home() => HomePage(
+    battery: DeviceBattery.shown,
+    handedAtLaunch: handedAtLaunch,
+  );
 }

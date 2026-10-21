@@ -53,6 +53,6 @@ void main() {
       lessThan(source.indexOf('runApp(')),
       reason: 'a place the strip made a frame later would pop into being',
     );
-    expect(source, contains('HomePage(battery: DeviceBattery.shown)'));
+    expect(source, matches(r'HomePage\(\s*battery: DeviceBattery\.shown'));
   });
 }
