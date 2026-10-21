@@ -274,6 +274,21 @@ void main() {
     expect(anicelFormatVersion, greaterThan(26));
   });
 
+  // anchor-walks-a-path ② (format 28 — anchor-walks-a-path-Q5 「이 레인에서
+  // 같이 올린다」): a key on a path holds a handle on each side, `joined` or
+  // `split`. A v27 file's keys say one handle and its mirror (`tangent`),
+  // which this build no longer reads — refused by its number rather than
+  // turned away at the key in words nobody could act on; and a file this
+  // build writes says a number a v27 build refuses as a newer Anicel's.
+  test('🚨a v27 file is refused by its number — its keys would say one '
+      'handle and its mirror', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(27)),
+      refusesNaming('format 27,'),
+    );
+    expect(anicelFormatVersion, greaterThan(27));
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),

@@ -65,6 +65,25 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v28 (2026-10-21, anchor-walks-a-path ② — 유저 10-13 「구조는 최대한
+/// AE랑 통일하려고」): a key on a path holds a handle on each side — in one
+/// line through the key (`joined`: the way the handle ahead points and the
+/// two reaches) or apart (`split`) — where it held one handle and its
+/// mirror (`tangent`). A v27 build turns the whole file away at such a key
+/// with 「Unknown key path」, a sentence that names nothing a person could
+/// act on. The bump turns that into the refusal of a newer Anicel's file
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⛔A key's `tangent` is NOT read here (the save law), and with it goes
+/// every file older than this one ([anicelOldestReadFormatVersion]) — 🗣️유저
+/// 10-06 「안열려도되」 · 10-18 (F-382-Q1) 「법 그대로 — 바닥을 올린다」, and
+/// 10-21 (anchor-walks-a-path-Q5) 「이 레인에서 같이 올린다」. What to carry
+/// when one is asked for: a key's `{"tangent": {"x": x, "y": y}}` was the
+/// handle ahead and the one behind its mirror, so it becomes
+/// `{"joined": {"degrees": atan2(y, x) in degrees, "ahead": √(x² + y²),
+/// "behind": √(x² + y²)}}`. Nothing else: v27 did not move the floor, so a
+/// v26 document is a v27 one.
+///
 /// v27 (2026-10-20, anchor-walks-a-path ① · ④ — 유저 10-13 「구조는 최대한
 /// AE랑 통일하려고」): an anchor point's keys walk a path as a position's
 /// do, so a key on the anchor's lane may rove (`rove: true`, `walksAPath`).
@@ -413,7 +432,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 27;
+const int anicelFormatVersion = 28;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -437,7 +456,8 @@ const int anicelFormatVersion = 27;
 /// (v12 above).
 /// 13: a key's one interpolation is no longer read (v13 above).
 /// 26: a viewer bookmark's page is no longer read (v26 above).
-const int anicelOldestReadFormatVersion = 26;
+/// 28: a key's one handle and its mirror are no longer read (v28 above).
+const int anicelOldestReadFormatVersion = 28;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the
