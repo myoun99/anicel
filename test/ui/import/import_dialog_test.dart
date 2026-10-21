@@ -2177,4 +2177,35 @@ void main() {
       isEmpty,
     );
   });
+
+  testWidgets('one bar for the whole press: each file placed fills its own '
+      'share of it — the second starts where the first\'s ends', (
+    tester,
+  ) async {
+    final first = await tester.runAsync(() => writePng('first.png'));
+    final second = await tester.runAsync(() => writePng('second.png'));
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(
+            session: session,
+            initialPaths: [first!, second!],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await tester.pump();
+    final told = watchTheBar(tester);
+    await pumpPastTheWaitWindow(tester);
+    session.playbackRig.prerenderScheduler.cancel();
+
+    expectOneBar(told, [0.5, 1]);
+  });
 }

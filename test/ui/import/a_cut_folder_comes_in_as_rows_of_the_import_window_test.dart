@@ -511,6 +511,43 @@ void main() {
     await pick(scan, 'newCut');
     expect(wordOf(scan), AppText.strings.imIntoNewCut);
     expect(wordOf(correction), AppText.strings.imIntoNewCut);
+
+    // Back on 「컷」, every row is a layer of the one cut again — what
+    // 「커스텀」 picked is left aside.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-folder-into-cut')),
+    );
+    await tester.pumpAndSettle();
+    expect(wordOf(scan), AppText.strings.imIntoNewLayer);
+    expect(wordOf(correction), rides);
+  });
+
+  testWidgets('one bar for the whole press: the folder\'s cels fill their '
+      'share of it, then the scan placed as a new layer its own — the bar '
+      'never runs back', (tester) async {
+    final folder = await aFolder(tester, 'csm_13_069_lo', [
+      'A1.png',
+      'A2.png',
+      '_069_ts_lo.png',
+    ]);
+    final session = aSession();
+    await openOn(tester, session, folder);
+    final scan = '$folder/_069_ts_lo.png';
+    await tester.tap(find.byKey(ValueKey<String>('import-cell-into-$scan')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-into-activeCutLayer')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await tester.pump();
+    final told = watchTheBar(tester);
+    await pumpPastTheWaitWindow(tester);
+    session.playbackRig.prerenderScheduler.cancel();
+
+    // Two cels and one file: the cels hold two thirds of the bar.
+    expectOneBar(told, [1 / 3, 2 / 3, 1]);
   });
 
   testWidgets('with no cut open, 「컷」 still has a cut to lay its rows in — '

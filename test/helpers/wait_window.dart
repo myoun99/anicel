@@ -23,6 +23,38 @@ import 'settle_async.dart';
 /// the busier the machine the likelier (2026-10-08 — 3 runs in 16 on one
 /// master). `a_run_the_window_waits_out_stops_the_warmer_test` holds every
 /// caller to it.
+/// Every share of the bar the wait window up now is told from here on —
+/// read off the window's own listenable, not off its frames, so no report
+/// falls between two of them.
+List<double> watchTheBar(WidgetTester tester) {
+  final progress = tester
+      .widget<AppProgressDialog>(find.byType(AppProgressDialog))
+      .progress;
+  final told = <double>[];
+  void record() {
+    if (progress.value.fraction case final fraction?) {
+      told.add(fraction);
+    }
+  }
+
+  record();
+  progress.addListener(record);
+  return told;
+}
+
+/// [told] as one bar for a whole run: it never runs back, and it passes
+/// every share in [stops] on its way, in order.
+void expectOneBar(List<double> told, List<double> stops) {
+  for (var at = 1; at < told.length; at += 1) {
+    expect(told[at], greaterThanOrEqualTo(told[at - 1]), reason: '$told');
+  }
+  expect(
+    told,
+    containsAllInOrder([for (final stop in stops) closeTo(stop, 1e-9)]),
+    reason: '$told',
+  );
+}
+
 Future<void> pumpPastTheWaitWindow(WidgetTester tester) async {
   final window = find.byType(AppProgressDialog);
   await tester.pump();
