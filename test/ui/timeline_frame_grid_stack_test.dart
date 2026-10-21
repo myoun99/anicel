@@ -34,42 +34,33 @@ void main() {
       expect(positioned.left, 240);
     });
 
+    // The slot gives the playhead its length along the frames and leaves its
+    // thickness to it — read from where it lands, not from the slot's
+    // spelling. The test playhead is 200 square, so neither is its own.
     testWidgets('the playhead spans the frame axis — horizontal', (
       tester,
     ) async {
-      await _pumpFrameGridStack(tester, playheadExtent: 480);
+      await _pumpFrameGridStack(tester, playheadExtent: 300);
 
-      final positioned = tester.widget<Positioned>(
-        find.ancestor(
-          of: find.byKey(playheadKey),
-          matching: find.byType(Positioned),
-        ),
-      );
-
-      expect(positioned.left, 0);
-      expect(positioned.top, 0);
-      expect(positioned.width, 480);
-      expect(positioned.height, isNull);
+      final origin = tester.getTopLeft(find.byType(TimelineFrameGridStack));
+      final playhead = tester.getRect(find.byKey(playheadKey));
+      expect(playhead.topLeft - origin, Offset.zero);
+      expect(playhead.width, 300, reason: 'as long as the frames run');
+      expect(playhead.height, 200, reason: 'as thick as it is itself');
     });
 
     testWidgets('the playhead spans the frame axis — vertical', (tester) async {
       await _pumpFrameGridStack(
         tester,
         axis: Axis.vertical,
-        playheadExtent: 480,
+        playheadExtent: 300,
       );
 
-      final positioned = tester.widget<Positioned>(
-        find.ancestor(
-          of: find.byKey(playheadKey),
-          matching: find.byType(Positioned),
-        ),
-      );
-
-      expect(positioned.left, 0);
-      expect(positioned.top, 0);
-      expect(positioned.height, 480);
-      expect(positioned.width, isNull);
+      final origin = tester.getTopLeft(find.byType(TimelineFrameGridStack));
+      final playhead = tester.getRect(find.byKey(playheadKey));
+      expect(playhead.topLeft - origin, Offset.zero);
+      expect(playhead.height, 300, reason: 'as long as the frames run');
+      expect(playhead.width, 200, reason: 'as thick as it is itself');
     });
 
     testWidgets('every overlay is turned with the stack', (tester) async {
@@ -120,8 +111,9 @@ void main() {
       expect(stack.children[1].key, rowsBodyKey);
       final playheadPositioned = stack.children[2] as Positioned;
       // The playhead brings its own layer (the cursor layer is a
-      // `TickLayer`), so the slot places it bare.
-      expect(playheadPositioned.child.key, playheadKey);
+      // `TickLayer`), so the slot adds none: only the box that gives it its
+      // length stands between them.
+      expect((playheadPositioned.child as SizedBox).child!.key, playheadKey);
       final overlay = stack.children[3] as TickOverlay;
       expect(overlay.children, hasLength(3));
       expect(overlay.children[0], isA<Positioned>());
@@ -180,8 +172,8 @@ Future<void> _pumpFrameGridStack(
             playheadExtent: playheadExtent,
             playhead: const SizedBox(
               key: ValueKey<String>('test-playhead'),
-              width: 480,
-              height: 480,
+              width: 200,
+              height: 200,
             ),
             frameCellExtent: frameCellExtent,
             playbackFrameCount: frameCount,
