@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../helpers/panel_finders.dart';
 import 'flyout_test_helpers.dart' show flyoutOwnerByItemKey;
 
 /// D3 (R7): the cut-canvas resize runs behind the app's ONE wait-for-this
@@ -75,5 +78,63 @@ void main() {
       find.byKey(const ValueKey<String>('resize-progress-dialog')),
       findsNothing,
     );
+  });
+
+  // 🗣️F-432 (유저 2026-10-21): 「페이스트 보드 배율 전환이 너무 느리고, 이런
+  // 시간 걸리는 로직은 규칙으로서 공용 로딩창 표시해야함」.
+  testWidgets('a pasteboard size or use, pressed in its window, lands behind '
+      'the same wait window, under the pasteboard\'s name', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pumpAndSettle();
+
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+    // The floor lays its controls out rather than behind a gear.
+    await tester.tap(
+      find.descendant(
+        of: mainCanvasPanelShell(),
+        matching: find.byKey(
+          const ValueKey<String>('canvas-pasteboard-color-button'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final (press, landed) in [
+      (
+        'pasteboard-size-oneAndAHalf',
+        () => session.repository.requireProject().pasteboardSize ==
+            PasteboardSize.oneAndAHalf,
+      ),
+      (
+        'pasteboard-in-use',
+        () => !session.repository.requireProject().pasteboardInUse,
+      ),
+    ]) {
+      await tester.tap(find.byKey(ValueKey<String>(press)));
+      await tester.pump();
+      final window = find.byKey(
+        const ValueKey<String>('resize-progress-dialog'),
+      );
+      expect(window, findsOneWidget, reason: press);
+      expect(
+        find.descendant(
+          of: window,
+          matching: find.text(AppText.strings.pasteboardTitle),
+        ),
+        findsOneWidget,
+        reason: press,
+      );
+      await tester.pumpAndSettle();
+      expect(landed(), isTrue, reason: press);
+      await tester.pump(const Duration(milliseconds: 950));
+      await tester.pumpAndSettle();
+      expect(window, findsNothing, reason: press);
+    }
   });
 }

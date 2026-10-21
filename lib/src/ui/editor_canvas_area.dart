@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -48,7 +49,8 @@ import 'camera/camera_path_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
 import 'canvas/camera_adjust_layer.dart';
 import 'canvas/canvas_adjust_layer.dart';
-import 'cut_command_group.dart' show landCanvasAdjust;
+import 'cut_command_group.dart'
+    show landCanvasAdjust, resizeBehindTheWaitWindow;
 import 'session/canvas_adjust.dart' show CameraSizeDraft;
 import 'canvas/bitmap_surface_painter.dart';
 import 'canvas/flip_hud_controller.dart';

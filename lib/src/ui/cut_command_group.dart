@@ -84,12 +84,13 @@ Future<void> _resizeActiveCutCanvas(
       CanvasEdgesDraft.of(cut.id, cut.canvasSize),
     ),
   ),
-  commit: (request) => _resizeBehindTheWaitWindow(
+  commit: (request) => resizeBehindTheWaitWindow(
     context,
     () => session.cutVerbs.resizeActiveCutCanvas(
       request.size,
       anchor: request.anchor,
     ),
+    title: AppText.strings.canvasSizeTitle,
   ),
 );
 
@@ -112,19 +113,29 @@ Future<void> landCanvasAdjust(
       session.camera.setProjectCameraSize(size);
       adjust.end();
     case CanvasEdgesDraft(:final size, :final contentOffset):
-      await _resizeBehindTheWaitWindow(context, () {
-        session.cutVerbs.placeActiveCutCanvas(
-          size,
-          contentOffset: contentOffset,
-        );
-        adjust.end();
-      });
+      await resizeBehindTheWaitWindow(
+        context,
+        () {
+          session.cutVerbs.placeActiveCutCanvas(
+            size,
+            contentOffset: contentOffset,
+          );
+          adjust.end();
+        },
+        title: AppText.strings.canvasSizeTitle,
+      );
     case null:
       return;
   }
 }
 
-/// A canvas resize, the one way every door runs it.
+/// A move of the canvas's walls — its size, or how far its pasteboard
+/// reaches past it — the one way every door runs it. Each cuts every
+/// picture past the new wall, so each takes as long as the pictures do.
+///
+/// 🗣️F-432 (유저 2026-10-21): 「이런 시간 걸리는 로직은 규칙으로서 공용
+/// 로딩창 표시해야함」 — the pasteboard's size and its use joined the
+/// canvas size here, under their own [title].
 ///
 /// D3: the app's ONE wait-for-this window, exactly as save wears it.
 /// The command is synchronous, but runWithAppProgress paints the
@@ -133,12 +144,13 @@ Future<void> landCanvasAdjust(
 /// canvas host's adoption pass and the first recomposite land on
 /// the next frame, and no input may slip between the halves (an
 /// edit there would commit a stroke at the wrong canvas size).
-Future<void> _resizeBehindTheWaitWindow(
+Future<void> resizeBehindTheWaitWindow(
   BuildContext context,
-  VoidCallback resize,
-) => runWithAppProgress<void>(
+  VoidCallback resize, {
+  required String title,
+}) => runWithAppProgress<void>(
   context: context,
-  title: AppText.strings.canvasSizeTitle,
+  title: title,
   titleIcon: Icons.aspect_ratio,
   runningLabel: AppText.strings.resizeProgressRunning,
   doneLabel: AppText.strings.resizeProgressDone,

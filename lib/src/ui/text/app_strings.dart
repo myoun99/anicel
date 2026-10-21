@@ -1754,6 +1754,7 @@ enum AppStrings {
   String get valueTypeIn => _s('valueTypeIn');
   String get viewCanvasColor => _s('viewCanvasColor');
   String get viewPasteboardColor => _s('viewPasteboardColor');
+  String get pasteboardTitle => _s('pasteboardTitle');
   String get pasteboardInUse => _s('pasteboardInUse');
   String get pasteboardNotInUse => _s('pasteboardNotInUse');
   String get viewBackdropColor => _s('viewBackdropColor');
@@ -2918,6 +2919,7 @@ enum AppStrings {
     'valueTypeIn': 'Type a value',
     'viewCanvasColor': 'Canvas color',
     'viewPasteboardColor': 'Pasteboard color',
+    'pasteboardTitle': 'Pasteboard',
     'pasteboardInUse': 'In use',
     'pasteboardNotInUse': 'Not in use',
     'viewBackdropColor': 'Backdrop color',
@@ -4495,6 +4497,7 @@ enum AppStrings {
     'valueTypeIn': '数値を入力',
     'viewCanvasColor': 'カンバスの色',
     'viewPasteboardColor': 'ペーストボードの色',
+    'pasteboardTitle': 'ペーストボード',
     'pasteboardInUse': '使用',
     'pasteboardNotInUse': '使用しない',
     'viewBackdropColor': '背景の色',
@@ -6097,6 +6100,7 @@ enum AppStrings {
     'valueTypeIn': '직접 입력',
     'viewCanvasColor': '캔버스 색',
     'viewPasteboardColor': '페이스트보드 색',
+    'pasteboardTitle': '페이스트보드',
     'pasteboardInUse': '사용',
     'pasteboardNotInUse': '사용 안 함',
     'viewBackdropColor': '배경 색',
@@ -7847,6 +7851,7 @@ enum AppStrings {
     'valueTypeIn': 'Saisir la valeur',
     'viewCanvasColor': 'Couleur du canevas',
     'viewPasteboardColor': 'Couleur du fond',
+    'pasteboardTitle': 'Fond',
     'pasteboardInUse': 'Utilisé',
     'pasteboardNotInUse': 'Inutilisé',
     'viewBackdropColor': 'Couleur de l\'arrière-plan',
@@ -9382,6 +9387,7 @@ enum AppStrings {
     'valueTypeIn': '输入数值',
     'viewCanvasColor': '画布颜色',
     'viewPasteboardColor': '底板颜色',
+    'pasteboardTitle': '底板',
     'pasteboardInUse': '使用',
     'pasteboardNotInUse': '不使用',
     'viewBackdropColor': '背景颜色',

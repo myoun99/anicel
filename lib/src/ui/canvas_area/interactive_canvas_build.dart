@@ -478,8 +478,22 @@ class _InteractiveCanvasBuild {
       ),
       onPasteboardColorChanged: session.projectSettings.setPasteboardColor,
       onPasteboardNone: session.projectSettings.setPasteboardNone,
-      onPasteboardSizeChanged: session.projectSettings.setPasteboardSize,
-      onPasteboardInUseChanged: session.projectSettings.setPasteboardInUse,
+      // Behind the canvas size's wait window: each cuts every picture past
+      // the wall it moves (F-432).
+      onPasteboardSizeChanged: (size) => unawaited(
+        resizeBehindTheWaitWindow(
+          context,
+          () => session.projectSettings.setPasteboardSize(size),
+          title: AppText.strings.pasteboardTitle,
+        ),
+      ),
+      onPasteboardInUseChanged: (inUse) => unawaited(
+        resizeBehindTheWaitWindow(
+          context,
+          () => session.projectSettings.setPasteboardInUse(inUse),
+          title: AppText.strings.pasteboardTitle,
+        ),
+      ),
       onBackdropColorChanged: session.projectSettings.setProjectBackdrop,
       onBackdropNone: session.projectSettings.setProjectBackdropNone,
       onEyedropperPick: (color) => _state.widget.onBrushToolStateChanged?.call(
