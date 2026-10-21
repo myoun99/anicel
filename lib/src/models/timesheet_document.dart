@@ -444,8 +444,9 @@ class TimesheetDocument {
     final seColumnSlots = _slotCount(seColumnCount, seSlots);
     final columns = <TimesheetColumn>[
       // The cel rows fill the ACTION block in order, headed by their real
-      // names — but the 動画 ones, which fill the CELL block by the same law
-      // (F-406); unbacked slots stay blank handwriting space.
+      // names — but the 動画 and 仕上げ ones, which fill the CELL block by
+      // the same law (F-406 · F-431); unbacked slots stay blank
+      // handwriting space.
       for (var slot = 0; slot < actionSlots; slot += 1)
         _celRowColumn(TimesheetColumnKind.action, slot, actionLayers, rowCount, playbackFrameCount, dataSheet),
       for (var slot = 0; slot < seColumnSlots; slot += 1)

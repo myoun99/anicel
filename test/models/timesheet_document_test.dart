@@ -235,8 +235,11 @@ void main() {
         for (final cell in column.cells) (cell.kind, cell.label),
       ];
 
-      test('in its own place among the 動画 rows, whatever its revise — '
-          'and not in the ACTION block, which lays the rest in turn', () {
+      test('in its own place among the 動画 and 仕上げ rows, whatever its '
+          'revise — and not in the ACTION block, which lays the rest in '
+          'turn', () {
+        // F-431 (유저 2026-10-21): 「시아게 공정쪽 레이어도 동일하게
+        // CELL란에 등록」.
         final document = _document(
           _cut(
             layers: [
@@ -250,6 +253,17 @@ void main() {
                 ),
               ),
               _layer('Color', mark: const LayerMark(process: LayerProcess.key)),
+              _layer(
+                'Paint',
+                mark: const LayerMark(process: LayerProcess.finish),
+              ),
+              _layer(
+                'Paint-check',
+                mark: const LayerMark(
+                  process: LayerProcess.finish,
+                  revise: LayerRevise.cellCheck,
+                ),
+              ),
             ],
           ),
         );
@@ -265,8 +279,14 @@ void main() {
           [
             for (final column in block(document, TimesheetColumnKind.cel))
               (column.label, column.layerName),
-          ].take(3),
-          [('IB', 'IB'), ('IB-check', 'IB-check'), ('', null)],
+          ].take(5),
+          [
+            ('IB', 'IB'),
+            ('IB-check', 'IB-check'),
+            ('Paint', 'Paint'),
+            ('Paint-check', 'Paint-check'),
+            ('', null),
+          ],
         );
       });
 

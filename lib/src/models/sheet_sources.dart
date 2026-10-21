@@ -42,8 +42,8 @@ class SheetSources {
         for (final layer in cut.layers)
           if (layerTakesSheetCelColumn(layer)) layer,
       ],
-      actionBooks: sheetBooksOf(_blockRows(cut.layers, inbetween: false)),
-      cellBooks: sheetBooksOf(_blockRows(cut.layers, inbetween: true)),
+      actionBooks: sheetBooksOf(_blockRows(cut.layers, cellBlock: false)),
+      cellBooks: sheetBooksOf(_blockRows(cut.layers, cellBlock: true)),
       seLayers: [
         for (final layer in cut.layers)
           if (layerPrintsSheetLines(layer))
@@ -79,16 +79,17 @@ class SheetSources {
   }
 
   /// The rows a block's books lie among: every row that takes no cel
-  /// column, and that block's own cel rows — the 動画 ones for the CELL
-  /// block, the others for the ACTION block. The other block's rows are not
+  /// column, and that block's own cel rows — the 動画 and 仕上げ ones for
+  /// the CELL block ([layerTakesTheCelBlock]), the others for the ACTION
+  /// block. The other block's rows are not
   /// there for a book to lie between (F-406-Q1).
   static List<Layer> _blockRows(
     List<Layer> layers, {
-    required bool inbetween,
+    required bool cellBlock,
   }) => [
     for (final layer in layers)
       if (!layerTakesSheetCelColumn(layer) ||
-          layerMarkedInbetween(layer) == inbetween)
+          layerTakesTheCelBlock(layer) == cellBlock)
         layer,
   ];
 
@@ -100,14 +101,14 @@ class SheetSources {
   final List<Layer> celLayers;
 
   /// The cel rows the timesheet prints in its ACTION block: all but the
-  /// 動画 ones (F-406).
+  /// CELL block's (F-406 · F-431).
   List<Layer> get actionLayers => [
     for (final layer in celLayers)
-      if (!layerMarkedInbetween(layer)) layer,
+      if (!layerTakesTheCelBlock(layer)) layer,
   ];
 
-  /// The cel rows the timesheet prints in its CELL block: the 動画 ones,
-  /// by the ACTION block's law (F-406: 「기본적인 규칙 왠만한건 액션란 등
+  /// The cel rows the timesheet prints in its CELL block: the 動画 and
+  /// 仕上げ ones ([layerTakesTheCelBlock]), by the ACTION block's law (F-406: 「기본적인 규칙 왠만한건 액션란 등
   /// 규칙 똑같음. 법 통일」).
   ///
   /// 🗣️F-406-Q1 (유저 2026-10-20): 「CELL 은 동화 행만」 — each block lays
@@ -118,7 +119,7 @@ class SheetSources {
   /// ACTION rows' names (UI-R10 #10).
   List<Layer> get cellLayers => [
     for (final layer in celLayers)
-      if (layerMarkedInbetween(layer)) layer,
+      if (layerTakesTheCelBlock(layer)) layer,
   ];
 
   /// The cel columns a timesheet's paper must hold: its wider block's.

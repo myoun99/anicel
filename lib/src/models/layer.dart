@@ -752,12 +752,15 @@ bool layerTakesSheetCelColumn(Layer layer) =>
     layer.onTimesheet;
 
 /// F-406: whether this layer's cel column is the timesheet's CELL block's
-/// rather than its ACTION block's — a row whose colour label is 動画,
-/// whatever its revise (유저 2026-10-19: 「색라벨 공정이 동화면
+/// rather than its ACTION block's — a row whose colour label is 動画 or
+/// 仕上げ, whatever its revise (유저 2026-10-19: 「색라벨 공정이 동화면
 /// 타임시트용지패널의 CELL란에 표시하도록. 액션란에는 표시안함. 동화의 어떤
-/// 수정공정이던 CELL란표시」).
-bool layerMarkedInbetween(Layer layer) =>
-    layer.mark.process == LayerProcess.inbetween;
+/// 수정공정이던 CELL란표시」 · 10-21, F-431: 「시아게 공정쪽 레이어도
+/// 동일하게 CELL란에 등록」).
+bool layerTakesTheCelBlock(Layer layer) => switch (layer.mark.process) {
+  LayerProcess.inbetween || LayerProcess.finish => true,
+  _ => false,
+};
 
 /// D24 후반: whether this layer marks a BOOK on the sheet — an image row
 /// whose colour label is 美術, whatever its revise and whatever its name
