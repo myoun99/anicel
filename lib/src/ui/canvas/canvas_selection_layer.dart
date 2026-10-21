@@ -33,6 +33,7 @@ import '../brush/canvas_selection_commands.dart';
 import '../brush/transform_tool_options.dart';
 import 'box_chrome.dart' show SelectionTransformChrome;
 import 'box_on_screen.dart';
+import 'canvas_touch_contacts.dart';
 import 'float_warp.dart';
 import 'interactive_brush_edit_canvas_view.dart'
     show InteractiveBrushEditCanvasView;
@@ -888,9 +889,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     duration: const Duration(milliseconds: 600),
   );
 
-  /// A finger resting on the glass while a transform handle is dragged or
-  /// a shape is drawn ([_dragTakesAModifierTouch]) — the modifier's TOUCH
-  /// entrance.
+  /// Whether a finger rests on the glass while a transform handle is
+  /// dragged or a shape is drawn ([_dragTakesAModifierTouch]) — the
+  /// modifier's TOUCH entrance. Counted where every modifier finger is
+  /// ([CanvasTouchContacts.aFingerDownBesides]): one laid down before the
+  /// press as one laid down during the drag, and let go of lifted or
+  /// cancelled alike (a-cancelled-modifier-finger-stays-held, 10-21). Its
+  /// leaving is not the drag ending: it changes what the next move solves.
   ///
   /// 🗣️유저 2026-09-22: 「수정자는 항상 그렇지만 **터치 입구도 존재하게**
   /// 하고싶으니 **터치발생하면 수정자 발생**하도록. **최대한 입구 단순하게
@@ -905,15 +910,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// not. 유저 asked for the meaning anyway on 09-22, with the tablet's
   /// missing Alt as the reason. ⛔So the risk is theirs and it is named,
   /// not forgotten.
-  int? _modifierTouch;
+  bool get _aModifierFinger => _aModifierFingerBeside(
+    _drag?.pointer,
+    taken: _dragTakesAModifierTouch,
+  );
+
+  /// [_aModifierFinger] for a drag of [pointer]'s that [taken] says reads a
+  /// finger as the modifier.
+  bool _aModifierFingerBeside(int? pointer, {required bool taken}) =>
+      taken && CanvasTouchContacts.aFingerDownBesides(pointer);
 
   /// Whether the scale modifier is held — by key or by finger.
   ///
   /// ⚠️Read at EVERY solve, which is the whole of 유저's 「입구 하나로 하되
   /// 두개의 동작을 지원」: held before the press and pressed during the drag
   /// are the same question asked at the same place.
-  bool get _scaleModifierHeld =>
-      ModifierKeys.isAltPressed || _modifierTouch != null;
+  bool get _scaleModifierHeld => ModifierKeys.isAltPressed || _aModifierFinger;
 
   /// Whether the drag in hand reads a finger laid down beside it as the
   /// MODIFIER, rather than as the navigate signal that cancels it: a
@@ -932,16 +944,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   bool get _dragTakesAModifierTouch {
     final drag = _drag;
     return drag is TransformDrag ||
-        (widget.tool == CanvasSelectionTool.drawShape &&
-            drag is MarqueeDrag &&
-            (!drag.byTouch ||
-                drag.screenTravel >=
-                    InteractiveBrushEditCanvasView.kTouchStrokeCommitSlop));
+        (drag is MarqueeDrag &&
+            _aShapeTakesAModifierTouch(
+              byTouch: drag.byTouch,
+              travel: drag.screenTravel,
+            ));
   }
+
+  /// [_dragTakesAModifierTouch] for a shape — drawn [byTouch] or not,
+  /// [travel] along on screen: asked of the drag in hand, and at a press,
+  /// of the drag it starts.
+  bool _aShapeTakesAModifierTouch({
+    required bool byTouch,
+    required double travel,
+  }) =>
+      widget.tool == CanvasSelectionTool.drawShape &&
+      (!byTouch ||
+          travel >= InteractiveBrushEditCanvasView.kTouchStrokeCommitSlop);
 
   /// Whether the shape being drawn keeps its ratio NOW: the tool's switch,
   /// turned the other way round while the modifier is held — Shift, or the
-  /// finger ([_modifierTouch]).
+  /// finger ([_aModifierFinger]).
   ///
   /// ⚠️Read at every move, like [_scaleModifierHeld] and for its reason:
   /// held before the press and pressed during the drag are one question.
@@ -951,7 +974,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// Whether the drag's Shift is held now — the key, or the finger the drag
   /// reads as one ([_dragTakesAModifierTouch]).
-  bool get _shiftHeld => ModifierKeys.isShiftPressed || _modifierTouch != null;
+  bool get _shiftHeld => ModifierKeys.isShiftPressed || _aModifierFinger;
 
   /// A selection the USER made.
   ///
@@ -2367,14 +2390,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // EXCEPT while a transform handle is being dragged, where it is the
       // MODIFIER — neither cancel nor navigate. 유저 08-13 asked only that
       // it stop cancelling; 09-22 gave it the meaning. ⚠️The reasoning of
-      // both decisions lives on [_modifierTouch] — read it before moving
+      // both decisions lives on [_aModifierFinger] — read it before moving
       // this. A shape being drawn takes it the same way (I-69-Q5,
       // [_dragTakesAModifierTouch]).
       if (event.kind == PointerDeviceKind.touch && !_dragTakesAModifierTouch) {
         setState(() => _endDrag(cancelled: true, notify: true));
         _syncAnts();
-      } else if (event.kind == PointerDeviceKind.touch) {
-        _modifierTouch ??= event.pointer;
       }
       return;
     }
@@ -2446,7 +2467,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       _confirmMoveSession();
       final folds = _toolFolds;
-      widget.shiftLine?.heldNow(_shiftHeld);
+      final byTouch = event.kind == PointerDeviceKind.touch;
+      // [_shiftHeld], of the drag this press starts — there is none yet.
+      widget.shiftLine?.heldNow(
+        ModifierKeys.isShiftPressed ||
+            _aModifierFingerBeside(
+              event.pointer,
+              taken: _aShapeTakesAModifierTouch(byTouch: byTouch, travel: 0),
+            ),
+      );
       setState(() {
         _drag = MarqueeDrag(
           pointer: event.pointer,
@@ -2459,7 +2488,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           zoom: widget.viewport.zoom,
           combine: folds ? _foldModeNow() : null,
           shiftAtThePress: ModifierKeys.isShiftPressed,
-          byTouch: event.kind == PointerDeviceKind.touch,
+          byTouch: byTouch,
           line: widget.shiftLine,
         );
       });
@@ -2963,9 +2992,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   CanvasPoint _turnCentreOf(SelectionAffine affine) => affine.anchorCanvas;
 
   void _handlePointerUp(PointerUpEvent event) {
-    if (_letGoOfTheModifier(event)) {
-      return;
-    }
     final drag = _drag;
     if (drag == null || event.pointer != drag.pointer) {
       return;
@@ -3068,33 +3094,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
-    if (_letGoOfTheModifier(event)) {
-      return;
-    }
     if (event.pointer != _drag?.pointer) {
       return;
     }
     setState(() => _endDrag(cancelled: true, notify: true));
     _syncAnts();
-  }
-
-  /// Whether [event] is the modifier finger ([_modifierTouch]) leaving the
-  /// glass — lifted or cancelled, one way off — and so lets go of it.
-  ///
-  /// The modifier finger leaving is not the drag ending — it changes what
-  /// the NEXT move solves, and nothing else.
-  ///
-  /// ↩️Only a lift used to let go: a modifier finger the OS cancelled (a
-  /// palm rejected, the window's focus lost) stayed held for the life of
-  /// this layer, and every shape after it was drawn as if Shift and Alt
-  /// were down (card a-cancelled-modifier-finger-stays-held, 10-21).
-  bool _letGoOfTheModifier(PointerEvent event) {
-    if (event.pointer != _modifierTouch) {
-      return false;
-    }
-    _modifierTouch = null;
-    widget.shiftLine?.heldNow(_shiftHeld);
-    return true;
   }
 
   /// [handle], for as long as this layer is in the tree.

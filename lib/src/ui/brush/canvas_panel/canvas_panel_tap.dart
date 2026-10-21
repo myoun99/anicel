@@ -107,7 +107,9 @@ class _CanvasPanelTap {
   void _toolTapCancel(PointerCancelEvent event) {
     _tapLayerTouches.remove(event.pointer);
     _touchTap = null;
-    _stampDrag = null;
+    if (event.pointer == _pressPointer) {
+      _stampDrag = null;
+    }
     _letGoOfPress(event.pointer);
   }
 
@@ -120,7 +122,9 @@ class _CanvasPanelTap {
     }
     _tapLayerTouches.remove(event.pointer);
     _touchTap = null;
-    _endStampDrag();
+    if (event.pointer == _pressPointer) {
+      _endStampDrag();
+    }
     _letGoOfPress(event.pointer);
   }
 
@@ -223,6 +227,13 @@ class _CanvasPanelTap {
     // this exists for.
     if (event.kind == PointerDeviceKind.touch) {
       _tapLayerTouches.add(event.pointer);
+      // A finger beside a pen's press is no press of its own — the pen's
+      // Shift ([_stampShiftHeld]) or a palm — as beside a pen's stroke
+      // (I-121-Q1). ↩️It took the press: the pen's drag stopped where it
+      // landed, and its lift stamped a piece under it.
+      if (_aPenPresses) {
+        return;
+      }
       if (_tapLayerTouches.length > 1) {
         // A tap still waiting was the first half of a pinch, and a pinch
         // continues no verb whichever of its fingers moves. A drag that
@@ -337,7 +348,7 @@ class _CanvasPanelTap {
   /// may begin is armed. Pressed under the hold that kept a line, it lands
   /// on that line (I-121), as a stroke's press does.
   void _pressStamp(CutPiece? piece, CanvasPoint point) {
-    final line = _state._shiftLine..heldNow(ModifierKeys.isShiftPressed);
+    final line = _state._shiftLine..heldNow(_stampShiftHeld);
     final pressed = line.onTheLine(point);
     // Pressed on the canvas, landed on the row's own artwork where the
     // row shows the press (a-marquee-on-a-posed-row) — the piece is the
@@ -454,9 +465,26 @@ class _CanvasPanelTap {
     }
     final lock = _stampDrag?.lock;
     if (lock != null) {
-      _stampAlong(lock.follow(point, shift: ModifierKeys.isShiftPressed));
+      _stampAlong(lock.follow(point, shift: _stampShiftHeld));
     }
   }
+
+  /// Whether the press under way is a pen's — or a mouse's: anything but a
+  /// finger's ([_tapLayerTouches]).
+  bool get _aPenPresses =>
+      _pressPointer != null && !_tapLayerTouches.contains(_pressPointer);
+
+  /// Whether the stamp's Shift is held now: the key, or a finger resting
+  /// beside a pen's press, behind the switch a stroke's finger has
+  /// ([CanvasTouchContacts.aFingerHoldsAStrokesShift]).
+  ///
+  /// 🗣️I-121-Q1 (유저 2026-10-22): 「손가락도 — 세는 곳을 하나로 묶고
+  /// 나서」 — the answer read 「펜으로 끄는 스탬프에 한해 … 손가락으로 끄는
+  /// 스탬프는 지금처럼 두 번째 손가락 = 핀치」: a finger's press takes none.
+  bool get _stampShiftHeld =>
+      ModifierKeys.isShiftPressed ||
+      (_aPenPresses &&
+          CanvasTouchContacts.aFingerHoldsAStrokesShift(_pressPointer));
 
   /// The hand has lifted: what the drag's lock still holds is stamped
   /// ([StrokeLock.finish]), and the drag is over.

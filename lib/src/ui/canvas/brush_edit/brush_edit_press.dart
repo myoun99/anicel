@@ -27,17 +27,13 @@ class _BrushEditPress {
   final Set<int> _activeTouchPointers = <int>{};
   bool _multiTouchNavigation = false;
 
-  /// Fingers resting on the glass, each the stroke's Shift for as long as
-  /// it rests (I-61-Q3, [aFingerHoldsShift]) — counted only while
-  /// [AppInputSettings.strokeFingerModifier] is on, so that with it off
-  /// nothing of this runs at all (유저: 「off하면 확실하게 제거」).
-  final Set<int> _shiftFingers = <int>{};
-
   /// Whether a finger holds the stroke's Shift now: one resting on the
-  /// glass that is not the one drawing.
-  bool get aFingerHoldsShift =>
-      AppInput.settings.value.strokeFingerModifier &&
-      _shiftFingers.any((finger) => finger != _state._activeDrawingPointer);
+  /// glass that is not the one drawing, for as long as it rests (I-61-Q3) —
+  /// asked only while [AppInputSettings.strokeFingerModifier] is on, so that
+  /// with it off nothing of this runs at all (유저: 「off하면 확실하게 제거」).
+  bool get aFingerHoldsShift => CanvasTouchContacts.aFingerHoldsAStrokesShift(
+    _state._activeDrawingPointer,
+  );
 
   /// Whether the stroke's Shift is held now — the key, or a finger.
   bool get shiftHeld => ModifierKeys.isShiftPressed || aFingerHoldsShift;
@@ -135,10 +131,6 @@ class _BrushEditPress {
 
   void pointerDown(PointerDownEvent event) {
     _state._toolHolds.heardByTheView.add(event.pointer);
-    if (event.kind == PointerDeviceKind.touch &&
-        AppInput.settings.value.strokeFingerModifier) {
-      _shiftFingers.add(event.pointer);
-    }
     // (No deferred stroke commit to land first: pen-up commits inside its
     // own event now — R25-④'s one-frame deferral existed to hide a
     // synchronous re-materialize that the promotion round deleted.)
@@ -495,9 +487,6 @@ class _BrushEditPress {
   }
 
   void _forgetTouchPointer(int pointer) {
-    if (_shiftFingers.remove(pointer)) {
-      _state.widget.shiftLine?.heldNow(shiftHeld);
-    }
     _activeTouchPointers.remove(pointer);
     CanvasTouchContacts.remove(pointer);
     if (_activeTouchPointers.isEmpty) {

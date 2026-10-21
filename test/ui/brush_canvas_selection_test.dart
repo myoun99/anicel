@@ -46,12 +46,15 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/core/point_bounds.dart';
 import 'package:anicel/src/ui/canvas/canvas_capsule.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/canvas_target_pill.dart';
 import 'package:anicel/src/ui/canvas/float_warp.dart'
     show debugLastResampledFloat;
 import 'package:anicel/src/ui/canvas/box_chrome.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart'
+    show InputInspectorHost;
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
     show EditorActionIds;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
@@ -67,6 +70,7 @@ import '../helpers/settle_async.dart';
 /// until ONE confirmed history entry, and all oracles are the raster
 /// itself (commands retired — the picture is the record).
 void main() {
+  tearDown(CanvasTouchContacts.reset);
   const layerKey = ValueKey<String>('canvas-selection-layer');
 
   /// A press INSIDE the box but off the anchor cross — the start of an
@@ -218,45 +222,49 @@ void main() {
       brush.value = brush.value.copyWith(tool: tool);
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: RepaintBoundary(
-              key: const ValueKey<String>('panel-capture'),
-              child: BrushCanvasPanel(
-                coordinator: coordinator,
-                // The panel carries its OWN canvas size, independent of the
-                // coordinator's session store — passing only the fixture's
-                // left the panel at the 2340×1654 default, which silently
-                // put every reachable pointer position back on canvas.
-                canvasSize: canvasSize,
-                availableFrameKeys: frameKeys,
-                cacheInvalidationSink: cacheSink,
-                transformTargetKeys: transformTargetKeys,
-                cellPlacementOf: cellPlacementOf == null
-                    ? null
-                    : (key) => placementOfSample(
-                        cellPlacementOf(key),
-                        canvasSize,
-                      ),
-                interactiveContentPose: placementOfSample(
-                  placement,
-                  canvasSize,
-                ),
-                historyManager: history,
-                brushToolState: brush,
-                selectionCommands: commands,
-                viewport: liveViewport,
-                onViewportChanged: onViewportChanged,
-                shapeFillDabsFor: (area, color) => buildRegionFillDabs(
-                  region: area,
-                  color: color,
-                  options: const FloodFillOptions(
-                    expandPx: 0,
-                    antiAlias: false,
+          // Under the app's one observer of every pointer, which counts the
+          // fingers resting on the glass (`CanvasTouchContacts`).
+          home: InputInspectorHost(
+            child: Scaffold(
+              body: RepaintBoundary(
+                key: const ValueKey<String>('panel-capture'),
+                child: BrushCanvasPanel(
+                  coordinator: coordinator,
+                  // The panel carries its OWN canvas size, independent of the
+                  // coordinator's session store — passing only the fixture's
+                  // left the panel at the 2340×1654 default, which silently
+                  // put every reachable pointer position back on canvas.
+                  canvasSize: canvasSize,
+                  availableFrameKeys: frameKeys,
+                  cacheInvalidationSink: cacheSink,
+                  transformTargetKeys: transformTargetKeys,
+                  cellPlacementOf: cellPlacementOf == null
+                      ? null
+                      : (key) => placementOfSample(
+                          cellPlacementOf(key),
+                          canvasSize,
+                        ),
+                  interactiveContentPose: placementOfSample(
+                    placement,
+                    canvasSize,
                   ),
+                  historyManager: history,
+                  brushToolState: brush,
+                  selectionCommands: commands,
+                  viewport: liveViewport,
+                  onViewportChanged: onViewportChanged,
+                  shapeFillDabsFor: (area, color) => buildRegionFillDabs(
+                    region: area,
+                    color: color,
+                    options: const FloodFillOptions(
+                      expandPx: 0,
+                      antiAlias: false,
+                    ),
+                  ),
+                  transformOptions: transformOptions,
+                  onSelectionInteractionChanged:
+                      onSelectionInteractionChanged,
                 ),
-                transformOptions: transformOptions,
-                onSelectionInteractionChanged:
-                    onSelectionInteractionChanged,
               ),
             ),
           ),
@@ -5015,7 +5023,7 @@ void main() {
   /// 초기화같은거 하지말고** 해당 상황에서 수정자 적용해서 **다음부터
   /// 적용**되도록」.
   ///
-  /// ↩️The finger used to mean NOTHING here (08-13) — see [_modifierTouch]
+  /// ↩️The finger used to mean NOTHING here (08-13) — see `_aModifierFinger`
   /// for why, and why 유저 took that risk back.
   testWidgets('a finger landing mid-transform is the MODIFIER: the drag '
       'survives and NOTHING is reset', (tester) async {

@@ -15,6 +15,7 @@ import '../../models/viewport_point.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/guide_stroke_input.dart' show ShiftLine;
+import '../../services/input/modifier_keys.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/canvas_selection_shape.dart';
@@ -29,6 +30,7 @@ import '../../services/layer_pose_paint.dart'
 import '../brush/brush_tool_state.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/bitmap_surface_painter.dart';
+import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/view_hand.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -788,7 +790,8 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
 
   /// Each window's line Shift holds past a stroke ([ShiftLine], I-121) —
   /// its own, as its view draws in its own cel. The layer hears the
-  /// keyboard for them all ([_heardKey]).
+  /// keyboard for them all ([_heardKey]), and the glass
+  /// ([_heardAFingerLift]).
   final Map<String, ShiftLine> _shiftLines = {};
 
   bool _heardKey(KeyEvent event) {
@@ -798,10 +801,23 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     return false;
   }
 
+  /// A finger left the glass: each line goes unless Shift is still held —
+  /// by the key, or by a finger still resting
+  /// ([CanvasTouchContacts.aFingerDownBesides]).
+  void _heardAFingerLift() {
+    final held =
+        ModifierKeys.isShiftPressed ||
+        CanvasTouchContacts.aFingerDownBesides(null);
+    for (final line in _shiftLines.values) {
+      line.heldNow(held);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_heardKey);
+    CanvasTouchContacts.addAppWideLiftListener(_heardAFingerLift);
   }
 
   /// Where the sheet's panel asks what takes a shape (F-420).
@@ -827,6 +843,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   void dispose() {
     _shapeTargets?.stopAnswering(_shapeAnswer);
     HardwareKeyboard.instance.removeHandler(_heardKey);
+    CanvasTouchContacts.removeAppWideLiftListener(_heardAFingerLift);
     super.dispose();
   }
 

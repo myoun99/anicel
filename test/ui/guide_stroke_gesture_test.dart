@@ -11,7 +11,10 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/guide_stroke_input.dart' show ShiftLine;
 import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart'
+    show InputInspectorHost;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
@@ -33,28 +36,33 @@ void main() {
   late List<BrushStrokeCommitData> commits;
 
   setUp(() => commits = <BrushStrokeCommitData>[]);
+  tearDown(CanvasTouchContacts.reset);
 
+  /// Under the app's one observer of every pointer, which counts the
+  /// fingers resting on the glass ([CanvasTouchContacts]).
   Widget app(CutGuides guides, {ShiftLine? line}) => MaterialApp(
     home: Scaffold(
-      body: Align(
-        alignment: Alignment.topLeft,
-        child: SizedBox(
-          width: canvasSize.width.toDouble(),
-          height: canvasSize.height.toDouble(),
-          child: InteractiveBrushEditCanvasView(
-            celNow: blankCel(canvasSize, tileSize: 32),
-            layerId: layerId,
-            frameId: frameId,
-            // The pen's own line: a steadied one runs on the events'
-            // clock, and these carry none (F-418 — a brush steadies as
-            // Clip Studio's 0 unless told otherwise).
-            inputSettings: () => BrushEditCanvasInputSettings(
-              color: 0xFFFF0000,
-              correction: BrushCorrection.none,
+      body: InputInspectorHost(
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: canvasSize.width.toDouble(),
+            height: canvasSize.height.toDouble(),
+            child: InteractiveBrushEditCanvasView(
+              celNow: blankCel(canvasSize, tileSize: 32),
+              layerId: layerId,
+              frameId: frameId,
+              // The pen's own line: a steadied one runs on the events'
+              // clock, and these carry none (F-418 — a brush steadies as
+              // Clip Studio's 0 unless told otherwise).
+              inputSettings: () => BrushEditCanvasInputSettings(
+                color: 0xFFFF0000,
+                correction: BrushCorrection.none,
+              ),
+              guides: guides,
+              shiftLine: line,
+              onSourceStrokeCommitted: commits.add,
             ),
-            guides: guides,
-            shiftLine: line,
-            onSourceStrokeCommitted: commits.add,
           ),
         ),
       ),
@@ -717,14 +725,58 @@ void main() {
       wobbleKept();
     });
 
-    testWidgets('⛔with the switch off nothing counts a finger (「off하면 '
-        '확실하게 제거」) — so one already resting when it goes on is not '
-        'counted', (tester) async {
+    // ↩️Until I-121-Q1 the view kept a count of its own, written only
+    // while the switch was on, so a finger resting when it went on was
+    // never counted. The fingers are counted in one place now, whatever
+    // the switch, and the switch is asked at every sample — as the key is.
+    // Off, nothing still asks a finger anything (「off하면 확실하게 제거」,
+    // the palm test above).
+    testWidgets('turned on under a resting finger, it holds the stroke from '
+        'there', (tester) async {
       await tester.pumpWidget(app(CutGuides.empty));
 
       await wobbleWithAFingerOnTheWay(tester, meanwhile: switchedOn);
 
-      wobbleKept();
+      expect(crossing(), isNotEmpty);
+      for (final dab in crossing()) {
+        expect(dab.center.y, closeTo(120, 1e-6), reason: 'held across');
+      }
+    });
+
+    testWidgets('🚨a finger resting anywhere on the glass holds it — the one '
+        'count every modifier finger is asked of, not the view\'s own', (
+      tester,
+    ) async {
+      switchedOn(fingerDraws: false);
+      await tester.pumpWidget(app(CutGuides.empty));
+      // Beside the view, on the page under it: no pointer of the view's.
+      final finger = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(260, 260)),
+        kind: PointerDeviceKind.touch,
+        pointer: 9,
+      );
+      await tester.pump();
+      final pen = await downAt(
+        tester,
+        const Offset(20, 20),
+        kind: PointerDeviceKind.stylus,
+        pointer: 3,
+      );
+      for (final at in const [
+        Offset(60, 66),
+        Offset(100, 94),
+        Offset(150, 154),
+      ]) {
+        await to(tester, pen, at);
+      }
+      await lift(tester, pen);
+      await lift(tester, finger);
+
+      final drawn = dabs();
+      expect(drawn.length, greaterThan(3));
+      for (final dab in drawn) {
+        expect(dab.center.y - 20, closeTo(dab.center.x - 20, 1e-6));
+      }
     });
 
     testWidgets('turned off under a resting finger, the stroke is free at '
@@ -741,10 +793,10 @@ void main() {
       wobbleKept();
     });
 
-    // I-121: a finger's Shift holds the line as the key does, and lifting
-    // it is letting the key go.
-    testWidgets('🚨the line it held goes on past a pen-up while it rests — '
-        'lifted and laid down again, the next stroke picks its own way', (
+    // I-121: a finger's Shift holds the line as the key does. Lifting it is
+    // letting the key go, and the line's owner hears that — the panel's
+    // (`the_stamp_goes_on_along_the_line_shift_holds_test`), the sheet's.
+    testWidgets('🚨the line it held goes on past a pen-up while it rests', (
       tester,
     ) async {
       switchedOn(fingerDraws: false);
@@ -762,27 +814,23 @@ void main() {
         await lift(tester, pen);
       }
 
-      const nearlyLevel = [Offset(40, 80), Offset(120, 66), Offset(180, 70)];
-      var finger = await rest(tester);
+      final finger = await rest(tester);
       await penStroke(const [
         Offset(20, 20),
         Offset(60, 66),
         Offset(100, 94),
         Offset(150, 154),
       ]);
-      await penStroke(nearlyLevel);
-      await lift(tester, finger);
-      finger = await rest(tester);
-      await penStroke(nearlyLevel);
+      await penStroke(const [
+        Offset(40, 80),
+        Offset(120, 66),
+        Offset(180, 70),
+      ]);
       await lift(tester, finger);
 
-      expect(commits, hasLength(3));
+      expect(commits, hasLength(2));
       for (final dab in commits[1].sourceDabs) {
         expect(dab.center.y, closeTo(dab.center.x, 1e-6), reason: 'held');
-      }
-      expect(commits[2].sourceDabs.first.center.x, closeTo(40, 1e-6));
-      for (final dab in commits[2].sourceDabs) {
-        expect(dab.center.y, closeTo(80, 1e-6), reason: 'its own way');
       }
     });
 

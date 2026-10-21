@@ -1389,10 +1389,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.initState();
     _saveKeeper?.up(_landWorkInFlight);
     _viewportState.bindViewCommands();
-    // 🚨D34 최종: a finger ANYWHERE drops the tool aim — see
-    // [CanvasTouchContacts.addAppWideTouchListener] and [_handleAppWideTouch].
-    CanvasTouchContacts.addAppWideTouchListener(_handleAppWideTouch);
-    HardwareKeyboard.instance.addHandler(_shiftLine.heardKey);
+    _hearTheHand();
     CanvasViewHold.held.addListener(_onViewHoldChanged);
     _viewportState._listenedViewport = _viewportState.viewportNotifier
       ..addListener(_viewportState.handleViewportMovedByOwner);
@@ -1537,8 +1534,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // the viewport: the widget's may already point somewhere else.
     _listenedCelPixels?.removeListener(_handleCelPixelsChanged);
     _listenedCelPixels = null;
-    CanvasTouchContacts.removeAppWideTouchListener(_handleAppWideTouch);
-    HardwareKeyboard.instance.removeHandler(_shiftLine.heardKey);
+    _stopHearingTheHand();
     // ⛔ONLY the panel's own. `_viewportNotifier` may BE the owner's — the
     // whole point of the controller — and disposing that would kill the
     // view the moment a panel unmounts, taking every other reader of it
@@ -2609,8 +2605,33 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The line Shift holds on this canvas (I-121) — ONE for every path the
   /// hand draws here, the stroke's, the lasso's and the stamp's, so a line
   /// a hold kept goes on whichever of them draws next. The panel hears the
-  /// keyboard for it, for its life ([ShiftLine.heardKey]).
+  /// keyboard for it, for its life ([ShiftLine.heardKey]), and the glass
+  /// ([_heardAFingerLift]).
   final ShiftLine _shiftLine = ShiftLine();
+
+  /// A finger left the glass: the line goes unless Shift is still held —
+  /// by the key, or by a finger still resting
+  /// ([CanvasTouchContacts.aFingerDownBesides]).
+  void _heardAFingerLift() => _shiftLine.heldNow(
+    ModifierKeys.isShiftPressed || CanvasTouchContacts.aFingerDownBesides(null),
+  );
+
+  /// The hand as the app hears it beyond this canvas, for the panel's life:
+  /// a finger landing anywhere, and the key and the glass that say whether
+  /// Shift still holds [_shiftLine].
+  void _hearTheHand() {
+    // 🚨D34 최종: a finger ANYWHERE drops the tool aim — see
+    // [CanvasTouchContacts.addAppWideTouchListener] and [_handleAppWideTouch].
+    CanvasTouchContacts.addAppWideTouchListener(_handleAppWideTouch);
+    HardwareKeyboard.instance.addHandler(_shiftLine.heardKey);
+    CanvasTouchContacts.addAppWideLiftListener(_heardAFingerLift);
+  }
+
+  void _stopHearingTheHand() {
+    CanvasTouchContacts.removeAppWideTouchListener(_handleAppWideTouch);
+    HardwareKeyboard.instance.removeHandler(_shiftLine.heardKey);
+    CanvasTouchContacts.removeAppWideLiftListener(_heardAFingerLift);
+  }
 
   /// What a save lands first (R9-rest): the stroke the view's pen is in
   /// AND the text in hand — nothing while no view is up. Held up for the

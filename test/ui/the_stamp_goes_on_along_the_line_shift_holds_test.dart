@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -12,7 +13,10 @@ import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart'
+    show InputInspectorHost;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
@@ -69,13 +73,17 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: BrushCanvasPanel(
-            coordinator: coordinator,
-            availableFrameKeys: frameKeys,
-            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            brushToolState: brush,
-            cutPieceSlot: slot,
-            viewport: seedFromRender(tester, CanvasViewport()),
+          // Under the app's one observer of every pointer, which counts the
+          // fingers resting on the glass (`CanvasTouchContacts`).
+          body: InputInspectorHost(
+            child: BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              brushToolState: brush,
+              cutPieceSlot: slot,
+              viewport: seedFromRender(tester, CanvasViewport()),
+            ),
           ),
         ),
       ),
@@ -83,13 +91,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  tearDown(CanvasTouchContacts.reset);
+
   Offset on(WidgetTester tester, Offset canvas) =>
       tester.getTopLeft(find.byType(InteractiveBrushEditCanvasView)) + canvas;
 
-  Future<void> stampAlong(WidgetTester tester, List<Offset> path) async {
+  Future<void> stampAlong(
+    WidgetTester tester,
+    List<Offset> path, {
+    PointerDeviceKind kind = PointerDeviceKind.mouse,
+  }) async {
     final mouse = await tester.startGesture(
       on(tester, path.first),
-      kind: PointerDeviceKind.mouse,
+      kind: kind,
       buttons: kPrimaryButton,
     );
     await tester.pump();
@@ -228,5 +242,195 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
 
     expect(ink().rightExclusive, greaterThan(pressed));
+  });
+
+  /// 🗣️I-121-Q1 (유저 2026-10-22): 「손가락도 — 세는 곳을 하나로 묶고
+  /// 나서」 — a finger resting beside a pen's drag is its Shift, behind the
+  /// switch a stroke's finger has, counted where every modifier finger is.
+  group('a finger resting on the glass', () {
+    void fingers({required bool shift, required bool draw}) {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+        strokeFingerModifier: shift,
+        touchDragOneFinger: draw
+            ? CanvasTouchDragAction.draw
+            : CanvasTouchDragAction.navigate,
+      );
+      addTearDown(
+        () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
+      );
+    }
+
+    /// A finger laid down on the canvas, away from every stamp. Laid down
+    /// before a pen's press it navigates (`draw: false`): one that draws is a
+    /// press of its own there, a tap that stamps where it lifts.
+    Future<TestGesture> rest(WidgetTester tester, {int pointer = 9}) async {
+      final finger = await tester.startGesture(
+        on(tester, const Offset(200, 200)),
+        kind: PointerDeviceKind.touch,
+        pointer: pointer,
+      );
+      await tester.pump();
+      return finger;
+    }
+
+    Future<void> lift(WidgetTester tester, TestGesture finger) async {
+      await finger.up();
+      await tester.pumpAndSettle();
+    }
+
+    const wobble = [Offset(20, 20), Offset(60, 66), Offset(100, 94)];
+
+    bool square() {
+      final box = ink();
+      return ((box.bottomExclusive - box.top) - (box.rightExclusive - box.left))
+              .abs() <=
+          2;
+    }
+
+    testWidgets('🚨with the switch on, it is a pen\'s drag\'s Shift: the drag '
+        'stamps along one of the eight ways', (tester) async {
+      fingers(shift: true, draw: false);
+      await pumpStamp(tester);
+      final finger = await rest(tester);
+      await stampAlong(tester, wobble, kind: PointerDeviceKind.stylus);
+      await lift(tester, finger);
+
+      expect(square(), isTrue, reason: 'the wobble is gone');
+    });
+
+    testWidgets('⛔with the switch off — as it comes — it is nothing', (
+      tester,
+    ) async {
+      fingers(shift: false, draw: false);
+      await pumpStamp(tester);
+      final finger = await rest(tester);
+      await stampAlong(tester, wobble, kind: PointerDeviceKind.stylus);
+      await lift(tester, finger);
+
+      expect(square(), isFalse, reason: 'the wobble is kept');
+    });
+
+    testWidgets('⛔a finger\'s own drag takes none: beside it a second finger '
+        'is what it always was', (tester) async {
+      fingers(shift: true, draw: true);
+      await pumpStamp(tester);
+      final drawing = await tester.startGesture(
+        on(tester, const Offset(20, 20)),
+        kind: PointerDeviceKind.touch,
+        pointer: 1,
+      );
+      await tester.pump();
+      await drawing.moveTo(on(tester, const Offset(60, 66)));
+      await tester.pump();
+      final finger = await rest(tester);
+      // Nearly level from (60, 66): locked, it would stay at y = 66.
+      await drawing.moveTo(on(tester, const Offset(100, 70)));
+      await tester.pump();
+      await drawing.up();
+      await tester.pumpAndSettle();
+      await lift(tester, finger);
+
+      expect(ink().bottomExclusive, inInclusiveRange(71, 73), reason: 'free');
+    });
+
+    for (final cancelled in [false, true]) {
+      final leaving = cancelled ? 'cancelled' : 'lifted';
+      testWidgets('🚨landing in the middle of a pen\'s drag it takes nothing '
+          'of it: the drag goes on, and $leaving it stamps nothing', (
+        tester,
+      ) async {
+        fingers(shift: false, draw: true);
+        await pumpStamp(tester);
+        final pen = await tester.startGesture(
+          on(tester, const Offset(20, 20)),
+          kind: PointerDeviceKind.stylus,
+          buttons: kPrimaryButton,
+        );
+        await tester.pump();
+        await pen.moveTo(on(tester, const Offset(60, 20)));
+        await tester.pump();
+        final finger = await rest(tester);
+        await pen.moveTo(on(tester, const Offset(100, 20)));
+        await tester.pump();
+        if (cancelled) {
+          await finger.cancel();
+          await tester.pump();
+        } else {
+          await lift(tester, finger);
+        }
+        await pen.moveTo(on(tester, const Offset(180, 20)));
+        await tester.pump();
+        await pen.up();
+        await tester.pumpAndSettle();
+
+        final box = ink();
+        expect(box.rightExclusive, inInclusiveRange(180, 183));
+        expect(box.bottomExclusive, lessThan(30), reason: 'none under it');
+      });
+    }
+
+    testWidgets('🚨held while it rests, the next press stamps on the line '
+        'the hold kept', (tester) async {
+      fingers(shift: true, draw: false);
+      await pumpStamp(tester);
+      final finger = await rest(tester);
+      await stampAlong(tester, const [
+        Offset(20, 20),
+        Offset(40, 46),
+        Offset(62, 60),
+      ], kind: PointerDeviceKind.stylus);
+      // (100, 120) falls across y = x at (110, 110).
+      await stampAlong(tester, const [
+        Offset(100, 120),
+      ], kind: PointerDeviceKind.stylus);
+      await lift(tester, finger);
+
+      expect(ink().bottomExclusive, inInclusiveRange(110, 113));
+    });
+
+    // Lifting it is letting the key go, and the panel — the line's owner —
+    // hears it from the count ([CanvasTouchContacts]).
+    testWidgets('🚨lifted and laid down again, it is a new hold: the press '
+        'stamps where it is', (tester) async {
+      fingers(shift: true, draw: false);
+      await pumpStamp(tester);
+      final first = await rest(tester);
+      await stampAlong(tester, const [
+        Offset(20, 20),
+        Offset(40, 46),
+        Offset(62, 60),
+      ], kind: PointerDeviceKind.stylus);
+      await lift(tester, first);
+      final again = await rest(tester, pointer: 10);
+      await stampAlong(tester, const [
+        Offset(100, 120),
+      ], kind: PointerDeviceKind.stylus);
+      await lift(tester, again);
+
+      final box = ink();
+      expect(box.bottomExclusive, inInclusiveRange(120, 123));
+      expect(box.rightExclusive, inInclusiveRange(100, 103));
+    });
+
+    testWidgets('🚨of two fingers resting, the first lifted leaves the line '
+        'held by the second', (tester) async {
+      fingers(shift: true, draw: false);
+      await pumpStamp(tester);
+      final first = await rest(tester);
+      final second = await rest(tester, pointer: 10);
+      await stampAlong(tester, const [
+        Offset(20, 20),
+        Offset(40, 46),
+        Offset(62, 60),
+      ], kind: PointerDeviceKind.stylus);
+      await lift(tester, first);
+      // (100, 120) falls across y = x at (110, 110).
+      await stampAlong(tester, const [
+        Offset(100, 120),
+      ], kind: PointerDeviceKind.stylus);
+      await lift(tester, second);
+
+      expect(ink().bottomExclusive, inInclusiveRange(110, 113));
+    });
   });
 }

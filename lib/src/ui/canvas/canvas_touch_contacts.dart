@@ -7,6 +7,8 @@ import 'package:flutter/gestures.dart'
         PointerUpEvent;
 import 'package:flutter/foundation.dart' show VoidCallback;
 
+import '../../models/app_input_settings.dart';
+
 /// The ink views' SHARED finger census (R26 #5).
 ///
 /// A single canvas view can count its own contacts, but the TIMESHEET
@@ -70,9 +72,24 @@ class CanvasTouchContacts {
   ///
   /// ⚠️[pointer] is the press's own, and this census may not have heard it
   /// yet: its observer is an ancestor, and a down is dispatched deepest
-  /// first.
-  static bool aFingerDownBesides(int pointer) =>
+  /// first. Null asks for any finger at all.
+  ///
+  /// 🚨THE ONE COUNT of a modifier finger. The brush view kept a set of its
+  /// own and the selection layer the first finger landing mid-drag, and the
+  /// two answered the same question differently: the layer never saw a
+  /// finger laid down before its press, and let go when the first of two
+  /// lifted with the second still resting (I-121-Q1, 유저 2026-10-22:
+  /// 「손가락도 — 세는 곳을 하나로 묶고 나서」).
+  static bool aFingerDownBesides(int? pointer) =>
       _appWide.any((finger) => finger != pointer);
+
+  /// Whether a finger beside [pointer] holds a STROKE'S Shift: one resting
+  /// on the glass ([aFingerDownBesides]), behind the switch that gives a
+  /// stroke one ([AppInputSettings.strokeFingerModifier] — off, it is
+  /// nothing at all).
+  static bool aFingerHoldsAStrokesShift(int? pointer) =>
+      AppInput.settings.value.strokeFingerModifier &&
+      aFingerDownBesides(pointer);
 
   /// 🚨★★★D34 최종 (유저 2026-08-23, 실기): 「**커서는 일단 커서ui랑 같은곳에
   /// 있는게 최우선**이고, **터치는 커서 없애고 펜은 커서 보이는채로 유지**하는
@@ -102,6 +119,18 @@ class CanvasTouchContacts {
   static void removeAppWideTouchListener(VoidCallback listener) =>
       _appWideTouchListeners.remove(listener);
 
+  /// Fires when a finger leaves the glass ANYWHERE — lifted or cancelled —
+  /// once the census no longer counts it: a modifier finger let go of
+  /// ([aFingerDownBesides]), heard after every view under it has heard the
+  /// same event.
+  static final Set<VoidCallback> _appWideLiftListeners = <VoidCallback>{};
+
+  static void addAppWideLiftListener(VoidCallback listener) =>
+      _appWideLiftListeners.add(listener);
+
+  static void removeAppWideLiftListener(VoidCallback listener) =>
+      _appWideLiftListeners.remove(listener);
+
   static void noteAppWide(PointerEvent event) {
     if (event.kind != PointerDeviceKind.touch) {
       return;
@@ -111,8 +140,11 @@ class CanvasTouchContacts {
       for (final listener in _appWideTouchListeners.toList(growable: false)) {
         listener();
       }
-    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
-      _appWide.remove(event.pointer);
+    } else if ((event is PointerUpEvent || event is PointerCancelEvent) &&
+        _appWide.remove(event.pointer)) {
+      for (final listener in _appWideLiftListeners.toList(growable: false)) {
+        listener();
+      }
     }
   }
 
