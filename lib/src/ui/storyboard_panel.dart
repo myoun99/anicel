@@ -4138,20 +4138,16 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     Layer layer,
     String tooltip,
   ) {
-    final frames = timelineScale.framesCovering(width);
+    final frames = _rowFrames;
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
-        geometry: TimelineFrameGeometry(
-          frameCellExtent: timelineScale.pixelsPerFrame,
-          frameStartIndex: 0,
-          frameEndIndexExclusive: frames,
-        ),
+        geometry: frames,
         crossAxisExtent: height,
         axis: Axis.horizontal,
         children: timelineRowClipMarkerOverlays(
           layer: layer,
           frameStartIndex: 0,
-          frameEndIndexExclusive: frames,
+          frameEndIndexExclusive: frames.frameEndIndexExclusive,
           crossAxisExtent: height,
           axis: Axis.horizontal,
           tooltip: tooltip,
@@ -4211,13 +4207,10 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     // The sheet's writing on the paper blocks — each name standing in the
     // frames free before its block ([seFramesFreeBefore]).
     for (final (index, block) in blocks.indexed) {
-      final frame = layer.frameById(block.frameId);
       spans.add(
         _dialogueSpan(
           block,
           layer,
-          frame?.name,
-          frame?.seName,
           framesFreeBefore: seFramesFreeBefore(blocks, index),
         ),
       );
@@ -4512,28 +4505,30 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     child: IgnorePointer(key: key, child: child),
   );
 
+  /// The words of [block]'s panel and its SE name, over the block.
   Positioned _dialogueSpan(
     TimelineDrawingBlock block,
-    Layer layer,
-    String? dialogue,
-    String? seName, {
+    Layer layer, {
     required int framesFreeBefore,
-  }) => _frameSpan(
-    startFrame: block.startIndex,
-    endExclusive: block.endIndexExclusive,
-    key: ValueKey<String>(
-      'storyboard-se-span-${layer.id}-${block.startIndex}',
-    ),
-    child: SeSpanVisual(
-      axis: Axis.horizontal,
-      frames: block.length,
-      dialogue: dialogue ?? '',
-      seName: seName,
-      framesFreeBefore: framesFreeBefore,
-      // ⑲: the paper [_paperSpan] lays.
-      paper: layerMarkColor(layer.mark),
-    ),
-  );
+  }) {
+    final frame = layer.frameById(block.frameId);
+    return _frameSpan(
+      startFrame: block.startIndex,
+      endExclusive: block.endIndexExclusive,
+      key: ValueKey<String>(
+        'storyboard-se-span-${layer.id}-${block.startIndex}',
+      ),
+      child: SeSpanVisual(
+        axis: Axis.horizontal,
+        frames: block.length,
+        dialogue: frame?.name ?? '',
+        seName: frame?.seName,
+        framesFreeBefore: framesFreeBefore,
+        // ⑲: the paper [_paperSpan] lays.
+        paper: layerMarkColor(layer.mark),
+      ),
+    );
+  }
 
   Positioned _paperSpan(TimelineDrawingBlock block, Layer layer) => _frameSpan(
     startFrame: block.startIndex,
