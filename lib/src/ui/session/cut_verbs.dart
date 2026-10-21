@@ -15,6 +15,7 @@ import '../../models/layer_mark.dart';
 import '../../models/timesheet_document.dart' show sheetArtistMark;
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
 import '../../services/brush_frame_store.dart' show BrushFrameStore;
+import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/persistence/cel_places.dart' show rowOwnerName;
@@ -551,6 +552,20 @@ class CutVerbs {
     );
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
+  }
+
+  /// What [convertActiveCutToLinked] works out ahead — the active cut's
+  /// canvas taken by [targetCutId]
+  /// ([CutCommandCoordinator.convertCutToLinkedAhead]); null when nothing.
+  WorkAhead? convertActiveCutToLinkedAhead(CutId targetCutId) {
+    final originCutId = _timeline.editingSession.activeCutId;
+    if (originCutId == null || originCutId == targetCutId) {
+      return null;
+    }
+    return _project.cutCommandCoordinator.convertCutToLinkedAhead(
+      originCutId: originCutId,
+      targetCutId: targetCutId,
+    );
   }
 
   /// Whether the selection can delete: cuts selected AND at least one

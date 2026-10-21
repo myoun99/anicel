@@ -4,6 +4,7 @@ import 'dart:isolate';
 import '../../core/on_a_worker.dart';
 import '../../core/turns.dart';
 import '../../core/worker_count.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/pasteboard_bounds.dart';
@@ -68,17 +69,15 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
   return onAWorker(() {
     final entry = AnicelCelBlob(sent.materialize().asUint8List()).decode();
     final here = tileBlocksHere(blocks);
-    final (:canvasSize, :dx, :dy) = move;
-    if (movesWholeTiles(dx: dx, dy: dy, tileSize: entry.tileSize)) {
+    if (movesWholeTiles(dx: move.dx, dy: move.dy, tileSize: entry.tileSize)) {
       return (was: layCelEntry(entry, here), moved: null);
     }
-    final moved = translateBitmapSurface(
+    final laidMoved = _layMoved(
+      key,
       surfaceBehindReach(entry.toSurface(), reach),
-      dx: dx,
-      dy: dy,
-      canvasSize: canvasSize,
+      move,
+      here,
     );
-    final laidMoved = layCelEntry(AnicelCelEntry.fromSurface(key, moved), here);
     try {
       return (was: layCelEntry(entry, here), moved: laidMoved);
     } on Object {
@@ -87,6 +86,53 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
       rethrow;
     }
   });
+}
+
+/// A HOT cel's picture — its blocks on the main isolate, named where they
+/// lie ([celBlocksOf]) — behind [reach] and as [move] leaves it, worked out
+/// on a worker and laid into that isolate's tile blocks for it to adopt
+/// ([laidCelSurface]): the blit [moveCelInWorker] makes of a kept cel, for
+/// one already thawed.
+///
+/// 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1 (유저 2026-10-22:
+/// 「다시 하기도 대기 창 뒤에서 옮긴다」): a redo's cels are the ones its undo
+/// put back, every one hot.
+///
+/// 🚨The caller holds the picture [at] names until this is done: its blocks
+/// go back to the pool with it.
+Future<AnicelLaidCel> moveHotCelInWorker(
+  BrushFrameKey key,
+  AnicelLaidCel at, {
+  required PasteboardReach reach,
+  required CelMove move,
+}) {
+  final blocks = BitmapTile.blocks;
+  return onAWorker(
+    () => _layMoved(
+      key,
+      surfaceBehindReach(copiedCelSurface(at), reach),
+      move,
+      tileBlocksHere(blocks),
+    ),
+  );
+}
+
+/// [surface] moved by [move] ([translateBitmapSurface]) and laid into
+/// [here]'s blocks — a kept cel's move and a hot one's.
+AnicelLaidCel _layMoved(
+  BrushFrameKey key,
+  BitmapSurface surface,
+  CelMove move,
+  TileBlockHands here,
+) {
+  final (:canvasSize, :dx, :dy) = move;
+  final moved = translateBitmapSurface(
+    surface,
+    dx: dx,
+    dy: dy,
+    canvasSize: canvasSize,
+  );
+  return layCelEntry(AnicelCelEntry.fromSurface(key, moved), here);
 }
 
 /// [blob]'s picture behind [reach] ([cutBehindReach]), worked out on a

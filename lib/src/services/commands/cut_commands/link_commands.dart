@@ -123,17 +123,7 @@ class _LinkCommands {
     _coordinator.historyManager.executeAsOneStep(
       'Convert cut $targetCutId to link $originCutId',
       [
-        if (targetCut.canvasSize != originCut.canvasSize)
-          ResizeCutCanvasCommand(
-            repository: _coordinator.repository,
-            cutId: targetCutId,
-            canvasSize: originCut.canvasSize,
-            contentOffset: CanvasResizeAnchor.center.contentOffset(
-              from: targetCut.canvasSize,
-              to: originCut.canvasSize,
-            ),
-            brushFrameStore: store,
-          ),
+        ?_convertResize(originCut, targetCut),
         ConvertToLinkedCutCommand(
           repository: _coordinator.repository,
           brushFrameStore: store,
@@ -148,6 +138,43 @@ class _LinkCommands {
       ],
     );
   }
+
+  /// What [convertCutToLinked] works out ahead: its resize's, the target's
+  /// canvas taken to the origin's ([ResizeCutCanvasCommand.workAhead]) —
+  /// null when the two canvases already agree, or the conversion links
+  /// nothing.
+  WorkAhead? convertCutToLinkedAhead({
+    required CutId originCutId,
+    required CutId targetCutId,
+  }) {
+    final project = _coordinator.repository.requireProject();
+    final linksAnything = convertToLinkedCutPreview(
+      originCutId: originCutId,
+      targetCutId: targetCutId,
+    ).linksAnything;
+    return linksAnything
+        ? _convertResize(
+            requireCut(project, originCutId),
+            requireCut(project, targetCutId),
+          )?.workAhead(undo: false)
+        : null;
+  }
+
+  /// The resize a conversion of [targetCut] to link [originCut] starts with
+  /// — none when their canvases already agree.
+  ResizeCutCanvasCommand? _convertResize(Cut originCut, Cut targetCut) =>
+      targetCut.canvasSize == originCut.canvasSize
+      ? null
+      : ResizeCutCanvasCommand(
+          repository: _coordinator.repository,
+          cutId: targetCut.id,
+          canvasSize: originCut.canvasSize,
+          contentOffset: CanvasResizeAnchor.center.contentOffset(
+            from: targetCut.canvasSize,
+            to: originCut.canvasSize,
+          ),
+          brushFrameStore: _coordinator.brushFrameStore,
+        );
 
   /// The 겸용 변경 preview for the confirmation dialog (링크 목록·교체
   /// 장수·합류 수·양측 고유 레이어) — pure, no mutation.

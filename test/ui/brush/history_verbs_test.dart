@@ -33,6 +33,7 @@ void main() {
       text: text,
       session: session,
       contactIsDown: () => false,
+      behindTheWaitWindow: (_, step) async => step(),
     );
     // What the fixtures had on its way is told before anything is listened
     // for: a channel tells on a microtask.

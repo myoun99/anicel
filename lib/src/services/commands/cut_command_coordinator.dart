@@ -36,7 +36,7 @@ import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
 import '../brush_frame_store.dart';
 import '../clipboard/layer_copy_payload.dart';
-import '../command.dart' show Command, oneStepOf;
+import '../command.dart' show Command, WorkAhead, oneStepOf;
 import '../history_manager.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
@@ -463,6 +463,13 @@ class CutCommandCoordinator {
     required CutId originCutId,
     required CutId targetCutId,
   }) => _links.convertCutToLinked(
+    originCutId: originCutId,
+    targetCutId: targetCutId,
+  );
+  WorkAhead? convertCutToLinkedAhead({
+    required CutId originCutId,
+    required CutId targetCutId,
+  }) => _links.convertCutToLinkedAhead(
     originCutId: originCutId,
     targetCutId: targetCutId,
   );

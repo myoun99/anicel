@@ -239,44 +239,43 @@ class _CutCommands {
       subject: _coordinator._requireCut(cutId),
       value: _placing(canvasSize, contentOffset),
       read: _placed,
-      command: (_) => ResizeCutCanvasCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        canvasSize: canvasSize,
-        contentOffset: contentOffset,
-        brushFrameStore: _coordinator.brushFrameStore,
-      ),
+      command: (_) => _resize(cutId, canvasSize, contentOffset),
     );
   }
 
-  /// What [placeCutCanvas] will make of the pictures kept in files, worked
-  /// out ahead ([BrushFrameStore.moveCutCelsAhead]): for a wait window to
-  /// hold up while it runs, hearing through [report] how much is done —
-  /// nothing where the place changes nothing, as no step is taken there.
+  /// What [placeCutCanvas] will make of the cut's pictures, worked out ahead
+  /// — the very work its redo has ahead of it
+  /// ([ResizeCutCanvasCommand.workAhead]): for a wait window to hold up
+  /// while it runs, hearing through [report] how much is done — nothing
+  /// where the place changes nothing, as no step is taken there.
   Future<void> placeCutCanvasAhead({
     required CutId cutId,
     required CanvasSize canvasSize,
     required ({double dx, double dy}) contentOffset,
     void Function(double done)? report,
   }) async {
-    final store = _coordinator.brushFrameStore;
     final placing = _placing(canvasSize, contentOffset);
-    if (store == null || _placed(_coordinator._requireCut(cutId)) == placing) {
+    if (_placed(_coordinator._requireCut(cutId)) == placing) {
       return;
     }
-    await store.moveCutCelsAhead(
-      ResizeCutCanvasCommand.targetsOf(
-        _coordinator.repository.requireProject(),
-        cutId,
-      ),
-      (
-        canvasSize: canvasSize,
-        dx: placing.dx.round(),
-        dy: placing.dy.round(),
-      ),
-      report: report,
+    final ahead = _resize(cutId, canvasSize, contentOffset).workAhead(
+      undo: false,
     );
+    await ahead?.call(report ?? (_) {});
   }
+
+  /// The step [placeCutCanvas] takes — and asks what it works out ahead.
+  ResizeCutCanvasCommand _resize(
+    CutId cutId,
+    CanvasSize canvasSize,
+    ({double dx, double dy}) contentOffset,
+  ) => ResizeCutCanvasCommand(
+    repository: _coordinator.repository,
+    cutId: cutId,
+    canvasSize: canvasSize,
+    contentOffset: contentOffset,
+    brushFrameStore: _coordinator.brushFrameStore,
+  );
 
   /// What [placeCutCanvas] asks of a cut, in whole pixels — and [_placed],
   /// what a cut already answers: the step is taken where the two differ.

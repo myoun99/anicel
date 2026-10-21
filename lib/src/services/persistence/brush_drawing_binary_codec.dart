@@ -45,21 +45,15 @@ class AnicelCelEntry {
   });
 
   factory AnicelCelEntry.fromSurface(BrushFrameKey key, BitmapSurface surface) {
+    final parts = _partsOf(surface, (tile) => tile.pixels);
     return AnicelCelEntry(
       key: key,
-      canvasSize: surface.canvasSize,
-      tileSize: surface.tileSize,
-      tiles: _tileRecordsOf(surface.tiles),
-      texts: [
-        for (final text in surface.texts)
-          (
-            id: text.id,
-            content: jsonEncode(text.content.toJson()),
-            plate: _tileRecordsOf(text.plate),
-          ),
-      ],
-      photos: _photoRecordsOf(surface.photos),
-      laidBounds: surface.laidBounds,
+      canvasSize: parts.canvasSize,
+      tileSize: parts.tileSize,
+      tiles: parts.tiles,
+      texts: parts.texts,
+      photos: parts.photos,
+      laidBounds: parts.laidBounds,
     );
   }
 
@@ -120,15 +114,65 @@ typedef CelParts<P> = ({
 /// ([laidCelSurface]).
 typedef AnicelLaidCel = CelParts<int>;
 
-List<AnicelTileRecord> _tileRecordsOf(Map<TileCoord, BitmapTile> tiles) => [
-  for (final entry in tiles.entries)
-    (x: entry.key.x, y: entry.key.y, pixels: entry.value.pixels),
-];
+/// [surface] in plain parts, each tile's pixels as [pixelsOf] gives them:
+/// the copy [AnicelCelEntry.fromSurface] makes, or the blocks' addresses
+/// ([celBlocksOf]) — the way back of [_surfaceOf], one for both.
+CelParts<P> _partsOf<P>(
+  BitmapSurface surface,
+  P Function(BitmapTile tile) pixelsOf,
+) {
+  List<({int x, int y, P pixels})> records(Map<TileCoord, BitmapTile> tiles) =>
+      [
+        for (final MapEntry(key: coord, value: tile) in tiles.entries)
+          (x: coord.x, y: coord.y, pixels: pixelsOf(tile)),
+      ];
+  return (
+    canvasSize: surface.canvasSize,
+    tileSize: surface.tileSize,
+    tiles: records(surface.tiles),
+    texts: [
+      for (final text in surface.texts)
+        (
+          id: text.id,
+          content: jsonEncode(text.content.toJson()),
+          plate: records(text.plate),
+        ),
+    ],
+    photos: _photoRecordsOf(surface.photos),
+    laidBounds: surface.laidBounds,
+  );
+}
 
 List<AnicelPhotoRecord> _photoRecordsOf(List<CelPhoto> photos) => [
   for (final photo in photos)
     (id: photo.id, reference: jsonEncode(photo.reference.toJson())),
 ];
+
+/// [surface] with each tile's pixels named by the ADDRESS of its block, for
+/// a worker to read them where they lie ([copiedCelSurface]) — the way
+/// there of [laidCelSurface], with no pixel copied here.
+///
+/// 🚨The addresses are good only while [surface] is held: its tiles' blocks
+/// go back to the pool with them (native-tile-pixel-lifetime). The caller
+/// holds it until the worker is done.
+AnicelLaidCel celBlocksOf(BitmapSurface surface) => _partsOf(
+  surface,
+  (tile) => tile.readPixels((pointer, _) => pointer.address),
+);
+
+/// [laid]'s blocks — another isolate's, read where they lie
+/// ([celBlocksOf]) — copied into tiles of this one: a surface this isolate
+/// owns, whose tiles it frees as its own.
+BitmapSurface copiedCelSurface(AnicelLaidCel laid) {
+  final bytes = BitmapTile.bytesFor(laid.tileSize);
+  return _surfaceOf(
+    laid,
+    (address) => BitmapTile(
+      size: laid.tileSize,
+      pixels: Pointer<Uint8>.fromAddress(address).asTypedList(bytes),
+    ),
+  );
+}
 
 /// [parts] made a surface, each tile's pixels made a tile by [tileOf]: the
 /// copy [AnicelCelEntry.toSurface] makes, or the adoption a laid cel's

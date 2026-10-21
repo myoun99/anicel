@@ -79,6 +79,7 @@ import 'session/history_pictures.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
+import '../services/command.dart' show WorkAhead;
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
@@ -2117,11 +2118,8 @@ class EditorSessionManager extends ChangeNotifier
   void undo() {
     _settleAndAdopt();
     final here = standingPlace;
-    final there = historyManager.undoPlace;
-    if (here != null &&
-        there != null &&
-        standing.isElsewhere(there, from: here)) {
-      historyManager.leaveWalkBack(WalkBack(() => standing.standOn(here)));
+    if (_walkTo(undo: true) case final there?) {
+      historyManager.leaveWalkBack(WalkBack(() => standing.standOn(here!)));
       standing.standOn(there);
       return;
     }
@@ -2138,11 +2136,7 @@ class EditorSessionManager extends ChangeNotifier
   /// first, and the walk an undo left behind takes the user back.
   void redo() {
     _settleAndAdopt();
-    final here = standingPlace;
-    final there = historyManager.redoPlace;
-    if (here != null &&
-        there != null &&
-        standing.isElsewhere(there, from: here)) {
+    if (_walkTo(undo: false) case final there?) {
       standing.standOn(there);
       return;
     }
@@ -2150,6 +2144,29 @@ class EditorSessionManager extends ChangeNotifier
       undo: false,
       apply: () => _stepHistory(historyManager.redo),
     );
+  }
+
+  /// What the next [undo] — or, with [undo] false, [redo] — works out
+  /// ahead of its step ([HistoryManager.workAhead]): null where the press
+  /// only walks to the edit (I-41), or the step works nothing out. Settled
+  /// first, as the press is, so it is asked of the step the press takes.
+  WorkAhead? historyStepAhead({required bool undo}) {
+    _settleAndAdopt();
+    return _walkTo(undo: undo) == null
+        ? historyManager.workAhead(undo: undo)
+        : null;
+  }
+
+  /// Where the next [undo] — or redo — walks the user instead of stepping:
+  /// the place its edit was made, while the user stands elsewhere (I-41).
+  StandingPlace? _walkTo({required bool undo}) {
+    final here = standingPlace;
+    final there = undo ? historyManager.undoPlace : historyManager.redoPlace;
+    return here != null &&
+            there != null &&
+            standing.isElsewhere(there, from: here)
+        ? there
+        : null;
   }
 
   /// ⚠️BEFORE the walk is decided, not inside the step. The last edit has

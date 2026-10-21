@@ -49,8 +49,8 @@ import 'camera/camera_path_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
 import 'canvas/camera_adjust_layer.dart';
 import 'canvas/canvas_adjust_layer.dart';
-import 'cut_command_group.dart'
-    show landCanvasAdjust, resizeBehindTheWaitWindow;
+import 'cut_command_group.dart' show landCanvasAdjust;
+import 'dialogs/behind_the_wait_window.dart' show resizeBehindTheWaitWindow;
 import 'session/canvas_adjust.dart' show CameraSizeDraft;
 import 'canvas/bitmap_surface_painter.dart';
 import 'canvas/flip_hud_controller.dart';

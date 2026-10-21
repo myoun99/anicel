@@ -1747,13 +1747,13 @@ class BrushFrameStore {
   @visibleForTesting
   int celsMovedHere = 0;
 
-  /// What [adoptCutCanvasSize] will make of [cutIds]' kept cels, worked out
+  /// What [adoptCutCanvasSize] will make of [cutIds]' cels, worked out
   /// AHEAD on the machine's workers ([moveCelInWorker], in [celThawTurns])
-  /// — each thawed as a read here thaws it and kept hot, and moved by [move]
-  /// as the resize moves it — while a wait window is up, which hears through
-  /// [report] how much is done, from 0 to 1. The thaw is ahead even where
-  /// the move is not: the resize's undo holds every cel it touched, and
-  /// reading them is what took the time.
+  /// — each kept one thawed as a read here thaws it and kept hot, and every
+  /// one moved by [move] as the resize moves it — while a wait window is up,
+  /// which hears through [report] how much is done, from 0 to 1. The thaw is
+  /// ahead even where the move is not: the resize's undo holds every cel it
+  /// touched, and reading them is what took the time.
   ///
   /// 🔬Card `a-canvas-resize-rewrites-kept-cels-on-the-ui-thread` (S5_BA
   /// saved and opened again — 127 cels of 2436×1524, `flutter test`,
@@ -1761,11 +1761,11 @@ class BrushFrameStore {
   /// picture — any anchor but the top left — 2.4 s more.
   ///
   /// ★Each answer is held with the very surface it was worked out from and
-  /// taken only for it ([_moved]): a cel made hot or kept anew since is
-  /// moved there as it always was. ⛔So an answer can go stale, and never
-  /// wrong. A hot cel is not worked out here — its pixels are not bytes a
-  /// worker can be handed — and a move of whole tiles, nothing to move
-  /// among them, is thawed alone ([moveCelInWorker]).
+  /// taken only for it ([_moved]): a cel made hot, drawn on or kept anew
+  /// since is moved there as it always was. ⛔So an answer can go stale, and
+  /// never wrong. A hot cel is moved on a worker that reads its blocks where
+  /// they lie ([moveHotCelInWorker]); a move of whole tiles, nothing to move
+  /// among them, is thawed alone ([moveCelInWorker]) and a hot cel left be.
   Future<void> moveCutCelsAhead(
     Iterable<CutId> cutIds,
     CelMove move, {
@@ -1785,12 +1785,17 @@ class BrushFrameStore {
   }
 
   /// [key]'s kept cel thawed and moved by [move] on a worker
-  /// ([moveCelInWorker]): kept hot here, and its move held in [answers].
+  /// ([moveCelInWorker]): kept hot here, and its move held in [answers] —
+  /// or, hot already, moved there alone ([_moveHotOnAWorker]).
   Future<void> _moveOnAWorker(
     BrushFrameKey key,
     CelMove move,
     Map<BrushFrameKey, _MovedCel> answers,
   ) async {
+    final hot = _bakedSurfaces[key];
+    if (hot != null) {
+      return _moveHotOnAWorker(key, hot, move, answers);
+    }
     BitmapSurface? moved;
     final from = await _thawOnAWorker(key, () => _kept(key)?.ref, (
       blob,
@@ -1809,6 +1814,36 @@ class BrushFrameStore {
     if (from != null && worked != null) {
       answers[key] = (from: from, moved: worked);
     }
+  }
+
+  /// [key]'s hot [surface] moved by [move] on a worker that reads its blocks
+  /// where they lie ([moveHotCelInWorker]), in [celThawTurns]; the move held
+  /// in [answers]. None for a move of whole tiles: [_moved] renames the very
+  /// tiles where it is taken.
+  Future<void> _moveHotOnAWorker(
+    BrushFrameKey key,
+    BitmapSurface surface,
+    CelMove move,
+    Map<BrushFrameKey, _MovedCel> answers,
+  ) async {
+    final tileSize = surface.tileSize;
+    if (movesWholeTiles(dx: move.dx, dy: move.dy, tileSize: tileSize)) {
+      return;
+    }
+    await celThawTurns.run(() async {
+      try {
+        final laid = await moveHotCelInWorker(
+          key,
+          celBlocksOf(surface),
+          reach: _pasteboardReach,
+          move: move,
+        );
+        // [surface] is held to here, past the worker that read its blocks.
+        answers[key] = (from: surface, moved: _behind(laidCelSurface(laid)));
+      } on Object {
+        // The move makes it where it is taken, as it always did.
+      }
+    });
   }
 
   /// What [moveCutCelsAhead] last worked out — until the next one replaces

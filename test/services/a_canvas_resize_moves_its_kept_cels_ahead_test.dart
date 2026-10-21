@@ -131,6 +131,9 @@ void main() {
   for (final (tier, keep) in <(String, _KeepAll)>[
     ('parked cold', parkCold),
     ('kept in a file', keepInAFile),
+    // 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1: a redo's cels
+    // are the ones its undo put back, every one hot.
+    ('hot', _keepHot),
   ]) {
     group(tier, () {
       BrushFrameStore kept() {
@@ -265,13 +268,30 @@ void main() {
     );
   });
 
-  test('a hot cel is moved where it is: its pixels are not bytes a worker '
-      'is handed', () async {
-    final store = BrushFrameStore()..storeBakedSurface(drawnCel, drawn());
-    await moveAhead(store);
-    expect(store.movedAheadOf(drawnCel), isNull);
+  test('a hot cel on a worker of its own: its blocks read where they lie, '
+      'and held until it is done', () async {
+    debugWorkersRunHere = false;
+    addTearDown(() => debugWorkersRunHere = true);
+    final store = BrushFrameStore();
+    final here = BrushFrameStore();
+    for (final cels in [store, here]) {
+      _keepHot(cels, {
+        drawnCel: drawn(),
+        otherCel: drawn(salt: 3),
+      }, pasteboardReach: reach);
+    }
+    final reports = <double>[];
+    await moveAhead(store, report: reports.add);
+    expect(reports, [0.5, 1.0]);
     resize(store);
-    expect(store.celsMovedHere, 1);
+    resize(here);
+    expect(store.celsMovedHere, 0);
+    for (final cel in [drawnCel, otherCel]) {
+      expectSamePicture(
+        store.bakedSurfaceOrNull(cel),
+        here.bakedSurfaceOrNull(cel)!,
+      );
+    }
   });
 
   test('a move of whole tiles is made where the tiles are: the very tiles '
@@ -293,6 +313,23 @@ void main() {
     );
   });
 
+  test('a hot cel moved by whole tiles is left be: its very tiles are '
+      'renamed where the move is taken', () async {
+    final store = BrushFrameStore();
+    _keepHot(store, {drawnCel: drawn()}, pasteboardReach: reach);
+    final was = store.hotBakedSurfaceOrNull(drawnCel)!;
+    await moveAhead(store, dx: -tileSize, dy: 0);
+    expect(store.movedAheadOf(drawnCel), isNull);
+    resize(store, dx: -tileSize, dy: 0);
+    expect(
+      identical(
+        store.bakedSurfaceOrNull(drawnCel)!.tileAt(TileCoord(x: 0, y: 1)),
+        was.tileAt(TileCoord(x: 1, y: 1)),
+      ),
+      isTrue,
+    );
+  });
+
   test('nothing to move: the thaw alone', () async {
     final store = BrushFrameStore();
     keepInAFile(store, {drawnCel: drawn()}, pasteboardReach: reach);
@@ -307,10 +344,14 @@ void main() {
     final store = BrushFrameStore();
     keepInAFile(store, {drawnCel: drawn()}, pasteboardReach: reach);
     await moveAhead(store, dx: -2);
+    final first = store.movedAheadOf(drawnCel);
     await moveAhead(store);
-    expect(store.movedAheadOf(drawnCel), isNull, reason: 'hot by then');
+    final last = store.movedAheadOf(drawnCel);
+    expect(last, isNotNull, reason: 'hot by then, and worked out all the same');
+    expect(identical(last, first), isFalse);
     resize(store);
-    expect(store.celsMovedHere, 1);
+    expect(store.celsMovedHere, 0);
+    expect(identical(store.bakedSurfaceOrNull(drawnCel), last), isTrue);
   });
 
   test('a store laid in anew lets what was worked out go', () async {
@@ -321,6 +362,20 @@ void main() {
     parkCold(store, const {});
     expect(store.movedAheadOf(drawnCel), isNull);
   });
+}
+
+/// [cels] hot in [store] — drawn there, or put back by an undo — behind
+/// [pasteboardReach].
+Map<BrushFrameKey, Object> _keepHot(
+  BrushFrameStore store,
+  Map<BrushFrameKey, BitmapSurface> cels, {
+  PasteboardReach pasteboardReach = PasteboardReach.whole,
+}) {
+  parkCold(store, const {}, pasteboardReach: pasteboardReach);
+  for (final MapEntry(:key, value: surface) in cels.entries) {
+    store.storeBakedSurface(key, surface);
+  }
+  return cels;
 }
 
 typedef _KeepAll =

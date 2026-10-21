@@ -1,5 +1,8 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart';
 
+import '../../services/command.dart' show WorkAhead;
 import '../debug/key_trace.dart';
 import '../editor_session_manager.dart';
 import 'canvas_selection_commands.dart';
@@ -29,6 +32,7 @@ class HistoryVerbs {
     required this.text,
     required this.session,
     required this.contactIsDown,
+    required this.behindTheWaitWindow,
   });
 
   final CanvasSelectionCommands selection;
@@ -63,6 +67,12 @@ class HistoryVerbs {
   /// hit-test target), so a door that opens on its own lift must open after
   /// the lift has been heard, or it counts itself — the H42 failure.
   final bool Function() contactIsDown;
+
+  /// Takes a document step behind the wait window while what it works out
+  /// [ahead] runs — the window its first run stood behind
+  /// (`stepBehindTheWaitWindow`).
+  final Future<void> Function(WorkAhead ahead, VoidCallback step)
+  behindTheWaitWindow;
 
   /// Everything [canUndo] and [canRedo] depend on.
   Listenable get changes => Listenable.merge([
@@ -150,7 +160,7 @@ class HistoryVerbs {
     if (text.canUndoLetters) {
       return text.undoLetters;
     }
-    return session.canUndo ? session.undo : null;
+    return session.canUndo ? () => _stepTheDocument(undo: true) : null;
   }
 
   /// The mirror of [_undo]: a vertex the trace took back is put back before
@@ -163,6 +173,34 @@ class HistoryVerbs {
     if (text.canRedoLetters) {
       return text.redoLetters;
     }
-    return session.canRedo ? session.redo : null;
+    return session.canRedo ? () => _stepTheDocument(undo: false) : null;
+  }
+
+  /// The document's own undo — or, with [undo] false, redo — behind the
+  /// wait window where it works something out ahead of it
+  /// ([EditorSessionManager.historyStepAhead]), else at once.
+  ///
+  /// 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1 (유저 2026-10-22:
+  /// 「다시 하기도 대기 창 뒤에서 옮긴다」): a redo that runs a resize again
+  /// moves every cel of the cut, as the first run did.
+  void _stepTheDocument({required bool undo}) {
+    final step = undo ? session.undo : session.redo;
+    final ahead = session.historyStepAhead(undo: undo);
+    if (ahead == null) {
+      step();
+      return;
+    }
+    final history = session.historyManager;
+    final asked = history.revision;
+    unawaited(
+      behindTheWaitWindow(ahead, () {
+        // A step that waited is taken only over the history it was asked
+        // of, and never over work begun since ([HistoryManager.revision]).
+        if (history.revision == asked &&
+            !(history.pendingBeforeUndoRedo?.call() ?? false)) {
+          step();
+        }
+      }),
+    );
   }
 }

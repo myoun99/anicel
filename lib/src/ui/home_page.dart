@@ -9,6 +9,7 @@ import 'package:flutter/gestures.dart' show GestureBinding, PointerEvent;
 import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
+import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../models/working_panel.dart';
@@ -696,6 +697,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       text: _canvasTextCommands,
       session: session,
       contactIsDown: () => _contacts.anyDown,
+      behindTheWaitWindow: (ahead, step) =>
+          stepBehindTheWaitWindow(context, ahead, step),
     );
     _keyHolds.strokeLive = session.brushInputActive;
     return true;
@@ -1773,8 +1776,8 @@ final class _ProjectHooks {
       shell._canvasTextCommands.landNow();
       session.sheetPhotoHold.letGo();
     };
-    // ...and a step that WAITED for its pictures asks first whether there
-    // is anything to adopt: work begun after the press is the user's.
+    // ...and a step that WAITED behind the wait window asks first whether
+    // there is anything to adopt: work begun after the press is the user's.
     history.pendingBeforeUndoRedo = () =>
         shell._canvasSelectionCommands.movePending ||
         shell._canvasSelectionCommands.transformActive ||

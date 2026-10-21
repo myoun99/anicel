@@ -16,7 +16,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
-import 'package:anicel/src/ui/cut_command_group.dart';
+import 'package:anicel/src/ui/dialogs/behind_the_wait_window.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';

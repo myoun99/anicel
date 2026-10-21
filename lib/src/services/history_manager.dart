@@ -502,17 +502,17 @@ class HistoryManager extends ChangeNotifier {
 
   /// Whether [onBeforeUndoRedo] would adopt something RIGHT NOW.
   ///
-  /// Asked by a step that WAITED for its pictures (the UI's
-  /// HistoryPictures): work the user began after pressing — a lift, an
-  /// open transform box — is theirs, and a late step that adopted it would
-  /// land it out from under their hand.
+  /// Asked by a step that WAITED — behind the wait window while its work
+  /// ran ahead ([workAhead], the UI's HistoryVerbs): work the user began
+  /// after pressing — a lift, an open transform box — is theirs, and a late
+  /// step that adopted it would land it out from under their hand.
   bool Function()? pendingBeforeUndoRedo;
 
   /// Counts every change to the stacks — a push, a step, a clear, a shed.
   ///
-  /// A step that waited is honoured only while this has not moved: one
-  /// applied over a history that moved on would undo something the user
-  /// never asked to undo.
+  /// A step that waited ([pendingBeforeUndoRedo]) is honoured only while
+  /// this has not moved: one applied over a history that moved on would
+  /// undo something the user never asked to undo.
   int get revision => _revision;
   int _revision = 0;
 
@@ -541,6 +541,21 @@ class HistoryManager extends ChangeNotifier {
     // What came back is RAM again, and the budget says whether it stays.
     _trimRetainedBytes();
     return cels.cels;
+  }
+
+  /// What the next undo — or, with [undo] false, the next redo — can work
+  /// out off the UI thread before it is taken ([WorksAheadCommand]); null
+  /// when nothing.
+  WorkAhead? workAhead({required bool undo}) {
+    final stack = undo ? _undoStack : _redoStack;
+    if (stack.isEmpty) {
+      return null;
+    }
+    final next = stack.last;
+    // ⚠️The cast is not ceremony — see [_parkDeepEnd].
+    return next is WorksAheadCommand
+        ? (next as WorksAheadCommand).workAhead(undo: undo)
+        : null;
   }
 
   /// Every tile an entry DEEPER than the next step holds alone, with where
