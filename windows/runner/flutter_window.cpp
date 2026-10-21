@@ -140,6 +140,23 @@ constexpr char kPlaceChanged[] = "placeChanged";
 constexpr char kLaunchChannel[] = "anicel/launch";
 constexpr char kSayStage[] = "stage";
 
+// 🗣️open-door-windows-open-with-Q1 — A FILE OPENED WITH ANICEL WHILE ONE RUNS
+// OPENS IN THAT ONE.
+//
+// 유저 2026-10-22 (board): 「떠 있는 창의 새 탭으로」. For a file opened from
+// the Explorer Windows starts another Anicel, whoever is running; that one
+// hands its paths to the running window (main.cpp, HandToTheRunningWindow)
+// and ends before it makes a window of its own. This window takes them in a
+// WM_COPYDATA tagged kHandedFilesTag and says them to Dart on this channel,
+// where they go through the one door a drop goes through — as the files a
+// launch is handed do (lib/src/native/handed_files.dart). It carries
+// kRunningWindowProp only from its first frame on: before that nothing in
+// Dart hears the channel, and a second Anicel opens the file itself.
+// test/architecture/a_file_opened_again_joins_the_running_window_test.dart
+// reads these.
+constexpr char kHandedFilesChannel[] = "anicel/handed_files";
+constexpr char kOpenHanded[] = "open";
+
 // 🚨★★★F-411 — A MODIFIER WINDOWS LET GO OF IS LET GO OF IN THE ENGINE TOO.
 //
 // 유저 2026-10-19: 「입력 인스펙터 확인하니 보통은 D held [D]라면 D held
@@ -239,6 +256,10 @@ bool FlutterWindow::OnCreate() {
   ListenForFullScreen();
   ListenForPlace();
   ListenForLaunchStages();
+  files_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), kHandedFilesChannel,
+          &flutter::StandardMethodCodec::GetInstance());
   ::SetWindowSubclass(flutter_controller_->view()->GetNativeWindow(),
                       LetGoWithWindows, kLetGoWithWindows,
                       reinterpret_cast<DWORD_PTR>(this));
@@ -252,6 +273,8 @@ bool FlutterWindow::OnCreate() {
     launch_splash_.Close();
     // A frame means Dart is running, and its platform channel is listening.
     app_can_answer_ = true;
+    // And it hears the files a second Anicel hands over.
+    ::SetPropW(GetHandle(), kRunningWindowProp, reinterpret_cast<HANDLE>(1));
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -263,11 +286,16 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  // A window going away takes no more files.
+  if (GetHandle()) {
+    ::RemovePropW(GetHandle(), kRunningWindowProp);
+  }
   // The channels speak through the engine's messenger, so they go first.
   ime_channel_ = nullptr;
   window_channel_ = nullptr;
   place_channel_ = nullptr;
   launch_channel_ = nullptr;
+  files_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -336,6 +364,14 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
+    case WM_COPYDATA: {
+      const auto* data = reinterpret_cast<const COPYDATASTRUCT*>(lparam);
+      if (data && data->dwData == kHandedFilesTag && files_channel_) {
+        SayHandedFiles(*data);
+        return TRUE;
+      }
+      break;
+    }
     case WM_SETTINGCHANGE:
       if (wparam == SPI_SETSCREENREADER && flutter_controller_) {
         flutter_controller_->engine()->messenger()->Send(kScreenReaderChannel,
@@ -596,4 +632,28 @@ void FlutterWindow::SayPlace() {
   };
   place_channel_->InvokeMethod(
       kPlaceChanged, std::make_unique<flutter::EncodableValue>(frame));
+}
+
+void FlutterWindow::SayHandedFiles(const COPYDATASTRUCT& data) {
+  const char* bytes = static_cast<const char*>(data.lpData);
+  flutter::EncodableList paths;
+  std::string path;
+  for (DWORD i = 0; bytes && i < data.cbData; ++i) {
+    if (bytes[i] != '\0') {
+      path.push_back(bytes[i]);
+      continue;
+    }
+    if (!path.empty()) {
+      paths.emplace_back(path);
+    }
+    path.clear();
+  }
+  if (!path.empty()) {
+    paths.emplace_back(path);
+  }
+  if (paths.empty()) {
+    return;
+  }
+  files_channel_->InvokeMethod(
+      kOpenHanded, std::make_unique<flutter::EncodableValue>(paths));
 }

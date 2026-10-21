@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart' show AnicelApp;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -10,6 +11,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/native/handed_files.dart';
 import 'package:anicel/src/services/brush_pack_file.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
@@ -133,6 +135,38 @@ void main() {
       find.byKey(const ValueKey<String>('unsupported-file-notice')),
       findsOneWidget,
     );
+  });
+
+  // open-door-windows-open-with-Q1 (유저 2026-10-22: 「떠 있는 창의 새
+  // 탭으로」): a second Anicel hands its files to the running window, which
+  // says them on [HandedFiles.channel] — heard while the window is here.
+  testWidgets('what a second Anicel hands the running window goes through '
+      'the same door, and nothing once the window has gone', (tester) async {
+    final path = '${spelled(folder.path)}/notes.txt';
+    File(path).writeAsStringSync('not a picture');
+    Future<void> runnerSays() =>
+        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+          HandedFiles.channel.name,
+          const StandardMethodCodec().encodeMethodCall(
+            MethodCall(HandedFiles.openMethod, [path]),
+          ),
+          (_) {},
+        );
+    final notice = find.byKey(
+      const ValueKey<String>('unsupported-file-notice'),
+    );
+
+    await pumpApp(tester, HomePage(initialProject: createDefaultProject()));
+    await tester.pumpAndSettle();
+    expect(notice, findsNothing, reason: 'CONTROL: nothing said yet');
+    await runnerSays();
+    await tester.pumpAndSettle();
+    expect(notice, findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await runnerSays();
+    await tester.pumpAndSettle();
+    expect(notice, findsNothing);
   });
 
   testWidgets('nothing handed, nothing opened and nothing said', (

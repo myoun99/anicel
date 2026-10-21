@@ -13,6 +13,7 @@ import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../models/working_panel.dart';
 import '../native/device_battery.dart';
+import '../native/handed_files.dart';
 import '../native/qa_native_engine.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
@@ -544,6 +545,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         (_) => _workspaceDoor.openPaths(handed),
       );
     }
+    // And what a second Anicel hands the running one, while this window is
+    // here ([HandedFiles]).
+    HandedFiles.listen(_workspaceDoor.openPaths);
     // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with
@@ -883,6 +887,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // The pan flag is app-wide: a shell that goes away must not keep it.
     _keyHolds.dispose();
     PencilInteractionService.instance.onPencilTap = null;
+    HandedFiles.listen(null);
     AppSave.settings.removeListener(_syncAutosaveClock);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
     _autosaveClock.dispose();

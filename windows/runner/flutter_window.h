@@ -12,6 +12,13 @@
 #include "launch_splash.h"
 #include "win32_window.h"
 
+// What a second Anicel hands the running one (main.cpp): the running window
+// carries kRunningWindowProp from its first frame on, and takes the paths in
+// a WM_COPYDATA tagged kHandedFilesTag — UTF-8, each one ended by a NUL.
+// flutter_window.cpp's kHandedFilesChannel says why.
+inline constexpr wchar_t kRunningWindowProp[] = L"Anicel.TakesHandedFiles";
+inline constexpr ULONG_PTR kHandedFilesTag = 0x414E4345;  // 'ANCE'
+
 // A window that does nothing but host a Flutter view.
 class FlutterWindow : public Win32Window {
  public:
@@ -58,6 +65,9 @@ class FlutterWindow : public Win32Window {
   // minimized or full screen.
   void SayPlace();
 
+  // Says to Dart the paths a second Anicel handed this window in |data|.
+  void SayHandedFiles(const COPYDATASTRUCT& data);
+
   // The view's key messages on their way to the engine: a modifier Windows
   // has let go of is let go of in the engine too (F-411). The constants by
   // kLetGoWithWindows say why.
@@ -95,6 +105,10 @@ class FlutterWindow : public Win32Window {
   // Where Dart says its launch stages.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       launch_channel_;
+
+  // Where Dart hears the files a second Anicel handed this window.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      files_channel_;
 
   // Whether the window covers its monitor, and how it stood before — its
   // place, its size, whether it was maximized, and its frame's style.
