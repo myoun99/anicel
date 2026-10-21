@@ -137,15 +137,15 @@ void main() {
           LayerLinkGroup(
             id: 'g',
             members: [
-              LayerLinkMember(
+              const LayerLinkMember(
                 trackId: track,
                 cutId: cutWithCels,
-                layerId: const LayerId('l1'),
+                layerId: LayerId('l1'),
               ),
-              LayerLinkMember(
+              const LayerLinkMember(
                 trackId: track,
                 cutId: linked,
-                layerId: const LayerId('l2'),
+                layerId: LayerId('l2'),
               ),
             ],
           ),
@@ -159,12 +159,12 @@ void main() {
             repository.currentProject?.linkRegistry.canonicalCelKey(key) ??
             key,
       );
-    final kept = BrushFrameKey(
-      projectId: const ProjectId('p'),
+    const kept = BrushFrameKey(
+      projectId: ProjectId('p'),
       trackId: track,
       cutId: cutWithCels,
-      layerId: const LayerId('l1'),
-      frameId: const FrameId('kept'),
+      layerId: LayerId('l1'),
+      frameId: FrameId('kept'),
     );
     keepInAFile(store, {
       kept: BitmapSurface(canvasSize: size, tileSize: 8).putTiles([
