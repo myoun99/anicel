@@ -58,8 +58,13 @@ void main() {
     testWidgets('$orientation: the master opacity bar acts on the layers on '
         'display NOW', (tester) async {
       final committed = <Set<LayerId>>[];
-      await _show(tester, _panel('one', committed, orientation: orientation));
-      await _show(tester, _panel('two', committed, orientation: orientation));
+      final values = <double>[];
+      for (final cut in const ['one', 'two']) {
+        await _show(
+          tester,
+          _panel(cut, committed, orientation: orientation, values: values),
+        );
+      }
 
       await tester.drag(
         find.byKey(const ValueKey<String>('legend-opacity')),
@@ -75,6 +80,41 @@ void main() {
         const LayerId('two-2'),
         const LayerId('two-3'),
       });
+      expect(
+        values.last,
+        lessThan(values.first),
+        reason: 'the bar runs along the rail, as the drag did (F-408 ②)',
+      );
+    });
+
+    testWidgets('$orientation: the mute cell reads the SE rows of the grid '
+        'it heads — every one muted, it unmutes; one sounding, it mutes', (
+      tester,
+    ) async {
+      Layer se(int row, {required bool muted}) => Layer(
+        id: LayerId('one-$row'),
+        name: 'SE $row',
+        frames: const [],
+        kind: LayerKind.se,
+        muted: muted,
+      );
+      final pressed = <String>[];
+      for (final muted in const [true, false]) {
+        await _show(
+          tester,
+          _panel(
+            'one',
+            [],
+            orientation: orientation,
+            layers: [se(1, muted: true), se(2, muted: muted)],
+            onSeMute: pressed.add,
+          ),
+        );
+        await tester.tap(find.byKey(const ValueKey<String>('legend-mute')));
+        await tester.pumpAndSettle();
+      }
+
+      expect(pressed, ['unmute', 'mute']);
     });
   }
 
@@ -258,10 +298,13 @@ Widget _panel(
   int rows = 3,
   TimelineOrientation orientation = TimelineOrientation.horizontal,
   ValueChanged<TimelineLegendMenus?>? onMenus,
+  List<double>? values,
+  List<Layer>? layers,
+  ValueChanged<String>? onSeMute,
 }) => MaterialApp(
   home: Scaffold(
     body: TimelinePanel(
-      layers: _layersOf(cut, marked: marked, rows: rows),
+      layers: layers ?? _layersOf(cut, marked: marked, rows: rows),
       activeLayerId: rows == 0 ? null : LayerId('$cut-1'),
       substrateGeneration: cut,
       frameCursor: _cursor,
@@ -285,8 +328,8 @@ Widget _panel(
         onSheetAllOff: () {},
         onClearMarkFilter: () {},
         onClearAllFillReferences: () {},
-        onMuteAllSe: () {},
-        onUnmuteAllSe: () {},
+        onMuteAllSe: () => onSeMute?.call('mute'),
+        onUnmuteAllSe: () => onSeMute?.call('unmute'),
         onBypassAllFx: () {},
         onEnableAllFx: () {},
         onToggleMarkFilter: (_) {},
@@ -294,8 +337,11 @@ Widget _panel(
         onToggleSheetOnlyFilter: () {},
         onToggleFxOnlyFilter: () {},
         onToggleFillReferenceOnlyFilter: () {},
-        onPreviewLayersOpacity: (_, _) {},
-        onCommitLayersOpacity: (ids, _) => committed.add(ids),
+        onPreviewLayersOpacity: (_, value) => values?.add(value),
+        onCommitLayersOpacity: (ids, value) {
+          committed.add(ids);
+          values?.add(value);
+        },
       ),
     ),
   ),
