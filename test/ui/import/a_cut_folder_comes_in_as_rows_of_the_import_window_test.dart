@@ -133,6 +133,7 @@ void main() {
       'mov069.mp4',
       'memo.txt',
       'LO/A1.png',
+      '_old/A1.png',
     ]);
     await openOn(tester, aSession(), folder);
 
@@ -153,7 +154,11 @@ void main() {
       ['B', 'A', 'A', 'BG'],
       reason: 'A1s is A — its colour label tells it apart (F-429-Q2)',
     );
-    expect(rows.last.name.split(' · '), unorderedEquals(['memo.txt', 'LO/']));
+    expect(
+      rows.last.name.split(' · '),
+      unorderedEquals(['memo.txt', 'LO/', '_old/']),
+      reason: 'a folder left out whole is named once, as its files\' folder',
+    );
     expect(
       find.named('import-layer-attach-arrow-folder:A animation-director'),
       findsOneWidget,
@@ -208,6 +213,19 @@ void main() {
     expect(fit.answersFor(a), MediaFitMode.values);
     expect(fit.cellWordOf(a), importFitLabel(MediaFitMode.contain));
     expect(fit.appliesTo(scan), isFalse, reason: 'registered, not placed');
+    final fitCell = find.byKey(const ValueKey<String>('import-cell-fit-$a'));
+    await tester.ensureVisible(fitCell);
+    await tester.pump();
+    await tester.tap(fitCell);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-fit-none')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      column(tester, 'fit').cellWordOf(a),
+      importFitLabel(MediaFitMode.none),
+    );
 
     final option = column(tester, 'option');
     expect(option.cellWordOf(a), AppText.strings.imRunSpan('A1', 'A2', 2));
@@ -227,7 +245,10 @@ void main() {
       isNull,
       reason: 'a correction is its symbol\'s kind',
     );
-    await tester.tap(find.named('import-layer-type-button-$a'));
+    final typeButton = find.named('import-layer-type-button-$a');
+    await tester.ensureVisible(typeButton);
+    await tester.pump();
+    await tester.tap(typeButton);
     await tester.pumpAndSettle();
     PopupMenuItem<PanelFlyoutItem> kind(LayerKind kind) => tester.widget(
       find.byKey(ValueKey<String>('import-kind-${kind.jsonValue}')),

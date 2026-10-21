@@ -1,3 +1,4 @@
+import '../../core/copy_with_sentinel.dart';
 import '../layer_kind.dart';
 import '../layer_mark.dart';
 import '../media_asset.dart';
@@ -107,24 +108,19 @@ class CutFolderEdits {
   /// The fit the row keyed [rowKey] is laid with.
   MediaFitMode fitOf(String rowKey) => fits[rowKey] ?? bornFit;
 
-  /// These edits with the cut named [name] — null for the folder's own.
-  CutFolderEdits withCutName(String? name) => CutFolderEdits(
-    cutName: name,
-    marks: marks,
-    kinds: kinds,
-    fits: fits,
-    custom: custom,
-    into: into,
-  );
-
+  /// These edits with what is given changed — [cutName] null for the
+  /// folder's own name, and kept when not given ([copyWithSentinel]).
   CutFolderEdits copyWith({
+    Object? cutName = copyWithSentinel,
     Map<String, LayerMark>? marks,
     Map<String, LayerKind>? kinds,
     Map<String, MediaFitMode>? fits,
     bool? custom,
     Map<String, ImportDestination>? into,
   }) => CutFolderEdits(
-    cutName: cutName,
+    cutName: identical(cutName, copyWithSentinel)
+        ? this.cutName
+        : cutName as String?,
     marks: marks ?? this.marks,
     kinds: kinds ?? this.kinds,
     fits: fits ?? this.fits,

@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../core/path_names.dart' show folderOfPath, pathInFolder;
+import '../../core/progress_share.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
@@ -211,7 +212,8 @@ class _SaveProgress {
   }
 
   /// [fraction] of the entry currently streaming has been read.
-  void within(double fraction) => _emit((_done + fraction) / _total);
+  void within(double fraction) =>
+      _emit(pieceShare(fraction, index: _done, count: _total));
 
   /// Said outright at the end rather than inferred. Zero-length assets are
   /// never read from, rounding leaves crumbs, and a bar that stops at 99%
@@ -256,7 +258,7 @@ AnicelStreamedEntry _progressed(
     name: entry.name,
     length: length,
     readInto: (buffer, position, size) {
-      progress.within(length <= 0 ? 1 : position / length);
+      progress.within(doneShare(position, length));
       final read = entry.readInto(buffer, position, size);
       if (position + read >= length) {
         progress.step();

@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
+import '../../core/progress_share.dart';
 import '../../models/attached_placement.dart';
 import '../../models/import/cut_folder_edits.dart';
 import '../../models/import/cut_folder_parse.dart';
@@ -166,17 +167,6 @@ final class _Warnings extends _Said {
   final List<WarningLine> lines;
 }
 
-/// [done] of [total] as the share the wait window counts — all of it when
-/// there was nothing to count.
-double _share(int done, int total) => total <= 0 ? 1 : done / total;
-
-/// [report] told [from]–[to] of the run as a stretch's own 0–1.
-void Function(double) _between(
-  void Function(double) report,
-  double from,
-  double to,
-) => (fraction) => report(from + fraction * (to - from));
-
 /// What one file's door tells back while it runs: how far it is, and the
 /// pages or frames it could not render. The two go down the same doors
 /// together, so they are handed down as one.
@@ -189,7 +179,7 @@ class _FileReport {
   final List<int> failed = [];
 
   /// [done] of the file's [total] pieces rendered.
-  void rendered(int done, int total) => _within(_share(done, total));
+  void rendered(int done, int total) => _within(doneShare(done, total));
 }
 
 /// Which question the 「옵션」 column asks a row.
@@ -1327,14 +1317,12 @@ class _ImportDialogState extends State<ImportDialog> {
       final placing = _files.where(_placing).toList();
       final scans = folder == null ? 0 : _folderScanCount;
       final total = scans + _files.length;
-      final landed = _share(scans, total);
-      final registered = _share(scans + registering.length, total);
+      final landed = doneShare(scans, total);
+      final registered = doneShare(scans + registering.length, total);
+      void Function(double) stretch(double from, double to) =>
+          (fraction) => report(runShare(fraction, from: from, to: to));
       if (folder != null &&
-          !await _importCutFolder(
-            folder,
-            tally,
-            _between(report, 0, landed),
-          )) {
+          !await _importCutFolder(folder, tally, stretch(0, landed))) {
         // Its media rows place into the cut it would have made.
         return true;
       }
@@ -1342,22 +1330,14 @@ class _ImportDialogState extends State<ImportDialog> {
         // The pool: every kind registers, movies included. Two batches
         // rather than one, because carrying is a per-file answer and the
         // registration verb takes one flag for the batch it is given.
-        await _registerFiles(
-          registering,
-          tally,
-          _between(report, landed, registered),
-        );
+        await _registerFiles(registering, tally, stretch(landed, registered));
       }
       if (placing.isNotEmpty) {
         // ⛔The `await` is NOT redundant: `return _placeFiles(tally)`
         // hands the future to the caller and this try never sees it
         // fail, so a throw part-way through the batch would escape as an
         // unhandled async error and leave the spinner running forever.
-        return await _placeFiles(
-          placing,
-          tally,
-          _between(report, registered, 1),
-        );
+        return await _placeFiles(placing, tally, stretch(registered, 1));
       }
     } on Object catch (error) {
       tally.warn('$error');
@@ -1375,7 +1355,7 @@ class _ImportDialogState extends State<ImportDialog> {
     final folderWarnings = await widget.session.cutFolderDoor.importCutFolder(
       folderPath: folder,
       edits: _folderEditsToRun,
-      onProgress: (baked, total) => report(_share(baked, total)),
+      onProgress: (baked, total) => report(doneShare(baked, total)),
     );
     if (folderWarnings == null) {
       tally.warn(AppText.strings.imCutFolderUnreadable);
@@ -1392,7 +1372,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// typed, or as the folder names it when the field is left empty.
   CutFolderEdits get _folderEditsToRun {
     final typed = _cutName.text.trim();
-    return _folderEdits.withCutName(typed.isEmpty ? null : typed);
+    return _folderEdits.copyWith(cutName: typed.isEmpty ? null : typed);
   }
 
   /// How many files the folder's cut bakes — its share of the run's %, as
@@ -1451,7 +1431,7 @@ class _ImportDialogState extends State<ImportDialog> {
     final runsPlaced = <_RunLayer>{};
     for (final (index, path) in paths.indexed) {
       void within(double fraction) =>
-          report((index + fraction.clamp(0, 1)) / count);
+          report(pieceShare(fraction, index: index, count: count));
       within(0);
       final run = _runLayerOf(path);
       if (run != null && runsPlaced.contains(run)) {
@@ -1804,7 +1784,7 @@ class _ImportDialogState extends State<ImportDialog> {
     tally
       ..imported += carried.length
       ..done.addAll(carried.values);
-    report(_share(carried.length, paths.length));
+    report(doneShare(carried.length, paths.length));
     await pool.importMediaFiles(referenced, copyIntoProject: false);
     tally
       ..imported += referenced.length

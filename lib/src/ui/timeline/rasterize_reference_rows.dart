@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/progress_share.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -99,8 +100,13 @@ Future<void> _bake(
     task: (report) async {
       for (var i = 0; i < baked.length; i += 1) {
         // One bar for the batch: each row fills its own share of it.
-        void share(int rendered, int total) =>
-            report(total <= 0 ? 1 : (i + rendered / total) / baked.length);
+        void share(int rendered, int total) => report(
+          pieceShare(
+            doneShare(rendered, total),
+            index: i,
+            count: baked.length,
+          ),
+        );
         final layerId = baked[i].id;
         if (isMovieReference(baked[i])) {
           await session.importDoors.rasterizeMovieReference(

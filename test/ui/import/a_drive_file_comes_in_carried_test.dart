@@ -381,4 +381,58 @@ void main() {
       expect(ProviderDocuments.workingCopyOf(uri), isNull);
     });
   });
+
+  testWidgets('a Drive file handed in beside a cut folder is named on the '
+      'folder\'s left-out row — its copy come after the folder was read too', (
+    tester,
+  ) async {
+    const notes = ProviderDocument(uri: uri, name: 'notes.png');
+    final sep = Platform.pathSeparator;
+    final (cel, bytes) = (await tester.runAsync(
+      () async => (
+        await writeSolidPng(temp, 'csm_13_069_lo${sep}A1.png'),
+        await writeSolidPng(temp, 'doc.png'),
+      ),
+    ))!;
+    documents[uri] = bytes;
+    holdCopy = Completer<bool>();
+    // What the door's pick keeps for the steps that have only the URI.
+    ProviderDocuments.remember(notes);
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(
+            session: s,
+            picked: [
+              FolderGrant.granted(
+                path: File(cel).parent.path,
+                kind: GrantKind.folder,
+              ),
+              const FolderGrant.providerDocument(notes),
+            ],
+          ),
+        ),
+      ),
+    );
+    List<ImportFileRow> rows() =>
+        tester.widget<ImportFileTable>(find.byType(ImportFileTable)).rows;
+
+    expect(
+      await settleAsync(tester, () => rows().any((r) => r.path == 'folder:A')),
+      isTrue,
+      reason: 'premise: the folder is read while the copy is held',
+    );
+    expect(copiedTo, hasLength(1), reason: 'premise: the copy is under way');
+    holdCopy!.complete(true);
+
+    expect(
+      await settleAsync(
+        tester,
+        () => rows().last.name.split(' · ').contains('notes.png'),
+      ),
+      isTrue,
+    );
+  });
 }
