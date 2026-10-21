@@ -727,6 +727,18 @@ void main() {
         row('sparse', blendMode: LayerBlendMode.multiply),
         row('inside', effects: blurred),
       ],
+      // A folder that blends and blurs is rastered apart (its sub-tree's
+      // own image), and draws its rows into that.
+      'a folder through multiply, blurred': [
+        CompositeGroup<CanvasStackRow>(
+          children: [row('noise'), row('sparse', opacity: 0.7)],
+          opacity: 0.9,
+          blendMode: LayerBlendMode.multiply,
+          effects: [
+            ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 2]),
+          ],
+        ),
+      ],
     };
 
     // The view sees across a cut at each level that has one, and less of
@@ -741,18 +753,32 @@ void main() {
         panY: -80,
         rotationDegrees: 20,
       ),
-      'magnified 230%': CanvasViewport(zoom: 2.3, panX: -140, panY: -130),
+      // ⚠️At a zoom that puts no pixel's centre on a texel's edge. At 230%
+      // one lies ON one (172.5 / 2.3 = 75; the pan is put on whole pixels),
+      // magnified a texel is drawn unfiltered, and which texel it then
+      // takes is the float rounding of the whole matrix — the part laid,
+      // standing at another origin, rounded to the other side: inside a
+      // folder's raster three lines of pixels took the texel beside
+      // (🔬2026-10-21). Either is that pixel; neither is what these pins
+      // hold. At 2.2 a centre, a half, is never k × 2.2.
+      'magnified 220%': CanvasViewport(zoom: 2.2, panX: -134, panY: -125),
     };
 
     Iterable<CanvasLayerImageRequest> requestsIn(
       List<CompositeNode<CanvasStackRow>> nodes,
-    ) => [
-      for (final node in nodes)
-        if (node case CompositeLeaf(
-          payload: final CanvasLayerImageRequest request,
-        ))
-          request,
-    ];
+    ) sync* {
+      for (final node in nodes) {
+        switch (node) {
+          case CompositeLeaf(payload: final CanvasLayerImageRequest request):
+            yield request;
+          case CompositeLeaf():
+            break;
+          case CompositeGroup(:final children):
+          case CompositeAdjustment(:final children):
+            yield* requestsIn(children);
+        }
+      }
+    }
 
     /// The stack's screen for [nodes], every row warmed first the way the
     /// view asks for it, captured the way `a_cropped_cel_draws_the_same_
@@ -912,6 +938,22 @@ void main() {
               row(all['noise']!, opacity: 0.8),
               row(all['sparse']!, blendMode: LayerBlendMode.multiply),
               row(all['inside']!, effects: blurred),
+            ];
+          },
+          'a folder through multiply, blurred': () {
+            final all = cels();
+            return [
+              CompositeGroup(
+                children: [
+                  row(all['noise']!),
+                  row(all['sparse']!, opacity: 0.7),
+                ],
+                opacity: 0.9,
+                blendMode: LayerBlendMode.multiply,
+                effects: [
+                  ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 2]),
+                ],
+              ),
             ];
           },
         };
