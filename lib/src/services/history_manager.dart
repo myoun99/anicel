@@ -502,10 +502,10 @@ class HistoryManager extends ChangeNotifier {
 
   /// Whether [onBeforeUndoRedo] would adopt something RIGHT NOW.
   ///
-  /// Asked by a step that WAITED — behind the wait window while its work
-  /// ran ahead ([workAhead], the UI's HistoryVerbs): work the user began
-  /// after pressing — a lift, an open transform box — is theirs, and a late
-  /// step that adopted it would land it out from under their hand.
+  /// Asked by a step that WAITED while its work ran ahead ([workAhead]):
+  /// work the user began after pressing — a lift, an open transform box — is
+  /// theirs, and a late step that adopted it would land it out from under
+  /// their hand.
   bool Function()? pendingBeforeUndoRedo;
 
   /// Counts every change to the stacks — a push, a step, a clear, a shed.
@@ -529,33 +529,23 @@ class HistoryManager extends ChangeNotifier {
     required bool undo,
     required bool Function(BrushFrameKey key) wants,
   }) {
-    final stack = undo ? _undoStack : _redoStack;
     final cels = CelsAhead(wants: wants);
-    if (stack.isNotEmpty) {
-      final next = stack.last;
-      // ⚠️The cast is not ceremony — see [_parkDeepEnd].
-      if (next is PictureRestoringCommand) {
-        (next as PictureRestoringCommand).readAhead(cels, undo: undo);
-      }
-    }
+    _next<PictureRestoringCommand>(undo: undo)?.readAhead(cels, undo: undo);
     // What came back is RAM again, and the budget says whether it stays.
     _trimRetainedBytes();
     return cels.cels;
   }
 
-  /// What the next undo — or, with [undo] false, the next redo — can work
-  /// out off the UI thread before it is taken ([WorksAheadCommand]); null
-  /// when nothing.
-  WorkAhead? workAhead({required bool undo}) {
-    final stack = undo ? _undoStack : _redoStack;
-    if (stack.isEmpty) {
-      return null;
-    }
-    final next = stack.last;
+  /// What the next undo — or redo, with [undo] false — works out off the UI
+  /// thread before it is taken ([WorksAheadCommand]); null when nothing.
+  WorkAhead? workAhead({required bool undo}) =>
+      _next<WorksAheadCommand>(undo: undo)?.workAhead(undo: undo);
+
+  /// The next undo — or redo, with [undo] false — when it is a [T].
+  T? _next<T>({required bool undo}) {
+    final next = (undo ? _undoStack : _redoStack).lastOrNull;
     // ⚠️The cast is not ceremony — see [_parkDeepEnd].
-    return next is WorksAheadCommand
-        ? (next as WorksAheadCommand).workAhead(undo: undo)
-        : null;
+    return next is T ? next as T : null;
   }
 
   /// Every tile an entry DEEPER than the next step holds alone, with where
