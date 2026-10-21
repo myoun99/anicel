@@ -11,9 +11,11 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/app_clipboard.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
+import 'package:anicel/src/ui/session/key_clipboard.dart';
 import 'package:anicel/src/ui/session/layer_clipboard.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
 
@@ -41,6 +43,7 @@ import '../../helpers/reference_to.dart';
 FrameClipboard frameBoardOf(EditorSessionManager session) => session.clipboard;
 LayerClipboard layerBoardOf(EditorSessionManager session) =>
     session.layerClipboard;
+KeyClipboard keyBoardOf(EditorSessionManager session) => session.keyClipboard;
 
 void main() {
   late AppClipboard clipboard;
@@ -171,6 +174,72 @@ void main() {
       final pasted = row.frames.firstWhere((frame) => frame.id == pastedId);
       expect(pasted.seName, 'A');
       expect(pasted.name, 'from A');
+    });
+  });
+
+  // I-101 ③ (유저 2026-10-15): 「다른 프로젝트 · 다른 컷에도 프레임 복사와
+  // 같은 규칙으로 결과적으로 되게」 — keys too: the key board is the app's.
+  group('KEYS', () {
+    void keyRotation(EditorSessionManager session, Map<int, double> values) {
+      final layer = session.activeLayer!;
+      var lane = layer.transformTrack.rotation;
+      for (final MapEntry(key: frame, :value) in values.entries) {
+        lane = lane.withKey(frame, value);
+      }
+      session.laneVerbs.updateLayerTransformTrack(
+        layer.id,
+        layer.transformTrack.copyWith(rotation: lane),
+      );
+    }
+
+    Map<int, double> rotationOf(EditorSessionManager session) => {
+      for (final MapEntry(key: frame, value: key)
+          in session.activeLayer!.transformTrack.rotation.keys.entries)
+        frame: key.value,
+    };
+
+    void standOnRotation(EditorSessionManager session, {required int at}) {
+      session.selectFrameIndex(at);
+      session.standOnRow(LaneRowAddress(session.activeLayer!.id, 'rotation'));
+    }
+
+    test('copied on a lane in one project, they go down on that lane in '
+        'ANOTHER — the project they came from left as it was', () {
+      final a = open();
+      final b = open();
+      keyRotation(a, {3: 10, 7: 20});
+      standOnRotation(a, at: 7);
+      keyBoardOf(a).copy();
+
+      standOnRotation(b, at: 3);
+      expect(
+        keyBoardOf(b).canPasteIndependent,
+        isTrue,
+        reason: 'the copy is the APP\'s — every open project holds it',
+      );
+      keyBoardOf(b).pasteIndependent();
+
+      expect(rotationOf(b), {3: 20});
+      expect(rotationOf(a), {3: 10, 7: 20});
+      b.historyManager.undo();
+      expect(rotationOf(b), isEmpty, reason: 'one undo step, where it landed');
+    });
+
+    test('copied in one cut, they go down in another cut of the project', () {
+      final s = open();
+      keyRotation(s, {5: 30});
+      standOnRotation(s, at: 5);
+      keyBoardOf(s).copy();
+
+      final first = s.requireActiveCut.id;
+      s.cutVerbs.createCut();
+      s.selectCut(s.activeTrack.cuts.firstWhere((cut) => cut.id != first).id);
+      expect(s.requireActiveCut.id, isNot(first), reason: '⛔전제');
+      standOnRotation(s, at: 2);
+      expect(keyBoardOf(s).canPasteIndependent, isTrue);
+      keyBoardOf(s).pasteIndependent();
+
+      expect(rotationOf(s), {2: 30});
     });
   });
 
