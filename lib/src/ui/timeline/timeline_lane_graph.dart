@@ -18,6 +18,7 @@ import '../../models/key_side.dart'
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
+import '../../services/input/modifier_keys.dart' show ModifierKeys;
 import '../dashed_path.dart' show DashPattern, dashesAlong;
 import '../input/hit_gate.dart' show HitGate;
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
@@ -610,6 +611,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// frames — the band's own step ([commaDragFrameDelta]) — and the view
   /// pans where the hand reaches its edge, as under a band's drag (D42).
   /// Across, its keys' values go as far as the hand ([_valuesRaised]).
+  /// With Shift held, one of the two alone ([_keptToOneWay]).
   void _carryTo(_KeyInHand inHand, DragUpdateDetails details) {
     if (!inHand.moving) {
       return;
@@ -620,7 +622,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       globalPosition: details.globalPosition,
       axis: axis,
     );
-    final moved = details.localPosition - inHand.press;
+    final moved = _keptToOneWay(details.localPosition - inHand.press);
     final frames = commaDragFrameDelta(
       accumulatedDelta: partAlong(axis, moved),
       frameCellExtent: widget.frameAxis.geometry.value.frameCellExtent,
@@ -632,6 +634,23 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     inHand.frames = frames;
     inHand.rise = rise;
     widget.lanes!.onMoveUpdate(frames, values: _valuesRaised(inHand));
+  }
+
+  /// [moved] as a carry takes it: with Shift held, the one way it has gone
+  /// further alone — along the frames or across the graph (I-3 ③, AE's
+  /// Shift-drag in its graph editor). Read at every move, as the canvas
+  /// reads its modifier: held before the press and pressed during the drag
+  /// are one question.
+  Offset _keptToOneWay(Offset moved) {
+    if (!ModifierKeys.isShiftPressed) {
+      return moved;
+    }
+    final axis = widget.frameAxis.axis;
+    final along = partAlong(axis, moved);
+    final across = partAcross(axis, moved);
+    return along.abs() >= across.abs()
+        ? offsetAlong(axis, along: along, across: 0)
+        : offsetAlong(axis, along: 0, across: across);
   }
 
   /// The keys the selection holds on this graph's own lines, as they stand

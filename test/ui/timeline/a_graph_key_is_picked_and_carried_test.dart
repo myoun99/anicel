@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -369,11 +370,11 @@ void main() {
     );
     await _openTheGraph(tester, s, lane: 'position');
 
-    await _carryUp(tester, _keyOnScreen(tester, 8, part: 1), 30);
+    await _carry(tester, _keyOnScreen(tester, 8, part: 1), _up30);
     final down = _transformOf(s).position.keys[8]!.value;
     expect((down.x, down.y > 50), (200, true));
 
-    await _carryUp(tester, _keyOnScreen(tester, 8), 30);
+    await _carry(tester, _keyOnScreen(tester, 8), _up30);
     final across = _transformOf(s).position.keys[8]!.value;
     expect((across.x > 200, across.y), (true, down.y));
   });
@@ -397,7 +398,7 @@ void main() {
         .transformOptions!;
     expect(chain.value.scaleLinked, isTrue, reason: '⛔전제: the default');
 
-    await _carryUp(tester, _keyOnScreen(tester, 8), 30);
+    await _carry(tester, _keyOnScreen(tester, 8), _up30);
     final linked = _transformOf(s).scale.keys[8]!.value;
     expect(linked.x, greaterThan(2));
     expect(linked.y / linked.x, closeTo(0.5, 1e-9));
@@ -405,26 +406,83 @@ void main() {
     s.undo();
     chain.value = chain.value.copyWith(scaleLinked: false);
     await tester.pumpAndSettle();
-    await _carryUp(tester, _keyOnScreen(tester, 8), 30);
+    await _carry(tester, _keyOnScreen(tester, 8), _up30);
     final unlinked = _transformOf(s).scale.keys[8]!.value;
     expect((unlinked.x > 2, unlinked.y), (true, 1));
   });
+
+  // I-3 ③ — AE's graph editor: Shift-drag keeps a key to the horizontal or
+  // the vertical.
+  testWidgets('with Shift held, a carry keeps to the one way it has gone '
+      'further: mostly up, the key stays on its frame; mostly along, its '
+      'value stays', (tester) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    final cell = _cellExtent(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+
+    await _carry(tester, _keyOnScreen(tester, 8), Offset(cell * 2, -cell * 3));
+    expect(_keyedFrames(s), [0, 8], reason: 'up alone');
+    final raised = _rotationAt(s, 8);
+    expect(raised, greaterThan(45));
+
+    await _carry(tester, _keyOnScreen(tester, 8), Offset(cell * 3, -cell * 2));
+    expect(_keyedFrames(s), [0, 11], reason: 'along alone');
+    expect(_rotationAt(s, 11), raised);
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+  });
+
+  testWidgets('Shift pressed during a carry keeps it to one way from that '
+      'move on — held before the press and pressed during it are one '
+      'question', (tester) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    final cell = _cellExtent(tester);
+
+    final gesture = await tester.startGesture(
+      _keyOnScreen(tester, 8),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(Offset(cell * 2, -cell));
+    await tester.pump();
+    expect(
+      _graphOf(tester).painter.own.single.lane.keyedFrames,
+      {0, 10},
+      reason: '⛔전제: free',
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await gesture.moveBy(Offset(0, -cell * 3));
+    await tester.pump();
+    expect(_graphOf(tester).painter.own.single.lane.keyedFrames, {0, 8});
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    expect(_keyedFrames(s), [0, 8]);
+    expect(_rotationAt(s, 8), greaterThan(45));
+  });
 }
 
-/// A press on the key at [at], carried [by] pixels up the graph and let go.
-Future<void> _carryUp(WidgetTester tester, Offset at, double by) async {
+/// A press on the key at [at], carried [by] and let go.
+Future<void> _carry(WidgetTester tester, Offset at, Offset by) async {
   final gesture = await tester.startGesture(
     at,
     kind: PointerDeviceKind.mouse,
   );
   await tester.pump();
-  await gesture.moveBy(Offset(0, -by));
+  await gesture.moveBy(by);
   await tester.pump();
   await gesture.up();
   await tester.pumpAndSettle();
 }
 
 const _drawId = LayerId('draw');
+
+/// Thirty pixels up the graph.
+const _up30 = Offset(0, -30);
 
 String get _transformGroup =>
     laneGroupKey(_drawId, transformGroupHeaderLane.laneId);
