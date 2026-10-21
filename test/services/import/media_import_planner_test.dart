@@ -315,6 +315,7 @@ void main() {
       );
 
       expect(correction.attachedMode, AttachedMode.free);
+      expect(correction.attachedPlacement, AttachedPlacement.above);
       expect(correction.mark.revise, LayerRevise.direction);
       expect(correction.onTimesheet, isFalse);
       expect(correction.frames.map((f) => f.name), ['1', '2']);
@@ -329,6 +330,22 @@ void main() {
             if (bake.layerId == correction.id) bake.frameId,
         ],
         correction.frames.map((f) => f.id),
+      );
+    });
+
+    test('two corrections of one symbol both ride the symbol\'s own layer '
+        '— neither rides the other', () {
+      final plan = planFor('csm_13_074_lo', ['A1.png', 'A1e.png', 'A1s.png']);
+      final [base, direction, animationDirector, ...] = plan.cut.layers;
+
+      expect(base.attachedToLayerId, isNull);
+      expect(
+        [direction.attachedToLayerId, animationDirector.attachedToLayerId],
+        [base.id, base.id],
+      );
+      expect(
+        [direction.mark.revise, animationDirector.mark.revise],
+        [LayerRevise.direction, LayerRevise.animationDirector],
       );
     });
 

@@ -128,13 +128,14 @@ void main() {
     );
   });
 
-  test('rule F: revision underscores fold to the LATEST, always; a '
-      'revision-only cel (A7_ with no A7) is still a cel', () {
+  test('rule F: revision underscores fold to the LATEST, always — '
+      'whatever order the folder lists them in; a revision-only cel (A7_ '
+      'with no A7) is still a cel', () {
     final result = parseCutFolder(
       folderName: 'csm_13_074_gen',
       entries: files([
         'A1.png',
-        'A2.png', 'A2_.jpg', 'A2__.jpg',
+        'A2__.jpg', 'A2.png', 'A2_.jpg',
         'A7_.png',
       ]),
     );
@@ -226,6 +227,20 @@ void main() {
       expect(layersOf(result), [('A', null), ('G', null)]);
       expect(result.layers[0].cells.map((c) => c.label), ['1', '1es']);
       expect(result.layers[1].cells.map((c) => c.label), ['3', '3a']);
+    });
+
+    test('letters after an underscore that name no correction stay the '
+        'revision marks they always were — each one deepens it, so A1_x '
+        'is later than A1_', () {
+      final result = parseCutFolder(
+        folderName: 'csm_13_074_lo',
+        entries: files(['A1_x.png', 'A1_.png']),
+      );
+
+      expect(layersOf(result), [('A', null)]);
+      final cel = result.layers.single.cells.single;
+      expect(cel.file, 'A1_x.png');
+      expect(cel.olderRevisions, ['A1_.png']);
     });
 
     test('a correction whose symbol has no cels of its own is still its '
