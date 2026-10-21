@@ -771,20 +771,20 @@ class TimelineLayerControlsRow extends StatelessWidget {
   );
 
   /// One of the buttons at the end of the name, `layer-[slug]` in
-  /// [_nameButtonBox] wearing [face] — its glyph, and whether it warns —
-  /// pressed under its own context, so a popover it opens lands on it.
+  /// [_nameButtonBox] in its [look] — pressed under its own context, so a
+  /// popover it opens lands on it.
   Widget _nameButton({
     required String slug,
     required String tooltip,
-    required ({RailGlyph glyph, bool danger}) face,
+    required _NameButtonLook look,
     required void Function(BuildContext context)? onPressed,
   }) => Builder(
     builder: (context) => RailGlyphButton(
       name: '$keyPrefix-layer-$slug-${layer.id}',
       tooltip: tooltip,
       size: _nameButtonBox,
-      glyph: face.glyph,
-      danger: face.danger,
+      glyph: look.glyph,
+      danger: look.danger,
       onPressed: onPressed == null ? null : () => onPressed(context),
     ),
   );
@@ -800,9 +800,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
       tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
       // The link reads in the accent whatever the button's own rest
       // colour: it says the row is linked before anything is pressed.
-      face: (
-        glyph: RailIconGlyph(Icons.link, color: colorScheme.primary),
-        danger: false,
+      look: _NameButtonLook(
+        RailIconGlyph(Icons.link, color: colorScheme.primary),
       ),
       onPressed: onOpen == null
           ? null
@@ -834,8 +833,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     return _nameButton(
       slug: 'reference',
       tooltip: AppText.strings.tlLayerReference,
-      face: (
-        glyph: const RailIconGlyph(Icons.insert_drive_file_outlined),
+      look: _NameButtonLook(
+        const RailIconGlyph(Icons.insert_drive_file_outlined),
         danger: isReferenceSourceShort,
       ),
       onPressed: (context) => onOpen(context, layerIdNow(context, layer.id)),
@@ -857,7 +856,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     return _nameButton(
       slug: 'camera-path',
       tooltip: AppText.strings.cameraPath,
-      face: (glyph: const RailIconGlyph(Icons.route), danger: false),
+      look: const _NameButtonLook(RailIconGlyph(Icons.route)),
       onPressed: onOpen,
     );
   }
@@ -1125,4 +1124,14 @@ TimelineGroupFold timelineGroupFoldFor({
     expanded: !collapsedAttachBaseIds.contains(row.layer.id),
     onToggle: onToggleAttachGroup,
   );
+}
+
+/// What a button at the end of a name looks like
+/// ([TimelineLayerControlsRow]): its glyph, and whether it warns — the
+/// reference button, red while its file is short of film.
+final class _NameButtonLook {
+  const _NameButtonLook(this.glyph, {this.danger = false});
+
+  final RailGlyph glyph;
+  final bool danger;
 }
