@@ -607,7 +607,18 @@ void main() {
   /// nothing gone. ⛔Not bundled to fit: a writer that took the three as
   /// one value would have every caller build that value out of a row's
   /// three fields first.
-  const wideSignatures = 410;
+  /// ⚠️410 → 412 on 2026-10-22, named as the rule above asks (card
+  /// box-sized-by-two-picks): two of `axis_turn.dart`'s turns, the home
+  /// that says a box by the axis once instead of the nineteen hand-turned
+  /// pairs it replaced. `stripAcross` (seven) is a turned `Positioned`:
+  /// the axis, where across and how thick, the child, its key, and the two
+  /// ends — `fromEnd` for a lane at a panel's far edge or a caret after a
+  /// row, `alongStart` for a drop's line held past a rail row's section
+  /// slot (F-423②). `sizedAlong` (five) is a turned `SizedBox`, and took
+  /// its child's key as `stripAlong` does. 🔬`clean_code_diff` against
+  /// master (`30f7044cc`, at 407) named those two added and nothing gone.
+  /// ⛔Not split to fit: each parameter is one of the widget it turns.
+  const wideSignatures = 412;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
