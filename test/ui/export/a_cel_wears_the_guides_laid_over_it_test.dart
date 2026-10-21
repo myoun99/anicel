@@ -14,6 +14,7 @@ import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -229,9 +230,8 @@ void main() {
 
   // 🗣️I-117: a cel's Photoshop file keeps the rows it is made of apart.
   testWidgets('in a Photoshop file the guides are a row of their own over '
-      'the artwork\'s, named as the band names them: the bake alone', (
-    tester,
-  ) async {
+      'the artwork\'s, named as the band names them and laid whole: the '
+      'bake alone', (tester) async {
     await tester.runAsync(() async {
       final session = sessionOf([shown, hidden, symmetry]);
       final baked = await guideLinesOnPaper(
@@ -248,6 +248,11 @@ void main() {
       expect(
         [for (final row in rows) row.name],
         ['A', AppText.strings.exLayGuides],
+      );
+      expect(
+        (rows.last.opacity, rows.last.blendMode),
+        (1.0, LayerBlendMode.normal),
+        reason: 'as the cel\'s picture lays them over its artwork',
       );
       final image = await rows.last.draw();
       final guides = await image.toByteData(

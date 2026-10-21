@@ -1354,8 +1354,16 @@ void main() {
     // writes; the Image tab's waits on I-117-Q2.
     testWidgets('the Cels tab lists every still with PSD on, the Image tab '
         'every one — PSD there but off, saying why — and the Sequence tab '
-        'every one but PSD', (tester) async {
-      await pumpDialog(tester, exportSession());
+        'every one but PSD; a still this machine cannot write is off in '
+        'each', (tester) async {
+      // A binary with no JPG encoder.
+      final noJpg = ExportFormatAvailability(
+        encoderResolver: () => null,
+        ffmpegCheck: () async => true,
+        jpgSupported: false,
+      );
+      addTearDown(noJpg.dispose);
+      await pumpDialog(tester, exportSession(), formatAvailability: noJpg);
 
       /// The still list's rows, each as whether it takes a pick; the list
       /// shut again after.
@@ -1376,13 +1384,11 @@ void main() {
                 .enabled;
           }
         }
-        if (rows['psd'] == false) {
-          expect(
-            find.text(AppText.strings.exNotInThisBuild),
-            findsOneWidget,
-            reason: 'the row that is off says why under its name',
-          );
-        }
+        expect(
+          find.text(AppText.strings.exNotInThisBuild),
+          findsNWidgets(rows.values.where((on) => !on).length),
+          reason: 'each row that is off says why under its name',
+        );
         await tester.tapAt(const Offset(1, 1));
         await tester.pump();
         await tester.pump();
@@ -1392,7 +1398,7 @@ void main() {
       await pickExportStill(tester, ExportStillFormat.png);
       expect(await listed(), {
         'png': true,
-        'jpg': true,
+        'jpg': false,
         'bmp': true,
         'tga': true,
         'tiff': true,
@@ -1401,7 +1407,7 @@ void main() {
       await switchTab(tester, 'image');
       expect(await listed(), {
         'png': true,
-        'jpg': true,
+        'jpg': false,
         'psd': false,
         'bmp': true,
         'tga': true,
@@ -1422,7 +1428,7 @@ void main() {
       await tester.pump();
       expect(await listed(), {
         'png': true,
-        'jpg': true,
+        'jpg': false,
         'psd': true,
         'bmp': true,
         'tga': true,

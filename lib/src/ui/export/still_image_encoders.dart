@@ -24,6 +24,10 @@ import 'png_srgb.dart';
 /// channel in the file ([_encodeRgbPng]). The engine's encoder cannot write
 /// one: it writes RGBA whatever the picture holds, so it keeps only the PNGs
 /// that keep their alpha.
+///
+/// ⛔A PSD is refused, not left to the engine's PNG: a Photoshop document
+/// is its rows, which one picture does not hold — the tab that writes one
+/// lays them out for [encodePsd] (I-117).
 ExportImageEncoder? stillEncoderFor(ExportFormatSelection format) =>
     switch (format.stillFormat) {
       ExportStillFormat.jpg => (image) => _encodeJpg(image, format),
@@ -37,7 +41,11 @@ ExportImageEncoder? stillEncoderFor(ExportFormatSelection format) =>
         (image) => _encodeStill(image, format, encodeTiff),
       ExportStillFormat.webp =>
         (image) => _encodeStill(image, format, encodeWebp),
-      ExportStillFormat.psd => null,
+      ExportStillFormat.psd => throw ArgumentError.value(
+        format.stillFormat,
+        'format',
+        'A PSD is written from its rows (encodePsd), not one picture',
+      ),
     };
 
 /// [image] through one of the writers the engine has no encoder for

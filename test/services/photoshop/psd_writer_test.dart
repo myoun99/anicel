@@ -258,6 +258,28 @@ void main() {
     expect(readPsdDocument(bytes).layers.last.collapsed, isTrue);
   });
 
+  test('a folder\'s section block is the twelve bytes its blend rides in, '
+      'and its length says so — a reader walks the blocks by it', () {
+    final bytes =
+        (PsdBuilder(width: width, height: height)
+              ..openGroup(name: 'Box', blendMode: LayerBlendMode.multiply)
+              ..addLayer(name: 'Inside', pixels: packPsdLayer(filled(blue)))
+              ..closeGroup())
+            .build(composite: filled(blue));
+    String ascii(int at) => String.fromCharCodes(bytes.sublist(at, at + 4));
+    final blocks = [
+      for (var at = 0; at + 4 <= bytes.length; at += 1)
+        if (ascii(at) == 'lsct') at,
+    ];
+
+    expect(blocks, hasLength(2), reason: 'the folder\'s end, and the folder');
+    for (final at in blocks) {
+      expect(ByteData.sublistView(bytes).getUint32(at + 4), 12);
+      expect(ascii(at + 12), '8BIM');
+    }
+    expect(ascii(blocks.last + 16), 'mul ');
+  });
+
   test('every blend the app has is one Photoshop has, and reads back as '
       'itself', () {
     for (final mode in LayerBlendMode.values) {

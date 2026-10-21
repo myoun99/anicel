@@ -15,6 +15,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -213,8 +214,8 @@ void main() {
 
   // 🗣️I-117: a cel's Photoshop file keeps the rows it is made of apart.
   testWidgets('in a Photoshop file the camera\'s work is a row of its own '
-      'over the artwork\'s, named as the CAM pill is: its marks on '
-      'nothing', (tester) async {
+      'over the artwork\'s, named as the CAM pill is and laid whole: its '
+      'marks on nothing', (tester) async {
     await tester.runAsync(() async {
       final session = sessionOf(
         CameraPose(center: CanvasPoint(x: 200, y: 200)),
@@ -229,6 +230,11 @@ void main() {
       expect(
         [for (final row in rows) row.name],
         [AppText.strings.exBackground, 'A', AppText.strings.tlKindCamera],
+      );
+      expect(
+        (rows.last.opacity, rows.last.blendMode),
+        (1.0, LayerBlendMode.normal),
+        reason: 'as the cel\'s picture lays it over its artwork',
       );
       final image = await rows.last.draw();
       final marks = (await image.toByteData(

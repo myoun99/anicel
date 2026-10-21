@@ -141,7 +141,8 @@ void main() {
     });
 
     test('the bytes: a PNG that keeps its alpha is the engine\'s own; one in '
-        'RGB (F-335) and a JPG have an encoder', () {
+        'RGB (F-335) and a JPG have an encoder; a PSD, which is its rows, '
+        'is no one picture\'s', () {
       expect(
         stillEncoderFor(const ExportFormatSelection(kind: ExportMediaKind.still)),
         isNull,
@@ -163,6 +164,16 @@ void main() {
           ),
         ),
         isNotNull,
+      );
+      expect(
+        () => stillEncoderFor(
+          const ExportFormatSelection(
+            kind: ExportMediaKind.still,
+            stillFormat: ExportStillFormat.psd,
+          ),
+        ),
+        throwsArgumentError,
+        reason: 'the engine\'s PNG in a file named .psd is no document',
       );
     });
   });

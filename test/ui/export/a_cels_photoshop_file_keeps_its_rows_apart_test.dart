@@ -98,12 +98,13 @@ void main() {
     return pixels;
   }
 
-  /// [session]'s drawings: a black dot at (1, 1) on 「A」 and a blue one at
-  /// (2, 2) on 「A 影」 — or none at all.
-  void draw(EditorSessionManager session, {bool anything = true}) {
-    if (!anything) {
-      return;
-    }
+  /// [session]'s drawings: [onA] on 「A」 and [onShade] on 「A 影」, each
+  /// (x, y) → its RGBA.
+  void paint(
+    EditorSessionManager session, {
+    required Map<(int, int), List<int>> onA,
+    required Map<(int, int), List<int>> onShade,
+  }) {
     final cut = session.requireActiveCut;
     void put(String row, FrameId cel, Map<(int, int), List<int>> paint) =>
         session.renderCaches.brushFrameStore.storeBakedSurface(
@@ -116,9 +117,13 @@ void main() {
             },
           ),
         );
-    put('a', a1.id, {(1, 1): black});
-    put('shade', shade1.id, {(2, 2): blue});
+    put('a', a1.id, onA);
+    put('shade', shade1.id, onShade);
   }
+
+  /// A black dot at (1, 1) on 「A」 and a blue one at (2, 2) on 「A 影」.
+  void draw(EditorSessionManager session) =>
+      paint(session, onA: {(1, 1): black}, onShade: {(2, 2): blue});
 
   /// The cel 「A 1」 with 「A 影」 riding it.
   ExportCelGroupTask celOf(EditorSessionManager session) {
@@ -176,6 +181,36 @@ void main() {
     });
   });
 
+  testWidgets('the cel\'s own picture lays them as the file does — each by '
+      'its strength and blend (R26 #30)', (tester) async {
+    await tester.runAsync(() async {
+      final session = film();
+      const gray = [128, 128, 128, 255];
+      paint(session, onA: {(2, 2): gray}, onShade: {(2, 2): blue});
+      final picture = (await ExportFrameRenderer(
+        session: session,
+        background: white,
+      ).renderCelGroup(
+        celOf(session),
+        ExportSizeMode.canvas,
+        guideColor: noGuidesLaid,
+      ))!;
+      final drawn = (await picture.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      ))!.buffer.asUint8List();
+      picture.dispose();
+
+      // The blue multiplied into the gray under it, laid over it at half.
+      final at = (2 * size.width + 2) * 4;
+      for (var c = 0; c < 3; c += 1) {
+        expect(
+          drawn[at + c],
+          closeTo((gray[c] + gray[c] * blue[c] / 255) / 2, 2),
+        );
+      }
+    });
+  });
+
   testWidgets('the ground an RGB cel stands on is its bottom row, and no row '
       'stands on it; an RGBA cel has none', (tester) async {
     await tester.runAsync(() async {
@@ -203,7 +238,6 @@ void main() {
       (tester) async {
     await tester.runAsync(() async {
       final session = film();
-      draw(session, anything: false);
       final renderer = ExportFrameRenderer(session: session, background: white);
       final task = celOf(session);
 
@@ -252,10 +286,16 @@ void main() {
   });
 
   testWidgets('written, they are the document\'s rows over the cel\'s '
-      'picture — names, strengths, blends and pixels as drawn', (tester) async {
+      'picture — names, strengths, blends and pixels as drawn, a colour as '
+      'it is where its alpha is half', (tester) async {
     await tester.runAsync(() async {
       final session = film();
-      draw(session);
+      const half = [200, 100, 50, 128];
+      paint(
+        session,
+        onA: {(1, 1): black, (2, 1): half},
+        onShade: {(2, 2): blue},
+      );
       final renderer = ExportFrameRenderer(session: session, background: white);
       final task = celOf(session);
       final picture = (await renderer.renderCelGroup(
@@ -294,8 +334,16 @@ void main() {
         ],
       );
       final line = read.layers[1];
-      expect((line.left, line.top, line.right, line.bottom), (1, 1, 2, 2));
-      expect(line.pixels, black);
+      expect((line.left, line.top, line.right, line.bottom), (1, 1, 3, 2));
+      final pixels = line.pixels!;
+      expect(pixels.sublist(0, 4), black);
+      for (var c = 0; c < 4; c += 1) {
+        expect(
+          pixels[4 + c],
+          closeTo(half[c], 2),
+          reason: 'its colour kept apart from its alpha, as a layer keeps it',
+        );
+      }
       expect(read.composite, drawn, reason: 'the cel\'s own picture, opaque');
     });
   });
