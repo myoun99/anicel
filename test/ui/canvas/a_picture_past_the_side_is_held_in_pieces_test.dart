@@ -29,6 +29,7 @@ import 'package:anicel/src/services/camera_frame_corners.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/import/cel_picture.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
+import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
@@ -174,6 +175,9 @@ void main() {
         [over],
         reason: 'halved, it is half as many texels',
       );
+      // A side that is no power of two holds a picture as long as it.
+      const asLong = ui.Rect.fromLTWH(0, 0, 12000, 10);
+      expect(piecesOver(asLong, side: 12000), [asLong]);
     });
 
     test('past it, the longest power of two inside the side across, from the '
@@ -452,11 +456,23 @@ void main() {
       zoom: 1.3,
       rotationDegrees: 17,
     );
+    // Four pixels a texel, what the frame sees standing on texels' edges
+    // (60, 60)–(69, 67): an edge pixel's centre is an eighth of a texel in,
+    // and filtered it reads the texel past what is seen.
+    final magnified = TransformPose.uniform(
+      center: CanvasPoint(x: 194, y: -24),
+      zoom: 4,
+    );
     final blur = ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 3]);
 
     for (final (name, draw, posed) in [
       ('laid down texel for texel', drawing(), false),
       ('posed — turned and grown', drawing(pose: turned), true),
+      (
+        'magnified 400% — filtered, an edge reads past what is seen',
+        drawing(pose: magnified),
+        true,
+      ),
       (
         'blurred — a chain that reads its neighbours',
         drawing(effects: [blur]),
@@ -739,6 +755,18 @@ void main() {
           ],
         ),
       ],
+      // Rows enough beneath the row drawn on for the bake to raster them
+      // (`_backdropRasterMinReplayOps`), and one over it: each canvas the
+      // bake records into says what it sees.
+      'beneath the row drawn on and over it': [
+        for (final cel in ['noise', 'sparse', 'inside']) ...[
+          row(cel, opacity: 0.6),
+          row(cel, effects: blurred),
+        ],
+        row('noise', blendMode: LayerBlendMode.multiply),
+        const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
+        row('sparse', effects: blurred),
+      ],
     };
 
     // The view sees across a cut at each level that has one, and less of
@@ -809,6 +837,11 @@ void main() {
         expect(warmed, isNotNull, reason: 'fixture: ${request.frameKey}');
         inPieces |= warmed!.pieces.length > 1;
       }
+      final drawnOn = nodes.any(
+        (node) =>
+            node is CompositeLeaf<CanvasStackRow> &&
+            node.payload is CanvasActiveLayerRow,
+      );
       await tester.pumpWidget(
         MaterialApp(
           key: UniqueKey(),
@@ -825,6 +858,16 @@ void main() {
                       imageCache: images,
                       canvasSize: canvasSize,
                       viewport: viewport,
+                      activeSurfacePainter: drawnOn
+                          ? BitmapSurfacePainter(
+                              surface: BitmapSurface(
+                                canvasSize: canvasSize,
+                                tileSize: tileSize,
+                              ),
+                              showTransparentBackground: false,
+                              lineage: 'past-the-side',
+                            )
+                          : null,
                       paintPaper: true,
                       paperBackground: const ProjectBackground.color(
                         0xFFF4EEE0,
