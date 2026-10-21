@@ -679,10 +679,7 @@ void main() {
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
     await tester.runAsync(state.export);
     await tester.pump();
 
