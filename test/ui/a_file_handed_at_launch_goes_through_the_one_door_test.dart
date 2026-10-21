@@ -147,12 +147,14 @@ void main() {
     // The reply is null only when nothing hears the channel.
     Future<ByteData?> runnerSays([String method = HandedFiles.openMethod]) {
       final reply = Completer<ByteData?>();
-      tester.binding.defaultBinaryMessenger.handlePlatformMessage(
-        HandedFiles.channel.name,
-        const StandardMethodCodec().encodeMethodCall(
-          MethodCall(method, [path]),
+      unawaited(
+        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+          HandedFiles.channel.name,
+          const StandardMethodCodec().encodeMethodCall(
+            MethodCall(method, [path]),
+          ),
+          reply.complete,
         ),
-        reply.complete,
       );
       return reply.future;
     }
