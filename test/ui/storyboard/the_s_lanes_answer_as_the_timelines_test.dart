@@ -19,13 +19,13 @@ import '../../helpers/storyboard_twirls.dart';
 /// the timeline's (유저 2026-10-13: 「다시 말하지만 이런건 다 콘티패널에도
 /// 동일하게 있어야해. 같은 법으로」):
 ///
-/// * a lane cell's double click opens or keys the cell it NAMES, as the
-///   timeline's door does — it answered where the first click had stood;
-/// * a lane's strip shows a key slid in flight where its label does — it
-///   drew the committed keys.
+/// a lane cell's double click opens or keys the cell it NAMES, as the
+/// timeline's door does — it answered where the first click had stood.
 ///
-/// The row's sound wearing its gain and fades is pinned beside the row's
-/// other strips (`storyboard_lane_controls_test`).
+/// A lane's strip showing a key slid in flight is pinned with the V row's
+/// (`the_conte_draws_the_timelines_header_graphs_test`), and the row's
+/// sound wearing its gain and fades beside the row's other strips
+/// (`storyboard_lane_controls_test`).
 void main() {
   Layer seRow(EditorSessionManager s, LayerId id) =>
       s.activeTrack.seLayers.firstWhere((layer) => layer.id == id);
@@ -125,34 +125,5 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(AppText.strings.renameKeyTitle), findsOneWidget);
-  });
-
-  testWidgets('a lane\'s strip shows a key slid in flight where its label '
-      'does', (tester) async {
-    final (s, se) = await pumpSeLanes(
-      tester,
-      rowOf: (row) => row.copyWith(
-        transformTrack: TransformTrack(
-          keyframes: {0: TransformPose(center: CanvasPoint(x: 9, y: 9))},
-        ),
-      ),
-    );
-    final lanes = strip(tester, se).laneRange!;
-    expect(strip(tester, se).lane.keyMarks.keys, [0], reason: '⛔전제');
-
-    lanes.onSelectUpdate(se, 'position', 0, 0, 0);
-    expect(lanes.onMoveBegin(), isTrue, reason: '⛔전제');
-    lanes.onMoveUpdate(3);
-    await tester.pump();
-
-    expect(strip(tester, se).lane.keyMarks.keys, [3]);
-    expect(
-      seRow(s, se).transformTrack.keyedFrames,
-      {0},
-      reason: '⛔전제: in flight, nothing written',
-    );
-    lanes.onMoveCancel();
-    await tester.pump();
-    expect(strip(tester, se).lane.keyMarks.keys, [0]);
   });
 }
