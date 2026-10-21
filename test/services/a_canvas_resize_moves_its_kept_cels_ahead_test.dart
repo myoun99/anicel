@@ -165,10 +165,10 @@ void main() {
         await moveAhead(store);
         final worked = store.movedAheadOf(drawnCel);
         expect(worked, isNotNull);
-        expect(
+        // Thawed ahead as a read here thaws it: the picture the undo keeps.
+        expectSamePicture(
           store.hotBakedSurfaceOrNull(drawnCel),
-          isNotNull,
-          reason: 'thawed ahead, so the undo reads nothing here',
+          kept().bakedSurfaceOrNull(drawnCel)!,
         );
         resize(store);
         expect(identical(store.hotBakedSurfaceOrNull(drawnCel), worked), isTrue);
