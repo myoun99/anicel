@@ -233,10 +233,14 @@ void main() {
         'shape still shows under its outline and lands', (tester) async {
       final env = await pumpPanel(tester);
       final before = celOf(env.coordinator);
+      State<StatefulWidget> view() =>
+          tester.state(find.byType(InteractiveBrushEditCanvasView));
+      final viewBefore = view();
       for (final opacity in crossings) {
         env.opacity.value = opacity;
         await tester.pump();
       }
+      expect(view(), same(viewBefore), reason: 'the view is not built anew');
 
       final gesture = await press(tester, const Offset(50, 50));
       await moveTo(tester, gesture, const Offset(330, 250));

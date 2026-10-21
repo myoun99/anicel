@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/view_hand.dart';
 
 import '../brush_canvas_test_helpers.dart';
 
@@ -713,8 +714,10 @@ void main() {
 }
 
 class _Host {
-  ShapeShow? show;
-  StrokeLander? lander;
+  final shapeShow = ViewHand<ShapeShow>();
+  final strokeLander = ViewHand<StrokeLander>();
+  ShapeShow? get show => shapeShow.now;
+  StrokeLander? get lander => strokeLander.now;
   final data = <BrushStrokeCommitData>[];
   List<List<BrushDab>> get committed => [
     for (final landed in data) landed.sourceDabs,
@@ -788,8 +791,8 @@ Future<void> _pump(
                 },
           markMakesItsOwnCel: markMakesItsOwnCel,
           onActiveStrokeChanged: host.active.add,
-          onShapeShowChanged: (show) => host.show = show,
-          onStrokeLanderChanged: (lander) => host.lander = lander,
+          shapeShow: host.shapeShow,
+          strokeLander: host.strokeLander,
           onSourceStrokeCommitted: host.data.add,
           overlayModel: overlay,
         ),

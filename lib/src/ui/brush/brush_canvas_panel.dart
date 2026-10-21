@@ -312,7 +312,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.oneFingerAction,
     this.runsTheSelectedTool = true,
     this.onStrokeInputActiveChanged,
-    this.onStrokeLanderChanged,
+    this.strokeLander,
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
     this.toolCursorsEnabled = true,
@@ -1022,9 +1022,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// stroke is live.
   final ValueChanged<bool>? onStrokeInputActiveChanged;
 
-  /// This canvas view's stroke lander, published upward while it is
-  /// mounted — see [InteractiveBrushEditCanvasView.onStrokeLanderChanged].
-  final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
+  /// Where this panel holds up what a save lands first while it is
+  /// mounted — the stroke its view's pen is in and the text in hand
+  /// ([_landWorkInFlight]); see
+  /// [InteractiveBrushEditCanvasView.strokeLander].
+  final ViewHand<StrokeLander>? strokeLander;
 
   /// Selection-drag lifecycle for the host: the session holds prerender
   /// warming while it is live, as it does for a stroke. ↩️F-196: it also
@@ -1382,6 +1384,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   @override
   void initState() {
     super.initState();
+    _saveKeeper?.up(_landWorkInFlight);
     _viewportState.bindViewCommands();
     // 🚨D34 최종: a finger ANYWHERE drops the tool aim — see
     // [CanvasTouchContacts.addAppWideTouchListener] and [_handleAppWideTouch].
@@ -1524,6 +1527,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   @override
   void dispose() {
+    _saveKeeper?.down(_landWorkInFlight);
     ShownCels.instance.hide(this);
     // From the REMEMBERED object, for the reason spelled out below about
     // the viewport: the widget's may already point somewhere else.
@@ -2255,11 +2259,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         null => null,
         final selection => _selectionSeat.regionOnTheRow(selection),
       },
-      // R9-rest: what a save lands is the stroke AND the text in hand.
-      onStrokeLanderChanged: (lander) =>
-          widget.onStrokeLanderChanged?.call(_text.landerBeside(lander)),
+      strokeLander: _viewLander,
       // I-69: the shape tool has the view draw what its drag traced.
-      onShapeShowChanged: _shapeShow.call,
+      shapeShow: _shapeShow,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
@@ -2309,9 +2311,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           : placementViewportWrapMatrix(placement, _viewportState._viewport),
       child: interactiveView,
     );
-    if (widget.interactiveContentOpacity >= 1.0) {
-      return posedView;
-    }
+    // ⛔WRAPPED AT 1 TOO (F-419): a wrap that came and went as the active
+    // row's opacity crossed 1 changed the view's parent, so Flutter built
+    // the view anew each time — its stroke in flight dropped, and its hands
+    // handed over again (the old view's goodbye came last and took the
+    // shape tool away for the session). At 1 an Opacity paints its child
+    // straight, with no layer of its own.
     return Opacity(
       opacity: widget.interactiveContentOpacity.clamp(0.0, 1.0).toDouble(),
       child: posedView,
@@ -2589,6 +2594,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// opacity crosses 1 (the wrap in [_buildViewportContent]), and the old
   /// view's goodbye comes after the new one's hello (F-419).
   final ViewHand<ShapeShow> _shapeShow = ViewHand();
+
+  /// The drawing view's [StrokeLander] while it is mounted, counted as
+  /// [_shapeShow] is.
+  final ViewHand<StrokeLander> _viewLander = ViewHand();
+
+  /// What a save lands first (R9-rest): the stroke the view's pen is in
+  /// AND the text in hand — nothing while no view is up. Held up for the
+  /// panel's life ([BrushCanvasPanel.strokeLander]); it asks the view's
+  /// hand when the save does.
+  bool _landWorkInFlight() => _text.landBeside(_viewLander.now);
+
+  /// The keeper [_landWorkInFlight] is held up to — taken as the panel
+  /// comes up, so it is put down there as the panel goes.
+  late final ViewHand<StrokeLander>? _saveKeeper = widget.strokeLander;
 
   /// Where the shape being dragged lands on content that is not one cel
   /// ([BrushCanvasPanel.contentShapeTargetAt]) — taken at the press, gone

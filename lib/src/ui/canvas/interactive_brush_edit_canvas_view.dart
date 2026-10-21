@@ -48,6 +48,7 @@ import 'canvas_press.dart';
 import 'canvas_tool_holds.dart';
 import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
+import 'view_hand.dart';
 import 'canvas_viewport_offset.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
@@ -153,8 +154,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     required this.onSourceStrokeCommitted,
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
-    this.onStrokeLanderChanged,
-    this.onShapeShowChanged,
+    this.strokeLander,
+    this.shapeShow,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.toolHolds,
@@ -289,9 +290,14 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final bool showTransparentBackground;
   final ValueChanged<bool>? onActiveStrokeChanged;
 
-  /// Handed this view's [StrokeLander] while it is mounted, and null when
-  /// it goes — the same publish-upward shape `onCoordinatorChanged` uses,
-  /// on the same route as [onActiveStrokeChanged].
+  /// Where this view holds up its [StrokeLander] while it is mounted, and
+  /// takes it back when it goes — on the same route as
+  /// [onActiveStrokeChanged].
+  ///
+  /// ⛔A [ViewHand], NOT A CALLBACK (F-419): a view built anew comes up
+  /// before the one it replaces goes down, and a keeper handed a callback
+  /// took the last word — the old view's null. The type leaves no keeper
+  /// that can.
   ///
   /// 🚨★★★**A SAVE HAS TO BE ABLE TO LAND THE PEN.** Press Ctrl+S with the
   /// pen still down and the stroke reaches the cel AFTER the save took its
@@ -304,11 +310,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// ⛔The lander is the view's own [BrushEditPress.landActiveStroke] and
   /// nothing else — a save that ended the stroke its own way would be that
   /// four-step ordering written twice.
-  final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
+  final ViewHand<StrokeLander>? strokeLander;
 
-  /// Handed this view's [ShapeShow] while it is mounted, and null when it
-  /// goes — published the way [onStrokeLanderChanged] is.
-  final ValueChanged<ShapeShow?>? onShapeShowChanged;
+  /// Where this view holds up its [ShapeShow] while it is mounted — held
+  /// up the way [strokeLander] is.
+  final ViewHand<ShapeShow>? shapeShow;
 
   /// PEN-7a mapped-hold session: the pen's tail, or a button mapped to the
   /// eraser, switched the tool temporarily — the shell mirrors it on the
@@ -512,12 +518,17 @@ class _InteractiveBrushEditCanvasViewState
   final List<BrushDab> _pendingOverlayDabs = <BrushDab>[];
   bool _overlayFlushScheduled = false;
 
+  /// The keepers this view holds its hands up to — taken as it comes up,
+  /// so it puts its own hands down there as it goes.
+  late final ViewHand<StrokeLander>? _landerKeeper = widget.strokeLander;
+  late final ViewHand<ShapeShow>? _shapeKeeper = widget.shapeShow;
+
   @override
   void initState() {
     super.initState();
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
-    widget.onStrokeLanderChanged?.call(_press.landActiveStroke);
-    widget.onShapeShowChanged?.call(_shapeShow);
+    _landerKeeper?.up(_press.landActiveStroke);
+    _shapeKeeper?.up(_shapeShow);
     _toolHolds.handOver = _door;
   }
 
@@ -529,6 +540,13 @@ class _InteractiveBrushEditCanvasViewState
   @override
   void didUpdateWidget(covariant InteractiveBrushEditCanvasView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // A keeper named anew here would never hear this view's hands, and the
+    // one it held them up to would keep them past its going (F-419).
+    assert(
+      identical(widget.strokeLander, _landerKeeper) &&
+          identical(widget.shapeShow, _shapeKeeper),
+      'a view keeps the keepers it held its hands up to',
+    );
     // The view no longer REMOUNTS per cel (R13-2): the old frameId-keyed
     // remount tore down and re-inflated this whole subtree on every frame
     // flip, and that element + render-tree rebuild summed to a 40-80ms
@@ -585,10 +603,10 @@ class _InteractiveBrushEditCanvasViewState
   void dispose() {
     // ⛔FIRST, and before anything this view owns is torn down: a lander
     // still published after that point would land a stroke into freed
-    // rasterizer tiles. Nulling it is the only thing that says 「there is
-    // no pen here any more」.
-    widget.onStrokeLanderChanged?.call(null);
-    widget.onShapeShowChanged?.call(null);
+    // rasterizer tiles. Putting it down is the only thing that says 「there
+    // is no pen here any more」.
+    _landerKeeper?.down(_press.landActiveStroke);
+    _shapeKeeper?.down(_shapeShow);
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;
     }

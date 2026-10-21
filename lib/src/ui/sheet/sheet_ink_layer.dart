@@ -833,13 +833,6 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
         );
   }
 
-  void _shapeShowOf(String id, ShapeShow? show) {
-    final hand = _shapeShows.putIfAbsent(id, ViewHand.new)..call(show);
-    if (hand.now == null) {
-      _shapeShows.remove(id);
-    }
-  }
-
   /// What takes a shape whose press lands at [global]: the view of the
   /// window on top there, as it would take a stroke started there (H49),
   /// and a point on the screen on its cel. Null off every window, and on a
@@ -996,7 +989,13 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
         if (regions[index] case final region?)
           (index: index, window: windows[index], region: region),
     ];
-    _releaseWindowsGone({for (final entry in keeping) entry.window.id});
+    final mountedIds = {for (final entry in keeping) entry.window.id};
+    _releaseWindowsGone(mountedIds);
+    // A window gone takes its hand for a shape with it, once no view of it
+    // holds one up.
+    _shapeShows.removeWhere(
+      (id, hand) => hand.now == null && !mountedIds.contains(id),
+    );
     // Where each shows its own (F-216) — what it keeps past the edges of
     // the windows above it is never on screen — the print's answer too
     // (F-215).
@@ -1122,7 +1121,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       overlayModel: window.overlay,
       paintsContent: window.overlay == null,
       // F-420: the shape tool's drag lands what it traced in this view.
-      onShapeShowChanged: (show) => _shapeShowOf(window.id, show),
+      shapeShow: _shapeShows.putIfAbsent(window.id, ViewHand.new),
       onActiveStrokeChanged: (active) =>
           _windowStroking(window.id, active: active),
       onSourceStrokeCommitted: (strokeData) =>

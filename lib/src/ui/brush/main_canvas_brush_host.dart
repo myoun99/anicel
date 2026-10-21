@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
+import '../canvas/view_hand.dart';
 
 import '../../models/app_input_settings.dart';
 import '../../models/layer_effect.dart';
@@ -110,7 +111,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.cutPieceSlot,
     this.lastStroke,
     this.onStrokeInputActiveChanged,
-    this.onStrokeLanderChanged,
+    this.strokeLander,
     this.onSelectionInteractionChanged,
     this.onPressNeedsCel,
     this.markMakesItsOwnCel,
@@ -323,9 +324,9 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel]: stroke lifecycle (R13-3 warm hold).
   final ValueChanged<bool>? onStrokeInputActiveChanged;
 
-  /// This canvas view's stroke lander, published upward while it is
-  /// mounted — see [InteractiveBrushEditCanvasView.onStrokeLanderChanged].
-  final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
+  /// Forwarded to [BrushCanvasPanel]: where the canvas holds up what a
+  /// save lands first — see [BrushCanvasPanel.strokeLander].
+  final ViewHand<StrokeLander>? strokeLander;
 
   /// Forwarded to [BrushCanvasPanel]: selection-drag lifecycle — the
   /// prerender's warm hold (↩️F-196: no longer a
@@ -661,7 +662,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       cutPieceSlot: widget.cutPieceSlot,
       lastStroke: widget.lastStroke,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,
-      onStrokeLanderChanged: widget.onStrokeLanderChanged,
+      strokeLander: widget.strokeLander,
       onSelectionInteractionChanged: widget.onSelectionInteractionChanged,
     );
   }

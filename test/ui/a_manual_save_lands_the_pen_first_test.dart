@@ -86,7 +86,7 @@ void main() {
     addTearDown(session.dispose);
     var landed = 0;
     // The canvas publishes exactly this while it is mounted.
-    session.liveStrokeLanding.lander(() {
+    session.liveStrokeLanding.lander.up(() {
       landed += 1;
       inkTheCel(session, key);
       return true;
@@ -120,7 +120,7 @@ void main() {
     final (session, key) = sessionWithADrawing();
     addTearDown(session.dispose);
     var landed = 0;
-    session.liveStrokeLanding.lander(() {
+    session.liveStrokeLanding.lander.up(() {
       landed += 1;
       inkTheCel(session, key);
       return true;

@@ -16,6 +16,7 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/view_hand.dart';
 
 import '../brush_canvas_test_helpers.dart';
 
@@ -68,15 +69,15 @@ void main() {
   testWidgets('a tool\'s path takes them the same way, and a lap that ran '
       'out lays nothing more', (tester) async {
     final landed = <BrushStrokeCommitData>[];
-    ShapeShow? show;
+    final shapes = ViewHand<ShapeShow>();
     await _pump(
       tester,
       landed,
       brushOf(BrushTipOrder.oneLap),
-      onShow: (shown) => show = shown,
+      shapes: shapes,
     );
 
-    show!.landStroke([
+    shapes.now!.landStroke([
       CanvasPoint(x: 10, y: 20),
       CanvasPoint(x: 120, y: 20),
     ]);
@@ -87,16 +88,16 @@ void main() {
   testWidgets("ランダム throws the stroke's own dice: one path laid twice "
       'takes the same tips', (tester) async {
     final landed = <BrushStrokeCommitData>[];
-    ShapeShow? show;
+    final shapes = ViewHand<ShapeShow>();
     await _pump(
       tester,
       landed,
       brushOf(BrushTipOrder.random),
-      onShow: (shown) => show = shown,
+      shapes: shapes,
     );
 
     for (var stroke = 0; stroke < 2; stroke += 1) {
-      show!.landStroke([
+      shapes.now!.landStroke([
         CanvasPoint(x: 10, y: 20),
         CanvasPoint(x: 120, y: 20),
       ]);
@@ -121,7 +122,7 @@ Future<void> _pump(
   WidgetTester tester,
   List<BrushStrokeCommitData> landed,
   BrushEditCanvasInputSettings settings, {
-  ValueChanged<ShapeShow?>? onShow,
+  ViewHand<ShapeShow>? shapes,
 }) => tester.pumpWidget(
   MaterialApp(
     home: Scaffold(
@@ -134,7 +135,7 @@ Future<void> _pump(
           inputSettings: () => settings,
           editable: true,
           rowAcceptsStrokes: true,
-          onShapeShowChanged: onShow,
+          shapeShow: shapes,
           onSourceStrokeCommitted: landed.add,
         ),
       ),

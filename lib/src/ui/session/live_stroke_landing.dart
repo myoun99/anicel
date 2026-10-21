@@ -3,7 +3,7 @@ import '../canvas/view_hand.dart';
 
 /// Where the canvas leaves the one verb a save needs: land the stroke the
 /// pen is in the middle of — and, since the text tool (R9-rest), the text
-/// the canvas is holding with it (`_CanvasPanelText.landerBeside`): what
+/// the canvas is holding with it (`_CanvasPanelText.landBeside`): what
 /// has not reached the cel yet, whichever tool it is in.
 ///
 /// 🚨★★★**A SIBLING, NOT A NAME ON THE SESSION.** `SessionInternals` only
@@ -27,7 +27,7 @@ import '../canvas/view_hand.dart';
 /// false there rather than making every caller ask first.
 class LiveStrokeLanding {
   /// Held up by the mounted canvas view and taken back when it goes — see
-  /// [InteractiveBrushEditCanvasView.onStrokeLanderChanged], which explains
+  /// [InteractiveBrushEditCanvasView.strokeLander], which explains
   /// why taking it back is not optional. ⛔Counted ([ViewHand]), not the
   /// last word: the view built anew comes up before the one it replaces
   /// goes down, and the last word was the old one's null (F-419).
