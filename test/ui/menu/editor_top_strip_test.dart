@@ -564,7 +564,7 @@ void main() {
       const ValueKey<String>('brush-tool-blend-menu-button'),
     );
     expect(
-      find.descendant(of: button, matching: find.text('Color')),
+      find.descendant(of: button, matching: find.text('Normal')),
       findsOneWidget,
       reason: 'the resting label IS the current mode',
     );
@@ -589,7 +589,7 @@ void main() {
     final widthBefore = tester.getSize(button).width;
     final barLeftBefore = tester.getTopLeft(sizeBar).dx;
 
-    // 'Color' and 'Color Dodge' are nowhere near the same length.
+    // 'Normal' and 'Color Dodge' are nowhere near the same length.
     await openStrip(tester, 'brush-tool-blend-menu-button');
     await tapEntry(tester, 'brush-tool-blend-colorDodge');
 
