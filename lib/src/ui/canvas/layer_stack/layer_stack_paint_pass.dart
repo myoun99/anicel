@@ -1850,11 +1850,10 @@ class _LayerStackPaintPass {
   /// Whether every draw the stack makes blends in place ([blendsInPlace]) —
   /// what a recompose over carried pixels may stand its clip on. A folder's
   /// children count although the folder composes them in an image of its
-  /// own, and a stamp ghost counts whatever its blend: a mode left out costs
-  /// time, never a pixel.
-  bool _everyDrawBlendsInPlace() =>
-      _painter.activeSurfacePainter?.stampPreview?.value?.image == null &&
-      _nodesBlendInPlace(_painter.nodes);
+  /// own. ↩️A stamp ghost counted too, whatever its blend — until
+  /// brush-fidelity-Q9 made it the overlay's tiles, pre-blended and laid
+  /// in place of the cel's as a stroke's are.
+  bool _everyDrawBlendsInPlace() => _nodesBlendInPlace(_painter.nodes);
 
   bool _nodesBlendInPlace(List<CompositeNode<_PaintRow>> nodes) {
     for (final node in nodes) {

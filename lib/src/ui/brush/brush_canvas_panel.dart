@@ -2754,7 +2754,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// drew a mode the GPU has no blend for as normal (brush-fidelity-Q7), and
   /// a selection not at all.
   void _showStampGhost() {
-    final show = _shapeShow;
+    final show = _shapeShow.now;
     final preview = _stampPreview.value;
     final coordinator = widget.coordinator;
     if (show == null) {
