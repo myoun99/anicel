@@ -32,13 +32,10 @@ List<ExportLayerRow> sheetStrataRows(
     ),
 ];
 
-String _nameOf(SheetPaintLayer stratum) {
-  final strings = AppText.strings;
-  return switch (stratum) {
-    SheetPaintLayer.paper => strings.exStratumPaper,
-    SheetPaintLayer.form => strings.exStratumForm,
-    SheetPaintLayer.content => strings.exStratumContent,
-    SheetPaintLayer.picture => strings.exStratumPicture,
-    SheetPaintLayer.ink => strings.exStratumInk,
-  };
-}
+String _nameOf(SheetPaintLayer stratum) => switch (stratum) {
+  SheetPaintLayer.paper => AppText.strings.exStratumPaper,
+  SheetPaintLayer.form => AppText.strings.exStratumForm,
+  SheetPaintLayer.content => AppText.strings.exStratumContent,
+  SheetPaintLayer.picture => AppText.strings.exStratumPicture,
+  SheetPaintLayer.ink => AppText.strings.exStratumInk,
+};
