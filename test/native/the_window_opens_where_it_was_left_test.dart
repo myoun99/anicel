@@ -106,7 +106,7 @@ void main() {
 
   test('where the window settled is what the next run is handed', () async {
     await WindowPlace.restore(store);
-    const moved = {...frame, 'left': 300.0, 'maximized': true};
+    final moved = {...frame, 'left': 300.0, 'maximized': true};
     await runnerSays(moved);
     await pumpEventQueue();
     expect(written, hasLength(1));
