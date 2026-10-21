@@ -61,8 +61,32 @@ void main() {
   ScrollPosition frameAxisOf(WidgetTester tester) =>
       scrollableOf(tester, frameScroller).controller!.position;
 
-  /// Walks with the Next Frame key (Shift+→) until the playhead stands
-  /// [past] cells beyond the cells built when the walk began.
+  /// Walks with the Next Frame key (Shift+→) until the playhead stands on
+  /// [target]. Every press has to step a frame, so the walk ends either
+  /// there or red at the first press that did not.
+  /// ↩️It walked while short of the target, and a key that did nothing
+  /// never ended it: a batch stood six hours on a master whose Next Frame
+  /// key was unbound (37236b209, 관제 2026-10-21).
+  Future<void> walkTo(
+    WidgetTester tester,
+    EditorSessionManager session,
+    int target,
+  ) async {
+    while (session.currentFrameIndex < target) {
+      final from = session.currentFrameIndex;
+      await pressNextFrame(tester);
+      await tester.pump();
+      expect(
+        session.currentFrameIndex,
+        greaterThan(from),
+        reason: 'the Next Frame key steps the playhead',
+      );
+    }
+    await tester.pumpAndSettle();
+  }
+
+  /// Walks until the playhead stands [past] cells beyond the cells built
+  /// when the walk began.
   Future<void> walkPastTheBuiltEnd(
     WidgetTester tester,
     EditorSessionManager session, {
@@ -73,11 +97,7 @@ void main() {
     final builtFrames =
         ((position.maxScrollExtent + position.viewportDimension) / cell)
             .ceil();
-    while (session.currentFrameIndex < builtFrames + past) {
-      await pressNextFrame(tester);
-      await tester.pump();
-    }
-    await tester.pumpAndSettle();
+    await walkTo(tester, session, builtFrames + past);
   }
 
   testWidgets('🚨a walk past the built cells takes the view with it — the '
@@ -131,11 +151,7 @@ void main() {
       reason: 'premise: the panel folded',
     );
     const cell = TimelineZoomLimits.defaultPixelsPerFrame;
-    while (session.currentFrameIndex * cell < openBuiltEnd + 6 * cell) {
-      await pressNextFrame(tester);
-      await tester.pump();
-    }
-    await tester.pumpAndSettle();
+    await walkTo(tester, session, (openBuiltEnd / cell).ceil() + 6);
     final kept = tester
         .widget<CollapsedRowOverlay>(find.byType(CollapsedRowOverlay))
         .frameAxisOffset!
