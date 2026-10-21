@@ -117,12 +117,19 @@ void main() {
   // `main()` runs once, at startup, and a test that pumps a widget has
   // already missed it — the colour key program's reason for its own source
   // check (`the_shader_is_loaded_before_the_first_frame_test`).
-  test('main() puts the window back before the first frame', () {
+  test('main() puts the window back before the first frame — where it '
+      'stood, then full screen over it', () {
     final source = File('lib/main.dart').readAsStringSync();
+    final placedAt = source.indexOf('await WindowPlace.restore(window);');
     final restoredAt = source.indexOf(
-      'await WindowFullScreen.restore(AppWindowStore())',
+      'await WindowFullScreen.restore(window);',
     );
-    expect(restoredAt, greaterThanOrEqualTo(0));
+    expect(placedAt, greaterThanOrEqualTo(0));
+    expect(
+      restoredAt,
+      greaterThan(placedAt),
+      reason: 'full screen comes back to where the window stood',
+    );
     expect(
       restoredAt,
       lessThan(source.indexOf('runApp(')),

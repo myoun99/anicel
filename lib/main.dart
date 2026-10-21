@@ -17,6 +17,7 @@ import 'src/services/persistence/app_ui_scale_store.dart';
 import 'src/services/persistence/app_window_store.dart';
 import 'src/services/persistence/app_language_settings_store.dart';
 import 'src/native/window_full_screen.dart';
+import 'src/native/window_place.dart';
 import 'src/ui/canvas/colour_key_shader.dart';
 import 'src/ui/canvas/level_image.dart' show measuredHalving;
 import 'src/ui/debug/frame_stats.dart';
@@ -158,9 +159,12 @@ Future<void> main() async {
   }
   // AWAITED like the scale, and for its reason (I-103-Q2: 「다음 실행 때도
   // 기억한다」): a window the last run left full screen opens full screen,
-  // rather than opening and then jumping. One small file read, and on a
-  // desktop one call to its runner.
-  await WindowFullScreen.restore(AppWindowStore());
+  // rather than opening and then jumping — and where it stood (I-116),
+  // put back first so full screen comes back to it. One small file,
+  // and on a desktop two calls to its runner.
+  final window = AppWindowStore();
+  await WindowPlace.restore(window);
+  await WindowFullScreen.restore(window);
   // Read BEFORE this launch starts writing its own: an entry with no END
   // means the app died in the middle of that work, and a memory kill
   // leaves nothing else behind — no exception, no crash report, nothing

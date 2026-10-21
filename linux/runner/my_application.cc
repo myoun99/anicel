@@ -3,6 +3,7 @@
 #include "launch_splash.h"
 #include "pen_sidecar.h"
 #include "window_full_screen.h"
+#include "window_place.h"
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -87,6 +88,9 @@ static void my_application_activate(GApplication* application) {
   // The window's full screen (I-103-Q2), switched from Dart and reported
   // back.
   anicel_window_full_screen_register(window, view);
+
+  // Where the window stands (I-116), put back from Dart and reported.
+  anicel_window_place_register(window, view);
 
   // Show the window when Flutter renders.
   // Requires the view to be realized so we can start rendering.

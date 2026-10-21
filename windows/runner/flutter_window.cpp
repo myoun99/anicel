@@ -119,6 +119,21 @@ constexpr char kWindowChannel[] = "anicel/window";
 constexpr char kSetFullScreen[] = "setFullScreen";
 constexpr char kFullScreenChanged[] = "fullScreenChanged";
 
+// 🗣️I-116 — THE WINDOW OPENS WHERE THE LAST RUN LEFT IT.
+//
+// 유저 2026-10-21: 「닫고 열때 마지막크기/위치로 열고싶음」. Once the window
+// has moved or changed size the runner says its placement — the normal rect
+// in workspace coordinates and whether it is maximized — and Dart keeps it
+// (lib/src/native/window_place.dart); at the next start Dart hands it back
+// before the first frame, and the window is placed while still hidden.
+// SetWindowPlacement puts a rect no monitor shows any longer onto one that
+// does. A full-screen window says nothing: what it comes back to is the
+// placement kept for that. test/architecture/the_window_keeps_its_place_test.dart
+// reads these.
+constexpr char kWindowPlaceChannel[] = "anicel/window_place";
+constexpr char kSetPlace[] = "setPlace";
+constexpr char kPlaceChanged[] = "placeChanged";
+
 // I-106 (user, 2026-10-21): the launch splash says the stages Dart runs —
 // [face files, name] — after the two the runner says itself
 // (lib/src/native/launch_splash.dart says why).
@@ -222,13 +237,17 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
   ListenForTheIme(flutter_controller_->view()->GetNativeWindow());
   ListenForFullScreen();
+  ListenForPlace();
   ListenForLaunchStages();
   ::SetWindowSubclass(flutter_controller_->view()->GetNativeWindow(),
                       LetGoWithWindows, kLetGoWithWindows,
                       reinterpret_cast<DWORD_PTR>(this));
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    // Maximized when the last run left it so, and not full screen over it.
+    ::ShowWindow(GetHandle(), show_maximized_ && !full_screen_
+                                  ? SW_SHOWMAXIMIZED
+                                  : SW_SHOWNORMAL);
     // After the window shows, so the screen is never left with neither.
     launch_splash_.Close();
     // A frame means Dart is running, and its platform channel is listening.
@@ -247,6 +266,7 @@ void FlutterWindow::OnDestroy() {
   // The channels speak through the engine's messenger, so they go first.
   ime_channel_ = nullptr;
   window_channel_ = nullptr;
+  place_channel_ = nullptr;
   launch_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
@@ -284,6 +304,29 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
+    case WM_DPICHANGED:
+      // A placement handed back is already in the pixels of the monitor
+      // it lands on; the size Windows suggests would scale it twice.
+      if (placing_) {
+        return 0;
+      }
+      break;
+    case WM_ENTERSIZEMOVE:
+      sizing_ = true;
+      break;
+    case WM_EXITSIZEMOVE:
+      sizing_ = false;
+      SayPlace();
+      break;
+    case WM_WINDOWPOSCHANGED: {
+      // Maximized, snapped or moved by a key: once, not at every step of a
+      // drag, which WM_EXITSIZEMOVE says at its end.
+      const auto* pos = reinterpret_cast<const WINDOWPOS*>(lparam);
+      if (!sizing_ && (~pos->flags & (SWP_NOMOVE | SWP_NOSIZE))) {
+        SayPlace();
+      }
+      break;
+    }
     case WM_ENABLE:
       if (wparam && flutter_controller_) {
         flutter_controller_->engine()->messenger()->Send(
@@ -438,6 +481,11 @@ void FlutterWindow::SetFullScreen(bool on) {
             ::MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor)) {
       return;
     }
+    // Still hidden at the start, the window is not maximized yet: what it
+    // comes back to is what it will be shown as.
+    if (show_maximized_ && !::IsWindowVisible(window)) {
+      placement_before_full_screen_.showCmd = SW_SHOWMAXIMIZED;
+    }
     style_before_full_screen_ = ::GetWindowLongPtr(window, GWL_STYLE);
     ::SetWindowLongPtr(window, GWL_STYLE,
                        style_before_full_screen_ & ~WS_OVERLAPPEDWINDOW);
@@ -458,4 +506,94 @@ void FlutterWindow::SetFullScreen(bool on) {
   window_channel_->InvokeMethod(
       kFullScreenChanged,
       std::make_unique<flutter::EncodableValue>(full_screen_));
+}
+
+void FlutterWindow::ListenForPlace() {
+  place_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), kWindowPlaceChannel,
+          &flutter::StandardMethodCodec::GetInstance());
+  place_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        const auto* frame = std::get_if<flutter::EncodableMap>(call.arguments());
+        const auto number = [frame](const char* key) -> std::optional<LONG> {
+          const auto it = frame->find(flutter::EncodableValue(key));
+          const double* value = it == frame->end()
+                                    ? nullptr
+                                    : std::get_if<double>(&it->second);
+          if (value == nullptr) {
+            return std::nullopt;
+          }
+          return static_cast<LONG>(*value);
+        };
+        if (call.method_name() != kSetPlace || frame == nullptr) {
+          result->NotImplemented();
+          return;
+        }
+        const auto left = number("left");
+        const auto top = number("top");
+        const auto width = number("width");
+        const auto height = number("height");
+        const auto maximized = frame->find(flutter::EncodableValue("maximized"));
+        const bool* is_maximized = maximized == frame->end()
+                                       ? nullptr
+                                       : std::get_if<bool>(&maximized->second);
+        if (!left || !top || !width || !height || !is_maximized) {
+          result->NotImplemented();
+          return;
+        }
+        SetPlace({*left, *top, *left + *width, *top + *height},
+                 *is_maximized);
+        result->Success();
+      });
+}
+
+void FlutterWindow::SetPlace(const RECT& normal, bool maximized) {
+  HWND window = GetHandle();
+  WINDOWPLACEMENT placement = {sizeof(placement)};
+  if (!::GetWindowPlacement(window, &placement)) {
+    return;
+  }
+  placement.rcNormalPosition = normal;
+  if (full_screen_) {
+    placement_before_full_screen_.rcNormalPosition = normal;
+    placement_before_full_screen_.showCmd =
+        maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+    return;
+  }
+  const bool shown = ::IsWindowVisible(window);
+  // Hidden until the first frame: placed so, and shown maximized then.
+  placement.showCmd =
+      !shown ? SW_HIDE : (maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
+  show_maximized_ = maximized;
+  placing_ = true;
+  ::SetWindowPlacement(window, &placement);
+  placing_ = false;
+}
+
+void FlutterWindow::SayPlace() {
+  HWND window = GetHandle();
+  WINDOWPLACEMENT placement = {sizeof(placement)};
+  if (!place_channel_ || placing_ || full_screen_ ||
+      !::IsWindowVisible(window) || ::IsIconic(window) ||
+      !::GetWindowPlacement(window, &placement)) {
+    return;
+  }
+  const RECT& normal = placement.rcNormalPosition;
+  flutter::EncodableMap frame = {
+      {flutter::EncodableValue("left"),
+       flutter::EncodableValue(static_cast<double>(normal.left))},
+      {flutter::EncodableValue("top"),
+       flutter::EncodableValue(static_cast<double>(normal.top))},
+      {flutter::EncodableValue("width"),
+       flutter::EncodableValue(static_cast<double>(normal.right - normal.left))},
+      {flutter::EncodableValue("height"),
+       flutter::EncodableValue(static_cast<double>(normal.bottom - normal.top))},
+      {flutter::EncodableValue("maximized"),
+       flutter::EncodableValue(placement.showCmd == SW_SHOWMAXIMIZED)},
+  };
+  place_channel_->InvokeMethod(
+      kPlaceChanged, std::make_unique<flutter::EncodableValue>(frame));
 }

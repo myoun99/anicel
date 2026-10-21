@@ -46,6 +46,18 @@ class FlutterWindow : public Win32Window {
   // and says on the channel which it is now.
   void SetFullScreen(bool on);
 
+  // Lets Dart hand back where the last run left this window, and hears
+  // where it stands (I-116). The channel's constants say why.
+  void ListenForPlace();
+
+  // Puts this window's normal rect at |normal|, maximized or not — hidden
+  // still until the first frame, which shows it so.
+  void SetPlace(const RECT& normal, bool maximized);
+
+  // Says on the channel where this window stands, unless it is hidden,
+  // minimized or full screen.
+  void SayPlace();
+
   // The view's key messages on their way to the engine: a modifier Windows
   // has let go of is let go of in the engine too (F-411). The constants by
   // kLetGoWithWindows say why.
@@ -76,6 +88,10 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       window_channel_;
 
+  // Where Dart hands the window its place back, and hears where it stands.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      place_channel_;
+
   // Where Dart says its launch stages.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       launch_channel_;
@@ -85,6 +101,13 @@ class FlutterWindow : public Win32Window {
   bool full_screen_ = false;
   WINDOWPLACEMENT placement_before_full_screen_ = {sizeof(WINDOWPLACEMENT)};
   LONG_PTR style_before_full_screen_ = 0;
+
+  // Whether the first frame shows the window maximized, as the last run
+  // left it; whether a placement is being handed back right now; whether
+  // the user is dragging the frame.
+  bool show_maximized_ = false;
+  bool placing_ = false;
+  bool sizing_ = false;
 
   // Whether the app has drawn a frame, and so has someone to answer a close.
   bool app_can_answer_ = false;

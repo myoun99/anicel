@@ -642,6 +642,84 @@ final class FullScreenSwitch: NSObject {
   }
 }
 
+/// I-116 (user, 2026-10-21: 「닫고 열때 마지막크기/위치로 열고싶음」): says
+/// where the window stands once it has moved or changed size, and puts it
+/// back there at the next start before the first frame
+/// (lib/src/native/window_place.dart). The frame is said from the top left
+/// of the main screen, as the other desktops say theirs; a Mac has no
+/// maximized apart from its frame, so it never says one. A frame no screen
+/// shows any longer is left where the window would open; a full-screen
+/// window says nothing.
+///
+/// UNVERIFIED-ON-DEVICE: authored on the Windows workstation.
+final class WindowPlaceKeeper: NSObject {
+  private weak var window: NSWindow?
+  private let channel: FlutterMethodChannel
+
+  init(window: NSWindow, messenger: FlutterBinaryMessenger) {
+    self.window = window
+    channel = FlutterMethodChannel(
+      name: "anicel/window_place", binaryMessenger: messenger)
+    super.init()
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "setPlace",
+        let frame = call.arguments as? [String: Any],
+        let left = frame["left"] as? Double,
+        let top = frame["top"] as? Double,
+        let width = frame["width"] as? Double,
+        let height = frame["height"] as? Double
+      else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self?.set(left: left, top: top, width: width, height: height)
+      result(nil)
+    }
+    for name in [
+      NSWindow.didMoveNotification, NSWindow.didEndLiveResizeNotification,
+      NSWindow.didResizeNotification,
+    ] {
+      NotificationCenter.default.addObserver(
+        self, selector: #selector(moved), name: name, object: window)
+    }
+  }
+
+  /// The height Cocoa's bottom-up frames are turned over by.
+  private var mainHeight: CGFloat {
+    NSScreen.screens.first?.frame.height ?? 0
+  }
+
+  private func set(left: Double, top: Double, width: Double, height: Double) {
+    let frame = NSRect(
+      x: left, y: mainHeight - top - height, width: width, height: height)
+    guard let window,
+      NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) })
+    else {
+      return
+    }
+    window.setFrame(frame, display: false)
+  }
+
+  /// Once a drag has ended: the steps of a live resize are not said.
+  @objc private func moved() {
+    guard let window, !window.inLiveResize,
+      !window.styleMask.contains(.fullScreen)
+    else {
+      return
+    }
+    let frame = window.frame
+    channel.invokeMethod(
+      "placeChanged",
+      arguments: [
+        "left": Double(frame.minX),
+        "top": Double(mainHeight - frame.maxY),
+        "width": Double(frame.width),
+        "height": Double(frame.height),
+        "maximized": false,
+      ])
+  }
+}
+
 /// The picture that stands in the middle of the screen from the moment the
 /// app is launched until its first frame (I-106-Q3/Q4/Q5, user 2026-10-20:
 /// the teal A and the white name, nothing behind them — the desktop shows
@@ -834,6 +912,7 @@ class MainFlutterWindow: NSWindow {
 
   /// Held for the channel's sake, like the handlers beside it.
   private var fullScreenSwitch: FullScreenSwitch?
+  private var windowPlaceKeeper: WindowPlaceKeeper?
 
   /// Held as a property for the same reason `penStreamHandler` is: the
   /// channel keeps no strong reference, and this object owns the open
@@ -863,6 +942,11 @@ class MainFlutterWindow: NSWindow {
 
     // I-103-Q2: the window's full screen, switched and reported.
     fullScreenSwitch = FullScreenSwitch(
+      window: self,
+      messenger: flutterViewController.engine.binaryMessenger)
+
+    // I-116: where the window stands, kept and put back.
+    windowPlaceKeeper = WindowPlaceKeeper(
       window: self,
       messenger: flutterViewController.engine.binaryMessenger)
 
