@@ -27,7 +27,7 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 /// Prints; asserts only that the work happened. Run it alone.
 void main() {
   const canvas = CanvasSize(width: 1920, height: 1080);
-  final wall = canvas.pasteboardRect;
+  final wall = canvas.pasteboardAt(PasteboardReach.whole).rect;
 
   /// A fresh inverse per call: the contours are memoised on the region, so
   /// timing one region twice would time a field read.

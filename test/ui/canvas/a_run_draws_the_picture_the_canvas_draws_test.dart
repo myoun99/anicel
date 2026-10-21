@@ -19,6 +19,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -218,6 +219,7 @@ void main() {
       background: paper,
       pasteboardColor: pasteboard,
       pasteboardNone: false,
+      pasteboardReach: PasteboardReach.whole,
       child: CanvasLayerStackView(
         // Each road a stack of its own: nothing one drew is handed to the
         // other.
@@ -492,6 +494,7 @@ void main() {
               planes: (view) => StagePlanesPainter(
                 backdrop: (color: past, none: false),
                 pasteboard: (color: pasteboard, none: pasteboardNone),
+                pasteboardReach: PasteboardReach.whole,
                 paperNone: paperNone,
                 canvasSize: canvasSize,
                 viewport: view,

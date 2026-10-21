@@ -8,6 +8,7 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 
@@ -49,6 +50,7 @@ void main() {
                 background: ProjectBackground.defaultBackground,
                 pasteboardColor: apron,
                 pasteboardNone: false,
+                pasteboardReach: PasteboardReach.whole,
                 // The canvas's picture, reaching past its own edge as
                 // pasteboard artwork does.
                 child: const ColoredBox(color: Color(picture)),

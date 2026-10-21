@@ -479,6 +479,8 @@ class _InteractiveCanvasBuild {
       ),
       onPasteboardColorChanged: session.projectSettings.setPasteboardColor,
       onPasteboardNone: session.projectSettings.setPasteboardNone,
+      onPasteboardSizeChanged: session.projectSettings.setPasteboardSize,
+      onPasteboardInUseChanged: session.projectSettings.setPasteboardInUse,
       onBackdropColorChanged: session.projectSettings.setProjectBackdrop,
       onBackdropNone: session.projectSettings.setProjectBackdropNone,
       onEyedropperPick: (color) => _state.widget.onBrushToolStateChanged?.call(
@@ -533,6 +535,8 @@ class _InteractiveCanvasBuild {
           title: AppText.strings.commonNotice,
           message: AppText.strings.noticeFillRegionOpen,
         ),
+        // The apron reaches as far as the pasteboard does (I-109).
+        pasteboardReach: session.repository.requireProject().pasteboardReach,
       ),
       // The SHAPE fill's pieces. No cut, no frame, no surfaces: a
       // drawn outline is filled whatever is under it, so it never
@@ -680,6 +684,7 @@ class _InteractiveCanvasBuild {
       background: session.projectSettings.projectBackground,
       pasteboardColor: Color(project.pasteboardArgb),
       pasteboardNone: project.pasteboardNone,
+      pasteboardReach: project.pasteboardReach,
       // The view the frame is drawn through — the one its rows were made
       // for ([CanvasLook.qualityAt]).
       child: _stackView(
@@ -788,6 +793,8 @@ class _InteractiveCanvasBuild {
             )
           : null,
       canvasSize: _canvasSize,
+      pasteboardReach:
+          frame.session.repository.requireProject().pasteboardReach,
       viewport: viewport,
       // R16-⑥: no cut in a gap — no paper (per-cut papers
       // make anything else confusing; the void is the truth).
@@ -957,14 +964,14 @@ class _InteractiveCanvasBuild {
           adjust: adjust,
           pose: pose,
           viewport: viewport,
-          canvasSize: _canvasSize,
+          pasteboard: session.pasteboardOf(_canvasSize),
           onLand: land,
         ),
       ),
       _ => CanvasAdjustLayer(
         adjust: adjust,
         viewport: viewport,
-        canvasSize: _canvasSize,
+        pasteboard: session.pasteboardOf(_canvasSize),
         onLand: land,
       ),
     };
@@ -1021,7 +1028,10 @@ class _InteractiveCanvasBuild {
               _seNameTagsShown(frame.session),
               _canvasSize,
             )
-          : _EditorCanvasAreaState._layerPicture(frame, _canvasSize),
+          : _EditorCanvasAreaState._layerPicture(
+              frame,
+              frame.session.pasteboardOf(_canvasSize),
+            ),
     );
   }
 

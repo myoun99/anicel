@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/stamp_carry.dart';
@@ -101,7 +102,7 @@ void main() {
               child: CanvasSelectionLayer(
                 tool: CanvasSelectionTool.move,
                 viewport: CanvasViewport(),
-                canvasSize: canvasSize,
+                pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
                 frameToken: frame,
                 selectionCommands: commands,
                 alwaysShowTransformBox: true,

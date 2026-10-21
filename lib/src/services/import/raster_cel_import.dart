@@ -244,7 +244,10 @@ LayerPlacement rectPlacement(
 /// gate: a cel sized for another canvas is invisible everywhere). The lay
 /// covers what the placed picture covers, clipped to the pasteboard —
 /// fit=none overflow lives on the pasteboard exactly like an oversized
-/// selection drop — a block of tiles at a time ([layRasterSide]).
+/// selection drop — a block of tiles at a time ([layRasterSide]). Laid at
+/// the widest wall, as every surface is born
+/// ([BitmapSurface.pasteboardReach]); the frame store cuts what it keeps to
+/// the project's ([surfaceBehindReach]).
 ///
 /// [whole]: a FILE's picture, laid all of it, past the pasteboard where it
 /// is larger than the wall — the surface says where it lies
@@ -270,7 +273,7 @@ Future<BitmapSurface> layCelPicture({
       ? DirtyRegion.wholePixelsOf(placed)
       : null;
   final clipped = laid == null
-      ? placed.intersect(canvas.pasteboardRect)
+      ? placed.intersect(canvas.pasteboardAt(PasteboardReach.whole).rect)
       : laid.rect;
   if (clipped.isEmpty) {
     return BitmapSurface(canvasSize: canvas, tileSize: tileSize);

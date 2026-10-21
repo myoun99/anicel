@@ -4,6 +4,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/ui/canvas/canvas_adjust_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_target_pill.dart';
 import 'package:anicel/src/ui/session/canvas_adjust.dart';
@@ -50,7 +51,7 @@ void main() {
               child: CanvasAdjustLayer(
                 adjust: adjust,
                 viewport: CanvasViewport(),
-                canvasSize: canvas,
+                pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
                 onLand: () => landed += 1,
               ),
             ),
@@ -123,7 +124,7 @@ void main() {
               child: CanvasAdjustLayer(
                 adjust: adjust,
                 viewport: CanvasViewport(zoom: 2),
-                canvasSize: canvas,
+                pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
                 onLand: () => landed += 1,
               ),
             ),

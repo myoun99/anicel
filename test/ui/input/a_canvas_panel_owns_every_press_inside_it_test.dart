@@ -6,6 +6,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
@@ -486,7 +487,10 @@ void main() {
               child: RowTransformBox(
                 corners: const [],
                 pose: TransformPose(center: CanvasPoint(x: 100, y: 80)),
-                canvasSize: const CanvasSize(width: 400, height: 300),
+                pasteboard: const CanvasSize(
+                  width: 400,
+                  height: 300,
+                ).pasteboardAt(PasteboardReach.whole),
                 viewport: CanvasViewport(),
                 presses: RowBoxPresses.handles,
                 onCancelled: () {},

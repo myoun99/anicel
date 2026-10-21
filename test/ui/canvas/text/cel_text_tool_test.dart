@@ -64,7 +64,6 @@ void main() {
       coordinator: editingStackOn(
         drawingOf({drawn: ink}).withTexts(texts),
       ),
-      canvasSize: celTextTestCanvas,
       cacheInvalidationSink: null,
     );
     // The cel under the tool, until a test says another is.
@@ -486,7 +485,6 @@ void main() {
       final CelTextCel other = (
         key: elsewhere,
         coordinator: cel.coordinator,
-        canvasSize: cel.canvasSize,
         cacheInvalidationSink: null,
       );
       tool.takeText(cel, pictureOf(cel).texts.single);
@@ -717,7 +715,6 @@ void main() {
       final CelTextCel there = (
         key: elsewhere,
         coordinator: cel.coordinator,
-        canvasSize: cel.canvasSize,
         cacheInvalidationSink: null,
       );
       tool
@@ -1705,7 +1702,6 @@ void main() {
       host.cel = (
         key: elsewhere,
         coordinator: cel.coordinator,
-        canvasSize: cel.canvasSize,
         cacheInvalidationSink: null,
       );
       cel.coordinator.restoreSurfaceSnapshot(
@@ -1775,7 +1771,6 @@ void main() {
         final CelTextCel other = (
           key: elsewhere,
           coordinator: cel.coordinator,
-          canvasSize: cel.canvasSize,
           cacheInvalidationSink: null,
         );
         cel.coordinator.restoreSurfaceSnapshot(
@@ -1889,7 +1884,6 @@ void main() {
         final CelTextCel other = (
           key: elsewhere,
           coordinator: cel.coordinator,
-          canvasSize: cel.canvasSize,
           cacheInvalidationSink: null,
         );
         cel.coordinator.restoreSurfaceSnapshot(

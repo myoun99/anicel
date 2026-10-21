@@ -622,7 +622,9 @@ void main() {
     const canvas = CanvasSize(width: 20, height: 15);
     final walls = {
       'selection-invert-in-canvas-button': canvas.canvasRect,
-      'selection-invert-button': canvas.pasteboardRect,
+      'selection-invert-button': canvas
+          .pasteboardAt(PasteboardReach.whole)
+          .rect,
     };
 
     CanvasSelectionRegion selected() => CanvasSelectionRegion.shape(
@@ -642,7 +644,7 @@ void main() {
             fillOptions: const FloodFillOptions(),
             onFillOptionsChanged: (_) {},
             selectionCommands: commands,
-            canvasSize: canvasSize,
+            pasteboard: canvasSize?.pasteboardAt(PasteboardReach.whole),
           ),
         ),
       );

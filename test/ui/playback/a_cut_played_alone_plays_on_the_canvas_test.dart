@@ -10,7 +10,8 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/pasteboard_bounds.dart' show PasteboardBounds;
+import 'package:anicel/src/models/pasteboard_bounds.dart'
+    show PasteboardBounds, PasteboardReach;
 import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
@@ -335,7 +336,7 @@ void main() {
             as (CanvasViewport, Rect, Object, Color, double);
     expect(
       unit,
-      s.activeCutOrNull!.canvasSize.pasteboardRect,
+      s.activeCutOrNull!.canvasSize.pasteboardAt(PasteboardReach.whole).rect,
       reason: 'the pasteboard and what is drawn on it thin with the paper',
     );
     expect(

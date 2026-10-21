@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/point_bounds.dart';
 import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_pose.dart';
 import '../session/canvas_adjust.dart';
@@ -34,15 +34,16 @@ class CanvasAdjustLayer extends StatelessWidget {
     super.key,
     required this.adjust,
     required this.viewport,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.onLand,
   });
 
   final CanvasAdjust adjust;
   final CanvasViewport viewport;
 
-  /// The canvas as it stands — what the box measures its stage against.
-  final CanvasSize canvasSize;
+  /// The wall of the canvas as it stands — what the box measures its stage
+  /// against.
+  final PasteboardWall pasteboard;
 
   /// Lands the edges: the canvas resized behind the app's wait window.
   final VoidCallback onLand;
@@ -75,7 +76,7 @@ class CanvasAdjustLayer extends StatelessWidget {
                   y: edges.center.dy,
                 ),
               ),
-              canvasSize: canvasSize,
+              pasteboard: pasteboard,
               viewport: viewport,
               // The canvas stays the tools' and the view's: a press is the
               // box's on its handles alone.

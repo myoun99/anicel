@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/canvas/transform_box.dart';
 /// a closed box in 메쉬.
 void main() {
   const canvas = CanvasSize(width: 400, height: 300);
+  final wall = canvas.pasteboardAt(PasteboardReach.whole);
 
   // Zoom 1 and no pan: a canvas point is its own screen point.
   BoxOnScreen onScreen({
@@ -26,7 +27,7 @@ void main() {
     required bool boxOpen,
   }) => BoxOnScreen(
     viewport: CanvasViewport(),
-    canvasSize: canvas,
+    pasteboard: wall,
     mode: mode,
     boxOpen: boxOpen,
     warp: FloatWarp(
@@ -34,7 +35,7 @@ void main() {
       base: null,
       float: null,
       options: TransformToolOptions(mode: mode),
-      pasteboard: canvas.pasteboardRegion,
+      pasteboard: wall.region,
     ),
   );
 
@@ -77,7 +78,7 @@ void main() {
     return (
       screen: BoxOnScreen(
         viewport: CanvasViewport(),
-        canvasSize: canvas,
+        pasteboard: wall,
         mode: mode,
         boxOpen: true,
         warp: FloatWarp(
@@ -85,7 +86,7 @@ void main() {
           base: (left: 100, top: 100, width: 100, height: 50),
           float: null,
           options: options,
-          pasteboard: canvas.pasteboardRegion,
+          pasteboard: wall.region,
         ),
       ),
       box: box,

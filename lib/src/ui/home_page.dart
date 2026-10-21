@@ -1276,12 +1276,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// [reach]'s wall of the cut on screen, as its button in the Select
   /// tool's settings does; nothing without a cut to take the wall from.
   void _invertSelection(InvertReach reach) {
-    final canvas = _session.activeCutOrNull?.canvasSize;
-    if (canvas != null) {
-      _canvasSelectionCommands.invertSelection(
-        canvasSize: canvas,
-        reach: reach,
-      );
+    final wall = _session.activePasteboardOrNull;
+    if (wall != null) {
+      _canvasSelectionCommands.invertSelection(pasteboard: wall, reach: reach);
     }
   }
 

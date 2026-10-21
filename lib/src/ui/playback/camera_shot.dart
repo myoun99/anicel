@@ -6,7 +6,8 @@ import '../../core/convex_clip.dart' show convexIntersection, convexOutset;
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
+import '../../models/pasteboard_bounds.dart'
+    show PasteboardBounds, PasteboardReach;
 import '../../models/project_background.dart';
 import '../canvas/display_resample.dart'
     show
@@ -57,6 +58,7 @@ class CameraShot extends StatelessWidget {
     required this.background,
     required this.pasteboardColor,
     required this.pasteboardNone,
+    required this.pasteboardReach,
     required this.child,
   });
 
@@ -77,6 +79,10 @@ class CameraShot extends StatelessWidget {
   /// pasteboard (F-114) is the checkerboard here, as on the editing canvas.
   final Color pasteboardColor;
   final bool pasteboardNone;
+
+  /// How far the pasteboard reaches past the paper (I-109) — where the
+  /// camera sees the apron.
+  final PasteboardReach pasteboardReach;
 
   final Widget child;
 
@@ -105,6 +111,7 @@ class CameraShot extends StatelessWidget {
                   paintPaper: background.none,
                   pasteboardColor: pasteboardColor,
                   pasteboardNone: pasteboardNone,
+                  pasteboardReach: pasteboardReach,
                   checkersAbsentPlanes: true,
                 ),
         ),

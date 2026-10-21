@@ -511,11 +511,10 @@ class _BrushEditStroke {
       return;
     }
 
-    final canvasSize = _state.widget.celNow().canvasSize;
     final clippedSegment = const CanvasSegmentClipper().clip(
       previous: previousRaw,
       current: canvasPosition,
-      canvasSize: canvasSize,
+      wall: _state.widget.celNow().pasteboard,
     );
     if (clippedSegment == null) {
       _state._breakCurrentVisibleSegment = true;

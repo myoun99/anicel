@@ -4,6 +4,7 @@ import '../models/brush_edit_session_state.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_surface_state.dart';
+import '../models/pasteboard_bounds.dart';
 
 class BrushFrameEditSessionStore {
   BrushFrameEditSessionStore({
@@ -38,6 +39,24 @@ class BrushFrameEditSessionStore {
   void setLinkResolver(BrushFrameKey Function(BrushFrameKey key)? resolver) {
     _canonicalize = resolver ?? _identityKey;
   }
+
+  /// The reach of the pasteboard a blank cel is made with — the frame
+  /// store's (I-109), read through, as the link resolver is: a session is
+  /// state ABOUT a cel the store holds, so it never keeps a reach of its
+  /// own to fall out of step with. [PasteboardReach.whole] until
+  /// [BrushFrameEditingCoordinator] wires it.
+  PasteboardReach Function() _reach = _wholeReach;
+
+  static PasteboardReach _wholeReach() => PasteboardReach.whole;
+
+  /// Installs the store's reach as the one a blank cel is made with.
+  void setPasteboardReachSource(PasteboardReach Function() reach) {
+    _reach = reach;
+  }
+
+  /// The wall every surface written here stops at: the canvas's
+  /// pasteboard at the store's reach.
+  PasteboardWall get pasteboard => _canvasSize.pasteboardAt(_reach());
 
   /// Insertion order doubles as recency (accesses re-insert): the LAST
   /// entries are the most recently used — what [evictBeyondRetainLimit]
@@ -138,6 +157,7 @@ class BrushFrameEditSessionStore {
       canvasState: CanvasSurfaceState(
         currentSurface: BitmapSurface(
           canvasSize: _canvasSize,
+          pasteboardReach: _reach(),
           tileSize: tileSize,
         ),
       ),

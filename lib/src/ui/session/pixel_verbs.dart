@@ -465,7 +465,7 @@ class PixelVerbs {
     final region = selection == null
         ? CanvasSelectionRegion.shape(
             CanvasSelectionShape.wholePicture(
-              surface.canvasSize,
+              surface.pasteboard,
               bitmapSurfaceContentBounds(surface),
             ),
           )

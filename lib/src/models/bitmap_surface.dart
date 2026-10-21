@@ -73,6 +73,7 @@ typedef KeptTilePlace = ({int? text, TileCoord coord});
 class BitmapSurface {
   BitmapSurface({
     required this.canvasSize,
+    this.pasteboardReach = PasteboardReach.whole,
     this.tileSize = defaultCelTileSize,
     Map<TileCoord, BitmapTile> tiles = const {},
     List<CelText> texts = const [],
@@ -121,6 +122,7 @@ class BitmapSurface {
   /// [laidBounds] (F-374-Q8): a stroke on a laid picture keeps it whole.
   BitmapSurface._derived({
     required this.canvasSize,
+    required this.pasteboardReach,
     required this.tileSize,
     required Map<TileCoord, BitmapTile> tiles,
     required Iterable<PlacedTile> added,
@@ -138,6 +140,7 @@ class BitmapSurface {
   /// map once more per edit would make every later read walk the wrappers.
   BitmapSurface._withTexts(BitmapSurface from, List<CelText> texts)
     : canvasSize = from.canvasSize,
+      pasteboardReach = from.pasteboardReach,
       tileSize = from.tileSize,
       _tiles = from._tiles,
       texts = List<CelText>.unmodifiable(texts),
@@ -155,6 +158,7 @@ class BitmapSurface {
   /// grid to check: a photo stands on the picture, not in its tiles.
   BitmapSurface._withPhotos(BitmapSurface from, List<CelPhoto> photos)
     : canvasSize = from.canvasSize,
+      pasteboardReach = from.pasteboardReach,
       tileSize = from.tileSize,
       _tiles = from._tiles,
       texts = from.texts,
@@ -162,6 +166,17 @@ class BitmapSurface {
       laidBounds = from.laidBounds;
 
   final CanvasSize canvasSize;
+
+  /// How far past the paper this picture's pasteboard reaches — its
+  /// project's ([PasteboardReach.of], I-109). With [canvasSize] it is the
+  /// picture's WALL ([pasteboard]): what a tool writes stops there, and no
+  /// tile is kept past it but where a file was laid ([laidBounds]).
+  ///
+  /// 🚨The picture carries it, as it carries its canvas size, so every pass
+  /// that writes on it asks the same wall without being told it — a stroke,
+  /// a fill, a paste, a text, a lift all land through the picture.
+  final PasteboardReach pasteboardReach;
+
   final int tileSize;
   final Map<TileCoord, BitmapTile> _tiles;
 
@@ -198,10 +213,13 @@ class BitmapSurface {
   /// grown to take in [laidBounds] — what a painter of it clips to and walks
   /// its tiles under.
   ui.Rect get storableRect {
-    final pasteboard = canvasSize.pasteboardRect;
+    final wall = pasteboard.rect;
     final laid = laidBounds;
-    return laid == null ? pasteboard : pasteboard.expandToInclude(laid.rect);
+    return laid == null ? wall : wall.expandToInclude(laid.rect);
   }
+
+  /// This picture's wall: its canvas's pasteboard at its reach.
+  PasteboardWall get pasteboard => canvasSize.pasteboardAt(pasteboardReach);
 
   /// This picture with [texts] in place of its own; the drawing is the
   /// same tiles. The surface itself when [texts] is the list it holds.
@@ -348,11 +366,11 @@ class BitmapSurface {
   int get tileCount => tileColumnCount * tileRowCount;
 
   /// Whether [coord] is storable: any tile intersecting the PASTEBOARD
-  /// (canvas + one canvas size in every direction), negative coords
-  /// included — or the picture a file laid here ([laidBounds]).
+  /// ([pasteboard]), negative coords included — or the picture a file laid
+  /// here ([laidBounds]).
   bool containsTileCoord(TileCoord coord) => pictureKeepsTileAt(
     coord,
-    canvas: canvasSize,
+    wall: pasteboard,
     tileSize: tileSize,
     laid: laidBounds,
   );
@@ -395,6 +413,7 @@ class BitmapSurface {
     }
     return BitmapSurface._derived(
       canvasSize: canvasSize,
+      pasteboardReach: pasteboardReach,
       tileSize: tileSize,
       tiles: updated,
       added: tilesToPut,
@@ -440,6 +459,7 @@ class BitmapSurface {
     }
     return BitmapSurface._derived(
       canvasSize: canvasSize,
+      pasteboardReach: pasteboardReach,
       tileSize: tileSize,
       tiles: updated,
       added: kept,
@@ -474,6 +494,7 @@ class BitmapSurface {
 
   BitmapSurface copyWith({
     CanvasSize? canvasSize,
+    PasteboardReach? pasteboardReach,
     int? tileSize,
     Map<TileCoord, BitmapTile>? tiles,
     List<CelText>? texts,
@@ -482,6 +503,7 @@ class BitmapSurface {
   }) {
     return BitmapSurface(
       canvasSize: canvasSize ?? this.canvasSize,
+      pasteboardReach: pasteboardReach ?? this.pasteboardReach,
       tileSize: tileSize ?? this.tileSize,
       tiles: tiles ?? _tiles,
       texts: texts ?? this.texts,
@@ -492,6 +514,8 @@ class BitmapSurface {
 
   Map<String, dynamic> toJson() => {
     'canvasSize': canvasSize.toJson(),
+    if (pasteboardReach != PasteboardReach.whole)
+      'pasteboardReach': pasteboardReach.name,
     'tileSize': tileSize,
     // ⚠️The coordinate is written BESIDE the tile, not inside it — the
     // tile does not carry one. The durable representations already had
@@ -522,6 +546,9 @@ class BitmapSurface {
       canvasSize: CanvasSize.fromJson(
         json['canvasSize'] as Map<String, dynamic>,
       ),
+      pasteboardReach: PasteboardReach.values.byName(
+        json['pasteboardReach'] as String? ?? PasteboardReach.whole.name,
+      ),
       // ⛔NOT [defaultCelTileSize]. This answers a different question —
       // "what did a file written before the field existed use" — and the
       // answer is history, not policy. Following the current default would
@@ -548,6 +575,7 @@ class BitmapSurface {
       identical(this, other) ||
       other is BitmapSurface &&
           other.canvasSize == canvasSize &&
+          other.pasteboardReach == pasteboardReach &&
           other.tileSize == tileSize &&
           mapEquals(other._tiles, _tiles) &&
           listEquals(other.texts, texts) &&
@@ -557,6 +585,7 @@ class BitmapSurface {
   @override
   int get hashCode => Object.hash(
     canvasSize,
+    pasteboardReach,
     tileSize,
     Object.hashAllUnordered(
       _tiles.entries.map((entry) => Object.hash(entry.key, entry.value)),
@@ -584,11 +613,11 @@ int _ceilDiv(int value, int divisor) => (value + divisor - 1) ~/ divisor;
 /// picture it builds.
 bool pictureKeepsTileAt(
   TileCoord coord, {
-  required CanvasSize canvas,
+  required PasteboardWall wall,
   required int tileSize,
   required DirtyRegion? laid,
 }) =>
-    tileRangeHolds(canvas.pasteboardTileRange(tileSize), coord) ||
+    tileRangeHolds(wall.tileRange(tileSize), coord) ||
     (laid != null && tileRangeHolds(laid.tileRange(tileSize: tileSize), coord));
 
 void _validateTileSize(int tileSize) {

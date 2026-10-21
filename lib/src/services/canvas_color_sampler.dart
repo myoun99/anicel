@@ -7,7 +7,6 @@ import '../models/cut.dart';
 import '../models/layer.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
-import '../models/pasteboard_bounds.dart';
 import '../models/project_background.dart';
 import '../models/tile_coord.dart';
 import 'composite_effect_paint.dart'
@@ -32,7 +31,7 @@ const int canvasPaperColor = ProjectBackground.defaultPaperArgb;
 /// Off-canvas coordinates are real pixels — the eyedropper picks them
 /// like Flash does; floorDiv keeps negative coords on the right tile.
 int? surfacePixelRgba(BitmapSurface surface, int x, int y) {
-  if (!surface.canvasSize.containsPasteboardPixel(x: x, y: y)) {
+  if (!surface.pasteboard.containsPixel(x: x, y: y)) {
     return null;
   }
   final tileSize = surface.tileSize;

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 
@@ -10,7 +11,8 @@ import 'project_scratch_folder.dart';
 
 /// [cels] kept in [store] as an opened project keeps them: each a stretch of
 /// a saved file, cold until it is read ([BrushFrameStore.restoreFromFile]).
-/// Answers where each is kept.
+/// Answers where each is kept. They are kept behind [pasteboardReach], the
+/// wall of the project they were saved in.
 ///
 /// ★Each ref is the one the open path reads off the cel's head — its size,
 /// its tiles and its photo index ([AnicelCelBlob.photoPaths]) — so a test
@@ -18,8 +20,9 @@ import 'project_scratch_folder.dart';
 /// (`test/architecture/a_test_keeps_a_cel_through_one_helper_test.dart`).
 Map<BrushFrameKey, AnicelCelFileRef> keepInAFile(
   BrushFrameStore store,
-  Map<BrushFrameKey, BitmapSurface> cels,
-) {
+  Map<BrushFrameKey, BitmapSurface> cels, {
+  PasteboardReach pasteboardReach = PasteboardReach.whole,
+}) {
   final directory = Directory.systemTemp.createTempSync('qa-kept-cels');
   deleteAfterSessionEnds(directory);
   final refs = <BrushFrameKey, AnicelCelFileRef>{};
@@ -36,6 +39,6 @@ Map<BrushFrameKey, AnicelCelFileRef> keepInAFile(
       photoPaths: blob.photoPaths,
     );
   }
-  store.restoreFromFile(refs);
+  store.restoreFromFile(refs, pasteboardReach: pasteboardReach);
   return refs;
 }

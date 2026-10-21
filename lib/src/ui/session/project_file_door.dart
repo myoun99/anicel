@@ -1135,7 +1135,12 @@ class ProjectFileDoor {
   /// ([_sortLoadedCels]).
   bool _landCels(ProjectFileRead read) {
     final cels = _sortLoadedCels(read._result, _renderCaches);
-    _renderCaches.brushFrameStore.restoreFromFile(cels.main);
+    // The canvas's cels stand behind the project's pasteboard (I-109); a
+    // sheet's ink keeps the whole wall — it sets no size.
+    _renderCaches.brushFrameStore.restoreFromFile(
+      cels.main,
+      pasteboardReach: read.project.pasteboardReach,
+    );
     final healed = _healStaleCelSizes(
       cels.main,
       project: read.project,

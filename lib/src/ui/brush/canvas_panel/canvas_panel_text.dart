@@ -110,7 +110,6 @@ class _CanvasPanelText implements CelTextToolHost {
     return (
       key: coordinator.activeFrameKey,
       coordinator: coordinator,
-      canvasSize: _state.widget.canvasSize,
       cacheInvalidationSink: _state.widget.cacheInvalidationSink,
     );
   }
@@ -237,7 +236,7 @@ class _CanvasPanelText implements CelTextToolHost {
   ) {
     final (:pixels, under: _, :above) = floating;
     // The pasteboard: what crosses it is cut there, as it is on the cel.
-    final wall = on.surface.canvasSize.pasteboardRect;
+    final wall = on.surface.pasteboard.rect;
     return CelTextFloat(
       held: SelectionFloatPaint(
         surface: _heldPainter(pixels.plate, on),
@@ -267,6 +266,7 @@ class _CanvasPanelText implements CelTextToolHost {
       celTextPlateSurface(
         plate,
         canvasSize: on.surface.canvasSize,
+        pasteboardReach: on.surface.pasteboardReach,
         tileSize: on.surface.tileSize,
       ),
       _state.widget.activeSourceEffects,
@@ -289,6 +289,7 @@ class _CanvasPanelText implements CelTextToolHost {
     final painter = floatPainter(
       BitmapSurface(
         canvasSize: on.surface.canvasSize,
+        pasteboardReach: on.surface.pasteboardReach,
         tileSize: on.surface.tileSize,
         texts: above,
       ),
@@ -305,7 +306,7 @@ class _CanvasPanelText implements CelTextToolHost {
       tool: tool,
       stage: CelTextStage(
         viewport: _state._viewportState._viewport,
-        canvasSize: _state.widget.canvasSize,
+        pasteboard: _state._stagePasteboard,
         placement: _state.widget.interactiveContentPose,
       ),
       cel: cel,

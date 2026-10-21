@@ -4,7 +4,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/transform_track.dart';
@@ -135,7 +134,7 @@ class RowTransformBox extends StatefulWidget {
     super.key,
     required this.corners,
     required this.pose,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.viewport,
     required this.presses,
     required this.onCancelled,
@@ -159,7 +158,8 @@ class RowTransformBox extends StatefulWidget {
   /// dragged value, handed back by the host.
   final TransformPose pose;
 
-  final CanvasSize canvasSize;
+  /// The wall a press outside the box must land inside to turn it (I-109).
+  final PasteboardWall pasteboard;
   final CanvasViewport viewport;
 
   /// Which presses in the viewport are the box's.
@@ -197,7 +197,7 @@ class RowTransformBox extends StatefulWidget {
   final CanvasPoint Function(CanvasPoint onCanvas)? turnSpace;
 
   /// Where outside the box it turns, as points of the canvas — null for the
-  /// canvas's own stage, the pasteboard.
+  /// canvas's own stage, [pasteboard].
   ///
   /// 🗣️I-97-Q4 (유저 2026-10-15): a photo held on a sheet turns outside its
   /// box within the cell it lies in — 「그 칸 안은 회전, 칸 밖은 해제」.
@@ -327,7 +327,7 @@ class _RowTransformBoxState extends State<RowTransformBox> {
     onStage: (press) {
       final at = widget.viewport.viewportOffsetToCanvas(press);
       return widget.stage?.call(at) ??
-          widget.canvasSize.containsPasteboardPoint(x: at.x, y: at.y);
+          widget.pasteboard.containsPoint(x: at.x, y: at.y);
     },
     turns: widget.turn != null,
   );

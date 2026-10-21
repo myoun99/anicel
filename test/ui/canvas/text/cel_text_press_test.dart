@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
@@ -84,7 +85,6 @@ void main() {
     final CelTextCel cel = (
       key: celTextTestKey,
       coordinator: editingStackOn(drawingOf(const {}).withTexts(texts)),
-      canvasSize: celTextTestCanvas,
       cacheInvalidationSink: null,
     );
     return (
@@ -95,7 +95,9 @@ void main() {
             stage ??
             CelTextStage(
               viewport: CanvasViewport(zoom: 4),
-              canvasSize: celTextTestCanvas,
+              pasteboard: celTextTestCanvas.pasteboardAt(
+                PasteboardReach.whole,
+              ),
               placement: null,
             ),
         cel: noCel ? null : cel,
@@ -192,7 +194,7 @@ void main() {
       final (tool: _, :scene, baker: _, :begun, traced: _) = table(
         stage: CelTextStage(
           viewport: CanvasViewport(zoom: 0.1),
-          canvasSize: celTextTestCanvas,
+          pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
           placement: null,
         ),
       );
@@ -278,7 +280,7 @@ void main() {
       CelTextScene sceneAtOne() => table(
         stage: CelTextStage(
           viewport: CanvasViewport(),
-          canvasSize: celTextTestCanvas,
+          pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
           placement: null,
         ),
       ).scene;
@@ -1358,7 +1360,7 @@ void main() {
     // canvas at (2x − 10, 2y − 14).
     final posed = CelTextStage(
       viewport: CanvasViewport(zoom: 4),
-      canvasSize: celTextTestCanvas,
+      pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
       placement: placedBy(
         TransformPose.uniform(center: CanvasPoint(x: 22, y: 18), zoom: 2),
         celTextTestCanvas,

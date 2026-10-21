@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../../models/pasteboard_bounds.dart';
+
 /// One rail column's vertical extent, in the floor's own coordinates.
 typedef CanvasFloorBand = ({double top, double bottom});
 
@@ -128,6 +130,8 @@ class CanvasStageColors extends InheritedWidget {
     required this.pasteboardArgb,
     this.backdropNone = false,
     this.pasteboardNone = false,
+    this.pasteboardSize = PasteboardSize.three,
+    this.pasteboardInUse = true,
     required super.child,
   });
 
@@ -143,6 +147,17 @@ class CanvasStageColors extends InheritedWidget {
   final bool backdropNone;
   final bool pasteboardNone;
 
+  /// The pasteboard's size and whether it is there at all (I-109), as the
+  /// project keeps them — the size stays kept while it is off, as a colour
+  /// does while its plane is none.
+  final PasteboardSize pasteboardSize;
+  final bool pasteboardInUse;
+
+  /// How far the pasteboard reaches past the paper — where its plane is
+  /// laid, and the wall every picture on the floor stands behind.
+  PasteboardReach get pasteboardReach =>
+      PasteboardReach.of(size: pasteboardSize, inUse: pasteboardInUse);
+
   static CanvasStageColors? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CanvasStageColors>();
 
@@ -151,7 +166,9 @@ class CanvasStageColors extends InheritedWidget {
       oldWidget.backdropArgb != backdropArgb ||
       oldWidget.pasteboardArgb != pasteboardArgb ||
       oldWidget.backdropNone != backdropNone ||
-      oldWidget.pasteboardNone != pasteboardNone;
+      oldWidget.pasteboardNone != pasteboardNone ||
+      oldWidget.pasteboardSize != pasteboardSize ||
+      oldWidget.pasteboardInUse != pasteboardInUse;
 }
 
 /// Whether [band] overlaps the vertical range [top]..[bottom].

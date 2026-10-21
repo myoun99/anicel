@@ -6,7 +6,6 @@ import 'package:flutter/widgets.dart';
 import '../../../models/bitmap_surface.dart';
 import '../../../models/brush_frame_key.dart';
 import '../../../models/canvas_point.dart';
-import '../../../models/canvas_size.dart';
 import '../../../models/cel_text.dart';
 import '../../../models/text_cel_style.dart';
 import '../../../services/bitmap_surface_geometry.dart'
@@ -29,12 +28,11 @@ part 'cel_text_tool_list.dart';
 part 'cel_text_tool_on_canvas.dart';
 part 'cel_text_tool_way_out.dart';
 
-/// A cel a text can be set on: its key, what holds its picture, the canvas
-/// it is cut for, and who is told when it changes.
+/// A cel a text can be set on: its key, what holds its picture (and with
+/// it the wall it is cut at), and who is told when it changes.
 typedef CelTextCel = ({
   BrushFrameKey key,
   BrushFrameEditingCoordinator coordinator,
-  CanvasSize canvasSize,
   CacheInvalidationSink? cacheInvalidationSink,
 });
 
@@ -407,7 +405,7 @@ class CelTextTool extends ChangeNotifier {
     required CelTextContent content,
   }) => CelTextSession(
     key: cel.key,
-    canvasSize: cel.canvasSize,
+    pasteboard: cel.coordinator.currentSurfaceOf(cel.key).pasteboard,
     tileSize: cel.coordinator.currentSurfaceOf(cel.key).tileSize,
     standing: standing,
     content: content,

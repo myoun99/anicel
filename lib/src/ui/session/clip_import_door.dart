@@ -19,6 +19,7 @@ import '../../models/cel_text.dart';
 import '../../models/cut.dart';
 import '../../models/import/import_warning.dart';
 import '../../models/media_asset.dart' show normalizedMediaPath;
+import '../../models/pasteboard_bounds.dart';
 import '../../models/project.dart';
 import '../../models/project_background.dart';
 import '../../models/project_frame_rate.dart';
@@ -690,7 +691,10 @@ final class ClipImportDoor {
     try {
       return await bakeCelTextPlate(
         layout,
-        canvasSize: canvas,
+        // Cut at the wall of the store it is laid in.
+        pasteboard: canvas.pasteboardAt(
+          _renderCaches.brushFrameStore.pasteboardReach,
+        ),
         tileSize: defaultCelTileSize,
       );
     } finally {

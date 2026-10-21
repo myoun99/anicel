@@ -3,7 +3,6 @@ import 'dart:ui' show Offset;
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 import '../../../models/canvas_point.dart';
-import '../../../models/canvas_size.dart';
 import '../../../models/canvas_viewport.dart';
 import '../../../models/pasteboard_bounds.dart';
 import '../../../services/layer_pose_matrix.dart';
@@ -23,12 +22,14 @@ import '../canvas_viewport_offset.dart';
 class CelTextStage {
   const CelTextStage({
     required this.viewport,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.placement,
   });
 
   final CanvasViewport viewport;
-  final CanvasSize canvasSize;
+  /// The wall of the canvas being edited (I-109) — off it a press is
+  /// nobody's.
+  final PasteboardWall pasteboard;
 
   /// Where the row's artwork lies on the canvas; null for a row shown as it
   /// is drawn.
@@ -66,7 +67,7 @@ class CelTextStage {
   /// press is nobody's (F-222-box-Q6).
   bool onStage(Offset local) {
     final canvas = viewport.viewportOffsetToCanvas(local);
-    return canvasSize.containsPasteboardPoint(x: canvas.x, y: canvas.y);
+    return pasteboard.containsPoint(x: canvas.x, y: canvas.y);
   }
 
   @override
@@ -74,9 +75,9 @@ class CelTextStage {
       identical(this, other) ||
       other is CelTextStage &&
           other.viewport == viewport &&
-          other.canvasSize == canvasSize &&
+          other.pasteboard == pasteboard &&
           other.placement == placement;
 
   @override
-  int get hashCode => Object.hash(viewport, canvasSize, placement);
+  int get hashCode => Object.hash(viewport, pasteboard, placement);
 }

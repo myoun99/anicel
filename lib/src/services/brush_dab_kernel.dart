@@ -7,7 +7,6 @@ import '../core/floor_math.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/separable_blend_mode.dart';
-import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
@@ -209,7 +208,7 @@ class BrushDabPlan {
   /// the call site rather than buried here.
   static BrushDabPlan? of(
     BrushDab dab, {
-    required CanvasSize canvasSize,
+    required PasteboardWall wall,
     required int tileSize,
     required bool erase,
   }) {
@@ -242,7 +241,7 @@ class BrushDabPlan {
     final centerX = dab.center.x;
     final centerY = dab.center.y;
 
-    final clip = region.intersection(canvasSize.pasteboardRegion);
+    final clip = region.intersection(wall.region);
     if (clip == null) {
       return null;
     }

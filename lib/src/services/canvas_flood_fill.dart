@@ -16,6 +16,7 @@ import '../models/canvas_point.dart';
 import '../models/cut.dart';
 import '../models/drawing_guide.dart';
 import '../models/layer_id.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/tiles_covering.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
@@ -68,7 +69,7 @@ class FloodFillOptions {
   final int gapClosePx;
 
   /// Pasteboard fill: the fill boundary moves from the canvas rect to a
-  /// finite apron around it (see [pasteboardFillMargin]) so regions
+  /// finite apron around it (see [pasteboardFillMarginCap]) so regions
   /// crossing the canvas edge fill too. A flood that reaches the apron's
   /// outer wall means the region is NOT closed — the fill aborts and the
   /// caller reports the leak instead of flooding the surround
@@ -114,7 +115,8 @@ class FloodFillOptions {
   );
 }
 
-/// The extended fill's apron width per side: one canvas size, capped so
+/// The extended fill's apron width per side: as far as the pasteboard
+/// reaches past the paper ([PasteboardReach.pastEdgeOf], I-109), capped so
 /// the fill raster stays allocatable (a full 3×3 pasteboard raster of an
 /// 8K canvas would be gigabytes). Canvases at or under the cap get the
 /// exact pasteboard as their fill wall; larger ones get a generous apron
@@ -122,8 +124,8 @@ class FloodFillOptions {
 /// and "no infinite flood" structural.
 const int pasteboardFillMarginCap = 1024;
 
-int _pasteboardFillMargin(int canvasDimension) =>
-    math.min(canvasDimension, pasteboardFillMarginCap);
+int _pasteboardFillMargin(int canvasDimension, PasteboardReach reach) =>
+    math.min(reach.pastEdgeOf(canvasDimension), pasteboardFillMarginCap);
 
 /// The filled region as a coverage mask in canvas coordinates.
 class FloodFillRegion {
@@ -161,6 +163,7 @@ class LazyCanvasRasterRgb {
     required LayerFrameSurfaceResolver surfaceResolver,
     int paperColor = canvasPaperColor,
     bool extendBeyondCanvas = false,
+    PasteboardReach pasteboardReach = PasteboardReach.whole,
     CanvasReadSource source = CanvasReadSource.display,
     LayerId? activeLayerId,
     LayerPlacement? space,
@@ -169,10 +172,10 @@ class LazyCanvasRasterRgb {
     // shift its origin into negative world space; the default raster IS
     // the canvas at origin (0, 0), byte-identical to before.
     final marginX = extendBeyondCanvas
-        ? _pasteboardFillMargin(cut.canvasSize.width)
+        ? _pasteboardFillMargin(cut.canvasSize.width, pasteboardReach)
         : 0;
     final marginY = extendBeyondCanvas
-        ? _pasteboardFillMargin(cut.canvasSize.height)
+        ? _pasteboardFillMargin(cut.canvasSize.height, pasteboardReach)
         : 0;
     final rasterWidth = cut.canvasSize.width + marginX * 2;
     final rasterHeight = cut.canvasSize.height + marginY * 2;
@@ -1440,7 +1443,13 @@ List<BrushDab> buildFillDabs({
   LayerPlacement? space,
   SymmetryShape? symmetry,
   void Function()? onOpenRegion,
+  PasteboardReach pasteboardReach = PasteboardReach.whole,
 }) {
+  // With no pasteboard (I-109) there is nothing past the paper to fill
+  // into: the fill is the canvas's, as it is with the apron off — a region
+  // at the paper's edge is not refused as open.
+  final extended =
+      options.extendBeyondCanvas && pasteboardReach != PasteboardReach.none;
   final raster = labProbe(
     'fill.raster-ctor',
     () => LazyCanvasRasterRgb(
@@ -1448,7 +1457,8 @@ List<BrushDab> buildFillDabs({
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
       paperColor: paperColor,
-      extendBeyondCanvas: options.extendBeyondCanvas,
+      extendBeyondCanvas: extended,
+      pasteboardReach: pasteboardReach,
       source: options.source,
       activeLayerId: activeLayerId,
       space: space,
@@ -1496,7 +1506,7 @@ List<BrushDab> buildFillDabs({
     if (part == null) {
       continue;
     }
-    if (options.extendBeyondCanvas) {
+    if (extended) {
       // Leak detection: a flood that reached the apron's outer wall means
       // the region is OPEN (nothing bounded it before the wall). Refuse
       // the fill — the raster analogue of Flash refusing to fill an
@@ -1518,7 +1528,7 @@ List<BrushDab> buildFillDabs({
     parts.add(part);
   }
   final region = _unionRegions(parts);
-  if (options.extendBeyondCanvas) {
+  if (extended) {
     // The extended raster grew the engine's fill arenas ~9×; give the
     // memory back once this tap's flood is done (the next canvas fill
     // re-allocs canvas size).

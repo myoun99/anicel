@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_tip_entry.dart';
 import '../../models/canvas_shape_kind.dart';
-import '../../models/canvas_size.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/shape_tool_options.dart';
 import '../../models/transform_values.dart';
@@ -65,7 +65,7 @@ class ToolSettingsPanel extends StatelessWidget {
     this.textOptions,
     this.textCommands,
     this.textFonts,
-    this.canvasSize,
+    this.pasteboard,
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasReadSource.display,
     this.onEyedropperSourceChanged,
@@ -146,10 +146,12 @@ class ToolSettingsPanel extends StatelessWidget {
   /// a host that keeps none.
   final ImportedFonts? textFonts;
 
-  /// The canvas on screen, whose pasteboard wall the selection tool's
-  /// 선택 반전 inverts out to (I-23). Null = no canvas to take a wall from,
-  /// and the button keeps its place, greyed.
-  final CanvasSize? canvasSize;
+  /// The wall of the cut on screen — its canvas, out as far as the
+  /// project's pasteboard reaches (I-109) — that the selection tool's 선택
+  /// 반전 inverts out to (I-23); its canvas is the paper guides are laid on.
+  /// Null = no cut to take a wall from, and the button keeps its place,
+  /// greyed.
+  final PasteboardWall? pasteboard;
 
   /// The piece the cut tool is holding — the stamp tile's knobs pose it.
   final CutPieceSlot? cutPieceSlot;
@@ -295,7 +297,7 @@ class ToolSettingsPanel extends StatelessWidget {
       onMaskOptionsChanged: onSelectionMaskOptionsChanged,
       selectionCommands: selectionCommands,
       traces: canvasTraces,
-      canvasSize: canvasSize,
+      pasteboard: pasteboard,
       language: language,
     ),
     // The CUT grab: 「원본 삭제」 and the polygon's confirm, whatever shape
@@ -327,7 +329,7 @@ class ToolSettingsPanel extends StatelessWidget {
     CanvasTool.guide => GuideSettings(
       guides: guides ?? CutGuides.empty,
       selectedGuideId: selectedGuideId,
-      canvasSize: canvasSize,
+      canvasSize: pasteboard?.canvas,
       onGuidesCommitted: onGuidesCommitted ?? (_) {},
       onGuidesPreview: onGuidesPreview ?? (_) {},
       onGuideRasterized: onGuideRasterized,
@@ -772,7 +774,7 @@ class _SelectionSettings extends StatelessWidget {
     required this.onMaskOptionsChanged,
     required this.selectionCommands,
     required this.traces,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.language,
   });
 
@@ -782,18 +784,18 @@ class _SelectionSettings extends StatelessWidget {
   final ValueChanged<SelectionMaskOptions>? onMaskOptionsChanged;
   final CanvasSelectionCommands? selectionCommands;
   final CanvasTraces? traces;
-  final CanvasSize? canvasSize;
+  final PasteboardWall? pasteboard;
   final AppLanguage language;
 
   @override
   Widget build(BuildContext context) {
     final onMask = onMaskOptionsChanged;
     final commands = selectionCommands;
-    final canvas = canvasSize;
+    final wall = pasteboard;
     VoidCallback? invert(InvertReach reach) =>
-        commands == null || canvas == null
+        commands == null || wall == null
         ? null
-        : () => commands.invertSelection(canvasSize: canvas, reach: reach);
+        : () => commands.invertSelection(pasteboard: wall, reach: reach);
     // R26 #12: the rectangle/lasso CHOICE lives in the tool library
     // (two tools there), so the settings panel no longer duplicates
     // it — only the mask knobs remain.

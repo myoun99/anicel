@@ -515,7 +515,7 @@ void main() {
         ],
         anchor: CanvasPoint(x: 16, y: 16),
       );
-      final wall = canvasSize.pasteboardRect;
+      final wall = canvasSize.pasteboardAt(PasteboardReach.whole).rect;
       final hole = BitmapSurface(
         canvasSize: canvasSize,
         tileSize: tile,
@@ -539,6 +539,7 @@ void main() {
           plate: celTextPlateMoved(
             (plate: plate, dx: 5, dy: 3),
             canvasSize: canvasSize,
+            pasteboardReach: PasteboardReach.whole,
             tileSize: tile,
           ),
         ),
@@ -617,6 +618,7 @@ void main() {
           celTextPlateMoved(
             (plate: plate, dx: 5, dy: 3),
             canvasSize: canvasSize,
+            pasteboardReach: PasteboardReach.whole,
             tileSize: tile,
           ),
         ),
@@ -634,7 +636,7 @@ void main() {
         celSurfaceAsShown(surface, keys),
         landing: ValueNotifier(null),
       );
-      final wall = canvasSize.pasteboardRect;
+      final wall = canvasSize.pasteboardAt(PasteboardReach.whole).rect;
 
       final carried = await paint(
         painterOf(

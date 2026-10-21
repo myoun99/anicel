@@ -20,6 +20,7 @@ import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
@@ -291,7 +292,9 @@ void main() {
       final overlay = ActiveStrokeOverlayModel(tileSize: tileSize ~/ 2);
       addTearDown(overlay.dispose);
       overlay.preBlendBase = surface;
-      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+      final rasterizer = BrushLiveStrokeRasterizer(
+        pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+      );
       rasterizer.blendFrom([
         BrushDab(
           center: CanvasPoint(x: 4, y: 4),
@@ -1128,7 +1131,9 @@ void main() {
         final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
         addTearDown(overlay.dispose);
         overlay.blendMode = blend;
-        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+        final rasterizer = BrushLiveStrokeRasterizer(
+          pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+        );
         rasterizer.blendFrom([
           BrushDab(
             center: CanvasPoint(x: 4, y: 4),

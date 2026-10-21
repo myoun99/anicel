@@ -7,6 +7,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
@@ -67,7 +68,7 @@ void main() {
   }) => RowTransformBox(
     corners: at ?? corners,
     pose: pose ?? TransformPose(center: anchor),
-    canvasSize: size,
+    pasteboard: size.pasteboardAt(PasteboardReach.whole),
     viewport: viewport ?? CanvasViewport(),
     presses: presses,
     stage: stage,
@@ -370,7 +371,7 @@ void main() {
                 CanvasPoint(x: 200 + (corner.x - 200) * across, y: corner.y),
             ],
             pose: TransformPose(center: anchor, scaleX: across),
-            canvasSize: canvasSize,
+            pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
             viewport: CanvasViewport(),
             presses: RowBoxPresses.viewport,
             onCancelled: () {},
@@ -686,7 +687,7 @@ void main() {
       RowTransformBox(
         corners: corners,
         pose: TransformPose(center: anchor),
-        canvasSize: canvasSize,
+        pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
         viewport: CanvasViewport(),
         presses: RowBoxPresses.viewport,
         onCancelled: () {},
@@ -1063,7 +1064,7 @@ void main() {
               ),
           ],
           pose: TransformPose.uniform(center: anchor, zoom: zoom),
-          canvasSize: canvasSize,
+          pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
           viewport: CanvasViewport(),
           presses: RowBoxPresses.viewport,
           onCancelled: () {},

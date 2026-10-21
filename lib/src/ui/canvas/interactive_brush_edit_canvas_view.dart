@@ -19,7 +19,6 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/canvas_point.dart';
-import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/dirty_region.dart';
 import '../../models/frame_id.dart';
@@ -712,13 +711,10 @@ class _InteractiveBrushEditCanvasViewState
   /// EVERY tool works anywhere on the pasteboard (Flash-style — the
   /// stage rectangle is a crop at composite time, not an input
   /// boundary): strokes, eyedropper picks and fill taps alike.
-  bool _isInsidePasteboard(CanvasPoint localPosition) {
-    final canvasSize = widget.celNow().canvasSize;
-    return canvasSize.containsPasteboardPoint(
-      x: localPosition.x,
-      y: localPosition.y,
-    );
-  }
+  bool _isInsidePasteboard(CanvasPoint localPosition) => widget
+      .celNow()
+      .pasteboard
+      .containsPoint(x: localPosition.x, y: localPosition.y);
 
   CanvasPoint _canvasPositionFromLocal(Offset localPosition) =>
       widget.viewport.viewportOffsetToCanvas(localPosition);
@@ -806,16 +802,16 @@ class _InteractiveBrushEditCanvasViewState
   /// Creates or recycles the live stroke rasterizer for the current canvas.
   void _prepareLiveRasterizer() {
     final surface = widget.celNow();
-    final canvasSize = surface.canvasSize;
+    final pasteboard = surface.pasteboard;
     final existing = _liveRasterizer;
     // The stroke grid IS the cel grid (the promotion round's premise: a
     // result tile stands in for the committed tile at its coordinate).
     if (existing == null ||
-        existing.canvasSize != canvasSize ||
+        existing.pasteboard != pasteboard ||
         existing.tileSize != surface.tileSize) {
       existing?.clear(); // Native tiles return to the engine (R21).
       _liveRasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: canvasSize,
+        pasteboard: pasteboard,
         tileSize: surface.tileSize,
       );
     } else {

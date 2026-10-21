@@ -18,6 +18,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
@@ -378,6 +379,7 @@ void main() {
               background: ProjectBackground.defaultBackground,
               pasteboardColor: const Color(0xFF123456),
               pasteboardNone: false,
+              pasteboardReach: PasteboardReach.whole,
               child: const SizedBox.expand(),
             ),
           ),

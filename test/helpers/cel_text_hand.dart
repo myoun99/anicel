@@ -1,7 +1,7 @@
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
@@ -46,7 +46,6 @@ TextHand textHand({
         if (text != null) CelText(id: 1, content: text, plate: plateOf(text)),
       ]),
     ),
-    canvasSize: celTextTestCanvas,
     cacheInvalidationSink: null,
   );
   host.cel = cel;
@@ -69,7 +68,7 @@ CelTextContent landedOn(CelTextCel cel) =>
 /// are [HeldBaker]'s).
 Future<Map<TileCoord, BitmapTile>> bakesAtOnce(
   CelTextLayout layout, {
-  required CanvasSize canvasSize,
+  required PasteboardWall pasteboard,
   required int tileSize,
   Map<TileCoord, BitmapTile> previous = const {},
 }) async => layout.content.isEmpty ? const {} : plateOf(layout.content);

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/point_bounds.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_pose.dart';
 import '../../services/camera_frame_corners.dart'
@@ -36,7 +36,7 @@ class CameraAdjustLayer extends StatelessWidget {
     required this.adjust,
     required this.pose,
     required this.viewport,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.onLand,
   });
 
@@ -46,8 +46,8 @@ class CameraAdjustLayer extends StatelessWidget {
   final CameraPose pose;
   final CanvasViewport viewport;
 
-  /// The cut's canvas — the stage the box measures against.
-  final CanvasSize canvasSize;
+  /// The wall of the cut's canvas — the stage the box measures against.
+  final PasteboardWall pasteboard;
 
   /// Lands the size: the project camera's frame becomes it.
   final VoidCallback onLand;
@@ -87,7 +87,7 @@ class CameraAdjustLayer extends StatelessWidget {
                 center: pose.center,
                 rotationDegrees: pose.rotationDegrees,
               ),
-              canvasSize: canvasSize,
+              pasteboard: pasteboard,
               viewport: viewport,
               // The canvas stays the tools' and the view's: a press is the
               // box's on its handles alone.

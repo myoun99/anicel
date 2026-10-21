@@ -22,6 +22,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/media_asset.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/se_name_tag.dart';
 import '../../models/project.dart';
 import '../../models/property_track.dart' show PropertyKey;
@@ -94,6 +95,7 @@ import 'update_layer_timesheet_command.dart';
 import 'update_layer_transform_command.dart';
 import 'update_media_assets_command.dart';
 import 'update_project_background_command.dart';
+import 'set_project_pasteboard_command.dart';
 import 'update_project_stage_colors_command.dart';
 import 'update_timesheet_info_command.dart';
 import 'update_exposure_memo_command.dart';
@@ -879,6 +881,10 @@ class CutCommandCoordinator {
       _projectSettings.setProjectPasteboard(argb);
   void setProjectPasteboardNone() =>
       _projectSettings.setProjectPasteboardNone();
+  void setProjectPasteboardSize(PasteboardSize size) =>
+      _projectSettings.setProjectPasteboardSize(size);
+  void setProjectPasteboardInUse(bool inUse) =>
+      _projectSettings.setProjectPasteboardInUse(inUse);
 
   /// Executes [command] only when [read] of [subject] does not already
   /// answer [value].

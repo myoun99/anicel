@@ -31,6 +31,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_cel.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/reference_swap.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -749,7 +750,7 @@ void main() {
             for (final MapEntry(:key, :value) in whole.tiles.entries)
               if (pictureKeepsTileAt(
                 key,
-                canvas: whole.canvasSize,
+                wall: whole.canvasSize.pasteboardAt(PasteboardReach.whole),
                 tileSize: whole.tileSize,
                 laid: null,
               ))

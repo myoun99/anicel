@@ -187,15 +187,17 @@ BitmapSurface resizeBitmapSurfaceCanvas(
     return surface;
   }
   final tileSize = surface.tileSize;
+  final reach = surface.pasteboardReach;
   final laid = _laidMoved(surface, dx: 0, dy: 0);
   return BitmapSurface(
     canvasSize: canvasSize,
+    pasteboardReach: reach,
     tileSize: tileSize,
     tiles: {
       for (final entry in surface.tiles.entries)
         if (pictureKeepsTileAt(
           entry.key,
-          canvas: canvasSize,
+          wall: canvasSize.pasteboardAt(reach),
           tileSize: tileSize,
           laid: laid,
         ))
@@ -205,6 +207,116 @@ BitmapSurface resizeBitmapSurfaceCanvas(
     photos: _photosMoved(surface, dx: 0, dy: 0),
     laidBounds: laid,
   );
+}
+
+/// [surface] behind the wall of [reach] (I-109): the same picture on the
+/// same canvas with its pasteboard moved — itself when [reach] is its own.
+///
+/// 🗣️What lies past the new wall is CUT AWAY, to the pixel (Q2, 유저
+/// 2026-10-20: 「잘라낸다 — 페이스트보드쪽에 그림이 기록되는게 싫은것임 …
+/// 페이스트보드 끈다고 안쪽 그림이 위치가 바뀐다거나 그런것들도 다 조심하고」):
+/// nothing inside moves, and a text's letters are cut as its cel's pixels
+/// are. A FILE laid on it stays whole (Q4: 「참조 그림은 그대로 둔다」 —
+/// [BitmapSurface.laidBounds]). A tile wholly inside is kept as the very
+/// tile, so the picture and its undo share it.
+BitmapSurface surfaceBehindReach(
+  BitmapSurface surface,
+  PasteboardReach reach,
+) {
+  if (surface.pasteboardReach == reach) {
+    return surface;
+  }
+  final behind = _BehindWall(
+    wall: surface.canvasSize.pasteboardAt(reach).region,
+    laid: surface.laidBounds,
+    tileSize: surface.tileSize,
+  );
+  return BitmapSurface(
+    canvasSize: surface.canvasSize,
+    pasteboardReach: reach,
+    tileSize: surface.tileSize,
+    tiles: behind.tilesOf(surface.tiles),
+    texts: [
+      for (final text in surface.texts)
+        CelText(
+          id: text.id,
+          content: text.content,
+          plate: behind.tilesOf(text.plate),
+        ),
+    ],
+    photos: surface.photos,
+    laidBounds: surface.laidBounds,
+  );
+}
+
+/// What of a tile is kept behind a [wall] — inside it, or inside where a
+/// file was [laid].
+final class _BehindWall {
+  _BehindWall({
+    required this.wall,
+    required this.laid,
+    required this.tileSize,
+  });
+
+  final DirtyRegion wall;
+  final DirtyRegion? laid;
+  final int tileSize;
+
+  Map<TileCoord, BitmapTile> tilesOf(Map<TileCoord, BitmapTile> tiles) => {
+    for (final MapEntry(key: coord, value: tile) in tiles.entries)
+      coord: ?_kept(coord, tile),
+  };
+
+  /// [tile] at [coord] with what lies outside cleared: the very tile where
+  /// nothing does, null where nothing of it is left.
+  BitmapTile? _kept(TileCoord coord, BitmapTile tile) {
+    final box = DirtyRegion(
+      left: coord.x * tileSize,
+      top: coord.y * tileSize,
+      rightExclusive: (coord.x + 1) * tileSize,
+      bottomExclusive: (coord.y + 1) * tileSize,
+    );
+    final inWall = box.intersection(wall);
+    final inLaid = laid == null ? null : box.intersection(laid!);
+    if (inWall == box || inLaid == box) {
+      return tile;
+    }
+    if (inWall == null && inLaid == null) {
+      return null;
+    }
+    final cleared = BitmapTile.written(
+      size: tileSize,
+      write: (pixels) {
+        tile.copyPixelsInto(pixels);
+        for (var row = 0; row < tileSize; row += 1) {
+          _clearRowOutside(pixels, row, box, [?inWall, ?inLaid]);
+        }
+      },
+    );
+    return cleared.hasInk ? cleared : null;
+  }
+
+  /// Clears [row] of [pixels] — a tile at [box] — but for the columns any
+  /// of [keeps] holds on that row.
+  void _clearRowOutside(
+    Uint8List pixels,
+    int row,
+    DirtyRegion box,
+    List<DirtyRegion> keeps,
+  ) {
+    final y = box.top + row;
+    final rowStart = row * tileSize;
+    for (var column = 0; column < tileSize; column += 1) {
+      final x = box.left + column;
+      if (!keeps.any((keep) => keep.containsPixel(x: x, y: y))) {
+        pixels.fillRange(
+          (rowStart + column) * BitmapTile.bytesPerPixel,
+          (rowStart + column + 1) * BitmapTile.bytesPerPixel,
+          0,
+        );
+      }
+    }
+  }
 }
 
 /// [surface]'s texts as a move of its pixels by ([dx], [dy]) onto
@@ -235,6 +347,7 @@ List<CelText> _textsMoved(
         celTextPlateSurface(
           text.plate,
           canvasSize: surface.canvasSize,
+          pasteboardReach: surface.pasteboardReach,
           tileSize: surface.tileSize,
         ),
         dx: dx,
@@ -245,13 +358,20 @@ List<CelText> _textsMoved(
 ];
 
 /// A text's [plate] as a surface of its own on the grid of its cel —
-/// [canvasSize], in tiles of [tileSize]: what lets its pixels take the
-/// passes a drawing's tiles take, and be read as theirs are.
+/// [canvasSize] with its [pasteboardReach], in tiles of [tileSize]: what
+/// lets its pixels take the passes a drawing's tiles take, be read as
+/// theirs are, and stop at the wall theirs stop at.
 BitmapSurface celTextPlateSurface(
   Map<TileCoord, BitmapTile> plate, {
   required CanvasSize canvasSize,
+  required PasteboardReach pasteboardReach,
   required int tileSize,
-}) => BitmapSurface(canvasSize: canvasSize, tileSize: tileSize, tiles: plate);
+}) => BitmapSurface(
+  canvasSize: canvasSize,
+  pasteboardReach: pasteboardReach,
+  tileSize: tileSize,
+  tiles: plate,
+);
 
 /// [surface]'s photos as a move of its pixels by ([dx], [dy]) leaves them:
 /// each where the picture now is. A photo stands on the picture's grid
@@ -323,9 +443,15 @@ CelTextContent celTextContentMoved(
 Map<TileCoord, BitmapTile> celTextPlateMoved(
   CelTextPixels pixels, {
   required CanvasSize canvasSize,
+  required PasteboardReach pasteboardReach,
   required int tileSize,
 }) => translateBitmapSurface(
-  celTextPlateSurface(pixels.plate, canvasSize: canvasSize, tileSize: tileSize),
+  celTextPlateSurface(
+    pixels.plate,
+    canvasSize: canvasSize,
+    pasteboardReach: pasteboardReach,
+    tileSize: tileSize,
+  ),
   dx: pixels.dx,
   dy: pixels.dy,
   canvasSize: canvasSize,
@@ -346,6 +472,8 @@ BitmapSurface translateBitmapSurface(
     return resizeBitmapSurfaceCanvas(surface, canvasSize);
   }
   final tileSize = surface.tileSize;
+  final reach = surface.pasteboardReach;
+  final wall = canvasSize.pasteboardAt(reach);
 
   if (dx % tileSize == 0 && dy % tileSize == 0) {
     // 🚨★★★**ONE PASS, AND ONE CLIP LAW.** This built a whole map, handed
@@ -370,7 +498,7 @@ BitmapSurface translateBitmapSurface(
       final coord = TileCoord(x: entry.key.x + tileDx, y: entry.key.y + tileDy);
       if (!pictureKeepsTileAt(
         coord,
-        canvas: canvasSize,
+        wall: wall,
         tileSize: tileSize,
         laid: laid,
       )) {
@@ -384,6 +512,7 @@ BitmapSurface translateBitmapSurface(
     }
     return BitmapSurface(
       canvasSize: canvasSize,
+      pasteboardReach: reach,
       tileSize: tileSize,
       tiles: rebased,
       texts: _textsMoved(surface, dx: dx, dy: dy, canvasSize: canvasSize),
@@ -401,12 +530,12 @@ BitmapSurface translateBitmapSurface(
   blit.into(
     surface.tiles.entries,
     clip: (
-      left: canvasSize.pasteboardLeft,
-      top: canvasSize.pasteboardTop,
+      left: wall.left,
+      top: wall.top,
       rightExclusive: null,
       bottomExclusive: null,
     ),
-    keeps: canvasSize.pasteboardTileRange(tileSize),
+    keeps: wall.tileRange(tileSize),
   );
   // A laid picture goes where its pixels went, whole (F-374-Q8: 「참조
   // 그림은 벽 밖까지 통째로」) — the same blit, into the rect it covers now,
@@ -432,6 +561,7 @@ BitmapSurface translateBitmapSurface(
   // is not a reason to keep a second copy of a rule.
   return BitmapSurface(
     canvasSize: canvasSize,
+    pasteboardReach: reach,
     tileSize: tileSize,
     texts: _textsMoved(surface, dx: dx, dy: dy, canvasSize: canvasSize),
     photos: _photosMoved(surface, dx: dx, dy: dy),

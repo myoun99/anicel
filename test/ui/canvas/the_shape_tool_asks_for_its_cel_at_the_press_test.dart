@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -50,7 +51,10 @@ void main() {
                 tool: tool,
                 shapeKind: CanvasShapeKind.rect,
                 viewport: CanvasViewport(),
-                canvasSize: const CanvasSize(width: 400, height: 300),
+                pasteboard: const CanvasSize(
+                  width: 400,
+                  height: 300,
+                ).pasteboardAt(PasteboardReach.whole),
                 frameToken: frameToken,
                 onShapeCommitted: (before, after) => log.add('selected'),
                 // No guide: the drag is its only copy.

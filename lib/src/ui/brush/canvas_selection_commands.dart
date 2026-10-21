@@ -4,7 +4,6 @@ import 'dart:ui' show Rect;
 import 'package:flutter/foundation.dart';
 
 import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/transform_values.dart';
 import '../../services/canvas_selection.dart';
@@ -19,9 +18,9 @@ enum InvertReach {
   /// Out to the pasteboard's wall — everything a selection tool can reach.
   pasteboard;
 
-  Rect wallOf(CanvasSize size) => switch (this) {
-    InvertReach.canvas => size.canvasRect,
-    InvertReach.pasteboard => size.pasteboardRect,
+  Rect wallOf(PasteboardWall wall) => switch (this) {
+    InvertReach.canvas => wall.canvas.canvasRect,
+    InvertReach.pasteboard => wall.rect,
   };
 }
 
@@ -472,7 +471,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
 
   /// 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능. 내용은 선택되지
   /// 않은 부분을 선택함. 위치는 선택툴일때의 툴설정. 버튼.」 Selects what is
-  /// NOT selected, out to [reach]'s wall of [canvasSize].
+  /// NOT selected, out to [reach]'s wall of [pasteboard].
   ///
   /// 🗣️TWO WALLS, ONE VERB (I-108, 유저 2026-10-18: 「용지 내에서만
   /// 작동하게하고싶을때의 방법이 필요하니 버튼 나눠서 용지 내 선택 반전, 용지
@@ -491,14 +490,14 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// bare [setRegion] — the mounted layer has to hear it (see the note in
   /// `_adoptChannelRegion`).
   void invertSelection({
-    required CanvasSize canvasSize,
+    required PasteboardWall pasteboard,
     required InvertReach reach,
   }) {
     confirmPendingMove();
     final before = region;
     final after = CanvasSelectionRegion.invertedWithin(
       before,
-      reach.wallOf(canvasSize),
+      reach.wallOf(pasteboard),
     );
     if (after == before) {
       return;

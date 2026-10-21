@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
@@ -337,7 +338,7 @@ void main() {
       try {
         plate = await bakeCelTextPlate(
           layout,
-          canvasSize: celTextTestCanvas,
+          pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
           tileSize: celTextTestTileSize,
         );
       } finally {

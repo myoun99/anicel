@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/pixel_clipboard_verb.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -210,7 +211,7 @@ void main() {
     );
     final reading = selectionMaskOnPasteboard(
       region,
-      canvasSize: surface.canvasSize,
+      wall: surface.canvasSize.pasteboardAt(PasteboardReach.whole),
       options: soft,
     )!;
     expect(

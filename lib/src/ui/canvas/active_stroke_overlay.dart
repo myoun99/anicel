@@ -10,10 +10,8 @@ import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
-import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
 import '../../models/layer_effect.dart';
-import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../../services/brush_live_stroke_rasterizer.dart'
     show
@@ -336,16 +334,13 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     // artwork while stroking near the pasteboard wall. Committed tiles
     // are full too, and the painter's pasteboard clip crops both alike;
     // the extra pixels are just base bytes copied through.
-    final sourceCanvasSize = CanvasSize(
-      width: source.canvasWidth,
-      height: source.canvasHeight,
-    );
+    final wall = source.pasteboard;
     final width = preBlendBase != null
         ? tileSize
-        : math.min(tileSize, sourceCanvasSize.pasteboardRightExclusive - left);
+        : math.min(tileSize, wall.rightExclusive - left);
     final height = preBlendBase != null
         ? tileSize
-        : math.min(tileSize, sourceCanvasSize.pasteboardBottomExclusive - top);
+        : math.min(tileSize, wall.bottomExclusive - top);
     _install(
       coord,
       _pictureOfResult(

@@ -317,7 +317,7 @@ class _SurfacePaintPass {
     final wider = _painter.surface.laidBounds != null;
     if (wider) {
       _canvas.save();
-      _canvas.clipRect(_painter.surface.canvasSize.pasteboardRect);
+      _canvas.clipRect(_painter.surface.pasteboard.rect);
     }
     _paintStampPreview();
     _paintFloat();

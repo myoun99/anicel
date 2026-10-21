@@ -9,6 +9,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
@@ -54,7 +55,9 @@ void main() {
   /// An overlay holding decoded images at two coordinates: one inside the
   /// clip below, one far outside it.
   Future<ActiveStrokeOverlayModel> overlayWithTwoTiles() async {
-    final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+    final rasterizer = BrushLiveStrokeRasterizer(
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+    );
     final model = ActiveStrokeOverlayModel(tileSize: tileSize);
     addTearDown(model.dispose);
 

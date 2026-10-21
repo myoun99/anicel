@@ -1,8 +1,8 @@
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_frame_key.dart';
-import '../models/canvas_size.dart';
 import '../models/layer_id.dart';
+import '../models/pasteboard_bounds.dart';
 import 'brush_frame_editing_coordinator.dart';
 import 'cache_invalidation_executor.dart';
 import 'canvas_selection.dart'
@@ -120,8 +120,8 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
   final store = coordinator.frameStore;
   final through = _SelectionOnTheRows(
     ground,
-    // Every surface the coordinator writes is this size.
-    coordinator.sessionStore.canvasSize,
+    // Every surface the coordinator writes stops at this wall.
+    coordinator.sessionStore.pasteboard,
   );
   final landed = <BrushFrameKey, PieceLanding>{};
   for (final key in ground.cels) {
@@ -174,10 +174,10 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
 /// three memos a feathered marquee over twenty-four cels is rasterized
 /// twenty-four times and the piece copied as often.
 class _SelectionOnTheRows {
-  _SelectionOnTheRows(this._ground, this._canvasSize);
+  _SelectionOnTheRows(this._ground, this._wall);
 
   final PieceGround _ground;
-  final CanvasSize _canvasSize;
+  final PasteboardWall _wall;
 
   /// A row's placement is the row's, whichever of its cels asks.
   final _ofRow = <LayerId, SelectionMaskReading?>{};
@@ -213,7 +213,7 @@ class _SelectionOnTheRows {
               onTheRow,
               () => selectionMaskOnPasteboard(
                 onTheRow,
-                canvasSize: _canvasSize,
+                wall: _wall,
                 options: _ground.options,
               ),
             );

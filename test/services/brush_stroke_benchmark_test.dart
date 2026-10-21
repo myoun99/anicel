@@ -10,6 +10,7 @@ import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 
 /// Live-stroke hot-path microbenchmark (not a correctness test): prints
@@ -69,9 +70,10 @@ void main() {
 
   void bench(String label, List<BrushDab> dabs) {
     const canvas = CanvasSize(width: 1280, height: 720);
+    final wall = canvas.pasteboardAt(PasteboardReach.whole);
     // Warm up JIT.
-    BrushLiveStrokeRasterizer(canvasSize: canvas).blendFrom(dabs);
-    final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvas);
+    BrushLiveStrokeRasterizer(pasteboard: wall).blendFrom(dabs);
+    final rasterizer = BrushLiveStrokeRasterizer(pasteboard: wall);
     final watch = Stopwatch()..start();
     rasterizer.blendFrom(dabs);
     watch.stop();

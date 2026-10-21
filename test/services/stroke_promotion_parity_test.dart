@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
@@ -161,7 +162,7 @@ void main() {
     int batchSize = 4,
   }) {
     final rasterizer = BrushLiveStrokeRasterizer(
-      canvasSize: canvasSize,
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
       tileSize: tileSize,
     );
     final blended = <BrushDab>[];
@@ -341,7 +342,7 @@ void main() {
       const mode = BrushBlendMode.color;
 
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: canvasSize,
+        pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
         tileSize: tileSize,
       );
       final first = [dab(x: 40.5, y: 40.5, sequence: 0)];
@@ -397,7 +398,7 @@ void main() {
 
       // A fully transparent stroke: it touches tiles but changes nothing.
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: canvasSize,
+        pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
         tileSize: tileSize,
       );
       rasterizer.blendFrom([
@@ -421,7 +422,7 @@ void main() {
     final base = BitmapSurface(canvasSize: canvasSize, tileSize: tileSize);
 
     final rasterizer = BrushLiveStrokeRasterizer(
-      canvasSize: canvasSize,
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
       tileSize: tileSize,
     );
     rasterizer.blendFrom([
@@ -465,7 +466,7 @@ void main() {
           2 * tileSize * tileSize * 4;
       final base = paintedBase();
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: canvasSize,
+        pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
         tileSize: tileSize,
       );
       final dabs = <BrushDab>[];

@@ -41,8 +41,11 @@ class BrushFrameEditingCoordinator {
     // operation onto the physical cel; a session is state ABOUT that cel,
     // so it answers to the same address or the two drift apart. Wired
     // HERE because this is the one object holding both — the session
-    // store never grows a resolver of its own to keep in step.
-    sessionStore.setLinkResolver(frameStore.canonicalKeyOf);
+    // store never grows a resolver of its own to keep in step. The
+    // pasteboard's reach (I-109) is read through the same way.
+    sessionStore
+      ..setLinkResolver(frameStore.canonicalKeyOf)
+      ..setPasteboardReachSource(() => frameStore.pasteboardReach);
   }
 
   /// A coordinator over a sheet's ink [store] — the conte's, the
@@ -155,6 +158,9 @@ class BrushFrameEditingCoordinator {
   /// in no other tier: a cold cel whose read failed this moment answers
   /// null too, and reseeding blank from that is the loss the store's own
   /// read forbids.
+  ///
+  /// A blank is the store's only behind the store's wall: one made before
+  /// the pasteboard moved (I-109) would let a first stroke past it.
   bool _storeMovedPast(BrushFrameKey key, BrushEditSessionState session) {
     final current = session.canvasState.currentSurface;
     final baked = frameStore.bakedSurfaceOrNull(key);
@@ -162,9 +168,10 @@ class BrushFrameEditingCoordinator {
       return !identical(baked, current) &&
           baked.canvasSize == sessionStore.canvasSize;
     }
-    return !current.holdsNothing &&
-        !frameStore.isCelCold(key) &&
-        !frameStore.isCelFileBacked(key);
+    if (current.holdsNothing) {
+      return current.pasteboardReach != frameStore.pasteboardReach;
+    }
+    return !frameStore.isCelCold(key) && !frameStore.isCelFileBacked(key);
   }
 
   /// Seeds the frame's session from the baked raster truth — O(1) and

@@ -142,12 +142,7 @@ void main() {
       (screen.width - panX) / zoom,
       (screen.height - panY) / zoom,
     );
-    final pasteboard = Rect.fromLTRB(
-      canvasSize.pasteboardLeft.toDouble(),
-      canvasSize.pasteboardTop.toDouble(),
-      canvasSize.pasteboardRightExclusive.toDouble(),
-      canvasSize.pasteboardBottomExclusive.toDouble(),
-    );
+    final pasteboard = canvasSize.pasteboardAt(PasteboardReach.whole).rect;
     final bounds = pasteboard.intersect(visible);
     final composeRect = Rect.fromLTRB(
       bounds.left.floorToDouble(),
@@ -414,10 +409,8 @@ class _TransparentStrokeSource implements ActiveStrokePixelSource {
   final CanvasSize canvasSize;
 
   @override
-  int get canvasWidth => canvasSize.width;
-
-  @override
-  int get canvasHeight => canvasSize.height;
+  PasteboardWall get pasteboard =>
+      canvasSize.pasteboardAt(PasteboardReach.whole);
 
   @override
   void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {

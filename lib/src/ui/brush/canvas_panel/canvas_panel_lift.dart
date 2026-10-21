@@ -213,7 +213,7 @@ class _CanvasPanelLift {
     final stamp = _landingOf(cel, stampDab).last;
     final region = stamp.stamp
         ?.landingRect(stamp.center)
-        .intersection(holed.canvasSize.pasteboardRegion);
+        .intersection(holed.pasteboard.region);
     if (region == null) {
       return null;
     }
@@ -320,7 +320,6 @@ class _CanvasPanelLift {
     // A host that names no placements has one row: the one it stands on.
     final placementOf =
         _state.widget.cellPlacementOf ?? (_) => session.cels.first.placement;
-    final canvasSize = _state.widget.canvasSize;
     final userSelection = session.userSelection;
     for (final key in ladder) {
       final cel = store.canonicalKeyOf(key);
@@ -349,7 +348,7 @@ class _CanvasPanelLift {
             userSelectionInArtwork ??
             CanvasSelectionRegion.shape(
               CanvasSelectionShape.wholePicture(
-                canvasSize,
+                surface.pasteboard,
                 bitmapSurfaceContentBounds(surface),
               ),
             ),

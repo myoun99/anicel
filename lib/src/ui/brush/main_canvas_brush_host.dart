@@ -11,6 +11,7 @@ import '../../models/brush_history_policy.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
 import '../canvas/canvas_press.dart';
@@ -84,6 +85,8 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.pasteboardNone,
     this.onPasteboardColorChanged,
     this.onPasteboardNone,
+    this.onPasteboardSizeChanged,
+    this.onPasteboardInUseChanged,
     this.backdropArgb,
     this.backdropNone,
     this.onBackdropColorChanged,
@@ -256,6 +259,8 @@ class MainCanvasBrushHost extends StatefulWidget {
   final ValueChanged<int>? onPasteboardColorChanged;
   final bool? pasteboardNone;
   final VoidCallback? onPasteboardNone;
+  final ValueChanged<PasteboardSize>? onPasteboardSizeChanged;
+  final ValueChanged<bool>? onPasteboardInUseChanged;
 
   /// The BACKDROP behind the pasteboard (R3b). null = from the scope.
   final int? backdropArgb;
@@ -631,6 +636,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       pasteboardNone: widget.pasteboardNone,
       onPasteboardColorChanged: widget.onPasteboardColorChanged,
       onPasteboardNone: widget.onPasteboardNone,
+      onPasteboardSizeChanged: widget.onPasteboardSizeChanged,
+      onPasteboardInUseChanged: widget.onPasteboardInUseChanged,
       backdropArgb: widget.backdropArgb,
       backdropNone: widget.backdropNone,
       onBackdropColorChanged: widget.onBackdropColorChanged,

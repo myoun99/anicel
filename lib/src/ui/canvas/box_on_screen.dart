@@ -1,7 +1,6 @@
 import 'dart:ui' show Offset;
 
 import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../services/canvas_selection_shape.dart';
@@ -25,14 +24,16 @@ import 'transform_box.dart';
 class BoxOnScreen {
   const BoxOnScreen({
     required this.viewport,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.mode,
     required this.boxOpen,
     required this.warp,
   });
 
   final CanvasViewport viewport;
-  final CanvasSize canvasSize;
+
+  /// The wall a press must land inside to grab the box (I-23, I-109).
+  final PasteboardWall pasteboard;
 
   /// Which of 일반/퍼스/메쉬 is armed.
   final TransformMode mode;
@@ -241,7 +242,7 @@ class BoxOnScreen {
       ).containsPoint(viewport.viewportOffsetToCanvas(press)),
       onStage: (press) {
         final at = viewport.viewportOffsetToCanvas(press);
-        return canvasSize.containsPasteboardPoint(x: at.x, y: at.y);
+        return pasteboard.containsPoint(x: at.x, y: at.y);
       },
     );
     return switch (hit?.press) {

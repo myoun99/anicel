@@ -10,7 +10,6 @@ import '../models/brush_dab_sequence.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
-import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import '../models/dirty_tile_set.dart';
 import '../models/pasteboard_bounds.dart';
@@ -48,11 +47,12 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
 }) {
-  // Strokes clip at the PASTEBOARD (canvas + one canvas size in every
-  // direction), not the canvas — drawing off the stage is the point.
+  // Strokes clip at the PASTEBOARD (as far past the canvas as the
+  // project's size reaches, the canvas itself when it is off — I-109),
+  // not the canvas — drawing off the stage is the point.
   // Composite/export raster at canvas size, which crops for free. The
   // clip itself lives in BrushDabPlan, so both raster routes take it.
-  final canvasSize = surface.canvasSize;
+  final wall = surface.pasteboard;
   final tileSize = surface.tileSize;
 
   // The scratch the dabs blend into — native pooled memory with the
@@ -89,7 +89,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       _blendStampDab(
         dab: dab,
         stamp: stamp,
-        canvasSize: canvasSize,
+        wall: wall,
         tileSize: tileSize,
         scratch: scratch,
         nativeScratch: nativeScratch,
@@ -103,7 +103,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
     // the live rasterizer resolves them, so the two cannot drift.
     final plan = BrushDabPlan.of(
       dab,
-      canvasSize: canvasSize,
+      wall: wall,
       tileSize: tileSize,
       erase: dab.erase,
     );
@@ -183,7 +183,7 @@ BrushSurfaceMaterialization _finishMaterialization({
 void _blendStampDab({
   required BrushDab dab,
   required BrushStampImage stamp,
-  required CanvasSize canvasSize,
+  required PasteboardWall wall,
   required int tileSize,
   required CommitTileScratch scratch,
   required NativeCommitScratch? nativeScratch,
@@ -196,7 +196,7 @@ void _blendStampDab({
   final landing = stamp.landingRect(dab.center);
   // Pasteboard clip, NOT canvas: a selection dropped past the stage edge
   // keeps its pixels (they land on the pasteboard instead of vanishing).
-  final clip = landing.intersection(canvasSize.pasteboardRegion);
+  final clip = landing.intersection(wall.region);
   if (clip == null) {
     return;
   }
@@ -419,12 +419,12 @@ BrushSurfaceMaterialization _materializeStrokeBlendNative({
   required BrushBlendMode mode,
   required QaNativeEngine native,
 }) {
-  final canvasSize = surface.canvasSize;
+  final wall = surface.pasteboard;
   final tileSize = surface.tileSize;
   // The stroke buffer is BOUNDS-LOCAL (stride = bounds width, origin =
   // bounds top-left, like a stamp's raw placement); the blend clips at
   // the pasteboard exactly like the stamp path.
-  final clip = bounds.intersection(canvasSize.pasteboardRegion);
+  final clip = bounds.intersection(wall.region);
   if (clip == null) {
     return BrushSurfaceMaterialization(
       surface: surface,

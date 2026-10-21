@@ -20,7 +20,7 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 void main() {
   /// A small canvas, so its 3×3 wall is a box a test can read whole.
   const canvas = CanvasSize(width: 20, height: 15);
-  final wall = canvas.pasteboardRect;
+  final wall = canvas.pasteboardAt(PasteboardReach.whole).rect;
 
   /// The ring the pins read: the wall, and six pixels past every side.
   final ringLeft = wall.left.toInt() - 6;

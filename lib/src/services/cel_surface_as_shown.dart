@@ -124,6 +124,7 @@ DirtyRegion? _landingRegion(BitmapSurface on, CelTextPixels carried) {
     celTextPlateSurface(
       carried.plate,
       canvasSize: on.canvasSize,
+      pasteboardReach: on.pasteboardReach,
       tileSize: on.tileSize,
     ),
   );

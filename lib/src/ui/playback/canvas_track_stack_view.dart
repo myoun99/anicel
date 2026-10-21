@@ -8,7 +8,8 @@ import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
-import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
+import '../../models/pasteboard_bounds.dart'
+    show PasteboardBounds, PasteboardReach;
 import '../../models/project_background.dart';
 import '../../services/camera_projection_matrix.dart';
 import '../../services/playback/playback_frame_mapping.dart';
@@ -83,6 +84,7 @@ class CanvasTrackStackView extends StatelessWidget {
     this.paintsFloor = true,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.pasteboardNone = false,
+    this.pasteboardReach = PasteboardReach.whole,
   });
 
   /// The parked global frame (the session's gap parking): moves per
@@ -161,6 +163,10 @@ class CanvasTrackStackView extends StatelessWidget {
   /// each is the checkerboard where it would be.
   final bool backdropNone;
   final bool pasteboardNone;
+
+  /// How far the pasteboard reaches past each cut's paper (I-109) — the
+  /// wall its pictures stand behind and its plane is laid to.
+  final PasteboardReach pasteboardReach;
 
   /// Whether the stack stands on its own backdrop floor. False lays it OVER
   /// whatever is under it: the editing canvas's O.L partner (F-227) is
@@ -264,6 +270,7 @@ class CanvasTrackStackView extends StatelessWidget {
           );
     PlaybackFramePainter painter({required bool under}) => PlaybackFramePainter(
       canvasSize: cut.canvasSize,
+      pasteboardReach: pasteboardReach,
       viewport: view,
       devicePixelRatio: ratio,
       cameraPose: pose,
@@ -312,6 +319,7 @@ class CanvasTrackStackView extends StatelessWidget {
         : isStage
         ? StagePlanesPainter(
             pasteboard: (color: Color(pasteboardArgb), none: pasteboardNone),
+            pasteboardReach: pasteboardReach,
             paperNone: background.none,
             canvasSize: cut.canvasSize,
             viewport: view,
@@ -329,6 +337,7 @@ class CanvasTrackStackView extends StatelessWidget {
               nodes: stackOf(cut, localFrame),
               imageCache: imageCache,
               canvasSize: cut.canvasSize,
+              pasteboardReach: pasteboardReach,
               viewport: shot?.frameView ?? view,
               paintPaper: isStage,
               paperBackground: background,

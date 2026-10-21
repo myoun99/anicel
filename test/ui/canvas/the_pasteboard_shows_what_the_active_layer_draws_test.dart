@@ -343,7 +343,7 @@ void main() {
     final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
     addTearDown(overlay.dispose);
     final rasterizer = BrushLiveStrokeRasterizer(
-      canvasSize: canvasSize,
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
       tileSize: tileSize,
     );
     final stack = await pumpStack(
@@ -477,7 +477,7 @@ void main() {
         image: image,
         imageLeft: where.left,
         imageTop: where.top,
-        clip: canvasSize.pasteboardRect,
+        clip: canvasSize.pasteboardAt(PasteboardReach.whole).rect,
       ),
     );
   });
@@ -514,7 +514,7 @@ void main() {
       draw: (where) async => float.value = SelectionFloatPaint(
         surface: liftedPainter,
         surfaceOffset: CanvasPoint(x: where.left, y: where.top),
-        clip: canvasSize.pasteboardRect,
+        clip: canvasSize.pasteboardAt(PasteboardReach.whole).rect,
       ),
     );
   });
@@ -554,7 +554,7 @@ void main() {
         held: SelectionFloatPaint(
           surface: platePainter,
           surfaceOffset: CanvasPoint(x: where.left, y: where.top),
-          clip: canvasSize.pasteboardRect,
+          clip: canvasSize.pasteboardAt(PasteboardReach.whole).rect,
         ),
         above: null,
       ),

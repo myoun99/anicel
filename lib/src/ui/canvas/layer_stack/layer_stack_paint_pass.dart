@@ -239,8 +239,9 @@ class _LayerStackPaintPass {
       }
     }
     // The group buffer's bounds are a SIZE HINT to the engine: it
-    // allocates an offscreen that big. The pasteboard is 3×3 canvases —
-    // 9× the area (5×5 and 25× until H2, 2026-08-22) — so handing it over
+    // allocates an offscreen that big. The pasteboard is up to 3×3
+    // canvases — 9× the area (5×5 and 25× until H2, 2026-08-22) at its 3x
+    // size (I-109) — so handing it over
     // verbatim would make every folder buffer 9× more expensive than the
     // picture it holds. Only what is ON SCREEN can matter, so intersect
     // with the visible canvas-space rect (the same rect the surface painter
@@ -255,7 +256,9 @@ class _LayerStackPaintPass {
       ),
       Offset.zero & size,
     );
-    final pasteboardRect = _painter.canvasSize.pasteboardRect;
+    final pasteboardRect = _painter.canvasSize
+        .pasteboardAt(_painter.pasteboardReach)
+        .rect;
     // Hole ① of the clamp plan: NOT ON SCREEN means NOT PAINTED, and one
     // law covers both ways off-screen happens — a degenerate view
     // (collapsed panel: empty visibleRect, which used to substitute the
@@ -486,8 +489,9 @@ class _LayerStackPaintPass {
     // no layer is ever asked what it is.
     //
     // 📐The buffer is the VISIBLE canvas-space rect, not the pasteboard —
-    // the pasteboard is 3×3 canvases (5×5 until H2) and rasterising all of
-    // it would cost 9× what is on screen. It is not the canvas rect either:
+    // the pasteboard is up to 3×3 canvases (5×5 until H2) and rasterising
+    // all of it would cost 9× what is on screen. It is not the canvas rect
+    // either:
     // artwork parked on the pasteboard is visible and must composite with
     // the rest (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
     switch (_composeDisplayBuffer(_contentExtent)) {

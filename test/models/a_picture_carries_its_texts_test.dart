@@ -308,7 +308,7 @@ void main() {
       expect(laidPicture().storableRect, const Rect.fromLTRB(-44, -32, 64, 64));
       expect(
         drawingOf({here: ink}).storableRect,
-        celTextTestCanvas.pasteboardRect,
+        celTextTestCanvas.pasteboardAt(PasteboardReach.whole).rect,
       );
     });
 

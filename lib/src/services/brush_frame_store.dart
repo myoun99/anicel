@@ -12,6 +12,7 @@ import '../models/brush_frame_drawing_state.dart';
 import '../models/brush_frame_key.dart';
 import '../models/cut_id.dart';
 import '../models/movie_cel.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import 'bitmap_surface_geometry.dart';
 import 'memory_pressure_budget.dart';
@@ -101,6 +102,100 @@ class BrushFrameStore {
   /// colour the first one just wrote as "the original", and undo would
   /// stop halfway.
   BrushFrameKey canonicalKeyOf(BrushFrameKey key) => _canonicalize(key);
+
+  /// How far past the paper every picture this store keeps reaches: the
+  /// project's pasteboard for the canvas's store (I-109), the whole 3x for
+  /// a sheet's ink, whose panel shows no pasteboard and sets no size.
+  ///
+  /// 🚨ONE WALL PER STORE. Every picture that enters is put behind it
+  /// ([surfaceBehindReach]) — at the hot tier's one door ([_storeHot]) and
+  /// at every read of kept bytes, which carry no reach of their own — so no
+  /// picture this store hands out stands at another wall, and nothing a
+  /// tool writes on one can go past it. The wall moves only with every
+  /// picture: [adoptPasteboardReach], or a whole store laid in at one
+  /// ([restoreFromFile]).
+  PasteboardReach get pasteboardReach => _pasteboardReach;
+  PasteboardReach _pasteboardReach = PasteboardReach.whole;
+
+  BitmapSurface _behind(BitmapSurface surface) =>
+      surfaceBehindReach(surface, _pasteboardReach);
+
+  /// Moves every picture's wall to [reach] (I-109) — in every tier, hot,
+  /// parked and saved, one cel at a time as a resize walks them, so a
+  /// project that is mostly cold never materializes whole. What lies past
+  /// the new wall is cut away ([surfaceBehindReach]); a cel the cut does
+  /// not touch keeps its bytes where they are.
+  ///
+  /// Returns the pictures the cut changed, as they were before it — the
+  /// undo's whole payload: laid back once the wall is moved back
+  /// ([storeBakedSurface]), they restore every pixel.
+  Map<BrushFrameKey, BitmapSurface> adoptPasteboardReach(
+    PasteboardReach reach,
+  ) {
+    if (reach == _pasteboardReach) {
+      return const {};
+    }
+    final shrinks = reach.quartersPerEdge < _pasteboardReach.quartersPerEdge;
+    _pasteboardReach = reach;
+    clearDisplayCaches();
+    final cut = <BrushFrameKey, BitmapSurface>{};
+    var crossed = false;
+    for (final key in _bakedSurfaces.keys.toList()) {
+      final surface = _bakedSurfaces[key]!;
+      final behind = _behind(surface);
+      if (_sameDrawing(surface, behind)) {
+        // The wall moved and not a byte: the cel stays as clean as it was.
+        _storeHot(key, behind);
+      } else {
+        cut[key] = surface;
+        storeBakedSurface(key, behind);
+      }
+    }
+    // Kept bytes carry no reach: a wall that grows reaches them on their
+    // next read, and only one that shrinks has anything of theirs to cut.
+    if (shrinks) {
+      final kept = _rewriteKeptCels(
+        skips: (key, _) => _bakedSurfaces.containsKey(key),
+        rewrite: (surface) {
+          final behind = _behind(surface);
+          return _sameDrawing(surface, behind) ? null : behind;
+        },
+      );
+      for (final key in kept.keys) {
+        _editTicks[key] = ++_editTick;
+        crossed = _recordCelContent(key) || crossed;
+      }
+      cut.addAll(kept);
+    }
+    if (cut.isNotEmpty) {
+      for (final key in cut.keys) {
+        _update(_canonicalize(key), _markCacheDirty);
+      }
+      celPixelRevision.value += 1;
+    }
+    if (crossed) {
+      celContentRevision.value += 1;
+    }
+    _scheduleCooling();
+    return cut;
+  }
+
+  /// Whether [behind] keeps every pixel [surface] had: the very tiles,
+  /// its texts' too.
+  static bool _sameDrawing(BitmapSurface surface, BitmapSurface behind) {
+    bool same(Map<TileCoord, BitmapTile> a, Map<TileCoord, BitmapTile> b) =>
+        a.length == b.length &&
+        a.entries.every((entry) => identical(b[entry.key], entry.value));
+    if (!same(surface.tiles, behind.tiles)) {
+      return false;
+    }
+    for (final (index, text) in surface.texts.indexed) {
+      if (!same(text.plate, behind.texts[index].plate)) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
 
@@ -568,7 +663,7 @@ class BrushFrameStore {
     if (blob == null) {
       return null;
     }
-    final surface = blob.decode().toSurface();
+    final surface = _behind(blob.decode().toSurface());
     if (read == CelRead.use) {
       _keepThawed(key, surface);
     }
@@ -672,8 +767,8 @@ class BrushFrameStore {
           if (blob == null) {
             return;
           }
-          final surface = laidCelSurface(
-            await layCelInWorker(blob, BitmapTile.blocks),
+          final surface = _behind(
+            laidCelSurface(await layCelInWorker(blob, BitmapTile.blocks)),
           );
           if (!_bakedSurfaces.containsKey(key) &&
               identical(_kept(key)?.ref, kept)) {
@@ -771,9 +866,11 @@ class BrushFrameStore {
     if (previous != null) {
       _hotBytes -= previous;
     }
-    final estimate = _residentBytes(surface);
+    // Behind this store's wall, whatever it came from ([pasteboardReach]).
+    final kept = _behind(surface);
+    final estimate = _residentBytes(kept);
     _bakedSurfaces.remove(key);
-    _bakedSurfaces[key] = surface;
+    _bakedSurfaces[key] = kept;
     _hotByteEstimates[key] = estimate;
     _hotBytes += estimate;
     // A drawing that grew takes its room back from the movie pictures.
@@ -915,27 +1012,39 @@ class BrushFrameStore {
   }
 
   /// Replaces the WHOLE store with loaded cels as COLD-RAM blobs (tests
-  /// and non-file flows).
-  void restoreBaked(Map<BrushFrameKey, AnicelCelBlob> cels) =>
-      _restoreAll(cels, _storeCold);
+  /// and non-file flows), kept behind [pasteboardReach].
+  void restoreBaked(
+    Map<BrushFrameKey, AnicelCelBlob> cels, {
+    PasteboardReach pasteboardReach = PasteboardReach.whole,
+  }) => _restoreAll(cels, _storeCold, pasteboardReach);
 
   /// Replaces the WHOLE store with FILE-BACKED cels (project open,
   /// R22-C): near-zero RAM — every cel reads from the .anicel on first
-  /// access. No temp files, ever.
-  void restoreFromFile(Map<BrushFrameKey, AnicelCelFileRef> cels) =>
-      _restoreAll(cels, (key, ref) => _fileCels[key] = ref);
+  /// access. No temp files, ever. They are kept behind [pasteboardReach] —
+  /// the project's, which the file's cels were saved at.
+  void restoreFromFile(
+    Map<BrushFrameKey, AnicelCelFileRef> cels, {
+    PasteboardReach pasteboardReach = PasteboardReach.whole,
+  }) => _restoreAll(
+    cels,
+    (key, ref) => _fileCels[key] = ref,
+    pasteboardReach,
+  );
 
-  /// The whole-store swap both entry points are: every tier cleared, then
-  /// each cel seeded and [place]d in the tier its payload belongs to.
-  /// Frames reseed at sourceRevision 1.
+  /// The whole-store swap both entry points are: every tier cleared, the
+  /// store's wall set at [reach] — every picture is new, so none stands at
+  /// another — then each cel seeded and [place]d in the tier its payload
+  /// belongs to. Frames reseed at sourceRevision 1.
   ///
   /// ⚠️[place] runs BEFORE [_noteCelContent], which asks
   /// [celHasRenderableContent] — and that reads the tiers.
   void _restoreAll<T>(
     Map<BrushFrameKey, T> cels,
     void Function(BrushFrameKey key, T cel) place,
+    PasteboardReach reach,
   ) {
     _clearAllTiers();
+    _pasteboardReach = reach;
     for (final entry in cels.entries) {
       _frames[entry.key] = BrushFrameDrawingState(
         key: entry.key,
@@ -1560,59 +1669,73 @@ class BrushFrameStore {
     if (crossed) {
       celContentRevision.value += 1;
     }
-    _resizeRefCels(_coldCels, canvasSize, cutId: cutId, read: _readScratchBlob);
-    _resizeRefCels(
-      _fileCels,
-      canvasSize,
-      cutId: cutId,
-      read: (ref) => AnicelCelBlob(_readFileRefBytes(ref)),
+    _rewriteKeptCels(
+      skips: (key, ref) => key.cutId != cutId || ref.canvasSize == canvasSize,
+      rewrite: (surface) =>
+          resizeBitmapSurfaceCanvas(_behind(surface), canvasSize),
     );
   }
 
-  /// Re-sizes every cel of [cutId] whose bytes are in a FILE, from either
-  /// map, and re-parks the result in the run's room.
+  /// Rewrites every cel whose bytes are kept in a FILE — parked in the
+  /// run's room or in the saved project — that [rewrite] changes: decoded,
+  /// rewritten, re-encoded and re-parked in the room. [skips] answers from
+  /// the ref alone, before a byte is read; [rewrite] answers null for a
+  /// picture that stays as it is. Returns the pictures rewritten, as they
+  /// were read.
   ///
   /// 🚨★★★**ONE LOOP, BECAUSE THE TWO WERE THE SAME ALGORITHM.** The
   /// parked half and the project-file half differ in exactly one thing —
-  /// how the bytes are read — and everything else (skip other cuts, skip a
-  /// cel already at this size, decode, resize, re-encode, park, mark
-  /// dirty) was written out twice. ⛔The destination is the same either
-  /// way: the `.anicel` is read-only from here, so a resized cel is
-  /// unsaved work and belongs in the room with the rest of it.
+  /// how the bytes are read — and everything else (skip, decode, rewrite,
+  /// re-encode, park, mark dirty) was written out twice — and then a
+  /// third time, when a pasteboard's wall moved (I-109) as a resize does.
+  /// ⛔The destination is the same either way: the `.anicel` is read-only
+  /// from here, so a rewritten cel is unsaved work and belongs in the room
+  /// with the rest of it.
   ///
   /// ⛔A read that answers null leaves the cel EXACTLY as it was — ref,
   /// file and all. A cel that will not read right now is not a cel to
-  /// resize into nothing; the size check finds it again next time.
-  void _resizeRefCels(
-    Map<BrushFrameKey, AnicelCelFileRef> from,
-    CanvasSize canvasSize, {
-    required CutId cutId,
-    required AnicelCelBlob? Function(AnicelCelFileRef ref) read,
+  /// rewrite into nothing; the next pass finds it again.
+  Map<BrushFrameKey, BitmapSurface> _rewriteKeptCels({
+    required bool Function(BrushFrameKey key, AnicelCelFileRef ref) skips,
+    required BitmapSurface? Function(BitmapSurface surface) rewrite,
   }) {
-    for (final key in from.keys.toList()) {
-      final ref = from[key]!;
-      if (key.cutId != cutId || ref.canvasSize == canvasSize) {
-        continue;
-      }
-      final blob = read(ref);
-      if (blob == null) {
-        continue;
-      }
-      final resized = AnicelCelBlob.encode(
-        AnicelCelEntry.fromSurface(
+    final rewritten = <BrushFrameKey, BitmapSurface>{};
+    for (final (from, read) in <(
+      Map<BrushFrameKey, AnicelCelFileRef>,
+      AnicelCelBlob? Function(AnicelCelFileRef),
+    )>[
+      (_coldCels, _readScratchBlob),
+      (_fileCels, (ref) => AnicelCelBlob(_readFileRefBytes(ref))),
+    ]) {
+      for (final key in from.keys.toList()) {
+        final ref = from[key]!;
+        if (skips(key, ref)) {
+          continue;
+        }
+        final blob = read(ref);
+        if (blob == null) {
+          continue;
+        }
+        final surface = blob.decode().toSurface();
+        final next = rewrite(surface);
+        if (next == null) {
+          continue;
+        }
+        // ⚠️Out of the source map FIRST when it is not the destination: a
+        // file-backed cel that stayed in `_fileCels` would claim the saved
+        // archive still holds bytes the rewrite just replaced.
+        if (!identical(from, _coldCels)) {
+          from.remove(key);
+        }
+        _storeCold(
           key,
-          resizeBitmapSurfaceCanvas(blob.decode().toSurface(), canvasSize),
-        ),
-      );
-      // ⚠️Out of the source map FIRST when it is not the destination: a
-      // file-backed cel that stayed in `_fileCels` would claim the saved
-      // archive still holds bytes the resize just replaced.
-      if (!identical(from, _coldCels)) {
-        from.remove(key);
+          AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, next)),
+        );
+        _dirtySinceSave.add(key);
+        rewritten[key] = surface;
       }
-      _storeCold(key, resized);
-      _dirtySinceSave.add(key);
     }
+    return rewritten;
   }
 
   /// The HOT surface for [key], or null — NO materialization: cold and

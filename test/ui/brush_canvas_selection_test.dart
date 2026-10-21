@@ -2766,7 +2766,7 @@ void main() {
     // instead of moving, which is how this test first read as a failure.
     expect(inkAt(env.coordinator, 300, 100), isNonZero);
     expect(
-      small.containsPasteboardPoint(x: 250, y: 60),
+      small.pasteboardAt(PasteboardReach.whole).containsPoint(x: 250, y: 60),
       isTrue,
       reason: '(250,60) is past the 200×150 canvas but inside its pasteboard',
     );
@@ -8740,6 +8740,7 @@ void main() {
     // two thirds of it away — at a phone's canvas size, hundreds of MB per
     // transform, and more for every larger scale.
     const canvasSize = CanvasSize(width: 60, height: 40);
+    final wall = canvasSize.pasteboardAt(PasteboardReach.whole);
     final env = await pumpSelectionPanel(
       tester,
       tool: CanvasTool.move,
@@ -8781,10 +8782,10 @@ void main() {
         height: stamp.height,
       ),
       (
-        left: canvasSize.pasteboardLeft,
-        top: canvasSize.pasteboardTop,
-        width: canvasSize.pasteboardRightExclusive - canvasSize.pasteboardLeft,
-        height: canvasSize.pasteboardBottomExclusive - canvasSize.pasteboardTop,
+        left: wall.left,
+        top: wall.top,
+        width: wall.rightExclusive - wall.left,
+        height: wall.bottomExclusive - wall.top,
       ),
       reason:
           'the whole picture is on screen, so the preview is the buffer '
@@ -8794,12 +8795,12 @@ void main() {
     env.commands.applyTransform();
     await tester.pump();
 
-    final right = canvasSize.pasteboardRightExclusive - 1;
-    final bottom = canvasSize.pasteboardBottomExclusive - 1;
+    final right = wall.rightExclusive - 1;
+    final bottom = wall.bottomExclusive - 1;
     for (final (x, y) in [
-      (canvasSize.pasteboardLeft, canvasSize.pasteboardTop),
-      (right, canvasSize.pasteboardTop),
-      (canvasSize.pasteboardLeft, bottom),
+      (wall.left, wall.top),
+      (right, wall.top),
+      (wall.left, bottom),
       (right, bottom),
     ]) {
       expect(
@@ -9090,7 +9091,7 @@ void main() {
   /// canvas coordinates.
   group('a selection stops at the pasteboard wall', () {
     const small = CanvasSize(width: 200, height: 150);
-    final wall = small.pasteboardRect;
+    final wall = small.pasteboardAt(PasteboardReach.whole).rect;
 
     void expectInsideTheWall(
       ({double left, double top, double right, double bottom}) box,

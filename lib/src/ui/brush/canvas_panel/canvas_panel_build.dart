@@ -412,6 +412,7 @@ class _PanelBuild {
                   // it would be.
                   backdropNone: _state._stageBackdropNone,
                   pasteboardNone: _state._stagePasteboardNone,
+                  pasteboardReach: _state._stagePasteboardReach,
                   hasPasteboard: !_state.widget.canvasBase,
                   paperNone: _state.widget.paperNone,
                   canvasSize: _state.widget.canvasSize,

@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
@@ -211,7 +212,9 @@ void main() {
       return;
     }
     final dabs = [for (var i = 0; i < 60; i += 1) dabAt(i)];
-    final raster = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+    final raster = BrushLiveStrokeRasterizer(
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+    );
     raster.blendFrom(dabs.sublist(0, 30));
     expect(QaNativeEngine.debugDabBatchCalls, 1);
     raster.blendFrom(dabs);

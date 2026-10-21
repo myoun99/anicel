@@ -116,7 +116,7 @@ void main() {
     final set = <String>[];
     final marker = markerPlate();
     debugCelTextBaker =
-        (layout, {required canvasSize, required tileSize, previous = const {}}) {
+        (layout, {required pasteboard, required tileSize, previous = const {}}) {
           set.add(layout.content.text);
           return Future.value(marker);
         };
@@ -183,7 +183,7 @@ void main() {
     });
     final arrived = <bool>[];
     debugCelTextBaker =
-        (layout, {required canvasSize, required tileSize, previous = const {}}) {
+        (layout, {required pasteboard, required tileSize, previous = const {}}) {
           arrived.add(!faces.isOnItsWay('Face'));
           return Future.value(markerPlate());
         };
@@ -196,7 +196,7 @@ void main() {
   test('the import says a text layer is done only once its texts are in '
       'its cel — the one it sets among them', () async {
     debugCelTextBaker =
-        (layout, {required canvasSize, required tileSize, previous = const {}}) =>
+        (layout, {required pasteboard, required tileSize, previous = const {}}) =>
             // A turn of the event loop: the engine's bake is not done at
             // once.
             Future(markerPlate);

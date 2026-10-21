@@ -9,6 +9,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
@@ -529,10 +530,8 @@ void main() {
 /// stroke feed.
 class _AlphaAtOriginSource implements ActiveStrokePixelSource {
   @override
-  int get canvasWidth => 2;
-
-  @override
-  int get canvasHeight => 2;
+  PasteboardWall get pasteboard =>
+      const CanvasSize(width: 2, height: 2).pasteboardAt(PasteboardReach.whole);
 
   @override
   void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {

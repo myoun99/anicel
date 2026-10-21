@@ -1032,6 +1032,7 @@ class ExportFrameRenderer {
     final project = session.repository.requireProject();
     PlaybackFramePainter painter({required bool under}) => PlaybackFramePainter(
       canvasSize: cut.canvasSize,
+      pasteboardReach: project.pasteboardReach,
       cameraPose: view.pose,
       cameraFrameSize: view.frameSize,
       // The paper is the picture's; an absent one prints nothing.

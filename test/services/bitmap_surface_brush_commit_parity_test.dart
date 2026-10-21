@@ -40,10 +40,10 @@ BrushSurfaceMaterialization referenceMaterialize({
   final transparent = RgbaColor(r: 0, g: 0, b: 0, a: 0);
   // The oracle clips at the PASTEBOARD, exactly like the fast path —
   // painting past the canvas edge is in-bounds now.
-  final canvasSize = surface.canvasSize;
+  final wall = surface.canvasSize.pasteboardAt(PasteboardReach.whole);
 
   RgbaColor destinationAt(int x, int y) {
-    if (!canvasSize.containsPasteboardPixel(x: x, y: y)) {
+    if (!wall.containsPixel(x: x, y: y)) {
       return transparent;
     }
 
@@ -66,7 +66,7 @@ BrushSurfaceMaterialization referenceMaterialize({
 
   final operationsByCoord = <TileCoord, List<BrushPixelBlendOperation>>{};
   for (final operation in operations) {
-    if (!canvasSize.containsPasteboardPixel(x: operation.x, y: operation.y)) {
+    if (!wall.containsPixel(x: operation.x, y: operation.y)) {
       continue;
     }
 

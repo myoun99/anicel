@@ -529,7 +529,7 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
 }
 
 /// Whether [surface] holds a file's picture laid whole past its wall
-/// ([pasteboardRect]) — the one thing that lies there
+/// ([BitmapSurface.pasteboard]) — the one thing that lies there
 /// ([BitmapSurface.laidBounds], F-374-Q8).
 ///
 /// ⚠️NOT WHETHER A COMPOSE'S RECT REACHES PAST IT: a cel's tiles poke past
@@ -543,7 +543,7 @@ bool _laidPastTheWall(BitmapSurface surface) {
   if (laid == null) {
     return false;
   }
-  final wall = surface.canvasSize.pasteboardRect;
+  final wall = surface.pasteboard.rect;
   return wall.expandToInclude(laid.rect) != wall;
 }
 

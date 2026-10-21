@@ -73,6 +73,7 @@ import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
+import 'pasteboard_reach_row.dart';
 import '../../models/app_input_settings.dart';
 import '../debug/input_inspector.dart' show InputInspector;
 import '../../services/cut_piece_lift.dart';
@@ -281,6 +282,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.pasteboardNone,
     this.onPasteboardColorChanged,
     this.onPasteboardNone,
+    this.onPasteboardSizeChanged,
+    this.onPasteboardInUseChanged,
     this.canvasBase = false,
     this.backdropArgb,
     this.backdropNone,
@@ -850,6 +853,12 @@ class BrushCanvasPanel extends StatefulWidget {
   final bool? pasteboardNone;
   final VoidCallback? onPasteboardNone;
 
+  /// Sets the pasteboard's size and whether it is there (I-109) — the two
+  /// the pasteboard's colour window carries. Their values come from the
+  /// scope ([CanvasStageColors]).
+  final ValueChanged<PasteboardSize>? onPasteboardSizeChanged;
+  final ValueChanged<bool>? onPasteboardInUseChanged;
+
   /// Whether this is a CANVAS-BASE panel — a sheet, the viewer, the cut
   /// envelope, the export preview: a page shown on the canvas panel, not
   /// the drawing floor. Its stage is not the drawing's room:
@@ -1163,6 +1172,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   late int _stagePasteboardArgb;
   late bool _stageBackdropNone;
   late bool _stagePasteboardNone;
+  late PasteboardSize _stagePasteboardSize;
+  late bool _stagePasteboardInUse;
+
+  /// How far the pasteboard reaches past the paper (I-109).
+  PasteboardReach get _stagePasteboardReach => PasteboardReach.of(
+    size: _stagePasteboardSize,
+    inUse: _stagePasteboardInUse,
+  );
+
+  /// The wall of the canvas this panel edits — what its tools keep to.
+  PasteboardWall get _stagePasteboard =>
+      widget.canvasSize.pasteboardAt(_stagePasteboardReach);
 
   /// Whether this panel is the one LYING ON THE FLOOR — which decides
   /// whether its pill lays its whole vocabulary out or keeps it folded
@@ -1998,8 +2019,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // coordinates.
               guides: widget.guides,
               viewport: _viewportState._viewport,
-              canvasSize: widget
-                  .canvasSize,
+              pasteboard: _stagePasteboard,
               frameToken: _whatALiftTakesUp,
               selectionCommands:
                   widget
@@ -3806,6 +3826,10 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.pasteboardNone,
     required this.onPasteboardColorChanged,
     required this.onPasteboardNone,
+    required this.pasteboardSize,
+    required this.pasteboardInUse,
+    required this.onPasteboardSizeChanged,
+    required this.onPasteboardInUseChanged,
     required this.backdropColor,
     required this.backdropNone,
     required this.currentColorOf,
@@ -3876,6 +3900,13 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   final VoidCallback? onPaperNone;
   final bool pasteboardNone;
   final VoidCallback? onPasteboardNone;
+
+  /// The pasteboard's size and whether it is there (I-109), set in its
+  /// colour window; the setters are null where this bar sets neither.
+  final PasteboardSize pasteboardSize;
+  final bool pasteboardInUse;
+  final ValueChanged<PasteboardSize>? onPasteboardSizeChanged;
+  final ValueChanged<bool>? onPasteboardInUseChanged;
   final bool backdropNone;
   final VoidCallback? onBackdropNone;
 
@@ -4097,6 +4128,7 @@ class _StagePlanes extends StatelessWidget {
     required this.pasteboardArgb,
     required this.backdropNone,
     required this.pasteboardNone,
+    required this.pasteboardReach,
     required this.hasPasteboard,
     required this.paperNone,
     required this.canvasSize,
@@ -4111,6 +4143,9 @@ class _StagePlanes extends StatelessWidget {
   /// would be.
   final bool backdropNone;
   final bool pasteboardNone;
+
+  /// How far the pasteboard plane reaches past the paper (I-109).
+  final PasteboardReach pasteboardReach;
 
   /// False on a [BrushCanvasPanel.canvasBase] panel.
   final bool hasPasteboard;
@@ -4127,6 +4162,7 @@ class _StagePlanes extends StatelessWidget {
         pasteboard: hasPasteboard
             ? (color: Color(pasteboardArgb), none: pasteboardNone)
             : null,
+        pasteboardReach: pasteboardReach,
         paperNone: paperNone,
         canvasSize: canvasSize,
         viewport: viewport,

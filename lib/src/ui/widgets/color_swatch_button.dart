@@ -36,6 +36,7 @@ class ColorSwatchButton extends StatelessWidget {
     this.keepsAlpha = false,
     this.onSettled,
     this.tooltip,
+    this.hostRow,
   });
 
   /// Widget key string for the trigger ('canvas-paper-color-button').
@@ -97,6 +98,11 @@ class ColorSwatchButton extends StatelessWidget {
   final bool keepsAlpha;
 
   final String? tooltip;
+
+  /// A row of the host's own, under the opacity row — the pasteboard's size
+  /// and whether it is there, in its window (I-109). Null in every other
+  /// window, which is then the window it always was.
+  final Widget? hostRow;
   static const double _diameter = 18;
 
   @override
@@ -144,6 +150,7 @@ class ColorSwatchButton extends StatelessWidget {
       onNone: onNone,
       none: none,
       keepsAlpha: keepsAlpha,
+      hostRow: hostRow,
     ).then((_) => onSettled?.call()),
   );
 }
@@ -212,6 +219,7 @@ Future<void> showColorPickerPopup(
   VoidCallback? onNone,
   bool none = false,
   bool keepsAlpha = false,
+  Widget? hostRow,
 }) {
   return showAnchoredPopup<void>(
     anchorContext,
@@ -225,7 +233,11 @@ Future<void> showColorPickerPopup(
     // The wheel, the action row above it and the readout below it. Grown
     // by the readout's own height when it arrived, so the wheel keeps the
     // 180 it was drawn at.
-    height: 252 + _noneRowHeight + ColorStatusBar.heightIn(anchorContext),
+    height:
+        252 +
+        _noneRowHeight +
+        (hostRow == null ? 0 : _noneRowHeight) +
+        ColorStatusBar.heightIn(anchorContext),
     builder: (context, _) => _ColorPickerBody(
       initialColor: color,
       onChanged: onChanged,
@@ -233,12 +245,14 @@ Future<void> showColorPickerPopup(
       onNone: onNone,
       none: none,
       keepsAlpha: keepsAlpha,
+      hostRow: hostRow,
     ),
   );
 }
 
 /// The 「없음」 row's own height, counted into the window so the wheel keeps
-/// the 180 it was drawn at rather than being squeezed by a row below it.
+/// the 180 it was drawn at rather than being squeezed by a row below it —
+/// and a host's row under it ([ColorSwatchButton.hostRow]) as tall.
 const double _noneRowHeight = 28;
 
 class _ColorPickerBody extends StatefulWidget {
@@ -249,6 +263,7 @@ class _ColorPickerBody extends StatefulWidget {
     required this.onNone,
     required this.none,
     required this.keepsAlpha,
+    required this.hostRow,
   });
 
   final int? initialColor;
@@ -257,6 +272,7 @@ class _ColorPickerBody extends StatefulWidget {
   final VoidCallback? onNone;
   final bool none;
   final bool keepsAlpha;
+  final Widget? hostRow;
 
   @override
   State<_ColorPickerBody> createState() => _ColorPickerBodyState();
@@ -366,6 +382,8 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
                 ),
               ),
               SizedBox(height: _noneRowHeight, child: _noneRow()),
+              if (widget.hostRow case final row?)
+                SizedBox(height: _noneRowHeight, child: row),
             ],
           ),
         ),

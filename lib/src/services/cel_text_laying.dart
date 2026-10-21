@@ -193,6 +193,7 @@ void layPixelsOverRegion(
   final plate = celTextPlateSurface(
     pixels.plate,
     canvasSize: on.canvasSize,
+    pasteboardReach: on.pasteboardReach,
     tileSize: on.tileSize,
   );
   if (tilesCovering(plate, from).isEmpty) {

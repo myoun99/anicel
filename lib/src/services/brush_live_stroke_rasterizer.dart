@@ -12,7 +12,6 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
-import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
@@ -152,8 +151,8 @@ class _ResultTile {
 /// Read access to the in-progress stroke's straight-alpha pixels — what
 /// the live overlay snapshots its tile images from.
 abstract interface class ActiveStrokePixelSource {
-  int get canvasWidth;
-  int get canvasHeight;
+  /// The wall the stroke stops at — its cel's ([BitmapSurface.pasteboard]).
+  PasteboardWall get pasteboard;
 
   /// Copies [count] straight-alpha RGBA pixels starting at canvas (x, y)
   /// into [target] at [targetOffset]. Unpainted pixels read as transparent
@@ -179,7 +178,7 @@ abstract interface class ActiveStrokePixelSource {
 /// is locked by `active_stroke_overlay_parity_test.dart` (byte-exact).
 class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   BrushLiveStrokeRasterizer({
-    required this.canvasSize,
+    required this.pasteboard,
     this.tileSize = defaultTileSize,
   });
 
@@ -198,13 +197,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// quadrant bookkeeping everywhere the two grids met.)
   final int tileSize;
 
-  final CanvasSize canvasSize;
-
   @override
-  int get canvasWidth => canvasSize.width;
-
-  @override
-  int get canvasHeight => canvasSize.height;
+  final PasteboardWall pasteboard;
 
   /// Straight-alpha RGBA tile buffers keyed by `tileY * tilesPerRow +
   /// tileX`, allocated (zeroed) the first time a dab touches the tile.
@@ -342,12 +336,12 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// tab scales it ([CacheBudgets.liveStroke]).
   static const int defaultResidentResultByteBudget = 96 * 1024 * 1024;
 
-  // The linear key grid spans the PASTEBOARD (strokes reach one canvas
-  // size past every edge), offset so keys stay non-negative.
-  late final int _tileXMin = canvasSize.pasteboardTileXMin(tileSize);
-  late final int _tileYMin = canvasSize.pasteboardTileYMin(tileSize);
-  late final int _tilesPerRow =
-      canvasSize.pasteboardTileXEndExclusive(tileSize) - _tileXMin;
+  // The linear key grid spans the PASTEBOARD (strokes reach the wall, not
+  // the canvas edge), offset so keys stay non-negative.
+  late final TileRange _wallTiles = pasteboard.tileRange(tileSize);
+  late final int _tileXMin = _wallTiles.firstX;
+  late final int _tileYMin = _wallTiles.firstY;
+  late final int _tilesPerRow = _wallTiles.lastX + 1 - _tileXMin;
 
   int _tileKey(int tileX, int tileY) =>
       (tileY - _tileYMin) * _tilesPerRow + (tileX - _tileXMin);
@@ -1099,7 +1093,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     // composite at display time.
     final plan = BrushDabPlan.of(
       dab,
-      canvasSize: canvasSize,
+      wall: pasteboard,
       tileSize: tileSize,
       erase: false,
     );

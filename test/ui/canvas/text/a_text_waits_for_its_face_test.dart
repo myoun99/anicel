@@ -81,7 +81,6 @@ void main() {
             CelText(id: index + 1, content: text, plate: plateOf(text)),
         ]),
       ),
-      canvasSize: celTextTestCanvas,
       cacheInvalidationSink: null,
     );
     host.cel = cel;

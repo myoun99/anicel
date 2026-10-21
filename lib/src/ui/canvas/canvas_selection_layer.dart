@@ -12,7 +12,6 @@ import '../../models/brush_dab_sequence.dart';
 import '../../models/brush_stamp_image.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
-import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/transform_values.dart';
@@ -90,7 +89,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     required this.tool,
     this.shapeKind = CanvasShapeKind.rect,
     required this.viewport,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.frameToken,
     this.onShapeCommitted,
     this.onCutOutline,
@@ -151,7 +150,10 @@ class CanvasSelectionLayer extends StatefulWidget {
   final CanvasShapeKind shapeKind;
 
   final CanvasViewport viewport;
-  final CanvasSize canvasSize;
+
+  /// The wall of the canvas being edited (I-23, I-109): nothing a selection
+  /// lands or lifts reaches past it.
+  final PasteboardWall pasteboard;
 
   /// Changes when the edited frame changes — the selection resets (a
   /// region has no meaning on another frame's pixels).
@@ -604,7 +606,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the outline riding it keep their absolute values until then (the
   /// tool law: 「편집값은 절대값」).
   void _moveRegion(CanvasSelectionRegion region) => _setRegion(
-    region.clippedTo(widget.canvasSize.pasteboardRect),
+    region.clippedTo(widget.pasteboard.rect),
     implicit: _shapeIsImplicitWholePicture,
   );
 
@@ -621,7 +623,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// Lifting it lifts the whole picture (the tool guard upstream already
   /// refuses the MOVE tool when the cel has no picture at all).
   CanvasSelectionShape _wholeCanvasShape() => CanvasSelectionShape.wholePicture(
-    widget.canvasSize,
+    widget.pasteboard,
     widget.contentBoundsProvider?.call(),
   );
 
@@ -1649,14 +1651,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     ]),
     float: float,
     options: widget.transformOptions,
-    pasteboard: widget.canvasSize.pasteboardRegion,
+    pasteboard: widget.pasteboard.region,
   );
 
   /// The box as the screen shows it now — its handles, what a press lands
   /// on and the chrome over it, read at the call. See [BoxOnScreen].
   BoxOnScreen get _onScreen => BoxOnScreen(
     viewport: widget.viewport,
-    canvasSize: widget.canvasSize,
+    pasteboard: widget.pasteboard,
     mode: _mode,
     boxOpen: _transform != null,
     warp: floatWarp,
@@ -2228,7 +2230,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// happens moved. A warp open ⇒ the resampled preview IS the result. A pure
   /// move ⇒ the untouched lift at an offset is byte-exact by short circuit.
   SelectionFloatPaint _floatPaint(_Float float) {
-    final pasteboard = widget.canvasSize.pasteboardRect;
+    final pasteboard = widget.pasteboard.rect;
     // The image and the dab it was decoded from travel together, so the
     // rect the preview draws into always belongs to the pixels in it.
     final resampledImage = float.preview.image;
@@ -2541,7 +2543,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // grabbable out there (BoxOnScreen.grabAt has no such
       // gate), so a canvas-only gate meant the drawing you could see
       // framed was one you could not grab by pressing on it.
-      final onStage = widget.canvasSize.containsPasteboardPoint(
+      final onStage = widget.pasteboard.containsPoint(
         x: canvasPoint.x,
         y: canvasPoint.y,
       );
@@ -3270,7 +3272,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     // 🚨THE STAGE DOOR (I-23): what lands is cut at the pasteboard wall —
     // marquee, ellipse and lasso on release, the polygon on its close.
-    final after = folded?.clippedTo(widget.canvasSize.pasteboardRect);
+    final after = folded?.clippedTo(widget.pasteboard.rect);
     if (before == after) {
       // The wall left nothing to change (an 추가 wholly past it).
       return;
@@ -3423,7 +3425,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       ..surfaceCentre = pending.center
       ..surfaceStamp = pending.stamp;
     return materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(canvasSize: widget.canvasSize),
+      surface: BitmapSurface(
+        canvasSize: widget.pasteboard.canvas,
+        pasteboardReach: widget.pasteboard.reach,
+      ),
       sequence: BrushDabSequence([pending]),
     ).surface;
   }
@@ -3718,7 +3723,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // same door [_commitDrawnOutline] takes (I-23).
             marqueeShapes: [
               for (final copy in _symmetryCopies(_marqueeDrag?.shape()))
-                ?copy.clippedTo(widget.canvasSize.pasteboardRect),
+                ?copy.clippedTo(widget.pasteboard.rect),
             ],
             // A trail still being drawn — the lasso's, the line's two
             // ends, the polygon's vertices — with every copy the guide

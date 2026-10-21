@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/history_manager.dart';
@@ -54,7 +55,7 @@ void main() {
     return (
       session: CelTextSession(
         key: celTextTestKey,
-        canvasSize: celTextTestCanvas,
+        pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
         tileSize: celTextTestTileSize,
         standing: standing,
         content: standing?.content ?? nothingAt(),

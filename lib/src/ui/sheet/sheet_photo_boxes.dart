@@ -7,6 +7,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cel_photo.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/transform_pose.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/layer_pose_matrix.dart'
@@ -238,7 +239,8 @@ class _PhotoBoxState extends State<_PhotoBox> {
     final box = RowTransformBox(
       corners: sheetPhotoCorners(widget.photo),
       pose: pose,
-      canvasSize: window.canvasSize,
+      // A sheet keeps the whole wall: it sets no pasteboard size (I-109 ⓑ).
+      pasteboard: window.canvasSize.pasteboardAt(PasteboardReach.whole),
       viewport: window.viewport,
       presses: RowBoxPresses.taken,
       onCancelled: () => hold.dropShowing(at),

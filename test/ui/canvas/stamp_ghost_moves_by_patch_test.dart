@@ -49,6 +49,7 @@ import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -372,7 +373,9 @@ void main() {
     addTearDown(cache.dispose);
     final overlay = ActiveStrokeOverlayModel(tileSize: 16);
     addTearDown(overlay.dispose);
-    final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+    final rasterizer = BrushLiveStrokeRasterizer(
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+    );
     final painter = BitmapSurfacePainter(
       surface: BitmapSurface(canvasSize: canvasSize, tileSize: 16, tiles: const {}),
       overlayModel: overlay,

@@ -37,6 +37,7 @@ import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../models/app_language.dart' show AppLanguage;
 import '../models/brush_tip_entry.dart';
 import '../models/canvas_size.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/drawing_guide.dart' show CutGuides, DrawingGuide, GuideId;
 import '../services/cut_piece_slot.dart';
 import '../services/last_stroke_slot.dart';
@@ -2299,6 +2300,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 project?.pasteboardArgb ?? defaultProjectPasteboardArgb,
             backdropNone: project?.backdropNone ?? false,
             pasteboardNone: project?.pasteboardNone ?? false,
+            pasteboardSize: project?.pasteboardSize ?? PasteboardSize.three,
+            pasteboardInUse: project?.pasteboardInUse ?? true,
             child: child!,
           );
         },

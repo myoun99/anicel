@@ -232,7 +232,7 @@ class TextToolSettingsValues {
   /// line of the canvas — the one down it, [across] its width, or the one
   /// across it.
   void centreBox({required bool across}) {
-    final canvas = tool?.session?.canvasSize;
+    final canvas = tool?.session?.pasteboard.canvas;
     if (canvas == null) {
       return;
     }

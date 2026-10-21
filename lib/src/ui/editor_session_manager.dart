@@ -50,6 +50,7 @@ import 'timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import 'import/import_file_settings.dart' show importBakeAllowed;
 import '../models/timesheet_info.dart';
 import '../models/timesheet_sheet_kind.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/project.dart';
 import '../models/pill_subject.dart';
 import '../models/timeline_selection_kind.dart';
@@ -1744,6 +1745,17 @@ class EditorSessionManager extends ChangeNotifier
 
     return null;
   }
+
+  /// [canvas] out as far as the project's pasteboard reaches (I-109): the
+  /// wall every picture on the floor stands behind.
+  PasteboardWall pasteboardOf(CanvasSize canvas) =>
+      canvas.pasteboardAt(repository.requireProject().pasteboardReach);
+
+  /// The wall of the cut on screen ([pasteboardOf]). Null in a gap.
+  PasteboardWall? get activePasteboardOrNull => switch (activeCutOrNull) {
+    final cut? => pasteboardOf(cut.canvasSize),
+    null => null,
+  };
 
   /// The active cut, THROWING when none is selected (gap state) — every
   /// caller is a conscious decision that a cut must exist here (UI-R9 #3

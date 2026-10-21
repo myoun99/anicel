@@ -11,6 +11,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
@@ -84,8 +85,9 @@ void main() {
           final dabs = strokeDabs(strokeIndex);
           // The live rasterization happens WHILE drawing; only the pen-up
           // commit is timed.
-          final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize)
-            ..blendFrom(dabs);
+          final rasterizer = BrushLiveStrokeRasterizer(
+            pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+          )..blendFrom(dabs);
           final data = BrushStrokeCommitData(
             sourceDabs: dabs,
             strokePixels: rasterizer.strokePixelsWithinBounds(),

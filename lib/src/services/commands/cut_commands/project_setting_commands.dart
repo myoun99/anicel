@@ -93,4 +93,31 @@ class _ProjectSettingCommands {
       pasteboardNone: true,
     ),
   );
+
+  /// The pasteboard's size (I-109) — one undo step with every picture its
+  /// wall cuts ([SetProjectPasteboardCommand]); no-op when unchanged.
+  void setProjectPasteboardSize(PasteboardSize size) =>
+      _coordinator._executeIfChanged(
+        subject: _project,
+        value: size,
+        read: (project) => project.pasteboardSize,
+        command: (_) => SetProjectPasteboardCommand(
+          repository: _coordinator.repository,
+          brushFrameStore: _coordinator.brushFrameStore,
+          size: size,
+        ),
+      );
+
+  /// Whether the pasteboard is there at all (I-109) — off, nothing reaches
+  /// past the paper; one undo step, no-op when unchanged.
+  void setProjectPasteboardInUse(bool inUse) => _coordinator._executeIfChanged(
+    subject: _project,
+    value: inUse,
+    read: (project) => project.pasteboardInUse,
+    command: (_) => SetProjectPasteboardCommand(
+      repository: _coordinator.repository,
+      brushFrameStore: _coordinator.brushFrameStore,
+      inUse: inUse,
+    ),
+  );
 }

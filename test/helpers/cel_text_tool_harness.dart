@@ -5,7 +5,6 @@ import 'package:anicel/src/core/floor_math.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -13,6 +12,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -122,7 +122,7 @@ const _drawings = [textToolFrameId, textToolSecondFrameId];
 /// its first letter's colour — the stand-in for the engine.
 Future<Map<TileCoord, BitmapTile>> boxFillingBake(
   CelTextLayout layout, {
-  required CanvasSize canvasSize,
+  required PasteboardWall pasteboard,
   required int tileSize,
   Map<TileCoord, BitmapTile> previous = const {},
 }) async {

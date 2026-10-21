@@ -792,6 +792,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         backdropNone: project.backdropNone,
         pasteboardArgb: project.pasteboardArgb,
         pasteboardNone: project.pasteboardNone,
+        pasteboardReach: project.pasteboardReach,
       ),
     );
   }
@@ -1178,7 +1179,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ? placedCorners(shown, drawn ?? picture.space)
           : const [],
       pose: pose,
-      canvasSize: canvasSize,
+      pasteboard: session.pasteboardOf(canvasSize),
       viewport: viewport,
       presses: frame.boxPresses,
       onCancelled: session.laneVerbs.endLaneEditPreview,
@@ -1281,7 +1282,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return RowTransformBox(
       corners: _referenceBoxCorners(pose, reference.pictureSize, toCanvas),
       pose: pose.copyWith(center: toCanvas(pose.center)),
-      canvasSize: canvasSize,
+      pasteboard: session.pasteboardOf(canvasSize),
       viewport: viewport,
       presses: frame.boxPresses,
       onCancelled: session.laneVerbs.endLaneEditPreview,
@@ -1342,7 +1343,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// A layer's picture at the playhead (F-222 ②): its ink, and the canvas
   /// it is posed in ([CanvasSelectionShape.wholePicture] — the transform
   /// tool's rule for the whole picture).
-  static _RowPicture _layerPicture(_HostFrame frame, CanvasSize canvasSize) {
+  static _RowPicture _layerPicture(
+    _HostFrame frame,
+    PasteboardWall pasteboard,
+  ) {
     final ink = frame.inkBounds;
     Rect rectOf(CanvasSelectionShape shape) => Rect.fromPoints(
       Offset(shape.points[0].x, shape.points[0].y),
@@ -1351,8 +1355,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return (
       drawn: ink == null
           ? null
-          : rectOf(CanvasSelectionShape.wholePicture(canvasSize, ink)),
-      space: rectOf(CanvasSelectionShape.wholePicture(canvasSize, null)),
+          : rectOf(CanvasSelectionShape.wholePicture(pasteboard, ink)),
+      space: rectOf(CanvasSelectionShape.wholePicture(pasteboard, null)),
     );
   }
 
@@ -1456,7 +1460,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       (pose) => CameraFrameBox(
         pose: pose,
         cameraFrameSize: session.camera.cameraFrameSize,
-        canvasSize: canvasSize,
+        pasteboard: session.pasteboardOf(canvasSize),
         viewport: viewport,
         presses: frame.boxPresses,
         onCancelled: session.laneVerbs.endLaneEditPreview,
@@ -1766,7 +1770,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 viewport: viewport,
                 unit: throughCamera
                     ? frame.canvasRect
-                    : canvasSize.pasteboardRect,
+                    : session.pasteboardOf(canvasSize).rect,
                 veils: veils,
                 color: Color(
                   session.repository.requireProject().backdropArgb,

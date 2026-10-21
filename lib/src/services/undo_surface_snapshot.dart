@@ -6,6 +6,7 @@ import '../models/canvas_size.dart';
 import '../models/cel_photo.dart';
 import '../models/cel_text.dart';
 import '../models/dirty_region.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/compress_in_worker.dart';
@@ -151,6 +152,7 @@ class UndoSurfaceSnapshot {
     required BitmapSurface snapshot,
     required BitmapSurface? sharedWith,
   }) : _canvasSize = snapshot.canvasSize,
+       _pasteboardReach = snapshot.pasteboardReach,
        _tileSize = snapshot.tileSize,
        _laidBounds = snapshot.laidBounds,
        _surface = snapshot,
@@ -161,6 +163,9 @@ class UndoSurfaceSnapshot {
   final BrushFrameKey key;
 
   final CanvasSize _canvasSize;
+
+  /// The wall the picture stood behind (I-109), kept with its size.
+  final PasteboardReach _pasteboardReach;
   final int _tileSize;
 
   /// Where a file's picture lies on it (F-374-Q8), kept with the two sizes
@@ -480,6 +485,7 @@ class UndoSurfaceSnapshot {
     }
     return BitmapSurface(
       canvasSize: _canvasSize,
+      pasteboardReach: _pasteboardReach,
       tileSize: _tileSize,
       tiles: drawing,
       texts: [

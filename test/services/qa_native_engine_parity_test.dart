@@ -56,17 +56,18 @@ void main() {
   // can sit at negative coords) — the byte compare covers off-canvas
   // painting too.
   Uint8List snapshot(BitmapSurface surface, CanvasSize canvasSize) {
-    final left = canvasSize.pasteboardLeft;
-    final top = canvasSize.pasteboardTop;
-    final width = canvasSize.pasteboardRightExclusive - left;
-    final height = canvasSize.pasteboardBottomExclusive - top;
+    final wall = canvasSize.pasteboardAt(PasteboardReach.whole);
+    final left = wall.left;
+    final top = wall.top;
+    final width = wall.rightExclusive - left;
+    final height = wall.bottomExclusive - top;
     final bytes = Uint8List(width * height * 4);
     for (final entry in surface.tiles.entries) {
       final tile = entry.value;
       final pixels = tile.pixels;
       for (var y = 0; y < tile.size; y += 1) {
         final globalY = entry.key.y * tile.size + y;
-        if (globalY >= canvasSize.pasteboardBottomExclusive) {
+        if (globalY >= wall.bottomExclusive) {
           break;
         }
         if (globalY < top) {
@@ -74,7 +75,7 @@ void main() {
         }
         for (var x = 0; x < tile.size; x += 1) {
           final globalX = entry.key.x * tile.size + x;
-          if (globalX >= canvasSize.pasteboardRightExclusive) {
+          if (globalX >= wall.rightExclusive) {
             break;
           }
           if (globalX < left) {

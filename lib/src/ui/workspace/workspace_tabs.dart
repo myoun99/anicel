@@ -104,7 +104,7 @@ class _WorkspaceTabs {
       eyedropperReads: reads(eyedropperSource),
       activeLayerIsFillReference: session.activeLayer?.isFillReference ?? false,
       canToggleFillReference: _activeLayerFillReferenceToggle() != null,
-      canvasSize: session.activeCutOrNull?.canvasSize,
+      pasteboard: session.activePasteboardOrNull,
       language: session.languageSettings.value.programLanguage,
     );
   }
@@ -668,7 +668,7 @@ class _WorkspaceTabs {
                                               .previewActiveCutGuides,
                                           onGuideRasterized: _guideRasterizer(
                                             context,
-                                            cut.canvasSize,
+                                            cut.pasteboard?.canvas,
                                           ),
                                           tips: cut.tips,
                                           onTipImportRequested: () {
@@ -734,7 +734,7 @@ class _WorkspaceTabs {
                                           textFonts: _state._fonts,
                                           // The wall 선택 반전 inverts out
                                           // to (I-23): the cut on screen.
-                                          canvasSize: cut.canvasSize,
+                                          pasteboard: cut.pasteboard,
                                           cutPieceSlot: _state._cutPieceSlot,
                                           // TS8: composite order is
                                           // the BLEND's answer, so
@@ -1365,6 +1365,6 @@ typedef _ToolSettingsCut = ({
   ByList<String>? eyedropperReads,
   bool activeLayerIsFillReference,
   bool canToggleFillReference,
-  CanvasSize? canvasSize,
+  PasteboardWall? pasteboard,
   AppLanguage language,
 });

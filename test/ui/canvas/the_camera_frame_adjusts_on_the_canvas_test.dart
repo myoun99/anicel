@@ -5,6 +5,7 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/ui/canvas/camera_adjust_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_target_pill.dart';
 import 'package:anicel/src/ui/session/canvas_adjust.dart';
@@ -54,7 +55,7 @@ void main() {
                   rotationDegrees: rotationDegrees,
                 ),
                 viewport: CanvasViewport(),
-                canvasSize: canvas,
+                pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
                 onLand: () => landed += 1,
               ),
             ),

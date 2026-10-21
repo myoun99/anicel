@@ -238,6 +238,7 @@ class CanvasLayerStackView extends StatefulWidget {
     required this.nodes,
     required this.imageCache,
     required this.canvasSize,
+    this.pasteboardReach = PasteboardReach.whole,
     required this.viewport,
     this.activeSurfacePainter,
     this.floatOverlay,
@@ -375,6 +376,11 @@ class CanvasLayerStackView extends StatefulWidget {
 
   final LayerFrameImageCache imageCache;
   final CanvasSize canvasSize;
+
+  /// How far past [canvasSize] the pictures here may reach (I-109): the
+  /// wall of their store — the project's for the floor's, whole for a
+  /// sheet's ink. Nothing past it is painted.
+  final PasteboardReach pasteboardReach;
   final CanvasViewport viewport;
 
   /// The below-stack paints the paper so the interactive view can skip its
@@ -1360,6 +1366,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     final compositeKey = Object.hash(
       _imagesRevision,
       widget.canvasSize,
+      widget.pasteboardReach,
       widget.paintPaper,
       widget.paperBackground,
       _treeSignature(nodes),
@@ -1500,6 +1507,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           floatOverlay: widget.floatOverlay,
           liftedRows: _liftedRowsDrawn(),
           canvasSize: widget.canvasSize,
+          pasteboardReach: widget.pasteboardReach,
           viewport: widget.viewport,
           paintPaper: widget.paintPaper,
           paperBackground: widget.paperBackground,
@@ -1957,6 +1965,7 @@ class _LayerStackPainter extends CustomPainter {
     required this.floatOverlay,
     this.liftedRows = const {},
     required this.canvasSize,
+    required this.pasteboardReach,
     required this.viewport,
     required this.paintPaper,
     required this.paperBackground,
@@ -2013,6 +2022,7 @@ class _LayerStackPainter extends CustomPainter {
   /// See [CanvasLayerStackView.liftedRows], as this build draws them.
   final Map<BrushFrameKey, _LiftedRowPaint> liftedRows;
   final CanvasSize canvasSize;
+  final PasteboardReach pasteboardReach;
   final CanvasViewport viewport;
   final bool paintPaper;
   final ProjectBackground paperBackground;
@@ -2345,6 +2355,7 @@ class _LayerStackPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _LayerStackPainter oldDelegate) {
     return oldDelegate.canvasSize != canvasSize ||
+        oldDelegate.pasteboardReach != pasteboardReach ||
         oldDelegate.viewport != viewport ||
         oldDelegate.paintPaper != paintPaper ||
         // The paper's COLOR is painted here (see the `paintPaper` branch), so

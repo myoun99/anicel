@@ -120,6 +120,19 @@ class _BottomBarBuild {
           none: _bar.pasteboardNone,
           onNone: _bar.onPasteboardNone,
           keepsAlpha: true,
+          // I-109: its size and whether it is there, in its own window.
+          hostRow: switch ((
+            _bar.onPasteboardSizeChanged,
+            _bar.onPasteboardInUseChanged,
+          )) {
+            (final onSize?, final onInUse?) => PasteboardReachRow(
+              size: _bar.pasteboardSize,
+              inUse: _bar.pasteboardInUse,
+              onSize: onSize,
+              onInUse: onInUse,
+            ),
+            _ => null,
+          },
         ),
       ],
       // 제일오른쪽에 배경색 (유저, R3 #4) — outermost swatch for the

@@ -1,5 +1,4 @@
 import '../models/canvas_point.dart';
-import '../models/canvas_size.dart';
 import '../models/pasteboard_bounds.dart';
 
 class ClippedCanvasSegment {
@@ -14,9 +13,9 @@ class ClippedCanvasSegment {
   final bool startsNewVisibleSegment;
 }
 
-/// Clips a stroke segment to the PASTEBOARD (the drawable 3×3 canvas
-/// footprint) — strokes start, travel and land anywhere on it; only the
-/// pasteboard's hard wall cuts them. The stage rectangle stopped being
+/// Clips a stroke segment to the PASTEBOARD (its cel's [PasteboardWall]) —
+/// strokes start, travel and land anywhere on it; only the pasteboard's
+/// hard wall cuts them. The stage rectangle stopped being
 /// an input boundary with the pasteboard: crops happen at composite/
 /// export raster time, never at the pointer.
 class CanvasSegmentClipper {
@@ -25,12 +24,12 @@ class CanvasSegmentClipper {
   ClippedCanvasSegment? clip({
     required CanvasPoint previous,
     required CanvasPoint current,
-    required CanvasSize canvasSize,
+    required PasteboardWall wall,
   }) {
-    final xMin = canvasSize.pasteboardLeft.toDouble();
-    final yMin = canvasSize.pasteboardTop.toDouble();
-    final xMax = canvasSize.pasteboardRightExclusive.toDouble();
-    final yMax = canvasSize.pasteboardBottomExclusive.toDouble();
+    final xMin = wall.left.toDouble();
+    final yMin = wall.top.toDouble();
+    final xMax = wall.rightExclusive.toDouble();
+    final yMax = wall.bottomExclusive.toDouble();
     final dx = current.x - previous.x;
     final dy = current.y - previous.y;
     var t0 = 0.0;
@@ -62,7 +61,7 @@ class CanvasSegmentClipper {
       end: CanvasPoint(x: previous.x + dx * t1, y: previous.y + dy * t1),
       startsNewVisibleSegment:
           t0 > 0 ||
-          !canvasSize.containsPasteboardPoint(x: previous.x, y: previous.y),
+          !wall.containsPoint(x: previous.x, y: previous.y),
     );
   }
 }

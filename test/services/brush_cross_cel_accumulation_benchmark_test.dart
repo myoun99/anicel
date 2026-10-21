@@ -13,6 +13,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
@@ -88,8 +89,9 @@ void main() {
           coordinator.selectFrame(celKey(cel));
           for (var s = 0; s < strokesPerCel; s += 1) {
             final dabs = strokeDabs(strokeIndex++);
-            final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize)
-              ..blendFrom(dabs);
+            final rasterizer = BrushLiveStrokeRasterizer(
+              pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+            )..blendFrom(dabs);
             final data = BrushStrokeCommitData(
               sourceDabs: dabs,
               strokePixels: rasterizer.strokePixelsWithinBounds(),

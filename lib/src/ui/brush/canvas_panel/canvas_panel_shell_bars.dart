@@ -24,6 +24,8 @@ class _CanvasPanelShellBars {
       _state._stagePasteboardArgb = _canvasBaseStageArgb;
       _state._stageBackdropNone = false;
       _state._stagePasteboardNone = false;
+      _state._stagePasteboardSize = PasteboardSize.three;
+      _state._stagePasteboardInUse = true;
       return;
     }
     final scope = CanvasStageColors.maybeOf(_state.context);
@@ -39,6 +41,9 @@ class _CanvasPanelShellBars {
         _state.widget.backdropNone ?? scope?.backdropNone ?? false;
     _state._stagePasteboardNone =
         _state.widget.pasteboardNone ?? scope?.pasteboardNone ?? false;
+    _state._stagePasteboardSize =
+        scope?.pasteboardSize ?? PasteboardSize.three;
+    _state._stagePasteboardInUse = scope?.pasteboardInUse ?? true;
   }
 
   /// R13-3 shell memo: the panbars/zoom-rotate bar are a Material button
@@ -74,6 +79,8 @@ class _CanvasPanelShellBars {
     int backdrop,
     bool paperNone,
     bool pasteboardNone,
+    PasteboardSize pasteboardSize,
+    bool pasteboardInUse,
     bool backdropNone,
     Object? host,
   })?
@@ -164,6 +171,8 @@ class _CanvasPanelShellBars {
       // stale-swatch lesson as the colours above.
       paperNone: _state.widget.paperNone,
       pasteboardNone: _state._stagePasteboardNone,
+      pasteboardSize: _state._stagePasteboardSize,
+      pasteboardInUse: _state._stagePasteboardInUse,
       backdropNone: _state._stageBackdropNone,
       host: _state.widget.bottomBarHostToken,
       // ⛔ The panel TITLE is deliberately absent — and now unreachable, so
@@ -228,8 +237,12 @@ class _CanvasPanelShellBars {
       onPaperNone: _state.widget.onPaperNone,
       pasteboardColor: _state._stagePasteboardArgb,
       pasteboardNone: _state._stagePasteboardNone,
+      pasteboardSize: _state._stagePasteboardSize,
+      pasteboardInUse: _state._stagePasteboardInUse,
       onPasteboardColorChanged: _state.widget.onPasteboardColorChanged,
       onPasteboardNone: _state.widget.onPasteboardNone,
+      onPasteboardSizeChanged: _state.widget.onPasteboardSizeChanged,
+      onPasteboardInUseChanged: _state.widget.onPasteboardInUseChanged,
       backdropColor: _state._stageBackdropArgb,
       backdropNone: _state._stageBackdropNone,
       onBackdropColorChanged: _state.widget.onBackdropColorChanged,
