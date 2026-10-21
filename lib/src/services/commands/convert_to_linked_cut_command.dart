@@ -212,7 +212,7 @@ class ConvertToLinkedCutCommand implements Command {
     );
     originSide.layers[originIndex] = origin.copyWith(frames: mergedBank);
 
-    for (final joiner in _targetFamily(rows, origin.id, target.id)) {
+    for (final joiner in _targetFamily(rows, target.id)) {
       final layers = rows.of(joiner.cutId);
       final index = layers.indexWhere((layer) => layer.id == joiner.layerId);
       layers[index] = _joinedRow(
@@ -267,32 +267,21 @@ class ConvertToLinkedCutCommand implements Command {
     return [...origin.frames, ...joiningFrames];
   }
 
-  /// The target row [targetId] and every row it was 겸용 with already that
-  /// the origin row [originId] is not — the target's family, which a pair
-  /// joins to the origin's (F-398 ⑤).
-  List<LayerLinkMember> _targetFamily(
-    _ConvertRows rows,
-    LayerId originId,
-    LayerId targetId,
-  ) {
-    final before = rows.project.linkRegistry;
-    final originGroup = before.groupOf(cutId: originCutId, layerId: originId);
-    return [
-      LayerLinkMember(
-        trackId: rows.sideOf(targetCutId).trackId,
-        cutId: targetCutId,
-        layerId: targetId,
-      ),
-      ...?before
+  /// The target row [targetId] and every row it was 겸용 with already — the
+  /// target's family, which a pair joins to the origin's (F-398 ⑤). None of
+  /// it is the origin's: a pair 겸용 already is no pair
+  /// ([planConvertToLinkedCut]).
+  List<LayerLinkMember> _targetFamily(_ConvertRows rows, LayerId targetId) =>
+      rows.project.linkRegistry
           .groupOf(cutId: targetCutId, layerId: targetId)
-          ?.members
-          .where(
-            (member) =>
-                member.layerId != targetId &&
-                !(originGroup?.members.contains(member) ?? false),
-          ),
-    ];
-  }
+          ?.members ??
+      [
+        LayerLinkMember(
+          trackId: rows.sideOf(targetCutId).trackId,
+          cutId: targetCutId,
+          layerId: targetId,
+        ),
+      ];
 
   /// [row], a row of the target's family, joined to [origin]'s: it adopts
   /// the merged [bank] and its exposures RE-TARGET conflicting frames onto
