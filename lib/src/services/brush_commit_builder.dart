@@ -92,8 +92,7 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   // route BB-1 built, and the two conditions are one condition.
   final needsWholeStroke =
       brushDabs ||
-      blendMode.isSeparable ||
-      blendMode == BrushBlendMode.behind ||
+      blendMode.blendsTheWholeStroke ||
       strokeOpacityCoverage(sequence.opacity) < 255;
   if (needsWholeStroke) {
     // BB-1: a brush blend needs the WHOLE stroke as one buffer (the mode

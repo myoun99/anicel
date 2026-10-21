@@ -1,21 +1,33 @@
 import 'dart:ui' show BlendMode;
 
-/// The 12 separable blend modes shared, byte-for-byte, by [BrushBlendMode]
-/// (a stroke's composite onto the cel) and [LayerBlendMode] (a layer/group's
-/// composite onto everything below). Their GPU [BlendMode] and English
-/// labels live here ONCE, so the two vocabularies cannot drift — before D5
-/// each enum carried its own copy of all three tables, and a changed label
-/// or mapping had to be edited in both.
+/// The separable blend modes — one B(Cs, Cd) per channel — shared by
+/// [BrushBlendMode] (a stroke's composite onto the cel), [LayerBlendMode] (a
+/// layer/group's composite onto everything below) and the dual tip's
+/// composite. Their GPU [BlendMode] and English labels live here ONCE, so
+/// the vocabularies cannot drift — before D5 each enum carried its own copy
+/// of all three tables, and a changed label or mapping had to be edited in
+/// both.
 ///
 /// Each blend enum still lists these as its own enum values (it needs them for
 /// exhaustive `switch` and by-name JSON) and resolves the shared data through
 /// [forName], keyed on the enum value's `name`. `separable_blend_mode_test`
 /// pins that every separable case on both enums maps here, so a renamed value
 /// fails a test instead of resolving to `null` at runtime.
+///
+/// 🚨★NOT EVERY ONE HAS A GPU BLEND (brush-fidelity, 유저 2026-10-17 Q3:
+/// 「13개 + 클튜의 발광 둘」). The twelve the layer list has always offered
+/// map onto Impeller's [BlendMode]; the seven Photoshop and Clip Studio add
+/// to them (linear burn … divide) have no GPU counterpart, and only the
+/// BRUSH composites them — on the CPU, through the commit's own kernel.
+/// [blendMode] is null for those, and `separable_blend_mode_test` pins that
+/// [LayerBlendMode] — composited on the GPU on every route — lists none of
+/// them.
 enum SeparableBlendMode {
   darken(BlendMode.darken, 'Darken'),
   multiply(BlendMode.multiply, 'Multiply'),
   colorBurn(BlendMode.colorBurn, 'Color Burn'),
+  linearBurn(null, 'Linear Burn'),
+  subtract(null, 'Subtract'),
   lighten(BlendMode.lighten, 'Lighten'),
   screen(BlendMode.screen, 'Screen'),
   colorDodge(BlendMode.colorDodge, 'Color Dodge'),
@@ -24,12 +36,18 @@ enum SeparableBlendMode {
   softLight(BlendMode.softLight, 'Soft Light'),
   hardLight(BlendMode.hardLight, 'Hard Light'),
   difference(BlendMode.difference, 'Difference'),
-  exclusion(BlendMode.exclusion, 'Exclusion');
+  vividLight(null, 'Vivid Light'),
+  linearLight(null, 'Linear Light'),
+  pinLight(null, 'Pin Light'),
+  hardMix(null, 'Hard Mix'),
+  exclusion(BlendMode.exclusion, 'Exclusion'),
+  divide(null, 'Divide');
 
   const SeparableBlendMode(this.blendMode, this.label);
 
-  /// The GPU blend this separable mode composites through.
-  final BlendMode blendMode;
+  /// The GPU blend this separable mode composites through, or null where the
+  /// GPU has none (see the class doc).
+  final BlendMode? blendMode;
 
   /// The industry-standard English label every paint tool shares.
   ///
@@ -45,6 +63,7 @@ enum SeparableBlendMode {
 
   /// The separable mode whose `name` equals [name], or `null` when none does
   /// — the non-separable heads (`color`/`behind`/`erase`, `passThrough`/
-  /// `normal`) have no counterpart here.
+  /// `normal`) and the brush's six that mix the three channels have no
+  /// counterpart here.
   static SeparableBlendMode? forName(String name) => values.asNameMap()[name];
 }

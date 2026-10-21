@@ -298,7 +298,9 @@ class _SurfacePaintPass {
         ? (Paint()
             ..filterQuality = FilterQuality.none
             ..isAntiAlias = false
-            ..blendMode = blendMode.previewBlendMode)
+            // WIP(brush-fidelity-Q7): the stamp ghost of a mode the GPU
+            // has no blend for — answered before this lane lands.
+            ..blendMode = blendMode.previewBlendMode ?? BlendMode.srcOver)
         : _tileImagePaint;
   }
 

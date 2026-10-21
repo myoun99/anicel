@@ -914,12 +914,31 @@ void main() {
     expect(result.presets.first.settings.blendMode, BrushBlendMode.color);
   });
 
+  Future<void> expectMenuIndices(Map<int, BrushBlendMode> expected) async {
+    for (final entry in expected.entries) {
+      final path = await buildFixture(
+        tipPng: await blackPng(4, 4),
+        compositeMode: entry.key,
+      );
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+      expect(
+        result.presets.first.settings.blendMode,
+        entry.value,
+        reason: 'menu index ${entry.key}',
+      );
+      expect(result.warnings, isEmpty, reason: 'menu index ${entry.key}');
+    }
+  }
+
   test(
     'the composite mode index runs the whole 合成モード menu',
     () async {
       // `CompositeMode` is the index of Clip Studio's brush blend menu, which
       // is what puts 乗算 at 2 — the value real files carry.
-      const expected = <int, BrushBlendMode>{
+      await expectMenuIndices(const {
         1: BrushBlendMode.darken,
         2: BrushBlendMode.multiply,
         3: BrushBlendMode.colorBurn,
@@ -934,23 +953,7 @@ void main() {
         18: BrushBlendMode.erase,
         19: BrushBlendMode.behind,
         27: BrushBlendMode.exclusion,
-      };
-      for (final entry in expected.entries) {
-        final path = await buildFixture(
-          tipPng: await blackPng(4, 4),
-          compositeMode: entry.key,
-        );
-        final result = await decodeSutBrushFile(
-          filePath: path,
-          sourceName: 'fixture',
-        );
-        expect(
-          result.presets.first.settings.blendMode,
-          entry.value,
-          reason: 'menu index ${entry.key}',
-        );
-        expect(result.warnings, isEmpty, reason: 'menu index ${entry.key}');
-      }
+      });
     },
     // FOURTEEN fixtures where every sibling test builds one: each is a
     // real sqlite database plus PNG encode/decode, so this case does
@@ -961,12 +964,39 @@ void main() {
     timeout: const Timeout(Duration(minutes: 3)),
   );
 
+  test(
+    'the menu\'s entries Photoshop shares import as themselves',
+    () async {
+      // brush-fidelity (유저 2026-10-17 Q3: 「13개 + 클튜의 발광 둘」) — the
+      // thirteen beyond the first twelve. A table of its own rather than
+      // more rows above: thirteen more fixtures in one case would cross
+      // the budget the case above was given for fourteen.
+      await expectMenuIndices(const {
+        4: BrushBlendMode.linearBurn,
+        6: BrushBlendMode.subtract,
+        23: BrushBlendMode.vividLight,
+        24: BrushBlendMode.linearLight,
+        25: BrushBlendMode.pinLight,
+        26: BrushBlendMode.hardMix,
+        28: BrushBlendMode.darkerColor,
+        29: BrushBlendMode.lighterColor,
+        30: BrushBlendMode.divide,
+        31: BrushBlendMode.hue,
+        32: BrushBlendMode.saturation,
+        33: BrushBlendMode.chroma,
+        34: BrushBlendMode.luminosity,
+      });
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
   test('a mode with no kernel yet warns by NAME, not by number', () async {
-    // 除算 is a real menu entry this engine cannot composite. Saying so by
-    // name is what tells you which kernel a brush would need.
+    // 透明度置換 is a real menu entry this engine cannot composite. Saying so
+    // by name is what tells you which kernel a brush would need. ↩️This was
+    // 除算 until the brush learned it (brush-fidelity).
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
-      compositeMode: 30,
+      compositeMode: 20,
     );
     final result = await decodeSutBrushFile(
       filePath: path,
@@ -974,7 +1004,7 @@ void main() {
     );
 
     expect(result.presets.first.settings.blendMode, BrushBlendMode.color);
-    expect(result.warnings.any((w) => w.contains('除算')), isTrue);
+    expect(result.warnings.any((w) => w.contains('透明度置換')), isTrue);
   });
 
   test('the four アンチエイリアス buttons import as the four levels', () async {

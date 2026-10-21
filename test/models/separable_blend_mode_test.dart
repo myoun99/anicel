@@ -17,10 +17,15 @@ import 'package:anicel/src/models/separable_blend_mode.dart';
 /// 번역」) reversed the rule: every language is keyed by `name` in the string
 /// tables, and `model_vocabulary_speaks_every_language_test` pins the ja
 /// words that stood here, unchanged.
-const _expected = <SeparableBlendMode, (BlendMode, String)>{
+///
+/// A null blend is a mode the GPU has none for — the brush composites it on
+/// the CPU (brush-fidelity).
+const _expected = <SeparableBlendMode, (BlendMode?, String)>{
   SeparableBlendMode.darken: (BlendMode.darken, 'Darken'),
   SeparableBlendMode.multiply: (BlendMode.multiply, 'Multiply'),
   SeparableBlendMode.colorBurn: (BlendMode.colorBurn, 'Color Burn'),
+  SeparableBlendMode.linearBurn: (null, 'Linear Burn'),
+  SeparableBlendMode.subtract: (null, 'Subtract'),
   SeparableBlendMode.lighten: (BlendMode.lighten, 'Lighten'),
   SeparableBlendMode.screen: (BlendMode.screen, 'Screen'),
   SeparableBlendMode.colorDodge: (BlendMode.colorDodge, 'Color Dodge'),
@@ -29,7 +34,12 @@ const _expected = <SeparableBlendMode, (BlendMode, String)>{
   SeparableBlendMode.softLight: (BlendMode.softLight, 'Soft Light'),
   SeparableBlendMode.hardLight: (BlendMode.hardLight, 'Hard Light'),
   SeparableBlendMode.difference: (BlendMode.difference, 'Difference'),
+  SeparableBlendMode.vividLight: (null, 'Vivid Light'),
+  SeparableBlendMode.linearLight: (null, 'Linear Light'),
+  SeparableBlendMode.pinLight: (null, 'Pin Light'),
+  SeparableBlendMode.hardMix: (null, 'Hard Mix'),
   SeparableBlendMode.exclusion: (BlendMode.exclusion, 'Exclusion'),
+  SeparableBlendMode.divide: (null, 'Divide'),
 };
 
 void main() {
@@ -50,35 +60,71 @@ void main() {
       }
       expect(SeparableBlendMode.forName('color'), isNull);
       expect(SeparableBlendMode.forName('passThrough'), isNull);
+      expect(SeparableBlendMode.forName('hue'), isNull);
       expect(SeparableBlendMode.forName('nonsense'), isNull);
     });
   });
 
   group('BrushBlendMode delegates separable data', () {
     const heads = {
-      BrushBlendMode.color: (BlendMode.srcOver, 'Color'),
+      BrushBlendMode.color: (BlendMode.srcOver, 'Normal'),
       BrushBlendMode.behind: (BlendMode.dstOver, 'Behind'),
       BrushBlendMode.erase: (BlendMode.dstOut, 'Erase'),
+    };
+    // The six that mix the three channels — the brush's own.
+    const mixers = <BrushBlendMode, (BlendMode?, String)>{
+      BrushBlendMode.darkerColor: (null, 'Darker Color'),
+      BrushBlendMode.lighterColor: (null, 'Lighter Color'),
+      BrushBlendMode.hue: (BlendMode.hue, 'Hue'),
+      BrushBlendMode.saturation: (BlendMode.saturation, 'Saturation'),
+      BrushBlendMode.chroma: (BlendMode.color, 'Color'),
+      BrushBlendMode.luminosity: (BlendMode.luminosity, 'Luminosity'),
     };
 
     test('heads keep their own blend/labels and are not separable', () {
       heads.forEach((mode, want) {
         final (blend, en) = want;
         expect(mode.separable, isNull, reason: '${mode.name} head');
-        expect(mode.isSeparable, isFalse);
         expect(mode.previewBlendMode, blend);
         expect(mode.label, en);
       });
     });
 
-    test('every non-head value resolves through SeparableBlendMode', () {
+    test('the six that mix the channels keep their own blend/labels', () {
+      mixers.forEach((mode, want) {
+        final (blend, en) = want;
+        expect(mode.separable, isNull, reason: '${mode.name} mixes');
+        expect(mode.previewBlendMode, blend, reason: '${mode.name} blend');
+        expect(mode.label, en, reason: '${mode.name} en');
+      });
+    });
+
+    test('every other value resolves through SeparableBlendMode', () {
       for (final mode in BrushBlendMode.values) {
-        if (heads.containsKey(mode)) continue;
+        if (heads.containsKey(mode) || mixers.containsKey(mode)) continue;
         final separable = mode.separable;
         expect(separable, isNotNull, reason: '${mode.name} must be separable');
-        expect(mode.isSeparable, isTrue);
         expect(mode.previewBlendMode, separable!.blendMode);
         expect(mode.label, separable.label);
+      }
+      // ...and every separable mode is the brush's.
+      for (final separable in SeparableBlendMode.values) {
+        expect(
+          BrushBlendMode.named(separable.name),
+          isNotNull,
+          reason: '${separable.name} is in the brush list',
+        );
+      }
+    });
+
+    test('everything but plain colour and the eraser blends the whole '
+        'stroke', () {
+      for (final mode in BrushBlendMode.values) {
+        expect(
+          mode.blendsTheWholeStroke,
+          mode != BrushBlendMode.color && mode != BrushBlendMode.erase,
+          reason: mode.name,
+        );
       }
     });
   });
@@ -105,6 +151,20 @@ void main() {
         expect(mode.paintBlendMode, separable!.blendMode);
         expect(mode.label, separable.label);
       }
+    });
+
+    // 🚨A layer composites on the GPU on every route (playback, canvas,
+    // export), so a mode the GPU has no blend for cannot be a layer's —
+    // the seven are the brush's alone (brush-fidelity-Q4).
+    test('lists exactly the separable modes the GPU has a blend for', () {
+      final layerSeparables = {
+        for (final mode in LayerBlendMode.values)
+          if (mode.separable != null) mode.separable!,
+      };
+      expect(layerSeparables, {
+        for (final mode in SeparableBlendMode.values)
+          if (mode.blendMode != null) mode,
+      });
     });
   });
 }

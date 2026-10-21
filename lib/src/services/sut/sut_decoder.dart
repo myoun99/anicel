@@ -552,6 +552,8 @@ BrushBlendMode _blendModeOf(
     1 => BrushBlendMode.darken, // 比較(暗)
     2 => BrushBlendMode.multiply, // 乗算
     3 => BrushBlendMode.colorBurn, // 焼き込みカラー
+    4 => BrushBlendMode.linearBurn, // 焼き込み(リニア)
+    6 => BrushBlendMode.subtract, // 減算
     7 => BrushBlendMode.lighten, // 比較(明)
     8 => BrushBlendMode.screen, // スクリーン
     9 => BrushBlendMode.colorDodge, // 覆い焼きカラー
@@ -562,7 +564,18 @@ BrushBlendMode _blendModeOf(
     17 => BrushBlendMode.difference, // 差の絶対値
     18 => BrushBlendMode.erase, // 消去
     19 => BrushBlendMode.behind, // 背景
+    23 => BrushBlendMode.vividLight, // ビビッドライト
+    24 => BrushBlendMode.linearLight, // リニアライト
+    25 => BrushBlendMode.pinLight, // ピンライト
+    26 => BrushBlendMode.hardMix, // ハードミックス
     27 => BrushBlendMode.exclusion, // 除外
+    28 => BrushBlendMode.darkerColor, // カラー比較(暗)
+    29 => BrushBlendMode.lighterColor, // カラー比較(明)
+    30 => BrushBlendMode.divide, // 除算
+    31 => BrushBlendMode.hue, // 色相
+    32 => BrushBlendMode.saturation, // 彩度
+    33 => BrushBlendMode.chroma, // カラー
+    34 => BrushBlendMode.luminosity, // 輝度
     _ => null,
   };
   if (mapped != null) {
@@ -579,26 +592,13 @@ BrushBlendMode _blendModeOf(
 
 /// The 合成モード menu entry at [index], for warnings.
 String _clipStudioBlendName(int index) => switch (index) {
-  4 => '焼き込み(リニア)',
   5 => '焼き込み(黒)',
-  6 => '減算',
   10 => '覆い焼き(発光)',
   11 => '覆い焼き(白)',
   13 => '加算(発光)',
   20 => '透明度置換',
   21 => '比較(濃度)',
   22 => '消去(比較)',
-  23 => 'ビビッドライト',
-  24 => 'リニアライト',
-  25 => 'ピンライト',
-  26 => 'ハードミックス',
-  28 => 'カラー比較(暗)',
-  29 => 'カラー比較(明)',
-  30 => '除算',
-  31 => '色相',
-  32 => '彩度',
-  33 => 'カラー',
-  34 => '輝度',
   _ => '#$index',
 };
 
@@ -1183,10 +1183,11 @@ double? _doubleOf(Object? value) {
 /// 加算 (index 12) wrong, and 12 is one of the two values actually found in
 /// the user's files.
 ///
-/// A mode with no separable form (通常/背景/消去) keeps the multiply and says
-/// so: combining two COVERAGES has no question about pixels or alpha for
-/// those to answer, and silently reinterpreting one would be inventing a
-/// rule nobody asked for.
+/// A mode with no separable form (通常/背景/消去, and the six from カラー比較
+/// on that mix three colour channels) keeps the multiply and says so:
+/// combining two COVERAGES has no question about pixels, alpha or a colour
+/// of three for those to answer, and silently reinterpreting one would be
+/// inventing a rule nobody asked for.
 SeparableBlendMode _dualCompositeModeOf(
   Object? value, {
   required String brushName,

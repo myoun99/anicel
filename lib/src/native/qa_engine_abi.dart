@@ -266,7 +266,12 @@ import '../core/on_a_worker.dart';
 ///   much silence ahead of its first sample, so the sample is heard as the
 ///   run's first picture is shown (`QaAudioDevice.play`, board a-start-is-
 ///   heard-ahead-of-its-first-picture).
-const int kQaEngineAbiVersion = 50;
+/// - v51: the stroke kernel's mode ids 13–25 — the seven separable blends
+///   Photoshop and Clip Studio add (linear burn … divide), which the dual
+///   mask reads too, and the six that mix the three channels
+///   (`strokeBlendModeNativeId`, board brush-fidelity). An older engine
+///   would take an id it does not know for exclusion.
+const int kQaEngineAbiVersion = 51;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

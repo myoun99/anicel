@@ -53,9 +53,13 @@ enum LayerBlendMode {
   /// The ui.Paint blend for the composite draw. [passThrough] answers
   /// srcOver defensively; a pass-through folder is never drawn as a node
   /// at all, so this should not be reached for it.
+  ///
+  /// ⚠️Every separable mode this enum lists has a GPU blend — the seven
+  /// without one are the brush's alone (brush-fidelity-Q4), and
+  /// `separable_blend_mode_test` pins that none of them is listed here.
   BlendMode get paintBlendMode => switch (this) {
     passThrough || normal => BlendMode.srcOver,
-    _ => separable!.blendMode,
+    _ => separable!.blendMode!,
   };
 
   /// The menu label (the industry-standard English terms every paint

@@ -41,7 +41,7 @@ extension BrushBlendModeWords on BrushBlendMode {
       AppStrings.of(language).blendModeName(name, label);
 }
 
-/// The dual tip's composite: the separable twelve alone, under the same keys
+/// The dual tip's composite: the separable modes alone, under the same keys
 /// the layer and brush blends read — which is what keeps the three lists
 /// from drifting ([SeparableBlendMode]).
 extension SeparableBlendModeWords on SeparableBlendMode {

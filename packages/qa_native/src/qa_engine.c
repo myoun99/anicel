@@ -238,6 +238,24 @@ enum {
   QA_STROKE_BLEND_HARD_LIGHT = 10,
   QA_STROKE_BLEND_DIFFERENCE = 11,
   QA_STROKE_BLEND_EXCLUSION = 12,
+  // v51 (brush-fidelity, 유저 2026-10-17 Q3: 「13개 + 클튜의 발광 둘」): the
+  // separable seven Photoshop and Clip Studio share...
+  QA_STROKE_BLEND_LINEAR_BURN = 13,
+  QA_STROKE_BLEND_SUBTRACT = 14,
+  QA_STROKE_BLEND_VIVID_LIGHT = 15,
+  QA_STROKE_BLEND_LINEAR_LIGHT = 16,
+  QA_STROKE_BLEND_PIN_LIGHT = 17,
+  QA_STROKE_BLEND_HARD_MIX = 18,
+  QA_STROKE_BLEND_DIVIDE = 19,
+  // ...and the six that mix the three channels — NOT in the channel table:
+  // a pixel's B is a colour of three, `qa_stroke_blend_triple`. The dual
+  // mask combines one coverage with another and never sees these.
+  QA_STROKE_BLEND_DARKER_COLOR = 20,
+  QA_STROKE_BLEND_LIGHTER_COLOR = 21,
+  QA_STROKE_BLEND_HUE = 22,
+  QA_STROKE_BLEND_SATURATION = 23,
+  QA_STROKE_BLEND_CHROMA = 24,
+  QA_STROKE_BLEND_LUMINOSITY = 25,
 };
 
 static double qa_stroke_blend_channel(int32_t mode, double cs, double cd);
@@ -2899,10 +2917,175 @@ static double qa_stroke_blend_channel(int32_t mode, double cs, double cd) {
                        : (2.0 * cs - 1.0) + cd - (2.0 * cs - 1.0) * cd;
     case QA_STROKE_BLEND_DIFFERENCE:
       return fabs(cs - cd);
+    case QA_STROKE_BLEND_LINEAR_BURN: {
+      const double sum = cs + cd - 1.0;
+      return sum > 0.0 ? sum : 0.0;
+    }
+    case QA_STROKE_BLEND_SUBTRACT: {
+      const double rest = cd - cs;
+      return rest > 0.0 ? rest : 0.0;
+    }
+    case QA_STROKE_BLEND_VIVID_LIGHT:
+      // colorBurn(2cs, cd) below the pivot, colorDodge(2cs-1, cd) above —
+      // hardLight's split with the two dodge/burn heads in place of
+      // multiply/screen.
+      return cs <= 0.5
+                 ? qa_stroke_blend_channel(QA_STROKE_BLEND_COLOR_BURN,
+                                           2.0 * cs, cd)
+                 : qa_stroke_blend_channel(QA_STROKE_BLEND_COLOR_DODGE,
+                                           2.0 * cs - 1.0, cd);
+    case QA_STROKE_BLEND_LINEAR_LIGHT: {
+      const double sum = cd + 2.0 * cs - 1.0;
+      return sum < 0.0 ? 0.0 : (sum > 1.0 ? 1.0 : sum);
+    }
+    case QA_STROKE_BLEND_PIN_LIGHT: {
+      if (cs <= 0.5) {
+        const double doubled = 2.0 * cs;
+        return cd < doubled ? cd : doubled;
+      }
+      const double raised = 2.0 * cs - 1.0;
+      return cd > raised ? cd : raised;
+    }
+    case QA_STROKE_BLEND_HARD_MIX:
+      // Every channel goes all the way: white where the two reach a whole,
+      // black where they fall short — on bytes, s + d >= 255. 🔬Every pair
+      // of bytes summing to 255 lands on exactly 1.0 here (all 256 checked,
+      // 2026-10-17), so the plain comparison is the byte rule.
+      return cs + cd >= 1.0 ? 1.0 : 0.0;
+    case QA_STROKE_BLEND_DIVIDE: {
+      // The destination divided by the source. Nothing divided is nothing;
+      // anything divided by nothing is as bright as a channel goes.
+      if (cd <= 0.0) return 0.0;
+      if (cs <= 0.0) return 1.0;
+      const double quotient = cd / cs;
+      return quotient < 1.0 ? quotient : 1.0;
+    }
     case QA_STROKE_BLEND_EXCLUSION:
     default:
       return cs + cd - 2.0 * cs * cd;
   }
+}
+
+// ---- The six that mix the three channels (brush-fidelity) ----
+//
+// Their B is a COLOUR of three, so they are not in the table above:
+// W3C Compositing and Blending Level 1's non-separable modes — Lum,
+// ClipColor, SetLum, Sat, SetSat — plus Photoshop's darker/lighter colour,
+// which keep one of the two colours whole. SetSat is written the way Skia
+// writes it (every channel (c - min) * s / (max - min)): the spec's
+// max/mid/min assignment without ranking the three, ties included.
+//
+// 🚨Every expression keeps the Dart reference's grouping
+// (brush_stroke_blend.dart `_ChannelMix`); FP contraction is
+// off in every build, so the parity suite holds them byte for byte.
+
+static int32_t qa_stroke_blend_is_triple(int32_t mode) {
+  return mode >= QA_STROKE_BLEND_DARKER_COLOR &&
+         mode <= QA_STROKE_BLEND_LUMINOSITY;
+}
+
+static double qa_triple_min(const double* c) {
+  const double low = c[0] < c[1] ? c[0] : c[1];
+  return low < c[2] ? low : c[2];
+}
+
+static double qa_triple_max(const double* c) {
+  const double high = c[0] > c[1] ? c[0] : c[1];
+  return high > c[2] ? high : c[2];
+}
+
+static double qa_triple_lum(const double* c) {
+  return 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
+}
+
+// ⚠️The two `!= 0.0` guards are Skia's: a grey whose luminosity landed an
+// ulp under 0 (or over 1) would otherwise divide 0 by 0, and the Dart
+// reference's `round()` throws on NaN.
+static void qa_triple_clip(double* c) {
+  const double l = qa_triple_lum(c);
+  const double low = qa_triple_min(c);
+  const double high = qa_triple_max(c);
+  for (int32_t k = 0; k < 3; k += 1) {
+    double v = c[k];
+    if (low < 0.0 && l - low != 0.0) {
+      v = l + (v - l) * l / (l - low);
+    }
+    if (high > 1.0 && high - l != 0.0) {
+      v = l + (v - l) * (1.0 - l) / (high - l);
+    }
+    c[k] = v;
+  }
+}
+
+static void qa_triple_set_lum(double* c, double l) {
+  const double d = l - qa_triple_lum(c);
+  c[0] = c[0] + d;
+  c[1] = c[1] + d;
+  c[2] = c[2] + d;
+  qa_triple_clip(c);
+}
+
+static double qa_triple_sat(const double* c) {
+  return qa_triple_max(c) - qa_triple_min(c);
+}
+
+static void qa_triple_set_sat(double* c, double s) {
+  const double low = qa_triple_min(c);
+  const double sat = qa_triple_max(c) - low;
+  for (int32_t k = 0; k < 3; k += 1) {
+    c[k] = sat > 0.0 ? (c[k] - low) * s / sat : 0.0;
+  }
+}
+
+// B(Cs, Cd) for the six, into [b]. Takes the BYTES because darker/lighter
+// colour compare the two colours' channel totals, and a total of thirds
+// of 255 in doubles can call two equal totals unequal.
+static void qa_stroke_blend_triple(int32_t mode, const uint8_t* src,
+                                   const uint8_t* dst, double* b) {
+  const double cs[3] = {src[0] / 255.0, src[1] / 255.0, src[2] / 255.0};
+  const double cd[3] = {dst[0] / 255.0, dst[1] / 255.0, dst[2] / 255.0};
+  const int32_t source_total = src[0] + src[1] + src[2];
+  const int32_t dest_total = dst[0] + dst[1] + dst[2];
+  const double* whole = cd;
+  switch (mode) {
+    case QA_STROKE_BLEND_DARKER_COLOR:
+      // A tie keeps what is there.
+      whole = source_total < dest_total ? cs : cd;
+      break;
+    case QA_STROKE_BLEND_LIGHTER_COLOR:
+      whole = source_total > dest_total ? cs : cd;
+      break;
+    case QA_STROKE_BLEND_HUE:
+      b[0] = cs[0];
+      b[1] = cs[1];
+      b[2] = cs[2];
+      qa_triple_set_sat(b, qa_triple_sat(cd));
+      qa_triple_set_lum(b, qa_triple_lum(cd));
+      return;
+    case QA_STROKE_BLEND_SATURATION:
+      b[0] = cd[0];
+      b[1] = cd[1];
+      b[2] = cd[2];
+      qa_triple_set_sat(b, qa_triple_sat(cs));
+      qa_triple_set_lum(b, qa_triple_lum(cd));
+      return;
+    case QA_STROKE_BLEND_CHROMA:
+      b[0] = cs[0];
+      b[1] = cs[1];
+      b[2] = cs[2];
+      qa_triple_set_lum(b, qa_triple_lum(cd));
+      return;
+    case QA_STROKE_BLEND_LUMINOSITY:
+    default:
+      b[0] = cd[0];
+      b[1] = cd[1];
+      b[2] = cd[2];
+      qa_triple_set_lum(b, qa_triple_lum(cs));
+      return;
+  }
+  b[0] = whole[0];
+  b[1] = whole[1];
+  b[2] = whole[2];
 }
 
 // Blends one stroke row span into a tile row in place. Returns nonzero
@@ -2981,17 +3164,27 @@ static int32_t qa_stroke_blend_row(
         const double cs_r = src[0] / 255.0, cd_r = dst[0] / 255.0;
         const double cs_g = src[1] / 255.0, cd_g = dst[1] / 255.0;
         const double cs_b = src[2] / 255.0, cd_b = dst[2] / 255.0;
+        // One composite for both kinds of B: per channel, or a colour of
+        // three (the six that mix the channels).
+        double b[3];
+        if (qa_stroke_blend_is_triple(mode)) {
+          qa_stroke_blend_triple(mode, src, dst, b);
+        } else {
+          b[0] = qa_stroke_blend_channel(mode, cs_r, cd_r);
+          b[1] = qa_stroke_blend_channel(mode, cs_g, cd_g);
+          b[2] = qa_stroke_blend_channel(mode, cs_b, cd_b);
+        }
         out_r = qa_stroke_clamp_byte(
             (as_ * (1.0 - ad) * cs_r + ad * (1.0 - as_) * cd_r +
-             as_ * ad * qa_stroke_blend_channel(mode, cs_r, cd_r)) /
+             as_ * ad * b[0]) /
             ao);
         out_g = qa_stroke_clamp_byte(
             (as_ * (1.0 - ad) * cs_g + ad * (1.0 - as_) * cd_g +
-             as_ * ad * qa_stroke_blend_channel(mode, cs_g, cd_g)) /
+             as_ * ad * b[1]) /
             ao);
         out_b = qa_stroke_clamp_byte(
             (as_ * (1.0 - ad) * cs_b + ad * (1.0 - as_) * cd_b +
-             as_ * ad * qa_stroke_blend_channel(mode, cs_b, cd_b)) /
+             as_ * ad * b[2]) /
             ao);
         out_a = qa_stroke_clamp_byte(ao);
       }
@@ -3143,7 +3336,7 @@ QA_EXPORT void qa_tile_alpha_bounds(
 enum {
   QA_PRE_BLEND_SRC_OVER = 0,  // plain colour: the stamp kernel's srcOver
   QA_PRE_BLEND_ERASE = 1,     // eraser / 소거: the stamp kernel's dstOut
-  QA_PRE_BLEND_STROKE = 2,    // the 13 brush blends (mode = QA_STROKE_BLEND_*)
+  QA_PRE_BLEND_STROKE = 2,    // every other blend (mode = QA_STROKE_BLEND_*)
 };
 
 // Pixels of masked stroke staged per pass. Rows longer than this are
@@ -6209,4 +6402,8 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v50: qa_audio_device_play gains lead_samples - a run started that much
 // silence ahead of its first sample, so that sample is heard as its first
 // picture is shown.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 50; }
+// v51: the stroke kernel's mode ids 13-25 - seven separable blends Photoshop
+// and Clip Studio add (linear burn ... divide), which the dual mask reads
+// too, and six that mix the three channels (qa_stroke_blend_triple). An
+// older engine would take an id it does not know for exclusion.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 51; }

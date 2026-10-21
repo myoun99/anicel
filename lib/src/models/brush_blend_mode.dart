@@ -7,10 +7,16 @@ import 'separable_blend_mode.dart';
 /// Distinct from the layer blend: this decides how a STROKE lands on the
 /// active cel's pixels — [color] is plain srcOver (the default), [behind]
 /// paints only where the cel is still empty (PS 'Behind'), [erase] uses
-/// the brush as an eraser (rides the existing dab erase flag), and the
-/// separable modes share the layer vocabulary. Applied ONCE per stroke at
-/// pen-up (never dab-by-dab — overlapping dabs must not double-apply),
-/// with the live overlay previewing through the matching ui.BlendMode.
+/// the brush as an eraser (rides the existing dab erase flag), the
+/// separable modes share the layer vocabulary, and the six from
+/// [darkerColor] on mix the three channels — the brush's own. Applied ONCE
+/// per stroke at pen-up (never dab-by-dab — overlapping dabs must not
+/// double-apply), with the live overlay pre-blended by the same kernel
+/// (R27 #4).
+///
+/// The ORDER is the list the blend flyout shows and the order its default
+/// shortcuts F1–F12 are handed out in (I-31): the three heads, then Clip
+/// Studio's 合成モード order (brush-fidelity-Q5).
 ///
 /// ⛔R26 #10 called this a HAND setting that preset application carries over
 /// unchanged. That ruling is RETIRED — 유저 2026-09-08: 「툴/손 설정 구분
@@ -33,6 +39,8 @@ enum BrushBlendMode {
   darken,
   multiply,
   colorBurn,
+  linearBurn,
+  subtract,
   lighten,
   screen,
   colorDodge,
@@ -41,18 +49,39 @@ enum BrushBlendMode {
   softLight,
   hardLight,
   difference,
-  exclusion;
+  vividLight,
+  linearLight,
+  pinLight,
+  hardMix,
+  exclusion,
+  darkerColor,
+  lighterColor,
+  divide,
+  hue,
+  saturation,
+  // ⚠️Photoshop's and Clip Studio's "Color" (カラー): [color] already
+  // names 通常, the default every stored brush carries.
+  chroma,
+  luminosity;
 
   /// The shared separable data for this mode, or `null` for the three
-  /// porter-duff-style heads ([color]/[behind]/[erase]). The separable
-  /// vocabulary (GPU blend + labels) lives once on [SeparableBlendMode].
+  /// porter-duff-style heads ([color]/[behind]/[erase]) and the six that
+  /// mix the channels. The separable vocabulary (GPU blend + labels) lives
+  /// once on [SeparableBlendMode].
   SeparableBlendMode? get separable => SeparableBlendMode.forName(name);
 
-  /// Whether this mode composites through the SEPARABLE blend kernel at
-  /// commit (everything except the three porter-duff-style modes).
-  bool get isSeparable => separable != null;
+  /// Whether this mode lands through the STROKE BLEND KERNEL — the whole
+  /// stroke blended once against the cel (BB-1) — rather than the ordinary
+  /// stamp kernels: everything but [color]'s srcOver and [erase]'s dstOut.
+  ///
+  /// ↩️This was `isSeparable`, asked together with `== behind` at its one
+  /// caller — the same set while every mode the kernel took was separable
+  /// or [behind]. The six that mix the channels are neither, and a stamp
+  /// blending through one would have gone dab by dab as plain colour.
+  bool get blendsTheWholeStroke => this != color && this != erase;
 
-  /// The GPU BlendMode this brush mode maps to.
+  /// The GPU BlendMode this brush mode maps to, or null where the GPU has
+  /// none (seven separable modes and darker/lighter colour).
   ///
   /// R27 #4: live STROKES no longer preview through this — every
   /// non-[color] mode pre-blends its overlay tiles with the commit's own
@@ -60,10 +89,15 @@ enum BrushBlendMode {
   /// while drawing ARE the committed pixels, byte for byte. This mapping
   /// remains for [color]'s plain srcOver and as the identity the painter
   /// keys its fallback branch on.
-  BlendMode get previewBlendMode => switch (this) {
+  BlendMode? get previewBlendMode => switch (this) {
     color => BlendMode.srcOver,
     behind => BlendMode.dstOver,
     erase => BlendMode.dstOut,
+    darkerColor || lighterColor => null,
+    hue => BlendMode.hue,
+    saturation => BlendMode.saturation,
+    chroma => BlendMode.color,
+    luminosity => BlendMode.luminosity,
     _ => separable!.blendMode,
   };
 
@@ -75,10 +109,20 @@ enum BrushBlendMode {
   /// blend-mode-names-language-Q1: 「블렌드 모드도 모든 언어로 번역」), keyed
   /// by `name` in the string tables — `BrushBlendModeWords` in
   /// `ui/text/model_vocabulary.dart`, which a model cannot import.
+  ///
+  /// ↩️[color] read 'Color' from BB-1 (07-22) on — its enum name, where every
+  /// other language reads "normal" (通常 · 표준 · Normal · 正常). It reads
+  /// 'Normal' since [chroma] brought Photoshop's own 'Color' into the list.
   String get label => switch (this) {
-    color => 'Color',
+    color => 'Normal',
     behind => 'Behind',
     erase => 'Erase',
+    darkerColor => 'Darker Color',
+    lighterColor => 'Lighter Color',
+    hue => 'Hue',
+    saturation => 'Saturation',
+    chroma => 'Color',
+    luminosity => 'Luminosity',
     _ => separable!.label,
   };
 
