@@ -644,7 +644,8 @@ void _layPreviewDab(
   final opacity = dab.opacity;
   final evening = eveningTableOf(dab);
   forEachBrushPixelCoverage(dab, (x, y, coverage) {
-    if (x >= width || y >= height) {
+    // A spray throws dabs past every edge of the row, not only the far two.
+    if (x < 0 || y < 0 || x >= width || y >= height) {
       return;
     }
     final index = y * width + x;
