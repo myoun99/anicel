@@ -199,7 +199,7 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// A finished SHAPE-TOOL drag (I-69): the path the host draws as the
   /// tool is set to — a stroke of the brush in hand, the tool's own plain
   /// line, or the shape's inside — with every copy the symmetry guide makes
-  /// of it, the original first ([_guideCopiesOf]). The
+  /// of it, the original first ([drawnCopiesOf]). The
   /// selection is not touched, and the undo it leaves behind is that one
   /// mark's.
   ///
@@ -2761,7 +2761,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             ),
         );
         if (widget.tool == CanvasSelectionTool.drawShape) {
-          widget.onDrawShapeDragged?.call(_drawnCopies(drag.path()));
+          widget.onDrawShapeDragged?.call(
+            drawnCopiesOf(drag.path(), _guideCarries),
+          );
         }
       case MoveDrag():
         setState(() {
@@ -3202,7 +3204,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (widget.tool == CanvasSelectionTool.drawShape) {
       // The one verb that takes the PATH: a line has no outline to commit,
       // and what the drag traced is drawn rather than folded into anything.
-      final copies = _drawnCopies(drag.path());
+      final copies = drawnCopiesOf(drag.path(), _guideCarries);
       if (copies != null) {
         widget.onDrawShape?.call(copies);
       } else {
@@ -3231,15 +3233,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => dragged(null));
   }
-
-  /// [path] and every copy the guide makes of it, the original first — or
-  /// null for no path (a drag too small to have meant a shape).
-  List<DrawnShapePath>? _drawnCopies(DrawnShapePath? path) => path == null
-      ? null
-      : [
-          for (final points in _guideCopiesOf(path.points))
-            (points: points, closed: path.closed),
-        ];
 
   /// Where every finished outline lands, whoever traced it — a marquee
   /// drag, a lasso, or a closed polygon. The tracing is the only part that
@@ -3321,7 +3314,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return const [];
     }
     return [
-      for (final points in _guideCopiesOf(drawn.points))
+      for (final points in guideCopiesOf(drawn.points, _guideCarries))
         if (identical(points, drawn.points))
           drawn
         else
@@ -3339,29 +3332,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           CanvasSelectionRegion.shape(copy),
       ]);
 
-  /// [points] and every copy the symmetry guide makes of them, the
-  /// original first and itself — [_symmetryCopies] for a path, which is
-  /// what the shape tool draws and what a trace still being dragged is.
-  List<List<CanvasPoint>> _guideCopiesOf(List<CanvasPoint> points) {
-    final carries = _guideCarries;
-    if (carries.isEmpty) {
-      return [points];
-    }
-    return [
-      for (final copy in carries)
-        if (copy.isIdentity)
-          points
-        else
-          [for (final point in points) copy.apply(point)],
-    ];
-  }
-
-  /// The carries [_guideCopiesOf] makes its copies by, in its order — the
-  /// first the identity; none without a guide.
-  List<GuideTransform> get _guideCarries {
-    final symmetry = widget.guides?.actingSymmetry;
-    return symmetry == null ? const [] : symmetryTransforms(symmetry);
-  }
+  /// The carries this layer's guide makes its copies by
+  /// ([guideCopiesOf], [drawnCopiesOf]) — the first the identity; none
+  /// without a guide.
+  List<GuideTransform> get _guideCarries => guideCarriesOf(widget.guides);
 
   /// Adopts a committed region — called by the selection history command
   /// on execute/undo/redo (and directly without a history host).
@@ -3746,10 +3720,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // makes of it, the promise [marqueeShapes] keeps for an
             // outline; the polygon's band rides each copy's carry to the
             // cursor (a-polygon-being-tapped-shows-no-copies).
-            openTrails: _guideCopiesOf(
+            openTrails: guideCopiesOf(
               _tapsVertices
                   ? widget.selectionCommands?.polygonPoints ?? const []
                   : _marqueeDrag?.openTrail ?? const [],
+              _guideCarries,
             ),
             trailCarries: _guideCarries,
             // TS6: from the FIRST vertex, not from the third. It used

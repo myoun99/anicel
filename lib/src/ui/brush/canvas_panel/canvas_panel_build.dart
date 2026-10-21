@@ -141,15 +141,24 @@ class _PanelBuild {
   /// ⚠️As an ANCESTOR of the deck, so it hears a press whichever tool's
   /// layer took it — and after every control floating on the canvas has
   /// claimed its own (pointer-down is dispatched deepest-first).
+  ///
+  /// The line from the last stroke stands the deck down the same way while
+  /// it is in force (I-119) — the drawing view would draw — and the census
+  /// hears its press ([_CanvasPanelLine]).
   Widget _cursorDeck(BuildContext context) => ViewHoldGate(
-    child: Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerHover: _state._mappedButtons.hover,
-      onPointerDown: _state._mappedButtons.down,
-      onPointerMove: _state._mappedButtons.move,
-      onPointerUp: _state._mappedButtons.up,
-      onPointerCancel: _state._mappedButtons.up,
-      child: _toolDeck(context),
+    child: ValueListenableBuilder<bool>(
+      valueListenable: _state._line.inForce,
+      builder: (context, inForce, deck) =>
+          IgnorePointer(ignoring: inForce, child: deck),
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerHover: _state._mappedButtons.hover,
+        onPointerDown: _state._mappedButtons.down,
+        onPointerMove: _state._mappedButtons.move,
+        onPointerUp: _state._mappedButtons.up,
+        onPointerCancel: _state._mappedButtons.up,
+        child: _toolDeck(context),
+      ),
     ),
   );
 
@@ -236,6 +245,13 @@ class _PanelBuild {
         // above owns all interaction.
         if (idleSelection != null)
           _state._idleSelectionAnts(idleSelection),
+        // I-119: the line from the last stroke's ants. Always in the deck —
+        // they draw nothing while there is no line — and keyed, so the
+        // tool layers above coming and going never make them anew.
+        Positioned.fill(
+          key: const ValueKey<String>('line-from-the-last-stroke-ants'),
+          child: _state._line.ants(),
+        ),
         // F-222: the standing row's box sits over every tool, and claims the
         // presses that are its own ([BrushCanvasPanel.viewportControlsBuilder]).
         // Keyed: the tool layers above come and go with the tool, and a grab
@@ -458,6 +474,7 @@ class _PanelBuild {
                           event.localPosition,
                           kind: event.kind,
                         );
+                        _state._line.press(event);
                       },
                       onPointerMove: (event) => _state._noteCanvasPointer(
                         event.localPosition,
@@ -472,8 +489,16 @@ class _PanelBuild {
                       // the ring stayed where the hand had
                       // been — for ever. For those, the
                       // contact ending IS the exit.
-                      onPointerUp: _state._tap.endCanvasPointer,
-                      onPointerCancel: _state._tap.endCanvasPointer,
+                      // The line from the last stroke lands where its
+                      // press lets go (I-119), before the aim is let go.
+                      onPointerUp: (event) {
+                        _state._line.letGo(event);
+                        _state._tap.endCanvasPointer(event);
+                      },
+                      onPointerCancel: (event) {
+                        _state._line.letGo(event);
+                        _state._tap.endCanvasPointer(event);
+                      },
                       child: _cursorDeck(context),
                     ),
                   ),

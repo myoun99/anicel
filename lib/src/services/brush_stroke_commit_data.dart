@@ -4,6 +4,7 @@ import '../models/placed_tile.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
+import '../models/canvas_point.dart';
 import '../models/dirty_region.dart';
 
 /// A finished stroke handed from the interactive canvas to the commit route.
@@ -39,6 +40,7 @@ class BrushStrokeCommitData {
     this.strokeOpacity = 1,
     this.promotedBase,
     this.promotedTiles,
+    this.end,
   }) : sourceDabs = List<BrushDab>.unmodifiable(sourceDabs);
 
   final List<BrushDab> sourceDabs;
@@ -62,4 +64,13 @@ class BrushStrokeCommitData {
   /// Finished tiles ready to adopt (only the coordinates whose pixels
   /// actually differ from [promotedBase]).
   final List<PlacedTile>? promotedTiles;
+
+  /// Where the stroke's path ended, in its dabs' space — the point the
+  /// line from the last stroke starts at (I-119: 「저번에 찍은 마지막 dab?
+  /// 점 부터」). Null for a mark that was not drawn along a path: a fill, a
+  /// stamp, a shape's area.
+  ///
+  /// ⚠️The path's own end, not the last dab's centre: a symmetry guide's
+  /// copies are among [sourceDabs], and the last of them may be a mirror's.
+  final CanvasPoint? end;
 }

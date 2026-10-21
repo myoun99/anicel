@@ -266,6 +266,8 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
         // 2026-10-03): 「올가미선택을 x로두고 z는 비워두도록. 언두 실수할때
         // z만 누르거나하니까」 — so bare Z presses NOTHING, on purpose: it
         // is the key a hand lands on when Ctrl slips off an undo.
+        // ↩️I-119 holds it for the line from the last stroke, which lays
+        // nothing until a click — asked on the board (I-119-Q3).
         if (verb == CanvasTool.select && shape == CanvasShapeKind.lasso)
           const SingleActivator(LogicalKeyboardKey.keyX),
         // 🗣️I-63 ⑤ (유저 2026-10-04, F-279): 「올가미채우기를 y로」.
@@ -733,6 +735,9 @@ abstract final class EditorActionIds {
   /// shortcut ([EditorActionDefinition.hold]).
   static const canvasPanHold = 'canvas-pan-hold';
   static const canvasRotateHold = 'canvas-rotate-hold';
+
+  /// 「직전 획에서 직선」 (I-119), held as the pan is.
+  static const canvasLineHold = 'canvas-line-hold';
   static const playbackToggle = 'playback-toggle';
 
   /// The sill transport's 「처음으로」 (F-261).
@@ -1123,6 +1128,22 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true),
     ],
+  ),
+  // 🗣️I-119 (유저 2026-10-21): 「브러시 도구(브러시,지우개) 전용기능,
+  // 컨트롤키 누르고있으면 저번에 찍은 마지막 dab? 점 부터 현재 호버중인
+  // 커서까지 라이브로 직선 보여주고 … 거기서 찍으면 직선 그림」 — held, as
+  // the pan is. ↩️Asked for on Ctrl, which is every shortcut's modifier
+  // too; I-119-Q1: 「그럼 컨트롤 말고 다른 키로 배치하자. 추천대로」 — Z, the
+  // one letter left free under the left hand. ⚠️Bare Z was left free ON
+  // PURPOSE (I-63, the lasso tile's key above); whether the line may have
+  // it is asked on the board (I-119-Q3). Clip Studio and TVPaint have no
+  // key for this, so their presets leave it without one (F-417-Q1).
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasLineHold,
+    label: 'Line from the Last Stroke (hold)',
+    shelf: ShortcutShelf.edit,
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyZ)],
+    hold: true,
   ),
   // I-40: the stamp's three buttons — under Edit, where a paste in place
   // and a picture made a brush stand in the programs people come from.

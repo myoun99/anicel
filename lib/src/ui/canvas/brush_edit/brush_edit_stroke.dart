@@ -640,6 +640,10 @@ class _BrushEditStroke {
     }
     final promotable = base != null && base.tileSize == rasterizer.tileSize;
     final sourceDabs = List.of(_state._collectedDabs);
+    // Where the line went last — through the lock, the stabiliser's catch-up
+    // and the tool's waypoints alike — and so where the next line from the
+    // last stroke starts (I-119).
+    final end = _state._previousRawCanvasPosition;
     if (!promotable) {
       // Without promotion (a host whose overlay grid differs from its
       // surface's) the classic payload still commits correctly: a
@@ -653,6 +657,7 @@ class _BrushEditStroke {
           // F-12: the ceiling the live overlay has been drawing THROUGH —
           // the buffer route is exactly where it has not been applied yet.
           strokeOpacity: rasterizer.strokeOpacity,
+          end: end,
         ),
       );
       rasterizer.clear();
@@ -686,6 +691,7 @@ class _BrushEditStroke {
         // down on another cel (confirm-button) — and a stroke re-derived
         // without its ceiling lands at full strength.
         strokeOpacity: rasterizer.strokeOpacity,
+        end: end,
       ),
     );
   }

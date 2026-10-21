@@ -3663,6 +3663,7 @@ enum AppStrings {
     'shortcutAction.playback-loop-toggle': 'ループ / 1回再生',
     'shortcutAction.canvas-pan-hold': '移動（押している間）',
     'shortcutAction.canvas-rotate-hold': '回転（押している間）',
+    'shortcutAction.canvas-line-hold': '直前のストロークから直線（押している間）',
     'shortcutAction.voice-record-toggle': '音声収録（開始/停止）',
     'shortcutAction.edit-undo': '元に戻す',
     'shortcutAction.edit-redo': 'やり直す',
@@ -5264,6 +5265,7 @@ enum AppStrings {
     'shortcutAction.playback-loop-toggle': '반복 / 한 번 재생',
     'shortcutAction.canvas-pan-hold': '이동(누르는 동안)',
     'shortcutAction.canvas-rotate-hold': '회전(누르는 동안)',
+    'shortcutAction.canvas-line-hold': '직전 획에서 직선(누르는 동안)',
     'shortcutAction.voice-record-toggle': '음성 녹음 (시작/정지)',
     'shortcutAction.edit-undo': '실행 취소',
     'shortcutAction.edit-redo': '다시 실행',
@@ -6902,6 +6904,8 @@ enum AppStrings {
     'shortcutAction.playback-loop-toggle': 'Boucle / lecture unique',
     'shortcutAction.canvas-pan-hold': 'Déplacer (maintenir)',
     'shortcutAction.canvas-rotate-hold': 'Pivoter (maintenir)',
+    'shortcutAction.canvas-line-hold':
+        'Ligne depuis le dernier trait (maintenir)',
     'shortcutAction.voice-record-toggle':
         'Enregistrer la voix (démarrer/arrêter)',
     'shortcutAction.edit-undo': 'Annuler',
@@ -8544,6 +8548,7 @@ enum AppStrings {
     'shortcutAction.playback-loop-toggle': '循环 / 单次播放',
     'shortcutAction.canvas-pan-hold': '移动（按住）',
     'shortcutAction.canvas-rotate-hold': '旋转（按住）',
+    'shortcutAction.canvas-line-hold': '从上一笔画直线（按住）',
     'shortcutAction.voice-record-toggle': '录音（开始/停止）',
     'shortcutAction.edit-undo': '撤销',
     'shortcutAction.edit-redo': '重做',

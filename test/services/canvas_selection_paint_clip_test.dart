@@ -332,6 +332,21 @@ void main() {
         surface: landedSince,
       )!;
       expect(landed.promotedTiles, isNull);
+      expect(
+        clipStrokeCommitToSelection(
+          BrushStrokeCommitData(
+            sourceDabs: [dab(10, 10)],
+            promotedBase: base,
+            promotedTiles: const [],
+            end: CanvasPoint(x: 10, y: 10),
+          ),
+          region: regionRect(0, 0, 20, 64),
+          surface: landedSince,
+        )!.end,
+        CanvasPoint(x: 10, y: 10),
+        reason: 'clipped, it is the same stroke, and ended where it did '
+            '(I-119)',
+      );
       final pixels = landed.strokePixels!;
       final bounds = landed.strokeBounds!;
       expect(alphaAt(pixels, bounds, 10, 10), 255);

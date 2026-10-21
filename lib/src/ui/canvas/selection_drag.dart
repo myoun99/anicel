@@ -5,6 +5,8 @@ import '../../models/canvas_shape_kind.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/guide_geometry.dart'
+    show GuideTransform, symmetryTransforms;
 import '../../services/guide_stroke_input.dart';
 import '../../services/shape_ratio_lock.dart';
 
@@ -41,6 +43,44 @@ sealed class SelectionDrag {
 /// What a verb that DRAWS a traced shape strokes: its [points] in order,
 /// and whether the stroke comes back to the first of them.
 typedef DrawnShapePath = ({List<CanvasPoint> points, bool closed});
+
+/// The carries [guides]' symmetry makes its copies by, in order — the first
+/// the identity; none without a symmetry.
+List<GuideTransform> guideCarriesOf(CutGuides? guides) {
+  final symmetry = guides?.actingSymmetry;
+  return symmetry == null ? const [] : symmetryTransforms(symmetry);
+}
+
+/// [points] and every copy [carries] make of them, the original first and
+/// itself — what a symmetry guide makes of a path drawn, and of a trace
+/// still being dragged.
+List<List<CanvasPoint>> guideCopiesOf(
+  List<CanvasPoint> points,
+  List<GuideTransform> carries,
+) {
+  if (carries.isEmpty) {
+    return [points];
+  }
+  return [
+    for (final copy in carries)
+      if (copy.isIdentity)
+        points
+      else
+        [for (final point in points) copy.apply(point)],
+  ];
+}
+
+/// [path] and every copy [carries] make of it, the original first — or
+/// null for no path (a drag too small to have meant a shape).
+List<DrawnShapePath>? drawnCopiesOf(
+  DrawnShapePath? path,
+  List<GuideTransform> carries,
+) => path == null
+    ? null
+    : [
+        for (final points in guideCopiesOf(path.points, carries))
+          (points: points, closed: path.closed),
+      ];
 
 /// The marquee/lasso drag: the tools that TRACE a new outline.
 ///

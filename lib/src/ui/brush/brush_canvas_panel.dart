@@ -70,6 +70,7 @@ import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/landing_preview.dart';
 import '../canvas/selection_float_overlay.dart';
+import '../canvas/canvas_line_hold.dart';
 import '../canvas/canvas_view_hold.dart';
 import '../canvas/canvas_press.dart';
 import '../canvas/canvas_tool_holds.dart';
@@ -99,7 +100,8 @@ import 'eyedropper_swatch_painter.dart' show eyedropperSwatchLook;
 import 'tool_cursor_look.dart';
 import 'tool_cursor_sprite.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
-import '../canvas/selection_drag.dart' show DrawnShapePath;
+import '../canvas/selection_drag.dart'
+    show DrawnShapePath, MarqueeDrag, drawnCopiesOf, guideCarriesOf;
 import '../../services/layer_pose_paint.dart';
 import '../../services/layer_pose_matrix.dart' show placedCorners;
 import 'brush_canvas_defaults.dart';
@@ -144,6 +146,7 @@ part 'canvas_panel/canvas_panel_tap.dart';
 part 'canvas_panel/canvas_panel_lift.dart';
 part 'canvas_panel/canvas_panel_mapped_buttons.dart';
 part 'canvas_panel/canvas_panel_text.dart';
+part 'canvas_panel/canvas_panel_line.dart';
 part 'canvas_panel/canvas_panel_book.dart';
 part 'canvas_panel/canvas_panel_viewport.dart';
 part 'canvas_panel/viewport_bottom_bar_build.dart';
@@ -1359,6 +1362,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// A brush change reaches the tree only when the tool or its shape moved.
   void _handleBrushChanged() {
+    // The line from the last stroke is the painting tools' (I-119): it goes
+    // with them, and comes back with them while its key is held.
+    _line.refresh();
     if (_followStructure() && mounted) {
       setState(() {});
     }
@@ -1391,6 +1397,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _viewportState.bindViewCommands();
     _hearTheHand();
     CanvasViewHold.held.addListener(_onViewHoldChanged);
+    _line.bind();
     _viewportState._listenedViewport = _viewportState.viewportNotifier
       ..addListener(_viewportState.handleViewportMovedByOwner);
     _bookState.bind();
@@ -1518,7 +1525,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// mounted selection layer runs its own ticker.
   void _syncIdleAnts() {
     _paintedIdleRegion = _selectionSeat.idleSelectionRegion;
-    final show = _paintedIdleRegion != null;
+    _runPanelAnts();
+  }
+
+  /// The ants this panel paints march while any are on screen — the idle
+  /// selection's, or the line from the last stroke's (I-119), which rides
+  /// the same phase.
+  void _runPanelAnts() {
+    final show = _paintedIdleRegion != null || _line.trails.value.isNotEmpty;
     if (show && !_idleAnts.isAnimating) {
       unawaited(_idleAnts.repeat());
     } else if (!show && _idleAnts.isAnimating) {
@@ -1579,6 +1593,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     )) {
       widget.lastStroke?.reinputHandler = null;
     }
+    _line.unbind();
     _idleAnts.dispose();
     _selectionFloat.dispose();
     _toolCursorHover.dispose();
@@ -2351,6 +2366,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
+    _line.heard(strokeData);
   }
 
   // The lift (Round 6): anchors, the pre-landing surface, and how a lift ends.
@@ -2358,6 +2374,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   // The text tool (R9-rest): the hand it holds a text with, and its layer.
   late final _CanvasPanelText _text = _CanvasPanelText(this);
+
+  // The line from the last stroke (I-119): its start, its press, its ants.
+  late final _CanvasPanelLine _line = _CanvasPanelLine(this);
 
   /// What a session of the selection layer belongs to
   /// ([CanvasSelectionLayer.frameToken]) — the cels a lift takes up here
@@ -2697,7 +2716,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   ///   fill lands by ([ShapeShow.land]). Where two copies overlap the area
   ///   is covered once (유저 답 I-69-Q6: 「따른다 — 도형 채우기도 같이
   ///   맞춘다」).
-  void _drawTracedShape(List<DrawnShapePath> copies) {
+  void _drawTracedShape(List<DrawnShapePath> copies) =>
+      _landTraced(copies, asStroke: _brush.shapeDrawsWithTheBrush);
+
+  /// The shape a shape-tool drag has traced SO FAR — [copies], as
+  /// [_drawTracedShape] takes them — shown under its outline as it will
+  /// land, or taken back when there is none (유저 답 I-69-Q4ⓒ: 「윤곽선은 손을
+  /// 따라오고, 실제 결과는 따라 그린다」).
+  void _showTracedShape(List<DrawnShapePath>? copies) =>
+      _showTraced(copies, asStroke: _brush.shapeDrawsWithTheBrush);
+
+  /// Lands [copies] — a traced path and every copy the guide made of it,
+  /// the original first — as ONE STROKE of the tool in hand where
+  /// [asStroke], and as ONE AREA where not ([_drawTracedShape]). The shape
+  /// tool's line and the line from the last stroke (I-119) both land here:
+  /// 「도형도구의 직선이랑 최대한 동일하게 로직 재사용. 법 통일」.
+  void _landTraced(List<DrawnShapePath> copies, {required bool asStroke}) {
     final show = _contentShape?.show ?? _shapeShow.now;
     final onTheRow = _onTheRow(copies);
     _contentShape = null;
@@ -2708,18 +2742,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       show.drop();
       return;
     }
-    if (_brush.shapeDrawsWithTheBrush) {
+    if (asStroke) {
       show.landStroke(_tracedStroke(onTheRow));
       return;
     }
     show.land(_tracedArea(onTheRow));
   }
 
-  /// The shape a shape-tool drag has traced SO FAR — [copies], as
-  /// [_drawTracedShape] takes them — shown under its outline as it will
-  /// land, or taken back when there is none (유저 답 I-69-Q4ⓒ: 「윤곽선은 손을
-  /// 따라오고, 실제 결과는 따라 그린다」).
-  void _showTracedShape(List<DrawnShapePath>? copies) {
+  /// [_landTraced]'s show: [copies] traced so far, shown as they will land
+  /// — or, null, taken back ([_showTracedShape]).
+  void _showTraced(List<DrawnShapePath>? copies, {required bool asStroke}) {
     final show = _contentShape?.show ?? _shapeShow.now;
     if (copies == null) {
       // The drag is over without a shape: what its press took goes too.
@@ -2733,7 +2765,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       show.drop();
       return;
     }
-    if (_brush.shapeDrawsWithTheBrush) {
+    if (asStroke) {
       show.showStroke(_tracedStroke(onTheRow));
       return;
     }
