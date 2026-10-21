@@ -2967,7 +2967,7 @@ class _StoryboardRailRows {
         track,
         layer,
         row.lane!,
-        (shown, lane) => _StoryboardLaneStripRow(
+        (_, lane) => _StoryboardLaneStripRow(
           rowKey:
               'storyboard-se-lane-row-$trackIndex-${slot + 1}-${lane.laneId}',
           // The Audio band draws the in-flight take while one rolls (REC1-C,
@@ -2975,7 +2975,7 @@ class _StoryboardRailRows {
           // repository row's, in lockstep with the labels.
           carrier: laneIsSeAudio(lane)
               ? (_state._seDisplayAt(track, slot) ?? layer)
-              : shown,
+              : layer,
           lane: lane,
           width: width,
           height: height,
