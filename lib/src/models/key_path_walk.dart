@@ -1,9 +1,7 @@
 import 'dart:collection';
-import 'dart:math' as math;
 import 'dart:ui' show Offset;
 
 import '../core/cubic_curve.dart';
-import '../core/turn_trig.dart';
 import 'canvas_point.dart';
 import 'property_track.dart';
 
@@ -37,50 +35,20 @@ SegmentWalk<CanvasPoint> keyPathBetween(
 }
 
 /// How far, and which way, the path's handle at the key at [frame] of
-/// [keys] reaches out of it — [ahead], towards the key after it, or behind,
-/// towards the key before:
-///
-/// - a corner ([KeyPath.straight]) has none;
-/// - handles the hand placed reach as it left them: a joined pair
-///   ([JoinedPath]) along its one line, a split pair ([SplitPath]) each its
-///   own way;
-/// - an auto key ([KeyPath.auto]) lies along the line from the key before
-///   it to the key after it, reaching a third of the way to the neighbour
-///   on that side — none at the first and the last key, which have no
-///   line to lie along, nor where the two neighbours stand at one point.
-///   ⚠️The third is this round's choice — the reach at which a straight
-///   run's controls sit evenly on it; how far After Effects' own auto
-///   bezier reaches was not read.
+/// [keys] reaches out of it ([KeyPath.reach]) — [ahead], towards the key
+/// after it, or behind, towards the key before.
 Offset keyPathHandle(
   SplayTreeMap<int, PropertyKey<CanvasPoint>> keys,
   int frame, {
   required bool ahead,
 }) {
-  final key = keys[frame]!;
-  switch (key.path) {
-    case StraightPath():
-      return Offset.zero;
-    case JoinedPath(:final degrees, ahead: final front, :final behind):
-      final way = Offset(turnCos(degrees), turnSin(degrees));
-      return ahead ? way * front : way * -behind;
-    case SplitPath(ahead: final front, :final behind):
-      final reach = ahead ? front : behind;
-      return Offset(reach.x, reach.y);
-    case AutoPath():
-      final before = keys.lastKeyBefore(frame);
-      final after = keys.firstKeyAfter(frame);
-      if (before == null || after == null) {
-        return Offset.zero;
-      }
-      final previous = keys[before]!.value;
-      final next = keys[after]!.value;
-      final through = Offset(next.x - previous.x, next.y - previous.y);
-      if (through == Offset.zero) {
-        return Offset.zero;
-      }
-      final reach = (ahead ? next : previous).distanceTo(key.value) / 3;
-      return through / through.distance * (ahead ? reach : -reach);
-  }
+  final (:at, :before, :after) = keyStanding(keys, frame);
+  return keys[frame]!.path.reach(
+    ahead: ahead,
+    at: at,
+    before: before,
+    after: after,
+  );
 }
 
 /// The path the key at [frame] of [keys] walks once the hand has carried
@@ -110,28 +78,15 @@ KeyPath keyPathPulled(
   }
   final other = keyPathHandle(keys, frame, ahead: !ahead).distance;
   final front = ahead ? reach : -reach;
+  final (:at, :before, :after) = keyStanding(keys, frame);
   return JoinedPath(
-    degrees: front == Offset.zero ? _wayOf(keys, frame) : _degrees(front),
+    degrees: front == Offset.zero
+        ? keys[frame]!.path.wayAhead(at: at, before: before, after: after)
+        : handleDegrees(front),
     ahead: ahead ? reach.distance : other,
     behind: ahead ? other : reach.distance,
   );
 }
-
-/// The way, in degrees, the handle ahead of the key at [frame] of [keys]
-/// points as the key lies — or, where it reaches nowhere, away from the one
-/// behind; along the canvas's x axis where neither reaches.
-double _wayOf(SplayTreeMap<int, PropertyKey<CanvasPoint>> keys, int frame) {
-  if (keys[frame]!.path case JoinedPath(:final degrees)) {
-    return degrees;
-  }
-  final front = keyPathHandle(keys, frame, ahead: true);
-  final way = front != Offset.zero
-      ? front
-      : -keyPathHandle(keys, frame, ahead: false);
-  return way == Offset.zero ? 0 : _degrees(way);
-}
-
-double _degrees(Offset way) => way.direction * 180 / math.pi;
 
 /// A curved key's handles as the canvas draws them (I-89 ④, the mock's
 /// 5판 · ②): the key at [frame], standing [at], where its handle [ahead]

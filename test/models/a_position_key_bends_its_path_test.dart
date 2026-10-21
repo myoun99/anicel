@@ -345,6 +345,98 @@ void main() {
     });
   });
 
+  group('the key window turns a key into any of AE\'s four '
+      '(anchor-walks-a-path-Q4)', () {
+    // A key at (100, 0) between (0, 0) and (100, 60): the handles its
+    // neighbours lay reach along (100, 60) — 60 / 3 ahead, 100 / 3 behind.
+    final at = p(100, 0);
+    final before = p(0, 0);
+    final after = p(100, 60);
+    const through = Offset(100, 60);
+    final laidAhead = through / through.distance * 20;
+    final laidBehind = through / through.distance * -(100 / 3);
+    const joined = JoinedPath(degrees: 90, ahead: 12, behind: 5);
+
+    KeyPath turned(KeyPath path, KeyPathKind kind) =>
+        path.turned(kind, at: at, before: before, after: after);
+    Offset handle(KeyPath path, {required bool ahead}) =>
+        path.reach(ahead: ahead, at: at, before: before, after: after);
+
+    test('each path says which of the four it is', () {
+      expect(KeyPath.straight.kind, KeyPathKind.linear);
+      expect(placed(1, 1).kind, KeyPathKind.bezier);
+      expect(joined.kind, KeyPathKind.continuousBezier);
+      expect(KeyPath.auto.kind, KeyPathKind.autoBezier);
+    });
+
+    test('a corner or an auto key made a bezier, split or joined, starts '
+        'from the handles its neighbours lay', () {
+      for (final from in [KeyPath.straight, KeyPath.auto]) {
+        final split = turned(from, KeyPathKind.bezier);
+        final continuous = turned(from, KeyPathKind.continuousBezier);
+        expect(split, isA<SplitPath>(), reason: '$from');
+        expect(continuous, isA<JoinedPath>(), reason: '$from');
+        for (final made in [split, continuous]) {
+          expectNear(handle(made, ahead: true), laidAhead);
+          expectNear(handle(made, ahead: false), laidBehind);
+        }
+      }
+    });
+
+    test('a joined pair split keeps its two handles as they reach', () {
+      expect(
+        turned(joined, KeyPathKind.bezier),
+        SplitPath(ahead: p(0, 12), behind: p(0, -5)),
+      );
+    });
+
+    test('a split pair joined lines the one behind up with the one ahead, '
+        'each keeping its length', () {
+      final split = SplitPath(ahead: p(3, 4), behind: p(12, 0));
+      final made = turned(split, KeyPathKind.continuousBezier) as JoinedPath;
+      expect(made.ahead, 5);
+      expect(made.behind, 12);
+      expectNear(handle(made, ahead: true), const Offset(3, 4));
+      expectNear(handle(made, ahead: false), const Offset(-3, -4) / 5 * 12);
+      final noAhead = SplitPath(ahead: p(0, 0), behind: p(0, -7));
+      expectNear(
+        handle(turned(noAhead, KeyPathKind.continuousBezier), ahead: false),
+        const Offset(0, -7),
+      );
+    });
+
+    test('made a corner or an auto key, a key gives up the handles it had',
+        () {
+      for (final from in [placed(3, 1), joined]) {
+        expect(turned(from, KeyPathKind.linear), KeyPath.straight);
+        expect(turned(from, KeyPathKind.autoBezier), KeyPath.auto);
+      }
+    });
+
+    test('its own kind leaves a key as it is', () {
+      for (final path in [KeyPath.straight, KeyPath.auto, placed(3, 1)]) {
+        expect(turned(path, path.kind), same(path));
+      }
+      expect(turned(joined, KeyPathKind.continuousBezier), same(joined));
+    });
+
+    test('an end key made a bezier holds handles of no length, on the key '
+        'the hand pulls them out of', () {
+      expect(
+        KeyPath.straight.turned(
+          KeyPathKind.continuousBezier,
+          at: at,
+          before: before,
+        ),
+        const JoinedPath(degrees: 0, ahead: 0, behind: 0),
+      );
+      expect(
+        KeyPath.auto.turned(KeyPathKind.bezier, at: at, after: after),
+        SplitPath(ahead: p(0, 0), behind: p(0, 0)),
+      );
+    });
+  });
+
   group('the hand carries a handle (②)', () {
     SplayTreeMap<int, PropertyKey<CanvasPoint>> around(KeyPath path) =>
         SplayTreeMap.of({
@@ -654,7 +746,10 @@ void main() {
       expect(linked.keyAt(20)!.path, KeyPath.auto);
       expect(linked.keyAt(10)!.path, placed(4, 4));
 
-      final curved = track.withKeyPaths(frames: {0}, curved: true)!;
+      final curved = track.withKeyPaths(
+        frames: {0},
+        kind: KeyPathKind.autoBezier,
+      )!;
       expect(movedNamedKeys(track, curved), {
         'A': (
           value: p(0, 0),
@@ -666,21 +761,51 @@ void main() {
       });
     });
 
-    test('the key window turns a corner into a curve its neighbours lay, '
-        'leaves a curve its handle, and straightens one — nothing else '
+    // ↩️「직선 · 곡선」 (④-Q4 A while it was asked): a key already curved
+    // kept its handle where a curve was picked.
+    test('the key window makes the keys it covers auto or a corner — a '
+        'placed handle given back to the neighbours — and nothing else '
         'moves', () {
-      final curved = track.withKeyPaths(frames: {0, 10, 30}, curved: true)!;
-      expect(curved.keyAt(0)!.path, KeyPath.auto);
-      expect(curved.keyAt(10)!.path, placed(4, 4));
-      expect(curved.keyAt(30)!.path, KeyPath.auto);
-      expect(curved.keyAt(20)!.path, KeyPath.straight, reason: 'not chosen');
-      expect(curved.keyAt(0)!.name, 'A');
-      expect(curved.keyAt(0)!.value, p(0, 0));
+      final auto = track.withKeyPaths(
+        frames: {0, 10, 30},
+        kind: KeyPathKind.autoBezier,
+      )!;
+      expect(auto.keyAt(0)!.path, KeyPath.auto);
+      expect(auto.keyAt(10)!.path, KeyPath.auto);
+      expect(auto.keyAt(30)!.path, KeyPath.auto);
+      expect(auto.keyAt(20)!.path, KeyPath.straight, reason: 'not chosen');
+      expect(auto.keyAt(0)!.name, 'A');
+      expect(auto.keyAt(0)!.value, p(0, 0));
 
-      final straight = curved.withKeyPaths(frames: {10, 30}, curved: false)!;
+      final straight = auto.withKeyPaths(
+        frames: {10, 30},
+        kind: KeyPathKind.linear,
+      )!;
       expect(straight.keyAt(10)!.path, KeyPath.straight);
       expect(straight.keyAt(30)!.path, KeyPath.straight);
       expect(straight.keyAt(0)!.path, KeyPath.auto, reason: 'not chosen');
+    });
+
+    test('a key the window makes a bezier starts from the handles its own '
+        'neighbours lay', () {
+      final auto = track.withKeyPaths(
+        frames: {20},
+        kind: KeyPathKind.autoBezier,
+      )!;
+      for (final kind in [
+        KeyPathKind.bezier,
+        KeyPathKind.continuousBezier,
+      ]) {
+        final made = track.withKeyPaths(frames: {20}, kind: kind)!;
+        expect(made.keyAt(20)!.path.kind, kind);
+        expect(made.keyAt(20)!.value, p(0, 0));
+        for (final ahead in [true, false]) {
+          expectNear(
+            keyPathHandle(made.keys, 20, ahead: ahead),
+            keyPathHandle(auto.keys, 20, ahead: ahead),
+          );
+        }
+      }
     });
 
     test('a handle placed on the canvas bends that one key — its value, '
@@ -696,9 +821,18 @@ void main() {
     });
 
     test('and says so when it changed nothing', () {
-      expect(track.withKeyPaths(frames: {0, 20}, curved: false), isNull);
-      expect(track.withKeyPaths(frames: {10}, curved: true), isNull);
-      expect(track.withKeyPaths(frames: {5}, curved: true), isNull);
+      expect(
+        track.withKeyPaths(frames: {0, 20}, kind: KeyPathKind.linear),
+        isNull,
+      );
+      expect(
+        track.withKeyPaths(frames: {10}, kind: KeyPathKind.bezier),
+        isNull,
+      );
+      expect(
+        track.withKeyPaths(frames: {5}, kind: KeyPathKind.autoBezier),
+        isNull,
+      );
     });
   });
 }

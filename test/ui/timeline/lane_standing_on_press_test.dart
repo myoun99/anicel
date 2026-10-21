@@ -377,7 +377,9 @@ void main() {
       find.byKey(const ValueKey<String>('rename-frame-text-field')),
       'A',
     );
-    final curved = find.byKey(const ValueKey<String>('rename-key-path-curved'));
+    final curved = find.byKey(
+      const ValueKey<String>('rename-key-path-autoBezier'),
+    );
     await tester.ensureVisible(curved);
     await tester.tap(curved);
     await tester.pumpAndSettle();

@@ -8,6 +8,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/key_path.dart' show KeyPathKind;
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -200,7 +201,7 @@ void main() {
       three.track.copyWith(
         position: three.track.position.withKeyPaths(
           frames: {12},
-          curved: true,
+          kind: KeyPathKind.autoBezier,
         ),
       ),
     );

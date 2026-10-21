@@ -218,7 +218,7 @@ void main() {
     );
     select(['position'], 0, 21);
     laneVerbs.setLaneKeyTypeForSelection(
-      const KeyTypePick(sides: ease, curved: true),
+      const KeyTypePick(sides: ease, path: KeyPathKind.autoBezier),
     );
     final frames = position().keys.keys.toList();
     expect(frames, hasLength(3));

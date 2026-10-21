@@ -23,7 +23,7 @@ import '../editor_session_manager.dart';
 import '../session/block_naming.dart' show AutoNamePlan;
 import '../text/app_strings.dart';
 import '../text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
-import 'key_flag_row.dart' show KeyFlagRow;
+import 'key_choice_row.dart' show KeyChoiceRow, KeyPathRow;
 import 'key_sides_rows.dart' show KeySidesRows;
 import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
@@ -837,28 +837,26 @@ Future<void> _renameLaneKey(
                 : null,
           ),
           const SizedBox(height: 10),
-          KeyFlagRow(
-            label: strings.keyPath,
-            help: strings.keyPathHelp,
-            off: (
-              id: 'rename-key-path-straight',
-              word: strings.keyPathStraight,
-            ),
-            on: (id: 'rename-key-path-curved', word: strings.keyPathCurved),
-            flags: [for (final path in paths) path.curved],
-            picked: picked.curved,
-            onPicked: (bends) =>
-                pick(setLocal, picked.copyWith(curved: bends)),
+          KeyPathRow(
+            said: [for (final path in paths) path.kind],
+            picked: picked.path,
+            onPicked: (kind) => pick(setLocal, picked.copyWith(path: kind)),
           ),
           const SizedBox(height: 10),
           // I-89 ④-Q5 (A′ while it is asked): After Effects' Rove Across
           // Time, under the path it rides.
-          KeyFlagRow(
+          KeyChoiceRow<bool>(
             label: strings.keyRoving,
             help: strings.keyRovingHelp,
-            off: (id: 'rename-key-rove-off', word: strings.commonOff),
-            on: (id: 'rename-key-rove-on', word: strings.commonOn),
-            flags: roving,
+            choices: [
+              (
+                id: 'rename-key-rove-off',
+                word: strings.commonOff,
+                value: false,
+              ),
+              (id: 'rename-key-rove-on', word: strings.commonOn, value: true),
+            ],
+            said: roving,
             picked: picked.roving,
             onPicked: (roves) =>
                 pick(setLocal, picked.copyWith(roving: roves)),

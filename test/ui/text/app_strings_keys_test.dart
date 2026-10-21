@@ -146,8 +146,6 @@ void main() {
     'keySideOutgoing': (s) => s.keySideOutgoing,
     'keyEaseInfluence': (s) => s.keyEaseInfluence,
     'keyPath': (s) => s.keyPath,
-    'keyPathStraight': (s) => s.keyPathStraight,
-    'keyPathCurved': (s) => s.keyPathCurved,
     'keyRoving': (s) => s.keyRoving,
     'keySideIncomingHelp': (s) => s.keySideIncomingHelp,
     'keySideOutgoingHelp': (s) => s.keySideOutgoingHelp,

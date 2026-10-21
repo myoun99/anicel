@@ -366,9 +366,11 @@ void main() {
     expect(pill('linear').selected, isFalse);
     // I-89 ④: and the path its position walks through it — smooth as the
     // key was made (I-89-Q10 B), a corner picked here.
-    final curved = find.byKey(const ValueKey<String>('rename-key-path-curved'));
+    final curved = find.byKey(
+      const ValueKey<String>('rename-key-path-autoBezier'),
+    );
     final corner = find.byKey(
-      const ValueKey<String>('rename-key-path-straight'),
+      const ValueKey<String>('rename-key-path-linear'),
     );
     await tester.ensureVisible(corner);
     expect(tester.widget<Pill>(curved).selected, isTrue, reason: '⛔전제');

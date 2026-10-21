@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import '../core/collection_equality.dart';
+import 'canvas_point.dart';
 import 'key_path.dart';
 import 'key_side.dart';
 import 'non_negative_index_map.dart';
@@ -656,7 +657,7 @@ class PropertyTrack<T> {
       next =
           _withKeysAt(
             keyed.toSet(),
-            (key) => key.held == landing ? null : key.withHeld(landing),
+            (_, key) => key.held == landing ? null : key.withHeld(landing),
           ) ??
           this;
     }
@@ -674,27 +675,41 @@ class PropertyTrack<T> {
   PropertyTrack<T>? withKeySides({
     required Set<int> frames,
     required KeySidesEdit edit,
-  }) => _withKeysAt(frames, (key) {
+  }) => _withKeysAt(frames, (_, key) {
     final sides = edit.applyTo(incoming: key.incoming, outgoing: key.outgoing);
     return sides.incoming == key.incoming && sides.outgoing == key.outgoing
         ? null
         : key.copyWith(incoming: sides.incoming, outgoing: sides.outgoing);
   });
 
-  /// The keys inside [frames] bending through as [curved] says — the PATH
-  /// half of the key window (I-89 ④-Q4, A while it is asked): a corner
-  /// made a curve is laid smooth by its neighbours ([KeyPath.auto]), a key
-  /// already curved keeps its handle, and a straight one has none. Values,
-  /// sides and names ride across untouched. Null when nothing here changed.
+  /// The keys inside [frames] passing the path through them as [kind]
+  /// says — the PATH row of the key window (anchor-walks-a-path-Q4 A,
+  /// [KeyPath.turned]), each from the handles its own neighbours lay.
+  /// Values, sides and names ride across untouched. Null when nothing here
+  /// changed.
+  ///
+  /// ⚠️Only a point's keys walk a path (`walksAPath`), and the window hands
+  /// any other lane its sides alone ([KeyTypePick.sidesAlone]): a key that
+  /// holds no point is left as it is.
   PropertyTrack<T>? withKeyPaths({
     required Set<int> frames,
-    required bool curved,
-  }) => _withKeysAt(
-    frames,
-    (key) => key.path.curved == curved
-        ? null
-        : key.copyWith(path: curved ? KeyPath.auto : KeyPath.straight),
-  );
+    required KeyPathKind kind,
+  }) => _withKeysAt(frames, (frame, key) {
+    if (key.path.kind == kind) {
+      return null;
+    }
+    return switch (keyStanding(keys, frame)) {
+      (
+        at: final CanvasPoint at,
+        before: final CanvasPoint? before,
+        after: final CanvasPoint? after,
+      ) =>
+        key.copyWith(
+          path: key.path.turned(kind, at: at, before: before, after: after),
+        ),
+      _ => null,
+    };
+  });
 
   /// The keys inside [frames] roving as [roving] says — the time half of
   /// the key window (I-89 ④-Q5, A′ while it is asked): a key's time left to
@@ -707,7 +722,7 @@ class PropertyTrack<T> {
     required bool roving,
   }) => _withKeysAt(
     frames.where(keyCanRove).toSet(),
-    (key) => key.roving == roving ? null : key.copyWith(roving: roving),
+    (_, key) => key.roving == roving ? null : key.copyWith(roving: roving),
   );
 
   /// The key window's write on the keys inside [frames] (F-17 · I-89):
@@ -724,7 +739,7 @@ class PropertyTrack<T> {
     KeyNaming<T>? naming,
     KeyTypePick pick = const KeyTypePick(),
   }) {
-    final KeyTypePick(:sides, :curved, :roving) = pick;
+    final KeyTypePick(:sides, :path, :roving) = pick;
     var next = this;
     if (naming != null) {
       next =
@@ -739,8 +754,8 @@ class PropertyTrack<T> {
     if (sides != null) {
       next = next.withKeySides(frames: frames, edit: sides) ?? next;
     }
-    if (curved != null) {
-      next = next.withKeyPaths(frames: frames, curved: curved) ?? next;
+    if (path != null) {
+      next = next.withKeyPaths(frames: frames, kind: path) ?? next;
     }
     if (roving != null) {
       next = next.withKeysRoving(frames: frames, roving: roving) ?? next;
@@ -753,19 +768,19 @@ class PropertyTrack<T> {
   /// untouched. Null where no key stands or it already bends so.
   PropertyTrack<T>? withKeyPath(int frame, KeyPath path) => _withKeysAt(
     {frame},
-    (key) => key.path == path ? null : key.copyWith(path: path),
+    (_, key) => key.path == path ? null : key.copyWith(path: path),
   );
 
   /// The keys inside [frames] as [edit] leaves each — null where it changes
   /// it not — or null when it changed none.
   PropertyTrack<T>? _withKeysAt(
     Set<int> frames,
-    PropertyKey<T>? Function(PropertyKey<T> key) edit,
+    PropertyKey<T>? Function(int frame, PropertyKey<T> key) edit,
   ) {
     Map<int, PropertyKey<T>>? next;
     for (final frame in frames) {
       final key = keys[frame];
-      final edited = key == null ? null : edit(key);
+      final edited = key == null ? null : edit(frame, key);
       if (edited != null) {
         (next ??= Map<int, PropertyKey<T>>.of(keys))[frame] = edited;
       }
@@ -972,28 +987,31 @@ typedef KeyNaming<T> = ({
 });
 
 /// What the key window picks for the keys it covers beside their name
-/// (F-17 · I-89): their two [sides], whether the path bends through them
-/// ([curved]) and whether their time roves ([roving]) — each null until it
+/// (F-17 · I-89): their two [sides], how the path passes through them
+/// ([path]) and whether their time roves ([roving]) — each null until it
 /// is picked, and only a pick is ever written (09-12: confirming a join no
 /// longer hands the joiner's own type to every key the name reaches).
 class KeyTypePick {
-  const KeyTypePick({this.sides, this.curved, this.roving});
+  const KeyTypePick({this.sides, this.path, this.roving});
 
   final KeySidesEdit? sides;
-  final bool? curved;
+  final KeyPathKind? path;
   final bool? roving;
 
   /// Whether nothing is picked.
-  bool get isEmpty => sides == null && curved == null && roving == null;
+  bool get isEmpty => sides == null && path == null && roving == null;
 
-  /// This pick with [sides], [curved] or [roving] picked too — a pick once
+  /// This pick with [sides], [path] or [roving] picked too — a pick once
   /// made stays made while the window is up.
-  KeyTypePick copyWith({KeySidesEdit? sides, bool? curved, bool? roving}) =>
-      KeyTypePick(
-        sides: sides ?? this.sides,
-        curved: curved ?? this.curved,
-        roving: roving ?? this.roving,
-      );
+  KeyTypePick copyWith({
+    KeySidesEdit? sides,
+    KeyPathKind? path,
+    bool? roving,
+  }) => KeyTypePick(
+    sides: sides ?? this.sides,
+    path: path ?? this.path,
+    roving: roving ?? this.roving,
+  );
 
   /// What of it a lane whose keys walk no path takes: its sides alone — a
   /// path and a roving time are a position's (I-89 ④).
@@ -1039,4 +1057,20 @@ Map<String, NamedKeyValue<T>> movedNamedKeys<T>(
     moved[name] = key.held;
   }
   return moved;
+}
+
+/// The value of the key at [frame] of [keys], and those of the keys either
+/// side of it — null at an end: what a path's handles are laid from
+/// ([KeyPath.reach]).
+({T at, T? before, T? after}) keyStanding<T>(
+  SplayTreeMap<int, PropertyKey<T>> keys,
+  int frame,
+) {
+  final before = keys.lastKeyBefore(frame);
+  final after = keys.firstKeyAfter(frame);
+  return (
+    at: keys[frame]!.value,
+    before: before == null ? null : keys[before]!.value,
+    after: after == null ? null : keys[after]!.value,
+  );
 }

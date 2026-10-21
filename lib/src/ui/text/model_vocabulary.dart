@@ -2,6 +2,7 @@ import 'package:file_selector/file_selector.dart' show XTypeGroup;
 
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/key_path.dart' show KeyPathKind;
 import '../../models/key_side.dart' show KeySideKind;
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
@@ -57,6 +58,11 @@ extension EffectKindWords on EffectKind {
 extension KeySideKindWords on KeySideKind {
   String labelFor(AppLanguage language) =>
       AppStrings.of(language).keySideKindName(name, label);
+}
+
+extension KeyPathKindWords on KeyPathKind {
+  String labelFor(AppLanguage language) =>
+      AppStrings.of(language).keyPathKindName(name, label);
 }
 
 /// A row kind's name. Its words are rows of their own in the tables

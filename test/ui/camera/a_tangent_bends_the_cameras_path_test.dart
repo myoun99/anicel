@@ -63,7 +63,10 @@ void main() {
     camera.updateCameraTrack(
       row,
       track.copyWith(
-        position: track.position.withKeyPaths(frames: {0, 10}, curved: false),
+        position: track.position.withKeyPaths(
+          frames: {0, 10},
+          kind: KeyPathKind.linear,
+        ),
       ),
     );
     s.selectFrameIndex(0);
@@ -142,7 +145,10 @@ void main() {
     s.camera.updateCameraTrack(
       cameraRowOf(s),
       track.copyWith(
-        position: track.position.withKeyPaths(frames: frames, curved: true),
+        position: track.position.withKeyPaths(
+          frames: frames,
+          kind: KeyPathKind.autoBezier,
+        ),
       ),
     );
   }

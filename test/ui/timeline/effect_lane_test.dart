@@ -395,7 +395,7 @@ void main() {
         frames: {0, 4, 8},
         pick: const KeyTypePick(
           sides: KeySidesEdit.hold,
-          curved: true,
+          path: KeyPathKind.bezier,
           roving: true,
         ),
       )!;

@@ -126,6 +126,9 @@ enum AppStrings {
   String keySideKindName(String name, String fallback) =>
       _values['keySideKind.$name'] ?? fallback;
 
+  String keyPathKindName(String name, String fallback) =>
+      _values['keyPathKind.$name'] ?? fallback;
+
   /// A selection mode's name, by the enum value's `name` — the same reversal;
   /// the ko rows are the user's own words (R26 #16).
   String selectionModeName(String name, String fallback) =>
@@ -380,8 +383,6 @@ enum AppStrings {
 
   /// The key window's path (I-89 ④): a position key's corner or curve.
   String get keyPath => _s('keyPath');
-  String get keyPathStraight => _s('keyPathStraight');
-  String get keyPathCurved => _s('keyPathCurved');
 
   /// The key window's roving (I-89 ④-Q5): After Effects' Rove Across Time,
   /// a position key's time left to its run.
@@ -2003,15 +2004,13 @@ enum AppStrings {
     'keySideOutgoing': 'Out',
     'keyEaseInfluence': 'Influence',
     'keyPath': 'Path',
-    'keyPathStraight': 'Straight',
-    'keyPathCurved': 'Curved',
     'keyRoving': 'Roving',
     'keySideIncomingHelp':
         'How the value arrives at the key. Linear: at an even speed · Ease: slowing into it · Fast: speeding into it · Smooth: carrying the speed the keys either side set. Influence: how much of the way the change takes.',
     'keySideOutgoingHelp':
         'How the value leaves the key. Linear: at an even speed · Ease: setting off slowly · Fast: shooting off · Smooth: carrying the speed the keys either side set · Hold: staying put until the next key. Influence: how much of the way the change takes.',
     'keyPathHelp':
-        'The shape of the path a position takes through the key. Straight: a corner at the key · Curved: a smooth bend, laid by the keys either side.',
+        'The shape of the path a position takes through the key. Linear: a corner at the key · Bezier: a handle on each side, each its own way · Continuous Bezier: the two handles in one line · Auto Bezier: a smooth bend, laid by the keys either side.',
     'keyRovingHelp':
         "The key keeps its place on the path and gives up its time: between the keys either side that keep theirs, it moves to the frame where the speed comes out even (After Effects' Rove Across Time). The first and last keys never rove.",
     'cameraPath': 'Camera path',
@@ -3224,15 +3223,17 @@ enum AppStrings {
     'keySideKind.hold': 'ホールド',
     'keyEaseInfluence': '影響',
     'keyPath': 'パス',
-    'keyPathStraight': '直線',
-    'keyPathCurved': '曲線',
+    'keyPathKind.linear': 'リニア',
+    'keyPathKind.bezier': 'ベジェ',
+    'keyPathKind.continuousBezier': '連続ベジェ',
+    'keyPathKind.autoBezier': '自動ベジェ',
     'keyRoving': 'ロービング',
     'keySideIncomingHelp':
         '前のキーからこのキーに入る速さ。リニア：一定 · イーズ：減速して到着 · クイック：加速して到着 · スムーズ：前後のキーに合わせて速さをつなぐ。影響：その変化が区間のどれだけにかかるか。',
     'keySideOutgoingHelp':
         'このキーから次のキーへ出る速さ。リニア：一定 · イーズ：ゆっくり出発 · クイック：勢いよく出発 · スムーズ：前後のキーに合わせて速さをつなぐ · ホールド：次のキーまで値をそのまま。影響：その変化が区間のどれだけにかかるか。',
     'keyPathHelp':
-        '位置がこのキーを通る道の形。直線：キーで折れる · 曲線：前後のキーに合わせてなめらかに曲がる。',
+        '位置がこのキーを通る道の形。リニア：キーで折れる · ベジェ：前後のハンドルがそれぞれの向き · 連続ベジェ：二つのハンドルが一直線につながる · 自動ベジェ：前後のキーに合わせてなめらかに曲がる。',
     'keyRovingHelp':
         'パス上の位置はそのままに、キーが時間を手放す。時間を持つ前後のキーの間で、速さが均一になるフレームへ自動で移る（After Effects の Rove Across Time）。最初と最後のキーはロービングしない。',
     'cameraPath': 'カメラパス',
@@ -4830,15 +4831,17 @@ enum AppStrings {
     'keySideKind.hold': '홀드',
     'keyEaseInfluence': '세기',
     'keyPath': '경로',
-    'keyPathStraight': '직선',
-    'keyPathCurved': '곡선',
+    'keyPathKind.linear': '선형',
+    'keyPathKind.bezier': '베지어',
+    'keyPathKind.continuousBezier': '연속 베지어',
+    'keyPathKind.autoBezier': '자동 베지어',
     'keyRoving': '로빙',
     'keySideIncomingHelp':
         '앞 키에서 이 키로 들어오는 빠르기. 리니어: 고르게 · 천천히: 느려지며 도착 · 급하게: 빨라지며 도착 · 부드럽게: 앞뒤 키에 맞춰 빠르기를 이어 지나감. 세기: 그 변화가 구간의 얼마만큼에 걸치는지.',
     'keySideOutgoingHelp':
         '이 키에서 다음 키로 나가는 빠르기. 리니어: 고르게 · 천천히: 천천히 출발 · 급하게: 빠르게 튀어 나감 · 부드럽게: 앞뒤 키에 맞춰 빠르기를 이어 지나감 · 홀드: 다음 키까지 값을 그대로. 세기: 그 변화가 구간의 얼마만큼에 걸치는지.',
     'keyPathHelp':
-        '위치가 이 키를 지나는 길의 모양. 직선: 키에서 꺾임 · 곡선: 앞뒤 키에 맞춰 매끄럽게 휘어 지나감.',
+        '위치가 이 키를 지나는 길의 모양. 선형: 키에서 꺾임 · 베지어: 앞뒤 손잡이가 각자의 방향 · 연속 베지어: 두 손잡이가 한 줄로 이어짐 · 자동 베지어: 앞뒤 키에 맞춰 매끄럽게 휘어 지나감.',
     'keyRovingHelp':
         '경로 위의 자리는 그대로 두고 키가 시간을 내놓는다. 시간을 가진 앞뒤 키 사이에서 빠르기가 고르게 되는 프레임으로 저절로 옮겨진다(After Effects 의 Rove Across Time). 처음 · 마지막 키는 로빙하지 않는다.',
     'cameraPath': '카메라 경로',
@@ -6430,15 +6433,17 @@ enum AppStrings {
     'keySideKind.hold': 'Maintien',
     'keyEaseInfluence': 'Influence',
     'keyPath': 'Trajectoire',
-    'keyPathStraight': 'Droite',
-    'keyPathCurved': 'Courbe',
+    'keyPathKind.linear': 'Linéaire',
+    'keyPathKind.bezier': 'Bézier',
+    'keyPathKind.continuousBezier': 'Bézier continue',
+    'keyPathKind.autoBezier': 'Bézier auto',
     'keyRoving': 'Itinérance',
     'keySideIncomingHelp':
         'Comment la valeur arrive à la clé. Linéaire : vitesse constante · Lissage : en ralentissant · Vite : en accélérant · Fluide : à la vitesse que donnent les clés voisines. Influence : quelle part du trajet prend le changement.',
     'keySideOutgoingHelp':
         "Comment la valeur quitte la clé. Linéaire : vitesse constante · Lissage : en démarrant doucement · Vite : en partant d'un coup · Fluide : à la vitesse que donnent les clés voisines · Maintien : la valeur reste jusqu'à la clé suivante. Influence : quelle part du trajet prend le changement.",
     'keyPathHelp':
-        "La forme du chemin d'une position à travers la clé. Droite : un angle à la clé · Courbe : une courbe douce, tracée selon les clés voisines.",
+        "La forme du chemin d'une position à travers la clé. Linéaire : un angle à la clé · Bézier : une poignée de chaque côté, chacune dans sa direction · Bézier continue : les deux poignées alignées · Bézier auto : une courbe douce, tracée selon les clés voisines.",
     'keyRovingHelp':
         "La clé garde sa place sur la trajectoire et cède son temps : entre les clés voisines qui gardent le leur, elle se place à l'image où la vitesse devient régulière (Rove Across Time d'After Effects). La première et la dernière clé ne bougent jamais.",
     'cameraPath': 'Trajectoire de la caméra',
@@ -8138,15 +8143,17 @@ enum AppStrings {
     'keySideKind.hold': '保持',
     'keyEaseInfluence': '影响',
     'keyPath': '路径',
-    'keyPathStraight': '直线',
-    'keyPathCurved': '曲线',
+    'keyPathKind.linear': '线性',
+    'keyPathKind.bezier': '贝塞尔曲线',
+    'keyPathKind.continuousBezier': '连续贝塞尔曲线',
+    'keyPathKind.autoBezier': '自动贝塞尔曲线',
     'keyRoving': '漂浮',
     'keySideIncomingHelp':
         '值进入此关键帧的方式。线性：匀速 · 缓动：减速进入 · 快速：加速进入 · 平滑：按前后关键帧接续速度。影响：变化占区间的多少。',
     'keySideOutgoingHelp':
         '值离开此关键帧的方式。线性：匀速 · 缓动：缓慢出发 · 快速：迅速出发 · 平滑：按前后关键帧接续速度 · 保持：值保持到下一个关键帧。影响：变化占区间的多少。',
     'keyPathHelp':
-        '位置经过此关键帧的路径形状。直线：在关键帧处转折 · 曲线：按前后关键帧平滑弯曲。',
+        '位置经过此关键帧的路径形状。线性：在关键帧处转折 · 贝塞尔曲线：前后手柄各自的方向 · 连续贝塞尔曲线：两个手柄连成一条直线 · 自动贝塞尔曲线：按前后关键帧平滑弯曲。',
     'keyRovingHelp':
         '关键帧保留其在路径上的位置，交出时间：在前后保有时间的关键帧之间，自动移到速度均匀的帧（After Effects 的 Rove Across Time）。第一个和最后一个关键帧不会漂浮。',
     'cameraPath': '摄像机路径',
