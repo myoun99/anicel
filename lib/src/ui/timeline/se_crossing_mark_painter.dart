@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/painting.dart' show Axis;
 
 import '../theme/app_theme.dart';
+import 'axis_turn.dart';
 
 /// How long the `~` an SE sound crossing a cut's edge wears runs ALONG the
 /// flow — the one piece of SE chrome that must not scale with the zoom.
@@ -36,11 +37,16 @@ void paintSeCrossingMark(Canvas canvas, Offset centre, Axis flow) {
   for (var step = 0; step <= steps; step += 1) {
     final t = step / steps;
     final along = (t - 0.5) * seCrossingMarkLength;
-    // The first hump stands up out of a row, as the glyph's does.
+    // The first hump stands up out of a row, as the glyph's does — and the
+    // quarter turn puts a row's up on a column's right.
     final swing = math.sin(t * 2 * math.pi) * seCrossingMarkSwing;
-    final point = flow == Axis.horizontal
-        ? centre.translate(along, -swing)
-        : centre.translate(swing, along);
+    final point =
+        centre +
+        offsetAlong(
+          flow,
+          along: along,
+          across: flow == Axis.horizontal ? -swing : swing,
+        );
     if (step == 0) {
       wave.moveTo(point.dx, point.dy);
     } else {
