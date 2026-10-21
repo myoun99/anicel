@@ -88,8 +88,11 @@ void main() {
       ),
     )!;
 
-    expect(edit.transform.own!.rotation.keys[8]!.value, 55);
-    expect(edit.effects!.single.parameters['blurX']!.track.keys[8]!.value, 7);
+    expect(edit.transform.own?.rotation.keys[8]?.value, 55);
+    expect(
+      edit.effects?.single.parameters['blurX']?.track.keys[8]?.value,
+      7,
+    );
   });
 
   test('a value its editor cannot read writes nothing', () {
