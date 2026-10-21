@@ -155,6 +155,11 @@ void main() {
     );
     await mouse.up();
     await pumpFrames(tester);
+    expect(
+      textToolOf(tester).hold,
+      CelTextHold.letters,
+      reason: 'the text began once its cel came',
+    );
     await typeText(tester, 'hi');
     await clickAt(tester, c.dx + 300, c.dy + 200);
 
