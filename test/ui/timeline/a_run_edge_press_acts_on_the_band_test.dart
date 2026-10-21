@@ -212,6 +212,7 @@ void main() {
       s.runFramesAdd.updateRunFramesAddDrag(2);
       for (final row in [a, b]) {
         final shown = timelineDragPreviewLayerFor(s.dragPreview.value, row);
+        expect(shown, isNotNull, reason: 'every row the band holds previews');
         expect(drawnStarts(shown!), [0, 2, 3, 4, 5]);
       }
       s.runFramesAdd.endRunFramesAddDrag();
