@@ -1,5 +1,7 @@
 import 'dart:collection';
 
+import 'audio_clip.dart';
+import 'block_row_swap.dart';
 import 'cel_bank_lanes.dart';
 import 'cel_rekey.dart';
 import 'frame.dart';
@@ -27,25 +29,32 @@ class MultiRowRangeMovePlan {
 }
 
 /// Plans a MULTI-ROW range move (UI-R23 #9): the selected blocks on a
-/// contiguous run of drawing rows shift RIGIDLY by [rowDelta] rows and
-/// [frameDelta] frames — every source row's selected blocks leave and the
-/// row [rowDelta] away receives them at the shifted frames, cels and
-/// breakdown dots riding along. "If a block is movable, it moves no matter
-/// how many rows you select."
+/// contiguous run of rows shift RIGIDLY by [rowDelta] rows and [frameDelta]
+/// frames — every source row's selected blocks leave and the row
+/// [rowDelta] away receives them at the shifted frames, cels, breakdown
+/// dots and the sounds anchored to the cels riding along. "If a block is
+/// movable, it moves no matter how many rows you select."
 ///
-/// [orderedLayers] is the display-ordered lattice of move-eligible drawing
-/// rows (all one section, so no cross-section landing is possible);
+/// The blocks they land on go back across the moved rows, to the rows the
+/// move left empty, each on its own frames ([LandingSwapsThem], F-384-Q1:
+/// 「여러 행을 함께 옮기면 덮인 블록이 그 묶음을 건너 반대편 행으로」) —
+/// see [_MultiRowRangeMovePlanner.returnRowOf]. ↩️An incoming block that
+/// met a block staying on its row voided the whole move.
+///
+/// [orderedLayers] is the display-ordered lattice of move-eligible rows
+/// (all one section, so no cross-section landing is possible);
 /// [sourceLayerIds] is the selection's span (a contiguous subset).
 ///
 /// Null when the rigid shift cannot land — any illegal landing voids the
-/// WHOLE move (multi-row rejects rather than pushing, unlike a single-row
-/// slide): a source row maps off the lattice, a landing dips below frame 0,
-/// a moved cel is linked from outside the moved set, the range is not
-/// block-snapped on some row, or an incoming block would overlap a block
-/// that STAYS on the target row.
+/// WHOLE move: a source row maps off the lattice, a landing dips below
+/// frame 0, a moved or a returned cel is linked from outside the blocks
+/// that carry it, or the range is not block-snapped on some row.
 ///
-/// [bankOf] answers a source row's OTHER lanes — outside the moved set too
-/// (F-136, see [CelBankLanes]).
+/// [bankOf] answers a row's OTHER lanes — outside the moved set too
+/// (F-136, see [CelBankLanes]). [rangeOffsetOf] is where the range stands
+/// on a row's own frames, past where it is stated — a track's SE row
+/// holds a sound spilled in from an earlier cut at its own start (the
+/// move's commit offset), and a cut's row is where the range says.
 MultiRowRangeMovePlan? planMultiRowRangeMove({
   required List<Layer> orderedLayers,
   required List<LayerId> sourceLayerIds,
@@ -54,6 +63,7 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
   required int frameDelta,
   required int rowDelta,
   required CelBankLanes Function(LayerId layerId) bankOf,
+  int Function(LayerId layerId) rangeOffsetOf = _whereTheRangeSays,
 }) {
   if (rowDelta == 0 || rangeEndIndexExclusive <= rangeStartIndex) {
     return null;
@@ -65,6 +75,7 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
     frameDelta: frameDelta,
     rowDelta: rowDelta,
     bankOf: bankOf,
+    rangeOffsetOf: rangeOffsetOf,
   );
   if (!planner.gather(sourceLayerIds)) {
     return null;
@@ -74,6 +85,8 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
   }
   return planner.rebuild();
 }
+
+int _whereTheRangeSays(LayerId _) => 0;
 
 /// [planMultiRowRangeMove]'s two phases with one view of the lattice:
 /// GATHER what every source row carries (refusing the move where a rule
@@ -88,6 +101,7 @@ class _MultiRowRangeMovePlanner {
     required this.frameDelta,
     required this.rowDelta,
     required this.bankOf,
+    required this.rangeOffsetOf,
   }) : indexById = <LayerId, int>{
          for (var i = 0; i < orderedLayers.length; i += 1)
            orderedLayers[i].id: i,
@@ -99,6 +113,7 @@ class _MultiRowRangeMovePlanner {
   final int frameDelta;
   final int rowDelta;
   final CelBankLanes Function(LayerId layerId) bankOf;
+  final int Function(LayerId layerId) rangeOffsetOf;
   final Map<LayerId, int> indexById;
 
   /// Gathered per source row: its selected blocks + travelling cels.
@@ -136,7 +151,7 @@ class _MultiRowRangeMovePlanner {
   bool _gatherRow(LayerId sourceId, int sourceIndex) {
     final source = orderedLayers[sourceIndex];
     final base = ghostFreeTimeline(source);
-    final selected = _blockSnappedSelection(base);
+    final selected = _blockSnappedSelection(base, rangeOffsetOf(sourceId));
     if (selected == null) {
       return false; // The range was not block-snapped on this row.
     }
@@ -162,10 +177,14 @@ class _MultiRowRangeMovePlanner {
     return true;
   }
 
-  /// The blocks inside the range; null when a block straddles its edge.
+  /// The blocks inside the range, [offset] along; null when a block
+  /// straddles its edge.
   List<TimelineDrawingBlock>? _blockSnappedSelection(
     SplayTreeMap<int, TimelineExposure> base,
+    int offset,
   ) {
+    final rangeStartIndex = this.rangeStartIndex + offset;
+    final rangeEndIndexExclusive = this.rangeEndIndexExclusive + offset;
     final selected = <TimelineDrawingBlock>[];
     for (final block in drawingBlocks(base)) {
       final inRange =
@@ -216,93 +235,195 @@ class _MultiRowRangeMovePlanner {
   }
 
   /// Phase 2: every affected row rebuilt — sources lose their selected
-  /// blocks, targets receive the mapped source's. Null when an incoming
-  /// block cannot land.
+  /// blocks, targets receive the mapped source's, and the blocks those land
+  /// on go back to the rows the move left ([returnRowOf]). Null when an
+  /// incoming block dips below frame 0, or a cel going back is one another
+  /// lane of its row still shows (F-136).
   MultiRowRangeMovePlan? rebuild() {
-    final affectedIndexes = <int>{};
+    final rows = <int, _RowInHand>{};
+    _RowInHand rowAt(int index) =>
+        rows[index] ??= _RowInHand(orderedLayers[index]);
+
+    // Every SOURCE: its own selected blocks (and cels) leave.
     for (final sourceIndex in sourceIndexes) {
-      affectedIndexes.add(sourceIndex);
-      affectedIndexes.add(sourceIndex + rowDelta);
+      final id = orderedLayers[sourceIndex].id;
+      rowAt(
+        sourceIndex,
+      ).lift(selectedByLayer[id]!, cels: frameIdsByLayer[id]!);
     }
 
-    final layersAfter = <LayerId, Layer>{};
-    for (final layerIndex in affectedIndexes) {
-      final layer = orderedLayers[layerIndex];
-      final isSource = sourceIndexes.contains(layerIndex);
-      final incomingSourceIndex = layerIndex - rowDelta;
-      final isTarget = sourceIndexes.contains(incomingSourceIndex);
-
-      final timeline = ghostFreeTimeline(layer);
-      var frames = [...layer.frames];
-
-      // This row is a SOURCE: its own selected blocks (and cels) leave.
-      if (isSource) {
-        frames = _withoutCarried(layer, timeline, frames);
-      }
-
-      // This row is a TARGET: the mapped source's selected blocks arrive.
-      if (isTarget) {
-        final landed = _landIncoming(
-          from: orderedLayers[incomingSourceIndex],
-          onto: layer,
-          timeline: timeline,
-        );
-        if (landed == null) {
-          return null;
-        }
-        frames = [...frames, ...landed];
-      }
-
-      layersAfter[layer.id] = layer.copyWith(
-        timeline: timeline,
-        frames: frames,
-      );
-    }
-
-    return MultiRowRangeMovePlan(layersAfter: layersAfter, rekeys: rekeys);
-  }
-
-  /// Lifts the source row's selected blocks out of [timeline]; the frames
-  /// that stay.
-  List<Frame> _withoutCarried(
-    Layer layer,
-    SplayTreeMap<int, TimelineExposure> timeline,
-    List<Frame> frames,
-  ) {
-    for (final block in selectedByLayer[layer.id]!) {
-      timeline.remove(block.startIndex);
-    }
-    final removedIds = frameIdsByLayer[layer.id]!;
-    return [
-      for (final frame in frames)
-        if (!removedIds.contains(frame.id)) frame,
-    ];
-  }
-
-  /// Lands the mapped source's selected blocks on [timeline] at the
-  /// shifted frames and records their re-keys; the frames they bring, or
-  /// null when a landing is illegal.
-  List<Frame>? _landIncoming({
-    required Layer from,
-    required Layer onto,
-    required SplayTreeMap<int, TimelineExposure> timeline,
-  }) {
-    for (final block in selectedByLayer[from.id]!) {
-      final landing = block.startIndex + frameDelta;
-      if (landing < 0) {
+    // Every TARGET: what its blocks land on is lifted, then they arrive.
+    final landedOn =
+        <int, ({List<TimelineDrawingBlock> blocks, _Lifted cels})>{};
+    for (final sourceIndex in sourceIndexes) {
+      final from = orderedLayers[sourceIndex];
+      final targetIndex = sourceIndex + rowDelta;
+      final onto = rowAt(targetIndex);
+      final incoming = selectedByLayer[from.id]!;
+      final spans = [
+        for (final block in incoming)
+          (start: block.startIndex + frameDelta, length: block.length),
+      ];
+      if (spans.any((span) => span.start < 0)) {
         return null;
       }
-      final landingEnd = landing + block.length;
-      for (final other in drawingBlocks(timeline)) {
-        if (landing < other.endIndexExclusive && other.startIndex < landingEnd) {
-          return null; // Overlaps a block that stays — multi-row voids.
-        }
+      final covered = blocksLandedOn(drawingBlocks(onto.timeline), spans);
+      final coveredCels = {for (final block in covered) block.frameId};
+      final lifted = onto.lift(covered, cels: coveredCels);
+      final bank = bankOf(onto.layer.id);
+      if (coveredCels.any((id) => bank.exposes(id, lane: onto.timeline))) {
+        return null;
       }
-      timeline[landing] = block.entry;
+      landedOn[targetIndex] = (blocks: covered, cels: lifted);
+      final frameIds = frameIdsByLayer[from.id]!;
+      onto.lay(
+        [
+          for (final (position, block) in incoming.indexed)
+            TimelineDrawingBlock(
+              startIndex: spans[position].start,
+              entry: block.entry,
+            ),
+        ],
+        cels: (
+          frames: framesByLayer[from.id]!,
+          clips: clipsAnchoredTo(from.audioClips, frameIds),
+        ),
+      );
+      for (final frameId in frameIds) {
+        rekeys.add((from: from.id, to: onto.layer.id, frameId: frameId));
+      }
     }
-    for (final frameId in frameIdsByLayer[from.id]!) {
-      rekeys.add((from: from.id, to: onto.id, frameId: frameId));
+
+    // And the blocks landed on go back — the rows the move enters first,
+    // whose blocks have a row left empty each.
+    final entered = _entered;
+    final order = [...landedOn.keys]
+      ..sort((a, b) {
+        final enteredFirst = (entered.contains(a) ? 0 : 1).compareTo(
+          entered.contains(b) ? 0 : 1,
+        );
+        return enteredFirst != 0 ? enteredFirst : a.compareTo(b);
+      });
+    for (final targetIndex in order) {
+      final (:blocks, :cels) = landedOn[targetIndex]!;
+      if (blocks.isEmpty) {
+        continue;
+      }
+      final back = rowAt(returnRowOf(targetIndex));
+      back.takeBack(blocks, cels: cels);
+      for (final frame in cels.frames) {
+        rekeys.add((
+          from: orderedLayers[targetIndex].id,
+          to: back.layer.id,
+          frameId: frame.id,
+        ));
+      }
     }
-    return framesByLayer[from.id]!;
+
+    return MultiRowRangeMovePlan(
+      layersAfter: {for (final row in rows.values) row.layer.id: row.after},
+      rekeys: rekeys,
+    );
   }
+
+  /// The rows the moved blocks land on.
+  Set<int> get _targets => {
+    for (final sourceIndex in sourceIndexes) sourceIndex + rowDelta,
+  };
+
+  /// The rows the move enters — landed on, and no source of its own.
+  Set<int> get _entered => _targets.difference(sourceIndexes);
+
+  /// The row the blocks landed on at [target] go back to (F-384-Q1:
+  /// 「여러 행을 함께 옮기면 덮인 블록이 그 묶음을 건너 반대편 행으로 갑니다
+  /// — 좌우에서 「지나간 블록이 반대편으로 가는」 것과 같은 모양」): across the
+  /// moved rows, to a row the move left empty. The rows it enters hand
+  /// theirs to the rows it leaves in order — the first entered to the first
+  /// left — as blocks passed along one row keep their order on its other
+  /// side.
+  ///
+  /// ⚖️Mine, not the user's: a row the moved rows still stand on is landed
+  /// on only by a move that also slides along the frames. It hands its
+  /// blocks back the way their lander came — to the row that one left, and
+  /// on while that row is landed on too — until a row left empty.
+  int returnRowOf(int target) {
+    final entered = [..._entered]..sort();
+    final left = [...sourceIndexes.difference(_targets)]..sort();
+    final place = entered.indexOf(target);
+    if (place >= 0) {
+      return left[place];
+    }
+    var row = target - rowDelta;
+    while (_targets.contains(row)) {
+      row -= rowDelta;
+    }
+    return row;
+  }
+}
+
+/// The cels a row gives up, and the sounds anchored to them.
+typedef _Lifted = ({List<Frame> frames, List<AudioClip> clips});
+
+/// One row of a multi-row move while the rebuild works on it: what it
+/// shows, the cels it owns and the sounds anchored to them.
+class _RowInHand {
+  _RowInHand(this.layer)
+    : timeline = ghostFreeTimeline(layer),
+      frames = [...layer.frames],
+      clips = [...layer.audioClips];
+
+  final Layer layer;
+  SplayTreeMap<int, TimelineExposure> timeline;
+  List<Frame> frames;
+  List<AudioClip> clips;
+
+  /// [blocks] lifted out, and with them [cels] and their sounds — which
+  /// it hands back.
+  _Lifted lift(
+    Iterable<TimelineDrawingBlock> blocks, {
+    required Set<FrameId> cels,
+  }) {
+    for (final block in blocks) {
+      timeline.remove(block.startIndex);
+    }
+    final lifted = (
+      frames: [
+        for (final frame in frames)
+          if (cels.contains(frame.id)) frame,
+      ],
+      clips: clipsAnchoredTo(clips, cels),
+    );
+    frames = [
+      for (final frame in frames)
+        if (!cels.contains(frame.id)) frame,
+    ];
+    clips = [
+      for (final clip in clips)
+        if (!cels.contains(clip.frameId)) clip,
+    ];
+    return lifted;
+  }
+
+  /// [blocks] laid in where they stand, with the [cels] they bring.
+  void lay(Iterable<TimelineDrawingBlock> blocks, {required _Lifted cels}) {
+    for (final block in blocks) {
+      timeline[block.startIndex] = block.entry;
+    }
+    _own(cels);
+  }
+
+  /// [blocks] taken back on their own frames ([timelineTakingBack]), with
+  /// the [cels] they bring.
+  void takeBack(List<TimelineDrawingBlock> blocks, {required _Lifted cels}) {
+    timeline = timelineTakingBack(timeline, blocks);
+    _own(cels);
+  }
+
+  void _own(_Lifted cels) {
+    frames = [...frames, ...cels.frames];
+    clips = [...clips, ...cels.clips];
+  }
+
+  Layer get after =>
+      layer.copyWith(timeline: timeline, frames: frames, audioClips: clips);
 }

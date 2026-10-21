@@ -3,7 +3,9 @@ import 'dart:collection' show SplayTreeMap;
 
 import '../../../models/attached_layer_resolve.dart'
     show isSyncedAttachedLayer;
+import '../../../models/block_row_swap.dart';
 import '../../../models/camera_instruction.dart';
+import '../../../models/cel_bank_lanes.dart';
 import '../../../models/cut.dart';
 import '../../../models/cut_camera.dart';
 import '../../../models/drawing_block_move.dart';
@@ -41,17 +43,6 @@ import '../session_roles.dart';
 import '../track_se_display.dart';
 import '../transition_range_hold.dart';
 import '../transitions.dart';
-
-/// A planned SE row-change pair in COMMIT (global track) form: the source
-/// row after its blocks leave, the target row after they arrive.
-typedef SeRowMovePair = ({
-  LayerId sourceId,
-  LayerId targetId,
-  Layer sourceBefore,
-  Layer sourceAfter,
-  Layer targetBefore,
-  Layer targetAfter,
-});
 
 /// The rows a rigid multi-row step can hop across: the display rows the
 /// pointer travels, the drawing lattice and the track-SE lattice.
@@ -851,7 +842,7 @@ class FrameRangeMoveDrag {
   /// covers a track-SE row moves that row's blocks by the same row delta
   /// within the SE lattice — "if a block is movable, it moves no matter
   /// how many rows you select" applies to SE rows too.
-  List<SeRowMovePair>? _multiSeRowChanges;
+  MultiRowRangeMovePlan? _multiSeRowPlan;
 
   /// A direction→direction ROW-CHANGE drop in flight (P3b-4): the drawing
   /// rows' cross-layer plan, because the spans are the blocks (R27), and
@@ -989,6 +980,9 @@ class FrameRangeMoveDrag {
         frameDelta: frameDelta,
         sourceBank: _controllers.timelineController.bankLanesOf(
           sourceLayer.id,
+        ),
+        landing: LandingSwapsThem(
+          _controllers.timelineController.bankLanesOf(targetLayer.id),
         ),
         cutFrameCount: _project.activeCutFrameCount,
       );
@@ -1135,7 +1129,7 @@ class FrameRangeMoveDrag {
     if (landing == null) {
       return true;
     }
-    if (landing.plan == null && landing.sePlans.isEmpty) {
+    if (landing.plan == null && landing.sePlan == null) {
       return false; // Nothing to carry — the plain slide owns the step.
     }
     // R27 #8: the frame-axis riders shift with the same frame delta. A
@@ -1151,7 +1145,7 @@ class FrameRangeMoveDrag {
       return true;
     }
     // A valid rigid landing supersedes the slide / row-change plans.
-    _publishMultiRowMovePreview(landing.plan, landing.sePlans, riders);
+    _publishMultiRowMovePreview(landing.plan, landing.sePlan, riders);
     _landMultiRowOutline(step, targetLayerId, frameDelta, rowDelta);
     return true;
   }
@@ -1347,7 +1341,7 @@ class FrameRangeMoveDrag {
   /// The rigid landing's plans — the drawing rows' plan and the SE
   /// passengers' pairs — or null when a row cannot land, which HOLDS the
   /// last valid preview (R23 #10).
-  ({MultiRowRangeMovePlan? plan, List<SeRowMovePair> sePlans})?
+  ({MultiRowRangeMovePlan? plan, MultiRowRangeMovePlan? sePlan})?
   _planMultiRowLanding(MultiRowStep step, int frameDelta, int rowDelta) {
     final selection = step.selection;
     MultiRowRangeMovePlan? plan;
@@ -1366,18 +1360,19 @@ class FrameRangeMoveDrag {
         return null;
       }
     }
-    final sePlans = step.cast.sePassengerIds.isEmpty
-        ? const <SeRowMovePair>[]
-        : _planMultiRowSePassengers(
-            seSourceIds: step.cast.sePassengerIds,
-            seLattice: step.lattices.seLattice,
-            frameDelta: frameDelta,
-            rowDelta: rowDelta,
-          );
-    if (sePlans == null) {
-      return null; // An SE passenger cannot land — the whole move voids.
+    MultiRowRangeMovePlan? sePlan;
+    if (step.cast.sePassengerIds.isNotEmpty) {
+      sePlan = _planMultiRowSePassengers(
+        seSourceIds: step.cast.sePassengerIds,
+        seLattice: step.lattices.seLattice,
+        frameDelta: frameDelta,
+        rowDelta: rowDelta,
+      );
+      if (sePlan == null) {
+        return null; // An SE passenger cannot land — the whole move voids.
+      }
     }
-    return (plan: plan, sePlans: sePlans);
+    return (plan: plan, sePlan: sePlan);
   }
 
   /// The frame-axis riders shifted by [frameDelta] — the camera keys when
@@ -1475,13 +1470,13 @@ class FrameRangeMoveDrag {
 
   void _publishMultiRowMovePreview(
     MultiRowRangeMovePlan? plan,
-    List<SeRowMovePair> sePlans,
+    MultiRowRangeMovePlan? sePlan,
     FrameAxisRiders riders,
   ) {
     final cameraShifted = riders.camera;
     final instructionShifted = riders.instructions;
     _multiRowPlan = plan;
-    _multiSeRowChanges = sePlans.isEmpty ? null : sePlans;
+    _multiSeRowPlan = sePlan;
     _multiPlans = null;
     _seRowChange = null;
     _directionRowChange = null;
@@ -1492,10 +1487,9 @@ class FrameRangeMoveDrag {
     _rowsShifted = riders.blockRiders.isEmpty ? null : riders.blockRiders;
     _camera.showCameraKeysDragPreview(cameraShifted);
     final sePreviews = {
-      for (final se in sePlans) ...{
-        se.sourceId: _trackSe.previewFormsOf(se.sourceAfter),
-        se.targetId: _trackSe.previewFormsOf(se.targetAfter),
-      },
+      for (final MapEntry(key: id, value: row)
+          in sePlan?.layersAfter.entries ?? const <MapEntry<LayerId, Layer>>[])
+        id: _trackSe.previewFormsOf(row),
       ..._transitionPreviewForms(instructionShifted),
     };
     _dragPreview.value = BlockMoveDragPreview(
@@ -1545,56 +1539,34 @@ class FrameRangeMoveDrag {
 
   /// Plans the SE passengers of a multi-row rigid move (R26 #2): every
   /// track-SE row in [seSourceIds] shifts [rowDelta] rows inside the SE
-  /// lattice, carrying its selected blocks (and their audio clips, which
-  /// anchor to the cels). Null when ANY passenger cannot land — the whole
-  /// move voids, the multi-row all-or-nothing rule.
-  List<SeRowMovePair>? _planMultiRowSePassengers({
+  /// lattice by the drawing rows' own plan ([planMultiRowRangeMove]) — the
+  /// sounds ride their cels, and the blocks they land on go back across
+  /// them (F-384). Null when ANY passenger cannot land — the whole move
+  /// voids, the multi-row all-or-nothing rule.
+  ///
+  /// ↩️Each passenger was planned as a pair of its own, which pushed what
+  /// it landed on and voided a landing on another passenger's row.
+  MultiRowRangeMovePlan? _planMultiRowSePassengers({
     required List<LayerId> seSourceIds,
     required List<Layer> seLattice,
     required int frameDelta,
     required int rowDelta,
   }) {
     final selection = _selectionBefore;
-    final sourceIndexes = <int>{
-      for (final id in seSourceIds) seLattice.indexWhere((l) => l.id == id),
-    };
-    if (sourceIndexes.contains(-1)) {
+    if (seSourceIds.any((id) => !seLattice.any((row) => row.id == id))) {
       return null;
     }
-    final plans = <SeRowMovePair>[];
-    for (final sourceId in seSourceIds) {
-      final sourceIndex = seLattice.indexWhere((l) => l.id == sourceId);
-      final targetIndex = sourceIndex + rowDelta;
-      if (targetIndex < 0 || targetIndex >= seLattice.length) {
-        return null; // Off the SE lattice.
-      }
-      if (sourceIndexes.contains(targetIndex)) {
-        return null; // A chained/swapped landing — voided rather than
-        // ordered (two SE rows never shift the same delta legally).
-      }
-      final source = seLattice[sourceIndex];
-      final target = seLattice[targetIndex];
-      final offset = _commitOffset(sourceId, selection.startIndex);
-      final plan = planSeRangeRowMove(
-        source: source,
-        target: target,
-        rangeStartIndex: selection.startIndex + offset,
-        rangeEndIndexExclusive: selection.endIndexExclusive + offset,
-        frameDelta: frameDelta,
-      );
-      if (plan == null) {
-        return null;
-      }
-      plans.add((
-        sourceId: sourceId,
-        targetId: target.id,
-        sourceBefore: source,
-        sourceAfter: plan.sourceAfter,
-        targetBefore: target,
-        targetAfter: plan.targetAfter,
-      ));
-    }
-    return plans;
+    return planMultiRowRangeMove(
+      orderedLayers: seLattice,
+      sourceLayerIds: seSourceIds,
+      rangeStartIndex: selection.startIndex,
+      rangeEndIndexExclusive: selection.endIndexExclusive,
+      frameDelta: frameDelta,
+      rowDelta: rowDelta,
+      // A track-owned row is never linked, so no other lane shares its bank.
+      bankOf: (_) => CelBankLanes.unshared,
+      rangeOffsetOf: (id) => _commitOffset(id, selection.startIndex),
+    );
   }
 
   /// R28 #5: returns the drag preview to the block's REAL position.
@@ -1613,7 +1585,7 @@ class FrameRangeMoveDrag {
     _seRowChange = null;
     _directionRowChange = null;
     _multiRowPlan = null;
-    _multiSeRowChanges = null;
+    _multiSeRowPlan = null;
     _cameraShifted = null;
     _instructionShifted = null;
     _rowsShifted = null;
@@ -1714,6 +1686,9 @@ class FrameRangeMoveDrag {
             rangeEndIndexExclusive: selection.endIndexExclusive,
             frameDelta: frameDelta,
             sourceBank: _controllers.timelineController.bankLanesOf(source.id),
+            landing: LandingSwapsThem(
+              _controllers.timelineController.bankLanesOf(target.id),
+            ),
             cutFrameCount: _project.activeCutFrameCount,
           );
     if (plan == null) {
@@ -1842,11 +1817,11 @@ class FrameRangeMoveDrag {
   /// row-change / multi-row plan is stale now (the slide, not the row
   /// change, is last valid).
   void _forgetTheRowHop() {
-    final aRowHopWasLast = _multiRowPlan != null || _multiSeRowChanges != null;
+    final aRowHopWasLast = _multiRowPlan != null || _multiSeRowPlan != null;
     _seRowChange = null;
     _directionRowChange = null;
     _multiRowPlan = null;
-    _multiSeRowChanges = null;
+    _multiSeRowPlan = null;
     // …and the rigid step's RIDER shifts die WITH its plans: a stale
     // shift surviving here commits alone when the slide step holds —
     // the rigid group torn in one silent undo step (transition spans
@@ -1922,6 +1897,11 @@ class FrameRangeMoveDrag {
       rangeEndIndexExclusive: endExclusive,
       frameDelta: frameDelta,
       sourceBank: _controllers.timelineController.bankLanesOf(row.id),
+      // A slide along its own row lands on nothing of another's — the
+      // move's law all the same.
+      landing: LandingSwapsThem(
+        _controllers.timelineController.bankLanesOf(row.id),
+      ),
       cutFrameCount: _project.activeCutFrameCount,
     );
     if (plan == null) {
@@ -2067,7 +2047,7 @@ class FrameRangeMoveDrag {
       _commitDirectionRowMove(change, landedSelection);
       return;
     }
-    if (_multiRowPlan != null || _multiSeRowChanges != null) {
+    if (_multiRowPlan != null || _multiSeRowPlan != null) {
       // MULTI-ROW rigid move commit (UI-R23 #9): every affected drawing row
       // rewrites in one composite undo, and each cross-row cel re-keys its
       // brush frame to the target row. Track-SE passengers (R26 #2) join
@@ -2191,7 +2171,7 @@ class FrameRangeMoveDrag {
     final cut = _project.activeCutOrNull;
     final multiRowPlan = _multiRowPlan;
     final commands = <Command>[];
-    commands.addAll(_seRowMoveCommands(_multiSeRowChanges));
+    commands.addAll(_seRowMoveCommands(_multiSeRowPlan));
     commands.addAll(_multiRowLayerCommands(multiRowPlan));
     commands.addAll(_riderCommands(cut));
     if (cut != null && (multiRowPlan?.rekeys.isNotEmpty ?? false)) {
@@ -2207,28 +2187,19 @@ class FrameRangeMoveDrag {
     _changes.notifyChanged();
   }
 
-  /// The timeline commands of the SE row pairs a multi-row move changed:
-  /// each pair's source and target rows.
-  List<Command> _seRowMoveCommands(List<SeRowMovePair>? multiSeRowChanges) {
-    final commands = <Command>[];
-    for (final se in multiSeRowChanges ?? const <SeRowMovePair>[]) {
-      commands.add(
+  /// The timeline commands of the SE rows a multi-row move changed, in
+  /// their global form — none for a row the plan left as it was.
+  List<Command> _seRowMoveCommands(MultiRowRangeMovePlan? sePlan) => [
+    for (final MapEntry(key: id, value: after)
+        in sePlan?.layersAfter.entries ?? const <MapEntry<LayerId, Layer>>[])
+      if (_project.trackSeGlobalLayerById(id) case final before?
+          when before != after)
         UpdateLayerTimelineCommand(
           repository: _project.repository,
-          before: se.sourceBefore,
-          after: se.sourceAfter,
+          before: before,
+          after: after,
         ),
-      );
-      commands.add(
-        UpdateLayerTimelineCommand(
-          repository: _project.repository,
-          before: se.targetBefore,
-          after: se.targetAfter,
-        ),
-      );
-    }
-    return commands;
-  }
+  ];
 
   /// The timeline commands of the rows a multi-row plan moved — none for
   /// a row the plan left as it was.

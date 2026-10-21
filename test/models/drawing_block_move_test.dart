@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/block_row_swap.dart';
 import 'package:anicel/src/models/cel_bank_lanes.dart';
 import 'package:anicel/src/models/drawing_block_move.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -12,8 +13,9 @@ import '../helpers/run_edge_fixtures.dart';
 
 /// Whole-block move planning. A SAME-LAYER slide follows the shared rank
 /// rule — free space re-times, a neighbour's midpoint reorders, nothing is
-/// pushed — while a CROSS-LAYER drop carries the cel and shoves the blocks
-/// it lands among (leftward pushes clamp at the frame-0 wall).
+/// pushed — while a CROSS-LAYER move carries the cel and sends the blocks
+/// it lands on back to the row it left (F-384); an insertion shoves them
+/// instead (leftward pushes clamp at the frame-0 wall).
 ///
 /// A whole block is the block-snapped RANGE of exactly one block: every
 /// case here hands [planDrawingRangeMove] `[start, start + length)`, which
@@ -34,6 +36,12 @@ void main() {
     timeline: timeline,
   );
 
+  /// [row]'s blocks as `start: cel×length`.
+  Map<int, String> shown(Layer row) => {
+    for (final MapEntry(:key, :value) in row.timeline.entries)
+      key: '${value.frameId!.value}×${value.length}',
+  };
+
   /// The one-block move: the block starting at [blockStartIndex] on
   /// [source], as the range of that block alone.
   DrawingBlockMovePlan? planBlock({
@@ -43,6 +51,7 @@ void main() {
     required int frameDelta,
     int? cutFrameCount,
     CelBankLanes sourceBank = CelBankLanes.unshared,
+    LandingOnBlocks landing = const LandingSwapsThem(CelBankLanes.unshared),
   }) => planDrawingRangeMove(
     source: source,
     target: target,
@@ -51,6 +60,7 @@ void main() {
         blockStartIndex + source.timeline[blockStartIndex]!.length!,
     frameDelta: frameDelta,
     sourceBank: sourceBank,
+    landing: landing,
     cutFrameCount: cutFrameCount,
   );
 
@@ -128,6 +138,7 @@ void main() {
           rangeEndIndexExclusive: 4,
           frameDelta: 3,
           sourceBank: CelBankLanes.unshared,
+          landing: const LandingSwapsThem(CelBankLanes.unshared),
         ),
         isNull,
         reason: 'a ghost is derived, not a block to move',
@@ -140,6 +151,7 @@ void main() {
           rangeEndIndexExclusive: 8,
           frameDelta: 3,
           sourceBank: CelBankLanes.unshared,
+          landing: const LandingSwapsThem(CelBankLanes.unshared),
         ),
         isNull,
         reason: 'empty cells are not a block to move',
@@ -477,8 +489,8 @@ void main() {
       expect(plan.targetAfter!.timeline[0]!.frameId, const FrameId('b-f1'));
     });
 
-    test('an occupied landing pushes the target block out of the way '
-        '(rightward default)', () {
+    test('an INSERTION\'s occupied landing pushes the target block out of '
+        'the way (rightward default) — a file or a medium put on a row', () {
       final source = layerWith(
         'a',
         {0: const TimelineExposure.drawing(FrameId('a-f1'), length: 3)},
@@ -495,14 +507,167 @@ void main() {
         target: target,
         blockStartIndex: 0,
         frameDelta: 0,
+        landing: const LandingPushesThem(),
       );
 
       expect(plan, isNotNull);
       expect(plan!.destinationStartIndex, 0);
       expect(plan.targetAfter!.timeline[0]!.frameId, const FrameId('a-f1'));
+      expect(plan.returnedFrameIds, isEmpty);
       // [2,4) pushed behind the landed block: [3,5).
       expect(plan.targetAfter!.timeline[3]!.frameId, const FrameId('b-f1'));
       expect(plan.targetAfter!.timeline.length, 2);
+    });
+
+    // 🗣️F-384-Q1 (유저 2026-10-21): 「덮인 블록이 떠난 자리로 — 자리 바꾸기」.
+    test('🚨a MOVE sends the block it lands on back to the row it left, on '
+        'its own frames — the two rows trade places', () {
+      final source = layerWith(
+        'a',
+        {0: const TimelineExposure.drawing(FrameId('a-f1'), length: 3)},
+        frameIds: ['a-f1'],
+      );
+      final target = layerWith(
+        'b',
+        {
+          1: const TimelineExposure.drawing(FrameId('b-f1'), length: 2),
+          6: const TimelineExposure.drawing(FrameId('b-f2'), length: 2),
+        },
+        frameIds: ['b-f1', 'b-f2'],
+      );
+
+      final plan = planBlock(
+        source: source,
+        target: target,
+        blockStartIndex: 0,
+        frameDelta: 0,
+      )!;
+
+      expect(shown(plan.targetAfter!), {0: 'a-f1×3', 6: 'b-f2×2'});
+      expect(shown(plan.sourceAfter), {1: 'b-f1×2'});
+      expect(plan.sourceAfter.frames.map((frame) => frame.id), [
+        const FrameId('b-f1'),
+      ]);
+      expect(
+        plan.targetAfter!.frames.map((frame) => frame.id),
+        unorderedEquals([const FrameId('b-f2'), const FrameId('a-f1')]),
+      );
+      expect(plan.rekeys, [
+        (
+          from: const LayerId('a'),
+          to: const LayerId('b'),
+          frameId: const FrameId('a-f1'),
+        ),
+        (
+          from: const LayerId('b'),
+          to: const LayerId('a'),
+          frameId: const FrameId('b-f1'),
+        ),
+      ]);
+    });
+
+    test('a block standing in a gap between the moved blocks is not landed '
+        'on, and stays', () {
+      final source = layerWith(
+        'a',
+        {
+          0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
+          4: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
+        },
+        frameIds: ['a-f1', 'a-f2'],
+      );
+      final target = layerWith(
+        'b',
+        {2: const TimelineExposure.drawing(FrameId('b-f1'), length: 2)},
+        frameIds: ['b-f1'],
+      );
+
+      final plan = planDrawingRangeMove(
+        source: source,
+        target: target,
+        rangeStartIndex: 0,
+        rangeEndIndexExclusive: 6,
+        frameDelta: 0,
+        sourceBank: CelBankLanes.unshared,
+        landing: const LandingSwapsThem(CelBankLanes.unshared),
+      )!;
+
+      expect(shown(plan.targetAfter!), {
+        0: 'a-f1×2',
+        2: 'b-f1×2',
+        4: 'a-f2×2',
+      });
+      expect(plan.returnedFrameIds, isEmpty);
+      expect(plan.sourceAfter.timeline, isEmpty);
+    });
+
+    test('a block sent back that meets a block staying on the row it goes '
+        'to: that block makes way later, as an insertion pushes', () {
+      final source = layerWith(
+        'a',
+        {
+          0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
+          2: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
+          5: const TimelineExposure.drawing(FrameId('a-f3'), length: 2),
+        },
+        frameIds: ['a-f1', 'a-f2', 'a-f3'],
+      );
+      final target = layerWith(
+        'b',
+        {0: const TimelineExposure.drawing(FrameId('b-f1'), length: 3)},
+        frameIds: ['b-f1'],
+      );
+
+      final plan = planBlock(
+        source: source,
+        target: target,
+        blockStartIndex: 0,
+        frameDelta: 0,
+      )!;
+
+      // b-f1 back on [0,3): a-f2 moves on from [2,4) to [3,5), and a-f3
+      // already stands clear of it.
+      expect(shown(plan.sourceAfter), {
+        0: 'b-f1×3',
+        3: 'a-f2×2',
+        5: 'a-f3×2',
+      });
+    });
+
+    test('F-136: a block it lands on whose cel ANOTHER lane of the '
+        'target\'s bank shows is not sent back — the move is refused', () {
+      final source = layerWith(
+        'a',
+        {0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2)},
+        frameIds: ['a-f1'],
+      );
+      final target = layerWith(
+        'b',
+        {0: const TimelineExposure.drawing(FrameId('b-f1'), length: 2)},
+        frameIds: ['b-f1'],
+      );
+      DrawingBlockMovePlan? moveOnto(TimelineExposure otherLaneBlock) =>
+          planBlock(
+            source: source,
+            target: target,
+            blockStartIndex: 0,
+            frameDelta: 0,
+            landing: LandingSwapsThem(
+              CelBankLanes([
+                {4: otherLaneBlock},
+              ]),
+            ),
+          );
+
+      expect(
+        moveOnto(const TimelineExposure.drawing(FrameId('b-f1'), length: 1)),
+        isNull,
+        reason: 'sending it back would take it from the other cut\'s row',
+      );
+      expect(
+        moveOnto(const TimelineExposure.drawing(FrameId('b-f9'), length: 1)),
+        isNotNull,
+      );
     });
 
     test('rejects a linked cel (another entry references the frame)', () {

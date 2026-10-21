@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../models/block_row_swap.dart';
 import '../../../models/cel_bank_lanes.dart';
 import '../../../models/drawing_block_move.dart';
 import '../../../models/frame.dart';
@@ -114,6 +115,8 @@ class MediaPlacementDrag {
       frameDelta: 0,
       // Built cells are in no bank yet, so no other lane can show them.
       sourceBank: CelBankLanes.unshared,
+      // A medium put on a row is an insertion, not a move (F-384-Q1).
+      landing: const LandingPushesThem(),
       cutFrameCount: _cutFrameCount(),
     )?.targetAfter;
     if (after == null) {

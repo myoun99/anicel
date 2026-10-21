@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../models/block_row_swap.dart';
 import '../../../models/cel_bank_lanes.dart';
 import '../../../models/drawing_block_move.dart';
 import '../../../models/layer.dart';
@@ -36,6 +37,7 @@ class DrawingBlockMoveDrag {
     required Layer? Function(LayerId layerId) layerById,
     required bool Function(LayerId layerId) isEligibleRow,
     required CelBankLanes sourceBank,
+    required CelBankLanes Function(LayerId layerId) bankOf,
     required int Function() cutFrameCount,
     required int Function() drawnFrameCount,
     required ValueNotifier<TimelineDragPreview?> preview,
@@ -46,6 +48,7 @@ class DrawingBlockMoveDrag {
        _layerById = layerById,
        _isEligibleRow = isEligibleRow,
        _sourceBank = sourceBank,
+       _bankOf = bankOf,
        _cutFrameCount = cutFrameCount,
        _drawnFrameCount = drawnFrameCount,
        _preview = preview,
@@ -68,6 +71,10 @@ class DrawingBlockMoveDrag {
   /// The source row's OTHER lanes, captured with the before-state (F-136):
   /// a cross-row landing may not carry off a cel one of them still shows.
   final CelBankLanes _sourceBank;
+
+  /// The OTHER lanes of the row a move lands on: a cel one of them still
+  /// shows is not sent back (F-384, [LandingSwapsThem]).
+  final CelBankLanes Function(LayerId layerId) _bankOf;
 
   /// ⚠️Closures, not captured ints: a drag outlives the frame it began on.
   /// TWO questions, two numbers — where a row that tiles its cut stops (the
@@ -123,6 +130,7 @@ class DrawingBlockMoveDrag {
       layerById: layerById,
       isEligibleRow: isEligibleRow,
       sourceBank: bankOf(layerId),
+      bankOf: bankOf,
       cutFrameCount: cutFrameCount,
       drawnFrameCount: drawnFrameCount,
       preview: preview,
@@ -149,6 +157,7 @@ class DrawingBlockMoveDrag {
             rangeEndIndexExclusive: _blockEndExclusive,
             frameDelta: frameDelta,
             sourceBank: _sourceBank,
+            landing: LandingSwapsThem(_bankOf(target.id)),
             cutFrameCount: frames,
           );
     _plan = plan;

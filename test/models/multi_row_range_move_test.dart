@@ -31,6 +31,39 @@ Layer drawingLayer(String id, Map<int, (String, int)> blocks) {
 List<int> blockStarts(Layer layer) =>
     [for (final block in drawingBlocks(layer.timeline)) block.startIndex];
 
+/// [layer]'s blocks as `start: cel×length`.
+Map<int, String> shown(Layer layer) => {
+  for (final MapEntry(:key, :value) in layer.timeline.entries)
+    key: '${value.frameId!.value}×${value.length}',
+};
+
+/// [rows] moved [rowDelta] rows and [frameDelta] frames from [sources],
+/// over `[0, rangeEnd)` — each row after, as [shown] reads it.
+Map<String, Map<int, String>>? moved(
+  List<Layer> rows,
+  List<String> sources, {
+  required int rowDelta,
+  int frameDelta = 0,
+  int rangeEnd = 1,
+}) {
+  final plan = planMultiRowRangeMove(
+    orderedLayers: rows,
+    sourceLayerIds: [for (final id in sources) LayerId(id)],
+    rangeStartIndex: 0,
+    rangeEndIndexExclusive: rangeEnd,
+    frameDelta: frameDelta,
+    rowDelta: rowDelta,
+    bankOf: (_) => CelBankLanes.unshared,
+  );
+  if (plan == null) {
+    return null;
+  }
+  return {
+    for (final row in rows)
+      row.id.value: shown(plan.layersAfter[row.id] ?? row),
+  };
+}
+
 void main() {
   test('rigid down-shift: two source rows carry their blocks one row down', () {
     final a = drawingLayer('a', {0: ('a0', 1)});
@@ -85,21 +118,108 @@ void main() {
     expect(blockStarts(plan!.layersAfter[const LayerId('b')]!), [3]);
   });
 
-  test('any illegal landing voids the WHOLE move: an incoming block '
-      'overlapping a block that STAYS is rejected (no push)', () {
-    final a = drawingLayer('a', {0: ('a0', 2)});
-    // B keeps a block at 1 that A's [0,2) landing would overlap.
-    final b = drawingLayer('b', {1: ('b1', 1)});
-    final plan = planMultiRowRangeMove(
-      orderedLayers: [a, b],
-      sourceLayerIds: const [LayerId('a')],
-      rangeStartIndex: 0,
-      rangeEndIndexExclusive: 2,
-      frameDelta: 0,
-      rowDelta: 1,
-      bankOf: (_) => CelBankLanes.unshared,
-    );
-    expect(plan, isNull);
+  // 🗣️F-384-Q1 (유저 2026-10-21): 「덮인 블록이 떠난 자리로 — 자리 바꾸기
+  // … 여러 행을 함께 옮기면 덮인 블록이 그 묶음을 건너 반대편 행으로」.
+  // ↩️A landing on a block that stays voided the whole move.
+  group('🚨the blocks a landing lands on go back across the moved rows', () {
+    test('one row: to the row it left, on their own frames', () {
+      final a = drawingLayer('a', {0: ('a0', 2)});
+      final b = drawingLayer('b', {1: ('b1', 1), 5: ('b5', 1)});
+      final plan = planMultiRowRangeMove(
+        orderedLayers: [a, b],
+        sourceLayerIds: const [LayerId('a')],
+        rangeStartIndex: 0,
+        rangeEndIndexExclusive: 2,
+        frameDelta: 0,
+        rowDelta: 1,
+        bankOf: (_) => CelBankLanes.unshared,
+      )!;
+      expect(shown(plan.layersAfter[const LayerId('a')]!), {1: 'b1×1'});
+      expect(shown(plan.layersAfter[const LayerId('b')]!), {
+        0: 'a0×2',
+        5: 'b5×1',
+      });
+      expect(
+        plan.layersAfter[const LayerId('a')]!.frames.map((f) => f.id),
+        [const FrameId('b1')],
+      );
+      expect(plan.rekeys, contains((
+        from: const LayerId('b'),
+        to: const LayerId('a'),
+        frameId: const FrameId('b1'),
+      )));
+    });
+
+    test('two rows one down: the row entered hands its block to the row '
+        'left empty, over the pair', () {
+      final rows = [
+        drawingLayer('a', {0: ('a0', 1)}),
+        drawingLayer('b', {0: ('b0', 1)}),
+        drawingLayer('c', {0: ('c0', 1)}),
+      ];
+      expect(moved(rows, ['a', 'b'], rowDelta: 1), {
+        'a': {0: 'c0×1'},
+        'b': {0: 'a0×1'},
+        'c': {0: 'b0×1'},
+      });
+      expect(moved(rows, ['b', 'c'], rowDelta: -1), {
+        'a': {0: 'b0×1'},
+        'b': {0: 'c0×1'},
+        'c': {0: 'a0×1'},
+      });
+    });
+
+    test('rows entered keep their order on the other side — the first '
+        'entered to the first left', () {
+      final rows = [
+        drawingLayer('a', {0: ('a0', 1)}),
+        drawingLayer('b', {0: ('b0', 1)}),
+        drawingLayer('c', {0: ('c0', 1)}),
+        drawingLayer('d', {0: ('d0', 1)}),
+        drawingLayer('e', {0: ('e0', 1)}),
+      ];
+      expect(moved(rows, ['a', 'b', 'c'], rowDelta: 2), {
+        'a': {0: 'd0×1'},
+        'b': {0: 'e0×1'},
+        'c': {0: 'a0×1'},
+        'd': {0: 'b0×1'},
+        'e': {0: 'c0×1'},
+      });
+      expect(moved(rows, ['a', 'b'], rowDelta: 3), {
+        'a': {0: 'd0×1'},
+        'b': {0: 'e0×1'},
+        'c': {0: 'c0×1'},
+        'd': {0: 'a0×1'},
+        'e': {0: 'b0×1'},
+      }, reason: 'a row passed over and not landed on is left as it is');
+    });
+
+    test('a block in a row the moved rows still stand on, landed on only by '
+        'the slide along the frames, goes back the way its lander came — '
+        'to a row left empty', () {
+      final rows = [
+        drawingLayer('a', {0: ('a0', 2)}),
+        drawingLayer('b', {0: ('b0', 2), 2: ('b2', 2)}),
+        drawingLayer('c', {}),
+      ];
+      expect(moved(rows, ['a', 'b'], rowDelta: 1, frameDelta: 2, rangeEnd: 2), {
+        'a': {2: 'b2×2'},
+        'b': {2: 'a0×2'},
+        'c': {2: 'b0×2'},
+      });
+    });
+
+    test('a block sent back that meets one staying on its new row: that one '
+        'makes way later', () {
+      final rows = [
+        drawingLayer('a', {0: ('a0', 2), 2: ('a2', 2)}),
+        drawingLayer('b', {0: ('b0', 3)}),
+      ];
+      expect(moved(rows, ['a'], rowDelta: 1, rangeEnd: 2), {
+        'a': {0: 'b0×3', 3: 'a2×2'},
+        'b': {0: 'a0×2'},
+      });
+    });
   });
 
   test('a CONTENT row mapping off the lattice voids the move', () {
