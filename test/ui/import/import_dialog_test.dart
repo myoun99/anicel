@@ -2178,12 +2178,17 @@ void main() {
     );
   });
 
-  testWidgets('one bar for the whole press: each file placed fills its own '
-      'share of it — the second starts where the first\'s ends', (
-    tester,
-  ) async {
-    final first = await tester.runAsync(() => writePng('first.png'));
-    final second = await tester.runAsync(() => writePng('second.png'));
+  testWidgets('one bar for the whole press: the files the pool takes fill '
+      'their share of it, then each file placed its own — the second '
+      'starting where the first\'s ends', (tester) async {
+    final (kept, linked, first, second) = (await tester.runAsync(
+      () async => (
+        await writePng('kept.png'),
+        await writePng('linked.png'),
+        await writePng('first.png'),
+        await writePng('second.png'),
+      ),
+    ))!;
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
@@ -2193,12 +2198,28 @@ void main() {
         home: Scaffold(
           body: ImportDialog(
             session: session,
-            initialPaths: [first!, second!],
+            initialPaths: [kept, linked, first, second],
           ),
         ),
       ),
     );
-    await tester.pump();
+    // The preview's page spins until it lands, so no frame settles before.
+    await settleLoadedPages(tester);
+    Future<void> pick(String column, String path, String option) async {
+      final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
+      await tester.ensureVisible(cell);
+      await tester.pump();
+      await tester.tap(cell);
+      await settleLoadedPages(tester);
+      await tester.tap(
+        find.byKey(ValueKey<String>('import-option-$column-$option')),
+      );
+      await settleLoadedPages(tester);
+    }
+
+    await pick('into', kept, 'pool');
+    await pick('into', linked, 'pool');
+    await pick('file', linked, 'reference');
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await tester.pump();
@@ -2206,6 +2227,9 @@ void main() {
     await pumpPastTheWaitWindow(tester);
     session.playbackRig.prerenderScheduler.cancel();
 
-    expectOneBar(told, [0.5, 1]);
+    // Four files, a quarter each: the pool's two — registered within the
+    // window's first frame, before anything can listen — then the placed
+    // two, from half the bar.
+    expectOneBar(told, [0.5, 0.75, 1]);
   });
 }
