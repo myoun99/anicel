@@ -739,10 +739,11 @@ enum AppStrings {
   };
   String get staffWorker => _s('staffWorker');
   String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
-  String get sheetExposureBar => _s('sheetExposureBar');
-  String get sheetExposureBarHelp => _s('sheetExposureBarHelp');
-  String get sheetBarDrawn => _s('sheetBarDrawn');
-  String get sheetBarNotDrawn => _s('sheetBarNotDrawn');
+  String get sheetStretchLineAction => _s('sheetStretchLineAction');
+  String get sheetStretchLineCell => _s('sheetStretchLineCell');
+  String get sheetStretchLineHelp => _s('sheetStretchLineHelp');
+  String get sheetStretchLineOn => _s('sheetStretchLineOn');
+  String get sheetStretchLineOff => _s('sheetStretchLineOff');
   String get sheetSeEmptyFill => _s('sheetSeEmptyFill');
   String get sheetLength => _s('sheetLength');
   String get sheetThreeSeconds => _s('sheetThreeSeconds');
@@ -2318,11 +2319,12 @@ enum AppStrings {
     'workCover': 'Cover picture',
     'staffWorker': 'Artist',
     'sheetVisibleBoxes': 'Visible boxes',
-    'sheetExposureBar': 'Exposure hold bar',
-    'sheetExposureBarHelp':
-        'Draw the hold bar from the (N+1)th comma of N+ holds',
-    'sheetBarDrawn': 'Drawn',
-    'sheetBarNotDrawn': 'Not drawn',
+    'sheetStretchLineAction': 'Stretch line · ACTION',
+    'sheetStretchLineCell': 'Stretch line · CELL',
+    'sheetStretchLineHelp':
+        'Draw the line from the (N+1)th comma of N+ holds and × runs',
+    'sheetStretchLineOn': 'On',
+    'sheetStretchLineOff': 'Off',
     'sheetSeEmptyFill': 'Empty SE stretches',
     'sheetLength': 'Sheet length',
     'sheetThreeSeconds': '3 sec',
@@ -3578,10 +3580,11 @@ enum AppStrings {
     'workCover': '表紙の絵',
     'staffWorker': '作業者',
     'sheetVisibleBoxes': '表示する枠',
-    'sheetExposureBar': '止めの引き伸ばし線',
-    'sheetExposureBarHelp': 'N コマ以上の止めで (N+1) コマ目から線を引く',
-    'sheetBarDrawn': '引く',
-    'sheetBarNotDrawn': '引かない',
+    'sheetStretchLineAction': '引き伸ばし線・ACTION',
+    'sheetStretchLineCell': '引き伸ばし線・CELL',
+    'sheetStretchLineHelp': 'N コマ以上の止め・× で (N+1) コマ目から線を引く',
+    'sheetStretchLineOn': 'あり',
+    'sheetStretchLineOff': 'なし',
     'sheetSeEmptyFill': 'セリフのない区間',
     'sheetLength': 'シートの長さ',
     'sheetThreeSeconds': '3秒',
@@ -5187,10 +5190,11 @@ enum AppStrings {
     'workCover': '표지 그림',
     'staffWorker': '작업자',
     'sheetVisibleBoxes': '표시할 칸',
-    'sheetExposureBar': '止め 늘림 선',
-    'sheetExposureBarHelp': 'N코마 이상 止め에서 (N+1)번째 코마부터 선을 긋기',
-    'sheetBarDrawn': '그음',
-    'sheetBarNotDrawn': '안 그음',
+    'sheetStretchLineAction': '늘림 선 · 액션란',
+    'sheetStretchLineCell': '늘림 선 · 셀란',
+    'sheetStretchLineHelp': 'N코마 이상 止め · ×에서 (N+1)번째 코마부터 선을 긋기',
+    'sheetStretchLineOn': '있음',
+    'sheetStretchLineOff': '없음',
     'sheetSeEmptyFill': '대사 없는 구간',
     'sheetLength': '시트 길이',
     'sheetThreeSeconds': '3초',
@@ -6831,11 +6835,12 @@ enum AppStrings {
     'workCover': 'Image de couverture',
     'staffWorker': 'Artiste',
     'sheetVisibleBoxes': 'Cases visibles',
-    'sheetExposureBar': 'Trait de maintien',
-    'sheetExposureBarHelp':
-        'Tracer le trait à partir du (N+1)e comma des maintiens de N+',
-    'sheetBarDrawn': 'Tracé',
-    'sheetBarNotDrawn': 'Non tracé',
+    'sheetStretchLineAction': "Trait d'extension · ACTION",
+    'sheetStretchLineCell': "Trait d'extension · CELL",
+    'sheetStretchLineHelp':
+        'Tracer le trait à partir du (N+1)e comma des maintiens et des × de N+',
+    'sheetStretchLineOn': 'Oui',
+    'sheetStretchLineOff': 'Non',
     'sheetSeEmptyFill': 'Plages sans dialogue',
     'sheetLength': 'Longueur de feuille',
     'sheetThreeSeconds': '3 s',
@@ -8491,10 +8496,11 @@ enum AppStrings {
     'workCover': '封面图',
     'staffWorker': '作业者',
     'sheetVisibleBoxes': '显示的栏位',
-    'sheetExposureBar': '保持延长线',
-    'sheetExposureBarHelp': '在 N 格以上的保持中，从第 (N+1) 格开始画线',
-    'sheetBarDrawn': '画',
-    'sheetBarNotDrawn': '不画',
+    'sheetStretchLineAction': '延长线 · ACTION',
+    'sheetStretchLineCell': '延长线 · CELL',
+    'sheetStretchLineHelp': '在 N 格以上的保持或 × 中，从第 (N+1) 格开始画线',
+    'sheetStretchLineOn': '有',
+    'sheetStretchLineOff': '无',
     'sheetSeEmptyFill': '无台词区间',
     'sheetLength': '摄影表长度',
     'sheetThreeSeconds': '3秒',

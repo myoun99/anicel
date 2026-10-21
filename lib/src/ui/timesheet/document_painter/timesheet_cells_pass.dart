@@ -418,6 +418,7 @@ class _TimesheetCellsPass {
           cellBottom: cellBottom,
           cellCenterY: cellCenterY,
           seColumn: seColumn,
+          stretchFrom: _painter.document.stretchLineFrom(spec.kind),
         );
         _paintCellOfKind(
           canvas,
@@ -491,7 +492,7 @@ class _TimesheetCellsPass {
         size: const Size.square(timesheetInbetweenMarkRadius * 2),
       ), TimesheetDocumentPainter._ink);
 
-  /// A held cell's bar, by column: the SE red bar or the action hold bar.
+  /// A held cell's bar, by column: the SE red bar or the block's stretch line.
   void _paintHeldCell(Canvas canvas, _CellSlot slot) {
     if (slot.seColumn) {
       // Toei SE notation: no hold line down the dialogue; the
@@ -506,18 +507,7 @@ class _TimesheetCellsPass {
       }
       return;
     }
-    // ACTION hold bar: off by default; with a threshold N it runs
-    // from the (N+1)th comma of N+ holds only (industry N=3).
-    final threshold = _painter.document.exposureBarThreshold;
-    if (threshold != null && (slot.cell.spanOffset ?? 0) >= threshold) {
-      canvas.drawLine(
-        Offset(slot.centerX, slot.cellTop),
-        Offset(slot.centerX, slot.cellBottom),
-        Paint()
-          ..color = TimesheetDocumentPainter._ink
-          ..strokeWidth = 1.0,
-      );
-    }
+    slot.paintStretchLine(canvas);
   }
 
   /// A repeat chain's first cell: the cel it restarts on, then the
@@ -624,6 +614,8 @@ class _TimesheetCellsPass {
           slot,
           rows: _gridOf(slot, rowCount: rowCount),
         );
+      case TimesheetCellKind.emptyRunSpan:
+        slot.paintStretchLine(canvas);
       case TimesheetCellKind.empty:
         break;
     }
@@ -650,6 +642,7 @@ class _CellSlot {
     required this.cellBottom,
     required this.cellCenterY,
     required this.seColumn,
+    required this.stretchFrom,
   });
 
   final TimesheetCell cell;
@@ -661,6 +654,26 @@ class _CellSlot {
   final double cellBottom;
   final double cellCenterY;
   final bool seColumn;
+
+  /// Where a run in this column starts its stretch line, or null for none
+  /// ([TimesheetDocument.stretchLineFrom]).
+  final int? stretchFrom;
+
+  /// The block's stretch line down this cell's run — a held drawing's, or
+  /// the empty run past an × — from the (N+1)th comma of a run of N+
+  /// (industry N=3), each block by its own N ([stretchFrom]).
+  void paintStretchLine(Canvas canvas) {
+    final threshold = stretchFrom;
+    if (threshold != null && (cell.spanOffset ?? 0) >= threshold) {
+      canvas.drawLine(
+        Offset(centerX, cellTop),
+        Offset(centerX, cellBottom),
+        Paint()
+          ..color = TimesheetDocumentPainter._ink
+          ..strokeWidth = 1.0,
+      );
+    }
+  }
 }
 
 /// One half page's frame: where it sits, which rows are visible, the three

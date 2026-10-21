@@ -31,7 +31,7 @@ void main() {
   });
 
   test('the first uncovered row after a drawing is the X cell, the rest of '
-      'the run stays blank', () {
+      'the run counts on from the X for the stretch line (F-430)', () {
     final layer = Layer(
       id: const LayerId('l'),
       name: 'A',
@@ -57,6 +57,9 @@ void main() {
     final kinds = [for (final cell in column.cells.take(6)) cell.kind];
     expect(kinds[0], TimesheetCellKind.drawing);
     expect(kinds[2], TimesheetCellKind.emptyRunStart);
-    expect(kinds.sublist(3), everyElement(TimesheetCellKind.empty));
+    expect(kinds.sublist(3), everyElement(TimesheetCellKind.emptyRunSpan));
+    expect([
+      for (final cell in column.cells.sublist(3, 6)) cell.spanOffset,
+    ], [1, 2, 3]);
   });
 }

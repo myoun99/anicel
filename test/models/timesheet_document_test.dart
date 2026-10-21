@@ -317,8 +317,9 @@ void main() {
         expect(asCell.previewCellsBuilder, isNotNull);
       });
 
-      test('each block marks the books among its own rows, at its own '
-          'columns — the CELL block\'s past the ACTION and SE ones', () {
+      test('only the ACTION block marks the books among its rows — the CELL '
+          'block marks none, its rows laid like the ACTION block\'s '
+          '(F-430)', () {
         final document = _document(
           _cut(
             layers: [
@@ -343,14 +344,10 @@ void main() {
             ],
           ),
         );
+        expect(document.books, [(boundary: 1, label: 'BOOK2')]);
         final firstCell = document.columns.indexWhere(
           (column) => column.kind == TimesheetColumnKind.cel,
         );
-
-        expect(document.books, [
-          (boundary: 1, label: 'BOOK2'),
-          (boundary: firstCell + 1, label: 'BOOK2'),
-        ]);
         expect(document.columns[firstCell].label, 'IB1');
       });
     });
@@ -560,9 +557,10 @@ void main() {
       expect(cells[3].kind, TimesheetCellKind.emptyRunStart);
       expect(
         cells[4].kind,
-        TimesheetCellKind.empty,
+        TimesheetCellKind.emptyRunSpan,
         reason: 'one X per empty run',
       );
+      expect(cells[4].spanOffset, 1, reason: 'counted from the X (F-430)');
     });
 
     test('SE columns carry the name/dialogue label and never mark X runs', () {
@@ -598,7 +596,9 @@ void main() {
       // SE columns stay blank between entries on paper — no X anywhere.
       expect(
         seColumn.cells.where(
-          (cell) => cell.kind == TimesheetCellKind.emptyRunStart,
+          (cell) =>
+              cell.kind == TimesheetCellKind.emptyRunStart ||
+              cell.kind == TimesheetCellKind.emptyRunSpan,
         ),
         isEmpty,
       );
@@ -790,8 +790,32 @@ void main() {
 
       final cells = _firstActionColumn(document).cells;
       expect(cells[0].kind, TimesheetCellKind.emptyRunStart);
+      expect(cells[9].kind, TimesheetCellKind.emptyRunSpan);
       expect(cells[10].kind, TimesheetCellKind.empty);
       expect(cells[143].kind, TimesheetCellKind.empty);
+    });
+
+    // F-430: 「액션란이랑 셀란 늘림선 따로따로 적용가능하게」.
+    test('each block draws its stretch line by its own threshold; the SE '
+        'and camera columns draw none', () {
+      final document = _document(
+        _cut(layers: [_layer('A')]),
+        info: const TimesheetInfo(
+          exposureBarThreshold: 2,
+          cellExposureBarThreshold: 5,
+        ),
+      );
+
+      expect(document.stretchLineFrom(TimesheetColumnKind.action), 2);
+      expect(document.stretchLineFrom(TimesheetColumnKind.cel), 5);
+      expect(document.stretchLineFrom(TimesheetColumnKind.se), isNull);
+      expect(document.stretchLineFrom(TimesheetColumnKind.camera), isNull);
+      expect(
+        _document(_cut(layers: [_layer('A')])).stretchLineFrom(
+          TimesheetColumnKind.cel,
+        ),
+        TimesheetInfo.defaultCellExposureBarThreshold,
+      );
     });
 
     test('camera keyframes land in the first camera column with spans', () {

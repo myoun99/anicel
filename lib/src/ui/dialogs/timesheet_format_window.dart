@@ -15,8 +15,8 @@ import '../widgets/pill_strip.dart';
 typedef TimesheetFormat = ({TimesheetInfo info, TimesheetSheetKind? kind});
 
 /// 「타임시트 서식」: how the paper timesheet prints — the paper the cut on
-/// the sheet prints on, which header boxes it carries, the hold bar, the SE
-/// wash. Pops the edited [TimesheetFormat], or null when cancelled.
+/// the sheet prints on, which header boxes it carries, the stretch lines,
+/// the SE wash. Pops the edited [TimesheetFormat], or null when cancelled.
 ///
 /// ⛔The work's words are not here: its title, episode and staff are set in
 /// the work's settings (`WorkSettingsWindow`, 유저 09-25 「작품명/화수는
@@ -51,12 +51,13 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
   late final Set<TimesheetHeaderField> _hiddenFields = {
     ...widget.initialInfo.hiddenFields,
   };
-  late bool _exposureBarEnabled =
-      widget.initialInfo.exposureBarThreshold != null;
-  late final TextEditingController
-  _exposureBarThresholdController = TextEditingController(
-    text:
-        '${widget.initialInfo.exposureBarThreshold ?? TimesheetInfo.defaultExposureBarThreshold}',
+  late final _StretchLine _actionLine = _StretchLine(
+    widget.initialInfo.exposureBarThreshold,
+    suggested: TimesheetInfo.defaultExposureBarThreshold,
+  );
+  late final _StretchLine _cellLine = _StretchLine(
+    widget.initialInfo.cellExposureBarThreshold,
+    suggested: TimesheetInfo.defaultCellExposureBarThreshold,
   );
   late bool _seEmptyFill = widget.initialInfo.seEmptyFill;
   late TimesheetSheetKind? _kind = widget.sheet?.kind;
@@ -76,12 +77,12 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
 
   @override
   void dispose() {
-    _exposureBarThresholdController.dispose();
+    _actionLine.n.dispose();
+    _cellLine.n.dispose();
     super.dispose();
   }
 
   void _submit() {
-    final threshold = halfWidthInt(_exposureBarThresholdController.text);
     // 🚨★★★copyWith, NOT a fresh TimesheetInfo. Building one from scratch
     // listed the fields this dialog edits and silently dropped every field
     // it does not — `staff` and `logoAssetPath` both default to empty, so
@@ -94,11 +95,8 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
     final format = (
       info: widget.initialInfo.copyWith(
         hiddenFields: {..._hiddenFields},
-        exposureBarThreshold: () => _exposureBarEnabled && threshold != null
-            ? threshold.clamp(1, 999)
-            : _exposureBarEnabled
-            ? TimesheetInfo.defaultExposureBarThreshold
-            : null,
+        exposureBarThreshold: () => _actionLine.threshold,
+        cellExposureBarThreshold: () => _cellLine.threshold,
         seEmptyFill: _seEmptyFill,
       ),
       kind: _kind,
@@ -155,38 +153,64 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
     ],
   );
 
-  Widget _holdBar() {
+  /// One block's stretch line, [label]led: whether it is drawn, and from
+  /// how long a run. The ACTION and CELL blocks each have one, set apart
+  /// (F-430).
+  Widget _stretchLine(String label, String keyValue, _StretchLine line) {
     final strings = AppText.strings;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TogglePill(
-          keyValue: 'timesheet-format-exposure-bar',
-          on: _exposureBarEnabled,
-          words: (on: strings.sheetBarDrawn, off: strings.sheetBarNotDrawn),
-          onChanged: (on) => setState(() => _exposureBarEnabled = on),
-        ),
-        const SizedBox(width: 12),
-        // The threshold keeps its place while the bar is off, refusing
-        // input rather than leaving (「없다가 생기는 UI 금지」) — it used to
-        // appear only once the bar was switched on.
-        AppTooltip(
-          message: strings.sheetExposureBarHelp,
-          child: SizedBox(
-            width: 72,
-            child: TextField(
-              key: const ValueKey<String>(
-                'timesheet-format-exposure-bar-threshold',
+    return AppWindowField(
+      label: label,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TogglePill(
+              keyValue: keyValue,
+              on: line.on,
+              words: (
+                on: strings.sheetStretchLineOn,
+                off: strings.sheetStretchLineOff,
               ),
-              controller: _exposureBarThresholdController,
-              enabled: _exposureBarEnabled,
-              keyboardType: TextInputType.number,
-              inputFormatters: halfWidthDigitsOnly,
-              decoration: const InputDecoration(prefixText: 'N  '),
+              onChanged: (on) => setState(() => line.on = on),
             ),
-          ),
+            const SizedBox(width: 12),
+            // The threshold keeps its place while the line is off, refusing
+            // input rather than leaving (「없다가 생기는 UI 금지」) — it used
+            // to appear only once the line was switched on.
+            AppTooltip(
+              message: strings.sheetStretchLineHelp,
+              child: SizedBox(
+                width: 72,
+                child: TextField(
+                  key: ValueKey<String>('$keyValue-threshold'),
+                  controller: line.n,
+                  enabled: line.on,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: halfWidthDigitsOnly,
+                  decoration: const InputDecoration(prefixText: 'N  '),
+                ),
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
+    );
+  }
+
+  Widget _seWash() {
+    final strings = AppText.strings;
+    return AppWindowField(
+      label: strings.sheetSeEmptyFill,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: TogglePill(
+          keyValue: 'timesheet-format-se-empty-fill',
+          on: _seEmptyFill,
+          words: (on: strings.sheetFillOn, off: strings.sheetFillOff),
+          onChanged: (on) => setState(() => _seEmptyFill = on),
+        ),
+      ),
     );
   }
 
@@ -222,22 +246,17 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
                 child: _headerBoxes(),
               ),
             ),
-            AppWindowField(
-              label: strings.sheetExposureBar,
-              child: Align(alignment: Alignment.centerLeft, child: _holdBar()),
+            _stretchLine(
+              strings.sheetStretchLineAction,
+              'timesheet-format-stretch-line-action',
+              _actionLine,
             ),
-            AppWindowField(
-              label: strings.sheetSeEmptyFill,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: TogglePill(
-                  keyValue: 'timesheet-format-se-empty-fill',
-                  on: _seEmptyFill,
-                  words: (on: strings.sheetFillOn, off: strings.sheetFillOff),
-                  onChanged: (on) => setState(() => _seEmptyFill = on),
-                ),
-              ),
+            _stretchLine(
+              strings.sheetStretchLineCell,
+              'timesheet-format-stretch-line-cell',
+              _cellLine,
             ),
+            _seWash(),
           ],
         ),
       ),
@@ -248,4 +267,23 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
       ),
     );
   }
+}
+
+/// One block's stretch line as the window edits it: whether it is drawn
+/// ([on]) and the run it starts past ([n]) — kept while the line is off,
+/// so switching it back on brings the same N back.
+class _StretchLine {
+  _StretchLine(int? threshold, {required this.suggested})
+    : on = threshold != null,
+      n = TextEditingController(text: '${threshold ?? suggested}');
+
+  bool on;
+  final TextEditingController n;
+
+  /// The N a line switched on starts from when its field holds none.
+  final int suggested;
+
+  /// The threshold the work keeps: null when the line is off.
+  int? get threshold =>
+      on ? (halfWidthInt(n.text) ?? suggested).clamp(1, 999) : null;
 }

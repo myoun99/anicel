@@ -15,7 +15,6 @@ class SheetSources {
     required this.playbackFrameCount,
     required this.celLayers,
     required this.actionBooks,
-    required this.cellBooks,
     required this.seLayers,
     required this.instructionLayers,
   });
@@ -42,8 +41,7 @@ class SheetSources {
         for (final layer in cut.layers)
           if (layerTakesSheetCelColumn(layer)) layer,
       ],
-      actionBooks: sheetBooksOf(_blockRows(cut.layers, cellBlock: false)),
-      cellBooks: sheetBooksOf(_blockRows(cut.layers, cellBlock: true)),
+      actionBooks: sheetBooksOf(_actionBlockRows(cut.layers)),
       seLayers: [
         for (final layer in cut.layers)
           if (layerPrintsSheetLines(layer))
@@ -78,18 +76,12 @@ class SheetSources {
     );
   }
 
-  /// The rows a block's books lie among: every row that takes no cel
-  /// column, and that block's own cel rows — the 動画 and 仕上げ ones for
-  /// the CELL block ([layerTakesTheCelBlock]), the others for the ACTION
-  /// block. The other block's rows are not
-  /// there for a book to lie between (F-406-Q1).
-  static List<Layer> _blockRows(
-    List<Layer> layers, {
-    required bool cellBlock,
-  }) => [
+  /// The rows the ACTION block's books lie among: every row that takes no
+  /// cel column, and the ACTION block's own cel rows. The CELL block's rows
+  /// are not there for a book to lie between (F-406-Q1).
+  static List<Layer> _actionBlockRows(List<Layer> layers) => [
     for (final layer in layers)
-      if (!layerTakesSheetCelColumn(layer) ||
-          layerTakesTheCelBlock(layer) == cellBlock)
+      if (!layerTakesSheetCelColumn(layer) || !layerTakesTheCelBlock(layer))
         layer,
   ];
 
@@ -129,10 +121,12 @@ class SheetSources {
     return actions > cells ? actions : cells;
   }
 
-  /// The books the ACTION block marks between its columns, and those the
-  /// CELL block marks between its own ([sheetBooksOf]).
+  /// The books the ACTION block marks between its columns ([sheetBooksOf]).
+  ///
+  /// ↩️F-430 (유저 2026-10-21): the CELL block marks none — 「셀 란은 이런
+  /// 북 표시 하지않음. 기본적으로는 액션란이랑 셀 구성이 똑같기 때문에 셀
+  /// 란에는 BOOK표시 안하는 것」. It marked its own since F-406-Q1.
   final List<SheetBook> actionBooks;
-  final List<SheetBook> cellBooks;
 
   /// The SE rows, already windowed and clipped to this cut, each with the
   /// two facts the printed sheet marks: whether the row's block runs past

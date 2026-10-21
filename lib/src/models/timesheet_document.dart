@@ -69,6 +69,12 @@ enum TimesheetCellKind {
   /// "X" cell (same rule as the timeline grids: marks continue a run).
   emptyRunStart,
 
+  /// The rest of that run, past its ×: [TimesheetCell.spanOffset] counts
+  /// from the ×, so the block's stretch line runs down it as down a held
+  /// drawing (유저 2026-10-21, F-430: 「이 늘림 선은 x부분 이후도 늘림선
+  /// 긋는것임. 진짜 어디던 긋는느낌」). ↩️These rows were [empty].
+  emptyRunSpan,
+
   /// A drawing exposure starts here; [TimesheetCell.label] carries the cel
   /// number ([Frame.celNumber] — the cel export files by the same rule) or
   /// the in-between mark for an unnamed drawing.
@@ -312,6 +318,7 @@ class TimesheetDocument {
     required this.pageMemos,
     required this.visibleHeaderFields,
     required this.exposureBarThreshold,
+    required this.cellExposureBarThreshold,
     required this.seEmptyFill,
     required this.cutName,
     required this.fps,
@@ -467,6 +474,7 @@ class TimesheetDocument {
       pageMemos: cut.metadata.pageNotes,
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,
+      cellExposureBarThreshold: info.cellExposureBarThreshold,
       seEmptyFill: info.seEmptyFill,
       cutName: cut.name,
       fps: fps,
@@ -475,15 +483,7 @@ class TimesheetDocument {
       sheetKind: sheetKind,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
-      books: List.unmodifiable([
-        ...sources.actionBooks,
-        // The CELL block's at its own columns, past the ACTION and SE ones.
-        for (final book in sources.cellBooks)
-          (
-            boundary: actionSlots + seColumnSlots + book.boundary,
-            label: book.label,
-          ),
-      ]),
+      books: List.unmodifiable(sources.actionBooks),
       pages: List.unmodifiable([
         for (var page = 0; page < pageCount; page += 1)
           TimesheetPage(
@@ -583,9 +583,21 @@ class TimesheetDocument {
   String memoTextOf(int page) =>
       page >= 0 && page < pageMemos.length ? pageMemos[page] : '';
 
-  /// The ACTION hold-bar setting mirrored from [TimesheetInfo]
-  /// (null = bars off, N = bars from the (N+1)th comma of N+ holds).
+  /// The ACTION and CELL blocks' stretch lines, mirrored from
+  /// [TimesheetInfo] (null = off, N = from the (N+1)th comma of a run of
+  /// N+) — each block its own ([stretchLineFrom]).
   final int? exposureBarThreshold;
+  final int? cellExposureBarThreshold;
+
+  /// Where a run in a column of [kind] starts its stretch line — the
+  /// (N+1)th comma for N — or null for none: the ACTION block's and the
+  /// CELL block's each their own (유저 2026-10-21, F-430: 「액션란이랑 셀란
+  /// 늘림선 따로따로」), and no other column draws one.
+  int? stretchLineFrom(TimesheetColumnKind kind) => switch (kind) {
+    TimesheetColumnKind.action => exposureBarThreshold,
+    TimesheetColumnKind.cel => cellExposureBarThreshold,
+    TimesheetColumnKind.se || TimesheetColumnKind.camera => null,
+  };
 
   /// Whether SE columns wash their empty stretches light gray (mirrored
   /// from [TimesheetInfo.seEmptyFill]).
@@ -625,8 +637,9 @@ class TimesheetDocument {
 
   final List<TimesheetColumn> columns;
 
-  /// The books tagged over the ACTION and CELL blocks, left to right — each
-  /// at a boundary of its block's columns, as a column index ([SheetBook]).
+  /// The books tagged over the ACTION block, left to right — each at a
+  /// boundary of its columns, as a column index ([SheetBook]). The CELL
+  /// block marks none (F-430, [SheetSources.actionBooks]).
   final List<SheetBook> books;
 
   final List<TimesheetPage> pages;
@@ -1168,18 +1181,24 @@ class _LayerCellsPass {
   }
 
   /// X only at the first uncovered row of each run, only inside the
-  /// playback range.
+  /// playback range — and the run's rest counted from it
+  /// ([TimesheetCellKind.emptyRunSpan]).
   void markEmptyRuns(int playbackFrameCount) {
-    var inEmptyRun = false;
+    int? runStart;
     for (var row = 0; row < playbackFrameCount && row < rowCount; row += 1) {
       if (covered[row]) {
-        inEmptyRun = false;
+        runStart = null;
         continue;
       }
-      if (!inEmptyRun) {
+      if (runStart == null) {
         cells[row] = const TimesheetCell(TimesheetCellKind.emptyRunStart);
-        inEmptyRun = true;
+        runStart = row;
+        continue;
       }
+      cells[row] = TimesheetCell(
+        TimesheetCellKind.emptyRunSpan,
+        spanOffset: row - runStart,
+      );
     }
   }
 }
