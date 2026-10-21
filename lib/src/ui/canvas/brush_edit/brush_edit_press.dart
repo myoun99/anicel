@@ -39,6 +39,9 @@ class _BrushEditPress {
       AppInput.settings.value.strokeFingerModifier &&
       _shiftFingers.any((finger) => finger != _state._activeDrawingPointer);
 
+  /// Whether the stroke's Shift is held now — the key, or a finger.
+  bool get shiftHeld => ModifierKeys.isShiftPressed || aFingerHoldsShift;
+
   /// R26 #5: a second finger landed SOMEWHERE on the ink surfaces — maybe
   /// on a sibling view, whose pointer this view will never see. A live
   /// sub-slop touch stroke here is really the first half of a pinch, so
@@ -223,11 +226,10 @@ class _BrushEditPress {
       return;
     }
 
-    final canvasPosition = _state._canvasPositionFromLocal(event.localPosition);
     // The pasteboard is EVERY tool's input boundary (user feedback +
     // Flash parity): strokes, the eyedropper and fill taps all work on
     // off-canvas artwork; only the pasteboard wall stops them.
-    final startsInsidePasteboard = _state._isInsidePasteboard(canvasPosition);
+    final canvasPosition = _state._canvasPositionFromLocal(event.localPosition);
 
     // FILL tap (R22-A / R23, a stroke of one dab since 2026-09-17): the
     // flood's result tiles become the overlay's pictures on the tap frame,
@@ -243,7 +245,6 @@ class _BrushEditPress {
     _state._stroke.beginStroke(
       event,
       canvasPosition,
-      startsInsidePasteboard: startsInsidePasteboard,
       mappedErase: mappedErase,
     );
   }
@@ -494,7 +495,9 @@ class _BrushEditPress {
   }
 
   void _forgetTouchPointer(int pointer) {
-    _shiftFingers.remove(pointer);
+    if (_shiftFingers.remove(pointer)) {
+      _state.widget.shiftLine?.heldNow(shiftHeld);
+    }
     _activeTouchPointers.remove(pointer);
     CanvasTouchContacts.remove(pointer);
     if (_activeTouchPointers.isEmpty) {

@@ -8,12 +8,14 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/native/windows_key_state.dart' show vkShift;
 import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/services/guide_stroke_input.dart' show ShiftLine;
 import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show LogicalKeyboardKey;
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'brush_canvas_test_helpers.dart';
@@ -32,7 +34,7 @@ void main() {
 
   setUp(() => commits = <BrushStrokeCommitData>[]);
 
-  Widget app(CutGuides guides) => MaterialApp(
+  Widget app(CutGuides guides, {ShiftLine? line}) => MaterialApp(
     home: Scaffold(
       body: Align(
         alignment: Alignment.topLeft,
@@ -51,6 +53,7 @@ void main() {
               correction: BrushCorrection.none,
             ),
             guides: guides,
+            shiftLine: line,
             onSourceStrokeCommitted: commits.add,
           ),
         ),
@@ -457,6 +460,90 @@ void main() {
         reason: 'free once Windows lets go, with no key event to say so',
       );
     });
+
+  // 🗣️I-121 (유저 2026-10-21): 「스냅 발생하면 쉬프트 떼기 전까지는
+  // 같은스냅. 즉 스트로크로 라인 그리다가 스트로크만 떼고 다음 포인트에서
+  // 같은 라인의 직선을 그릴 수 있게되는거지」.
+  group('the line Shift holds past the pen (I-121)', () {
+    late ShiftLine line;
+    setUp(() => line = ShiftLine());
+
+    List<BrushDab> stroke(int index) => commits[index].sourceDabs;
+
+    /// A stroke Shift locks onto y = x, through (20, 20).
+    Future<void> alongTheDiagonal(WidgetTester tester) =>
+        dragCanvas(tester, const [
+          Offset(20, 20),
+          Offset(60, 66),
+          Offset(100, 94),
+          Offset(150, 154),
+        ]);
+
+    /// Pressed off the diagonal, dragged nearly level: its own eight ways
+    /// lay it flat from (40, 80).
+    Future<void> nearlyLevel(WidgetTester tester) => dragCanvas(tester, const [
+      Offset(40, 80),
+      Offset(100, 86),
+      Offset(160, 90),
+    ]);
+
+    void pickedItsOwnWay(List<BrushDab> dabs) {
+      expect(dabs.first.center.x, closeTo(40, 1e-6), reason: 'its press');
+      for (final dab in dabs) {
+        expect(dab.center.y, closeTo(80, 1e-6), reason: '${dab.center}');
+      }
+    }
+
+    testWidgets('🚨held through a pen-up, the next stroke starts on the same '
+        'line, where its press falls across it, and goes along it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(CutGuides.empty, line: line));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await alongTheDiagonal(tester);
+      await nearlyLevel(tester);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+      expect(commits, hasLength(2));
+      expect(stroke(1).first.center.x, closeTo(60, 1e-6));
+      for (final dab in stroke(1)) {
+        expect(dab.center.y, closeTo(dab.center.x, 1e-6), reason: '$dab');
+      }
+      expect(stroke(1).last.center.x, greaterThan(100), reason: 'it went on');
+    });
+
+    testWidgets('🚨let go between the strokes, the next is free from its own '
+        'press', (tester) async {
+      await tester.pumpWidget(app(CutGuides.empty, line: line));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await alongTheDiagonal(tester);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await nearlyLevel(tester);
+
+      expect(stroke(1).first.center.x, closeTo(40, 1e-6));
+      expect(stroke(1).first.center.y, closeTo(80, 1e-6));
+      expect(
+        stroke(1).any((dab) => dab.center.y > 81),
+        isTrue,
+        reason: 'free: the wobble is kept',
+      );
+    });
+
+    testWidgets('🚨Shift pressed anew between the strokes is a new hold: the '
+        'next stroke picks its own way', (tester) async {
+      HardwareKeyboard.instance.addHandler(line.heardKey);
+      addTearDown(() => HardwareKeyboard.instance.removeHandler(line.heardKey));
+      await tester.pumpWidget(app(CutGuides.empty, line: line));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await alongTheDiagonal(tester);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await nearlyLevel(tester);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+      pickedItsOwnWay(stroke(1));
+    });
+  });
   });
 
   // 🗣️I-61-Q3 (유저 2026-10-14): 「손가락도 — 다른 손가락이 닿아 있는 동안
@@ -652,6 +739,51 @@ void main() {
       );
 
       wobbleKept();
+    });
+
+    // I-121: a finger's Shift holds the line as the key does, and lifting
+    // it is letting the key go.
+    testWidgets('🚨the line it held goes on past a pen-up while it rests — '
+        'lifted and laid down again, the next stroke picks its own way', (
+      tester,
+    ) async {
+      switchedOn(fingerDraws: false);
+      await tester.pumpWidget(app(CutGuides.empty, line: ShiftLine()));
+      Future<void> penStroke(List<Offset> path) async {
+        final pen = await downAt(
+          tester,
+          path.first,
+          kind: PointerDeviceKind.stylus,
+          pointer: 3,
+        );
+        for (final at in path.skip(1)) {
+          await to(tester, pen, at);
+        }
+        await lift(tester, pen);
+      }
+
+      const nearlyLevel = [Offset(40, 80), Offset(100, 86), Offset(160, 90)];
+      var finger = await rest(tester);
+      await penStroke(const [
+        Offset(20, 20),
+        Offset(60, 66),
+        Offset(100, 94),
+        Offset(150, 154),
+      ]);
+      await penStroke(nearlyLevel);
+      await lift(tester, finger);
+      finger = await rest(tester);
+      await penStroke(nearlyLevel);
+      await lift(tester, finger);
+
+      expect(commits, hasLength(3));
+      for (final dab in commits[1].sourceDabs) {
+        expect(dab.center.y, closeTo(dab.center.x, 1e-6), reason: 'held');
+      }
+      expect(commits[2].sourceDabs.first.center.x, closeTo(40, 1e-6));
+      for (final dab in commits[2].sourceDabs) {
+        expect(dab.center.y, closeTo(80, 1e-6), reason: 'its own way');
+      }
     });
   });
 }

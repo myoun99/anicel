@@ -2,6 +2,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/guide_stroke_input.dart' show ShiftLine;
 import 'package:anicel/src/ui/canvas/selection_drag.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -20,6 +21,7 @@ void main() {
     CutGuides? guides,
     SelectionCombineMode? combine,
     bool shiftAtThePress = false,
+    ShiftLine? line,
   }) => MarqueeDrag(
     pointer: 1,
     shapeKind: CanvasShapeKind.lasso,
@@ -29,6 +31,7 @@ void main() {
     zoom: 1,
     combine: combine,
     shiftAtThePress: shiftAtThePress,
+    line: line,
   );
 
   List<(double, double)> placesOf(Iterable<CanvasPoint> points) => [
@@ -140,5 +143,61 @@ void main() {
     drag.lift();
 
     expect(placesOf(drag.openTrail), [(100.0, 100.0), (104.0, 100.0)]);
+  });
+
+  // 🗣️I-121: the line a hold kept goes on through a lasso — and the Shift
+  // the fold took at the press is no hold of the line's.
+  group('the line Shift holds past the hand (I-121)', () {
+    /// A line kept level through y = 100, by a lasso Shift locked.
+    ShiftLine keptLevel() {
+      final line = ShiftLine();
+      lassoAt(p(100, 100), shiftAtThePress: true, line: line)
+        ..update(p(140, 104), shift: true)
+        ..lift();
+      return line;
+    }
+
+    test('🚨a lasso pressed under the same hold starts on it and goes along '
+        'it', () {
+      final next =
+          lassoAt(p(150, 130), shiftAtThePress: true, line: keptLevel())
+            ..update(p(200, 170), shift: true)
+            ..update(p(240, 200), shift: true);
+
+      expect(placesOf(next.openTrail), [
+        (150.0, 100.0),
+        (200.0, 100.0),
+        (240.0, 100.0),
+      ]);
+    });
+
+    test('🗣️I-110-Q1: the Shift the FOLD took at the press neither starts '
+        'on the line nor lets it go', () {
+      final line = keptLevel();
+      final folded = lassoAt(
+        p(150, 130),
+        combine: SelectionCombineMode.add,
+        shiftAtThePress: true,
+        line: line,
+      )..update(p(200, 170), shift: true);
+
+      expect(placesOf(folded.openTrail), [(150.0, 130.0), (200.0, 170.0)]);
+      expect(placesOf([line.onTheLine(p(150, 130))]), [(150.0, 100.0)]);
+    });
+
+    test('a shape read from its corners starts where it is pressed', () {
+      final rect = MarqueeDrag(
+        pointer: 1,
+        shapeKind: CanvasShapeKind.rect,
+        before: null,
+        at: p(150, 130),
+        guides: CutGuides(),
+        zoom: 1,
+        shiftAtThePress: true,
+        line: keptLevel(),
+      );
+
+      expect(placesOf([rect.start]), [(150.0, 130.0)]);
+    });
   });
 }

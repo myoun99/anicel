@@ -49,23 +49,57 @@ typedef DrawnShapePath = ({List<CanvasPoint> points, bool closed});
 /// state it is. The polygon is NOT here: it has no drag verb at all
 /// ([VertexTapDrag]).
 final class MarqueeDrag extends SelectionDrag {
-  MarqueeDrag({
-    required super.pointer,
-    required this.shapeKind,
-    required this.before,
+  /// A drag pressed at [at]. A path traced under the hold that kept [line]
+  /// starts on it and goes along it, as a stroke does (I-121) — unless the
+  /// Shift held at the press is the fold's, whose hold keeps no line.
+  factory MarqueeDrag({
+    required int pointer,
+    required CanvasShapeKind shapeKind,
+    required CanvasSelectionRegion? before,
     required CanvasPoint at,
     required CutGuides guides,
     required double zoom,
-    this.combine,
+    SelectionCombineMode? combine,
     bool shiftAtThePress = false,
-    this.byTouch = false,
-  }) : start = at,
-       _current = at,
-       _traced = tracesPointerPath(shapeKind) ? [at] : const [],
-       _lock = tracesPointerPath(shapeKind)
-           ? StrokeLock(guides: guides, start: at, zoom: zoom)
-           : null,
-       _shiftIsTheFolds = combine != null && shiftAtThePress;
+    bool byTouch = false,
+    ShiftLine? line,
+  }) {
+    final shiftIsTheFolds = combine != null && shiftAtThePress;
+    final traceLine = shiftIsTheFolds ? null : line;
+    final traces = tracesPointerPath(shapeKind);
+    final pressed = traces ? traceLine?.onTheLine(at) ?? at : at;
+    return MarqueeDrag._(
+      pointer: pointer,
+      shapeKind: shapeKind,
+      before: before,
+      start: pressed,
+      lock: traces
+          ? StrokeLock(
+              guides: guides,
+              start: pressed,
+              zoom: zoom,
+              line: traceLine,
+            )
+          : null,
+      combine: combine,
+      shiftIsTheFolds: shiftIsTheFolds,
+      byTouch: byTouch,
+    );
+  }
+
+  MarqueeDrag._({
+    required super.pointer,
+    required this.shapeKind,
+    required this.before,
+    required this.start,
+    required StrokeLock? lock,
+    required this.combine,
+    required bool shiftIsTheFolds,
+    required this.byTouch,
+  }) : _current = start,
+       _traced = lock == null ? const [] : [start],
+       _lock = lock,
+       _shiftIsTheFolds = shiftIsTheFolds;
 
   /// Which outline this drag traces — fixed at the press, because the tool
   /// setting must not change what a gesture already started drawing.

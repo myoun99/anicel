@@ -15,14 +15,16 @@ class _BrushEditStroke {
   /// A stroke begins under [event]: the pointer is ours, the settings are
   /// the tool's (or the eraser's on a mapped tail), the stabiliser, the
   /// snap session, the symmetry, the dynamics and the ground mixer are
-  /// armed, the overlay opens, and the first dabs go out.
+  /// armed, the overlay opens, and the first dabs go out — from
+  /// [_onTheShiftLine] of [pressed].
   void beginStroke(
     PointerDownEvent event,
-    CanvasPoint canvasPosition, {
-    required bool startsInsidePasteboard,
+    CanvasPoint pressed, {
     required bool mappedErase,
   }) {
     _state._activeDrawingPointer = event.pointer;
+    final canvasPosition = _onTheShiftLine(pressed);
+    final startsInsidePasteboard = _state._isInsidePasteboard(canvasPosition);
     // PEN-12 #4: a TOUCH stroke starts UNCOMMITTED — until it crosses the
     // touch slop a simultaneous second finger may still turn the pair
     // into navigation (cancelling only an invisible dot); once committed
@@ -31,18 +33,7 @@ class _BrushEditStroke {
         ? event.localPosition
         : null;
     _state._touchStrokeCommitted = false;
-    // The stroke's settings snapshot — every downstream dab reads it, so
-    // the mapped-eraser substitution here flips the WHOLE stroke. The
-    // substitution forces the BLEND to erase too (R27 #4 in passing): the
-    // eraser tool locks its mode, but this path kept the brush's — a
-    // mapped-erase press with a separable brush blend would have taken
-    // the commit's blend branch and PAINTED instead of erasing.
-    final strokeSettings = mappedErase
-        ? _state.widget.inputSettings().copyWith(
-            erase: true,
-            blendMode: BrushBlendMode.erase,
-          )
-        : _state.widget.inputSettings();
+    final strokeSettings = _settingsOfAPress(mappedErase: mappedErase);
     _state._activeStrokeInputSettings = strokeSettings;
     _state._opening.startContact(
       _state._pressure.noteSample(event, opening: true),
@@ -79,6 +70,29 @@ class _BrushEditStroke {
       at: event.timeStamp,
       position: canvasPosition,
     );
+  }
+
+  /// The stroke's settings snapshot — every downstream dab reads it, so
+  /// the mapped-eraser substitution here flips the WHOLE stroke. The
+  /// substitution forces the BLEND to erase too (R27 #4 in passing): the
+  /// eraser tool locks its mode, but this path kept the brush's — a
+  /// mapped-erase press with a separable brush blend would have taken
+  /// the commit's blend branch and PAINTED instead of erasing.
+  BrushEditCanvasInputSettings _settingsOfAPress({required bool mappedErase}) {
+    final settings = _state.widget.inputSettings();
+    return mappedErase
+        ? settings.copyWith(erase: true, blendMode: BrushBlendMode.erase)
+        : settings;
+  }
+
+  /// [pressed] on the line the hold kept, where the pen's press falls across
+  /// it ([ShiftLine], I-121) — or as it is, with Shift let go or no line
+  /// kept. Asked once the pen is the stroke's, so the finger drawing it is
+  /// no Shift.
+  CanvasPoint _onTheShiftLine(CanvasPoint pressed) {
+    final line = _state.widget.shiftLine?..heldNow(_state._press.shiftHeld);
+    return line?.onTheLine(pressed, space: _state.widget.guideSpace) ??
+        pressed;
   }
 
   /// The pointer a stroke the TOOL lays wears: none of a real pointer's
@@ -229,6 +243,7 @@ class _BrushEditStroke {
       start: canvasPosition,
       zoom: _state.widget.viewport.zoom,
       space: _state.widget.guideSpace,
+      line: _state.widget.shiftLine,
     );
     final symmetry = _state.widget.guides.actingSymmetry;
     _state._symmetryTransforms = symmetry == null
@@ -481,9 +496,10 @@ class _BrushEditStroke {
   /// inside it and arrive together the moment it locks.
   ///
   /// 🗣️I-61: Shift held is the stroke's 45° lock (I-61-Q1 · Q2) — asked
-  /// HERE, and nowhere else on the stroke's way: of the keyboard, and of a
-  /// finger resting on the glass where the switch says so (I-61-Q3,
-  /// [_BrushEditPress.aFingerHoldsShift]).
+  /// HERE as the stroke goes, and at its press only for the line a hold
+  /// kept ([beginStroke], I-121): of the keyboard, and of a finger resting
+  /// on the glass where the switch says so (I-61-Q3,
+  /// [_BrushEditPress.shiftHeld]).
   ///
   /// 🚨The keyboard through [ModifierKeys], whatever draws: a pen's stroke
   /// on Windows never locked while the engine's own record said Shift was
@@ -497,7 +513,7 @@ class _BrushEditStroke {
     }
     for (final locked in lock.follow(
       canvasPosition,
-      shift: ModifierKeys.isShiftPressed || _state._press.aFingerHoldsShift,
+      shift: _state._press.shiftHeld,
     )) {
       advanceStrokeTo(locked);
     }

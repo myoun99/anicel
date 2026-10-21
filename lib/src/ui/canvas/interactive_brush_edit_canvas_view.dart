@@ -170,6 +170,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     CanvasViewport? viewport,
     CutGuides? guides,
     this.guideSpace = GuideSpace.canvas,
+    this.shiftLine,
   }) : viewport = viewport ?? CanvasViewport(),
        guides = guides ?? CutGuides.empty;
 
@@ -257,6 +258,13 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// view in the same placement, and hit testing brings a press back
   /// through it). The canvas itself by default.
   final GuideSpace guideSpace;
+
+  /// The line Shift holds past a stroke ([ShiftLine], I-121): a stroke
+  /// pressed under the same hold starts on it and goes along it. Its owner
+  /// hears the keyboard let go of it; this view says, at each press and as
+  /// each finger holding Shift lifts, whether Shift is held now. Null — a
+  /// surface that keeps none — and each stroke's Shift is its own.
+  final ShiftLine? shiftLine;
 
   /// The cel's pixels AS THEY STAND — asked at the moment they are used,
   /// never kept from the last build.

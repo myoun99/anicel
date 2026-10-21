@@ -6,12 +6,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../canvas/shown_cels.dart';
 import '../canvas/view_hand.dart';
 import '../timeline/memo_token.dart' show ByList;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
+import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
@@ -50,6 +52,7 @@ import '../../services/mark_under_a_pixel.dart';
 import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/drawing_guide.dart';
+import '../../services/guide_stroke_input.dart' show ShiftLine, StrokeLock;
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
@@ -1389,6 +1392,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // 🚨D34 최종: a finger ANYWHERE drops the tool aim — see
     // [CanvasTouchContacts.addAppWideTouchListener] and [_handleAppWideTouch].
     CanvasTouchContacts.addAppWideTouchListener(_handleAppWideTouch);
+    HardwareKeyboard.instance.addHandler(_shiftLine.heardKey);
     CanvasViewHold.held.addListener(_onViewHoldChanged);
     _viewportState._listenedViewport = _viewportState.viewportNotifier
       ..addListener(_viewportState.handleViewportMovedByOwner);
@@ -1534,6 +1538,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _listenedCelPixels?.removeListener(_handleCelPixelsChanged);
     _listenedCelPixels = null;
     CanvasTouchContacts.removeAppWideTouchListener(_handleAppWideTouch);
+    HardwareKeyboard.instance.removeHandler(_shiftLine.heardKey);
     // ⛔ONLY the panel's own. `_viewportNotifier` may BE the owner's — the
     // whole point of the controller — and disposing that would kill the
     // view the moment a panel unmounts, taking every other reader of it
@@ -2023,6 +2028,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // into artwork
               // coordinates.
               guides: widget.guides,
+              shiftLine: _shiftLine,
               viewport: _viewportState._viewport,
               pasteboard: _stagePasteboard,
               frameToken: _whatALiftTakesUp,
@@ -2292,6 +2298,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // where the pen is not.
       guides: widget.guides ?? CutGuides.empty,
       guideSpace: guideSpaceOf(widget.interactiveContentPose),
+      shiftLine: _shiftLine,
     );
     // The draw-through wrap: display AND hit testing share one screen
     // matrix, so the active layer draws posed and pointers inverse-map to
@@ -2598,6 +2605,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The drawing view's [StrokeLander] while it is mounted, counted as
   /// [_shapeShow] is.
   final ViewHand<StrokeLander> _viewLander = ViewHand();
+
+  /// The line Shift holds on this canvas (I-121) — ONE for every path the
+  /// hand draws here, the stroke's, the lasso's and the stamp's, so a line
+  /// a hold kept goes on whichever of them draws next. The panel hears the
+  /// keyboard for it, for its life ([ShiftLine.heardKey]).
+  final ShiftLine _shiftLine = ShiftLine();
 
   /// What a save lands first (R9-rest): the stroke the view's pen is in
   /// AND the text in hand — nothing while no view is up. Held up for the

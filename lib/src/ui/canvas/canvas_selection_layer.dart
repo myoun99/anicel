@@ -23,6 +23,7 @@ import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/guide_geometry.dart';
+import '../../services/guide_stroke_input.dart' show ShiftLine;
 import '../../services/input/modifier_keys.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../services/stamp_carry.dart';
@@ -99,6 +100,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.shapeKeepsRatio = false,
     this.onPressNeedsCel,
     this.guides,
+    this.shiftLine,
     this.selectionCommands,
     this.onDragActiveChanged,
     this.onModifierTouchDragActiveChanged,
@@ -247,6 +249,13 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// mapped into: this layer's geometry never leaves canvas coordinates
   /// (see the class doc), so the guides must not either.
   final CutGuides? guides;
+
+  /// The line Shift holds past a stroke ([ShiftLine], I-121), the drawing
+  /// view's own: a lasso pressed under the same hold starts on it and goes
+  /// along it. Its owner hears the keyboard let go of it; this layer says,
+  /// at a drag's press and as the modifier finger lifts, whether Shift is
+  /// held now. Null — each lasso's Shift is its own.
+  final ShiftLine? shiftLine;
 
   final CanvasSelectionCommands? selectionCommands;
 
@@ -2437,6 +2446,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       _confirmMoveSession();
       final folds = _toolFolds;
+      widget.shiftLine?.heldNow(_shiftHeld);
       setState(() {
         _drag = MarqueeDrag(
           pointer: event.pointer,
@@ -2450,6 +2460,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           combine: folds ? _foldModeNow() : null,
           shiftAtThePress: ModifierKeys.isShiftPressed,
           byTouch: event.kind == PointerDeviceKind.touch,
+          line: widget.shiftLine,
         );
       });
     }
@@ -3082,6 +3093,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return false;
     }
     _modifierTouch = null;
+    widget.shiftLine?.heldNow(_shiftHeld);
     return true;
   }
 
