@@ -17,6 +17,15 @@ void main() {
     expect(hand.now, 'new');
   });
 
+  test('while both are up — the new view\'s hello before the old one\'s '
+      'goodbye — the new one answers', () {
+    final hand = ViewHand<String>()
+      ..up('old')
+      ..up('new');
+
+    expect(hand.now, 'new', reason: 'the new view is the one that stays');
+  });
+
   test('the last view going down takes the hand away', () {
     final hand = ViewHand<String>()
       ..up('old')
