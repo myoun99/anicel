@@ -68,9 +68,12 @@ void main() {
 
       await tester.drag(
         find.byKey(const ValueKey<String>('legend-opacity')),
-        orientation == TimelineOrientation.horizontal
-            ? const Offset(-40, 0)
-            : const Offset(0, 40),
+        // Toward empty: the rail's runs along the row; the sheet's, turned
+        // with its header, up the column — two ways, not one turned.
+        const {
+          TimelineOrientation.horizontal: Offset(-40, 0),
+          TimelineOrientation.vertical: Offset(0, 40),
+        }[orientation]!,
       );
       await tester.pumpAndSettle();
 
