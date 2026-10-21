@@ -31,7 +31,10 @@ void main() {
 
   /// Under the app's one observer of every pointer, which counts the
   /// fingers resting on the glass ([CanvasTouchContacts]).
-  Future<void> pumpLayer(WidgetTester tester) => tester.pumpWidget(
+  Future<void> pumpLayer(
+    WidgetTester tester, {
+    CanvasSelectionTool tool = CanvasSelectionTool.drawShape,
+  }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: InputInspectorHost(
@@ -42,7 +45,7 @@ void main() {
               height: 300,
               child: CanvasSelectionLayer(
                 key: layerKey,
-                tool: CanvasSelectionTool.drawShape,
+                tool: tool,
                 shapeKind: CanvasShapeKind.lasso,
                 viewport: CanvasViewport(),
                 pasteboard: const CanvasSize(
@@ -184,6 +187,21 @@ void main() {
     for (final point in drawn.last.points) {
       expect(point.y, 100, reason: 'level all the way');
     }
+  });
+
+  // A finger landing in the middle of the selection tool's drag is the
+  // navigate signal that cancels it (`_dragTakesAModifierTouch`), so one
+  // resting since before its press is no modifier of it either.
+  testWidgets('⛔a drag that takes no finger — the selection tool\'s — reads '
+      'none as its Shift', (tester) async {
+    await pumpLayer(tester, tool: CanvasSelectionTool.select);
+    final resting = await finger(tester);
+    final hand = await pen(tester, const Offset(100, 100));
+    await through(tester, hand, const [Offset(140, 104), Offset(180, 98)]);
+    await up(tester, hand);
+    await up(tester, resting);
+
+    expect(pressedOnTheLine(), (150.0, 130.0), reason: 'no line kept');
   });
 
   testWidgets('🚨of two fingers resting, the first lifted leaves the second '
