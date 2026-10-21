@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_preview_probe.dart';
 
 /// 🗣️F-289 (유저 2026-10-06): the export window's preview is a canvas-base
@@ -291,7 +292,7 @@ void main() {
     await press(tester, 'export-preview-next-page-button');
     expect(tester.exportPreviewName, 'Project.pdf');
 
-    await press(tester, 'export-conteformat-png');
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
     expect(tester.exportPreviewName, 'Project_p2.png');
     await press(tester, 'export-preview-previous-page-button');
     expect(tester.exportPreviewName, 'Project_p1.png');

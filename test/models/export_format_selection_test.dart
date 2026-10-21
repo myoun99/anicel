@@ -115,5 +115,39 @@ void main() {
         'psd',
       );
     });
+
+    // I-117 (유저 2026-10-21): 「새 출력형식으로서 BMP TGA TIFF WEBP」.
+    test('the four new stills: their name, their extension, a file that '
+        'names them reads them back — and every one but JPG keeps alpha', () {
+      expect(
+        {
+          for (final format in [
+            ExportStillFormat.bmp,
+            ExportStillFormat.tga,
+            ExportStillFormat.tiff,
+            ExportStillFormat.webp,
+          ])
+            format.label: format.fileExtension,
+        },
+        {'BMP': 'bmp', 'TGA': 'tga', 'TIFF': 'tiff', 'WEBP': 'webp'},
+      );
+      for (final format in ExportStillFormat.values) {
+        final selection = ExportFormatSelection.normalized(
+          kind: ExportMediaKind.still,
+          stillFormat: format,
+        );
+        expect(
+          ExportFormatSelection.fromJson(selection.toJson()).stillFormat,
+          format,
+          reason: format.label,
+        );
+        expect(
+          format.supportsAlpha,
+          format != ExportStillFormat.jpg,
+          reason: format.label,
+        );
+      }
+      expect(ExportStillFormat.fromJson('gif'), ExportStillFormat.png);
+    });
   });
 }

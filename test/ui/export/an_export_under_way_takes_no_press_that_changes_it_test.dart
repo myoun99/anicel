@@ -47,6 +47,7 @@ import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -287,14 +288,15 @@ void main() {
         'the Sequence tab writing stills': (
           setUp: (tester) async {
             await tapKey(tester, 'export-tab-sequence');
-            await tapKey(tester, 'export-format-still-png');
+            await pickExportStill(tester, ExportStillFormat.png);
             await unfoldEverything(tester);
             await tester.enterText(keyed('export-naming-base-field'), 'shot');
             await tester.pump();
           },
           offers: [
             'export-tab-image',
-            'export-format-container-mp4',
+            'export-format-kind',
+            'export-format-file',
             'export-naming-base-field',
             'export-scope-project',
             'export-apply-fx-toggle',
@@ -305,12 +307,14 @@ void main() {
         'the Sequence tab writing a movie': (
           setUp: (tester) async {
             await tapKey(tester, 'export-tab-sequence');
-            await tapKey(tester, 'export-format-container-mov');
+            await pickExportContainer(tester, ExportVideoContainer.mov);
             await unfoldEverything(tester);
           },
           offers: [
             'export-file-name-field',
-            'export-format-still-png',
+            'export-format-kind',
+            'export-format-file',
+            'export-format-codec',
             'export-audio-toggle',
           ],
         ),
@@ -321,7 +325,7 @@ void main() {
           },
           offers: [
             'export-file-name-field',
-            'export-format-still-jpg',
+            'export-format-file',
             'export-image-fx-toggle',
             'export-transport-play',
           ],
@@ -353,7 +357,7 @@ void main() {
             'export-cels-label-picker',
             'export-cels-take-picker',
             'export-cel-suffix-field',
-            'export-tsformat-xdts',
+            'export-tsformat-file',
             'export-envelope-paper-sheet',
             'export-cels-apply-fx-toggle',
           ],
@@ -365,7 +369,7 @@ void main() {
           },
           offers: [
             'export-file-name-field',
-            'export-conteformat-png',
+            'export-conteformat-file',
             'export-preview-next-page-button',
           ],
         ),

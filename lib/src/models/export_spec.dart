@@ -611,16 +611,25 @@ const ExportFormatSelection paperDocumentFormat = ExportFormatSelection(
   channels: ExportChannels.rgb,
 );
 
+/// The pictures a paper document can be written as, in the lineup's order:
+/// every still but PSD, whose layers — paper, form, words, ink — are a round
+/// of their own (I-117).
+final List<ExportStillFormat> paperPictureFormats = [
+  for (final format in ExportStillFormat.values)
+    if (format != ExportStillFormat.psd) format,
+];
+
 /// [json] read as a paper document's picture: [paperDocumentFormat] where
-/// the file names none, and a format a paper cannot be (PSD) is PNG.
+/// the file names none, and a format a paper cannot be
+/// ([paperPictureFormats]) is PNG.
 ExportFormatSelection paperDocumentFormatFromJson(Object? json) {
   if (json is! Map<String, dynamic>) {
     return paperDocumentFormat;
   }
   final read = ExportFormatSelection.fromJson(json);
   return paperDocumentFormat.copyWith(
-    stillFormat: read.stillFormat == ExportStillFormat.jpg
-        ? ExportStillFormat.jpg
+    stillFormat: paperPictureFormats.contains(read.stillFormat)
+        ? read.stillFormat
         : ExportStillFormat.png,
     jpgQuality: read.jpgQuality,
   );

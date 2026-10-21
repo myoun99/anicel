@@ -32,9 +32,11 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/export_cels_board_probe.dart';
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -423,38 +425,47 @@ void main() {
     final strings = AppText.strings;
 
     expect(find.text('${strings.exCelFormat} — PNG · RGBA'), findsOneWidget);
-    expect(keyed('export-format-still-jpg'), findsNothing, reason: 'folded');
+    expect(keyed('export-format-file'), findsNothing, reason: 'folded');
     expect(find.text(strings.exTimesheetFormat), findsOneWidget);
     expect(find.text(strings.exEnvelopeFormat), findsOneWidget);
 
-    // 타임시트 형식: PNG · JPG · XDTS, and a quality while it is a JPG.
-    Pill pill(String key) => tester.widget<Pill>(keyed(key));
-    expect(pill('export-tsformat-png').selected, isTrue);
+    // 타임시트 형식: the pictures and XDTS in one list, and a quality while
+    // it is a JPG.
+    String shown(String keyPrefix) =>
+        tester.widget<PanelFlyoutButton>(keyed('$keyPrefix-file')).label;
+    PanelFlyoutItem listed(String key) =>
+        tester.widget<PopupMenuItem<PanelFlyoutItem>>(keyed(key)).value!;
+    expect(shown('export-tsformat'), 'PNG');
     expect(keyed('export-tsformat-quality'), findsNothing);
-    await press(tester, 'export-tsformat-jpg');
+    await pickPaperFormat(tester, 'export-tsformat', 'jpg');
     expect(state.debugSpecs.cels.sheetFormat, ExportTimesheetFormat.sheetImage);
     expect(state.debugSpecs.cels.sheetImage.stillFormat, ExportStillFormat.jpg);
     expect(keyed('export-tsformat-quality'), findsOneWidget);
-    await press(tester, 'export-tsformat-xdts');
+    await pickPaperFormat(tester, 'export-tsformat', 'xdts');
     expect(state.debugSpecs.cels.sheetFormat, ExportTimesheetFormat.xdts);
+    expect(shown('export-tsformat'), 'XDTS');
+    expect(keyed('export-tsformat-quality'), findsNothing);
+    await tester.tap(keyed('export-tsformat-file'));
+    await tester.pumpAndSettle();
     expect(
       [
         for (final key in ['png', 'jpg', 'xdts'])
-          pill('export-tsformat-$key').selected,
+          listed('export-tsformat-$key').selected,
       ],
       [false, false, true],
-      reason: 'a picture format is lit only while a picture is written',
+      reason: 'a picture format is marked only while a picture is written',
     );
-    expect(keyed('export-tsformat-quality'), findsNothing);
-    await press(tester, 'export-tsformat-png');
+    await tester.tap(keyed('export-tsformat-png'));
+    await tester.pumpAndSettle();
     expect(state.debugSpecs.cels.sheetFormat, ExportTimesheetFormat.sheetImage);
     expect(state.debugSpecs.cels.sheetImage.stillFormat, ExportStillFormat.png);
 
     // 컷봉투 형식: its picture, and its paper.
+    Pill pill(String key) => tester.widget<Pill>(keyed(key));
     expect(pill('export-envelope-paper-cut').selected, isTrue);
     await press(tester, 'export-envelope-paper-sheet');
     expect(state.debugSpecs.cels.envelopePaper, CutEnvelopePaperMode.sheet);
-    await press(tester, 'export-envelope-format-jpg');
+    await pickPaperFormat(tester, 'export-envelope-format', 'jpg');
     expect(
       state.debugSpecs.cels.envelopeImage.stillFormat,
       ExportStillFormat.jpg,
@@ -585,7 +596,7 @@ void main() {
     expect(textOf(tester, 'export-status'), 'Exported 2 files.');
 
     // The digital sheet holds every page in its one file.
-    await press(tester, 'export-tsformat-xdts');
+    await pickPaperFormat(tester, 'export-tsformat', 'xdts');
     expect(tester.celsBoardBlocksOf('document-timesheet'), [('301', true)]);
     expect(listed(tester), ['_TS301.xdts']);
     session.playbackRig.prerenderScheduler.cancel();

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -23,6 +24,7 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
@@ -141,7 +143,7 @@ void main() {
       expect(extensionShown(tester), '.mp4');
       expect(tester.exportFirstFileName, '301.mp4');
 
-      await press(tester, 'export-format-container-mov');
+      await pickExportContainer(tester, ExportVideoContainer.mov);
       expect(nameTyped(tester), isEmpty, reason: 'nothing was typed for it');
       expect(extensionShown(tester), '.mov');
       expect(tester.exportFirstFileName, '301.mov');
@@ -196,7 +198,7 @@ void main() {
       expect(keyed('export-naming-base-field'), findsNothing);
       expect(topOf(strings.commonNameField), lessThan(formatTop));
 
-      await press(tester, 'export-format-still-png');
+      await pickExportStill(tester, ExportStillFormat.png);
       expect(keyed('export-file-name-field'), findsNothing);
       expect(tester.exportFirstFileName, '301_0001.png');
       expect(
@@ -224,7 +226,7 @@ void main() {
       await tester.pump();
       expect(filesWrittenUnder(temp), ['board.pdf']);
 
-      await press(tester, 'export-conteformat-png');
+      await pickPaperFormat(tester, 'export-conteformat', 'png');
       expect(
         keyed('export-file-name-field'),
         findsOneWidget,
@@ -268,7 +270,7 @@ void main() {
       expect(ghostOf(tester, 'export-file-name-field'), 'AMMI_OP');
       expect(tester.exportFirstFileName, 'AMMI_OP.mp4');
 
-      await press(tester, 'export-format-still-png');
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.ensureVisible(find.textContaining('Naming'));
       await tester.tap(find.textContaining('Naming'));
       await tester.pump();
@@ -309,7 +311,7 @@ void main() {
       expect(nameTyped(tester), isEmpty);
       expect(ghostOf(tester, 'export-file-name-field'), 'AMMI_OP');
       expect(tester.exportFirstFileName, 'AMMI_OP.pdf');
-      await press(tester, 'export-conteformat-png');
+      await pickPaperFormat(tester, 'export-conteformat', 'png');
       expect(ghostOf(tester, 'export-file-name-field'), 'AMMI_OP');
       expect(tester.exportPreviewName, startsWith('AMMI_OP'));
       session.playbackRig.prerenderScheduler.cancel();
@@ -410,7 +412,7 @@ void main() {
       final session = film();
       addTearDown(session.dispose);
       final state = await pumpWindow(tester, session);
-      await press(tester, 'export-format-still-png');
+      await pickExportStill(tester, ExportStillFormat.png);
 
       expect(keyed('export-progress'), findsNothing);
       expect(keyed('export-cancel-button'), findsNothing);

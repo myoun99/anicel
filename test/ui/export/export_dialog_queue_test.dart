@@ -6,6 +6,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -18,6 +19,7 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -99,17 +101,10 @@ void main() {
     return state;
   }
 
-  Future<void> pickPng(WidgetTester tester) async {
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-format-still-png')),
-    );
-    await tester.pump();
-  }
-
   testWidgets('Add to Queue freezes specs; Render All runs them in order '
       'and restores the setup', (tester) async {
     final state = await pumpDialog(tester, session());
-    await pickPng(tester);
+    await pickExportStill(tester, ExportStillFormat.png);
 
     // Job 1: no base typed — the cut's name. Then type one and queue job 2.
     await tester.tap(
@@ -173,7 +168,7 @@ void main() {
       session(),
       askedWhere: () => asked.removeAt(0),
     );
-    await pickPng(tester);
+    await pickExportStill(tester, ExportStillFormat.png);
 
     for (var job = 0; job < 2; job += 1) {
       await tester.tap(
@@ -203,17 +198,14 @@ void main() {
   testWidgets('clicking a queued job restores its setup and removes it',
       (tester) async {
     final state = await pumpDialog(tester, session());
-    await pickPng(tester);
+    await pickExportStill(tester, ExportStillFormat.png);
     await tester.tap(
       find.byKey(const ValueKey<String>('export-queue-add-button')),
     );
     await tester.pump();
 
     // Drift back to video, then restore the queued PNG job.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-format-container-mp4')),
-    );
-    await tester.pump();
+    await pickExportContainer(tester, ExportVideoContainer.mp4);
     await tester.tap(find.byKey(const ValueKey<String>('export-queue-job-1')));
     await tester.pump();
 

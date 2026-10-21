@@ -77,7 +77,7 @@ void main() {
     // tab now (F-289), open.
     await switchTab(tester, 'cels');
     expect(
-      find.byKey(const ValueKey<String>('export-tsformat-xdts')),
+      find.byKey(const ValueKey<String>('export-tsformat-file')),
       findsOneWidget,
       reason: 'LIVENESS — the modules whose notes these were are on screen',
     );

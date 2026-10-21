@@ -1701,12 +1701,13 @@ class ExportDialogState extends State<ExportDialog> {
       ? AppText.strings.exNoCels
       : AppText.strings.exNoCuts;
 
-  static const List<String> _knownExtensions = [
-    '.mp4',
-    '.mov',
-    '.png',
-    '.jpg',
-    '.psd',
+  /// Every extension a format of the window writes — read off the lineups,
+  /// so a format that joins them swaps here too. ↩️Spelled out by hand, it
+  /// knew PNG · JPG · PSD and none of the four that joined in I-117.
+  static final List<String> _knownExtensions = [
+    for (final container in ExportVideoContainer.values)
+      '.${container.fileExtension}',
+    for (final still in ExportStillFormat.values) '.${still.fileExtension}',
     '.pdf',
   ];
 
@@ -3344,7 +3345,12 @@ class ExportDialogState extends State<ExportDialog> {
       _formatAccordion(
         format: spec.format,
         capabilities: ExportFormatCapabilities(
-          stills: const [ExportStillFormat.png, ExportStillFormat.jpg],
+          // Every still but PSD — 유저 2026-10-21 (I-117): 「시퀀스는 psd
+          // 지원안하도록」.
+          stills: [
+            for (final still in ExportStillFormat.values)
+              if (still != ExportStillFormat.psd) still,
+          ],
           video: const {
             ExportVideoContainer.mp4: [
               ExportVideoCodec.h264,
@@ -4178,11 +4184,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// Sequence tab's table carries video and is its own value.
   ExportFormatCapabilities get _stillOnlyCapabilities =>
       ExportFormatCapabilities(
-        stills: const [
-          ExportStillFormat.png,
-          ExportStillFormat.jpg,
-          ExportStillFormat.psd,
-        ],
+        stills: ExportStillFormat.values,
         stillEnabled: _availability.stillAllowed,
       );
 

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -53,6 +54,7 @@ import 'fake_ffmpeg_process.dart';
 import '../../helpers/temp_dir.dart';
 
 import '../../helpers/files_written_under.dart';
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_scope_pick.dart';
 
 void main() {
@@ -185,13 +187,6 @@ void main() {
     );
     await tester.pump();
     return tester.state<ExportDialogState>(find.byType(ExportDialog));
-  }
-
-  Future<void> pickStillPng(WidgetTester tester) async {
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-format-still-png')),
-    );
-    await tester.pump();
   }
 
   /// Opens [tab]. The timesheet and the cut envelope are no tabs: they are
@@ -353,7 +348,7 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.runAsync(state.export);
       await tester.pump();
 
@@ -403,7 +398,7 @@ void main() {
         session,
         exportDirectoryPicker: () async => temp.path,
       );
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       // RGB: a PNG this app encodes itself (F-335), not the engine's.
       final rgb = find.byKey(
         const ValueKey<String>('export-format-channels-rgb'),
@@ -435,7 +430,7 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       // The Naming accordion is collapsed by default — open, then edit.
       await tester.ensureVisible(find.textContaining('Naming'));
       await tester.tap(find.textContaining('Naming'));
@@ -461,7 +456,7 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.typeExportRange(inFrame: '2');
       expect(state.debugSpecs.sequence.inFrame, 1);
       expect(
@@ -477,7 +472,7 @@ void main() {
     testWidgets('IN and OUT cannot cross: the span that is kept is always '
         'one the export can run', (tester) async {
       final state = await pumpDialog(tester, exportSession());
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.typeExportRange(inFrame: '2');
       await tester.typeExportRange(outFrame: '1');
       final range = tester.exportTransport.range!;
@@ -493,7 +488,7 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.pickExportProjectScope();
       final size = find.byKey(const ValueKey<String>('export-size'));
       await tester.ensureVisible(size);
@@ -651,7 +646,7 @@ void main() {
       expect(find.text('프리셋 · 시퀀스'), findsOneWidget);
       expect(find.text('위치를 지정하고 출력합니다'), findsOneWidget);
 
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       expect(find.text('이름'), findsNothing);
       expect(find.textContaining('이름 규칙'), findsOneWidget);
       await tester.runAsync(state.export);
@@ -703,10 +698,7 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'timesheet');
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-tsformat-xdts')),
-      );
-      await tester.pump();
+      await pickPaperFormat(tester, 'export-tsformat', 'xdts');
       await tester.pickExportProjectScope();
       await tester.runAsync(state.export);
       await tester.pump();
@@ -769,7 +761,7 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => asked.removeAt(0),
       );
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       expect(find.text('렌더 대기열'), findsOneWidget);
       expect(find.text('모두 렌더'), findsOneWidget);
 
@@ -961,10 +953,7 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'timesheet');
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-tsformat-xdts')),
-      );
-      await tester.pump();
+      await pickPaperFormat(tester, 'export-tsformat', 'xdts');
       await tester.pickExportProjectScope();
       await tester.runAsync(state.export);
       await tester.pump();
@@ -1020,7 +1009,7 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.pickExportProjectScope();
       await tester.typeExportRange(inFrame: '2', outFrame: '4');
       await tester.runAsync(state.export);
@@ -1035,7 +1024,7 @@ void main() {
     testWidgets('a press on the sequence\'s track moves the playhead — and '
         'the plate names the still that frame is', (tester) async {
       await pumpDialog(tester, exportSession());
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       expect(tester.exportPreviewName, 'Cut_0001.png');
       final track = find.byKey(
         const ValueKey<String>('export-transport-track'),
@@ -1052,7 +1041,7 @@ void main() {
         'which frame it is, in the ink of what is off — and the stills are '
         'numbered through the frames that are kept', (tester) async {
       await pumpDialog(tester, exportSession());
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.typeExportRange(inFrame: '2');
 
       expect(tester.exportTransport.currentFrame, 0);
@@ -1120,10 +1109,7 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'timesheet');
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-tsformat-xdts')),
-      );
-      await tester.pump();
+      await pickPaperFormat(tester, 'export-tsformat', 'xdts');
 
       // The fixture's cut is named 'Cut', so the file is _TSCut.xdts — the
       // same name the run actually writes.
@@ -1196,10 +1182,7 @@ void main() {
           },
         ),
       );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-format-container-mov')),
-      );
-      await tester.pump();
+      await pickExportContainer(tester, ExportVideoContainer.mov);
       await pickCodec(tester, 'prores4444');
       // 4444 exposes the channel choice; RGBA is the default already.
       expect(
@@ -1228,10 +1211,7 @@ void main() {
       tester,
     ) async {
       await pumpDialog(tester, exportSession());
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-format-container-mov')),
-      );
-      await tester.pump();
+      await pickExportContainer(tester, ExportVideoContainer.mov);
       expect(codecShown(tester), ExportVideoCodec.h264.label);
 
       await tester.tap(find.byKey(codecButton));
@@ -1310,15 +1290,119 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-format-still-jpg')),
-      );
-      await tester.pump();
+      await pickExportStill(tester, ExportStillFormat.jpg);
       await tester.runAsync(state.export);
       await tester.pump();
       expect(filesWrittenUnder(temp), ['Cut_0001.jpg', 'Cut_0002.jpg']);
       final bytes = File('${temp.path}/Cut_0001.jpg').readAsBytesSync();
       expect(bytes.sublist(0, 2), [0xFF, 0xD8]);
+    });
+
+    // 🗣️I-117 (유저 2026-10-21): 「새 출력형식으로서 BMP TGA TIFF WEBP」 —
+    // formats the engine writes none of, written in Dart.
+    testWidgets('BMP · TGA · TIFF · WEBP sequences write their own files, '
+        'each the very pixels the PNG run writes', (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      Future<img.Image> written(String name, img.Decoder decoder) async {
+        final bytes = await tester.runAsync(
+          () => File('${temp.path}/$name').readAsBytes(),
+        );
+        return decoder.decode(bytes!)!;
+      }
+
+      await pickExportStill(tester, ExportStillFormat.png);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      final png = await written('Cut_0001.png', img.PngDecoder());
+      for (final (format, decoder) in [
+        (ExportStillFormat.bmp, img.BmpDecoder()),
+        (ExportStillFormat.tga, img.TgaDecoder()),
+        (ExportStillFormat.tiff, img.TiffDecoder()),
+        (ExportStillFormat.webp, img.WebPDecoder()),
+      ]) {
+        await pickExportStill(tester, format);
+        await tester.runAsync(state.export);
+        await tester.pump();
+        final extension = format.fileExtension;
+        expect(
+          filesWrittenUnder(temp),
+          containsAll(['Cut_0001.$extension', 'Cut_0002.$extension']),
+          reason: format.label,
+        );
+        final picture = await written('Cut_0001.$extension', decoder);
+        expect(
+          (picture.width, picture.height),
+          (png.width, png.height),
+          reason: format.label,
+        );
+        expect(
+          picture.getBytes(order: img.ChannelOrder.rgba),
+          png.getBytes(order: img.ChannelOrder.rgba),
+          reason: format.label,
+        );
+      }
+    });
+
+    // 🗣️I-117 (유저 2026-10-21): 「시퀀스는 psd 지원안하도록?」.
+    testWidgets('the Image tab lists every still — PSD there but off, saying '
+        'why — and the Sequence tab lists every one but PSD', (tester) async {
+      await pumpDialog(tester, exportSession());
+
+      /// The still list's rows, each as whether it takes a pick; the list
+      /// shut again after.
+      Future<Map<String, bool>> listed() async {
+        await tester.tap(
+          find.byKey(const ValueKey<String>('export-format-file')),
+        );
+        await tester.pump();
+        await tester.pump();
+        final rows = <String, bool>{};
+        for (final format in ExportStillFormat.values) {
+          final row = find.byKey(
+            ValueKey<String>('export-format-still-${format.jsonValue}'),
+          );
+          if (row.evaluate().isNotEmpty) {
+            rows[format.jsonValue] = tester
+                .widget<PopupMenuItem<PanelFlyoutItem>>(row)
+                .enabled;
+          }
+        }
+        if (rows['psd'] == false) {
+          expect(
+            find.text(AppText.strings.exNotInThisBuild),
+            findsOneWidget,
+            reason: 'the row that is off says why under its name',
+          );
+        }
+        await tester.tapAt(const Offset(1, 1));
+        await tester.pump();
+        await tester.pump();
+        return rows;
+      }
+
+      await pickExportStill(tester, ExportStillFormat.png);
+      expect(await listed(), {
+        'png': true,
+        'jpg': true,
+        'bmp': true,
+        'tga': true,
+        'tiff': true,
+        'webp': true,
+      });
+      await switchTab(tester, 'image');
+      expect(await listed(), {
+        'png': true,
+        'jpg': true,
+        'psd': false,
+        'bmp': true,
+        'tga': true,
+        'tiff': true,
+        'webp': true,
+      });
     });
   });
 
@@ -1329,7 +1413,7 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.tap(
         find.byKey(const ValueKey<String>('export-preset-save-current')),
       );
@@ -1347,10 +1431,7 @@ void main() {
       expect(find.text('납품 PNG'), findsOneWidget);
 
       // Drift back to video, then apply the preset — PNG returns.
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-format-container-mp4')),
-      );
-      await tester.pump();
+      await pickExportContainer(tester, ExportVideoContainer.mp4);
       expect(find.textContaining('Cut_0001.png …'), findsNothing);
       await tester.tap(find.text('납품 PNG'));
       await tester.pump();
@@ -1363,7 +1444,7 @@ void main() {
       );
       await pumpDialog(tester, exportSession(), settingsStore: store);
       await tester.pump();
-      await pickStillPng(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.tap(
         find.byKey(const ValueKey<String>('export-preset-save-current')),
       );

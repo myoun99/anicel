@@ -39,6 +39,7 @@ import '../../helpers/awaited_uploads.dart';
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/checker_sampling.dart';
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_scope_pick.dart';
 import '../../helpers/sheet_image_runs.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -611,7 +612,7 @@ void main() {
       final header = ByteData.sublistView(png);
       expect((header.getUint32(16), header.getUint32(20)), (3508, 2480));
 
-      await tapSetting(tester, 'export-envelope-format-jpg');
+      await pickPaperFormat(tester, 'export-envelope-format', 'jpg');
       expect(
         state.debugSpecs.cels.envelopeImage.stillFormat,
         ExportStillFormat.jpg,

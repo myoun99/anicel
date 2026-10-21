@@ -47,6 +47,7 @@ import 'package:anicel/src/ui/sheet_painting.dart' show pictureOutline;
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/checker_sampling.dart';
 import '../../helpers/conte_book.dart';
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/pdf_content.dart';
 import '../../helpers/sheet_image_runs.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -582,10 +583,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -637,10 +635,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -789,10 +784,7 @@ void main() {
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -840,10 +832,7 @@ void main() {
     expect(onBody, (0, 0, 255), reason: 'and so does the logo');
 
     // The PDF carries each whole, at its own pixels.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-pdf')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'pdf');
     await tester.runAsync(state.export);
     await tester.pump();
     final pdf = File(
@@ -877,10 +866,7 @@ void main() {
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
 
     /// A PNG's width from its IHDR — the first chunk, big-endian at 16.
     int pngWidth(String name) {
@@ -900,10 +886,7 @@ void main() {
       reason: 'the scale row is gone',
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-jpg')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'jpg');
     expect(state.debugSpecs.conte.format, ExportConteFormat.pageImage);
     expect(state.debugSpecs.conte.image.stillFormat, ExportStillFormat.jpg);
     await tester.runAsync(state.export);
@@ -972,10 +955,7 @@ void main() {
     await tester.pump();
 
     // The page image, at 1×: the paper's pixels, `paperScale` to a point.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
     await tester.runAsync(state.export);
     await tester.pump();
     final image = (await tester.runAsync(
@@ -1006,10 +986,7 @@ void main() {
     );
 
     // The PDF: the picture's outline, exactly, cut out of the band's ink.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-pdf')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'pdf');
     await tester.runAsync(state.export);
     await tester.pump();
     final outline = [
@@ -1107,10 +1084,7 @@ void main() {
     await tester.pump();
 
     // The page image, at 1×: a pixel of the ink is one of the page's.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
     await tester.runAsync(state.export);
     await tester.pump();
     final image = (await tester.runAsync(
@@ -1129,10 +1103,7 @@ void main() {
     expect((g, b), (255, 255));
 
     // The PDF: the file whole, its first row from the photo's corner.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-pdf')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'pdf');
     await tester.runAsync(state.export);
     await tester.pump();
     final pdf = File(

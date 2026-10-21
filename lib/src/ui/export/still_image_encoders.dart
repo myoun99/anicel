@@ -6,6 +6,7 @@ import '../../core/argb_channels.dart';
 import '../../models/export_format_selection.dart';
 import '../../native/qa_image_encoder.dart';
 import '../../services/media/png_writing.dart';
+import '../../services/media/still_file_writing.dart';
 import 'png_sequence_export_service.dart';
 import 'png_srgb.dart';
 
@@ -21,14 +22,55 @@ import 'png_srgb.dart';
 /// channel in the file ([_encodeRgbPng]). The engine's encoder cannot write
 /// one: it writes RGBA whatever the picture holds, so it keeps only the PNGs
 /// that keep their alpha.
-ExportImageEncoder? stillEncoderFor(ExportFormatSelection format) {
-  if (format.stillFormat == ExportStillFormat.jpg) {
-    return (image) => _encodeJpg(image, format);
+ExportImageEncoder? stillEncoderFor(ExportFormatSelection format) =>
+    switch (format.stillFormat) {
+      ExportStillFormat.jpg => (image) => _encodeJpg(image, format),
+      ExportStillFormat.png =>
+        format.wantsAlpha
+            ? null
+            : (image) => _encodeRgbPng(image, format.backgroundArgb),
+      ExportStillFormat.bmp => (image) => _encodeStill(image, format, encodeBmp),
+      ExportStillFormat.tga => (image) => _encodeStill(image, format, encodeTga),
+      ExportStillFormat.tiff =>
+        (image) => _encodeStill(image, format, encodeTiff),
+      ExportStillFormat.webp =>
+        (image) => _encodeStill(image, format, encodeWebp),
+      ExportStillFormat.psd => null,
+    };
+
+/// [image] through one of the writers the engine has no encoder for
+/// (`still_file_writing.dart`): its colour NOT premultiplied where the file
+/// keeps alpha, and laid over the format's background where it does not —
+/// the RGB a PNG without alpha is written from ([_overGround]).
+///
+/// In an isolate, as [_encodeRgbPng] is: a writer walks every byte, and a
+/// run of frames would stall the window's cancel.
+Future<List<int>?> _encodeStill(
+  ui.Image image,
+  ExportFormatSelection format,
+  Uint8List Function(StillPixels picture) write,
+) async {
+  final alpha = format.wantsAlpha;
+  final data = await image.toByteData(
+    format: alpha
+        ? ui.ImageByteFormat.rawStraightRgba
+        : ui.ImageByteFormat.rawRgba,
+  );
+  if (data == null) {
+    return null;
   }
-  if (format.stillFormat == ExportStillFormat.png && !format.wantsAlpha) {
-    return (image) => _encodeRgbPng(image, format.backgroundArgb);
-  }
-  return null;
+  final rgba = Uint8List.sublistView(data);
+  final width = image.width;
+  final height = image.height;
+  final ground = format.backgroundArgb;
+  return Isolate.run(() {
+    if (alpha) {
+      return write((pixels: rgba, width: width, height: height, channels: 4));
+    }
+    final rgb = Uint8List(width * height * 3);
+    _overGround(rgba, ground, rgb);
+    return write((pixels: rgb, width: width, height: height, channels: 3));
+  });
 }
 
 /// [image] over the format's background as RGB24 for the native stb
