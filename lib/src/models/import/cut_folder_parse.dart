@@ -204,6 +204,13 @@ class ParsedCelLayer {
   /// 그리는 걸 전제」), named by the symbol alone — 「A1s인경우 A만
   /// 레이어이름으로 남김. 구분은 색라벨로 되기때문」.
   final LayerRevise? correction;
+
+  /// The layer's key among the folder's rows — its symbol, and the
+  /// correction its letters name: two rows can share a name, never a key.
+  String get rowKey => switch (correction) {
+    null => symbol,
+    final revise => '$symbol ${revise.jsonValue}',
+  };
 }
 
 /// A `_`-prefixed picture (rule E): `_BG`, `_BOOK2`, `_BG補足` — each
@@ -220,6 +227,11 @@ class ParsedPicture {
 
   final String file;
   final List<String> olderRevisions;
+
+  /// The picture's key among the folder's rows — its name as the folder
+  /// spells it, `_` and all, which no symbol's can be (a symbol is
+  /// capitals).
+  String get rowKey => '_$name';
 }
 
 enum ParsedReferenceKind { timesheetScan, movie, timingSheet, workFile }
@@ -322,6 +334,16 @@ class CutFolderParseResult {
     process: stage ?? LayerMark.bornOfKind(LayerKind.animation).process,
     revise: layer.correction,
   );
+
+  /// The symbol's own layer [layer] rides as its correction — null for a
+  /// symbol's own layer, and for a correction whose symbol brought no cels
+  /// of its own (it comes in as a layer of its own).
+  ParsedCelLayer? baseOf(ParsedCelLayer layer) => layer.correction == null
+      ? null
+      : layers
+            .where((each) => each.symbol == layer.symbol)
+            .where((each) => each.correction == null)
+            .firstOrNull;
 }
 
 /// Rule N's process vocabulary, LONGEST FIRST (`ss` is 총작감, never

@@ -10,7 +10,6 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
-import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cut_folder_import_door.dart';
 import 'package:anicel/src/ui/session/project_import_doors.dart';
@@ -235,7 +234,6 @@ void main() {
       await writePng('$root${sep}_BG.png', seed: 0xFF555555);
       return cutFolderDoorOf(s).importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
-        copyIntoProject: false,
       );
     });
     expect(warnings, isNotNull);
@@ -275,63 +273,6 @@ void main() {
       ),
       isNull,
       reason: 'nothing shares its cels — there is no 겸용 cut',
-    );
-    await tester.pumpAndSettle();
-  });
-
-  testWidgets('importCutFolder stamps the CARRY answer on its reference '
-      'registrations — every kind of them', (tester) async {
-    // 🚨 The planner is handed a folder, not a window, so it cannot know
-    // the answer — and the session used to express it by copying the file
-    // into `.assets/Media` and nothing else. The pool entry itself still
-    // said `carried: false`, which is the one thing the save reads, so
-    // the first save after a folder import left every timesheet scan
-    // OUTSIDE the archive. It only came right on a reopen, through the
-    // older `sourcePath` spelling of the same answer.
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-
-    final warnings = await tester.runAsync(() async {
-      const root = 'csm_13_069_loeks';
-      final sep = Platform.pathSeparator;
-      await writePng('$root${sep}A1.png', seed: 0xFF111111);
-      await writePng('$root${sep}_TS_a.png', seed: 0xFF222222);
-      final movie = File([tempDir.path, root, '참고.mp4'].join(sep));
-      await movie.writeAsBytes(const [0, 0, 0, 24]);
-      return cutFolderDoorOf(s).importCutFolder(
-        folderPath: '${tempDir.path}$sep$root',
-        copyIntoProject: true,
-      );
-    });
-    expect(warnings, isNotNull);
-
-    final assets = {
-      for (final asset in s.mediaPool.mediaAssets) asset.kind: asset,
-    };
-    expect(
-      assets[MediaAssetKind.image]?.carried,
-      isTrue,
-      reason: 'the timesheet scan was asked for and can be carried',
-    );
-    expect(
-      assets[MediaAssetKind.video]?.carried,
-      isTrue,
-      reason: 'the answer is recorded as given at every registration site',
-    );
-    expect(
-      projectArchivedMediaPaths(s.repository.requireProject()),
-      {
-        assets[MediaAssetKind.image]!.path,
-        // The 참고영상 too: the folder import's answer was CARRY and the
-        // kind stopped being a veto on 08-14. What the user asked for is
-        // what the save writes.
-        assets[MediaAssetKind.video]!.path,
-      },
-    );
-    expect(
-      Directory('${tempDir.path}/csm_13_069_loeks.assets').existsSync(),
-      isFalse,
-      reason: 'carrying copies nothing',
     );
     await tester.pumpAndSettle();
   });
@@ -488,7 +429,6 @@ void main() {
       await writePng('$root${sep}LO${sep}A1.png', seed: 0xFF0000FF);
       await cutFolderDoorOf(s).importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
-        copyIntoProject: false,
       );
     });
 

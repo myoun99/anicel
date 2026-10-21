@@ -1336,7 +1336,6 @@ enum AppStrings {
   /// and `panelTimeline`, which already say them.
   String get imImport => _s('imImport');
   String get imFile => _s('imFile');
-  String get imFiles => _s('imFiles');
   String get imInto => _s('imInto');
   String get imFit => _s('imFit');
 
@@ -1347,16 +1346,9 @@ enum AppStrings {
   String get imSize => _s('imSize');
   String get imResolution => _s('imResolution');
 
-  /// The interpretation table's row names — what the window recognised in
-  /// what was picked. ⚠️Cut · Layer and the cel count are `exCut`,
-  /// `exLayer` and `exCelCount`; a file's KIND is `exAudio`/`exImage`/
-  /// `exVideo`, which is what the export window already calls them.
-  String get imProcess => _s('imProcess');
-  String get imPicture => _s('imPicture');
-  String get imReference => _s('imReference');
+  /// Where what a cut folder leaves out goes: nowhere — the 넣을 곳 of the
+  /// row that names it (F-429).
   String get imExcluded => _s('imExcluded');
-  String get imIgnored => _s('imIgnored');
-  String get imPickToSee => _s('imPickToSee');
 
   /// The placement strip and the window's title when it places one file, and
   /// the words for a pill that cannot be used from where the window opened.
@@ -1458,7 +1450,6 @@ enum AppStrings {
   /// The cut-folder column's words.
   String get imKeepExplain => _s('imKeepExplain');
   String get imReferenceExplain => _s('imReferenceExplain');
-  String get imCutFolderBakes => _s('imCutFolderBakes');
 
   /// The media pool's states and its rename prompt.
   String get mpFileMissing => _s('mpFileMissing');
@@ -2617,18 +2608,12 @@ enum AppStrings {
     'exCanvasPerCut': 'Canvas (per cut)',
     'imImport': 'Import',
     'imFile': 'File',
-    'imFiles': 'Files',
     'imInto': 'Into',
     'imFit': 'Fit',
     'imModified': 'Modified',
     'imSize': 'Size',
     'imResolution': 'Resolution',
-    'imProcess': 'Process',
-    'imPicture': 'Picture',
-    'imReference': 'Reference',
     'imExcluded': 'Excluded',
-    'imIgnored': 'Ignored',
-    'imPickToSee': 'Pick files or a cut folder to see the interpretation.',
     'imPlaceTitleTemplate': 'Place — {name}',
     'imModeKeep': 'Keep',
     'imModeReference': 'Link',
@@ -2678,8 +2663,6 @@ enum AppStrings {
         'The project file holds these, compressed; the originals are left alone.',
     'imReferenceExplain':
         'The files stay where they are and the project points at them.',
-    'imCutFolderBakes':
-        'Cut folders always bake their cels; scans and movies stay linked.',
     'mpFileMissing': 'File missing — relink it',
     'mpInUseOnTimeline': 'In use on the timeline',
     'mpNameEmpty': 'Media name cannot be empty.',
@@ -4114,18 +4097,12 @@ enum AppStrings {
     'exCanvasPerCut': 'キャンバス（カットごと）',
     'imImport': 'インポート',
     'imFile': 'ファイル',
-    'imFiles': 'ファイル',
     'imInto': '配置先',
     'imFit': 'フィット',
     'imModified': '更新日時',
     'imSize': 'サイズ',
     'imResolution': '解像度',
-    'imProcess': '工程',
-    'imPicture': '画像',
-    'imReference': '参考',
     'imExcluded': '除外',
-    'imIgnored': '無視',
-    'imPickToSee': 'ファイルかカットフォルダを選ぶと解釈が出ます。',
     'imPlaceTitleTemplate': '配置 — {name}',
     'imModeKeep': '埋め込み',
     'imModeReference': 'リンク',
@@ -4172,8 +4149,6 @@ enum AppStrings {
         '{name}: 展開するレイヤーがありません — 統合で読み込んでください。',
     'imKeepExplain': 'プロジェクトファイルが圧縮して持ちます。元のファイルはそのままです。',
     'imReferenceExplain': 'ファイルはその場所に残り、プロジェクトはそれを指します。',
-    'imCutFolderBakes':
-        'カットフォルダーのセルは常にラスタライズされます。スキャンと動画はリンクのままです。',
     'mpFileMissing': 'ファイルが見つかりません — リンクし直してください',
     'mpInUseOnTimeline': 'タイムラインで使用中',
     'mpNameEmpty': 'メディア名を入力してください。',
@@ -5713,18 +5688,12 @@ enum AppStrings {
     'exCanvasPerCut': '캔버스(컷마다)',
     'imImport': '임포트',
     'imFile': '파일',
-    'imFiles': '파일',
     'imInto': '넣을 곳',
     'imFit': '맞춤',
     'imModified': '수정일',
     'imSize': '크기',
     'imResolution': '해상도',
-    'imProcess': '공정',
-    'imPicture': '그림',
-    'imReference': '참고',
     'imExcluded': '제외',
-    'imIgnored': '무시',
-    'imPickToSee': '파일이나 컷 폴더를 고르면 해석이 나옵니다.',
     'imPlaceTitleTemplate': '배치 — {name}',
     'imModeKeep': '품기',
     'imModeReference': '참조',
@@ -5768,7 +5737,6 @@ enum AppStrings {
     'imPsdNoLayersTemplate': '{name}: 펼칠 레이어가 없습니다 — 합치기로 가져오세요.',
     'imKeepExplain': '프로젝트 파일이 압축해서 품습니다. 원본은 그대로 둡니다.',
     'imReferenceExplain': '파일은 그 자리에 두고 프로젝트가 가리킵니다.',
-    'imCutFolderBakes': '컷 폴더의 셀은 항상 굽습니다. 스캔과 동영상은 참조로 남습니다.',
     'mpFileMissing': '파일이 없습니다 — 다시 연결하세요',
     'mpInUseOnTimeline': '타임라인에서 쓰는 중',
     'mpNameEmpty': '미디어 이름을 비울 수 없습니다.',
@@ -7433,20 +7401,12 @@ enum AppStrings {
     'exCanvasPerCut': 'Canevas (par plan)',
     'imImport': 'Importer',
     'imFile': 'Fichier',
-    'imFiles': 'Fichiers',
     'imInto': 'Vers',
     'imFit': 'Ajuster',
     'imModified': 'Modifié',
     'imSize': 'Taille',
     'imResolution': 'Résolution',
-    'imProcess': 'Étape',
-    'imPicture': 'Image',
-    'imReference': 'Référence',
     'imExcluded': 'Exclu',
-    'imIgnored': 'Ignoré',
-    'imPickToSee':
-        'Choisissez des fichiers ou un dossier de plan pour voir '
-        'l\'interprétation.',
     'imPlaceTitleTemplate': 'Placer — {name}',
     'imModeKeep': 'Intégrer',
     'imModeReference': 'Lier',
@@ -7496,8 +7456,6 @@ enum AppStrings {
         'Le fichier du projet les contient, compressés ; les originaux restent intacts.',
     'imReferenceExplain':
         'Les fichiers restent où ils sont et le projet pointe vers eux.',
-    'imCutFolderBakes':
-        'Les dossiers de plan pixellisent toujours leurs images ; scans et vidéos restent liés.',
     'mpFileMissing': 'Fichier introuvable — reliez-le',
     'mpInUseOnTimeline': 'Utilisé dans la timeline',
     'mpNameEmpty': 'Le nom du média ne peut pas être vide.',
@@ -8978,18 +8936,12 @@ enum AppStrings {
     'exCanvasPerCut': '画布（按镜头）',
     'imImport': '导入',
     'imFile': '文件',
-    'imFiles': '文件',
     'imInto': '放入',
     'imFit': '适配',
     'imModified': '修改时间',
     'imSize': '大小',
     'imResolution': '分辨率',
-    'imProcess': '工序',
-    'imPicture': '图片',
-    'imReference': '参考',
     'imExcluded': '已排除',
-    'imIgnored': '已忽略',
-    'imPickToSee': '选择文件或镜头文件夹即可查看解析。',
     'imPlaceTitleTemplate': '放置 — {name}',
     'imModeKeep': '内嵌',
     'imModeReference': '链接',
@@ -9032,7 +8984,6 @@ enum AppStrings {
     'imPsdNoLayersTemplate': '{name}：没有可展开的图层 — 请以合并方式导入。',
     'imKeepExplain': '项目文件以压缩方式保存这些文件；原文件保持不变。',
     'imReferenceExplain': '文件保留在原处，项目指向它们。',
-    'imCutFolderBakes': '镜头文件夹中的图像总是栅格化；扫描和视频保持链接。',
     'mpFileMissing': '文件缺失 — 请重新链接',
     'mpInUseOnTimeline': '在时间线中使用',
     'mpNameEmpty': '媒体名称不能为空。',

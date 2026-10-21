@@ -5,11 +5,16 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
+import '../../models/attached_placement.dart';
+import '../../models/import/cut_folder_edits.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../models/import/import_warning.dart';
 import '../../models/import/picture_run.dart';
 import '../../services/import/cut_folder_listing.dart';
 import '../../models/canvas_size.dart';
+import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/media_asset.dart';
 import '../../models/movie_clock.dart' show movieClockFor;
 import '../../models/project_frame_rate.dart';
@@ -27,7 +32,19 @@ import '../../services/persistence/provider_documents.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../dialogs/cloud_wait.dart';
 import '../editor_session_manager.dart';
-import '../export/export_settings_modules.dart';
+import '../timeline/layer_label_controls.dart'
+    show
+        LayerAttachArrowCell,
+        LayerMarkChip,
+        LayerMarkEdit,
+        layerKindDisplayName,
+        layerKindIcon;
+import '../timeline/layer_rail_columns.dart'
+    show
+        LayerRailLeadingSlot,
+        LayerTypeButton,
+        layerRailLeadingCells,
+        layerRailLeadingWidthTo;
 import 'import_file_settings.dart';
 import 'import_file_table.dart';
 import 'import_preview.dart';
@@ -37,6 +54,8 @@ import '../text/byte_size_label.dart';
 import '../text/pixel_size_label.dart';
 import '../widgets/app_window.dart';
 import '../widgets/dock_edge_splitter.dart';
+import '../widgets/panel_flyout.dart'
+    show PanelFlyoutChoice, PanelFlyoutValueChoices, showPanelFlyout;
 import '../text/model_vocabulary.dart';
 
 /// The import window (§6-z21): ONE window for every import, defaults
@@ -44,17 +63,17 @@ import '../text/model_vocabulary.dart';
 /// what the one door hands it comes in ([picked] — the menu's 「파일
 /// 열기…」 and 「폴더 열기…」, a drop on the window, the media panel's ＋,
 /// the viewer's 「미디어에 등록」), and so do files the app already holds
-/// ([initialPaths]). The interpretation table shows what each source
-/// becomes (folders list every file, dropped ones included — nothing exits
-/// silently).
+/// ([initialPaths]). Its table says what each source becomes, a row a
+/// thing: a file, or a layer of the cut a cut FOLDER lands as — and a row
+/// for what a folder leaves out, so nothing exits silently.
 ///
 /// ↩️It had a 「파일…」 and a 「컷 폴더…」 of its own, and the menu's
 /// 「가져오기/배치…」 opened it on nothing to press them (F-282, 유저
 /// 2026-10-09: 「열기랑 임포트랑 되도록 하나로」).
 ///
-/// v1 zones: source line → interpretation table (preview) | settings
-/// modules → action bar. The preset rail and queue drawers of the export
-/// skeleton join when parser presets get their store.
+/// v1 zones: source line → table | preview → action bar. The preset rail
+/// and queue drawers of the export skeleton join when parser presets get
+/// their store.
 class ImportDialog extends StatefulWidget {
   const ImportDialog({
     super.key,
@@ -150,6 +169,13 @@ final class _Warnings extends _Said {
 /// there was nothing to count.
 double _share(int done, int total) => total <= 0 ? 1 : done / total;
 
+/// [report] told [from]–[to] of the run as a stretch's own 0–1.
+void Function(double) _between(
+  void Function(double) report,
+  double from,
+  double to,
+) => (fraction) => report(from + fraction * (to - from));
+
 /// What one file's door tells back while it runs: how far it is, and the
 /// pages or frames it could not render. The two go down the same doors
 /// together, so they are handed down as one.
@@ -219,6 +245,89 @@ final class _IntoThePool {
   String toString() => 'pool';
 }
 
+/// The Into answer of what a cut folder leaves out: nowhere — said on its
+/// row ([_FolderLeftOutRow]), so nothing goes silently.
+final class _LeftOut {
+  const _LeftOut();
+
+  /// What its popup row would be keyed by.
+  @override
+  String toString() => 'left-out';
+}
+
+/// A row of the table that stands for no one file of its own: what a cut
+/// FOLDER brings ([CutFolderParseResult]) — a symbol's layer or a picture,
+/// each a layer of the ONE cut the folder lands as — and the row naming
+/// what it leaves out.
+///
+/// 🗣️F-429 (유저 2026-10-21): 「일반 임포트창 거의 그대로」 — a folder's
+/// layers are rows of the window every file comes in through, asked its
+/// columns. ↩️A folder had a table of its own that read the parse out, and
+/// a column of knobs answering for the whole folder at once.
+sealed class _FolderRow {
+  const _FolderRow();
+}
+
+/// A symbol's own layer, or a correction riding it ([ParsedCelLayer]).
+final class _FolderLayerRow extends _FolderRow {
+  const _FolderLayerRow(this.layer);
+
+  final ParsedCelLayer layer;
+}
+
+/// A `_BG`/`_BOOK` picture ([ParsedPicture]).
+final class _FolderPictureRow extends _FolderRow {
+  const _FolderPictureRow(this.picture);
+
+  final ParsedPicture picture;
+}
+
+/// What the folder leaves out, named on one row: what its parse excluded,
+/// the sheets and work files the import does not read, and what was handed
+/// in beside it.
+final class _FolderLeftOutRow extends _FolderRow {
+  const _FolderLeftOutRow(this.names);
+
+  final List<String> names;
+}
+
+/// What a column asks the rows a cut folder brings ([_FolderRow]) where the
+/// [ImportColumn] it rides asks a file: the answers a row can give — none,
+/// and its cell is a dash; one, and it stands locked — the one it gives,
+/// and what a pick changes.
+class _FolderColumn {
+  const _FolderColumn({
+    required this.answers,
+    required this.valueOf,
+    this.wordOf,
+    this.onPick,
+  });
+
+  final List<Object?> Function(_FolderRow row) answers;
+  final Object? Function(_FolderRow row) valueOf;
+  final String? Function(_FolderRow row)? wordOf;
+  final void Function(Iterable<_FolderRow> rows, Object? value)? onPick;
+}
+
+/// The left-out row's key in the table.
+const _leftOutKey = 'folder-left-out';
+
+/// The table's key for the folder's row kept by [rowKey] — no file's path
+/// begins so.
+String _folderRowKey(String rowKey) => 'folder:$rowKey';
+
+/// What the preview shows of a row: the file, the pictures it pages through
+/// when it brings several, whether it opens as a sound, and the span —
+/// which the preview's IN/OUT change only where [editable].
+typedef _Shown = ({
+  String? path,
+  List<String>? run,
+  bool sound,
+  int inFrame,
+  int? outFrame,
+  bool editable,
+});
+
 class _ImportDialogState extends State<ImportDialog> {
   final List<String> _files = [];
   String? _folder;
@@ -239,11 +348,26 @@ class _ImportDialogState extends State<ImportDialog> {
   /// learn to ignore (08-12). So the row holds the two questions apart.
   bool _registersOnly(String path) =>
       widget.poolOnly ||
-      ((_settings[path] ?? _seed).intoPool && _poolEntryFor(path) == null);
+      ((_settings[path] ?? _seed).intoPool && _poolAnswers(path));
+
+  /// Whether 「미디어」 is still an answer for [path]: a file the pool does
+  /// not hold — one it holds has nothing left to register, so it is placed
+  /// (09-11, above) — or a file a cut folder lists, which stays where the
+  /// pool has it: a folder brought in again places nothing it was not asked
+  /// to (F-429-Q4: its media rows start on 「미디어」), and the pool takes no
+  /// file twice ([MediaPool.importMediaFiles]).
+  bool _poolAnswers(String path) =>
+      _folder != null || _poolEntryFor(path) == null;
 
   /// Whether [path]'s row is placed somewhere — every question but the
   /// pool's changes meaning with it, per row.
   bool _placing(String path) => !_registersOnly(path);
+
+  /// Whether a placement has a cut to land a new layer in: the open one, or
+  /// the cut a folder lands as — made, and opened, before anything else of
+  /// the press is placed ([_importAll]).
+  bool get _hasCutToPlaceIn =>
+      _folder != null || widget.session.activeCutOrNull != null;
 
   /// One answer set per FILE. The window used to hold one for the whole
   /// batch and be wrong about at least one file most of the time.
@@ -284,11 +408,17 @@ class _ImportDialogState extends State<ImportDialog> {
       kind: kind,
       isPsd: importPathIsPsd(path),
       placing: _placing(path),
-      hasActiveCut: widget.session.activeCutOrNull != null,
+      hasActiveCut: _hasCutToPlaceIn,
       lasting: _lasting(path),
       spot: widget.spot,
       runLength: _runOf(path)?.pictures.length,
-    ).copyWith(intoPool: _registersOnly(path));
+    ).copyWith(
+      intoPool: _registersOnly(path),
+      // In a cut folder's window every placement is a new layer of the cut
+      // the folder lands as — a media row's too (F-429-Q4: 「새 레이어 ·
+      // 미디어 중에서 고릅니다」).
+      into: _folder == null ? null : ImportDestination.activeCutLayer,
+    );
     // A file the pool already holds has answered the pool's question: the
     // window does not ask it again, and no answer pressed here stands in
     // for the pool's (유저 2026-09-11, 미디어 배치 라운드: 「풀에서
@@ -570,36 +700,48 @@ class _ImportDialogState extends State<ImportDialog> {
   ({int numerator, int denominator}) get _projectAudioSpeed =>
       widget.session.repository.requireProject().audioSpeed;
 
-  /// Whether the project CARRIES these files or points at them where they
-  /// are. Carrying is the default now, on every platform.
-  ///
-  /// It was Reference, for a reason that has since been answered: the pool
-  /// copied whatever it was handed, so dropping a 3GB 참고영상 meant a 3GB
-  /// copy the user never asked for and could not decline.
-  ///
-  /// 🚨This paragraph used to end「the KIND rule settles that case on its
-  /// own — video is never carried, whatever this says」. That ceiling died
-  /// 2026-08-14 and video carries like anything else. The kind then picked
-  /// only a file's STARTING answer, and a size note named what carrying would
-  /// cost; both went 2026-09-16 (유저: any file, at any size, is kept or
-  /// linked as the person answers — the decisions are on
-  /// [seedImportSettings]). The toggle itself is what the person sees before
-  /// pressing Import.
-  ///
-  /// What is left is which failure a person meets by not choosing. A
-  /// reference dies when the original moves, and a project that has to be
-  /// mailed with a folder beside it is the shape Pencil2D abandoned after
-  /// its users kept sending the file alone. Apple already started here
-  /// because a recorded path there stops working at the next launch; the
-  /// rest follows, now that carrying costs bytes inside a ZIP rather than
-  /// a second copy on disk.
-  ///
-  /// Reference stays one click away, for an original shared with another
-  /// tool — that is a deliberate choice, which is exactly what it should
-  /// be.
-  bool _copyIntoProject = true;
-  MediaFitMode _fit = MediaFitMode.contain;
   CutFolderParseResult? _parsed;
+
+  /// What the window changed of a cut folder's own answers — each row's
+  /// colour label, kind and fit ([CutFolderEdits]); the cut's name is
+  /// [_cutName]'s.
+  ///
+  /// ↩️The folder's fit and its media's carry were one answer each for the
+  /// whole folder, in a column of their own; the fit is each row's now, and
+  /// the media are rows asked what every file is asked (F-429-Q4).
+  CutFolderEdits _folderEdits = const CutFolderEdits();
+
+  /// The cut's name: filled with the one the folder gives and changed as
+  /// typed (🗣️F-429: 「컷 이름 읽어오는 거 등 규칙에 맞춰서 입력은 해두되 그거
+  /// 사용자가 변경할수있게」) — left empty, the folder's own again.
+  final TextEditingController _cutName = TextEditingController();
+
+  /// The rows a cut folder brings that are no file of their own
+  /// ([_FolderRow]), by their key in the table, in the TIMELINE's order —
+  /// the top layer first (유저 F-429: 「순서도 타임라인에맞춰서 일반적으로
+  /// A레이어가 밑이고 B가 위니」).
+  Map<String, _FolderRow> _folderRows = const {};
+
+  /// What the folder leaves out, said on the table's last row — null when it
+  /// leaves nothing out.
+  _FolderLeftOutRow? _leftOut;
+
+  /// Whether the folder's cut has landed: its rows leave the table as a file
+  /// that landed leaves it ([_runImport]), and a second press brings in only
+  /// what is still listed.
+  bool _folderLanded = false;
+
+  /// The folder's row at [key] — null for a file's.
+  _FolderRow? _folderRowAt(String key) =>
+      _folderRows[key] ?? (key == _leftOutKey ? _leftOut : null);
+
+  /// Every row of the table by its key, in its order: the folder's layers,
+  /// the files, and what the folder leaves out.
+  List<String> get _rowKeys => [
+    ..._folderRows.keys,
+    ..._files,
+    if (_leftOut != null) _leftOutKey,
+  ];
   bool _running = false;
   _Said _status = const _Sentence('');
 
@@ -664,6 +806,7 @@ class _ImportDialogState extends State<ImportDialog> {
     _wait.status.removeListener(_waitChanged);
     _wait.waiting.removeListener(_waitChanged);
     _wait.dispose();
+    _cutName.dispose();
     _intakeCopies.forEach(ProviderDocuments.letGo);
     super.dispose();
   }
@@ -688,6 +831,9 @@ class _ImportDialogState extends State<ImportDialog> {
     setState(() {
       if (_folder != null) {
         _ignoredSources.addAll(paths);
+        if (_parsed case final parsed?) {
+          _leftOut = _leftOutOf(parsed);
+        }
       } else {
         _files.addAll(paths);
       }
@@ -760,11 +906,92 @@ class _ImportDialogState extends State<ImportDialog> {
       _status = _Sentence(AppText.strings.imFolderUnreadable(error.message));
       return;
     }
-    _parsed = parseCutFolderAt(folder, entries: entries);
+    final parsed = _parsed = parseCutFolderAt(folder, entries: entries);
+    _takeFolderRows(folder, parsed);
   }
 
-  bool get _canImport =>
-      !_busy && (_files.isNotEmpty || (_folder != null && _parsed != null));
+  /// [parsed] as the table lists it: its layers in the timeline's order
+  /// ([_folderRows]); its timesheet scans and reference movie as FILES,
+  /// asked what every file is asked and starting on the pool, where the
+  /// folder import always put them (🗣️F-429-Q4: 「미디어 행만 넣을 곳을 고를
+  /// 수 있게」 — 처음엔 미디어); and what it leaves out ([_leftOut]). What it
+  /// said of itself is the status line's, as a run's warnings are.
+  void _takeFolderRows(String folder, CutFolderParseResult parsed) {
+    _cutName.text = _folderEdits.nameOf(parsed);
+    _folderRows = {
+      // The planner stands a folder's pictures at the bottom and its layers
+      // over them in the parse's order — read top-down, as the timeline is.
+      for (final layer in parsed.layers.reversed)
+        _folderRowKey(layer.rowKey): _FolderLayerRow(layer),
+      for (final picture in parsed.pictures.reversed)
+        _folderRowKey(picture.rowKey): _FolderPictureRow(picture),
+    };
+    for (final MapEntry(:key, value: row) in _folderRows.entries) {
+      _readPixelSize(
+        _folderFilesOf(row).first,
+        wanted: () => _folderRows.containsKey(key),
+      );
+    }
+    // By name, as a file dialog lists them: the walk's order is the
+    // platform's, and the same folder reads the same on every machine.
+    final media = [
+      for (final reference in parsed.references)
+        if (_isMediaRow(reference.kind)) reference.file,
+    ]..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    for (final file in media) {
+      final path = cutFolderFilePath(folder, file);
+      _files.add(path);
+      _settings[path] = _seed.copyWith(intoPool: true);
+      _probe(path);
+    }
+    _leftOut = _leftOutOf(parsed);
+    if (parsed.warnings.isNotEmpty) {
+      _status = _Warnings([
+        for (final warning in parsed.warnings)
+          warning.partsFor(AppText.language),
+      ]);
+    }
+  }
+
+  /// Whether a folder's reference of [kind] is a FILE of the window's —
+  /// a timesheet scan or the reference movie, which the folder import always
+  /// registered; the timing sheets and work files it never read are left
+  /// out.
+  static bool _isMediaRow(ParsedReferenceKind kind) =>
+      kind == ParsedReferenceKind.timesheetScan ||
+      kind == ParsedReferenceKind.movie;
+
+  /// The row naming what [parsed] leaves out, each once — null when it
+  /// leaves nothing: a file by its name, what lies inside a folder by the
+  /// folder's (「_old/」) — a folder left out whole is its files' folder —
+  /// the sheets and work files the import does not read, and what was handed
+  /// in beside the folder.
+  _FolderLeftOutRow? _leftOutOf(CutFolderParseResult parsed) {
+    final names = {
+      for (final exclusion in parsed.excluded) _topNameOf(exclusion.path),
+      for (final reference in parsed.references)
+        if (!_isMediaRow(reference.kind)) _topNameOf(reference.file),
+      for (final source in _ignoredSources) mediaFileName(source),
+    };
+    final shown = [
+      for (final name in names)
+        if (!names.contains('$name/')) name,
+    ];
+    return shown.isEmpty ? null : _FolderLeftOutRow(shown);
+  }
+
+  /// [relativePath]'s first name — with its slash when it is a folder's.
+  static String _topNameOf(String relativePath) {
+    final slash = relativePath.indexOf('/');
+    return slash < 0 ? relativePath : relativePath.substring(0, slash + 1);
+  }
+
+  bool get _canImport => !_busy && (_files.isNotEmpty || _folderToLand != null);
+
+  /// The folder whose cut the press lands — null when there is none, it
+  /// could not be read, or its cut has landed already ([_folderLanded]).
+  String? get _folderToLand =>
+      _parsed == null || _folderLanded ? null : _folder;
 
   /// Importing, or waiting on a document's bytes after a pick — either way
   /// the sources are not to be changed or run from under it.
@@ -879,10 +1106,22 @@ class _ImportDialogState extends State<ImportDialog> {
       // What SUCCEEDED leaves the list — pressing Import again after
       // fixing a problem must never duplicate what already landed.
       _files.removeWhere(tally.done.contains);
+      if (tally.done.contains(_folder)) {
+        _folderHasLanded();
+      }
       _status = tally.warnings.isEmpty
           ? _Sentence(AppText.strings.imStatusNothing)
           : _Warnings(tally.warnings);
     });
+  }
+
+  /// The folder's rows leave the table once its cut has landed, as a file
+  /// that landed leaves it.
+  void _folderHasLanded() {
+    _folderLanded = true;
+    _selected.removeWhere((key) => _folderRowAt(key) != null);
+    _folderRows = const {};
+    _leftOut = null;
   }
 
   /// Every file of the press, imported into [tally] — false when this
@@ -1057,16 +1296,26 @@ class _ImportDialogState extends State<ImportDialog> {
     void Function(double) report,
   ) async {
     try {
-      final folder = _folder;
-      if (folder != null) {
-        await _importCutFolder(folder, tally, report);
-        return true;
-      }
-      // Each row as its 넣을 곳 says: the ones that only register, then the
-      // ones that are placed — one count over both, a file each.
+      // Each row as its 넣을 곳 says: a folder's cut first — what its media
+      // rows place lands in it, the cut its landing opens — then the files
+      // that only register, then the ones that are placed. One count over
+      // all of it: a folder's scans, and a file each.
+      final folder = _folderToLand;
       final registering = _files.where(_registersOnly).toList();
       final placing = _files.where(_placing).toList();
-      final share = _share(registering.length, _files.length);
+      final scans = folder == null ? 0 : _folderScanCount;
+      final total = scans + _files.length;
+      final landed = _share(scans, total);
+      final registered = _share(scans + registering.length, total);
+      if (folder != null &&
+          !await _importCutFolder(
+            folder,
+            tally,
+            _between(report, 0, landed),
+          )) {
+        // Its media rows place into the cut it would have made.
+        return true;
+      }
       if (registering.isNotEmpty) {
         // The pool: every kind registers, movies included. Two batches
         // rather than one, because carrying is a per-file answer and the
@@ -1074,7 +1323,7 @@ class _ImportDialogState extends State<ImportDialog> {
         await _registerFiles(
           registering,
           tally,
-          (fraction) => report(fraction * share),
+          _between(report, landed, registered),
         );
       }
       if (placing.isNotEmpty) {
@@ -1085,7 +1334,7 @@ class _ImportDialogState extends State<ImportDialog> {
         return await _placeFiles(
           placing,
           tally,
-          (fraction) => report(share + fraction * (1 - share)),
+          _between(report, registered, 1),
         );
       }
     } on Object catch (error) {
@@ -1094,25 +1343,42 @@ class _ImportDialogState extends State<ImportDialog> {
     return true;
   }
 
-  Future<void> _importCutFolder(
+  /// The folder's cut, landed as the window answered it — false when the
+  /// folder could not be read. [report] counts its scans.
+  Future<bool> _importCutFolder(
     String folder,
     _ImportTally tally,
     void Function(double) report,
   ) async {
     final folderWarnings = await widget.session.cutFolderDoor.importCutFolder(
       folderPath: folder,
-      fit: _fit,
-      copyIntoProject: _copyIntoProject,
+      edits: _folderEditsToRun,
       onProgress: (baked, total) => report(_share(baked, total)),
     );
     if (folderWarnings == null) {
       tally.warn(AppText.strings.imCutFolderUnreadable);
-      return;
+      return false;
     }
     tally
       ..imported += 1
+      ..done.add(folder)
       ..warnAll(folderWarnings);
+    return true;
   }
+
+  /// The folder's answers as the window holds them now — the cut named as
+  /// typed, or as the folder names it when the field is left empty.
+  CutFolderEdits get _folderEditsToRun {
+    final typed = _cutName.text.trim();
+    return _folderEdits.withCutName(typed.isEmpty ? null : typed);
+  }
+
+  /// How many files the folder's cut bakes — its share of the run's %, as
+  /// its door counts them going ([CutFolderImportDoor.importCutFolder]).
+  int get _folderScanCount => _folderRows.values.fold(
+    0,
+    (count, row) => count + _folderFilesOf(row).length,
+  );
 
   /// Whether the file at [path] reads for a placement — said in [tally],
   /// of its name, when it does not.
@@ -1661,23 +1927,11 @@ class _ImportDialogState extends State<ImportDialog> {
             _sourceBar(context),
             const Divider(height: 1),
           ],
-          // Loose files answer per row; a cut folder and a TVPaint export
-          // land a whole CUT and have nothing per-file to answer, so they
-          // keep the interpretation list and the knobs that read it.
-          Expanded(
-            child: _files.isNotEmpty
-                ? _twoZones(context)
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(child: _interpretationTable(context)),
-                      if (_folder != null) ...[
-                        const VerticalDivider(width: 1),
-                        SizedBox(width: 272, child: _settingsColumn(context)),
-                      ],
-                    ],
-                  ),
-          ),
+          // Every source answers per row — a cut folder's layers too, as the
+          // rows of the cut it lands as (F-429). ↩️A folder kept a list that
+          // read its parse out, and a column of knobs answering for all of
+          // it at once.
+          Expanded(child: _twoZones(context)),
         ],
       ),
     );
@@ -1692,15 +1946,17 @@ class _ImportDialogState extends State<ImportDialog> {
   /// readable name need; where the window cannot give it that, the list
   /// scrolls sideways at that width instead of squeezing the name.
   Widget _twoZones(BuildContext context) {
-    final rows = [for (final path in _files) _tableRow(path)];
+    final rows = [for (final key in _rowKeys) _tableRowOf(key)];
     final columns = _tableColumns();
     final preview = _preview();
+    final leadWidth = _leadWidth;
     return LayoutBuilder(
       builder: (context, constraints) {
         final minTable = ImportFileTable.minimumWidth(
           context,
           rows: rows,
           columns: columns,
+          leadWidth: leadWidth,
         );
         // The picture keeps 200 while the table can spare it, and never
         // less than its own transport needs. Past that the TABLE yields: it
@@ -1723,12 +1979,16 @@ class _ImportDialogState extends State<ImportDialog> {
                       context,
                       rows: rows,
                       columns: columns,
+                      leadWidth: leadWidth,
                     ))
                 .clamp(narrowest, maxTable);
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(width: tableWidth, child: _fileTable(rows, columns)),
+            SizedBox(
+              width: tableWidth,
+              child: _fileTable(rows, columns, leadWidth),
+            ),
             DockEdgeSplitter(
               axis: Axis.horizontal,
               tooltip: AppText.strings.commonResize,
@@ -1749,19 +2009,54 @@ class _ImportDialogState extends State<ImportDialog> {
   /// run is previewed as its run, and the transport's IN/OUT are the run's
   /// (F-282, 시안 ④).
   Widget _preview() {
-    final path = _selected.isNotEmpty
-        ? _selected.last
-        : (_files.isEmpty ? null : _files.first);
-    final settings = path == null
-        ? const ImportFileSettings()
-        : _settingsFor(path);
-    final run = path == null ? null : _runFilesOf(path);
+    final key = _selected.isNotEmpty ? _selected.last : _rowKeys.firstOrNull;
+    final shown = _shownOf(key);
     return ImportPreview(
       key: const ValueKey<String>('import-preview'),
       session: widget.session,
-      path: path,
+      path: shown.path,
+      run: shown.run,
+      opensAsSound: shown.sound,
+      inFrame: shown.inFrame,
+      outFrame: shown.outFrame,
+      rangeEditable: shown.editable,
+      soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
+      holdBytes: widget.session.projectFile.holdMediaBytes,
+      frameRate: widget.session.projectSettings.projectFrameRate,
+      audioSpeed: _projectAudioSpeed,
+      onRangeChanged: (start, end) {
+        if (key != null && _folderRowAt(key) == null) {
+          _keepSpan(key, start, end);
+        }
+      },
+    );
+  }
+
+  /// What the preview shows of the row at [key] ([_Shown]) — nothing, with
+  /// no row.
+  _Shown _shownOf(String? key) {
+    final folderRow = key == null ? null : _folderRowAt(key);
+    if (key == null || folderRow != null) {
+      // A folder's row pages through the pictures it brings — every one of
+      // them comes in, so its span is no question of the preview's.
+      final files = folderRow == null
+          ? const <String>[]
+          : _folderFilesOf(folderRow);
+      return (
+        path: files.firstOrNull,
+        run: files.length > 1 ? files : null,
+        sound: false,
+        inFrame: 0,
+        outFrame: null,
+        editable: false,
+      );
+    }
+    final settings = _settingsFor(key);
+    final run = _runFilesOf(key);
+    return (
+      path: key,
       run: run,
-      opensAsSound: path != null && _landsAsSound(path),
+      sound: _landsAsSound(key),
       inFrame: run != null ? settings.runIn : settings.inFrame,
       outFrame: run != null ? settings.runOut : settings.outFrame,
       // The ends appear wherever they act: on what gets placed, and on what
@@ -1770,17 +2065,7 @@ class _ImportDialogState extends State<ImportDialog> {
       // (2026-09-24). ⛔Not on a file the pool already holds when only
       // registering: that adds nothing, so a span there would act on
       // nothing.
-      rangeEditable:
-          path != null && (_placing(path) || _poolEntryFor(path) == null),
-      soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
-      holdBytes: widget.session.projectFile.holdMediaBytes,
-      frameRate: widget.session.projectSettings.projectFrameRate,
-      audioSpeed: _projectAudioSpeed,
-      onRangeChanged: (start, end) {
-        if (path != null) {
-          _keepSpan(path, start, end);
-        }
-      },
+      editable: _placing(key) || _poolEntryFor(key) == null,
     );
   }
 
@@ -1811,19 +2096,204 @@ class _ImportDialogState extends State<ImportDialog> {
       path: path,
       name: mediaAssetNameFor(_poolEntryFor(path), path),
       extension: mediaFileNameParts(path).extension,
-      modified: _modifiedOf(path),
+      modified: _modifiedOf([path]),
       size: byteSizeLabel(_sizeOf(path)),
       resolution: _resolutionOf(path),
     );
   }
 
+  /// The table's row at [key]: a file's, or a row of the folder's.
+  ImportFileRow _tableRowOf(String key) => switch (_folderRowAt(key)) {
+    final row? => _folderTableRow(key, row),
+    null => _tableRow(key),
+  };
+
+  /// A folder's row as the table lists it: its name, the newest of its
+  /// files' days, their size together and the first's in pixels — what a
+  /// fit is chosen by — and the timeline row's own cells before its name
+  /// ([_folderLead]).
+  ImportFileRow _folderTableRow(String key, _FolderRow row) {
+    final files = _folderFilesOf(row);
+    return ImportFileRow(
+      path: key,
+      name: _folderRowName(row),
+      extension: '',
+      modified: _modifiedOf(files),
+      size: files.isEmpty
+          ? ''
+          : byteSizeLabel(files.fold(0, (total, file) => total + _sizeOf(file))),
+      resolution: files.isEmpty ? '' : _resolutionOf(files.first),
+      lead: _folderLead(key, row),
+    );
+  }
+
+  /// [row]'s files where they lie — a layer's cels in their order, a
+  /// picture's one; none for what the folder leaves out.
+  List<String> _folderFilesOf(_FolderRow row) {
+    final folder = _folder!;
+    return switch (row) {
+      _FolderLayerRow(:final layer) => [
+        for (final cel in layer.cells) cutFolderFilePath(folder, cel.file),
+      ],
+      _FolderPictureRow(:final picture) => [
+        cutFolderFilePath(folder, picture.file),
+      ],
+      _FolderLeftOutRow() => const [],
+    };
+  }
+
+  /// [row]'s name: a layer by its symbol alone — a correction's too, which
+  /// its colour label tells apart (🗣️F-429-Q2: 「A1s인경우 A만
+  /// 레이어이름으로 남김. 구분은 색라벨로 되기때문」) — a picture by its own,
+  /// and what is left out by every name it holds.
+  static String _folderRowName(_FolderRow row) => switch (row) {
+    _FolderLayerRow(:final layer) => layer.symbol,
+    _FolderPictureRow(:final picture) => picture.name,
+    _FolderLeftOutRow(:final names) => names.join(' · '),
+  };
+
+  /// [row] as the layer it lands: the key its answers are kept by
+  /// ([CutFolderEdits]), and its kind and colour label as the folder's
+  /// rules give them until someone picks others — null for what the folder
+  /// leaves out.
+  ({String key, LayerKind kind, LayerMark mark})? _folderLayerOf(
+    _FolderRow row,
+  ) {
+    final parsed = _parsed!;
+    return switch (row) {
+      _FolderLayerRow(:final layer) => (
+        key: layer.rowKey,
+        kind: _folderEdits.kindOfLayer(parsed, layer),
+        mark: _folderEdits.markOfLayer(parsed, layer),
+      ),
+      _FolderPictureRow(:final picture) => (
+        key: picture.rowKey,
+        kind: _folderEdits.kindOfPicture(picture),
+        mark: _folderEdits.markOfPicture(picture),
+      ),
+      _FolderLeftOutRow() => null,
+    };
+  }
+
+  /// [row]'s cells before its name: the TIMELINE RAIL's own
+  /// ([layerRailLeadingCells]) — its colour label and take, a correction's
+  /// attach arrow, its kind — as the row will stand in the timeline
+  /// (🗣️F-429: 「타임라인 레이어처럼 최대한 기존 로직/디자인 재사용. 출력창 셀
+  /// 탭에서 재사용한것처럼」). The label opens the timeline's own picker, the
+  /// kind 이미지 · 애니메이션, each for every selected row when the pressed
+  /// one is among them (F-429-Q1). Null for what the folder leaves out.
+  Widget? _folderLead(String key, _FolderRow row) {
+    final layer = _folderLayerOf(row);
+    if (layer == null) {
+      return null;
+    }
+    final attached =
+        row is _FolderLayerRow && _parsed!.baseOf(row.layer) != null;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: layerRailLeadingCells(
+        includeSectionSlot: false,
+        mark: LayerMarkChip(
+          keyPrefix: 'import',
+          layerId: LayerId(key),
+          mark: layer.mark,
+          onMarkSelected: (_, edit) => _editFolderMarks(key, edit),
+        ),
+        timesheet: attached
+            ? LayerAttachArrowCell(
+                keyPrefix: 'import',
+                idValue: key,
+                placement: AttachedPlacement.above,
+              )
+            : null,
+        typeButton: LayoutBuilder(
+          builder: (context, room) => LayerTypeButton(
+            keyPrefix: 'import',
+            idValue: key,
+            kind: layer.kind,
+            height: room.maxHeight,
+            // A correction is its symbol's kind, as an attach row made in
+            // the timeline is ([CutFolderEdits.kindOfLayer]) — the glyph
+            // alone, nothing to press.
+            onTap: attached ? null : () => _pickFolderKind(context, key),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The folder's rows a press on [pressed] speaks for — the selection's,
+  /// when it is among them ([importRowsPressedWith]) — as the layers they
+  /// land.
+  Iterable<({String key, LayerKind kind, LayerMark mark})>
+  _folderLayersPressedWith(String pressed) => [
+    for (final key in importRowsPressedWith(_selected, pressed))
+      if (_folderRowAt(key) case final row?) ?_folderLayerOf(row),
+  ];
+
+  /// [edit] made to the colour label of every row a press on [pressed]
+  /// speaks for — a label picked, or a take.
+  void _editFolderMarks(String pressed, LayerMarkEdit edit) {
+    final marks = {..._folderEdits.marks};
+    for (final layer in _folderLayersPressedWith(pressed)) {
+      marks[layer.key] = edit(layer.mark);
+    }
+    setState(() => _folderEdits = _folderEdits.copyWith(marks: marks));
+  }
+
+  /// The kinds a press on a row's kind offers — 이미지 · 애니메이션, an image
+  /// only for a row of one cel ([CutFolderEdits.holds]) — the pick going to
+  /// every row the press speaks for, each taking it as far as its cels
+  /// allow (🗣️F-429: 「1장짜리 그림을 기본 이미지레이어로 자동지정해두지만
+  /// 같은창에서 애니메이션레이어로 변경가능」).
+  void _pickFolderKind(BuildContext anchor, String pressed) {
+    final row = _folderRowAt(pressed)!;
+    final cels = _folderFilesOf(row).length;
+    unawaited(
+      showPanelFlyout(
+        anchor,
+        entries: const [LayerKind.image, LayerKind.animation]
+            .asFlyoutValueChoices(
+              current: _folderLayerOf(row)?.kind,
+              choiceOf: (kind) => PanelFlyoutChoice(
+                key: 'import-kind-${kind.jsonValue}',
+                label: layerKindDisplayName(kind),
+                icon: layerKindIcon(kind),
+                enabled: CutFolderEdits.holds(kind, cels),
+              ),
+              onPicked: (kind) => _setFolderKinds(pressed, kind),
+            ),
+      ),
+    );
+  }
+
+  void _setFolderKinds(String pressed, LayerKind kind) {
+    final kinds = {..._folderEdits.kinds};
+    for (final layer in _folderLayersPressedWith(pressed)) {
+      kinds[layer.key] = kind;
+    }
+    setState(() => _folderEdits = _folderEdits.copyWith(kinds: kinds));
+  }
+
+  /// The room before every row's name while a folder's rows are listed:
+  /// the timeline rail's cells up to its name, as the export window's cels
+  /// list wears them.
+  double get _leadWidth => _folderRows.isEmpty
+      ? 0
+      : layerRailLeadingWidthTo(
+          to: LayerRailLeadingSlot.name,
+          includeSectionSlot: false,
+        );
+
   /// One row per file, one column per question (§3 of the round).
   Widget _fileTable(
     List<ImportFileRow> rows,
     List<ImportColumn<Object?>> columns,
+    double leadWidth,
   ) => ImportFileTable(
     key: const ValueKey<String>('import-file-table'),
     enabled: !_running,
+    leadWidth: leadWidth,
     selected: _selected,
     onRowTap: (path) => setState(() {
       if (!_selected.remove(path)) {
@@ -1858,21 +2328,121 @@ class _ImportDialogState extends State<ImportDialog> {
     bool any(bool Function(String path) test) => _files.any(test);
     final placementAsked = !widget.poolOnly;
     return [
-      if (_files.isNotEmpty) _intoColumn(),
+      _alsoOfTheFolder(_intoColumn(), _folderInto),
       // The layer's question, wherever something is placed (「플레이스가
       // 타임라인이면 굽기열 만들기」).
-      if (placementAsked) _bakeColumn(),
+      if (placementAsked) _alsoOfTheFolder(_bakeColumn(), _folderBake),
       // The pool's question, asked only of a file the pool has not answered
       // (「플레이스가 타임라인일땐 그냥 품기/참조인 그 열 자체를 삭제」 for
       // pooled files, 「프로젝트의 임포트 버튼 … 품기/참조열 존재하도록」
       // for new ones).
-      if (any((path) => _poolEntryFor(path) == null)) _fileColumn(),
-      if (placementAsked) _fitColumn(),
+      if (any((path) => _poolEntryFor(path) == null))
+        _alsoOfTheFolder(_fileColumn(), _folderFile),
+      if (placementAsked) _alsoOfTheFolder(_fitColumn(), _folderFit),
       // A run's, a Photoshop document's, a movie-with-sound's own question —
       // one column, each row its own (F-282).
-      if (placementAsked) _optionColumn(),
+      if (placementAsked) _alsoOfTheFolder(_optionColumn(), _folderOption),
     ];
   }
+
+  /// [files] as a cut folder's rows answer it too ([_FolderColumn]): a row
+  /// of the folder is asked [folder], a file's row [files] — ONE column, so
+  /// its header answers for both, and a press on a row of either kind
+  /// speaks for the selection of both.
+  ImportColumn<Object?> _alsoOfTheFolder(
+    ImportColumn<Object?> files,
+    _FolderColumn folder,
+  ) => ImportColumn<Object?>(
+    id: files.id,
+    label: files.label,
+    help: files.help,
+    style: files.style,
+    values: files.values,
+    labelOf: files.labelOf,
+    valuesFor: (key) => switch (_folderRowAt(key)) {
+      final row? => folder.answers(row),
+      null => files.answersFor(key),
+    },
+    wordOf: (key, value) => switch (_folderRowAt(key)) {
+      final row? => folder.wordOf?.call(row),
+      null => files.wordOf?.call(key, value),
+    },
+    valueOf: (key) => switch (_folderRowAt(key)) {
+      final row? => folder.valueOf(row),
+      null => files.valueOf(key),
+    },
+    appliesTo: (key) => switch (_folderRowAt(key)) {
+      final row? => folder.answers(row).isNotEmpty,
+      null => files.appliesTo(key),
+    },
+    enabledFor: (key, value) => switch (_folderRowAt(key)) {
+      final row? => folder.answers(row).contains(value),
+      null => files.enabledFor(key, value),
+    },
+    onPick: (keys, value) {
+      files.onPick([
+        for (final key in keys)
+          if (_folderRowAt(key) == null) key,
+      ], value);
+      // A row that cannot give the answer lets it pass, as a file's resolves
+      // it away.
+      folder.onPick?.call([
+        for (final key in keys)
+          if (_folderRowAt(key) case final row?)
+            if (folder.answers(row).contains(value)) row,
+      ], value);
+    },
+  );
+
+  /// Where a folder's row goes: a new layer of the cut the folder lands as
+  /// — the one answer, locked (🗣️F-429-Q1: 「컷 누르면 … 임포트하는 항목들
+  /// 새 레이어로 해두고 비활성화색」) — and nowhere, for what it leaves out.
+  _FolderColumn get _folderInto => _FolderColumn(
+    answers: (row) => [_folderIntoOf(row)],
+    valueOf: _folderIntoOf,
+  );
+
+  static Object _folderIntoOf(_FolderRow row) => row is _FolderLeftOutRow
+      ? const _LeftOut()
+      : ImportDestination.activeCutLayer;
+
+  /// A folder's cels bake, every one — they are what is drawn on next
+  /// (§6-z22) — the one answer, locked.
+  _FolderColumn get _folderBake => _FolderColumn(
+    answers: (row) => row is _FolderLeftOutRow ? const [] : const [true],
+    valueOf: (row) => true,
+  );
+
+  /// What a baked row leaves in the pool: nothing, so the pool's question
+  /// is not its (F-282-Q6: 「굽는 줄의 「파일」은 「—」」).
+  _FolderColumn get _folderFile =>
+      _FolderColumn(answers: (row) => const [], valueOf: (row) => null);
+
+  /// How a folder's row lays its cels on the cut's canvas — the cut is the
+  /// project's size, not the scans', so every fit is an answer
+  /// ([CutFolderEdits.fitOf]).
+  _FolderColumn get _folderFit => _FolderColumn(
+    answers: (row) => row is _FolderLeftOutRow ? const [] : MediaFitMode.values,
+    valueOf: (row) => _folderEdits.fitOf(_folderLayerOf(row)!.key),
+    onPick: (rows, value) => setState(
+      () => _folderEdits = _folderEdits.copyWith(
+        fits: {
+          ..._folderEdits.fits,
+          for (final row in rows) _folderLayerOf(row)!.key: value! as MediaFitMode,
+        },
+      ),
+    ),
+  );
+
+  /// A folder's layer as its 「옵션」 cell says it: the cels it brings, as a
+  /// numbered run's cell says its span (「A1–A21 (22장)」).
+  _FolderColumn get _folderOption => _FolderColumn(
+    answers: (row) => row is _FolderLayerRow ? const [_RunSpan()] : const [],
+    valueOf: (row) => const _RunSpan(),
+    wordOf: (row) => _spanWord([
+      for (final file in _folderFilesOf(row)) mediaFileNameParts(file).name,
+    ]),
+  );
 
   /// Whether [path] places as a PICTURE — the only thing a fit or a bake
   /// means anything for. A sound goes to the SE rows; a movie is a picture
@@ -1898,6 +2468,20 @@ class _ImportDialogState extends State<ImportDialog> {
   ImportColumn<Object?> _fileColumn() => ImportColumn<Object?>(
     id: 'file',
     label: AppText.strings.imFile,
+    // 🗣️유저 2026-08-30: 「품기는 압축된 파일 저장시키는거라고 문장 넣는게
+    // 좋을거같아」 — said where an explanation is said, as the header's
+    // tooltip (F-366). It also answers a question the size column would
+    // otherwise raise: the media pool shows what an asset OCCUPIES, which
+    // after carrying is smaller than the file imported. ↩️It was a line
+    // under the cut folder's carry chips, the one place the window asked
+    // it, until F-429 made the folder's media rows of their own.
+    help: [
+      for (final (mode, says) in [
+        (ImportFileMode.keepInside, AppText.strings.imKeepExplain),
+        (ImportFileMode.reference, AppText.strings.imReferenceExplain),
+      ])
+        '${importModeLabel(mode)} — $says',
+    ].join('\n'),
     values: ImportFileMode.values,
     labelOf: (value) => importModeLabel(value! as ImportFileMode),
     valueOf: (path) => _settingsFor(path).mode,
@@ -2037,17 +2621,16 @@ class _ImportDialogState extends State<ImportDialog> {
   /// 시안 ④: 「연번은 들어갈 범위만(A2–A3)」.
   String? _runSpanWord(String path) {
     final kept = _runKeptOf(path);
-    if (kept == null) {
-      return null;
-    }
-    return kept.length == 1
-        ? kept.single.shown
-        : AppText.strings.imRunSpan(
-            kept.first.shown,
-            kept.last.shown,
-            kept.length,
-          );
+    return kept == null
+        ? null
+        : _spanWord([for (final picture in kept) picture.shown]);
   }
+
+  /// Pictures in a row as a cell says them: the first and the last and how
+  /// many for two or more, the one's own name for one.
+  static String _spanWord(List<String> shown) => shown.length == 1
+      ? shown.single
+      : AppText.strings.imRunSpan(shown.first, shown.last, shown.length);
 
   /// Which question the 「옵션」 column asks [path]'s row, if any — only of
   /// a placed row: registering brings the file in as it is.
@@ -2085,6 +2668,7 @@ class _ImportDialogState extends State<ImportDialog> {
         _SoundOnSeRows() => AppText.strings.imIntoSeRow,
         // The pool by its panel's name.
         _IntoThePool() => AppText.strings.panelMedia,
+        _LeftOut() => AppText.strings.imExcluded,
         _ => '',
       },
       // A sound's place is the SE rows' own rule (유저 2026-09-11: 「SE1부터
@@ -2098,9 +2682,8 @@ class _ImportDialogState extends State<ImportDialog> {
       appliesTo: (path) => true,
       enabledFor: (path, value) => switch (value) {
         // A file the pool already holds has nothing left to register.
-        _IntoThePool() => widget.poolOnly || _poolEntryFor(path) == null,
-        ImportDestination.activeCutLayer =>
-          widget.session.activeCutOrNull != null,
+        _IntoThePool() => widget.poolOnly || _poolAnswers(path),
+        ImportDestination.activeCutLayer => _hasCutToPlaceIn,
         _ => true,
       },
       onPick: (paths, value) => _setSettings(
@@ -2128,7 +2711,9 @@ class _ImportDialogState extends State<ImportDialog> {
   /// What [path]'s row may answer in the 「넣을 곳」 column. A drop's answer
   /// is the ONE value, so the cell shows it and opens nothing — the shape
   /// every locked answer in this table has. So is a pool's door's: every
-  /// row there registers.
+  /// row there registers. A file a cut folder lists goes into the cut it
+  /// lands as, or the pool (🗣️F-429-Q4: 「미디어 행은 새 레이어 · 미디어 중에서
+  /// 고릅니다」).
   List<Object?> _intoAnswers(String path) {
     final spot = widget.spot;
     final answering = _answeredSpot;
@@ -2141,9 +2726,12 @@ class _ImportDialogState extends State<ImportDialog> {
         if (answering == null) const _IntoThePool(),
       ];
     }
-    return answering == null
+    if (answering != null) {
+      return [answering];
+    }
+    return _folder == null
         ? const [...ImportDestination.values, _IntoThePool()]
-        : [answering];
+        : const [ImportDestination.activeCutLayer, _IntoThePool()];
   }
 
   /// A drop's answer in words: 「새 레이어」 for the canvas, 「새 컷」 for the
@@ -2188,17 +2776,34 @@ class _ImportDialogState extends State<ImportDialog> {
     ),
   );
 
-  /// `MM-DD`, which is what a row has space for and what a person scanning
-  /// a folder of today's work is actually reading.
-  String _modifiedOf(String path) {
-    try {
-      final stamp = File(path).lastModifiedSync();
-      return '${stamp.month.toString().padLeft(2, '0')}-'
-          '${stamp.day.toString().padLeft(2, '0')}';
-    } on Object {
+  /// The newest of [paths]' days, `MM-DD` — what a row has space for and
+  /// what a person scanning a folder of today's work is actually reading.
+  String _modifiedOf(Iterable<String> paths) {
+    DateTime? newest;
+    for (final path in paths) {
+      final stamp = _stampOf(path);
+      if (stamp != null && (newest == null || stamp.isAfter(newest))) {
+        newest = stamp;
+      }
+    }
+    if (newest == null) {
       return '';
     }
+    return '${newest.month.toString().padLeft(2, '0')}-'
+        '${newest.day.toString().padLeft(2, '0')}';
   }
+
+  /// One stat per file for its day, kept as [_fileSizes] is: `build` asks on
+  /// every press, and a folder's row asks for every cel it brings.
+  final Map<String, DateTime?> _stamps = {};
+
+  DateTime? _stampOf(String path) => _stamps.putIfAbsent(path, () {
+    try {
+      return File(path).lastModifiedSync();
+    } on Object {
+      return null;
+    }
+  });
 
   Widget _sourceBar(BuildContext context) {
     final theme = Theme.of(context);
@@ -2213,92 +2818,49 @@ class _ImportDialogState extends State<ImportDialog> {
               ? _files.single
               : mediaFileName(_files.single))
         : AppText.strings.imFileCount(_files.length);
+    final parsed = _parsed;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      child: Text(
-        label,
-        key: const ValueKey<String>('import-source-line'),
-        style: theme.textTheme.bodySmall,
-        overflow: TextOverflow.ellipsis,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              key: const ValueKey<String>('import-source-line'),
+              style: theme.textTheme.bodySmall,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (parsed != null) ..._cutNameField(theme, parsed),
+        ],
       ),
     );
   }
 
-  /// What the window says it will DO with what was picked: one row per
-  /// thing it recognised, and the dim rows for what it will leave alone.
-  Widget _interpretationTable(BuildContext context) {
-    final parsed = _parsed;
-    return ListView(
-      key: const ValueKey<String>('import-interpretation-table'),
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      children: [
-        // ⛔NO LOOSE-FILE BRANCH. Loose files go to the file TABLE instead
-        // (`_twoZones`), and this table is only built when `_files` is
-        // empty — the branch that listed them here could not run at all,
-        // and was still being kept in step with the kinds (감사 2026-09-09).
-        if (parsed != null)
-          ..._cutFolderRows(parsed)
-        else
-          _InterpretationRow(
-            leading: '',
-            body: AppText.strings.imPickToSee,
-            dim: true,
-          ),
-        for (final ignored in _ignoredSources)
-          _InterpretationRow(
-            leading: AppText.strings.imIgnored,
-            body: mediaFileName(ignored),
-            dim: true,
-          ),
-      ],
-    );
-  }
-
-  /// A parsed CUT FOLDER, read out in the order the delivery reads: the
-  /// cut, its process, its layers and their cels, then what was left out.
-  List<_InterpretationRow> _cutFolderRows(CutFolderParseResult parsed) {
-    final strings = AppText.strings;
-    return [
-      _InterpretationRow(
-        leading: strings.exCut,
-        body: parsed.cutNumber ?? parsed.folderName,
+  /// The name of the cut a folder lands as, beside the folder it comes
+  /// from — the folder's own cut number until it is typed over (F-429-Q1:
+  /// 「컷 이름만 남기고」), and the folder's again when left empty.
+  List<Widget> _cutNameField(ThemeData theme, CutFolderParseResult parsed) => [
+    const SizedBox(width: 12),
+    Text(
+      AppText.strings.renameCutField,
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
       ),
-      if (parsed.processTokens.isNotEmpty)
-        _InterpretationRow(
-          leading: strings.imProcess,
-          body: parsed.processTokens.join(' + '),
+    ),
+    const SizedBox(width: 6),
+    SizedBox(
+      width: 120,
+      child: TextField(
+        key: const ValueKey<String>('import-cut-name-field'),
+        controller: _cutName,
+        enabled: !_busy && _folderToLand != null,
+        decoration: InputDecoration(
+          hintText: const CutFolderEdits().nameOf(parsed),
         ),
-      for (final layer in parsed.layers)
-        _InterpretationRow(
-          leading: '${strings.exLayer} ${layer.symbol}',
-          body:
-              '${parsed.markOf(layer).labelFor(AppText.language)} · '
-              '${strings.exCelCount(layer.cells.length)} '
-              '(${layer.cells.map((c) => c.label).join(', ')})',
-        ),
-      for (final picture in parsed.pictures)
-        _InterpretationRow(leading: strings.imPicture, body: picture.name),
-      for (final reference in parsed.references)
-        _InterpretationRow(
-          leading: strings.imReference,
-          body: reference.file,
-          dim: true,
-        ),
-      for (final exclusion in parsed.excluded)
-        _InterpretationRow(
-          leading: strings.imExcluded,
-          body: '${exclusion.path} — '
-              '${exclusion.reason.labelFor(AppText.language)}',
-          dim: true,
-        ),
-      for (final warning in parsed.warnings)
-        _InterpretationRow(
-          leading: '⚠',
-          body: warning.textFor(AppText.language),
-        ),
-    ];
-  }
-
+      ),
+    ),
+  ];
 
   int _sizeOf(String path) => _fileSizes.putIfAbsent(path, () {
     try {
@@ -2307,121 +2869,4 @@ class _ImportDialogState extends State<ImportDialog> {
       return 0; // Unreadable: the import degrades.
     }
   });
-
-  /// The FOLDER column. A cut folder lands a whole CUT rather than
-  /// placing a file, and a loose file answers per ROW in the file table
-  /// (2026-08-14, 「answers per file, not per batch」) — so this pane is
-  /// built only when there is a folder, and every question in it is one a
-  /// whole delivery answers at once.
-  Widget _settingsColumn(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Copy-or-reference applies wherever a file is REGISTERED: the
-          // loose files, and the reference rows a cut folder brings with
-          // it.
-          //
-          // Two chips rather than a switch: this is one-of-two named
-          // states, and in this app a choice is shown by colour while a
-          // checkbox means on/off.
-          ExportChoiceRow<bool>(
-            label: AppText.strings.imFiles,
-            keyPrefix: 'import-media',
-            values: const [false, true],
-            selected: _copyIntoProject,
-            keyOf: (copy) => copy ? 'copy' : 'reference',
-            labelOf: (copy) => importModeLabel(
-              copy ? ImportFileMode.keepInside : ImportFileMode.reference,
-            ),
-            onSelect: (copy) => setState(() => _copyIntoProject = copy),
-          ),
-          // ⛔Not a new caption — this line already existed and already
-          // switched with the choice. 유저 2026-08-30 asked for the
-          // compression to be said out loud (「품기는 압축된 파일
-          // 저장시키는거라고 문장 넣는게 좋을거같아」), and the sentence
-          // that describes what Keep inside DOES is where it belongs.
-          //
-          // 🚨It also answers a question the size column would otherwise
-          // raise: the media pool shows what an asset OCCUPIES, which
-          // after carrying is smaller than the file that was imported.
-          Text(
-            _copyIntoProject
-                ? AppText.strings.imKeepExplain
-                : AppText.strings.imReferenceExplain,
-            style: Theme.of(context).textTheme.labelSmall!.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
-          ),
-          const SizedBox(height: 6),
-          // §6-z22: a cut folder's cels are what you draw on next, so
-          // the folder import always bakes — no toggle to mislead.
-          Text(
-            AppText.strings.imCutFolderBakes,
-            style: Theme.of(context).textTheme.labelSmall!.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
-          ),
-          const SizedBox(height: 6),
-          ExportChoiceRow<MediaFitMode>(
-            label: AppText.strings.imFit,
-            keyPrefix: 'import-fit',
-            values: MediaFitMode.values,
-            selected: _fit,
-            keyOf: (fit) => fit.jsonValue,
-            labelOf: importFitLabel,
-            onSelect: (fit) => setState(() => _fit = fit),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// One line of the interpretation table: what was recognised on the left,
-/// what it is on the right. [dim] is the "will be left alone" reading —
-/// references, exclusions, ignored files and the empty prompt.
-class _InterpretationRow extends StatelessWidget {
-  const _InterpretationRow({
-    required this.leading,
-    required this.body,
-    this.dim = false,
-  });
-
-  final String leading;
-  final String body;
-  final bool dim;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 86,
-            child: Text(
-              leading,
-              style: theme.textTheme.labelSmall!.copyWith(
-                color: dim
-                    ? theme.colorScheme.outline
-                    : theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              body,
-              style: theme.textTheme.bodySmall!.copyWith(
-                color: dim ? theme.colorScheme.outline : null,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

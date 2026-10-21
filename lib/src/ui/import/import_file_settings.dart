@@ -312,6 +312,20 @@ bool importLandsAsSound({
 ///    file, their disk).
 ///  * 2026-09-16 — the movie default and the size warning both went, by the
 ///    answer above.
+///
+/// Why KEEP INSIDE is where every file starts — it was Reference, for a
+/// reason since answered: the pool copied whatever it was handed, so
+/// dropping a 3GB 참고영상 meant a 3GB copy the user never asked for and
+/// could not decline. What is left is which failure a person meets by not
+/// choosing. A reference dies when the original moves, and a project that
+/// has to be mailed with a folder beside it is the shape Pencil2D abandoned
+/// after its users kept sending the file alone. Apple already started here
+/// because a recorded path there stops working at the next launch; the rest
+/// follows, now that carrying costs bytes inside a ZIP rather than a second
+/// copy on disk. Reference stays one click away, for an original shared
+/// with another tool — a deliberate choice, which is exactly what it should
+/// be. (Said of the cut folder's one carry answer until F-429 made its
+/// media rows of their own, 2026-10-21.)
 ImportFileSettings seedImportSettings({ImportLayerSpot? spot}) =>
     ImportFileSettings(
       movieParts: spot is RowFramesSpot

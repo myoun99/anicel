@@ -2444,7 +2444,6 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     landing: importLanding,
     holdBytes: projectFile.holdMediaBytes,
-    holdCarriedBytes: mediaPool.holdCarriedBytes,
   );
 
   // The TVPaint door (session/tvpp_import_door.dart). A .tvpp opens AS A

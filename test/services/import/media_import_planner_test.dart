@@ -5,6 +5,7 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/import/cut_folder_edits.dart';
 import 'package:anicel/src/models/import/cut_folder_parse.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -211,16 +212,20 @@ void main() {
   });
 
   group('planCutFolderImport', () {
-    CutFolderImportPlan planFor(String folderName, List<String> files) =>
-        planCutFolderImport(
-          parsed: parseCutFolder(
-            folderName: folderName,
-            entries: [for (final file in files) CutFolderEntry(file)],
-          ),
-          resolveFile: (relative) => 'C:/folder/$relative',
-          canvasSize: const CanvasSize(width: 640, height: 360),
-          mint: mint(),
-        );
+    CutFolderImportPlan planFor(
+      String folderName,
+      List<String> files, {
+      CutFolderEdits edits = const CutFolderEdits(),
+    }) => planCutFolderImport(
+      parsed: parseCutFolder(
+        folderName: folderName,
+        entries: [for (final file in files) CutFolderEntry(file)],
+      ),
+      edits: edits,
+      resolveFile: (relative) => 'C:/folder/$relative',
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      mint: mint(),
+    );
 
     test('stacks the picture at the bottom, each symbol\'s own layer, and '
         'its correction RIGHT ABOVE it as its attach row (F-429-Q2)', () {
@@ -363,6 +368,92 @@ void main() {
         '(F-429-Q3)', () {
       final plan = planFor('csm_13_069_077_086_loeks', ['A1.png']);
       expect(plan.cut.name, '069');
+    });
+
+    group('as the import window answered it (F-429)', () {
+      test('the cut takes the name typed for it', () {
+        final plan = planFor('csm_13_069_loeks', [
+          'A1.png',
+        ], edits: const CutFolderEdits(cutName: '070'));
+        expect(plan.cut.name, '070');
+      });
+
+      test('a row wears the colour label picked for it, and its correction '
+          'keeps its own', () {
+        const layout = LayerMark(process: LayerProcess.layout);
+        final plan = planFor('csm_13_074_gen', [
+          'A1.png',
+          'A1s.png',
+        ], edits: const CutFolderEdits(marks: {'A': layout}));
+        final [base, correction, ...] = plan.cut.layers;
+
+        expect(base.mark, layout);
+        expect(correction.mark.revise, LayerRevise.animationDirector);
+      });
+
+      test('a layer of ONE cel picked an image is held over the cut; a layer '
+          'of more stays an animation whatever is picked', () {
+        final plan = planFor('csm_13_074_gen', [
+          'A1.png',
+          'B1.png',
+          'B2.png',
+        ], edits: const CutFolderEdits(
+          kinds: {'A': LayerKind.image, 'B': LayerKind.image},
+        ));
+        final a = plan.cut.layers.singleWhere((l) => l.name == 'A');
+        final b = plan.cut.layers.singleWhere((l) => l.name == 'B');
+
+        expect(a.kind, LayerKind.image);
+        expect(a.frames.single.name, isNull, reason: 'an image cel goes '
+            'nameless');
+        expect(a.timeline.keys, [0]);
+        expect(a.timeline[0]!.length, 2, reason: 'held over the cut');
+        expect(b.kind, LayerKind.animation);
+        expect(b.timeline.keys, [0, 1]);
+      });
+
+      test('a correction is its symbol\'s kind, whatever is picked for it', () {
+        final plan = planFor('csm_13_074_gen', [
+          'A1.png',
+          'A1s.png',
+        ], edits: const CutFolderEdits(
+          kinds: {
+            'A': LayerKind.image,
+            'A animation-director': LayerKind.animation,
+          },
+        ));
+        final [base, correction, ...] = plan.cut.layers;
+
+        expect(base.kind, LayerKind.image);
+        expect(correction.kind, LayerKind.image);
+      });
+
+      test('a picture picked an animation layer is one cel at one comma, '
+          'born with that kind\'s label', () {
+        final plan = planFor('csm_13_074_gen', [
+          'A1.png',
+          'A2.png',
+          '_BG.png',
+        ], edits: const CutFolderEdits(kinds: {'_BG': LayerKind.animation}));
+        final bg = plan.cut.layers.first;
+
+        expect(bg.name, 'BG');
+        expect(bg.kind, LayerKind.animation);
+        expect(bg.mark, LayerMark.bornOfKind(LayerKind.animation));
+        expect(bg.timeline.keys, [0]);
+        expect(bg.timeline[0]!.length, 1);
+      });
+
+      test('each row lays its cels with the fit picked for it — contain until '
+          'one is', () {
+        final plan = planFor('csm_13_074_gen', [
+          'A1.png',
+          '_BG.png',
+        ], edits: const CutFolderEdits(fits: {'A': MediaFitMode.none}));
+        final [bg, a, ...] = plan.cut.layers;
+
+        expect(plan.fits, {a.id: MediaFitMode.none, bg.id: MediaFitMode.contain});
+      });
     });
   });
 }

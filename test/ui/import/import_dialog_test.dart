@@ -62,9 +62,10 @@ Future<bool> _emptied(File file) async {
   }
 }
 
-/// The import/placement window: the interpretation table shows the parse
-/// (dropped files included), the settings answer with filled defaults,
-/// and Import runs the session verbs.
+/// The import/placement window: the table shows what each source becomes,
+/// its cells answer with filled defaults, and Import runs the session
+/// verbs. A cut folder's rows have a file of their own
+/// (`a_cut_folder_comes_in_as_rows_of_the_import_window_test`).
 void main() {
   late Directory tempDir;
 
@@ -168,81 +169,6 @@ void main() {
       isNotEmpty,
       reason: 'its scans were counted on the way, not only its end',
     );
-    s.playbackRig.prerenderScheduler.cancel();
-  });
-
-  testWidgets('a dropped cut folder shows the interpretation (layers, '
-      'pictures, exclusions) and Import builds the cut through the '
-      'session', (tester) async {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-
-    final folderPath = await tester.runAsync(() async {
-      const root = 'upn_02_063_lo';
-      final sep = Platform.pathSeparator;
-      await writePng('$root${sep}A1.png');
-      await writePng('$root${sep}A2.png');
-      await writePng('$root${sep}_BG.png');
-      await File('${tempDir.path}$sep$root${sep}memo.txt').writeAsString('메모');
-      return '${tempDir.path}$sep$root';
-    });
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ImportDialog(session: s, initialPaths: [folderPath!]),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    expect(
-      find.byKey(const ValueKey<String>('import-interpretation-table')),
-      findsOneWidget,
-    );
-    expect(find.textContaining('063'), findsWidgets, reason: 'cut number');
-    expect(find.textContaining('2 cels'), findsOneWidget, reason: 'layer A');
-    expect(find.text('BG'), findsWidgets, reason: 'picture row');
-    expect(
-      find.textContaining('memo.txt'),
-      findsOneWidget,
-      reason: 'exclusions are listed, never silent',
-    );
-    expect(
-      find.byKey(const ValueKey<String>('import-rasterize-toggle')),
-      findsNothing,
-      reason: 'folder imports ALWAYS bake (§6-z22) — no toggle to mislead',
-    );
-    expect(
-      find.byKey(const ValueKey<String>('import-media-reference')),
-      findsOneWidget,
-      reason:
-          'a folder still REGISTERS its references (the 참고영상 among '
-          'them), so copy-or-reference has something to decide',
-    );
-    expect(
-      find.textContaining('always bake'),
-      findsOneWidget,
-      reason: 'and the window says so',
-    );
-
-    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
-    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    await pumpPastTheWaitWindow(tester);
-    // Real IO completes inside runAsync, but the await CONTINUATIONS are
-    // fake-zone microtasks that only pump() drains — interleave the two.
-    await settleAsync(
-      tester,
-      () =>
-          s.repository.requireProject().tracks.first.cuts.length > cutsBefore,
-    );
-    await tester.pumpAndSettle();
-
-    final track = s.repository.requireProject().tracks.first;
-    expect(track.cuts.length, cutsBefore + 1);
-    final cut = track.cuts.firstWhere((cut) => cut.name == '063');
-    expect(cut.layers.any((l) => l.kind == LayerKind.image), isTrue);
-    expect(cut.layers.any((l) => l.name == 'A'), isTrue);
     s.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -2233,63 +2159,22 @@ void main() {
     });
   });
 
-  /// THE INTERPRETATION TABLE SAYS WHAT WILL HAPPEN, in the reader's own
-  /// language and with the rows it will leave alone drawn as such.
-  ///
-  /// 감사 2026-09-09: nothing measured it. The kind label could be swapped
-  /// for another kind's word and the dim rule dropped, and the suite stayed
-  /// green — while the table printed `video` (a stored key) at a Japanese
-  /// user and drew a refused row like an ordinary one.
-  group('the interpretation table', () {
-    Future<String> writeMovie(WidgetTester tester) async =>
-        (await tester.runAsync(() async {
-          final file = File('${tempDir.path}${Platform.pathSeparator}ref.mp4');
-          await file.writeAsBytes(const [0, 0, 0, 24]);
-          return file.path;
-        }))!;
+  /// ⛔없다가 생기는 UI 금지: the table and the preview stand whatever is
+  /// listed. ↩️With nothing picked the window swapped them for a line saying
+  /// to pick something, and a cut folder for a list reading its parse out.
+  testWidgets('with nothing picked the table stands, empty', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: ImportDialog(session: session))),
+    );
+    await tester.pump();
 
-    Future<void> pumpOn(WidgetTester tester, List<String> paths) async {
-      tester.view.physicalSize = const Size(1400, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      final session = EditorSessionManager(
-        initialProject: createDefaultProject(),
-      );
-      addTearDown(session.dispose);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ImportDialog(session: session, initialPaths: paths),
-          ),
-        ),
-      );
-      // The table says what a loose file is the frame it is listed (its
-      // size is read there and then); what the window reads off the file
-      // after that — its preview — lands before the test goes on.
-      // ↩️It lent the clocks eight rounds while a loose file was PROBED
-      // (identity, size) before the table could say what it was.
-      await settleLoadedPages(tester);
-    }
-
-
-    testWidgets('with nothing picked it says so', (tester) async {
-      await pumpOn(tester, const []);
-      expect(find.text(AppText.strings.imPickToSee), findsOneWidget);
-    });
-
-    testWidgets('loose files go to the file TABLE — this table is not built '
-        'for them at all', (tester) async {
-      // 감사 2026-09-09: the table carried a loose-file branch that could
-      // not run, because the only place that builds it is the arm where
-      // `_files` is empty. It was still being kept in step with the kinds.
-      await pumpOn(tester, [await writeMovie(tester)]);
-      expect(
-        find.byKey(const ValueKey<String>('import-interpretation-table')),
-        findsNothing,
-      );
-      expect(find.byType(ImportFileTable), findsOneWidget);
-    });
-
-
+    expect(
+      tester.widget<ImportFileTable>(find.byType(ImportFileTable)).rows,
+      isEmpty,
+    );
   });
 }

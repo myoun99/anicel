@@ -7,6 +7,7 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/menu/opened_files_door.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:flutter/material.dart';
@@ -313,8 +314,8 @@ void main() {
       reason: 'Cancel stopped the WAIT, not the window',
     );
     expect(
-      find.byKey(const ValueKey<String>('import-file-table')),
-      findsNothing,
+      tester.widget<ImportFileTable>(find.byType(ImportFileTable)).rows,
+      isEmpty,
     );
     final notice = await openImportWarnings(tester);
     expect(
