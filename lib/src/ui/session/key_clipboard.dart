@@ -1,4 +1,4 @@
-import 'lane_homes.dart' show LaneKeys;
+import 'lane_homes.dart' show KeyCopy, LaneKeys;
 import 'lane_verbs.dart';
 import 'session_roles.dart';
 
@@ -6,13 +6,13 @@ import 'session_roles.dart';
 /// like the frame and the row boards beside it (`AppClipboard`: one copy in
 /// hand, whichever board took it).
 class KeyBoard {
-  List<LaneKeys>? _copy;
+  KeyCopy? _copy;
 
   /// What this board taking a copy lets go of: the pill's other boards
   /// (`AppClipboard`).
   void Function()? onTake;
 
-  void _take(List<LaneKeys> copy) {
+  void _take(KeyCopy copy) {
     _copy = copy;
     onTake?.call();
   }
@@ -50,37 +50,55 @@ class KeyClipboard {
   final LaneVerbs _laneVerbs;
   final ChangeSink _changes;
 
-  /// The lanes a copy here takes, each with its keys — null where the press
-  /// stands on no lane, or on lanes with no key in reach.
-  List<LaneKeys>? get _lanesToCopy {
+  /// What a copy here takes: the lanes, each with its keys, and the frames
+  /// it spans — null where the press stands on no lane, or on lanes with no
+  /// key in reach.
+  KeyCopy? get _copyHere {
     final lane = _laneVerbs.laneVerbRange;
     final lanes = lane == null ? null : _laneVerbs.laneKeysCopiedFrom(lane);
-    return lanes != null && lanes.any((lane) => lane.keys.isNotEmpty)
-        ? lanes
+    return lane != null &&
+            lanes != null &&
+            lanes.any((lane) => lane.keys.isNotEmpty)
+        ? (lanes: lanes, length: lane.lengthFrames)
         : null;
   }
 
   /// Whether a copy here takes keys — the lane half of the shared pill's
   /// copy, asked before the frame board's ([FrameClipboard.timelinePlace]
   /// stands down on a lane).
-  bool get canCopy => _lanesToCopy != null;
+  bool get canCopy => _copyHere != null;
 
   void copy() {
-    final lanes = _lanesToCopy;
-    if (lanes == null) {
+    final copy = _copyHere;
+    if (copy == null) {
       return;
     }
-    _board._take(lanes);
+    _board._take(copy);
     _changes.notifyChanged();
   }
 
   /// Whether the hand holds keys.
   bool get holdsKeys => _board._copy != null;
 
+  /// Whether a paste here puts keys down — on the lanes the press stands
+  /// on, the frame paste's way ([LaneVerbs.pasteLaneKeys]).
+  bool get canPasteIndependent => switch (_board._copy) {
+    final copy? => _laneVerbs.canPasteLaneKeys(copy),
+    null => false,
+  };
+
+  /// 독립 붙여넣기 of the keys in hand: each a value of its own, named by
+  /// none (유저 확정, of frames: 「독립 붙여넣기 = 그냥 복제」).
+  void pasteIndependent() {
+    if (_board._copy case final copy?) {
+      _laneVerbs.pasteLaneKeys(copy, keepNames: false);
+    }
+  }
+
   /// The keys in hand, lane by lane, as frames from the copy's first —
   /// empty when the hand holds none.
   Map<String, Set<int>> get bankedKeyFrames => {
-    for (final (:laneId, :keys) in _board._copy ?? const <LaneKeys>[])
+    for (final (:laneId, :keys) in _board._copy?.lanes ?? const <LaneKeys>[])
       laneId: keys.keys.toSet(),
   };
 }

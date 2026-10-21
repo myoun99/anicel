@@ -269,9 +269,15 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   bool get _pastesRows =>
       rowsAreThisPanels && session.layerClipboard.hasLayerClipboard;
 
+  /// Whether a paste here puts down KEYS: the hand holds them (F-388) — on
+  /// the lanes the press stands on, the frame paste's way.
+  bool get _pastesKeys => session.keyClipboard.holdsKeys;
+
   @override
   bool get canPasteIndependentFrame => _pastesRows
       ? session.layerClipboard.canPasteRows
+      : _pastesKeys
+      ? session.keyClipboard.canPasteIndependent
       : session.clipboard.canPasteIndependentAt(clipboardPlace);
 
   /// The board an independent paste here puts down — the one whose media a
@@ -281,6 +287,10 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
 
   @override
   void pasteIndependentFrame() {
+    if (_pastesKeys) {
+      session.keyClipboard.pasteIndependent();
+      return;
+    }
     final board = independentPasteBoard;
     // The place is asked when the paste LANDS — after the wait, where one
     // is held.
@@ -305,7 +315,7 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   @override
   bool get canPasteLinkedFrame => _pastesRows
       ? session.layerClipboard.canPasteRowsLinked
-      : session.clipboard.canPasteLinkedAt(clipboardPlace);
+      : !_pastesKeys && session.clipboard.canPasteLinkedAt(clipboardPlace);
 
   /// On a row the copy was not taken from it links by NAME, and asks before
   /// it joins a name the row already holds ([pasteLinkedAskingFirst], I-71).
@@ -318,6 +328,9 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   void pasteLinkedFrame() {
     if (_pastesRows) {
       session.layerClipboard.pasteRowsLinked();
+      return;
+    }
+    if (_pastesKeys) {
       return;
     }
     final context = waitIn;

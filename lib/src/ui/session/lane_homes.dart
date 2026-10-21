@@ -61,11 +61,15 @@ class LaneHome<T> {
   }
 
   /// [edit] on every lane here, in turn — null where none changed.
-  T? edited(PropertyLaneEdit edit) => foldedEdits(
-    keys,
-    laneIds,
-    (value, laneId) => lensOf(laneId)?.update(value, edit),
-  );
+  T? edited(PropertyLaneEdit edit) => editedEach((_) => edit);
+
+  /// Each lane here edited as [editOf] says — a lane it gives no edit left
+  /// as it is — null where none changed.
+  T? editedEach(PropertyLaneEdit? Function(String laneId) editOf) =>
+      foldedEdits(keys, laneIds, (value, laneId) {
+        final edit = editOf(laneId);
+        return edit == null ? null : lensOf(laneId)?.update(value, edit);
+      });
 
   /// A key on every frame of [frames] a lane here holds none at: the one
   /// [frozen] makes there of [keys] as they stand — the lane navigator's ◆
@@ -108,6 +112,11 @@ class LaneHome<T> {
 
 /// One lane's keys, by frame ([LaneHome.keysWhere]).
 typedef LaneKeys = ({String laneId, Map<int, PropertyKey<Object?>> keys});
+
+/// A copy of keys (`KeyBoard`, F-388): each lane's keys by their frame from
+/// the copy's first, and the frames the copy spans — the run a paste puts
+/// in, its gaps and all, as a frame copy's run is.
+typedef KeyCopy = ({List<LaneKeys> lanes, int length});
 
 /// The four homes of a row's keys ([LaneHome]).
 typedef RowLaneHomes = ({
@@ -184,6 +193,48 @@ PropertyLaneEdit laneKeysRemovedWhere(bool Function(int frame) covers) =>
               (track, frame) => track.withoutKey(frame),
             );
     };
+
+/// [keys], by their frame from the paste's first, put in at [start] as a
+/// frame paste puts its run in: the [liftCount] frames from [start] taken
+/// out with their keys, and every key after them moved by what the
+/// [length] pasted puts in their place. Null for a lane whose values are
+/// not those keys' kind — a position's keys go on a position, a number's
+/// on a number — and where nothing changes.
+///
+/// 🗣️F-388-Q1 (유저 2026-10-20): 「프레임과 똑같이 끼워 넣기 — 그냥
+/// 생각할것도없이 프레임블록 복붙이랑 똑같은 규칙」: with nothing selected
+/// the keys go in at the playhead and every key from there on moves back by
+/// the copy's length; a selection is replaced, and what follows it moves by
+/// the difference. AE leaves the keys after alone — the board weighed that
+/// and was answered.
+PropertyLaneEdit laneKeysSpliced({
+  required int start,
+  required int liftCount,
+  required int length,
+  required Map<int, PropertyKey<Object?>> keys,
+}) => <U>(PropertyTrack<U> lane) {
+  if (!keys.values.every((key) => key is PropertyKey<U>)) {
+    return null;
+  }
+  final end = start + liftCount;
+  final moved = lane.keys.keys.any(
+    (frame) => frame >= start && (frame < end || length != liftCount),
+  );
+  if (keys.isEmpty && !moved) {
+    return null;
+  }
+  return PropertyTrack<U>(
+    keys: {
+      for (final MapEntry(key: frame, value: key) in lane.keys.entries)
+        if (frame < start)
+          frame: key
+        else if (frame >= end)
+          frame + length - liftCount: key,
+      for (final MapEntry(key: offset, value: key) in keys.entries)
+        start + offset: key as PropertyKey<U>,
+    },
+  );
+};
 
 /// [made] put on the lane as they are — each a key of this very lane, made
 /// of it as it stood ([LaneHome.keyedAt]).

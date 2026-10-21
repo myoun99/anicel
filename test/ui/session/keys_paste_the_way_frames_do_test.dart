@@ -1,0 +1,183 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/key_clipboard.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane, transformLaneDisplayOrder;
+
+/// 🗣️F-388 (유저 2026-10-17): 「키도 복붙기능 제대로 만들고 기존것들이랑 법
+/// 통일하고」 — and F-388-Q1 (10-20): 「프레임과 똑같이 끼워 넣기 — 그냥
+/// 생각할것도없이 프레임블록 복붙이랑 똑같은 규칙」.
+///
+/// Keys in hand go down where the press stands as a frame copy's run does:
+/// standing, in at the playhead, every key from there on moved back by the
+/// copy's length; over a selection, the selection replaced and what follows
+/// it moved by the difference. 독립 붙여넣기 puts each key down unnamed.
+///
+/// The collaborator the paste lives in — named so `tool/mutation_run.dart`
+/// runs this file for it.
+KeyClipboard keyClipboardOf(EditorSessionManager session) =>
+    session.keyClipboard;
+
+void main() {
+  late EditorSessionManager s;
+  late Layer before;
+  late ToolbarPanelContext pill;
+
+  setUp(() {
+    s = EditorSessionManager(initialProject: createDefaultProject());
+    before = s.requireActiveCut.layers.first;
+    s.selectLayer(before.id);
+    pill = TimelineToolbarPanelContext(s);
+  });
+  tearDown(() => s.dispose());
+
+  Layer now() =>
+      s.requireActiveCut.layers.firstWhere((layer) => layer.id == before.id);
+
+  void key(String laneId, Map<int, double> values, {String? name}) {
+    final track = now().transformTrack;
+    var lane = switch (laneId) {
+      'rotation' => track.rotation,
+      _ => track.opacity,
+    };
+    for (final MapEntry(key: frame, :value) in values.entries) {
+      lane = lane.withKey(frame, value);
+      if (name != null) {
+        lane = lane.withKeyName(frame, name);
+      }
+    }
+    s.laneVerbs.updateLayerTransformTrack(
+      before.id,
+      laneId == 'rotation'
+          ? track.copyWith(rotation: lane)
+          : track.copyWith(opacity: lane),
+    );
+  }
+
+  Map<int, double> rotation() => {
+    for (final MapEntry(key: frame, value: key)
+        in now().transformTrack.rotation.keys.entries)
+      frame: key.value,
+  };
+
+  void standOn(String laneId, {required int at}) {
+    s.selectFrameIndex(at);
+    s.standOnRow(LaneRowAddress(before.id, laneId));
+  }
+
+  void select(String laneId, int start, int endExclusive) {
+    standOn(laneId, at: start);
+    s.laneRangeSelection.value = TimelineLaneSelection(
+      layerId: before.id,
+      laneId: laneId,
+      startIndex: start,
+      endIndexExclusive: endExclusive,
+    );
+  }
+
+  test('standing, the keys go in at the playhead and every key from there '
+      'on moves back by the copy\'s length', () {
+    key('rotation', {3: 10, 7: 20, 12: 30});
+    standOn('rotation', at: 7);
+    pill.copyFrame();
+    expect(s.keyClipboard.holdsKeys, isTrue, reason: '⛔전제');
+
+    standOn('rotation', at: 5);
+    expect(pill.canPasteIndependentFrame, isTrue);
+    pill.pasteIndependentFrame();
+
+    expect(rotation(), {3: 10, 5: 20, 8: 20, 13: 30});
+  });
+
+  test('over a selection, the selection is replaced and what follows it '
+      'moves by the difference', () {
+    key('rotation', {3: 10, 7: 20, 12: 30, 15: 40});
+    select('rotation', 2, 10);
+    pill.copyFrame();
+    expect(s.keyClipboard.bankedKeyFrames, {
+      'rotation': {1, 5},
+    }, reason: '⛔전제: eight frames, keys at 1 and 5 of them');
+
+    select('rotation', 11, 14);
+    pill.pasteIndependentFrame();
+
+    expect(
+      rotation(),
+      {3: 10, 7: 20, 12: 10, 16: 20, 20: 40},
+      reason: '12 lifted with its frames, 15 moved by 8 − 3',
+    );
+  });
+
+  test('독립 붙여넣기 puts every key down unnamed — the copied one keeps its '
+      'name', () {
+    key('rotation', {7: 20}, name: 'A');
+    standOn('rotation', at: 7);
+    pill.copyFrame();
+
+    standOn('rotation', at: 2);
+    pill.pasteIndependentFrame();
+
+    final keys = now().transformTrack.rotation.keys;
+    expect(keys[2]?.name, isNull);
+    expect(keys[8]?.name, 'A', reason: 'the copied key, moved back by one');
+  });
+
+  test('a header\'s copy goes on a header lane by lane, and one lane on a '
+      'lane of its kind', () {
+    standOn(transformGroupHeaderLane.laneId, at: 4);
+    expect(s.cellInstances.createInstancesForSelection(), isTrue);
+    pill.copyFrame();
+
+    standOn(transformGroupHeaderLane.laneId, at: 9);
+    pill.pasteIndependentFrame();
+
+    final track = now().transformTrack;
+    for (final lane in [
+      track.anchorPoint,
+      track.position,
+      track.scale,
+      track.rotation,
+      track.opacity,
+    ]) {
+      expect(lane.keys.keys, containsAll([4, 9]));
+    }
+    expect(transformLaneDisplayOrder, hasLength(5), reason: '⛔전제');
+
+    key('rotation', {20: 0.5});
+    standOn('rotation', at: 20);
+    pill.copyFrame();
+    standOn('position', at: 30);
+    expect(
+      pill.canPasteIndependentFrame,
+      isFalse,
+      reason: 'a number does not go on a position',
+    );
+    standOn('opacity', at: 30);
+    pill.pasteIndependentFrame();
+    expect(now().transformTrack.opacity.keys[30]?.value, 0.5);
+  });
+
+  test('one undo takes the whole paste back; on the layer row the keys in '
+      'hand go nowhere', () {
+    key('rotation', {3: 10, 7: 20});
+    standOn('rotation', at: 3);
+    pill.copyFrame();
+    standOn('rotation', at: 0);
+    pill.pasteIndependentFrame();
+    expect(rotation(), {0: 10, 4: 10, 8: 20}, reason: '⛔전제');
+
+    s.undo();
+    expect(rotation(), {3: 10, 7: 20});
+
+    s.selectFrameIndex(0);
+    s.standOnRow(LayerRowAddress(before.id));
+    expect(pill.canPasteIndependentFrame, isFalse);
+    pill.pasteIndependentFrame();
+    expect(rotation(), {3: 10, 7: 20});
+  });
+}

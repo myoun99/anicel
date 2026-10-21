@@ -30,6 +30,7 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithRemoved;
 import '../timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, parseEffectLaneId;
+import '../timeline/property_lane_lens.dart' show PropertyLaneEdit;
 import '../timeline/reference_lane_policy.dart'
     show
         laneIsReference,
@@ -267,27 +268,11 @@ class LaneVerbs {
   /// group header's whole-member expansion and the effect-lane branch
   /// come along either way.
   TimelineLaneSelection? get laneVerbRange {
-    final span = _selection.laneRangeSelection.value;
+    final span = _selectedLaneSpan;
     if (span != null) {
       return span;
     }
-    // 🚨㉙ → F-17/F-84: the CAMERA row IS its transform group header — its
-    // band already draws the members' union (B4) — and 유저 2026-09-11:
-    // 「트랜스폼이나 카메라나 똑같으니까 법 싹 하나로 통일해줘」. So a band on
-    // the camera row ALONE is a header span, and standing on it stands on
-    // the header: every lane verb (name, type, add, delete) reaches the
-    // camera's keys through the one path the fx header's take.
     final cells = _selection.frameRangeSelection.value;
-    if (cells != null &&
-        cells.spanLayerIds.length == 1 &&
-        _isCameraRow(cells.spanLayerIds.single)) {
-      return TimelineLaneSelection(
-        layerId: cells.spanLayerIds.single,
-        laneId: transformGroupHeaderLane.laneId,
-        startIndex: cells.startIndex,
-        endIndexExclusive: cells.endIndexExclusive,
-      );
-    }
     return switch (_currentRow()) {
       final LaneRowAddress lane when projectionRowUnder(lane) != null =>
         _projectedLaneSpan(lane),
@@ -317,6 +302,33 @@ class LaneVerbs {
         _standingSpan(layerId, transformGroupHeaderLane.laneId),
       _ => null,
     };
+  }
+
+  /// The lane span a SELECTION states — [laneVerbRange]'s, before the row
+  /// stood on answers — or null where nothing is selected.
+  TimelineLaneSelection? get _selectedLaneSpan {
+    final span = _selection.laneRangeSelection.value;
+    if (span != null) {
+      return span;
+    }
+    // 🚨㉙ → F-17/F-84: the CAMERA row IS its transform group header — its
+    // band already draws the members' union (B4) — and 유저 2026-09-11:
+    // 「트랜스폼이나 카메라나 똑같으니까 법 싹 하나로 통일해줘」. So a band on
+    // the camera row ALONE is a header span, and standing on it stands on
+    // the header: every lane verb (name, type, add, delete) reaches the
+    // camera's keys through the one path the fx header's take.
+    final cells = _selection.frameRangeSelection.value;
+    if (cells != null &&
+        cells.spanLayerIds.length == 1 &&
+        _isCameraRow(cells.spanLayerIds.single)) {
+      return TimelineLaneSelection(
+        layerId: cells.spanLayerIds.single,
+        laneId: transformGroupHeaderLane.laneId,
+        startIndex: cells.startIndex,
+        endIndexExclusive: cells.endIndexExclusive,
+      );
+    }
+    return null;
   }
 
   /// Whether [lane] holds a frame a key can be made on
@@ -1356,6 +1368,97 @@ class LaneVerbs {
     ];
   }
 
+  /// [copy] put down where the press stands ([laneVerbRange]) as a frame
+  /// paste puts its run down ([laneKeysSpliced]): a selection replaced,
+  /// standing in at the playhead — each key unnamed, a value of its own, or
+  /// with its name kept ([keepNames]). One undo. Returns whether anything
+  /// was put down (F-388).
+  bool pasteLaneKeys(KeyCopy copy, {required bool keepNames}) {
+    final pasted = _laneKeysPasted(copy, keepNames: keepNames);
+    return pasted != null &&
+        _commitSpanEdit(
+          pasted.scope,
+          pasted.edit,
+          description: keepNames ? 'Paste linked keys' : 'Paste keys',
+        );
+  }
+
+  /// Whether [pasteLaneKeys] puts any of [copy] down here.
+  bool canPasteLaneKeys(KeyCopy copy) =>
+      _laneKeysPasted(copy, keepNames: false) != null;
+
+  ({_SpanScope scope, LaneEdit edit})? _laneKeysPasted(
+    KeyCopy copy, {
+    required bool keepNames,
+  }) {
+    final lane = laneVerbRange;
+    final scope = lane == null ? null : _laneVerbScope(lane);
+    if (lane == null || scope == null) {
+      return null;
+    }
+    final homes = scope.homes;
+    final paired = _keysPairedWith(copy.lanes, [
+      for (final LaneHome<Object?> home in [
+        homes.own,
+        homes.reference,
+        homes.effects,
+        homes.nameTag,
+      ])
+        for (final laneId in home.laneIds) (home: home, laneId: laneId),
+    ]);
+    final liftCount = _selectedLaneSpan == null ? 0 : lane.lengthFrames;
+    PropertyLaneEdit? Function(String) splicedOn(Object home) => (laneId) {
+      final keys = paired[(home: home, laneId: laneId)];
+      return keys == null
+          ? null
+          : laneKeysSpliced(
+              start: lane.startIndex,
+              liftCount: liftCount,
+              length: copy.length,
+              keys: keepNames ? keys : _unnamed(keys),
+            );
+    };
+    final edit = rowLaneHomesEdited(
+      scope.subject,
+      homes,
+      <T>(LaneHome<T> home) => home.editedEach(splicedOn(home)),
+    );
+    return edit.isEmpty ? null : (scope: scope, edit: edit);
+  }
+
+  /// Which of [targets] takes which lane of [copied] — 🚨THE FRAME PASTE'S
+  /// PAIRING (결정 14 ③ⓐ): a copied lane goes on its own lane where that is
+  /// among them; where none is, ONE copied lane goes on every target (「모든
+  /// 행에 같은 것을」) and several pair with them in order, as a frame copy's
+  /// rows pair with a band's. A lane of another kind of value takes nothing
+  /// ([laneKeysSpliced]).
+  static Map<_PastedLane, Map<int, PropertyKey<Object?>>> _keysPairedWith(
+    List<LaneKeys> copied,
+    List<_PastedLane> targets,
+  ) {
+    final byId = {for (final lane in copied) lane.laneId: lane.keys};
+    if (targets.any((target) => byId.containsKey(target.laneId))) {
+      return {
+        for (final target in targets) target: ?byId[target.laneId],
+      };
+    }
+    return {
+      for (final (index, target) in targets.indexed)
+        if (copied.length == 1)
+          target: copied.single.keys
+        else if (index < copied.length)
+          target: copied[index].keys,
+    };
+  }
+
+  /// [keys] with their names taken off — each a value of its own.
+  static Map<int, PropertyKey<Object?>> _unnamed(
+    Map<int, PropertyKey<Object?>> keys,
+  ) => {
+    for (final MapEntry(key: frame, value: key) in keys.entries)
+      frame: key.copyWith(name: () => null),
+  };
+
   /// The names the range's keys carry — null for an unnamed one.
   Set<String?> _laneRangeKeyNames() => {
     for (final (:key, laneId: _, canRove: _, takesSides: _)
@@ -2145,6 +2248,10 @@ typedef _LaneRangeKey = ({
 });
 
 /// What a verb over a span settles first ([LaneVerbs._laneVerbScope]).
+/// A lane a paste of keys can land on: the home it lives in, by identity,
+/// and its id there ([LaneVerbs._keysPairedWith]).
+typedef _PastedLane = ({Object home, String laneId});
+
 typedef _SpanScope = ({
   Layer layer,
   List<String> targets,
