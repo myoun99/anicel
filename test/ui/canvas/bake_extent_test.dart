@@ -151,7 +151,12 @@ void main() {
   // clip of the one that recorded it. Recorded under a carry's 132×2 band
   // after an undo moved the extent, the paper came back there alone: the
   // next stroke's patch was black, and its undo the whole page.
-  test('🚨a slot recorded under a patch\'s clip replays the whole extent',
+  //
+  // 🔬A draw recorded under a clip keeps that clip as its bounds, and a
+  // replay passes over a draw whose bounds miss the replay's own clip: the
+  // paper came back whole where the band and the next patch overlapped, and
+  // not at all where they did not — the box.
+  test('🚨a slot recorded under one patch\'s clip draws under another\'s',
       () async {
     final bake = StaticCompositeBake();
     addTearDown(bake.dispose);
@@ -170,8 +175,12 @@ void main() {
       16,
       8,
     );
-    final whole = await rasterBytes(
-      (canvas) => bake.draw(canvas, 'd0:backdrop', paper),
+    const patch = Rect.fromLTWH(4, 4, 8, 4);
+    final patched = await rasterBytes(
+      (canvas) {
+        canvas.clipRect(patch);
+        bake.draw(canvas, 'd0:backdrop', paper);
+      },
       16,
       8,
     );
@@ -179,16 +188,19 @@ void main() {
     expect(
       bake.recordCount,
       1,
-      reason: '⛔CONTROL: the whole paint replayed the patch\'s recording',
+      reason: '⛔CONTROL: the patch replayed the band\'s recording',
     );
     expect(
       [
-        for (var i = 0; i < whole.length; i += 4)
-          if (whole[i + 1] != 255 || whole[i + 3] != 255) (i ~/ 4) % 16,
+        for (var y = 4; y < 8; y += 1)
+          for (var x = 4; x < 12; x += 1)
+            if (patched[(y * 16 + x) * 4 + 1] != 255 ||
+                patched[(y * 16 + x) * 4 + 3] != 255)
+              (x, y),
       ],
       isEmpty,
-      reason: 'the paper over all of it, not only the band it was recorded '
-          'under',
+      reason: 'the paper under all of the patch, not only where it met the '
+          'band it was recorded under',
     );
   });
 
