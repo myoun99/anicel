@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/frame_keys.dart';
 import '../../helpers/scrollable_of.dart';
 
@@ -46,6 +47,7 @@ void main() {
       MaterialApp(home: HomePage(initialProject: shortCut())),
     );
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     await tester.drag(
       find.byKey(const ValueKey<String>('dock-resize-bottom')),
       const Offset(0, -420),
