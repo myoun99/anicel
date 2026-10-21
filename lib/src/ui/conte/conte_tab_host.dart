@@ -305,7 +305,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
     final source = buildConteSheetSource(project);
     return (
       source,
-      layoutConteBook(source, metrics: ConteSheetMetrics(cameraAspect: aspect)),
+      layoutConteBook(
+        source,
+        metrics: ConteSheetMetrics.ofWork(
+          project.timesheetInfo,
+          cameraAspect: aspect,
+        ),
+      ),
     );
   }
 
@@ -477,10 +483,17 @@ class _ConteTabHostState extends State<ConteTabHost> {
     return askThenCommit<ConteFormat>(
       context,
       dialog: (_) => ConteFormatWindow(
-        initial: (cover: info.conteCover, blankPage: info.conteBlankPage),
+        initial: (
+          form: info.conteForm,
+          outlined: info.conteOutlined,
+          cover: info.conteCover,
+          blankPage: info.conteBlankPage,
+        ),
       ),
       commit: (format) => _session.updateTimesheetInfo(
         _session.timesheetInfo.copyWith(
+          conteForm: format.form,
+          conteOutlined: format.outlined,
           conteCover: format.cover,
           conteBlankPage: format.blankPage,
         ),

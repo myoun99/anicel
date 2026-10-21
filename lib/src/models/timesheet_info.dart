@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import 'conte/conte_sheet_form.dart';
 import 'envelope/cut_envelope_presets.dart';
 import 'layer_mark.dart';
 
@@ -35,6 +36,8 @@ class TimesheetInfo {
     this.envelopeFormId = CutEnvelopePresets.analogId,
     this.conteCover = true,
     this.conteBlankPage = true,
+    this.conteForm = ConteSheetForm.analog,
+    this.conteOutlined = true,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -104,6 +107,13 @@ class TimesheetInfo {
   final bool conteCover;
   final bool conteBlankPage;
 
+  /// The form the conte sheet is printed in, and whether its pictures stand
+  /// in the silhouette's black — the format window's (유저 2026-10-21,
+  /// I-118: 「그리고 서식 옵션으로 공통적용되게 화면에 검은 외곽선
+  /// 적용/미적용 버튼」), so the outline is either form's.
+  final ConteSheetForm conteForm;
+  final bool conteOutlined;
+
   /// The name for [mark]'s work, or empty when nobody is set — so a form
   /// binding never has to null-check.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
@@ -126,6 +136,8 @@ class TimesheetInfo {
     String? envelopeFormId,
     bool? conteCover,
     bool? conteBlankPage,
+    ConteSheetForm? conteForm,
+    bool? conteOutlined,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -145,6 +157,8 @@ class TimesheetInfo {
       envelopeFormId: envelopeFormId ?? this.envelopeFormId,
       conteCover: conteCover ?? this.conteCover,
       conteBlankPage: conteBlankPage ?? this.conteBlankPage,
+      conteForm: conteForm ?? this.conteForm,
+      conteOutlined: conteOutlined ?? this.conteOutlined,
     );
   }
 
@@ -166,6 +180,8 @@ class TimesheetInfo {
       'envelopeForm': envelopeFormId,
     if (!conteCover) 'conteCover': false,
     if (!conteBlankPage) 'conteBlankPage': false,
+    if (conteForm != ConteSheetForm.analog) 'conteForm': conteForm.name,
+    if (!conteOutlined) 'conteOutlined': false,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -187,6 +203,8 @@ class TimesheetInfo {
           json['envelopeForm'] as String? ?? CutEnvelopePresets.analogId,
       conteCover: json['conteCover'] as bool? ?? true,
       conteBlankPage: json['conteBlankPage'] as bool? ?? true,
+      conteForm: ConteSheetForm.named(json['conteForm']),
+      conteOutlined: json['conteOutlined'] as bool? ?? true,
     );
   }
 
@@ -203,6 +221,8 @@ class TimesheetInfo {
           other.envelopeFormId == envelopeFormId &&
           other.conteCover == conteCover &&
           other.conteBlankPage == conteBlankPage &&
+          other.conteForm == conteForm &&
+          other.conteOutlined == conteOutlined &&
           mapEquals(other.staff, staff) &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
@@ -218,6 +238,8 @@ class TimesheetInfo {
     envelopeFormId,
     conteCover,
     conteBlankPage,
+    conteForm,
+    conteOutlined,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),

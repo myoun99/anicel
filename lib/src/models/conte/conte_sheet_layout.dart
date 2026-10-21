@@ -14,21 +14,43 @@ import 'dart:ui' show Rect, Size;
 
 import '../canvas_size.dart';
 import '../sheet_paper.dart';
+import '../timesheet_info.dart';
+import 'conte_sheet_form.dart';
 import 'conte_sheet_source.dart';
 
-/// The sheet's fixed measurements — the first preset's page (유저
+export 'conte_sheet_form.dart';
+
+/// The sheet's measurements in its [form] — the first form's page (유저
 /// 2026-09-25, the reference sheets: 「위에 헤더에 컷 화면 내용 초 … 아래부분은
 /// 가로선으로 칸이 나뉘어져있지않아 … 컷 칸은 화면/내용/초랑 공간
-/// 떨어져있어」).
+/// 떨어져있어」), and the second's beside it ([ConteSheetForm.digital]).
 class ConteSheetMetrics {
   const ConteSheetMetrics({
     this.pageWidth = 595.28,
     this.pageHeight = 841.89,
     this.cameraAspect = 16 / 9,
+    this.form = ConteSheetForm.analog,
+    this.outlined = true,
   });
+
+  /// The sheet the work keeps ([info]'s form and outline), its windows of
+  /// [cameraAspect] — what the panel lays and the export prints alike.
+  ConteSheetMetrics.ofWork(TimesheetInfo info, {required double cameraAspect})
+    : this(
+        cameraAspect: cameraAspect,
+        form: info.conteForm,
+        outlined: info.conteOutlined,
+      );
 
   final double pageWidth;
   final double pageHeight;
+
+  final ConteSheetForm form;
+
+  /// Whether each picture stands in the silhouette's black, or in a rule
+  /// round its window on the paper (유저 2026-10-21, I-118: 「화면에 검은
+  /// 외곽선 적용/미적용」).
+  final bool outlined;
 
   /// THE PAPER'S PIXELS A POINT TAKES (F-294, 유저 2026-10-05: 「콘티패널이랑
   /// 컷봉투패널의 용지는 300dpi인 2480x3508으로함」): this page laid on the
@@ -96,8 +118,13 @@ class ConteSheetMetrics {
   /// 32 a total broke into two lines and sat on the block length above it.
   double get cutColumnWidth => 34;
 
-  /// The cut box stands apart from the table.
-  double get cutGap => 6;
+  /// The cut box stands apart from the table — and against the picture
+  /// column in the digital form (「컷번호 항목도 본문인 화면쪽이랑
+  /// 붙어있고」).
+  double get cutGap => switch (form) {
+    ConteSheetForm.analog => 6,
+    ConteSheetForm.digital => 0,
+  };
 
   /// Just 「00+00」 (유저 2026-09-25: 「초수 칸 너무 좌우 기니까 좀 더
   /// 슬림하게. 00+00 이정도 크기가 딱 들어갈정도로」): the total at 9pt bold
@@ -219,7 +246,9 @@ class ContePlacedCell {
   /// what a cell's text really is is a flow ANCHORED at the cell's top that
   /// runs until the next cell's text starts. Overflow that reaches the next
   /// anchor is shrunk a step and then clipped — one rule, and spill,
-  /// carry-over and blank space all fall out of it.
+  /// carry-over and blank space all fall out of it. In the digital form a
+  /// rule ends every cut, and the flow stops on its cut's
+  /// ([ConteSheetForm.digital]).
   final Rect actionRect;
   final Rect dialogueRect;
 
@@ -509,6 +538,25 @@ List<ContePlacedCell> _wordsStopAtPictures(List<ContePlacedCell> cells) => [
     ),
 ];
 
+/// [cells] as their words read in [metrics]' form: in the digital one each
+/// cell's words stop on the rule under its cut — the row its cut's band
+/// [endsOnRow] on this page — and in the analog one, with no rule across,
+/// they run on.
+List<ContePlacedCell> _wordsStopAtTheirCut(
+  List<ContePlacedCell> cells,
+  ConteSheetMetrics metrics, {
+  required Map<String, int> endsOnRow,
+}) => switch (metrics.form) {
+  ConteSheetForm.analog => cells,
+  ConteSheetForm.digital => [
+    for (final cell in cells)
+      cell._withWordsEndingAt(
+        action: metrics.rowTop(endsOnRow[cell.cutId]!),
+        dialogue: metrics.rowTop(endsOnRow[cell.cutId]!),
+      ),
+  ],
+};
+
 /// The top of the first of the [later] cells' pictures that stands in
 /// [words]' column, below where they start — or null.
 double? _firstPictureIn(Iterable<ContePlacedCell> later, Rect words) {
@@ -575,7 +623,9 @@ List<ContePageLayout> layoutConteSheet(
     pages.add(
       ContePageLayout(
         pageIndex: pages.length,
-        cells: _wordsStopAtPictures(cells),
+        cells: _wordsStopAtPictures(
+          _wordsStopAtTheirCut(cells, metrics, endsOnRow: bandEndRow),
+        ),
         cutBands: bands,
         emptyRowsFrom: hole ? row : null,
         metrics: metrics,

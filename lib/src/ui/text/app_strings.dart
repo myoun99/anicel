@@ -761,6 +761,12 @@ enum AppStrings {
   String get conteFormatTitle => _s('conteFormatTitle');
   String get conteFrontIn => _s('conteFrontIn');
   String get conteFrontOut => _s('conteFrontOut');
+  String get conteForm => _s('conteForm');
+  String get conteFormAnalog => _s('conteFormAnalog');
+  String get conteFormDigital => _s('conteFormDigital');
+  String get conteOutline => _s('conteOutline');
+  String get conteOutlineOn => _s('conteOutlineOn');
+  String get conteOutlineOff => _s('conteOutlineOff');
   String get envelopeFormatTitle => _s('envelopeFormatTitle');
   String get envelopeForm => _s('envelopeForm');
   String get sheetModeNotation => _s('sheetModeNotation');
@@ -2329,6 +2335,12 @@ enum AppStrings {
     'conteFormatTitle': 'Conte sheet format',
     'conteFrontIn': 'Included',
     'conteFrontOut': 'Left out',
+    'conteForm': 'Form',
+    'conteFormAnalog': 'Analog',
+    'conteFormDigital': 'Digital',
+    'conteOutline': 'Black frame round pictures',
+    'conteOutlineOn': 'On',
+    'conteOutlineOff': 'Off',
     'envelopeFormatTitle': 'Envelope format',
     'envelopeForm': 'Form',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
@@ -3582,6 +3594,12 @@ enum AppStrings {
     'conteFormatTitle': 'コンテ用紙書式',
     'conteFrontIn': '入れる',
     'conteFrontOut': '入れない',
+    'conteForm': '様式',
+    'conteFormAnalog': 'アナログ',
+    'conteFormDigital': 'デジタル',
+    'conteOutline': '画面の黒枠',
+    'conteOutlineOn': 'あり',
+    'conteOutlineOff': 'なし',
     'envelopeFormatTitle': 'カット袋書式',
     'envelopeForm': '様式',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
@@ -5185,6 +5203,12 @@ enum AppStrings {
     'conteFormatTitle': '콘티 용지 서식',
     'conteFrontIn': '넣음',
     'conteFrontOut': '뺌',
+    'conteForm': '양식',
+    'conteFormAnalog': '아날로그',
+    'conteFormDigital': '디지털',
+    'conteOutline': '화면 검은 외곽선',
+    'conteOutlineOn': '적용',
+    'conteOutlineOff': '미적용',
     'envelopeFormatTitle': '컷 봉투 서식',
     'envelopeForm': '양식',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
@@ -6824,6 +6848,12 @@ enum AppStrings {
     'conteFormatTitle': 'Format de la feuille de conte',
     'conteFrontIn': 'Incluse',
     'conteFrontOut': 'Retirée',
+    'conteForm': 'Modèle',
+    'conteFormAnalog': 'Analogique',
+    'conteFormDigital': 'Numérique',
+    'conteOutline': 'Cadre noir des images',
+    'conteOutlineOn': 'Oui',
+    'conteOutlineOff': 'Non',
     'envelopeFormatTitle': 'Format de l\'enveloppe',
     'envelopeForm': 'Modèle',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
@@ -8477,6 +8507,12 @@ enum AppStrings {
     'conteFormatTitle': '分镜用纸格式',
     'conteFrontIn': '包含',
     'conteFrontOut': '不含',
+    'conteForm': '样式',
+    'conteFormAnalog': '传统',
+    'conteFormDigital': '数字',
+    'conteOutline': '画面黑框',
+    'conteOutlineOn': '有',
+    'conteOutlineOff': '无',
     'envelopeFormatTitle': '卡袋版式',
     'envelopeForm': '样式',
     'sheetModeNotation': '标注表（重复·保持文字）',

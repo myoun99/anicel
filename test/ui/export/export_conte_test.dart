@@ -655,6 +655,76 @@ void main() {
     );
   });
 
+  testWidgets('🎯the export prints the sheet in the form the work keeps — '
+      'the digital one\'s picture column against its cut column', (
+    tester,
+  ) async {
+    // 유저 2026-10-21 (I-118): 「디지털식? … 컷번호 항목도 본문인 화면쪽이랑
+    // 붙어있고」 — chosen in the panel, printed as the panel shows it.
+    final session = EditorSessionManager(initialProject: project());
+    addTearDown(session.dispose);
+    session.updateTimesheetInfo(
+      session.timesheetInfo.copyWith(conteForm: ConteSheetForm.digital),
+    );
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-png')),
+    );
+    await tester.pump();
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    // Where the analog sheet leaves paper between its cut box and the
+    // table, the digital one's silhouette stands: half its border in from
+    // the cut column's edge, halfway down the first row.
+    const digital = ConteSheetMetrics(form: ConteSheetForm.digital);
+    const analog = ConteSheetMetrics();
+    final x = digital.cutColumnRight + digital.silhouetteBorder / 2;
+    expect(
+      x,
+      inExclusiveRange(analog.cutColumnRight, analog.pictureLeft),
+      reason: 'fixture: paper on the analog sheet',
+    );
+    final pixel = await tester.runAsync(() async {
+      final bytes = File(
+        '${temp.path}${Platform.pathSeparator}${sheet}_p3.png',
+      ).readAsBytesSync();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final image = (await codec.getNextFrame()).image;
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final scale = digital.paperScale;
+      final at =
+          ((digital.rowTop(0) + digital.rowHeight / 2) * scale).round() *
+              image.width +
+          (x * scale).round();
+      image.dispose();
+      codec.dispose();
+      return data!.getUint32(at * 4);
+    });
+    expect(
+      pixel,
+      0x101010FF,
+      reason: 'the silhouette\'s black, RGBA — not the analog sheet\'s paper',
+    );
+  });
+
   testWidgets('the page images and the PDF carry the cover\'s picture and '
       'the logo the panel prints — the pages name them, the export reads '
       'them through the project: carried, their originals gone', (

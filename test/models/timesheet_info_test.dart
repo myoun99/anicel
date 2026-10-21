@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/conte/conte_sheet_form.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
@@ -221,6 +222,36 @@ void main() {
         TimesheetInfo.empty.copyWith(conteCover: false),
         isNot(TimesheetInfo.empty),
         reason: 'a change of front is a change of the work — one undo step',
+      );
+    });
+
+    test('the conte sheet\'s form and its black travel with the work, the '
+        'analog sheet in black writes nothing, and a form this build does '
+        'not know reads analog', () {
+      // 유저 2026-10-21 (I-118): 「그리고 디지털식? … 그리고 서식 옵션으로
+      // 공통적용되게 화면에 검은 외곽선 적용/미적용 버튼」.
+      final whole = TimesheetInfo.empty.toJson();
+      expect(whole.containsKey('conteForm'), isFalse);
+      expect(whole.containsKey('conteOutlined'), isFalse);
+      for (final (form, outlined) in [
+        (ConteSheetForm.digital, true),
+        (ConteSheetForm.analog, false),
+        (ConteSheetForm.digital, false),
+      ]) {
+        final info = TimesheetInfo.empty.copyWith(
+          conteForm: form,
+          conteOutlined: outlined,
+        );
+
+        final restored = TimesheetInfo.fromJson(info.toJson());
+
+        expect(restored, info);
+        expect((restored.conteForm, restored.conteOutlined), (form, outlined));
+        expect(info, isNot(TimesheetInfo.empty), reason: 'one undo step');
+      }
+      expect(
+        TimesheetInfo.fromJson({'conteForm': 'riso'}).conteForm,
+        ConteSheetForm.analog,
       );
     });
   });

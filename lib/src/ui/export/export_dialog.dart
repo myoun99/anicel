@@ -959,7 +959,10 @@ class ExportDialogState extends State<ExportDialog> {
     final source = buildConteSheetSource(project);
     final pages = layoutConteBook(
       source,
-      metrics: ConteSheetMetrics(cameraAspect: _session.camera.cameraFrameAspect),
+      metrics: ConteSheetMetrics.ofWork(
+        project.timesheetInfo,
+        cameraAspect: _session.camera.cameraFrameAspect,
+      ),
     );
     _conteSheetCache = (project, source, pages);
     return (source, pages);

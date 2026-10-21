@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/conte/conte_book_page.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 /// 🗣️I-59 (유저 2026-10-02): 「콘티 용지패널, 1페이지 헤더 넣기/뺴기,
@@ -14,7 +18,8 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 /// 이게 내보내기시에도 연동」 — and where that button opens (I-93, 10-12):
 /// 「타임시트처럼 전용 설정창 만들어서 거기다 표지 빈용지체크 이런거 다
 /// 넣고」. The book's front is put in and taken out in the conte sheet's
-/// format window, and kept with the work.
+/// format window, and kept with the work — and so are the sheet's form and
+/// its black (I-118, 10-21).
 void main() {
   late EditorSessionManager session;
 
@@ -128,5 +133,48 @@ void main() {
     expect(session.timesheetInfo.conteCover, isTrue);
     expect(pages(tester), whole);
     expect(session.canUndo, isFalse);
+  });
+
+  testWidgets('the sheet\'s form and its black are picked in the same window: '
+      'the book is laid in them on save, the work keeps them, and one undo '
+      'puts the analog sheet in black back', (tester) async {
+    // 유저 2026-10-21 (I-118): 「디지털식? … 그리고 서식 옵션으로
+    // 공통적용되게 화면에 검은 외곽선 적용/미적용 버튼」.
+    await pumpHost(tester);
+    ConteSheetMetrics laid() => tester
+        .widget<ConteBookPage>(find.byType(ConteBookPage).first)
+        .page
+        .metrics;
+    String formShown() => tester
+        .widget<PanelFlyoutButton>(
+          find.byKey(const ValueKey<String>('conte-format-form')),
+        )
+        .label;
+    expect((laid().form, laid().outlined), (ConteSheetForm.analog, true));
+
+    await tap(tester, 'conte-format-button');
+    expect(formShown(), AppText.strings.conteFormAnalog);
+    expect(pillOn(tester, 'conte-format-outline'), isTrue);
+    await tap(tester, 'conte-format-form');
+    await tap(tester, 'conte-format-form-digital');
+    await tap(tester, 'conte-format-outline');
+    expect(laid().form, ConteSheetForm.analog, reason: 'nothing before save');
+    await tap(tester, 'conte-format-save-button');
+
+    expect(
+      (session.timesheetInfo.conteForm, session.timesheetInfo.conteOutlined),
+      (ConteSheetForm.digital, false),
+    );
+    expect((laid().form, laid().outlined), (ConteSheetForm.digital, false));
+
+    // The window says what the sheet is now.
+    await tap(tester, 'conte-format-button');
+    expect(formShown(), AppText.strings.conteFormDigital);
+    expect(pillOn(tester, 'conte-format-outline'), isFalse);
+    await tap(tester, 'conte-format-cancel-button');
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect((laid().form, laid().outlined), (ConteSheetForm.analog, true));
   });
 }

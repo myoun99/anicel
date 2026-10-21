@@ -246,30 +246,48 @@ Iterable<SheetMark> _rules(ConteSheetMetrics m) sync* {
   const near = SheetRuleHold.near;
   const far = SheetRuleHold.far;
 
-  // The cut box, apart from the table: four sides inside its outline, and
-  // the head's underside on the body's top.
   final (cl, cr) = (m.cutColumnLeft, m.cutColumnRight);
-  yield rule(cl, m.tableTop, cr, m.tableTop + w, near);
-  yield rule(cl, m.bodyTop - w, cr, m.bodyTop, far);
+  final (left, right) = (m.pictureLeft, m.bodyRight);
+  final tableLeft = switch (m.form) {
+    // The cut box, apart from the table: four sides inside its outline,
+    // and the head's underside on the body's top.
+    ConteSheetForm.analog => left,
+    // One table from the cut column on (유저 2026-10-21, I-118: 「컷번호
+    // 항목도 본문인 화면쪽이랑 붙어있고」): the cut column's right side is
+    // the picture column's left.
+    ConteSheetForm.digital => cl,
+  };
+  if (m.form == ConteSheetForm.analog) {
+    yield rule(cl, m.tableTop, cr, m.tableTop + w, near);
+    yield rule(cl, m.bodyTop - w, cr, m.bodyTop, far);
+    yield rule(cr - w, m.tableTop, cr, m.bodyBottom, far);
+  }
   yield rule(cl, m.bodyBottom - w, cr, m.bodyBottom, far);
   yield rule(cl, m.tableTop, cl + w, m.bodyBottom, near);
-  yield rule(cr - w, m.tableTop, cr, m.bodyBottom, far);
 
   // The table: its top and the head's underside, over every column.
-  final (left, right) = (m.pictureLeft, m.bodyRight);
-  yield rule(left, m.tableTop, right, m.tableTop + w, near);
-  yield rule(left, m.bodyTop - w, right, m.bodyTop, far);
+  yield rule(tableLeft, m.tableTop, right, m.tableTop + w, near);
+  yield rule(tableLeft, m.bodyTop - w, right, m.bodyTop, far);
   // The picture column's sides are ruled over the head only — below it the
   // silhouette's black is the edge, and these end on the black's own x.
-  yield rule(left, m.tableTop, left + w, m.bodyTop, near);
-  yield rule(m.actionLeft - w, m.tableTop, m.actionLeft, m.bodyTop, far);
+  // With no black they run head to foot, as every other boundary does.
+  final sidesEnd = m.outlined ? m.bodyTop : m.bodyBottom;
+  yield rule(left, m.tableTop, left + w, sidesEnd, near);
+  yield rule(m.actionLeft - w, m.tableTop, m.actionLeft, sidesEnd, far);
   // Every other boundary runs head to foot as one mark.
   for (final x in [m.dialogueLeft, m.timeLeft]) {
     yield rule(x - w / 2, m.tableTop, x + w / 2, m.bodyBottom);
   }
   yield rule(right - w, m.tableTop, right, m.bodyBottom, far);
-  // The foot, under the text columns; the silhouette closes the rest.
-  yield rule(m.actionLeft, m.bodyBottom - w, right, m.bodyBottom, far);
+  // The foot, under the text columns; the silhouette closes the rest — or,
+  // with none, the foot runs under the picture too.
+  yield rule(
+    m.outlined ? m.actionLeft : left,
+    m.bodyBottom - w,
+    right,
+    m.bodyBottom,
+    far,
+  );
 }
 
 /// The silhouette: ONE black shape down the picture column with a window of
@@ -277,7 +295,17 @@ Iterable<SheetMark> _rules(ConteSheetMetrics m) sync* {
 /// 실루엣은 남기되 그거랑 겹친 이상한 반투명한 라인같은거 없앤단거야」) —
 /// square, as every window of the sheet is ([ConteSheetMetrics.windowRect]
 /// keeps the rounded corners it wore before).
+///
+/// Taken off (유저 2026-10-21, I-118: 「화면에 검은 외곽선 적용/미적용」),
+/// each window is a rule round it on the paper instead — the same window,
+/// so a picture lands where it lands in the black.
 Iterable<SheetMark> _silhouette(ConteSheetMetrics m) sync* {
+  if (!m.outlined) {
+    for (var row = 0; row < m.rowsPerPage; row += 1) {
+      yield* _windowRule(m, m.windowRect(row), SheetPaintLayer.form);
+    }
+    return;
+  }
   yield SheetFill(
     SheetPaintLayer.form,
     rect: Rect.fromLTRB(m.pictureLeft, m.bodyTop, m.actionLeft, m.bodyBottom),
@@ -290,6 +318,35 @@ Iterable<SheetMark> _silhouette(ConteSheetMetrics m) sync* {
       argb: _paper,
     );
   }
+}
+
+/// A rule round [window], just outside it — where the silhouette's black
+/// would meet it, so the picture in it covers none of the rule.
+Iterable<SheetMark> _windowRule(
+  ConteSheetMetrics m,
+  Rect window,
+  SheetPaintLayer layer,
+) sync* {
+  final w = m.ruleWidth;
+  final outside = window.inflate(w);
+  SheetRule rule(Rect rect, SheetRuleHold hold) =>
+      SheetRule(layer, rect: rect, argb: _rule, hold: hold);
+  yield rule(
+    Rect.fromLTRB(outside.left, outside.top, outside.right, window.top),
+    SheetRuleHold.far,
+  );
+  yield rule(
+    Rect.fromLTRB(outside.left, window.bottom, outside.right, outside.bottom),
+    SheetRuleHold.near,
+  );
+  yield rule(
+    Rect.fromLTRB(outside.left, outside.top, window.left, outside.bottom),
+    SheetRuleHold.far,
+  );
+  yield rule(
+    Rect.fromLTRB(window.right, outside.top, outside.right, outside.bottom),
+    SheetRuleHold.near,
+  );
 }
 
 /// The head's words, in the notation language — a word longer than its
@@ -356,6 +413,7 @@ Iterable<SheetMark> _content(
       );
     }
   }
+  yield* _cutEnds(page);
   for (final cell in page.cells) {
     yield* _cell(m, source, cell);
   }
@@ -371,6 +429,32 @@ Iterable<SheetMark> _content(
     h: SheetAlign.center,
     fit: SheetWordsFit.oneLine,
   );
+}
+
+/// In the digital form, a rule across the table under every cut that ends
+/// above the page's foot (유저 2026-10-21, I-118: 「컷 마다 가로로 선 그어서
+/// 칸 제대로 나누는방식」) — a cut's words stop on it
+/// ([ContePlacedCell.actionRect]). Content, since where a cut ends is the
+/// film's. Not over the silhouette: its black between two windows parts
+/// them already.
+Iterable<SheetMark> _cutEnds(ContePageLayout page) sync* {
+  final m = page.metrics;
+  if (m.form != ConteSheetForm.digital) return;
+  final w = m.ruleWidth;
+  final spans = m.outlined
+      ? [(m.cutColumnLeft, m.pictureLeft), (m.actionLeft, m.bodyRight)]
+      : [(m.cutColumnLeft, m.bodyRight)];
+  for (final band in page.cutBands) {
+    final y = band.cutRect.bottom;
+    if (y >= m.bodyBottom - 1e-9) continue;
+    for (final (left, right) in spans) {
+      yield SheetRule(
+        SheetPaintLayer.content,
+        rect: Rect.fromLTRB(left, y - w / 2, right, y + w / 2),
+        argb: _rule,
+      );
+    }
+  }
 }
 
 /// Where [cell]'s picture is printed — inside the silhouette's border. The
@@ -516,7 +600,17 @@ Iterable<SheetMark> _cameraWork(
     box.top,
     m.rowTop(cell.rowOnPage + cell.rowSpan),
   );
-  yield SheetFill(SheetPaintLayer.picture, rect: box, argb: _ink);
+  // With no silhouette the box is paper, ruled round its window as every
+  // window is ([_silhouette]).
+  yield SheetFill(
+    SheetPaintLayer.picture,
+    rect: box,
+    argb: m.outlined ? _ink : _paper,
+  );
+  if (!m.outlined) {
+    yield* _windowRule(m, contePictureSlot(cell, m), SheetPaintLayer.picture);
+    return;
+  }
   yield SheetFill(
     SheetPaintLayer.picture,
     rect: contePictureSlot(cell, m),
