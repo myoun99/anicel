@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/one_piece.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);

@@ -14,6 +14,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
+import '../../models/dirty_region.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
@@ -62,7 +63,7 @@ import 'import_landing.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_pool.dart';
 import '../canvas/tiled_surface_compose.dart'
-    show composePositionedSurfaceImage;
+    show composePositionedSurfaceImage, surfaceContentWorldRect;
 import 'render_caches.dart';
 import 'session_roles.dart';
 import '../../models/import/import_warning.dart';
@@ -1239,29 +1240,31 @@ class ProjectImportDoors {
   /// [cel]'s picture over where its file lies ([_celMoved]), and where that
   /// stands on the canvas: composed — or, past the side this device's
   /// engine hands a picture back at, the bytes the cel holds, kept off the
-  /// engine as its file was when it was laid ([pictureSideLimit]). 🔬A
-  /// compose past the side comes back smaller (20480×1024 asked, 16384×819
-  /// made — `composePositionedSurfaceImage`), and the move would have laid
-  /// it so.
+  /// engine as its file was when it was laid ([pictureSideLimit]). A
+  /// compose past the side comes back in pieces (`piecesOver`), and a
+  /// picture is one image. 🔬Before it did, it came back smaller (20480×1024
+  /// asked, 16384×819 made), and the move would have laid it so. A cel that
+  /// does not know where its file lies is asked the same over all it holds.
   static Future<({CelPicture picture, LayerPlacement at})> _celPicture(
     BitmapSurface cel,
   ) async {
     final laid = cel.laidBounds;
-    if (laid != null &&
-        isPastTheSide(laid.width, laid.height, await pictureSideLimit())) {
+    final region =
+        laid ?? DirtyRegion.wholePixelsOf(surfaceContentWorldRect(cel));
+    if (isPastTheSide(region.width, region.height, await pictureSideLimit())) {
       return (
         picture: PixelsPicture(
-          bitmapSurfaceRegionPixels(cel, laid),
-          width: laid.width,
-          height: laid.height,
+          bitmapSurfaceRegionPixels(cel, region),
+          width: region.width,
+          height: region.height,
         ),
         at: GuideTransform(
           1,
           0,
           0,
           1,
-          laid.left.toDouble(),
-          laid.top.toDouble(),
+          region.left.toDouble(),
+          region.top.toDouble(),
         ),
       );
     }
@@ -1274,7 +1277,7 @@ class ProjectImportDoors {
     }
     final at = composed.worldRect.topLeft;
     return (
-      picture: EnginePicture(composed.image),
+      picture: EnginePicture(composed.pieces.single.image),
       at: GuideTransform(1, 0, 0, 1, at.dx, at.dy),
     );
   }

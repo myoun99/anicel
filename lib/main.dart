@@ -10,6 +10,7 @@ import 'package:flutter/services.dart'
 import 'src/native/device_battery.dart';
 import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
+import 'src/services/import/cel_picture.dart' show pictureSideLimit;
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
@@ -189,6 +190,12 @@ Future<void> main() async {
   // before it is read is rastered as it always was.
   WidgetsBinding.instance.addPostFrameCallback(
     (_) => unawaited(measuredHalving()),
+  );
+  // And the side this engine holds, the same way: a compose past it is made
+  // in pieces (`piecesOver`), and one made inside a build before it is read
+  // is made whole, as it always was.
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => unawaited(pictureSideLimit()),
   );
 }
 

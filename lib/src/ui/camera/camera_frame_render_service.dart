@@ -25,6 +25,7 @@ import '../../services/straight_rgba_image.dart';
 import '../../services/viewport_transform_matrix.dart'
     show viewportOfSimilarity;
 import '../canvas/display_resample.dart';
+import '../canvas/image_pieces.dart';
 import '../canvas/layer_image_draw.dart';
 import '../canvas/level_image.dart';
 import '../canvas/paper_background.dart' show paintProjectPaper;
@@ -243,7 +244,7 @@ class CameraFrameRenderService {
     final layerImages = <CutFrameCompositeLayer, PositionedSurfaceImage>{};
     // What this render made, and so lets go of when it is done: every row's
     // picture that [rows] does not keep.
-    final madeHere = <ui.Image>[];
+    final madeHere = <ImagePiece>[];
     Future<void> composeImages(
       List<CompositeNode<CutFrameCompositeLayer>> list,
     ) async {
@@ -306,7 +307,7 @@ class CameraFrameRenderService {
               try {
                 return await _halved(composed, level);
               } finally {
-                composed.image.dispose();
+                composed.pieces.disposeAll();
               }
             }
 
@@ -314,7 +315,7 @@ class CameraFrameRenderService {
               layerImages[layer] = await kept.of(layer.surface, level, compose);
             } else {
               final composed = await compose();
-              madeHere.add(composed.image);
+              madeHere.addAll(composed.pieces);
               layerImages[layer] = composed;
             }
           case CompositeGroup(:final children):
@@ -331,17 +332,17 @@ class CameraFrameRenderService {
       displayResidualOf(cameraRasterScale),
     );
 
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    canvas.drawRect(
-      Rect.fromLTWH(
-        0,
-        0,
-        resolvedOutput.width.toDouble(),
-        resolvedOutput.height.toDouble(),
-      ),
-      Paint()..color = background,
+    final frame = Rect.fromLTWH(
+      0,
+      0,
+      resolvedOutput.width.toDouble(),
+      resolvedOutput.height.toDouble(),
     );
+    final recorder = ui.PictureRecorder();
+    // Bounded by the frame's pixels, so a draw into it can ask what it can
+    // land on (`drawPosedLayerImage`, a picture in pieces).
+    final canvas = Canvas(recorder, frame);
+    canvas.drawRect(frame, Paint()..color = background);
 
     // The canvas region this render can SEE, in CANVAS space — the space
     // the canvas is now in: the output rect pulled back through the camera
@@ -447,10 +448,9 @@ class CameraFrameRenderService {
             final canvasSize = layer.surface.canvasSize;
             drawPosedLayerImage(
               canvas,
-              image: layerImage.image,
               // The ink alone where it was composed so ([rowsAsInk]), and
               // otherwise the whole content.
-              worldRect: layerImage.worldRect,
+              pieces: layerImage.pieces,
               extent: surfaceContentWorldRect(layer.surface),
               placement: layer.placement,
               opacity: layer.opacity,
@@ -528,9 +528,7 @@ class CameraFrameRenderService {
       return await picture.toImage(resolvedOutput.width, resolvedOutput.height);
     } finally {
       picture.dispose();
-      for (final image in madeHere) {
-        image.dispose();
-      }
+      madeHere.disposeAll();
     }
   }
 }
@@ -558,14 +556,32 @@ abstract interface class RowPictures {
 
 /// [composed] with its image halved [level] times over the same canvas
 /// rect — each time the exact mean of a 2×2 block of the one above
-/// ([halvingPicture]), as the display's own levels are made. The images
-/// it passes through are let go of; [composed]'s own is its owner's, and
-/// the one it hands back is the caller's.
+/// ([halvingPicture]), as the display's own levels are made — piece by
+/// piece: no 2×2 block lies across two ([piecesOver]). The images it passes
+/// through are let go of; [composed]'s own are its owner's, and the ones it
+/// hands back are the caller's.
 Future<PositionedSurfaceImage> _halved(
   PositionedSurfaceImage composed,
   int level,
 ) async {
-  var image = composed.image;
+  final pieces = <ImagePiece>[];
+  try {
+    for (final piece in composed.pieces) {
+      pieces.add((
+        image: await _halvedImage(piece.image, level),
+        worldRect: piece.worldRect,
+      ));
+    }
+  } on Object {
+    pieces.disposeAll();
+    rethrow;
+  }
+  return PositionedSurfaceImage(pieces: pieces, worldRect: composed.worldRect);
+}
+
+/// [whole] halved [level] times ([_halved]); [whole] stays its owner's.
+Future<ui.Image> _halvedImage(ui.Image whole, int level) async {
+  var image = whole;
   for (var step = 0; step < level; step += 1) {
     final size = halvedSize(image.width, image.height);
     final picture = halvingPicture([(image: image, at: ui.Offset.zero)]);
@@ -575,10 +591,10 @@ Future<PositionedSurfaceImage> _halved(
     } finally {
       picture.dispose();
     }
-    if (!identical(image, composed.image)) {
+    if (!identical(image, whole)) {
       image.dispose();
     }
     image = halved;
   }
-  return PositionedSurfaceImage(image: image, worldRect: composed.worldRect);
+  return image;
 }

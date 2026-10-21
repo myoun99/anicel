@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/one_piece.dart';
 
 /// 🚨★★★A CEL THAT LEAVES THE ACTIVE SLOT IS STILL ON SCREEN THE SAME FRAME
 /// (유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
@@ -248,7 +249,11 @@ void main() {
         tester,
         zoom: 0.5,
         walk: false,
-        expectedPicturedWhileActive: tileCount,
+        // The four tiles in view at 50%: the display buffer says what it
+        // can land on (its bounds), so the active paint pictures no more
+        // than the walk's does — it pictured the whole cel while the
+        // buffer's canvas did not say.
+        expectedPicturedWhileActive: tileCount ~/ 2,
       ),
       viewSize.width.toInt(),
       reason: 'below 100% the stack asks for a LEVEL of the cel, which the '

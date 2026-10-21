@@ -6,6 +6,7 @@ import '../../models/playback_quality.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart' show CanvasLayerImageRequest;
+import '../canvas/image_pieces.dart';
 import '../quiet_turns.dart';
 import 'layer_frame_image_cache.dart';
 import 'playback_pictures.dart';
@@ -191,7 +192,7 @@ class CanvasPictures implements PlaybackPictures {
     for (final row in rowsOf(picture.cut, picture.frameIndex)) {
       final held = _held(row, picture.cut, level);
       if (held != null && seen.add((row.frameKey, level))) {
-        bytes += estimatedImageBytes(held.image.width, held.image.height);
+        bytes += held.pieces.estimatedBytes;
       }
     }
     return bytes;

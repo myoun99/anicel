@@ -21,16 +21,22 @@ import '../../native/qa_native_engine.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/cel_text_laying.dart';
+import '../../services/import/cel_picture.dart'
+    show pictureSideLimit, pictureSideLimitIfMeasured;
 import '../../services/straight_rgba_image.dart' show uploadRawRgba;
 import 'bitmap_tile_image_cache.dart';
 import 'display_resample.dart';
+import 'image_pieces.dart';
 import 'level_image.dart';
 import 'raster_picture.dart';
 import 'surface_region_picture.dart';
 import 'tile_blocks.dart';
 import 'tile_origin.dart';
 
-/// A composed surface image plus the CANVAS-SPACE rect it covers.
+/// A composed surface image plus the CANVAS-SPACE rect it covers — in
+/// [pieces], each with the rect it covers: ONE, over the whole rect, inside
+/// the side this device's engine holds, and side by side past it
+/// ([piecesOver] says why).
 ///
 /// For a surface whose tiles all sit inside the canvas, [worldRect] is
 /// exactly the canvas rect and the image is canvas-sized — byte-identical
@@ -38,15 +44,88 @@ import 'tile_origin.dart';
 /// the image) only as far as the stored tiles reach, so layers without
 /// off-canvas artwork pay nothing.
 class PositionedSurfaceImage {
-  const PositionedSurfaceImage({required this.image, required this.worldRect});
+  const PositionedSurfaceImage({required this.pieces, required this.worldRect});
 
-  final ui.Image image;
+  final List<ImagePiece> pieces;
   final ui.Rect worldRect;
+}
 
-  /// Whether this is the plain canvas-extent case (consumers keep their
-  /// exact legacy draw path for it — byte parity).
-  bool isCanvasExtent(BitmapSurface surface) =>
-      worldRect == surface.canvasSize.canvasRect;
+/// [rect] as the pieces a compose made inside a build makes it in
+/// ([piecesOver]) — whole while the side this engine holds is still unread
+/// (`pictureSideLimitIfMeasured`: it is read after the first frame), as
+/// every compose was.
+List<ui.Rect> _piecesNow(ui.Rect rect, {double texelsPerUnit = 1}) =>
+    switch (pictureSideLimitIfMeasured) {
+      final side? => piecesOver(rect, side: side, texelsPerUnit: texelsPerUnit),
+      null => [rect],
+    };
+
+/// [rect] as the pieces an asynchronous compose makes it in ([piecesOver]).
+Future<List<ui.Rect>> _piecesOf(
+  ui.Rect rect, {
+  double texelsPerUnit = 1,
+}) async => piecesOver(
+  rect,
+  side: pictureSideLimitIfMeasured ?? await pictureSideLimit(),
+  texelsPerUnit: texelsPerUnit,
+);
+
+/// Each of [rects] made into its image by [make], in turn, as [worldRect]'s
+/// pieces — or null, the ones made let go, where one is not made.
+Future<PositionedSurfaceImage?> _inPieces(
+  ui.Rect worldRect,
+  List<ui.Rect> rects,
+  Future<ui.Image?> Function(ui.Rect piece) make,
+) async {
+  final pieces = <ImagePiece>[];
+  for (final rect in rects) {
+    final image = await make(rect);
+    if (image == null) {
+      pieces.disposeAll();
+      return null;
+    }
+    pieces.add((image: image, worldRect: rect));
+  }
+  return PositionedSurfaceImage(pieces: pieces, worldRect: worldRect);
+}
+
+/// [_inPieces] made now: each of [rects] by [make], deferred, with — where
+/// [make] snapshots — every piece's plain snapshot, in order, once all have
+/// landed. Null, the ones made let go, where one is not made.
+({PositionedSurfaceImage deferred, Future<List<ui.Image>>? real})?
+_inPiecesNow(
+  ui.Rect worldRect,
+  List<ui.Rect> rects,
+  ({ui.Image deferred, Future<ui.Image>? real})? Function(ui.Rect piece) make,
+) {
+  final made = <({ui.Image deferred, Future<ui.Image>? real})>[];
+  for (final rect in rects) {
+    final one = make(rect);
+    if (one == null) {
+      for (final each in made) {
+        each.deferred.dispose();
+        unawaited(each.real?.then((image) => image.dispose()));
+      }
+      return null;
+    }
+    made.add(one);
+  }
+  final reals = [for (final each in made) each.real];
+  return (
+    deferred: PositionedSurfaceImage(
+      pieces: [
+        for (var index = 0; index < rects.length; index += 1)
+          (image: made[index].deferred, worldRect: rects[index]),
+      ],
+      worldRect: worldRect,
+    ),
+    real: reals.contains(null)
+        ? null
+        : Future.wait(
+            [for (final real in reals) real!],
+            cleanUp: (image) => image.dispose(),
+          ),
+  );
 }
 
 /// The tiles a compose DRAWS for [surface], and the tiles every rect here
@@ -325,7 +404,7 @@ Future<ui.Image?> _composeAsync(
 
   try {
     final shown = _shownBy(surface);
-    for (final block in tileBlocksOf(shown)) {
+    for (final block in _blocksOver(shown, over)) {
       if (_layHeldPictures(laying, block, reuse)) {
         continue;
       }
@@ -443,14 +522,20 @@ bool _layHeldPictures(
   final recorder = ui.PictureRecorder();
   final laying = _TileLaying(ui.Canvas(recorder), over, halved: halved);
 
+  final tileSize = surface.tileSize;
   for (final entry in _tilesShownBy(surface).entries) {
     final tile = entry.value;
+    final origin = tileOriginOffset((coord: entry.key, tile: tile));
+    if (!(origin & ui.Size.square(tileSize.toDouble())).overlaps(over)) {
+      // Another piece's ([piecesOver]): nothing of it lands on this one.
+      continue;
+    }
     final image = makePictures ? reuse.pictureFor(tile) : reuse.imageFor(tile);
     if (image == null) {
       recorder.endRecording().dispose();
       return null;
     }
-    laying.lay(tileOriginOffset((coord: entry.key, tile: tile)), image);
+    laying.lay(origin, image);
   }
   laying.finish();
   return rasterPictureAndSnapshot(
@@ -507,26 +592,36 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   ui.Rect? over,
 }) async {
   final worldRect = _composedOver(surface, over);
-  Future<ui.Image?> rastered() => _composeAsync(
-    surface,
-    reuse: reuse,
-    shouldAbort: shouldAbort,
-    missing: missing,
-    over: worldRect,
-    deferred: false,
-  );
-  final image = _madeFromBytes(surface)
-      ? await _composedFromBytes(
-          _bytesShownOver(surface, worldRect),
-          shouldAbort: shouldAbort,
-          missing: missing,
-          rastered: rastered,
-        )
-      : await rastered();
-  return image == null
-      ? null
-      : PositionedSurfaceImage(image: image, worldRect: worldRect);
+  return _inPieces(worldRect, await _piecesOf(worldRect), (piece) {
+    Future<ui.Image?> rastered() => _composeAsync(
+      surface,
+      reuse: reuse,
+      shouldAbort: shouldAbort,
+      missing: missing,
+      over: piece,
+      deferred: false,
+    );
+    return _madeFromBytes(surface)
+        ? _composedFromBytes(
+            _bytesShownOver(surface, piece),
+            shouldAbort: shouldAbort,
+            missing: missing,
+            rastered: rastered,
+          )
+        : rastered();
+  });
 }
+
+/// [shown]'s blocks that land on [over]: of a picture in pieces, another
+/// piece's ([piecesOver]) land nothing on this one.
+Iterable<TileBlock> _blocksOver(BitmapSurface shown, ui.Rect over) =>
+    tileBlocksOf(shown).where(
+      (block) =>
+          block.region.left < over.right &&
+          block.region.rightExclusive > over.left &&
+          block.region.top < over.bottom &&
+          block.region.bottomExclusive > over.top,
+    );
 
 /// Whether [surface] holds a file's picture laid whole past its wall
 /// ([BitmapSurface.pasteboard]) — the one thing that lies there
@@ -899,7 +994,7 @@ class _BytesOfItsOwn implements PictureBytes {
 /// as "deferred" is a plain picture already, and [snapshot]'s is a handle
 /// of its own on the same picture — the holder's swap retires the handle it
 /// replaces, and nothing else was pinned.
-({PositionedSurfaceImage deferred, Future<ui.Image>? real})?
+({PositionedSurfaceImage deferred, Future<List<ui.Image>>? real})?
 composePositionedSurfaceImageSync(
   BitmapSurface surface, {
   required BitmapTileImageCache reuse,
@@ -908,28 +1003,22 @@ composePositionedSurfaceImageSync(
   ui.Rect? over,
 }) {
   final worldRect = _composedOver(surface, over);
-  final composed = _madeNow(
-    surface,
-    makePictures: makePictures,
-    snapshot: snapshot,
-    bytes: () => _bytesShownOver(surface, worldRect),
-    rastered: () => _composeSync(
+  return _inPiecesNow(
+    worldRect,
+    _piecesNow(worldRect),
+    (piece) => _madeNow(
       surface,
-      reuse: reuse,
       makePictures: makePictures,
       snapshot: snapshot,
-      over: worldRect,
+      bytes: () => _bytesShownOver(surface, piece),
+      rastered: () => _composeSync(
+        surface,
+        reuse: reuse,
+        makePictures: makePictures,
+        snapshot: snapshot,
+        over: piece,
+      ),
     ),
-  );
-  if (composed == null) {
-    return null;
-  }
-  return (
-    deferred: PositionedSurfaceImage(
-      image: composed.deferred,
-      worldRect: worldRect,
-    ),
-    real: composed.real,
   );
 }
 
@@ -971,34 +1060,36 @@ composePositionedSurfaceImageSync(
 /// (Read back with `toByteData` the instant it is made, the picture made
 /// now is not there yet — 「Image was null」, as the full-size one made now
 /// — and drawn, or a frame on, it is the raster's.)
-Future<ui.Image?> composeHalvedSurfaceImage(
+Future<PositionedSurfaceImage?> composeHalvedSurfaceImage(
   BitmapSurface surface, {
   bool Function()? shouldAbort,
   required ui.Rect over,
   bool deferred = false,
 }) async {
   final halvedOver = _composedOver(surface, over);
-  Future<ui.Image?> rastered() => _composeAsync(
-    surface,
-    reuse: BitmapTileImageCache.instance,
-    shouldAbort: shouldAbort,
-    missing: MissingTilePictures.madeInTurn,
-    over: halvedOver,
-    deferred: deferred,
-    halved: true,
-  );
-  if (!_madeFromBytes(surface)) {
-    return rastered();
-  }
-  final halving = await measuredHalving();
-  if (halving == null) {
-    return rastered();
-  }
-  return _composedFromBytes(
-    _bytesShownOver(surface, halvedOver, halving: halving),
-    shouldAbort: shouldAbort,
-    missing: MissingTilePictures.madeInTurn,
-    rastered: rastered,
+  final halving = _madeFromBytes(surface) ? await measuredHalving() : null;
+  return _inPieces(
+    halvedOver,
+    await _piecesOf(halvedOver, texelsPerUnit: 0.5),
+    (piece) {
+      Future<ui.Image?> rastered() => _composeAsync(
+        surface,
+        reuse: BitmapTileImageCache.instance,
+        shouldAbort: shouldAbort,
+        missing: MissingTilePictures.madeInTurn,
+        over: piece,
+        deferred: deferred,
+        halved: true,
+      );
+      return halving == null
+          ? rastered()
+          : _composedFromBytes(
+              _bytesShownOver(surface, piece, halving: halving),
+              shouldAbort: shouldAbort,
+              missing: MissingTilePictures.madeInTurn,
+              rastered: rastered,
+            );
+    },
   );
 }
 
@@ -1006,28 +1097,33 @@ Future<ui.Image?> composeHalvedSurfaceImage(
 /// [makePictures] and [snapshot] mean, and [_madeNow] what is made past the
 /// wall: from the bytes once the engine's halving has been read
 /// ([measuredHalvingIfRead]), rastered before.
-({ui.Image deferred, Future<ui.Image>? real})? composeHalvedSurfaceImageSync(
+({PositionedSurfaceImage deferred, Future<List<ui.Image>>? real})?
+composeHalvedSurfaceImageSync(
   BitmapSurface surface, {
   required bool makePictures,
   required bool snapshot,
   required ui.Rect over,
 }) {
   final halvedOver = _composedOver(surface, over);
-  return _madeNow(
-    surface,
-    makePictures: makePictures,
-    snapshot: snapshot,
-    bytes: () => switch (measuredHalvingIfRead) {
-      final halving? => _bytesShownOver(surface, halvedOver, halving: halving),
-      null => null,
-    },
-    rastered: () => _composeSync(
+  return _inPiecesNow(
+    halvedOver,
+    _piecesNow(halvedOver, texelsPerUnit: 0.5),
+    (piece) => _madeNow(
       surface,
-      reuse: BitmapTileImageCache.instance,
       makePictures: makePictures,
       snapshot: snapshot,
-      over: halvedOver,
-      halved: true,
+      bytes: () => switch (measuredHalvingIfRead) {
+        final halving? => _bytesShownOver(surface, piece, halving: halving),
+        null => null,
+      },
+      rastered: () => _composeSync(
+        surface,
+        reuse: BitmapTileImageCache.instance,
+        makePictures: makePictures,
+        snapshot: snapshot,
+        over: piece,
+        halved: true,
+      ),
     ),
   );
 }

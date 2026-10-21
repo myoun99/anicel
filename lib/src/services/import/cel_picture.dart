@@ -46,8 +46,15 @@ Future<int> pictureSideLimit() {
   if (named != null) {
     return Future<int>.value(named);
   }
-  return _measuredSide ??= _measureSide();
+  return _measuredSide ??= _measureSide().then((side) => _sideRead = side);
 }
+
+/// [pictureSideLimit]'s answer once it has been read — or the side a test
+/// names — and null before: for a compose made inside a build, which
+/// cannot wait for it (`piecesOver`).
+int? get pictureSideLimitIfMeasured => debugPictureSideLimit ?? _sideRead;
+
+int? _sideRead;
 
 /// The side a test stands this device's engine at, in place of
 /// [pictureSideLimit]'s measurement — or null.

@@ -67,8 +67,7 @@ void paintSheetPhotos(
     );
     drawPosedLayerImage(
       canvas,
-      image: image,
-      worldRect: own,
+      pieces: [(image: image, worldRect: own)],
       extent: own,
       placement: picturePlacement(pose, picture),
       opacity: 1,

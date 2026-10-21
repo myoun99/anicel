@@ -302,7 +302,12 @@ void drawSubtreeAsImage({
     return;
   }
   final recorder = ui.PictureRecorder();
-  final into = Canvas(recorder);
+  // Bounded by the pixels it rasters, so a draw into it can ask what it can
+  // land on (`drawPosedLayerImage`, a picture in pieces).
+  final into = Canvas(
+    recorder,
+    Rect.fromLTWH(0, 0, plan.pixelWidth.toDouble(), plan.pixelHeight.toDouble()),
+  );
   plan.applyTo(into);
   paintSubtree(into, plan.scale);
   _finishSubtreeRaster(

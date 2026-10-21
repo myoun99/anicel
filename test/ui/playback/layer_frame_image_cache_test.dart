@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/canvas/level_image.dart';
 import 'package:anicel/src/ui/canvas/raster_picture.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/one_piece.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);

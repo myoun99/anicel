@@ -1090,8 +1090,7 @@ class _LayerStackPaintPass {
   /// unposed.
   void _paintImageNode(Canvas canvas, _PaintImage node, double rasterScale) {
     final _PaintImage(
-      :image,
-      :worldRect,
+      :pieces,
       :extent,
       :laidBack,
       :placement,
@@ -1108,8 +1107,7 @@ class _LayerStackPaintPass {
     // same matrix.
     drawPosedLayerImage(
       canvas,
-      image: image,
-      worldRect: worldRect,
+      pieces: pieces,
       extent: extent,
       placement: null,
       opacity: opacity,
@@ -1432,6 +1430,25 @@ class _LayerStackPaintPass {
     return null;
   }
 
+  /// A canvas onto the buffer over [rect], in the buffer's own pixels:
+  /// canvas pixels at level 0, 2^level canvas pixels below 100% — one
+  /// scale, then the translate, so every draw (the carried base, the paper,
+  /// the level images) lands 1:1. Bounded by those pixels, so a draw into
+  /// it can ask what it can land on (`drawPosedLayerImage`, a picture in
+  /// pieces).
+  Canvas _bufferCanvas(ui.PictureRecorder recorder, Rect rect) =>
+      Canvas(
+          recorder,
+          Rect.fromLTWH(
+            0,
+            0,
+            (rect.width / _levelStep).roundToDouble(),
+            (rect.height / _levelStep).roundToDouble(),
+          ),
+        )
+        ..scale(1 / _levelStep)
+        ..translate(-rect.left, -rect.top);
+
   /// A miss: the buffer recomposed — patched over the carried base, scrolled
   /// from the previous buffer, or rastered whole — and stored when the
   /// cache can keep it.
@@ -1446,12 +1463,7 @@ class _LayerStackPaintPass {
     final scroll = miss.scroll;
     final canScroll = miss.canScroll;
     final recorder = ui.PictureRecorder();
-    final into = Canvas(recorder);
-    // The buffer's own pixels: canvas pixels at level 0, 2^level canvas
-    // pixels below 100% — one scale, then the translate, so every draw
-    // below (the carried base, the paper, the level images) lands 1:1.
-    into.scale(1 / _levelStep);
-    into.translate(-rect.left, -rect.top);
+    final into = _bufferCanvas(recorder, rect);
     // ⛔SET AT THE BRANCH THAT DECIDES IT. Two of these three draw a base
     // into this recorder; when that base is the cache's deferred HEAD the
     // new image retains it (`DisplayBufferCache._derivedDepth` says what
@@ -1554,7 +1566,9 @@ class _LayerStackPaintPass {
                 blendMode: row.blendMode,
                 effects: row.effects,
               ) &&
-              drawsAsTexelCopy(row.image, row.worldRect),
+              row.pieces.every(
+                (piece) => drawsAsTexelCopy(piece.image, piece.worldRect),
+              ),
         CompositeLeaf(payload: final _SurfaceRow row) => inkCropDrawsTheSame(
           placement: row.placement,
           blendMode: row.blendMode,

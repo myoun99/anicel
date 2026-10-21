@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/placement_reading.dart';
+import '../../helpers/one_piece.dart';
 
 /// 🚨★★★A CEL STORED AS ITS INK PUTS THE SAME BYTES ON SCREEN AS THE WHOLE
 /// IMAGE DID (유저 2026-09-23: 「1/4해상도같은 결과바뀌는건 절대로

@@ -148,7 +148,9 @@ class StaticCompositeBake {
       return;
     }
     final recorder = ui.PictureRecorder();
-    record(Canvas(recorder));
+    // Bounded by what the canvas it replays on can see, so a draw in it asks
+    // what it would ask there (`drawPosedLayerImage`, a picture in pieces).
+    record(Canvas(recorder, canvas.getLocalClipBounds()));
     _recordCount += 1;
     final picture = recorder.endRecording();
     _slots[id] = picture;
@@ -207,7 +209,12 @@ class StaticCompositeBake {
     var held = _rasters[id];
     if (held == null) {
       final recorder = ui.PictureRecorder();
-      final into = Canvas(recorder);
+      // Bounded by the pixels it rasters (`drawPosedLayerImage`, a picture
+      // in pieces).
+      final into = Canvas(
+        recorder,
+        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      );
       into.scale(rasterScale);
       into.translate(-rect.left, -rect.top);
       record(into);

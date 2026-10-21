@@ -6,6 +6,7 @@ import '../../core/collection_equality.dart';
 import '../../core/lru.dart';
 import '../../models/tile_coord.dart';
 import 'deferred_image_disposal.dart';
+import 'image_pieces.dart';
 import 'level_image.dart';
 
 /// The active layer's pictures at the display's levels (render round 4c,
@@ -239,7 +240,9 @@ class TilePyramid {
     if (held == null) {
       return;
     }
-    DeferredImageDisposer.instance.retire(held.seed.image);
+    for (final piece in held.seed.pieces) {
+      DeferredImageDisposer.instance.retire(piece.image);
+    }
     _seed = null;
   }
 
@@ -252,12 +255,13 @@ class TilePyramid {
   int debugTileCountOf(Object? scope) =>
       _byScope.peek(scope)?.tiles.length ?? 0;
 
-  /// The part of the seed that draws the level-[level] block at [coord] of
-  /// [ask]'s scope — the seed's texels ([src]) and the canvas rect they land
-  /// on ([dst]), 1:1 in a level buffer — when every coordinate under the
-  /// block still shows what the seed was made from. Null otherwise, and for
-  /// a block that shows nothing.
-  ({ui.Image image, ui.Rect src, ui.Rect dst})? seededBlock(
+  /// The parts of the seed that draw the level-[level] block at [coord] of
+  /// [ask]'s scope — each piece's texels ([src]) and the canvas rect they
+  /// land on ([dst]), 1:1 in a level buffer: one part, or one a piece where
+  /// the block lies across a cut ([piecesOver]) — when every coordinate
+  /// under the block still shows what the seed was made from. Null
+  /// otherwise, and for a block that shows nothing.
+  List<({ui.Image image, ui.Rect src, ui.Rect dst})>? seededBlock(
     LevelTileAsk ask, {
     required int level,
     required TileCoord coord,
@@ -292,17 +296,29 @@ class TilePyramid {
       return null;
     }
     final step = (1 << level).toDouble();
-    return (
-      image: seed.image,
-      src: ui.Rect.fromLTRB(
-        (dst.left - seed.worldRect.left) / step,
-        (dst.top - seed.worldRect.top) / step,
-        (dst.right - seed.worldRect.left) / step,
-        (dst.bottom - seed.worldRect.top) / step,
-      ),
-      dst: dst,
-    );
+    return [
+      for (final piece in seed.pieces)
+        if (piece.worldRect.overlaps(dst))
+          _partOf(piece, dst.intersect(piece.worldRect), step),
+    ];
   }
+
+  /// The texels of [piece] — a level image a texel for [step] canvas
+  /// pixels — that land on [dst], with [dst].
+  static ({ui.Image image, ui.Rect src, ui.Rect dst}) _partOf(
+    ImagePiece piece,
+    ui.Rect dst,
+    double step,
+  ) => (
+    image: piece.image,
+    src: ui.Rect.fromLTRB(
+      (dst.left - piece.worldRect.left) / step,
+      (dst.top - piece.worldRect.top) / step,
+      (dst.right - piece.worldRect.left) / step,
+      (dst.bottom - piece.worldRect.top) / step,
+    ),
+    dst: dst,
+  );
 
   /// [scope]'s pyramid, [scope] made the most recently used; scopes
   /// beyond [retainedScopeLimit] are dropped, least recently used first.
@@ -326,13 +342,13 @@ class TilePyramid {
       [for (final at in tilesOfBlock(level, coord)) ask.keyAt(at)];
 }
 
-/// A level image of a whole cel ([image], its own handle — a clone of the
-/// one the row was drawn with, the pixels shared), the level it is at, the
+/// A level image of a whole cel ([pieces], its own handles — clones of the
+/// ones the row was drawn with, the pixels shared), the level it is at, the
 /// canvas rect its texels cover there, and what every coordinate showed
 /// when it was composed ([madeFrom], `LayerFrameImage.madeFrom`) — what
 /// [TilePyramid.seed] takes.
 typedef LevelSeed = ({
-  ui.Image image,
+  List<ImagePiece> pieces,
   int level,
   ui.Rect worldRect,
   Map<TileCoord, Object> madeFrom,

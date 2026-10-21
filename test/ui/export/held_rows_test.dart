@@ -15,6 +15,7 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 import 'package:anicel/src/ui/export/held_rows.dart';
+import '../../helpers/one_piece.dart';
 
 /// The row pictures a video run's cut pictures are made of (F-289-Q21,
 /// 유저 2026-10-07: 「붙든다 — 재생 줄의 허용치 안에서」): a cel's row is
@@ -102,9 +103,10 @@ void main() {
     final image = await picture.toImage(2, 2);
     picture.dispose();
     composed.add(image);
+    const rect = ui.Rect.fromLTWH(0, 0, 2, 2);
     return PositionedSurfaceImage(
-      image: image,
-      worldRect: const ui.Rect.fromLTWH(0, 0, 2, 2),
+      pieces: [(image: image, worldRect: rect)],
+      worldRect: rect,
     );
   }
 

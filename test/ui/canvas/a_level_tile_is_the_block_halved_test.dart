@@ -377,7 +377,12 @@ void main() {
       scopes.take(TilePyramid.retainedScopeLimit).forEach(paint);
       paint(scopes.first);
       pyramid.seed(scopes[1], (
-        image: picture(white),
+        pieces: [
+          (
+            image: picture(white),
+            worldRect: const ui.Rect.fromLTWH(0, 0, 16, 16),
+          ),
+        ],
         level: 1,
         worldRect: const ui.Rect.fromLTWH(0, 0, 16, 16),
         madeFrom: const {},

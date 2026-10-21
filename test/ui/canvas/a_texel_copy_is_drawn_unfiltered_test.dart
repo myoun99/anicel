@@ -49,8 +49,7 @@ void main() {
     final canvas = _SpyCanvas();
     drawPosedLayerImage(
       canvas,
-      image: image,
-      worldRect: worldRect,
+      pieces: [(image: image, worldRect: worldRect)],
       extent: worldRect,
       placement: pose == null
           ? null

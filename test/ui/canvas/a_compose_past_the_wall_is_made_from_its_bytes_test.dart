@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/cel_text_fixture.dart' show textOf;
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/one_piece.dart';
 
 /// F-374-Q8 ⑦: a compose that reaches past the wall — where only a file's
 /// picture laid whole lies — is made from its tiles' bytes and uploaded,
@@ -463,7 +464,7 @@ void main() {
     // now: the door's own drawing stands in for it.
     tearDown(() => debugWholePictureUploader = null);
 
-    ({PositionedSurfaceImage deferred, Future<ui.Image>? real}) madeNow(
+    ({PositionedSurfaceImage deferred, Future<List<ui.Image>>? real}) madeNow(
       BitmapSurface surface,
       BitmapTileImageCache reuse,
     ) => composePositionedSurfaceImageSync(
@@ -484,7 +485,7 @@ void main() {
         composes,
         reason: 'premise: the hatch rasters',
       );
-      final kept = await rastered.real!;
+      final kept = (await rastered.real!).single;
       rastered.deferred.image.dispose();
       try {
         return await bytesOf(kept);
@@ -535,7 +536,7 @@ void main() {
         expect(now.deferred.worldRect, lies);
         final want = await rasteredNow(surface);
         expect(await bytesOf(now.deferred.image), want);
-        final kept = await now.real!;
+        final kept = (await now.real!).single;
         now.deferred.image.dispose();
         expect(
           await bytesOf(kept),
@@ -605,7 +606,7 @@ void main() {
 
           expect(debugComposesFromBytes, 1, reason: 'premise: $refusal');
           expect(await bytesOf(now.deferred.image), want, reason: refusal);
-          final kept = await now.real!;
+          final kept = (await now.real!).single;
           expect(await bytesOf(kept), want, reason: refusal);
           now.deferred.image.dispose();
           kept.dispose();
@@ -714,7 +715,7 @@ void main() {
               final level = (await composeHalvedSurfaceImage(
                 surface,
                 over: over,
-              ))!;
+              ))!.image;
 
               expect(debugComposesFromBytes, 1, reason: '$over');
               expect((level.width, level.height), size);
@@ -734,10 +735,11 @@ void main() {
         final rastered = (await composeHalvedSurfaceImage(
           surface,
           over: half,
-        ))!;
+        ))!.image;
         debugRastersPastTheWall = false;
 
-        final level = (await composeHalvedSurfaceImage(surface, over: half))!;
+        final level =
+            (await composeHalvedSurfaceImage(surface, over: half))!.image;
 
         expect(measuredHalvingIfRead, isNull, reason: '⛔전제: no table');
         expect(debugComposesFromBytes, 0);
@@ -774,7 +776,7 @@ void main() {
           makePictures: makePictures,
           snapshot: true,
           over: half,
-        );
+        )?.onePiece;
 
         final before = madeNow()!;
         expect(debugComposesFromBytes, 0, reason: 'no table yet: rastered');
@@ -806,13 +808,13 @@ void main() {
         expect(await measuredHalving(), isNotNull, reason: '⛔전제');
         final surface = laid(-16, 32);
         const over = ui.Rect.fromLTRB(-16, 0, 32, 16);
-        (await composeHalvedSurfaceImage(surface, over: over))!.dispose();
+        (await composeHalvedSurfaceImage(surface, over: over))!.image.dispose();
         composeHalvedSurfaceImageSync(
           surface,
           makePictures: true,
           snapshot: false,
           over: over,
-        )!.deferred.dispose();
+        )!.deferred.image.dispose();
         expect(debugComposesFromBytes, 0);
       });
     });

@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/canvas/tile_blocks.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/awaited_uploads.dart';
+import '../../helpers/one_piece.dart';
 
 /// The per-tile GPU compose must be byte-identical to the CPU assembly
 /// path ([bitmapSurfaceToImage]) — with and without cache reuse — and turn
@@ -155,7 +156,7 @@ void main() {
       )!;
       expect(positioned.deferred.worldRect, surfaceContentWorldRect(surface));
       expect(positioned.deferred.worldRect, later.worldRect);
-      expect(await bytesOf(await positioned.real!), want);
+      expect(await bytesOf((await positioned.real!).single), want);
       expect(await bytesOf(positioned.deferred.image), want);
 
       // And the FREE road refuses rather than makes.
@@ -195,7 +196,8 @@ void main() {
       // The first level — the step a level image begins with.
       final over = surfaceContentWorldRect(surface);
       waited.clear();
-      final kept = (await composeHalvedSurfaceImage(surface, over: over))!;
+      final kept =
+          (await composeHalvedSurfaceImage(surface, over: over))!.image;
       expect(waited, [(kept.width, kept.height)]);
       final want = await bytesOf(kept);
 
@@ -204,7 +206,7 @@ void main() {
         surface,
         over: over,
         deferred: true,
-      ))!;
+      ))!.image;
       expect(waited, isEmpty, reason: 'a step of a chain waits for nothing');
       expect((step.width, step.height), (kept.width, kept.height));
       expect(await bytesOf(step), want);
@@ -743,7 +745,10 @@ void main() {
           reason: 'fixture: the pasteboard\'s tiles grow the content',
         );
         tiles.deferred.image.dispose();
-        expect(await bytesOf(blocks.image), await bytesOf(await tiles.real!));
+        expect(
+          await bytesOf(blocks.image),
+          await bytesOf((await tiles.real!).single),
+        );
       });
     });
 
@@ -769,7 +774,7 @@ void main() {
         });
 
         final blocks = await bytesOf(
-          (await composeHalvedSurfaceImage(surface, over: over))!,
+          (await composeHalvedSurfaceImage(surface, over: over))!.image,
         );
         // Made now, every tile pictured on its own and kept — the road the
         // canvas shows a cel by.
@@ -779,8 +784,8 @@ void main() {
           snapshot: true,
           over: over,
         )!;
-        tiles.deferred.dispose();
-        expect(blocks, await bytesOf(await tiles.real!));
+        tiles.deferred.image.dispose();
+        expect(blocks, await bytesOf((await tiles.real!).single));
       });
     });
   });

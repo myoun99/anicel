@@ -320,10 +320,16 @@ Map<String, String> _pictureTypesBy(Map<String, String> sources) {
 }
 
 /// The types of [source] whose values wrap one of [pictures]: a class or
-/// mixin with a field of it, a record typedef with one.
+/// mixin with a field of it — or of the pieces of one (2026-10-21: a
+/// picture past the side is held in pieces, `List<ImagePiece>`, and the
+/// stored picture and the compose, each one image the day before, fell out
+/// of the chain with every holder above them) — a record typedef with one.
+/// ⛔Only pieces: a list of any picture is a holding, and a holder of
+/// holdings no picture of its own (widened so, the home page's sessions
+/// came up).
 Iterable<String> _wrappersIn(String source, String pictures) sync* {
   final field = RegExp(
-    '^  (?:late )?(?:final )?(?:$pictures)'
+    '^  (?:late )?(?:final )?(?:$pictures|List<ImagePiece>)'
     r'\??\s+\w+\s*[;=]',
     multiLine: true,
   );
@@ -467,4 +473,17 @@ const _imageHolders = <String, String>{
       'one compose\'s laid tiles, drawn halved at its finish: the tile '
       'cache\'s pictures (liveImageBytes), or the blocks the compose '
       'pictured itself and lets go when it ends',
+
+  // — 2026-10-21, a picture past the side held in pieces (card
+  // a-cel-past-the-device-side-composes-smaller): ONE picture, as many
+  // images as the side cuts it into, held and counted where its one image
+  // was.
+  'lib/src/ui/canvas/tiled_surface_compose.dart → pieces':
+      'one compose\'s picture, in pieces past the side (piecesOver): its '
+      'holder keeps and counts them as it did the one image',
+  'lib/src/ui/playback/layer_frame_image_cache.dart → pieces':
+      'one stored picture\'s pieces, the entry\'s own — of _entries '
+      '(estimatedBytes sums them)',
+  'lib/src/ui/canvas/canvas_layer_stack_view.dart → pieces':
+      'one row\'s picture carried into a paint: the clones _images holds',
 };

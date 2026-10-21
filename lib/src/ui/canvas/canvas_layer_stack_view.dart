@@ -27,6 +27,7 @@ import 'tiled_surface_compose.dart';
 import '../../services/composite_effect_paint.dart';
 import 'display_buffer_cache.dart';
 import 'display_resample.dart';
+import 'image_pieces.dart';
 import 'selection_float_overlay.dart';
 import 'subtree_image_composite.dart';
 import 'static_composite_bake.dart';
@@ -538,7 +539,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     widget.imageCache.retainPin(to, held.quality);
     _holdImage(to, (
       source: held.source,
-      clone: held.clone.clone(),
+      clone: held.clone.clones(),
       worldRect: held.worldRect,
       extent: held.extent,
       revision: revision,
@@ -660,7 +661,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       return;
     }
     TilePyramid.instance.seed(active.lineage, (
-      image: held.clone.clone(),
+      pieces: held.clone.clones(),
       level: level,
       worldRect: held.worldRect,
       madeFrom: held.madeFrom,
@@ -671,7 +672,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // A6: the pin travels with the clone — held pixels are declared
     // pixels, and the declaration ends exactly when the hold does.
     widget.imageCache.releasePin(key, held.quality);
-    held.clone.dispose();
+    held.clone.disposeAll();
     held.laidBack.dispose();
     _imagesRevision += 1;
   }
@@ -697,7 +698,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   /// Handles a settle replaced ([_settleHeldImage]), kept until the build
   /// that replaces the painter drawing with them ([_releaseSettled]).
-  final List<ui.Image> _superseded = <ui.Image>[];
+  final List<ImagePiece> _superseded = <ImagePiece>[];
 
   /// [image] takes the place of [held] for [key] WITHOUT moving
   /// [_imagesRevision] — the third way into [_images], and the only one that
@@ -729,10 +730,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     _HeldImage held,
     LayerFrameImage image,
   ) {
-    _superseded.add(held.clone);
+    _superseded.addAll(held.clone);
     _images[key] = (
-      source: image.image,
-      clone: image.image.clone(),
+      source: image.pieces,
+      clone: image.pieces.clones(),
       worldRect: held.worldRect,
       extent: held.extent,
       revision: held.revision,
@@ -752,9 +753,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     if (_superseded.isEmpty) {
       return;
     }
-    for (final clone in _superseded) {
-      clone.dispose();
-    }
+    _superseded.disposeAll();
     _superseded.clear();
     _bake.invalidate();
   }
@@ -768,7 +767,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     TilePyramid.instance.dropSeed(widget.activeSurfacePainter?.lineage);
     for (final entry in _images.entries) {
       widget.imageCache.releasePin(entry.key, entry.value.quality);
-      entry.value.clone.dispose();
+      entry.value.clone.disposeAll();
       entry.value.laidBack.dispose();
     }
     _images.clear();
@@ -822,7 +821,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     PlaybackQuality quality,
   ) {
     final held = _images[key];
-    if (held != null && identical(held.source, image.image)) {
+    if (held != null && identical(held.source, image.pieces)) {
       return false;
     }
     if (held != null && identical(held.content, image.content)) {
@@ -835,8 +834,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     if (held != null) _dropImage(key, held);
     widget.imageCache.retainPin(key, quality);
     _holdImage(key, (
-      source: image.image,
-      clone: image.image.clone(),
+      source: image.pieces,
+      clone: image.pieces.clones(),
       worldRect: image.worldRect,
       extent: image.extent,
       revision: revision,
@@ -1224,7 +1223,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           return null;
         }
         return _PaintImage(
-          image: held.clone,
+          pieces: held.clone,
           content: held.content,
           worldRect: held.worldRect,
           extent: held.extent,
@@ -1536,8 +1535,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 /// revision it was built from, and the quality — the level of the pyramid
 /// — it was asked at, which is what its pin is released at.
 typedef _HeldImage = ({
-  ui.Image source,
-  ui.Image clone,
+  List<ImagePiece> source,
+  List<ImagePiece> clone,
   Rect worldRect,
   // The rect the whole content image covers ([LayerFrameImage.extent]).
   Rect extent,
@@ -1597,7 +1596,7 @@ int _replayOpsOf(List<CompositeNode<_PaintRow>> list) {
 
 final class _PaintImage extends _PaintRow {
   const _PaintImage({
-    required this.image,
+    required this.pieces,
     required this.content,
     required this.worldRect,
     required this.extent,
@@ -1609,19 +1608,21 @@ final class _PaintImage extends _PaintRow {
     required this.effects,
   });
 
-  final ui.Image image;
+  /// The image and where its pixels belong — one piece, or several past the
+  /// side this engine holds (`piecesOver`).
+  final List<ImagePiece> pieces;
 
   /// The rect the whole content image covers — [worldRect] itself, or more
   /// when the cache stored the ink alone ([LayerFrameImage.extent]). What the
   /// row stands for when a folder asks how far its buffer reaches.
   final Rect extent;
 
-  /// Where the whole of [image] is kept once a draw lays it back — the held
+  /// Where the whole of [pieces] is kept once a draw lays it back — the held
   /// image's own. Out of [matches] and [signature]: it is [content]'s whole,
   /// so it changes exactly when [content] does.
   final LaidBackWhole laidBack;
 
-  /// What [image]'s pixels ARE ([LayerFrameImage.content]) — the one thing
+  /// What [pieces]' pixels ARE ([LayerFrameImage.content]) — the one thing
   /// [matches] and [signature] compare about the picture.
   ///
   /// ⛔Not `identical(image, …)`, which is what they compared until
