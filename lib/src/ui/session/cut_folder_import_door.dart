@@ -1,6 +1,6 @@
 // The door a delivery FOLDER comes in through — the field's structure,
-// not a file: symbol layers with named cels, `_BG`/`_BOOK` pictures,
-// archived-process attach folders, and the 겸용컷 follow-up.
+// not a file: symbol layers with named cels, their corrections as attach
+// rows, and `_BG`/`_BOOK` pictures.
 //
 // Its own object since round 8 (G1, 2026-09-06).
 
@@ -59,11 +59,11 @@ class CutFolderImportDoor {
   _holdCarriedBytes;
 
   /// Imports a CUT FOLDER (the field's delivery structure) parsed by
-  /// [parseCutFolder]: one fully-formed cut — symbol layers with named
-  /// cels one comma each, `_BG`/`_BOOK` picture layers, archived-process
-  /// attach folders when opted in — plus reference registrations, in one
-  /// undo. Multi-cut folders (rule H) follow up with linked-cut creation
-  /// per extra number (the field 겸용컷; separate undo steps).
+  /// [parseCutFolder]: ONE fully-formed cut — symbol layers with named
+  /// cels one comma each, their corrections as attach rows, `_BG`/`_BOOK`
+  /// picture layers — plus reference registrations, in one undo.
+  /// 🗣️F-429-Q3 (유저 10-21): 「겸용컷으로 읽는 로직 삭제. 항상 한 컷으로만
+  /// 들어오는느낌」 — a folder naming several cuts is one cut too.
   /// Returns the parse-and-plan warnings, or null when nothing imported.
   ///
   /// [onProgress] hears each scan baked — the import window's wait counts
@@ -191,15 +191,6 @@ class CutFolderImportDoor {
           }
         }
       }
-    }
-
-    // Rule H: the folder's extra cut numbers become 겸용컷 copies of the
-    // imported cut, sharing its cel banks.
-    for (final extraNumber in plan.extraCutNumbers) {
-      _project.cutCommandCoordinator.createLinkedCut(
-        sourceCutId: plan.cut.id,
-        name: extraNumber,
-      );
     }
 
     _changes.refreshAfterCutCommand();

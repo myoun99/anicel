@@ -1,10 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/cut_folder_parse.dart';
-import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import '../../helpers/reference_to.dart';
@@ -205,87 +210,142 @@ void main() {
     expect(still.assets.single.pageCount, 1);
   });
 
-  test('planCutFolderImport builds a legal stack: pictures at the bottom, '
-      'each symbol as [attach, organizer, base], fixtures last — and the '
-      'folder structure validates', () {
-    final parsed = parseCutFolder(
-      folderName: 'csm_13_074_gen',
-      entries: [
-        const CutFolderEntry('A1.png'),
-        const CutFolderEntry('A2.png'),
-        const CutFolderEntry('B1.png'),
-        const CutFolderEntry('_BG.png'),
-        const CutFolderEntry('LO', isDirectory: true),
-        const CutFolderEntry('LO/A1.png'),
-        const CutFolderEntry('LO/B1.png'),
-      ],
-      config: const CutFolderParseConfig(includeProcessSubfolders: true),
-    );
-    final plan = planCutFolderImport(
-      parsed: parsed,
-      resolveFile: (relative) => 'C:/folder/$relative',
-      canvasSize: const CanvasSize(width: 640, height: 360),
-      mint: mint(),
-    );
+  group('planCutFolderImport', () {
+    CutFolderImportPlan planFor(String folderName, List<String> files) =>
+        planCutFolderImport(
+          parsed: parseCutFolder(
+            folderName: folderName,
+            entries: [for (final file in files) CutFolderEntry(file)],
+          ),
+          resolveFile: (relative) => 'C:/folder/$relative',
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          mint: mint(),
+        );
 
-    expect(plan.cut.duration, 2, reason: 'longest layer = 2 cels');
-    expect(
-      folderStructureProblem(plan.cut.layers),
-      isNull,
-      reason: 'organizer folders sit directly above their member run',
-    );
+    test('stacks the picture at the bottom, each symbol\'s own layer, and '
+        'its correction RIGHT ABOVE it as its attach row (F-429-Q2)', () {
+      final plan = planFor('csm_13_074_gen', [
+        'A1.png',
+        'A2.png',
+        'A1s.png',
+        'B1.png',
+        '_BG.png',
+        'LO/A1.png',
+      ]);
 
-    final names = plan.cut.layers.map((l) => l.name).toList();
-    expect(names.first, 'BG', reason: 'the picture is the bottom row');
-    // Each symbol lays [attach, organizer, base].
-    final aAttach = names.indexOf('A LO');
-    expect(names[aAttach + 1], 'LO');
-    expect(names[aAttach + 2], 'A');
+      expect(plan.cut.duration, 2, reason: 'longest layer = 2 cels');
+      final layers = plan.cut.layers;
+      expect(layers.take(4).map((l) => l.name), ['BG', 'A', 'A', 'B']);
+      final base = layers[1];
+      final correction = layers[2];
+      expect(base.attachedToLayerId, isNull);
+      expect(correction.attachedToLayerId, base.id);
+      expect(correction.attachedPlacement, AttachedPlacement.above);
+      expect(correction.onTimesheet, isFalse, reason: 'born off the sheet');
+      expect(layers[3].attachedToLayerId, isNull);
+      expect(base.frames.map((f) => f.name), ['1', '2']);
+      expect(
+        plan.bakes.map((b) => b.sourceFile),
+        unorderedEquals([
+          for (final file in ['_BG', 'A1', 'A2', 'A1s', 'B1'])
+            'C:/folder/$file.png',
+        ]),
+        reason: 'the archived LO/A1 is listed, never baked (F-429-Q3)',
+      );
+    });
 
-    final base = plan.cut.layers.firstWhere((l) => l.name == 'A');
-    final attach = plan.cut.layers.firstWhere((l) => l.name == 'A LO');
-    expect(attach.attachedToLayerId, base.id);
-    expect(base.frames.map((f) => f.name), ['1', '2']);
-    expect(plan.bakes, hasLength(6), reason: '3 cels + 1 BG + 2 archived');
-  });
+    test('every layer comes in wearing its colour label — the stage, and '
+        'the correction its letters name; a picture is born an image', () {
+      final plan = planFor('csm_13_074_gen', ['A1.png', 'A1s.png', '_BG.png']);
+      final [picture, base, correction, ...] = plan.cut.layers;
 
-  test('an archived-process symbol with no top-level layer WARNS instead '
-      'of vanishing (§6-z21: nothing exits silently)', () {
-    final parsed = parseCutFolder(
-      folderName: 'csm_13_074_gen',
-      entries: [
-        const CutFolderEntry('A1.png'),
-        const CutFolderEntry('LO', isDirectory: true),
-        const CutFolderEntry('LO/C1.png'),
-      ],
-      config: const CutFolderParseConfig(includeProcessSubfolders: true),
-    );
-    final plan = planCutFolderImport(
-      parsed: parsed,
-      resolveFile: (relative) => relative,
-      canvasSize: const CanvasSize(width: 640, height: 360),
-      mint: mint(),
-    );
-    expect(
-      plan.warnings.any((w) => w.english.contains('LO/C')),
-      isTrue,
-      reason: 'the skipped archived cels are named',
-    );
-  });
+      expect(picture.kind, LayerKind.image);
+      expect(picture.mark, LayerMark.bornOfKind(LayerKind.image));
+      expect(base.mark.process, LayerProcess.key);
+      expect(base.mark.revise, isNull);
+      expect(correction.mark.process, LayerProcess.key);
+      expect(correction.mark.revise, LayerRevise.animationDirector);
+    });
 
-  test('a multi-cut folder reports the EXTRA cut numbers for the linked-cut '
-      'follow-up, and names the cut after the first', () {
-    final parsed = parseCutFolder(
-      folderName: 'csm_13_069_077_086_loeks',
-      entries: [const CutFolderEntry('A1.png')],
-    );
-    final plan = planCutFolderImport(
-      parsed: parsed,
-      resolveFile: (relative) => relative,
-      canvasSize: const CanvasSize(width: 640, height: 360),
-      mint: mint(),
-    );
-    expect(plan.cut.name, '069');
-    expect(plan.extraCutNumbers, ['077', '086']);
+    test('a correction of cels the base has is SYNCED: one mirror per base '
+        'cel, in the base\'s order, the corrected ones baked', () {
+      final plan = planFor('csm_13_074_lo', [
+        'A1.png',
+        'A2.png',
+        'A3.png',
+        'A2s.png',
+      ]);
+      final base = plan.cut.layers.firstWhere(
+        (l) => l.name == 'A' && l.attachedToLayerId == null,
+      );
+      final correction = plan.cut.layers.firstWhere(
+        (l) => l.attachedToLayerId == base.id,
+      );
+
+      expect(correction.attachedMode, AttachedMode.synced);
+      expect(correction.timeline, isEmpty, reason: 'it rides the base');
+      final mirrors = [
+        for (final cel in base.frames)
+          attachedMirrorCelId(correction.id, cel.id),
+      ];
+      expect(correction.frames.map((f) => f.id), mirrors);
+      expect(correction.baseFrameLinks, {
+        for (final (index, cel) in base.frames.indexed) cel.id: mirrors[index],
+      });
+      expect(
+        cutWithReconciledAttachedMirrors(plan.cut),
+        same(plan.cut),
+        reason: 'the always-mirror shape is born whole, as .clip\'s is',
+      );
+      final bake = plan.bakes.singleWhere(
+        (b) => b.sourceFile.endsWith('A2s.png'),
+      );
+      expect(bake.layerId, correction.id);
+      expect(bake.frameId, mirrors[1], reason: 'A2s is A2\'s mirror');
+    });
+
+    test('a correction that draws a cel the base lacks is FREE, laid one '
+        'comma each like every layer of the folder (07-29)', () {
+      final plan = planFor('csm_13_074_lo', ['B1.png', 'B1e.png', 'B2e.png']);
+      final base = plan.cut.layers.firstWhere(
+        (l) => l.name == 'B' && l.attachedToLayerId == null,
+      );
+      final correction = plan.cut.layers.firstWhere(
+        (l) => l.attachedToLayerId == base.id,
+      );
+
+      expect(correction.attachedMode, AttachedMode.free);
+      expect(correction.mark.revise, LayerRevise.direction);
+      expect(correction.onTimesheet, isFalse);
+      expect(correction.frames.map((f) => f.name), ['1', '2']);
+      expect(correction.timeline.keys, [0, 1]);
+      expect(
+        [for (final exposure in correction.timeline.values) exposure.frameId],
+        correction.frames.map((f) => f.id),
+      );
+      expect(
+        [
+          for (final bake in plan.bakes)
+            if (bake.layerId == correction.id) bake.frameId,
+        ],
+        correction.frames.map((f) => f.id),
+      );
+    });
+
+    test('a correction with no layer of its symbol to ride is a layer of '
+        'its own, still wearing its correction', () {
+      final plan = planFor('csm_13_074_lo', ['B1s.png', 'B2s.png']);
+      final b = plan.cut.layers.singleWhere((l) => l.name == 'B');
+
+      expect(b.attachedToLayerId, isNull);
+      expect(b.mark.revise, LayerRevise.animationDirector);
+      expect(b.frames.map((f) => f.name), ['1', '2']);
+    });
+
+    test('a multi-cut folder is ONE cut, named after its first number '
+        '(F-429-Q3)', () {
+      final plan = planFor('csm_13_069_077_086_loeks', ['A1.png']);
+      expect(plan.cut.name, '069');
+    });
   });
 }

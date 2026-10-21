@@ -64,7 +64,7 @@ void main() {
       // ↩️Eight rounds of real IO stood here, for 「a loose file is probed
       // (identity, size) before the window can say what it is offering」.
       // Every caller hands a FOLDER, which the window reads in its first
-      // frame (`_reparseFolder`, synchronous) and previews nothing of — the
+      // frame (`_readFolder`, synchronous) and previews nothing of — the
       // rounds waited for nothing (a-poll-that-counts-rounds-runs-out-under-
       // load, 2026-10-16).
     }
@@ -80,8 +80,8 @@ void main() {
           return '${tempDir.path}$sep$root';
         }))!;
 
-    testWidgets('Files, Fit and Revisions each offer one chip per value, '
-        'keyed by the value', (tester) async {
+    testWidgets('Files and Fit each offer one chip per value, keyed by the '
+        'value', (tester) async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
       await openOn(tester, s, await writeFolder(tester));
@@ -92,9 +92,6 @@ void main() {
         'import-fit-stretch',
         'import-fit-contain',
         'import-fit-none',
-        'import-revision-latestOnly',
-        'import-revision-all',
-        'import-revision-originalOnly',
       ]) {
         expect(
           find.byKey(ValueKey<String>(key)),
@@ -104,7 +101,6 @@ void main() {
       }
       expect(chipAt(tester, 'import-media-copy').label, 'Keep');
       expect(chipAt(tester, 'import-fit-contain').label, 'Fit, keep ratio');
-      expect(chipAt(tester, 'import-revision-originalOnly').label, 'Originals');
     });
 
     testWidgets('the selected chip is the one holding the answer, and '
@@ -118,14 +114,6 @@ void main() {
       expect(
         selectedIn(tester, 'import-fit', ['stretch', 'contain', 'none']),
         'contain',
-      );
-      expect(
-        selectedIn(tester, 'import-revision', [
-          'latestOnly',
-          'all',
-          'originalOnly',
-        ]),
-        'latestOnly',
       );
 
       await tester.tap(

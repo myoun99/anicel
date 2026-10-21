@@ -12,12 +12,24 @@
 /// are picture layers, `_TS*`/`*_ts_*` are timesheet scans, `_mov*` is
 /// the reference movie, `_old/` is history. Trailing underscores are
 /// revision marks (rule F: `A2` → `A2_` → `A2__`), insertion letters sit
-/// between numbers (rule C: `G3a` between `G3` and `G4`), and one folder
-/// may carry SEVERAL cuts (rule H: `069_077_086` — the field's 겸용컷).
+/// between numbers (rule C: `G3a` between `G3` and `G4`), and a process
+/// letter after the number is whose correction the drawing is (rule N:
+/// `A1s` · `A1_s` — 작감).
+///
+/// 🗣️F-429 (유저 2026-10-21) took three readings OUT: 「일단 겸용컷으로 읽는
+/// 로직 삭제. 항상 한 컷으로만 들어오는느낌. 나머지 두개도 일단 삭제. 규칙
+/// 확실하게 다시 정하고싶음」. ↩️A folder naming several cuts (rule H:
+/// `069_077_086`) made 겸용컷 of the rest; revisions could come in all or
+/// as originals; process subfolders (`LO/`, rule G/M) could come in as
+/// attach folders. Now the folder is ONE cut named by its first number,
+/// the latest revision is the cel, and a subfolder is always the archive.
 library;
 
 import '../../core/collection_equality.dart';
 import '../../core/path_names.dart';
+import '../layer_kind.dart';
+import '../layer_mark.dart';
+import '../layer_process.dart';
 import 'import_warning.dart';
 
 /// How the folder NAME is read (rule I: studios differ).
@@ -46,44 +58,13 @@ enum CutFolderNameRule {
   }
 }
 
-/// Which revision of a cel survives (rule F/K).
-enum CelRevisionPolicy {
-  /// The highest revision rank per cel (default — the workflow's answer:
-  /// the newest correction is the cel).
-  latestOnly('latestOnly'),
-
-  /// Every revision becomes its own cel (audit imports).
-  all('all'),
-
-  /// The unmarked original only.
-  originalOnly('originalOnly');
-
-  const CelRevisionPolicy(this.jsonValue);
-
-  final String jsonValue;
-
-  String toJson() => jsonValue;
-
-  static CelRevisionPolicy fromJson(Object? json) {
-    for (final value in values) {
-      if (value.jsonValue == json) {
-        return value;
-      }
-    }
-    return latestOnly;
-  }
-}
-
 /// The parser's knobs — presettable per studio ("CSM3용", "UPN용").
 class CutFolderParseConfig {
   const CutFolderParseConfig({
     this.nameRule = CutFolderNameRule.titleEpisodeCut,
     this.parentFolderProcessHint = false,
-    this.multiCutFolders = true,
     this.maxLayerSymbolLength = 4,
     this.insertionLetters = true,
-    this.revisionPolicy = CelRevisionPolicy.latestOnly,
-    this.includeProcessSubfolders = false,
     this.excludeNames = const ['_old', '_3D'],
   });
 
@@ -92,9 +73,6 @@ class CutFolderParseConfig {
   /// KHT style: the parent folder (`作業/LO/264`) names the process.
   final bool parentFolderProcessHint;
 
-  /// Read `069_077_086` as THREE cuts sharing one cel set (rule H).
-  final bool multiCutFolders;
-
   /// Longest leading uppercase run still read as one layer symbol
   /// (`A` / `ABH` — rule D).
   final int maxLayerSymbolLength;
@@ -102,35 +80,22 @@ class CutFolderParseConfig {
   /// Read a lowercase letter after the number as an insertion (`G3a`).
   final bool insertionLetters;
 
-  final CelRevisionPolicy revisionPolicy;
-
-  /// Parse process subfolders (`LO/`, `GEN/` — rule G/M: the archive of
-  /// earlier processes) instead of excluding them.
-  final bool includeProcessSubfolders;
-
   /// Directory/file names excluded outright (case-insensitive).
   final List<String> excludeNames;
 
   CutFolderParseConfig copyWith({
     CutFolderNameRule? nameRule,
     bool? parentFolderProcessHint,
-    bool? multiCutFolders,
     int? maxLayerSymbolLength,
     bool? insertionLetters,
-    CelRevisionPolicy? revisionPolicy,
-    bool? includeProcessSubfolders,
     List<String>? excludeNames,
   }) {
     return CutFolderParseConfig(
       nameRule: nameRule ?? this.nameRule,
       parentFolderProcessHint:
           parentFolderProcessHint ?? this.parentFolderProcessHint,
-      multiCutFolders: multiCutFolders ?? this.multiCutFolders,
       maxLayerSymbolLength: maxLayerSymbolLength ?? this.maxLayerSymbolLength,
       insertionLetters: insertionLetters ?? this.insertionLetters,
-      revisionPolicy: revisionPolicy ?? this.revisionPolicy,
-      includeProcessSubfolders:
-          includeProcessSubfolders ?? this.includeProcessSubfolders,
       excludeNames: excludeNames ?? this.excludeNames,
     );
   }
@@ -138,13 +103,9 @@ class CutFolderParseConfig {
   Map<String, dynamic> toJson() => {
     'nameRule': nameRule.toJson(),
     if (parentFolderProcessHint) 'parentFolderProcessHint': true,
-    if (!multiCutFolders) 'multiCutFolders': false,
     if (maxLayerSymbolLength != 4)
       'maxLayerSymbolLength': maxLayerSymbolLength,
     if (!insertionLetters) 'insertionLetters': false,
-    if (revisionPolicy != CelRevisionPolicy.latestOnly)
-      'revisionPolicy': revisionPolicy.toJson(),
-    if (includeProcessSubfolders) 'includeProcessSubfolders': true,
     'excludeNames': excludeNames,
   };
 
@@ -153,12 +114,8 @@ class CutFolderParseConfig {
       nameRule: CutFolderNameRule.fromJson(json['nameRule']),
       parentFolderProcessHint:
           (json['parentFolderProcessHint'] as bool?) ?? false,
-      multiCutFolders: (json['multiCutFolders'] as bool?) ?? true,
       maxLayerSymbolLength: (json['maxLayerSymbolLength'] as int?) ?? 4,
       insertionLetters: (json['insertionLetters'] as bool?) ?? true,
-      revisionPolicy: CelRevisionPolicy.fromJson(json['revisionPolicy']),
-      includeProcessSubfolders:
-          (json['includeProcessSubfolders'] as bool?) ?? false,
       excludeNames: [
         for (final name in (json['excludeNames'] as List<dynamic>?) ?? const [])
           name as String,
@@ -172,22 +129,16 @@ class CutFolderParseConfig {
       other is CutFolderParseConfig &&
           other.nameRule == nameRule &&
           other.parentFolderProcessHint == parentFolderProcessHint &&
-          other.multiCutFolders == multiCutFolders &&
           other.maxLayerSymbolLength == maxLayerSymbolLength &&
           other.insertionLetters == insertionLetters &&
-          other.revisionPolicy == revisionPolicy &&
-          other.includeProcessSubfolders == includeProcessSubfolders &&
           listEquals(other.excludeNames, excludeNames);
 
   @override
   int get hashCode => Object.hash(
     nameRule,
     parentFolderProcessHint,
-    multiCutFolders,
     maxLayerSymbolLength,
     insertionLetters,
-    revisionPolicy,
-    includeProcessSubfolders,
     Object.hashAll(excludeNames),
   );
 }
@@ -217,27 +168,42 @@ class ParsedCel {
   /// sorts AFTER the bare number ('' < 'a' < 'b').
   final String insertion;
 
-  /// How corrected this file is (rule F: trailing `_`s and letter
-  /// suffixes each add a rank step). 0 = the unmarked original.
+  /// How revised this file is (rule F: trailing `_`s and letter suffixes
+  /// that name no correction each add a rank step). 0 = the unmarked
+  /// original.
   final int revisionRank;
 
-  /// The surviving file (per [CelRevisionPolicy]), relative path.
+  /// The surviving file — the latest revision — relative path.
   final String file;
 
-  /// The revisions the policy dropped (shown in the preview so nothing
-  /// disappears silently).
+  /// The earlier revisions the latest one stands for (shown in the preview
+  /// so nothing disappears silently).
   final List<String> olderRevisions;
 
   /// The cel's display label (`3a`).
   String get label => '$number$insertion';
 }
 
-/// One drawing layer: symbol + naturally-sorted cels.
+/// One drawing layer: a symbol's naturally-sorted cels — its own
+/// ([correction] null), or one correction's of them (`A1s` · `A2s`: 작감).
 class ParsedCelLayer {
-  const ParsedCelLayer({required this.symbol, required this.cells});
+  const ParsedCelLayer({
+    required this.symbol,
+    required this.cells,
+    this.correction,
+  });
 
   final String symbol;
   final List<ParsedCel> cells;
+
+  /// Whose correction these cels are (rule N), or null for the symbol's
+  /// own cels.
+  ///
+  /// 🗣️F-429-Q2 (유저 2026-10-21): a correction comes in as the ATTACH of
+  /// the symbol's own layer (the 07-29 decision: 「어태치 레이어로 수정
+  /// 그리는 걸 전제」), named by the symbol alone — 「A1s인경우 A만
+  /// 레이어이름으로 남김. 구분은 색라벨로 되기때문」.
+  final LayerRevise? correction;
 }
 
 /// A `_`-prefixed picture (rule E): `_BG`, `_BOOK2`, `_BG補足` — each
@@ -284,7 +250,6 @@ class ParsedExclusion {
 /// nothing to stop a seventh spelling of 「unrecognized」.
 enum ExclusionReason {
   processSubfolder('process subfolder (archive)'),
-  subfolderNonCel('subfolder non-cel'),
   unrecognized('unrecognized'),
   excludedName('excluded name'),
   memoText('memo text'),
@@ -297,30 +262,17 @@ enum ExclusionReason {
   final String label;
 }
 
-/// An archived process subfolder's cel set (rule G/M: `LO/`, `GEN/`),
-/// parsed with the same grammar when
-/// [CutFolderParseConfig.includeProcessSubfolders] is on. The import
-/// builds these as ATTACH rows grouped in a per-process organizer folder
-/// (the R2 attach-folder structure).
-class ParsedProcessGroup {
-  const ParsedProcessGroup({required this.process, required this.layers});
-
-  final String process;
-  final List<ParsedCelLayer> layers;
-}
-
 /// The whole folder, interpreted.
 class CutFolderParseResult {
   const CutFolderParseResult({
     required this.folderName,
     this.title,
     this.episode,
-    required this.cutNumbers,
+    this.cutNumber,
     required this.processTokens,
     required this.layers,
     required this.pictures,
     required this.references,
-    required this.processGroups,
     required this.excluded,
     required this.warnings,
   });
@@ -329,20 +281,47 @@ class CutFolderParseResult {
   final String? title;
   final String? episode;
 
-  /// One or MORE cut numbers (rule H: `069_077_086` = three cuts sharing
-  /// the cel set — the field's 겸용컷).
-  final List<String> cutNumbers;
+  /// The cut the folder names — its FIRST cut number (`069_077_086` →
+  /// `069`); null when the name holds none.
+  final String? cutNumber;
 
   /// The process suffix decomposed by the longest-first token table
   /// (rule N: `loekss` → lo, e, k, ss — a SET, order not meaningful).
   final List<String> processTokens;
 
+  /// The symbols' layers, each symbol's own first and its corrections after
+  /// it in [LayerRevise] order — the order they stack from the bottom.
   final List<ParsedCelLayer> layers;
   final List<ParsedPicture> pictures;
   final List<ParsedReference> references;
-  final List<ParsedProcessGroup> processGroups;
   final List<ParsedExclusion> excluded;
   final List<ImportWarning> warnings;
+
+  /// The stage the folder delivers (rule A/N: `loeks` → LO, `gen` → 원화),
+  /// or null when its name says none.
+  ///
+  /// ⚠️원화 wins over LO: a folder's top level is its NEWEST work (rule M —
+  /// 「최상위 = 지금 이 폴더의 주인공」), and 원화 comes after LO.
+  LayerProcess? get stage {
+    if (processTokens.contains('gen') || processTokens.contains('g')) {
+      return LayerProcess.key;
+    }
+    if (processTokens.contains('lo')) {
+      return LayerProcess.layout;
+    }
+    return null;
+  }
+
+  /// The colour label [layer] comes in wearing — the folder's stage, and
+  /// the correction its letters name (rule N) — before anyone changes it.
+  ///
+  /// 🗣️F-429 (유저 2026-10-21): 「수정공정 이런거 자동지정 규칙에 따라
+  /// 작감공정으로서 인식은 시키되, 그런것도 유저가 … 변경」. A folder that
+  /// names no stage gives what a new animation layer is born with.
+  LayerMark markOf(ParsedCelLayer layer) => LayerMark(
+    process: stage ?? LayerMark.bornOfKind(LayerKind.animation).process,
+    revise: layer.correction,
+  );
 }
 
 /// Rule N's process vocabulary, LONGEST FIRST (`ss` is 총작감, never
@@ -389,16 +368,47 @@ final RegExp _numericToken = RegExp(r'^\d+$');
 /// lowercase suffix after an underscore (`B1_ss`).
 final RegExp _celFilePattern = RegExp(r'^([A-Z]+)(\d+)([a-z]*)((?:_+[a-z]*)*)$');
 
-int _revisionRankOf(String marks) {
-  if (marks.isEmpty) {
-    return 0;
+/// Rule N's corrections — the letters a file name says whose correction a
+/// drawing is, read as the colour label's revise.
+const Map<String, LayerRevise> _corrections = {
+  'e': LayerRevise.direction,
+  's': LayerRevise.animationDirector,
+  'ss': LayerRevise.chiefAnimationDirector,
+  'k': LayerRevise.director,
+};
+
+/// A correction written after an underscore (`A1_s`, `B1_ss` — the CSM
+/// spelling), and the revision underscores after it.
+final RegExp _underscoredCorrection = RegExp(r'^_([a-z]+)(_*)$');
+
+/// What follows a cel's number: its insertion letters, whose correction it
+/// is, and the revision marks left — `A1s` · `A1_s` are 작감 of cel 1,
+/// `G3a` is the insertion 3a, `A2__` is cel 2's second revision.
+///
+/// ⚠️ONE correction letter run, exactly — `A1es` names none and stays the
+/// insertion it always read as (rule N's `A1esk` was never seen, 07-29).
+({String insertion, LayerRevise? correction, String marks}) _readSuffix(
+  String letters,
+  String marks,
+) {
+  final lettered = _corrections[letters];
+  if (lettered != null) {
+    return (insertion: '', correction: lettered, marks: marks);
   }
-  var rank = 0;
-  for (var i = 0; i < marks.length; i += 1) {
-    rank += 1; // Every mark character deepens the revision.
+  final underscored = _underscoredCorrection.firstMatch(marks);
+  final correction = _corrections[underscored?.group(1)];
+  if (underscored != null && correction != null) {
+    return (
+      insertion: letters,
+      correction: correction,
+      marks: underscored.group(2)!,
+    );
   }
-  return rank;
+  return (insertion: letters, correction: null, marks: marks);
 }
+
+/// Every mark character deepens the revision.
+int _revisionRankOf(String marks) => marks.length;
 
 String _stemOf(String fileName) {
   final dot = fileName.lastIndexOf('.');
@@ -416,7 +426,7 @@ const Set<String> _imageExtensions = {'png', 'jpg', 'jpeg', 'webp', 'bmp'};
 /// rank, the LATEST is the one kept, and every older one is listed beside
 /// it by file. [rankOf] and [fileOf] are the two things a revision of
 /// either kind can say about itself.
-({List<T> sorted, T latest, List<String> olderFiles}) _foldRevisions<T>(
+({T latest, List<String> olderFiles}) _foldRevisions<T>(
   List<T> revisions, {
   required int Function(T revision) rankOf,
   required String Function(T revision) fileOf,
@@ -425,7 +435,6 @@ const Set<String> _imageExtensions = {'png', 'jpg', 'jpeg', 'webp', 'bmp'};
     ..sort((a, b) => rankOf(a).compareTo(rankOf(b)));
   final latest = sorted.last;
   return (
-    sorted: sorted,
     latest: latest,
     olderFiles: [
       for (final older in sorted)
@@ -458,150 +467,66 @@ List<ParsedPicture> _foldPictures(
   return pictures;
 }
 
-/// Rules G and M: a process subfolder is an ARCHIVE unless the import was
-/// told to bring it in, and what comes in arrives as its own group of
-/// layers under the process the folder is named for.
-List<ParsedProcessGroup> _processGroups({
-  required Map<String, List<CutFolderEntry>> subfolderFiles,
-  required CutFolderParseConfig config,
-  required List<ParsedExclusion> excluded,
-  required List<ImportWarning> warnings,
-}) {
-  final processGroups = <ParsedProcessGroup>[];
-  for (final entry in subfolderFiles.entries) {
-    if (!config.includeProcessSubfolders) {
-      for (final file in entry.value) {
-        excluded.add(
-          ParsedExclusion(
-            path: '${entry.key}/${file.relativePath}',
-            reason: ExclusionReason.processSubfolder,
-          ),
-        );
-      }
-      continue;
-    }
-    final subCells = <String, List<ParsedCel>>{};
-    for (final file in entry.value) {
-      final fileName = fileNameOfPath(file.relativePath);
-      final stem = _stemOf(fileName);
-      final extension = _extensionOf(fileName);
-      if (!_imageExtensions.contains(extension) || stem.startsWith('_')) {
-        excluded.add(
-          ParsedExclusion(
-            path: '${entry.key}/${file.relativePath}',
-            reason: ExclusionReason.subfolderNonCel,
-          ),
-        );
-        continue;
-      }
-      final match = _celFilePattern.firstMatch(stem);
-      if (match == null ||
-          match.group(1)!.length > config.maxLayerSymbolLength) {
-        excluded.add(
-          ParsedExclusion(
-            path: '${entry.key}/${file.relativePath}',
-            reason: ExclusionReason.unrecognized,
-          ),
-        );
-        continue;
-      }
-      final cel = ParsedCel(
-        number: int.parse(match.group(2)!),
-        insertion: config.insertionLetters ? match.group(3)! : '',
-        revisionRank: _revisionRankOf(match.group(4)!),
-        file: '${entry.key}/${file.relativePath}',
-      );
-      (subCells['${match.group(1)!}|${cel.number}|${cel.insertion}'] ??= [])
-          .add(cel);
-    }
-    if (subCells.isNotEmpty) {
-      processGroups.add(
-        ParsedProcessGroup(
-          process: entry.key,
-          layers: _buildLayers(
-            subCells,
-            revisionPolicy: config.revisionPolicy,
-            warnings: warnings,
-          ),
-        ),
-      );
-    }
-  }
-  processGroups.sort((a, b) => a.process.compareTo(b.process));
-  return processGroups;
-}
+/// One cel's place in the folder: its layer — the symbol, and whose
+/// correction — and the cel within it.
+typedef _CelSlot = ({
+  String symbol,
+  LayerRevise? correction,
+  int number,
+  String insertion,
+});
 
-/// Rules C, D and F: the cel files of one grammar folded into layers.
+/// Rules C, D, F and N: the cel files folded into layers.
 ///
-/// Every cell's revisions sort by rank, the policy decides whether the
-/// older ones survive as their own cels or fold into the latest's
-/// [ParsedCel.olderRevisions], and the layers come out sorted by symbol
-/// with each layer's cels in natural order (number, then insertion
-/// letter) — the sort rule 「G3 · G3a · G3b · G4」 needs.
-List<ParsedCelLayer> _buildLayers(
-  Map<String, List<ParsedCel>> byCell, {
-  required CelRevisionPolicy revisionPolicy,
-  required List<ImportWarning> warnings,
-}) {
-  final bySymbol = <String, List<ParsedCel>>{};
-  for (final entry in byCell.entries) {
-    final symbol = entry.key.split('|').first;
+/// Every cel's revisions fold to the LATEST, the older ones listed in its
+/// [ParsedCel.olderRevisions]; each layer's cels stand in natural order
+/// (number, then insertion letter — the sort 「G3 · G3a · G3b · G4」
+/// needs); the layers stand by symbol, each symbol's own before its
+/// corrections, the corrections in [LayerRevise] order.
+List<ParsedCelLayer> _buildLayers(Map<_CelSlot, List<ParsedCel>> bySlot) {
+  final byLayer = <(String, LayerRevise?), List<ParsedCel>>{};
+  for (final MapEntry(key: slot, value: revisions) in bySlot.entries) {
     final folded = _foldRevisions(
-      entry.value,
+      revisions,
       rankOf: (cel) => cel.revisionRank,
       fileOf: (cel) => cel.file,
     );
-    switch (revisionPolicy) {
-      case CelRevisionPolicy.latestOnly:
-        final latest = folded.latest;
-        (bySymbol[symbol] ??= []).add(
-          ParsedCel(
-            number: latest.number,
-            insertion: latest.insertion,
-            revisionRank: latest.revisionRank,
-            file: latest.file,
-            olderRevisions: folded.olderFiles,
-          ),
-        );
-      case CelRevisionPolicy.all:
-        (bySymbol[symbol] ??= []).addAll(folded.sorted);
-      case CelRevisionPolicy.originalOnly:
-        final original = folded.sorted.first;
-        if (original.revisionRank == 0) {
-          (bySymbol[symbol] ??= []).add(original);
-        } else {
-          // Rule F: a cel may exist only as a revision (`A7_` with no
-          // `A7`) — originalOnly keeps the earliest so the cel does
-          // not vanish, with a warning.
-          (bySymbol[symbol] ??= []).add(original);
-          warnings.add(
-            ImportWarning(
-              'folderNoOriginal',
-              '{file}: no unmarked original — kept the earliest revision.',
-              {'file': original.file},
-            ),
-          );
-        }
-    }
+    final latest = folded.latest;
+    (byLayer[(slot.symbol, slot.correction)] ??= []).add(
+      ParsedCel(
+        number: latest.number,
+        insertion: latest.insertion,
+        revisionRank: latest.revisionRank,
+        file: latest.file,
+        olderRevisions: folded.olderFiles,
+      ),
+    );
   }
-  final layers = [
-    for (final entry in bySymbol.entries)
+  int correctionOrder(LayerRevise? correction) =>
+      correction == null ? -1 : correction.index;
+  return [
+    for (final MapEntry(key: (symbol, correction), value: cels)
+        in byLayer.entries)
       ParsedCelLayer(
-        symbol: entry.key,
-        cells: [...entry.value]..sort((a, b) {
+        symbol: symbol,
+        correction: correction,
+        cells: [...cels]..sort((a, b) {
           final byNumber = a.number.compareTo(b.number);
           if (byNumber != 0) {
             return byNumber;
           }
-          final byInsertion = a.insertion.compareTo(b.insertion);
-          if (byInsertion != 0) {
-            return byInsertion;
-          }
-          return a.revisionRank.compareTo(b.revisionRank);
+          return a.insertion.compareTo(b.insertion);
         }),
       ),
-  ]..sort((a, b) => a.symbol.compareTo(b.symbol));
-  return layers;
+  ]..sort((a, b) {
+    final bySymbol = a.symbol.compareTo(b.symbol);
+    if (bySymbol != 0) {
+      return bySymbol;
+    }
+    return correctionOrder(
+      a.correction,
+    ).compareTo(correctionOrder(b.correction));
+  });
 }
 
 /// WHERE EACH FILE IN THE FOLDER LANDS — rule E's table as an object.
@@ -616,11 +541,10 @@ class _EntryBins {
   final CutFolderParseConfig config;
   final List<ParsedExclusion> excluded;
 
-  /// (symbol, cell label) → revisions seen, top-level cel grammar.
-  final celFiles = <String, List<ParsedCel>>{};
+  /// Each cel's place → its revisions seen, top-level cel grammar.
+  final celFiles = <_CelSlot, List<ParsedCel>>{};
   final pictureFiles = <String, List<({int rank, String file})>>{};
   final references = <ParsedReference>[];
-  final subfolderFiles = <String, List<CutFolderEntry>>{};
 
   late final Set<String> excludeNames = {
     for (final name in config.excludeNames) name.toLowerCase(),
@@ -639,9 +563,13 @@ class _EntryBins {
       return; // Directories classify through their files.
     }
     if (segments.length > 1) {
-      // A process subfolder's file (rule G) — collected per subfolder.
-      (subfolderFiles[topSegment] ??= []).add(
-        CutFolderEntry(segments.sublist(1).join('/')),
+      // Rules G/M: a subfolder (`LO/`, `GEN/`) is the archive of the
+      // earlier processes — listed, never brought in (F-429).
+      excluded.add(
+        ParsedExclusion(
+          path: segments.join('/'),
+          reason: ExclusionReason.processSubfolder,
+        ),
       );
       return;
     }
@@ -738,8 +666,11 @@ class _EntryBins {
           match.group(1)!.length <= config.maxLayerSymbolLength) {
         final symbol = match.group(1)!;
         final number = int.parse(match.group(2)!);
-        final insertion = config.insertionLetters ? match.group(3)! : '';
-        if (!config.insertionLetters && match.group(3)!.isNotEmpty) {
+        final (:insertion, :correction, :marks) = _readSuffix(
+          match.group(3)!,
+          match.group(4)!,
+        );
+        if (!config.insertionLetters && insertion.isNotEmpty) {
           excluded.add(
             ParsedExclusion(
               path: entry.relativePath,
@@ -748,14 +679,19 @@ class _EntryBins {
           );
           return;
         }
-        final rank = _revisionRankOf(match.group(4)!);
         final cel = ParsedCel(
           number: number,
           insertion: insertion,
-          revisionRank: rank,
+          revisionRank: _revisionRankOf(marks),
           file: entry.relativePath,
         );
-        (celFiles['$symbol|$number|$insertion'] ??= []).add(cel);
+        final slot = (
+          symbol: symbol,
+          correction: correction,
+          number: number,
+          insertion: insertion,
+        );
+        (celFiles[slot] ??= []).add(cel);
         return;
       }
     }
@@ -766,12 +702,11 @@ class _EntryBins {
   }
 }
 
-/// Parses [folderName] + [entries] under [config]. Pure — the preview
 /// What the folder name says, before any file is looked at.
 typedef CutFolderNameParts = ({
   String? title,
   String? episode,
-  List<String> cutNumbers,
+  String? cutNumber,
   List<String> processTokens,
 });
 
@@ -782,10 +717,13 @@ typedef CutFolderNameParts = ({
 /// `264_lo`: the measured no-title shapes). And a titled folder whose only
 /// numeric landed as the episode named just the cut (`kht_264`), so that
 /// number moves back.
+///
+/// The FIRST cut number names the cut; the numbers after it (the field's
+/// 겸용컷, rule H) are not read — F-429.
 CutFolderNameParts _walkNameTokens(List<String> tokens) {
   String? title;
   String? episode;
-  final cutNumbers = <String>[];
+  String? cutNumber;
   final trailingProcess = <String>[];
   var seenNumeric = false;
   var seenTitle = false;
@@ -794,7 +732,7 @@ CutFolderNameParts _walkNameTokens(List<String> tokens) {
       if (!seenNumeric && seenTitle) {
         episode = token;
       } else {
-        cutNumbers.add(token);
+        cutNumber ??= token;
       }
       seenNumeric = true;
     } else if (!seenNumeric) {
@@ -804,56 +742,38 @@ CutFolderNameParts _walkNameTokens(List<String> tokens) {
       trailingProcess.add(token);
     }
   }
-  final loneNumeric = episode;
-  if (cutNumbers.isEmpty && loneNumeric != null) {
-    cutNumbers.add(loneNumeric);
+  if (cutNumber == null && episode != null) {
+    cutNumber = episode;
     episode = null;
   }
   return (
     title: title,
     episode: episode,
-    cutNumbers: cutNumbers,
+    cutNumber: cutNumber,
     processTokens: _decomposeProcess(trailingProcess),
   );
 }
 
-/// The folder name under the configured rule, warning into [warnings] for
-/// what it had to drop (a second cut with multi-cut folders off) or could
-/// not find (no cut number at all).
+/// The folder name under the configured rule, warning into [warnings] when
+/// it names no cut at all.
 CutFolderNameParts _folderNameParts({
   required String folderName,
   required CutFolderParseConfig config,
   required String? parentFolderName,
   required List<ImportWarning> warnings,
 }) {
-  var parts = switch (config.nameRule) {
+  final parts = switch (config.nameRule) {
     CutFolderNameRule.titleEpisodeCut => _walkNameTokens(folderName.split('_')),
     CutFolderNameRule.cutNumberOnly => (
       title: null,
       episode: null,
-      cutNumbers: <String>[folderName],
+      cutNumber: folderName,
       processTokens: config.parentFolderProcessHint && parentFolderName != null
           ? _decomposeProcess([parentFolderName])
           : <String>[],
     ),
   };
-  if (!config.multiCutFolders && parts.cutNumbers.length > 1) {
-    warnings.add(
-      ImportWarning(
-        'folderMultiCutOff',
-        'Folder names {n} cuts but multi-cut folders are off — only {first} '
-        'imports.',
-        {'n': '${parts.cutNumbers.length}', 'first': parts.cutNumbers.first},
-      ),
-    );
-    parts = (
-      title: parts.title,
-      episode: parts.episode,
-      cutNumbers: [parts.cutNumbers.first],
-      processTokens: parts.processTokens,
-    );
-  }
-  if (parts.cutNumbers.isEmpty) {
+  if (parts.cutNumber == null) {
     warnings.add(
       const ImportWarning(
         'folderNoCutNumber',
@@ -864,7 +784,8 @@ CutFolderNameParts _folderNameParts({
   return parts;
 }
 
-/// re-runs it on every knob change.
+/// Parses [folderName] + [entries] under [config]. Pure — the window's
+/// preview and the import read a folder through it alike.
 CutFolderParseResult parseCutFolder({
   required String folderName,
   required List<CutFolderEntry> entries,
@@ -889,31 +810,18 @@ CutFolderParseResult parseCutFolder({
   }
 
   // --- Revision folding + layer grouping -----------------------------------
-  final layers = _buildLayers(
-    bins.celFiles,
-    revisionPolicy: config.revisionPolicy,
-    warnings: warnings,
-  );
+  final layers = _buildLayers(bins.celFiles);
   final pictures = _foldPictures(bins.pictureFiles);
-
-  // --- Process subfolders ---------------------------------------------------
-  final processGroups = _processGroups(
-    subfolderFiles: bins.subfolderFiles,
-    config: config,
-    excluded: excluded,
-    warnings: warnings,
-  );
 
   return CutFolderParseResult(
     folderName: folderName,
     title: name.title,
     episode: name.episode,
-    cutNumbers: name.cutNumbers,
+    cutNumber: name.cutNumber,
     processTokens: name.processTokens,
     layers: layers,
     pictures: pictures,
     references: bins.references,
-    processGroups: processGroups,
     excluded: excluded,
     warnings: warnings,
   );

@@ -51,7 +51,7 @@ void main() {
     );
 
     expect(parsed.folderName, '069');
-    expect(parsed.cutNumbers, ['069']);
+    expect(parsed.cutNumber, '069');
     expect(
       parsed.processTokens,
       ['lo'],

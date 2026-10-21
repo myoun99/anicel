@@ -1339,7 +1339,6 @@ enum AppStrings {
   String get imFiles => _s('imFiles');
   String get imInto => _s('imInto');
   String get imFit => _s('imFit');
-  String get imRevisions => _s('imRevisions');
 
   /// The file table's columns — 「size」 here is a file's BYTES, which is a
   /// different question from the export's pixel [exSize]; a file's pixels
@@ -1347,8 +1346,6 @@ enum AppStrings {
   String get imModified => _s('imModified');
   String get imSize => _s('imSize');
   String get imResolution => _s('imResolution');
-  String get imArchivedProcesses => _s('imArchivedProcesses');
-  String get imMultiCutFolders => _s('imMultiCutFolders');
 
   /// The interpretation table's row names — what the window recognised in
   /// what was picked. ⚠️Cut · Layer and the cel count are `exCut`,
@@ -1359,7 +1356,6 @@ enum AppStrings {
   String get imReference => _s('imReference');
   String get imExcluded => _s('imExcluded');
   String get imIgnored => _s('imIgnored');
-  String get imMultiCutMark => _s('imMultiCutMark');
   String get imPickToSee => _s('imPickToSee');
 
   /// The placement strip and the window's title when it places one file, and
@@ -1463,9 +1459,6 @@ enum AppStrings {
   String get imKeepExplain => _s('imKeepExplain');
   String get imReferenceExplain => _s('imReferenceExplain');
   String get imCutFolderBakes => _s('imCutFolderBakes');
-  String get imRevLatest => _s('imRevLatest');
-  String get imRevAll => _s('imRevAll');
-  String get imRevOriginals => _s('imRevOriginals');
 
   /// The media pool's states and its rename prompt.
   String get mpFileMissing => _s('mpFileMissing');
@@ -2627,18 +2620,14 @@ enum AppStrings {
     'imFiles': 'Files',
     'imInto': 'Into',
     'imFit': 'Fit',
-    'imRevisions': 'Revisions',
     'imModified': 'Modified',
     'imSize': 'Size',
     'imResolution': 'Resolution',
-    'imArchivedProcesses': 'Archived processes (LO/, GEN/…)',
-    'imMultiCutFolders': 'Multi-cut folders (兼用)',
     'imProcess': 'Process',
     'imPicture': 'Picture',
     'imReference': 'Reference',
     'imExcluded': 'Excluded',
     'imIgnored': 'Ignored',
-    'imMultiCutMark': '(multi-cut)',
     'imPickToSee': 'Pick files or a cut folder to see the interpretation.',
     'imPlaceTitleTemplate': 'Place — {name}',
     'imModeKeep': 'Keep',
@@ -2691,9 +2680,6 @@ enum AppStrings {
         'The files stay where they are and the project points at them.',
     'imCutFolderBakes':
         'Cut folders always bake their cels; scans and movies stay linked.',
-    'imRevLatest': 'Latest',
-    'imRevAll': 'All',
-    'imRevOriginals': 'Originals',
     'mpFileMissing': 'File missing — relink it',
     'mpInUseOnTimeline': 'In use on the timeline',
     'mpNameEmpty': 'Media name cannot be empty.',
@@ -4007,9 +3993,6 @@ enum AppStrings {
     'importWarning.lockNotImported': '{name}: ロックは読み込みませんでした。',
     'importWarning.psdBlend': '{name}: 描画モード「{mode}」に相当するものがありません — 通常にしました。',
     'importWarning.folderNothing': 'このフォルダーに取り込めるセルや画像はありませんでした。',
-    'importWarning.folderNoBase': '{process}/{symbol}: 対応する最上位レイヤーがありません — セル{n}枚を飛ばしました。',
-    'importWarning.folderNoOriginal': '{file}: 印のない原本がありません — いちばん古い修正を残しました。',
-    'importWarning.folderMultiCutOff': 'フォルダー名はカット{n}本を指していますが、複数カットのフォルダーはオフです — {first} だけ取り込みます。',
     'importWarning.folderNoCutNumber': 'フォルダー名にカット番号が見つかりません。',
     'importWarning.tvpNoFile': '{name}: フレーム{frame}のインスタンスがファイル名を持ちません — そのセルは空のままです。',
     'importWarning.tvpMuted': '{file}: トラックはミュートでした — 音はそのまま繋いでいます。',
@@ -4075,7 +4058,6 @@ enum AppStrings {
     'fileType.wav': 'WAV 音声',
     'fileType.anibrush': 'Anicel ブラシ',
     'exclusionReason.processSubfolder': '工程サブフォルダー（アーカイブ）',
-    'exclusionReason.subfolderNonCel': 'サブフォルダーのセル以外',
     'exclusionReason.unrecognized': '認識できない名前',
     'exclusionReason.excludedName': '除外する名前',
     'exclusionReason.memoText': 'メモのテキスト',
@@ -4135,18 +4117,14 @@ enum AppStrings {
     'imFiles': 'ファイル',
     'imInto': '配置先',
     'imFit': 'フィット',
-    'imRevisions': 'リビジョン',
     'imModified': '更新日時',
     'imSize': 'サイズ',
     'imResolution': '解像度',
-    'imArchivedProcesses': '格納済み工程（LO/・GEN/…）',
-    'imMultiCutFolders': '兼用カットのフォルダ',
     'imProcess': '工程',
     'imPicture': '画像',
     'imReference': '参考',
     'imExcluded': '除外',
     'imIgnored': '無視',
-    'imMultiCutMark': '（兼用）',
     'imPickToSee': 'ファイルかカットフォルダを選ぶと解釈が出ます。',
     'imPlaceTitleTemplate': '配置 — {name}',
     'imModeKeep': '埋め込み',
@@ -4196,9 +4174,6 @@ enum AppStrings {
     'imReferenceExplain': 'ファイルはその場所に残り、プロジェクトはそれを指します。',
     'imCutFolderBakes':
         'カットフォルダーのセルは常にラスタライズされます。スキャンと動画はリンクのままです。',
-    'imRevLatest': '最新',
-    'imRevAll': 'すべて',
-    'imRevOriginals': '元の版',
     'mpFileMissing': 'ファイルが見つかりません — リンクし直してください',
     'mpInUseOnTimeline': 'タイムラインで使用中',
     'mpNameEmpty': 'メディア名を入力してください。',
@@ -5618,9 +5593,6 @@ enum AppStrings {
     'importWarning.lockNotImported': '{name}: 잠금은 가져오지 않았습니다.',
     'importWarning.psdBlend': '{name}: 블렌드 모드 "{mode}" 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
     'importWarning.folderNothing': '이 폴더에 가져올 수 있는 셀이나 그림이 없습니다.',
-    'importWarning.folderNoBase': '{process}/{symbol}: 맞는 최상위 레이어가 없습니다 — 셀 {n}장을 건너뛰었습니다.',
-    'importWarning.folderNoOriginal': '{file}: 표시 없는 원본이 없습니다 — 가장 이른 수정본을 남겼습니다.',
-    'importWarning.folderMultiCutOff': '폴더 이름은 컷 {n}개를 가리키지만 멀티컷 폴더가 꺼져 있습니다 — {first} 만 가져옵니다.',
     'importWarning.folderNoCutNumber': '폴더 이름에서 컷 번호를 찾지 못했습니다.',
     'importWarning.tvpNoFile': '{name}: {frame}프레임의 인스턴스가 파일 이름을 갖고 있지 않습니다 — 그 셀은 빈 채로 둡니다.',
     'importWarning.tvpMuted': '{file}: 트랙이 뮤트 상태였습니다 — 소리는 그대로 연결합니다.',
@@ -5685,7 +5657,6 @@ enum AppStrings {
     'fileType.wav': 'WAV 오디오',
     'fileType.anibrush': 'Anicel 브러시',
     'exclusionReason.processSubfolder': '공정 하위 폴더(보관)',
-    'exclusionReason.subfolderNonCel': '하위 폴더의 셀 아님',
     'exclusionReason.unrecognized': '알 수 없는 이름',
     'exclusionReason.excludedName': '제외 이름',
     'exclusionReason.memoText': '메모 텍스트',
@@ -5745,18 +5716,14 @@ enum AppStrings {
     'imFiles': '파일',
     'imInto': '넣을 곳',
     'imFit': '맞춤',
-    'imRevisions': '리비전',
     'imModified': '수정일',
     'imSize': '크기',
     'imResolution': '해상도',
-    'imArchivedProcesses': '보관된 공정 (LO/, GEN/…)',
-    'imMultiCutFolders': '겸용컷 폴더',
     'imProcess': '공정',
     'imPicture': '그림',
     'imReference': '참고',
     'imExcluded': '제외',
     'imIgnored': '무시',
-    'imMultiCutMark': '(겸용)',
     'imPickToSee': '파일이나 컷 폴더를 고르면 해석이 나옵니다.',
     'imPlaceTitleTemplate': '배치 — {name}',
     'imModeKeep': '품기',
@@ -5802,9 +5769,6 @@ enum AppStrings {
     'imKeepExplain': '프로젝트 파일이 압축해서 품습니다. 원본은 그대로 둡니다.',
     'imReferenceExplain': '파일은 그 자리에 두고 프로젝트가 가리킵니다.',
     'imCutFolderBakes': '컷 폴더의 셀은 항상 굽습니다. 스캔과 동영상은 참조로 남습니다.',
-    'imRevLatest': '최신',
-    'imRevAll': '전부',
-    'imRevOriginals': '원본',
     'mpFileMissing': '파일이 없습니다 — 다시 연결하세요',
     'mpInUseOnTimeline': '타임라인에서 쓰는 중',
     'mpNameEmpty': '미디어 이름을 비울 수 없습니다.',
@@ -7298,15 +7262,6 @@ enum AppStrings {
         'sur normal.',
     'importWarning.folderNothing':
         'Ce dossier ne contient ni cellulo ni image importable.',
-    'importWarning.folderNoBase':
-        '{process}/{symbol} : aucun calque racine correspondant — {n} '
-        'cellulo(s) ignoré(s).',
-    'importWarning.folderNoOriginal':
-        '{file} : pas d\'original sans marque — la révision la plus ancienne '
-        'est conservée.',
-    'importWarning.folderMultiCutOff':
-        'Le nom du dossier désigne {n} plans, mais les dossiers multi-plans '
-        'sont désactivés — seul {first} est importé.',
     'importWarning.folderNoCutNumber':
         'Aucun numéro de plan dans le nom du dossier.',
     'importWarning.tvpNoFile':
@@ -7422,7 +7377,6 @@ enum AppStrings {
     'fileType.wav': 'Audio WAV',
     'fileType.anibrush': 'Brosse Anicel',
     'exclusionReason.processSubfolder': 'sous-dossier de process (archive)',
-    'exclusionReason.subfolderNonCel': 'sous-dossier, non cellulo',
     'exclusionReason.unrecognized': 'non reconnu',
     'exclusionReason.excludedName': 'nom exclu',
     'exclusionReason.memoText': 'texte de mémo',
@@ -7482,18 +7436,14 @@ enum AppStrings {
     'imFiles': 'Fichiers',
     'imInto': 'Vers',
     'imFit': 'Ajuster',
-    'imRevisions': 'Révisions',
     'imModified': 'Modifié',
     'imSize': 'Taille',
     'imResolution': 'Résolution',
-    'imArchivedProcesses': 'Étapes archivées (LO/, GEN/…)',
-    'imMultiCutFolders': 'Dossiers multi-plans (兼用)',
     'imProcess': 'Étape',
     'imPicture': 'Image',
     'imReference': 'Référence',
     'imExcluded': 'Exclu',
     'imIgnored': 'Ignoré',
-    'imMultiCutMark': '(multi-plan)',
     'imPickToSee':
         'Choisissez des fichiers ou un dossier de plan pour voir '
         'l\'interprétation.',
@@ -7548,9 +7498,6 @@ enum AppStrings {
         'Les fichiers restent où ils sont et le projet pointe vers eux.',
     'imCutFolderBakes':
         'Les dossiers de plan pixellisent toujours leurs images ; scans et vidéos restent liés.',
-    'imRevLatest': 'Dernière',
-    'imRevAll': 'Toutes',
-    'imRevOriginals': 'Originaux',
     'mpFileMissing': 'Fichier introuvable — reliez-le',
     'mpInUseOnTimeline': 'Utilisé dans la timeline',
     'mpNameEmpty': 'Le nom du média ne peut pas être vide.',
@@ -8920,9 +8867,6 @@ enum AppStrings {
     'importWarning.lockNotImported': '{name}：未导入锁定。',
     'importWarning.psdBlend': '{name}：混合模式“{mode}”没有对应项——已设为正常。',
     'importWarning.folderNothing': '该文件夹中没有可导入的赛璐珞或图片。',
-    'importWarning.folderNoBase': '{process}/{symbol}：没有匹配的顶层图层——已跳过 {n} 张赛璐珞。',
-    'importWarning.folderNoOriginal': '{file}：没有未标记的原稿——保留了最早的修改稿。',
-    'importWarning.folderMultiCutOff': '文件夹名指向 {n} 个镜头，但多镜头文件夹已关闭——只导入 {first}。',
     'importWarning.folderNoCutNumber': '文件夹名中找不到镜头编号。',
     'importWarning.tvpNoFile': '{name}：第 {frame} 帧的实例没有文件名——该赛璐珞保持为空。',
     'importWarning.tvpMuted': '{file}：该轨道处于静音——声音仍然链接。',
@@ -8978,7 +8922,6 @@ enum AppStrings {
     'fileType.wav': 'WAV 音频',
     'fileType.anibrush': 'Anicel 画笔',
     'exclusionReason.processSubfolder': '工序子文件夹（存档）',
-    'exclusionReason.subfolderNonCel': '子文件夹中的非赛璐珞',
     'exclusionReason.unrecognized': '无法识别',
     'exclusionReason.excludedName': '被排除的名称',
     'exclusionReason.memoText': '备注文本',
@@ -9038,18 +8981,14 @@ enum AppStrings {
     'imFiles': '文件',
     'imInto': '放入',
     'imFit': '适配',
-    'imRevisions': '修订',
     'imModified': '修改时间',
     'imSize': '大小',
     'imResolution': '分辨率',
-    'imArchivedProcesses': '已归档工序（LO/、GEN/…）',
-    'imMultiCutFolders': '兼用镜头文件夹',
     'imProcess': '工序',
     'imPicture': '图片',
     'imReference': '参考',
     'imExcluded': '已排除',
     'imIgnored': '已忽略',
-    'imMultiCutMark': '（兼用）',
     'imPickToSee': '选择文件或镜头文件夹即可查看解析。',
     'imPlaceTitleTemplate': '放置 — {name}',
     'imModeKeep': '内嵌',
@@ -9094,9 +9033,6 @@ enum AppStrings {
     'imKeepExplain': '项目文件以压缩方式保存这些文件；原文件保持不变。',
     'imReferenceExplain': '文件保留在原处，项目指向它们。',
     'imCutFolderBakes': '镜头文件夹中的图像总是栅格化；扫描和视频保持链接。',
-    'imRevLatest': '最新',
-    'imRevAll': '全部',
-    'imRevOriginals': '原件',
     'mpFileMissing': '文件缺失 — 请重新链接',
     'mpInUseOnTimeline': '在时间线中使用',
     'mpNameEmpty': '媒体名称不能为空。',

@@ -3,8 +3,10 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/import/cut_folder_parse.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
@@ -20,7 +22,7 @@ import '../helpers/temp_dir.dart';
 /// The R3b import verbs end to end: a real PNG on disk becomes a layer /
 /// cut whose cels live in the brush-frame store like drawn ones, with
 /// reference registration, rasterize, undo and the folder import's
-/// 겸용 follow-up. All real IO/codec work runs inside tester.runAsync
+/// corrections. All real IO/codec work runs inside tester.runAsync
 /// (the fake-async zone never completes file futures).
 /// The image/PSD/PDF doors themselves — named so `tool/mutation_run.dart`
 /// has a suite to run for them.
@@ -217,10 +219,11 @@ void main() {
   });
 
   testWidgets('importCutFolder: symbol layers with NAMED cels one comma '
-      'each, _BG picture at the bottom, and a multi-cut folder creates '
-      '겸용 linked cuts per extra number', (tester) async {
+      'each, _BG picture at the bottom, and a multi-cut folder is ONE cut '
+      '(F-429-Q3)', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
 
     final warnings = await tester.runAsync(() async {
       const root = 'csm_13_069_077_loeks';
@@ -238,7 +241,12 @@ void main() {
     expect(warnings, isNotNull);
 
     final track = s.repository.requireProject().tracks.first;
-    final imported = track.cuts.firstWhere((cut) => cut.name == '069');
+    expect(
+      track.cuts.length,
+      cutsBefore + 1,
+      reason: 'the 겸용 number 077 is not read — no linked cut follows',
+    );
+    final imported = track.cuts.singleWhere((cut) => cut.name == '069');
     expect(imported.duration, 3, reason: 'longest layer = 3 cels');
 
     final bg = imported.layers.first;
@@ -253,23 +261,21 @@ void main() {
       reason: 'cel numbers become frame names',
     );
     expect(a.timeline.length, 3, reason: 'one comma each');
-    // The linked-cut follow-up moved the active cut; content checks read
-    // the ACTIVE cut, so come back to the imported one first.
-    s.selectCut(imported.id);
-    expect(s.layerStack.celHasContentForLayer(a, 0), isTrue);
+    expect(
+      s.layerStack.celHoldsAPicture(imported, a.id, a.frames.first.id),
+      isTrue,
+    );
 
     final b = imported.layers.firstWhere((l) => l.name == 'B');
     expect(b.frames, hasLength(1));
-
-    // Rule H: the second number became a LINKED cut sharing the cels.
-    final linked = track.cuts.firstWhere((cut) => cut.name == '077');
-    expect(linked.id, isNot(imported.id));
-    final group = s.repository.requireProject().linkRegistry.groupOf(
-      cutId: imported.id,
-      layerId: a.id,
+    expect(
+      s.repository.requireProject().linkRegistry.groupOf(
+        cutId: imported.id,
+        layerId: a.id,
+      ),
+      isNull,
+      reason: 'nothing shares its cels — there is no 겸용 cut',
     );
-    expect(group, isNotNull, reason: 'the extra cut links the cel banks');
-    expect(group!.members, hasLength(2));
     await tester.pumpAndSettle();
   });
 
@@ -466,9 +472,10 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('importCutFolder with archived-process subfolders opted in '
-      'builds the R2 attach-folder structure: FREE attach rows below the '
-      'base inside a per-process organizer', (tester) async {
+  testWidgets('importCutFolder lands a correction as its base\'s SYNCED '
+      'attach row — the pixels on the mirror of the cel it corrects, the '
+      'other mirrors empty — and leaves the archived subfolder out',
+      (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
 
@@ -476,10 +483,11 @@ void main() {
       const root = 'csm_13_074_gen';
       final sep = Platform.pathSeparator;
       await writePng('$root${sep}A1.png');
+      await writePng('$root${sep}A2.png');
+      await writePng('$root${sep}A2s.png', seed: 0xFF00FF00);
       await writePng('$root${sep}LO${sep}A1.png', seed: 0xFF0000FF);
       await cutFolderDoorOf(s).importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
-        config: const CutFolderParseConfig(includeProcessSubfolders: true),
         copyIntoProject: false,
       );
     });
@@ -490,17 +498,26 @@ void main() {
         .first
         .cuts
         .firstWhere((cut) => cut.name == '074');
+    expect(
+      cut.layers.where((l) => l.name == 'A'),
+      hasLength(2),
+      reason: 'the archived LO/A1 brought no row of its own',
+    );
     final base = cut.layers.firstWhere(
       (l) => l.name == 'A' && l.attachedToLayerId == null,
     );
     final attach = cut.layers.firstWhere(
       (l) => l.attachedToLayerId == base.id,
     );
-    expect(attach.name, 'A LO');
-    final organizer = cut.layers.firstWhere((l) => l.id == attach.folderId);
-    expect(organizer.kind, LayerKind.folder);
-    expect(organizer.name, 'LO');
-    expect(s.layerStack.celHasContentForLayer(attach, 0), isTrue);
+    expect(attach.attachedMode, AttachedMode.synced);
+    expect(attach.mark.revise, LayerRevise.animationDirector);
+
+    final [a1, a2] = base.frames;
+    bool drawn(FrameId cel) =>
+        s.layerStack.celHoldsAPicture(cut, attach.id, cel);
+    expect(drawn(attach.baseFrameLinks[a2.id]!), isTrue, reason: 'A2s');
+    expect(drawn(attach.baseFrameLinks[a1.id]!), isFalse);
+    expect(s.layerStack.celHoldsAPicture(cut, base.id, a1.id), isTrue);
     await tester.pumpAndSettle();
   });
 }

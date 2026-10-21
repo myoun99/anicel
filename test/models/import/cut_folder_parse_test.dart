@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/import/cut_folder_parse.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 
 /// The parser against the USER'S REAL delivery folders (measured
 /// 2026-07-29 — CSM3 · UPN · KHT) plus the drift cases (rule K): this is
@@ -9,7 +12,12 @@ void main() {
     for (final path in paths) CutFolderEntry(path),
   ];
 
-  test('upn_02_063_lo_ss_k: layers A/B by symbol, revision variant folds, '
+  /// Each layer as its symbol and whose correction it is, in stack order.
+  List<(String, LayerRevise?)> layersOf(CutFolderParseResult result) => [
+    for (final layer in result.layers) (layer.symbol, layer.correction),
+  ];
+
+  test('upn_02_063_lo_ss_k: layers A/B by symbol, B1_ss is 총작감 of B1, '
       '_BG picture, _TS scan reference, _old excluded', () {
     final result = parseCutFolder(
       folderName: 'upn_02_063_lo_ss_k',
@@ -26,17 +34,22 @@ void main() {
 
     expect(result.title, 'upn');
     expect(result.episode, '02');
-    expect(result.cutNumbers, ['063']);
+    expect(result.cutNumber, '063');
     expect(result.processTokens, ['lo', 'ss', 'k']);
 
-    expect(result.layers.map((l) => l.symbol), ['A', 'B']);
+    expect(layersOf(result), [
+      ('A', null),
+      ('B', null),
+      ('B', LayerRevise.chiefAnimationDirector),
+    ]);
     expect(result.layers[0].cells, hasLength(16));
     expect(result.layers[1].cells, hasLength(11));
-    // `B1_ss` is a REVISION of B1 (rule F variant): latest-only keeps it
-    // and lists the original as an older revision.
-    final b1 = result.layers[1].cells.first;
-    expect(b1.file, 'B1_ss.png');
-    expect(b1.olderRevisions, ['B1.png']);
+    // `B1_ss` is not a revision of B1 any more but a drawing of its own —
+    // B1 keeps its file, and the correction's layer holds B1_ss.
+    expect(result.layers[1].cells.first.file, 'B1.png');
+    expect(result.layers[1].cells.first.olderRevisions, isEmpty);
+    expect(result.layers[2].cells.single.file, 'B1_ss.png');
+    expect(result.layers[2].cells.single.label, '1');
 
     expect(result.pictures.single.name, 'BG');
     expect(
@@ -72,7 +85,7 @@ void main() {
       ]),
     );
 
-    expect(result.cutNumbers, ['068']);
+    expect(result.cutNumber, '068');
     expect(result.processTokens, ['gen']);
     expect(result.layers.map((l) => l.symbol), ['ABH', 'C', 'E', 'F', 'G']);
 
@@ -94,14 +107,16 @@ void main() {
     );
   });
 
-  test('rule H: csm_13_069_077_086_loeks names THREE cuts sharing one cel '
-      'set (the field 겸용컷); process decomposes longest-first', () {
+  test('F-429-Q3: csm_13_069_077_086_loeks is ONE cut, named by its first '
+      'number — the rest are not read; process decomposes longest-first',
+      () {
     final result = parseCutFolder(
       folderName: 'csm_13_069_077_086_loeks',
       entries: files(['A1.png', 'A15b.png', 'B1.png']),
     );
 
-    expect(result.cutNumbers, ['069', '077', '086']);
+    expect(result.cutNumber, '069');
+    expect(result.warnings, isEmpty, reason: 'nothing was dropped to warn of');
     expect(result.processTokens, ['lo', 'e', 'k', 's']);
     expect(
       parseCutFolder(
@@ -113,37 +128,167 @@ void main() {
     );
   });
 
-  test('rule F: revision underscores fold to the LATEST by default; a '
-      'revision-only cel (A7_ with no A7) survives every policy', () {
-    final entries = files([
-      'A1.png',
-      'A2.png', 'A2_.jpg', 'A2__.jpg',
-      'A7_.png',
-    ]);
-
-    final latest = parseCutFolder(
+  test('rule F: revision underscores fold to the LATEST, always; a '
+      'revision-only cel (A7_ with no A7) is still a cel', () {
+    final result = parseCutFolder(
       folderName: 'csm_13_074_gen',
-      entries: entries,
+      entries: files([
+        'A1.png',
+        'A2.png', 'A2_.jpg', 'A2__.jpg',
+        'A7_.png',
+      ]),
     );
-    final a = latest.layers.single;
+    final a = result.layers.single;
     expect(a.cells.map((c) => c.label), ['1', '2', '7']);
     final a2 = a.cells[1];
     expect(a2.file, 'A2__.jpg', reason: 'extension may change per revision');
     expect(a2.olderRevisions, ['A2.png', 'A2_.jpg']);
+    expect(a.cells[2].file, 'A7_.png');
+    expect(result.warnings, isEmpty);
+  });
 
-    final originals = parseCutFolder(
-      folderName: 'csm_13_074_gen',
-      entries: entries,
-      config: const CutFolderParseConfig(
-        revisionPolicy: CelRevisionPolicy.originalOnly,
-      ),
-    );
-    expect(
-      originals.layers.single.cells.map((c) => c.file),
-      contains('A7_.png'),
-      reason: 'no unmarked original — the earliest revision is kept',
-    );
-    expect(originals.warnings, isNotEmpty);
+  group('rule N: the letters after the number say whose correction', () {
+    test('A1s and A1_s are both 작감 of A1 — one layer of the symbol, named '
+        'by the symbol alone (F-429-Q2)', () {
+      final result = parseCutFolder(
+        folderName: 'csm_13_074_lo',
+        entries: files(['A1.png', 'A2.png', 'A1s.png', 'A2_s.png']),
+      );
+
+      expect(layersOf(result), [
+        ('A', null),
+        ('A', LayerRevise.animationDirector),
+      ]);
+      final corrections = result.layers[1];
+      expect(corrections.cells.map((c) => c.label), ['1', '2']);
+      expect(corrections.cells.map((c) => c.file), ['A1s.png', 'A2_s.png']);
+      expect(
+        result.layers[0].cells.map((c) => c.file),
+        ['A1.png', 'A2.png'],
+        reason: 'a correction is never a revision of the cel it corrects',
+      );
+    });
+
+    test('each correction letter names its own layer, standing over the '
+        'symbol\'s own in the colour label\'s order', () {
+      final result = parseCutFolder(
+        folderName: 'csm_13_074_lo',
+        entries: files([
+          'A1.png',
+          'A1k.png',
+          'A1_ss.png',
+          'A1s.png',
+          'A1e.png',
+        ]),
+      );
+
+      expect(layersOf(result), [
+        ('A', null),
+        ('A', LayerRevise.direction),
+        ('A', LayerRevise.animationDirector),
+        ('A', LayerRevise.chiefAnimationDirector),
+        ('A', LayerRevise.director),
+      ]);
+    });
+
+    test('a correction\'s own revisions fold within it (A1s → A1s_; '
+        'A2_s → A2_s_)', () {
+      final result = parseCutFolder(
+        folderName: 'csm_13_074_lo',
+        entries: files([
+          'A1.png',
+          'A2.png',
+          'A1s.png',
+          'A1s_.png',
+          'A2_s.png',
+          'A2_s_.png',
+        ]),
+      );
+
+      final corrections = result.layers.singleWhere(
+        (layer) => layer.correction == LayerRevise.animationDirector,
+      );
+      expect(corrections.cells.map((c) => c.file), [
+        'A1s_.png',
+        'A2_s_.png',
+      ]);
+      expect(corrections.cells[0].olderRevisions, ['A1s.png']);
+      expect(corrections.cells[1].olderRevisions, ['A2_s.png']);
+    });
+
+    test('letters that name no correction stay the insertion they always '
+        'read as — G3a, and A1es (two corrections in one run)', () {
+      final result = parseCutFolder(
+        folderName: 'csm_13_074_lo',
+        entries: files(['A1.png', 'A1es.png', 'G3.png', 'G3a.png']),
+      );
+
+      expect(layersOf(result), [('A', null), ('G', null)]);
+      expect(result.layers[0].cells.map((c) => c.label), ['1', '1es']);
+      expect(result.layers[1].cells.map((c) => c.label), ['3', '3a']);
+    });
+
+    test('a correction whose symbol has no cels of its own is still its '
+        'own layer — the plan decides where it stands', () {
+      final result = parseCutFolder(
+        folderName: 'csm_13_074_lo',
+        entries: files(['B1s.png', 'B2s.png']),
+      );
+
+      expect(layersOf(result), [('B', LayerRevise.animationDirector)]);
+      expect(result.layers.single.cells.map((c) => c.label), ['1', '2']);
+    });
+  });
+
+  group('the colour label each layer comes in wearing', () {
+    LayerMark markOfFirst(String folderName, String correctionFile) {
+      final result = parseCutFolder(
+        folderName: folderName,
+        entries: files(['A1.png', correctionFile]),
+      );
+      return result.markOf(result.layers.last);
+    }
+
+    test('the folder\'s stage, and the correction its letters name', () {
+      final layout = parseCutFolder(
+        folderName: 'upn_02_063_lo_ss_k',
+        entries: files(['A1.png']),
+      );
+      expect(layout.stage, LayerProcess.layout);
+      expect(layout.markOf(layout.layers.single).process, LayerProcess.layout);
+      expect(layout.markOf(layout.layers.single).revise, isNull);
+
+      final corrected = markOfFirst('csm_13_074_gen', 'A1s.png');
+      expect(corrected.process, LayerProcess.key);
+      expect(corrected.revise, LayerRevise.animationDirector);
+    });
+
+    test('원화 wins over LO — the top level is the folder\'s newest work', () {
+      final result = parseCutFolder(
+        folderName: 'csm_13_074_lo_gen',
+        entries: files(['A1.png']),
+      );
+      expect(result.stage, LayerProcess.key);
+      expect(
+        parseCutFolder(folderName: 'csm_13_074_g', entries: const []).stage,
+        LayerProcess.key,
+        reason: 'g is 원화 too',
+      );
+    });
+
+    test('a folder that names no stage gives what a new animation layer is '
+        'born with', () {
+      final result = parseCutFolder(
+        folderName: 'csm_13_074',
+        entries: files(['A1.png', 'A1e.png']),
+      );
+      expect(result.stage, isNull);
+      expect(
+        result.markOf(result.layers.first).process,
+        LayerMark.bornOfKind(LayerKind.animation).process,
+      );
+      expect(result.markOf(result.layers.last).revise, LayerRevise.direction);
+    });
   });
 
   test('rule I (KHT): cutNumberOnly folders read the cut from the name and '
@@ -164,7 +309,7 @@ void main() {
       ]),
     );
 
-    expect(result.cutNumbers, ['266']);
+    expect(result.cutNumber, '266');
     expect(result.processTokens, ['lo']);
     expect(
       result.references.map((r) => r.kind),
@@ -176,45 +321,34 @@ void main() {
     );
   });
 
-  test('rule G/M: process subfolders are ARCHIVES — excluded (and listed) '
-      'by default, parsed into per-process groups when opted in', () {
-    final entries = [
-      const CutFolderEntry('LO', isDirectory: true),
-      const CutFolderEntry('LO/A1.png'),
-      const CutFolderEntry('LO/A2.png'),
-      const CutFolderEntry('GEN', isDirectory: true),
-      const CutFolderEntry('GEN/A1.png'),
-      const CutFolderEntry('A1.png'),
-    ];
-
-    final defaults = parseCutFolder(
+  test('rule G/M: a process subfolder is the ARCHIVE — always excluded, '
+      'and every file in it listed (F-429-Q3)', () {
+    final result = parseCutFolder(
       folderName: 'csm_13_074_gen',
-      entries: entries,
-    );
-    expect(defaults.processGroups, isEmpty);
-    expect(
-      defaults.excluded.where(
-        (e) => e.reason == ExclusionReason.processSubfolder,
-      ),
-      hasLength(3),
+      entries: [
+        const CutFolderEntry('LO', isDirectory: true),
+        const CutFolderEntry('LO/A1.png'),
+        const CutFolderEntry(r'LO\A2.png'),
+        const CutFolderEntry('GEN', isDirectory: true),
+        const CutFolderEntry('GEN/A1.png'),
+        const CutFolderEntry('A1.png'),
+      ],
     );
 
-    final included = parseCutFolder(
-      folderName: 'csm_13_074_gen',
-      entries: entries,
-      config: const CutFolderParseConfig(includeProcessSubfolders: true),
-    );
-    expect(included.processGroups.map((g) => g.process), ['GEN', 'LO']);
     expect(
-      included.processGroups
-          .firstWhere((g) => g.process == 'LO')
-          .layers
-          .single
-          .cells,
-      hasLength(2),
+      [
+        for (final exclusion in result.excluded)
+          if (exclusion.reason == ExclusionReason.processSubfolder)
+            exclusion.path,
+      ],
+      ['LO/A1.png', 'LO/A2.png', 'GEN/A1.png'],
+      reason: 'listed by file, in forward slashes whichever the walk spoke',
     );
-    expect(included.layers.single.cells, hasLength(1),
-        reason: 'the top level stays the main cel set');
+    expect(
+      result.layers.single.cells.single.file,
+      'A1.png',
+      reason: 'the top level is the folder\'s cel set',
+    );
   });
 
   test('drift (rule K): a BOOK revision that lost its underscore prefix '
@@ -230,14 +364,14 @@ void main() {
     expect(result.layers.map((l) => l.symbol), ['A', 'BOOK']);
   });
 
-  test('a NO-TITLE multi-cut folder names cuts only — the first number is '
-      'never eaten as an episode (the measured 069_077_086 shape)', () {
+  test('a NO-TITLE multi-cut folder names its first cut — the first number '
+      'is never eaten as an episode (the measured 069_077_086 shape)', () {
     final result = parseCutFolder(
       folderName: '069_077_086_loeks',
       entries: files(['A1.png']),
     );
     expect(result.episode, isNull);
-    expect(result.cutNumbers, ['069', '077', '086']);
+    expect(result.cutNumber, '069');
     expect(result.processTokens, ['lo', 'e', 'k', 's']);
 
     // A titled folder still reads title_episode_cut.
@@ -247,7 +381,21 @@ void main() {
     );
     expect(titled.title, 'csm');
     expect(titled.episode, '13');
-    expect(titled.cutNumbers, ['085']);
+    expect(titled.cutNumber, '085');
+
+    // …and a titled folder's ONLY number is its cut.
+    final lone = parseCutFolder(folderName: 'kht_264', entries: const []);
+    expect(lone.episode, isNull);
+    expect(lone.cutNumber, '264');
+  });
+
+  test('a folder name with no number names no cut — and says so', () {
+    final result = parseCutFolder(
+      folderName: 'delivery',
+      entries: files(['A1.png']),
+    );
+    expect(result.cutNumber, isNull);
+    expect(result.warnings.map((w) => w.key), ['folderNoCutNumber']);
   });
 
   test('the timesheet-scan rule needs a TOKEN boundary: `_BG_tsuki` stays '
@@ -270,11 +418,8 @@ void main() {
     const config = CutFolderParseConfig(
       nameRule: CutFolderNameRule.cutNumberOnly,
       parentFolderProcessHint: true,
-      multiCutFolders: false,
       maxLayerSymbolLength: 2,
       insertionLetters: false,
-      revisionPolicy: CelRevisionPolicy.all,
-      includeProcessSubfolders: true,
       excludeNames: ['_old'],
     );
     expect(CutFolderParseConfig.fromJson(config.toJson()), config);

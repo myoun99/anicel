@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,13 +8,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
-import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
-
-import '../helpers/boolean_dot_probe.dart';
-import '../helpers/solid_png_fixture.dart';
-import '../helpers/temp_dir.dart';
 
 /// 🚨★★★A RING BESIDE A LABEL IS ONE ROW — 유저 answered board
 /// `one-boolean-row-shape-Q1` on 2026-09-24: 「**설정 줄 하나로**」.
@@ -142,61 +136,5 @@ void main() {
       reason: 'the ring stood on the LEFT here, and only it pressed',
     );
     expectRingRightOf(tester, find.byKey(tile), label);
-  });
-
-  group('the import window', () {
-    late Directory tempDir;
-
-    setUp(() async {
-      tempDir = await Directory.systemTemp.createTemp('anicel-labelled-ring');
-    });
-
-    tearDown(() => deleteTempQuietly(tempDir));
-
-    testWidgets('its folder switch: the label presses it, the ring is on the '
-        'right', (tester) async {
-      final session = EditorSessionManager(
-        initialProject: createDefaultProject(),
-      );
-      addTearDown(session.dispose);
-      // A delivery folder — the settings column is the FOLDER column.
-      final folder = (await tester.runAsync(() async {
-        const root = 'upn_02_063_lo';
-        final sep = Platform.pathSeparator;
-        await writeSolidPng(tempDir, '$root${sep}A1.png', rgba: 0xAAAAAAAA);
-        return '${tempDir.path}$sep$root';
-      }))!;
-      tester.view.physicalSize = const Size(1400, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ImportDialog(session: session, initialPaths: [folder]),
-          ),
-        ),
-      );
-      // ↩️Rounds of real IO stood here and after the press: a folder is read
-      // in the window's first frame and its switch re-reads it in the same
-      // `setState` (`_reparseFolder`, synchronous), so they waited for
-      // nothing (a-poll-that-counts-rounds-runs-out-under-load, 2026-10-16).
-      const tile = ValueKey<String>('import-subfolders-toggle');
-      final before = tester.booleanDotIn(find.byKey(tile)).value;
-      final label = find.descendant(
-        of: find.byKey(tile),
-        matching: find.text(AppText.strings.imArchivedProcesses),
-      );
-
-      await tester.ensureVisible(label);
-      await tester.tap(label);
-      await tester.pump();
-
-      expect(
-        tester.booleanDotIn(find.byKey(tile)).value,
-        !before,
-        reason: 'the ring stood on the LEFT here, and only it pressed',
-      );
-      expectRingRightOf(tester, find.byKey(tile), label);
-    });
   });
 }

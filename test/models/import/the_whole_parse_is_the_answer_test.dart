@@ -18,10 +18,11 @@ void main() {
 folder: upn_02_063_lo_ss_k
 title: upn
 episode: 02
-cuts: 063
+cut: 063
 process: lo, ss, k
 layer A: A1.png A2.png A3.png A4.png A5.png A6.png A7.png A8.png A9.png A10.png A11.png A12.png A13.png A14.png A15.png A16.png
-layer B: B1_ss.png(<B1.png) B2.png B3.png B4.png B5.png B6.png B7.png B8.png B9.png B10.png B11.png
+layer B: B1.png B2.png B3.png B4.png B5.png B6.png B7.png B8.png B9.png B10.png B11.png
+layer B chief-animation-director: B1_ss.png
 picture BG: _BG.png
 reference _TS_e.png: timesheetScan
 excluded _old: excluded name
@@ -34,7 +35,7 @@ excluded _old/A1.png: excluded name
 folder: csm_13_068_gen
 title: csm
 episode: 13
-cuts: 068
+cut: 068
 process: gen
 layer ABH: ABH1.png
 layer C: C1.png
@@ -51,7 +52,7 @@ excluded LO/A1.png: process subfolder (archive)
   test('a no-title multi-cut folder parses to exactly this', () {
     expect(_dump(_noTitle()), '''
 folder: 069_077_086_loeks
-cuts: 069, 077, 086
+cut: 069
 process: lo, e, k, s
 layer A: A1.png
 ''');
@@ -109,7 +110,7 @@ String _dump(CutFolderParseResult result) {
 
   say('title', result.title);
   say('episode', result.episode);
-  say('cuts', result.cutNumbers.join(', '));
+  say('cut', result.cutNumber);
   say('process', result.processTokens.join(', '));
   for (final layer in result.layers) {
     final cells = [
@@ -119,7 +120,9 @@ String _dump(CutFolderParseResult result) {
         else
           '${cell.file}(<${cell.olderRevisions.join(' ')})',
     ];
-    lines.add('layer ${layer.symbol}: ${cells.join(' ')}');
+    final correction = layer.correction;
+    final whose = correction == null ? '' : ' ${correction.jsonValue}';
+    lines.add('layer ${layer.symbol}$whose: ${cells.join(' ')}');
   }
   for (final picture in result.pictures) {
     final older = picture.olderRevisions.isEmpty
@@ -129,14 +132,6 @@ String _dump(CutFolderParseResult result) {
   }
   for (final reference in result.references) {
     lines.add('reference ${reference.file}: ${reference.kind.name}');
-  }
-  for (final group in result.processGroups) {
-    for (final layer in group.layers) {
-      lines.add(
-        'group ${group.process} layer ${layer.symbol}: '
-        '${[for (final cell in layer.cells) cell.file].join(' ')}',
-      );
-    }
   }
   for (final exclusion in result.excluded) {
     lines.add('excluded ${exclusion.path}: ${exclusion.reason.label}');

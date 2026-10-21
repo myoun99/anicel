@@ -37,7 +37,6 @@ import '../text/byte_size_label.dart';
 import '../text/pixel_size_label.dart';
 import '../widgets/app_window.dart';
 import '../widgets/dock_edge_splitter.dart';
-import '../widgets/settings_rows.dart';
 import '../text/model_vocabulary.dart';
 
 /// The import window (§6-z21): ONE window for every import, defaults
@@ -600,7 +599,6 @@ class _ImportDialogState extends State<ImportDialog> {
   /// be.
   bool _copyIntoProject = true;
   MediaFitMode _fit = MediaFitMode.contain;
-  CutFolderParseConfig _parseConfig = const CutFolderParseConfig();
   CutFolderParseResult? _parsed;
   bool _running = false;
   _Said _status = const _Sentence('');
@@ -654,7 +652,7 @@ class _ImportDialogState extends State<ImportDialog> {
       // files are listed as ignored (one window, one source shape).
       _ignoredSources.addAll(_files);
       _files.clear();
-      _reparseFolder();
+      _readFolder();
     }
   }
 
@@ -736,46 +734,33 @@ class _ImportDialogState extends State<ImportDialog> {
     return paths;
   }
 
-  /// The folder's entries, scanned ONCE per folder pick — re-parsing on
-  /// a knob change replays these instead of walking the disk again.
-  List<CutFolderEntry>? _folderEntries;
-
-  void _reparseFolder({bool rescan = true}) {
+  void _readFolder() {
     final folder = _folder;
     if (folder == null) {
       _parsed = null;
-      _folderEntries = null;
       return;
     }
-    if (rescan || _folderEntries == null) {
-      final directory = Directory(folder);
-      if (!directory.existsSync()) {
-        _parsed = null;
-        _folderEntries = null;
-        _status = _Sentence(AppText.strings.imFolderGone);
-        return;
-      }
-      try {
-        // SYNCHRONOUS where the import door's walk is asynchronous: this
-        // preview re-reads on every knob change and has to have its
-        // answer inside the frame that turned the knob. The walk is each
-        // caller's; what a listed entity MEANS is shared.
-        _folderEntries = cutFolderEntriesFrom(
-          folder,
-          directory.listSync(recursive: true),
-        );
-      } on FileSystemException catch (error) {
-        _parsed = null;
-        _folderEntries = null;
-        _status = _Sentence(AppText.strings.imFolderUnreadable(error.message));
-        return;
-      }
+    final directory = Directory(folder);
+    if (!directory.existsSync()) {
+      _parsed = null;
+      _status = _Sentence(AppText.strings.imFolderGone);
+      return;
     }
-    _parsed = parseCutFolderAt(
-      folder,
-      entries: _folderEntries!,
-      config: _parseConfig,
-    );
+    final List<CutFolderEntry> entries;
+    try {
+      // SYNCHRONOUS where the import door's walk is asynchronous: the pick
+      // that names the folder reads it inside its own frame. The walk is
+      // each caller's; what a listed entity MEANS is shared.
+      entries = cutFolderEntriesFrom(
+        folder,
+        directory.listSync(recursive: true),
+      );
+    } on FileSystemException catch (error) {
+      _parsed = null;
+      _status = _Sentence(AppText.strings.imFolderUnreadable(error.message));
+      return;
+    }
+    _parsed = parseCutFolderAt(folder, entries: entries);
   }
 
   bool get _canImport =>
@@ -1116,7 +1101,6 @@ class _ImportDialogState extends State<ImportDialog> {
   ) async {
     final folderWarnings = await widget.session.cutFolderDoor.importCutFolder(
       folderPath: folder,
-      config: _parseConfig,
       fit: _fit,
       copyIntoProject: _copyIntoProject,
       onProgress: (baked, total) => report(_share(baked, total)),
@@ -2277,12 +2261,7 @@ class _ImportDialogState extends State<ImportDialog> {
     return [
       _InterpretationRow(
         leading: strings.exCut,
-        body: parsed.cutNumbers.isEmpty
-            ? parsed.folderName
-            : parsed.cutNumbers.join(' · ') +
-                  (parsed.cutNumbers.length > 1
-                      ? '  ${strings.imMultiCutMark}'
-                      : ''),
+        body: parsed.cutNumber ?? parsed.folderName,
       ),
       if (parsed.processTokens.isNotEmpty)
         _InterpretationRow(
@@ -2293,19 +2272,12 @@ class _ImportDialogState extends State<ImportDialog> {
         _InterpretationRow(
           leading: '${strings.exLayer} ${layer.symbol}',
           body:
+              '${parsed.markOf(layer).labelFor(AppText.language)} · '
               '${strings.exCelCount(layer.cells.length)} '
               '(${layer.cells.map((c) => c.label).join(', ')})',
         ),
       for (final picture in parsed.pictures)
         _InterpretationRow(leading: strings.imPicture, body: picture.name),
-      for (final group in parsed.processGroups)
-        _InterpretationRow(
-          leading: '${strings.imProcess} ${group.process}',
-          body: [
-            for (final layer in group.layers)
-              '${layer.symbol}: ${layer.cells.length}',
-          ].join(' · '),
-        ),
       for (final reference in parsed.references)
         _InterpretationRow(
           leading: strings.imReference,
@@ -2400,43 +2372,6 @@ class _ImportDialogState extends State<ImportDialog> {
             keyOf: (fit) => fit.jsonValue,
             labelOf: importFitLabel,
             onSelect: (fit) => setState(() => _fit = fit),
-          ),
-          const SizedBox(height: 10),
-          SettingsSwitchRow(
-            tileKey: const ValueKey<String>('import-subfolders-toggle'),
-            label: AppText.strings.imArchivedProcesses,
-            value: _parseConfig.includeProcessSubfolders,
-            onChanged: (value) => setState(() {
-              _parseConfig = _parseConfig.copyWith(
-                includeProcessSubfolders: value,
-              );
-              _reparseFolder(rescan: false);
-            }),
-          ),
-          SettingsSwitchRow(
-            tileKey: const ValueKey<String>('import-multicut-toggle'),
-            label: AppText.strings.imMultiCutFolders,
-            value: _parseConfig.multiCutFolders,
-            onChanged: (value) => setState(() {
-              _parseConfig = _parseConfig.copyWith(multiCutFolders: value);
-              _reparseFolder(rescan: false);
-            }),
-          ),
-          ExportChoiceRow<CelRevisionPolicy>(
-            label: AppText.strings.imRevisions,
-            keyPrefix: 'import-revision',
-            values: CelRevisionPolicy.values,
-            selected: _parseConfig.revisionPolicy,
-            keyOf: (policy) => policy.jsonValue,
-            labelOf: (policy) => switch (policy) {
-              CelRevisionPolicy.latestOnly => AppText.strings.imRevLatest,
-              CelRevisionPolicy.all => AppText.strings.imRevAll,
-              CelRevisionPolicy.originalOnly => AppText.strings.imRevOriginals,
-            },
-            onSelect: (policy) => setState(() {
-              _parseConfig = _parseConfig.copyWith(revisionPolicy: policy);
-              _reparseFolder(rescan: false);
-            }),
           ),
         ],
       ),
