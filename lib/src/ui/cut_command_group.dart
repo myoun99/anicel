@@ -91,6 +91,11 @@ Future<void> _resizeActiveCutCanvas(
       anchor: request.anchor,
     ),
     title: AppText.strings.canvasSizeTitle,
+    ahead: (report) => session.cutVerbs.resizeActiveCutCanvasAhead(
+      request.size,
+      anchor: request.anchor,
+      report: report,
+    ),
   ),
 );
 
@@ -123,6 +128,11 @@ Future<void> landCanvasAdjust(
           adjust.end();
         },
         title: AppText.strings.canvasSizeTitle,
+        ahead: (report) => session.cutVerbs.placeActiveCutCanvasAhead(
+          size,
+          contentOffset: contentOffset,
+          report: report,
+        ),
       );
     case null:
       return;

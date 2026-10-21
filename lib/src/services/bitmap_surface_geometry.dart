@@ -495,6 +495,19 @@ Map<TileCoord, BitmapTile> celTextPlateMoved(
   canvasSize: canvasSize,
 ).tiles;
 
+/// A resize's move of a cut's pictures: onto [canvasSize], by ([dx], [dy])
+/// whole pixels — what [translateBitmapSurface] makes of each.
+typedef CelMove = ({CanvasSize canvasSize, int dx, int dy});
+
+/// Whether a move by ([dx], [dy]) carries whole tiles of [tileSize]: each
+/// tile renamed where it sits, the very tile kept and not a pixel copied
+/// ([translateBitmapSurface]).
+bool movesWholeTiles({
+  required int dx,
+  required int dy,
+  required int tileSize,
+}) => dx % tileSize == 0 && dy % tileSize == 0;
+
 /// Translates the surface's pixels by integer ([dx], [dy]) and adopts
 /// [canvasSize] — the anchored-resize blit. Whole-tile shifts rebase
 /// coordinates for free; fractional-of-a-tile shifts blit each input
@@ -513,7 +526,7 @@ BitmapSurface translateBitmapSurface(
   final reach = surface.pasteboardReach;
   final wall = canvasSize.pasteboardAt(reach);
 
-  if (dx % tileSize == 0 && dy % tileSize == 0) {
+  if (movesWholeTiles(dx: dx, dy: dy, tileSize: tileSize)) {
     // 🚨★★★**ONE PASS, AND ONE CLIP LAW.** This built a whole map, handed
     // it to the public constructor (which COPIES it and re-validates
     // every tile), then handed THAT to `resizeBitmapSurfaceCanvas`, which

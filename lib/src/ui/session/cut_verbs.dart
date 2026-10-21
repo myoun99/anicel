@@ -109,6 +109,22 @@ class CutVerbs {
     ),
   );
 
+  /// What [resizeActiveCutCanvas] will make of the pictures kept in files,
+  /// worked out ahead on the machine's workers — what its wait window holds
+  /// up first.
+  Future<void> resizeActiveCutCanvasAhead(
+    CanvasSize canvasSize, {
+    CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
+    void Function(double done)? report,
+  }) => _activeCut.aheadOfActiveCut(
+    (cutId) => _project.cutCommandCoordinator.resizeCutCanvasAhead(
+      cutId: cutId,
+      canvasSize: canvasSize,
+      anchor: anchor,
+      report: report,
+    ),
+  );
+
   /// The active cut's canvas at [canvasSize], the picture moved by
   /// [contentOffset] — what a canvas adjusted on the canvas lands (I-79).
   void placeActiveCutCanvas(
@@ -119,6 +135,22 @@ class CutVerbs {
       cutId: cutId,
       canvasSize: canvasSize,
       contentOffset: contentOffset,
+    ),
+  );
+
+  /// What [placeActiveCutCanvas] will make of the pictures kept in files,
+  /// worked out ahead on the machine's workers — what its wait window holds
+  /// up first.
+  Future<void> placeActiveCutCanvasAhead(
+    CanvasSize canvasSize, {
+    required ({double dx, double dy}) contentOffset,
+    void Function(double done)? report,
+  }) => _activeCut.aheadOfActiveCut(
+    (cutId) => _project.cutCommandCoordinator.placeCutCanvasAhead(
+      cutId: cutId,
+      canvasSize: canvasSize,
+      contentOffset: contentOffset,
+      report: report,
     ),
   );
 

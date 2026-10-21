@@ -46,6 +46,49 @@ final Turns celThawTurns = Turns(
   workersFor(Platform.numberOfProcessors, ceiling: 8),
 );
 
+/// [blob]'s picture behind [reach] — the wall of the store it is kept in —
+/// as it [was] and as [move] leaves it ([translateBitmapSurface]), worked
+/// out on a worker: both laid into the main isolate's tile blocks
+/// ([BitmapTile.blocks]) for it to adopt ([laidCelSurface]). [moved] is null
+/// for a move of whole tiles ([movesWholeTiles]): made where it is taken, it
+/// renames the very tiles the picture had — its undo shares them — where
+/// laid here it would copy every one.
+///
+/// ★The thaw a read of a kept cel makes on the main isolate and the blit the
+/// resize then makes there (`BrushFrameStore.adoptCutCanvasSize`), made
+/// here instead — the bytes cross as [layCelInWorker]'s do.
+Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
+  BrushFrameKey key,
+  AnicelCelBlob blob, {
+  required PasteboardReach reach,
+  required CelMove move,
+}) {
+  final sent = TransferableTypedData.fromList([blob.bytes]);
+  final blocks = BitmapTile.blocks;
+  return onAWorker(() {
+    final entry = AnicelCelBlob(sent.materialize().asUint8List()).decode();
+    final here = tileBlocksHere(blocks);
+    final (:canvasSize, :dx, :dy) = move;
+    if (movesWholeTiles(dx: dx, dy: dy, tileSize: entry.tileSize)) {
+      return (was: layCelEntry(entry, here), moved: null);
+    }
+    final moved = translateBitmapSurface(
+      surfaceBehindReach(entry.toSurface(), reach),
+      dx: dx,
+      dy: dy,
+      canvasSize: canvasSize,
+    );
+    final laidMoved = layCelEntry(AnicelCelEntry.fromSurface(key, moved), here);
+    try {
+      return (was: layCelEntry(entry, here), moved: laidMoved);
+    } on Object {
+      // Nothing else knows these blocks exist ([layCelEntry]'s own rule).
+      freeLaidCel(laidMoved, here);
+      rethrow;
+    }
+  });
+}
+
 /// [blob]'s picture behind [reach] ([cutBehindReach]), worked out on a
 /// worker: null when the wall cuts nothing of it, else the cut picture as
 /// [key]'s blob, parked at [parkAt] in the room, and the picture as it

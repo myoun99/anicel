@@ -97,6 +97,76 @@ void main() {
     );
   });
 
+  // 🔬Card `a-canvas-resize-rewrites-kept-cels-on-the-ui-thread`: on S5_BA
+  // saved and opened again, a resize thawed and moved every kept cel of the
+  // cut on the UI thread — 4.2 s about the centre. The window works them out
+  // first, on the machine's workers.
+  testWidgets('a size typed into its window moves the cels kept in files '
+      'ahead of the resize', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+    final store = session.renderCaches.brushFrameStore;
+    final cut = session.activeCutOrNull!;
+    final kept = BrushFrameKey(
+      projectId: const ProjectId('p'),
+      trackId: const TrackId('t'),
+      cutId: cut.id,
+      layerId: const LayerId('l'),
+      frameId: const FrameId('kept'),
+    );
+    // Tiles of 8: the centre's move of the new size below is no whole tile.
+    keepInAFile(store, {
+      kept: BitmapSurface(canvasSize: cut.canvasSize, tileSize: 8).putTiles([
+        (
+          coord: TileCoord(x: 1, y: 1),
+          tile: BitmapTile(
+            size: 8,
+            pixels: Uint8List(256)..fillRange(0, 256, 50),
+          ),
+        ),
+      ]),
+    });
+    final owner = flyoutOwnerByItemKey['resize-cut-canvas-button'];
+    if (owner != null) {
+      await tester.tap(find.byKey(ValueKey<String>(owner)));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(
+      find.byKey(const ValueKey<String>('resize-cut-canvas-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('canvas-size-width-field')),
+      '1280',
+    );
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('canvas-size-height-field')),
+      '720',
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-confirm-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      store.bakedSurfaceOrNull(kept)!.canvasSize,
+      const CanvasSize(width: 1280, height: 720),
+      reason: 'premise: the kept cel was resized with its cut',
+    );
+    expect(store.celsMovedHere, 0, reason: 'its move was worked out ahead');
+    await tester.pump(const Duration(milliseconds: 950));
+    await tester.pumpAndSettle();
+  });
+
   // 🗣️F-432 (유저 2026-10-21): 「페이스트 보드 배율 전환이 너무 느리고, 이런
   // 시간 걸리는 로직은 규칙으로서 공용 로딩창 표시해야함」.
   testWidgets('a pasteboard size or use, pressed in its window, lands behind '

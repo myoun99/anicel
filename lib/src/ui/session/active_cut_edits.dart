@@ -48,6 +48,14 @@ class ActiveCutEdits {
   void onActiveCutQuietly(void Function(CutId cutId) command) =>
       _onCutQuietly(_standingCutId, command);
 
+  /// What a step on the active cut will make, worked out [ahead] of it: no
+  /// change yet, so nothing to rebuild or tell ([onActiveCut] takes the
+  /// step).
+  Future<void> aheadOfActiveCut(Future<void> Function(CutId cutId) ahead) {
+    final cutId = _standingCutId;
+    return cutId == null ? Future<void>.value() : ahead(cutId);
+  }
+
   /// [onActiveCut] for an edit of ONE ROW: in the cut writing it
   /// ([cutOfRow]) — a camera's track (I-89-Q23).
   void onCutOfRow(LayerId row, void Function(CutId cutId) command) =>

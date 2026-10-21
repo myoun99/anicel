@@ -190,6 +190,17 @@ class CutCommandCoordinator {
     canvasSize: canvasSize,
     anchor: anchor,
   );
+  Future<void> resizeCutCanvasAhead({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
+    void Function(double done)? report,
+  }) => _cuts.resizeCutCanvasAhead(
+    cutId: cutId,
+    canvasSize: canvasSize,
+    anchor: anchor,
+    report: report,
+  );
   void placeCutCanvas({
     required CutId cutId,
     required CanvasSize canvasSize,
@@ -198,6 +209,17 @@ class CutCommandCoordinator {
     cutId: cutId,
     canvasSize: canvasSize,
     contentOffset: contentOffset,
+  );
+  Future<void> placeCutCanvasAhead({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    required ({double dx, double dy}) contentOffset,
+    void Function(double done)? report,
+  }) => _cuts.placeCutCanvasAhead(
+    cutId: cutId,
+    canvasSize: canvasSize,
+    contentOffset: contentOffset,
+    report: report,
   );
   void renameCut({required CutId cutId, required String newName}) =>
       _cuts.renameCut(cutId: cutId, newName: newName);

@@ -227,6 +227,17 @@ AnicelLaidCel layCelEntry(AnicelCelEntry entry, TileBlockHands blocks) {
   }
 }
 
+/// Gives back every block [laid] holds to [blocks] — for a worker whose work
+/// failed after laying it, when nothing will adopt it ([layCelEntry]'s rule).
+void freeLaidCel(AnicelLaidCel laid, TileBlockHands blocks) {
+  for (final tile in [
+    ...laid.tiles,
+    for (final text in laid.texts) ...text.plate,
+  ]) {
+    blocks.free(Pointer<Uint8>.fromAddress(tile.pixels));
+  }
+}
+
 /// [laid]'s blocks adopted as its tiles, on the isolate whose allocator they
 /// came from ([BitmapTile.blocks]) — no pixel is copied here.
 BitmapSurface laidCelSurface(AnicelLaidCel laid) => _surfaceOf(

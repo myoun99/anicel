@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show ValueNotifier;
+import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
 
 import '../core/in_flight.dart';
 import '../models/bitmap_surface.dart';
@@ -856,34 +856,49 @@ class BrushFrameStore {
     if (_bakedSurfaces.containsKey(key) || _keptAt(key, canvasSize) == null) {
       return Future<void>.value();
     }
-    return _thawing.join(key, () => _thawOnAWorker(key, canvasSize));
+    return _thawing.join(
+      key,
+      () => _thawOnAWorker(key, () => _keptAt(key, canvasSize), _layThawed),
+    );
   }
 
   final InFlight<BrushFrameKey, void> _thawing = InFlight();
 
-  Future<void> _thawOnAWorker(BrushFrameKey key, CanvasSize canvasSize) =>
-      celThawTurns.run(() async {
-        // Asked again in its turn: the cel may have moved on in the line.
-        final kept = _keptAt(key, canvasSize);
-        if (_bakedSurfaces.containsKey(key) || kept == null) {
-          return;
-        }
-        try {
-          final blob = _keptBlobOrNull(key);
-          if (blob == null) {
-            return;
-          }
-          final surface = _behind(
-            laidCelSurface(await layCelInWorker(blob, BitmapTile.blocks)),
-          );
-          if (!_bakedSurfaces.containsKey(key) &&
-              identical(_kept(key)?.ref, kept)) {
-            _keepThawed(key, surface);
-          }
-        } on Object {
-          // The kept bytes stay as they are; the next read tries again.
-        }
-      });
+  /// [key]'s kept bytes — while they are what [keptNow] names — thawed on a
+  /// worker by [thaw] and kept hot here: the surface kept, or null when the
+  /// cel moved on meanwhile (made hot, kept anew, gone) and keeps what it
+  /// has, or when the bytes would not read.
+  Future<BitmapSurface?> _thawOnAWorker(
+    BrushFrameKey key,
+    AnicelCelFileRef? Function() keptNow,
+    Future<BitmapSurface> Function(AnicelCelBlob blob) thaw,
+  ) => celThawTurns.run(() async {
+    // Asked again in its turn: the cel may have moved on in the line.
+    final kept = keptNow();
+    if (_bakedSurfaces.containsKey(key) || kept == null) {
+      return null;
+    }
+    try {
+      final blob = _keptBlobOrNull(key);
+      if (blob == null) {
+        return null;
+      }
+      final surface = await thaw(blob);
+      if (_bakedSurfaces.containsKey(key) ||
+          !identical(_kept(key)?.ref, kept)) {
+        return null;
+      }
+      _keepThawed(key, surface);
+      return surface;
+    } on Object {
+      // The kept bytes stay as they are; the next read tries again.
+      return null;
+    }
+  });
+
+  /// [blob] thawed on a worker as a read here would thaw it.
+  Future<BitmapSurface> _layThawed(AnicelCelBlob blob) async =>
+      _behind(laidCelSurface(await layCelInWorker(blob, BitmapTile.blocks)));
 
   /// 🚨Through the SESSION'S handle, not a fresh open per cel.
   ///
@@ -1121,6 +1136,7 @@ class BrushFrameStore {
     _editTicks.clear();
     _dropCutAhead(_cutAhead);
     _cutAhead = null;
+    _movedAhead = null;
     // R27 #13: a whole-store swap (project open) is one crossing for
     // every cel there was — one bump covers the lot.
     if (_celsWithContent.isNotEmpty) {
@@ -1674,20 +1690,12 @@ class BrushFrameStore {
       resizeBakedSurfaces(canvasSize, cutId: cutId);
       return;
     }
+    final move = (canvasSize: canvasSize, dx: dx.round(), dy: dy.round());
     var edited = false;
     var crossed = false;
     for (final key in _celKeysOfCut(cutId)) {
       // Cold cels of the cut materialize first (cut-scoped = bounded).
-      final surface = bakedSurfaceOrNull(key)!;
-      _storeHot(
-        key,
-        translateBitmapSurface(
-          surface,
-          dx: dx.round(),
-          dy: dy.round(),
-          canvasSize: canvasSize,
-        ),
-      );
+      _storeHot(key, _moved(key, bakedSurfaceOrNull(key)!, move));
       _fileCels.remove(key);
       _dirtySinceSave.add(key);
       // Per-cel signature bump WITHOUT the per-cel global notify: the
@@ -1708,6 +1716,120 @@ class BrushFrameStore {
     }
     _scheduleCooling();
   }
+
+  /// [surface] — [key]'s — as [move] leaves it: worked out AHEAD
+  /// ([moveCutCelsAhead]) when it was worked out from these very pixels,
+  /// else here.
+  BitmapSurface _moved(
+    BrushFrameKey key,
+    BitmapSurface surface,
+    CelMove move,
+  ) {
+    final ahead = _movedAhead?.move == move ? _movedAhead : null;
+    final answer = ahead?.answers.remove(key);
+    if (ahead == null || ahead.answers.isEmpty) {
+      _movedAhead = null;
+    }
+    if (answer != null && identical(answer.from, surface)) {
+      return answer.moved;
+    }
+    celsMovedHere += 1;
+    return translateBitmapSurface(
+      surface,
+      dx: move.dx,
+      dy: move.dy,
+      canvasSize: move.canvasSize,
+    );
+  }
+
+  /// How many cels [adoptCutCanvasSize] has moved here, on this isolate —
+  /// none whose move was worked out ahead and taken ([moveCutCelsAhead]).
+  @visibleForTesting
+  int celsMovedHere = 0;
+
+  /// What [adoptCutCanvasSize] will make of [cutIds]' kept cels, worked out
+  /// AHEAD on the machine's workers ([moveCelInWorker], in [celThawTurns])
+  /// — each thawed as a read here thaws it and kept hot, and moved by [move]
+  /// as the resize moves it — while a wait window is up, which hears through
+  /// [report] how much is done, from 0 to 1. With nothing to move, the thaw
+  /// alone: the resize's undo holds every cel it touched, and reading them
+  /// is what took the time.
+  ///
+  /// 🔬Card `a-canvas-resize-rewrites-kept-cels-on-the-ui-thread` (S5_BA
+  /// saved and opened again — 127 cels of 2436×1524, `flutter test`,
+  /// 2026-10-22): the thaw took 1.9 s on the UI thread, and a move of the
+  /// picture — any anchor but the top left — 2.4 s more.
+  ///
+  /// ★Each answer is held with the very surface it was worked out from and
+  /// taken only for it ([_moved]): a cel made hot or kept anew since is
+  /// moved there as it always was. ⛔So an answer can go stale, and never
+  /// wrong. A hot cel is not worked out here — its pixels are not bytes a
+  /// worker can be handed.
+  Future<void> moveCutCelsAhead(
+    Iterable<CutId> cutIds,
+    CelMove move, {
+    void Function(double done)? report,
+  }) async {
+    final moves = move.dx != 0 || move.dy != 0;
+    final answers = <BrushFrameKey, _MovedCel>{};
+    _movedAhead = moves ? (move: move, answers: answers) : null;
+    final keys = [for (final cutId in cutIds) ..._celKeysOfCut(cutId)];
+    var done = 0;
+    await Future.wait([
+      for (final key in keys)
+        (moves ? _moveOnAWorker(key, move, answers) : _thawKeptAhead(key))
+            .whenComplete(() {
+              done += 1;
+              report?.call(done / keys.length);
+            }),
+    ]);
+  }
+
+  /// [key]'s kept bytes thawed on a worker, at whatever size they were kept
+  /// — once, however many ask ([_thawing]).
+  Future<void> _thawKeptAhead(BrushFrameKey key) => _thawing.join(
+    key,
+    () => _thawOnAWorker(key, () => _kept(key)?.ref, _layThawed),
+  );
+
+  /// [key]'s kept cel thawed and moved by [move] on a worker
+  /// ([moveCelInWorker]): kept hot here, and its move held in [answers]
+  /// while they are still the ones [adoptCutCanvasSize] will ask.
+  Future<void> _moveOnAWorker(
+    BrushFrameKey key,
+    CelMove move,
+    Map<BrushFrameKey, _MovedCel> answers,
+  ) async {
+    BitmapSurface? moved;
+    final from = await _thawOnAWorker(key, () => _kept(key)?.ref, (
+      blob,
+    ) async {
+      final laid = await moveCelInWorker(
+        key,
+        blob,
+        reach: _pasteboardReach,
+        move: move,
+      );
+      final laidMoved = laid.moved;
+      moved = laidMoved == null ? null : _behind(laidCelSurface(laidMoved));
+      return _behind(laidCelSurface(laid.was));
+    });
+    final worked = moved;
+    if (from != null &&
+        worked != null &&
+        identical(_movedAhead?.answers, answers)) {
+      answers[key] = (from: from, moved: worked);
+    }
+  }
+
+  /// What [moveCutCelsAhead] last worked out — until [adoptCutCanvasSize]
+  /// takes the last of it, or the next one replaces it.
+  _MovedAhead? _movedAhead;
+
+  /// [key] as [moveCutCelsAhead] worked out its move, while it is held.
+  @visibleForTesting
+  BitmapSurface? movedAheadOf(BrushFrameKey key) =>
+      _movedAhead?.answers[_canonicalize(key)]?.moved;
 
   /// The pool files each cel's photos name, by cel — every cel that has
   /// any (I-97): what the media pool asks of a sheet's ink (사용 중 · 제거 ·
@@ -2082,4 +2204,14 @@ typedef _KeptCelRewrite = ({AnicelCelFileRef kept, BitmapSurface was});
 typedef _CutAhead = ({
   PasteboardReach reach,
   Map<AnicelCelFileRef, _KeptCelRewrite?> answers,
+});
+
+/// A cel as a [CelMove] leaves it, with the picture it was worked out [from].
+typedef _MovedCel = ({BitmapSurface from, BitmapSurface moved});
+
+/// What a resize's [move] makes of a cut's kept cels, worked out ahead of
+/// it ([BrushFrameStore.moveCutCelsAhead]), by cel.
+typedef _MovedAhead = ({
+  CelMove move,
+  Map<BrushFrameKey, _MovedCel> answers,
 });

@@ -1154,6 +1154,17 @@ void main() {
   /// state — what the class is — so a collaborator for the wait would be
   /// handed all three. (The canvas's transport, which only hears the sound
   /// land, gave that hearing to one: `_SoundOnItsWay`.)
+  ///
+  /// ⚠️71 found on 2026-10-22 under the same ceiling, ONE name: `CutVerbs`
+  /// crossed (579 → 611) when a canvas resize came to work out the cut's
+  /// kept cels ahead, behind its wait window (card
+  /// `a-canvas-resize-rewrites-kept-cels-on-the-ui-thread` — S5_BA saved and
+  /// opened again took 4.2 s on the UI thread): each canvas verb gained the
+  /// half its window runs first (`resizeActiveCutCanvasAhead` ·
+  /// `placeActiveCutCanvasAhead`). 🔬`clean_code_diff` against the lane's
+  /// base (`fdbdd1a3d`) names this one and no other class. ⛔Not split to
+  /// fit: the half ahead asks its step's own question of the cut the step
+  /// reads in one place (`ActiveCutEdits`), so the two are read side by side.
   const longClasses = 71;
 
   late CleanCodeScan scan;

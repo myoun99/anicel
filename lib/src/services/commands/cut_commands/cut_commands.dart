@@ -196,12 +196,32 @@ class _CutCommands {
     placeCutCanvas(
       cutId: cutId,
       canvasSize: canvasSize,
-      contentOffset: anchor.contentOffset(
-        from: _coordinator._requireCut(cutId).canvasSize,
-        to: canvasSize,
-      ),
+      contentOffset: _anchored(cutId, canvasSize, anchor),
     );
   }
+
+  /// What [resizeCutCanvas] will make of the pictures kept in files, worked
+  /// out ahead ([placeCutCanvasAhead]).
+  Future<void> resizeCutCanvasAhead({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
+    void Function(double done)? report,
+  }) => placeCutCanvasAhead(
+    cutId: cutId,
+    canvasSize: canvasSize,
+    contentOffset: _anchored(cutId, canvasSize, anchor),
+    report: report,
+  );
+
+  ({double dx, double dy}) _anchored(
+    CutId cutId,
+    CanvasSize canvasSize,
+    CanvasResizeAnchor anchor,
+  ) => anchor.contentOffset(
+    from: _coordinator._requireCut(cutId).canvasSize,
+    to: canvasSize,
+  );
 
   /// [cutId]'s canvas at [canvasSize], the picture moved by [contentOffset]
   /// ([ResizeCutCanvasCommand.contentOffset]) — no step when neither
@@ -217,12 +237,8 @@ class _CutCommands {
     _requirePositive(canvasSize);
     _coordinator._executeIfChanged(
       subject: _coordinator._requireCut(cutId),
-      value: (
-        canvasSize,
-        contentOffset.dx.roundToDouble(),
-        contentOffset.dy.roundToDouble(),
-      ),
-      read: (cut) => (cut.canvasSize, 0.0, 0.0),
+      value: _placing(canvasSize, contentOffset),
+      read: _placed,
       command: (_) => ResizeCutCanvasCommand(
         repository: _coordinator.repository,
         cutId: cutId,
@@ -232,6 +248,49 @@ class _CutCommands {
       ),
     );
   }
+
+  /// What [placeCutCanvas] will make of the pictures kept in files, worked
+  /// out ahead ([BrushFrameStore.moveCutCelsAhead]): for a wait window to
+  /// hold up while it runs, hearing through [report] how much is done —
+  /// nothing where the place changes nothing, as no step is taken there.
+  Future<void> placeCutCanvasAhead({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    required ({double dx, double dy}) contentOffset,
+    void Function(double done)? report,
+  }) async {
+    final store = _coordinator.brushFrameStore;
+    final placing = _placing(canvasSize, contentOffset);
+    if (store == null || _placed(_coordinator._requireCut(cutId)) == placing) {
+      return;
+    }
+    await store.moveCutCelsAhead(
+      ResizeCutCanvasCommand.targetsOf(
+        _coordinator.repository.requireProject(),
+        cutId,
+      ),
+      (
+        canvasSize: canvasSize,
+        dx: placing.dx.round(),
+        dy: placing.dy.round(),
+      ),
+      report: report,
+    );
+  }
+
+  /// What [placeCutCanvas] asks of a cut, in whole pixels — and [_placed],
+  /// what a cut already answers: the step is taken where the two differ.
+  static _CanvasPlace _placing(
+    CanvasSize canvasSize,
+    ({double dx, double dy}) contentOffset,
+  ) => (
+    size: canvasSize,
+    dx: contentOffset.dx.roundToDouble(),
+    dy: contentOffset.dy.roundToDouble(),
+  );
+
+  static _CanvasPlace _placed(Cut cut) =>
+      (size: cut.canvasSize, dx: 0.0, dy: 0.0);
 
   static void _requirePositive(CanvasSize canvasSize) {
     if (canvasSize.width <= 0 || canvasSize.height <= 0) {
@@ -502,3 +561,7 @@ class _CutCommands {
     );
   }
 }
+
+/// A cut's canvas size and how far its picture is moved on it, in whole
+/// pixels ([_CutCommands.placeCutCanvas]).
+typedef _CanvasPlace = ({CanvasSize size, double dx, double dy});

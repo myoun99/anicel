@@ -61,6 +61,14 @@ class ResizeCutCanvasCommand
   double _centreDx = 0;
   double _centreDy = 0;
 
+  /// The cuts a resize of [cutId] touches: it and every 겸용 sibling — what
+  /// [execute] walks, and what is worked out ahead of it
+  /// ([BrushFrameStore.moveCutCelsAhead]).
+  static List<CutId> targetsOf(Project project, CutId cutId) => [
+    cutId,
+    ...linkedCutSiblings(project, cutId: cutId),
+  ];
+
   /// Every cut this resize touched — the target and its 겸용 siblings.
   /// Undo has to walk the SAME list: the project snapshot restores the
   /// sizes, but the pixel shift lives in the brush store and has to be
@@ -154,7 +162,7 @@ class ResizeCutCanvasCommand
     _centreDx = (canvasSize.width - fromSize.width) / 2;
     _centreDy = (canvasSize.height - fromSize.height) / 2;
 
-    _targets = [cutId, ...linkedCutSiblings(project, cutId: cutId)];
+    _targets = targetsOf(project, cutId);
 
     // R19 bake-only: the raster blit clips pixels shifted off-canvas, so
     // the exact undo restores the pre-resize baked surfaces by reference
