@@ -24,9 +24,10 @@ class LaunchSplash {
   LaunchSplash(const LaunchSplash&) = delete;
   LaunchSplash& operator=(const LaunchSplash&) = delete;
 
-  // Shows the splash centred on |monitor|'s work area, and returns once it
-  // is on screen. Shows nothing when the picture cannot be read — the app
-  // starts the same without it.
+  // Shows the splash centred on |monitor|'s work area. Returns once its
+  // window exists; it shows as soon as its thread has drawn it. Shows
+  // nothing when the picture cannot be read — the app starts the same
+  // without it.
   void Show(HMONITOR monitor);
 
   // Says the runner's own stage |index| (0 the engine, 1 the plugins), by

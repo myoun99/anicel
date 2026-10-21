@@ -187,10 +187,7 @@ class SplashPainter {
                                    factory.GetAddressOf())) ||
         FAILED(factory->CreateDCRenderTarget(&properties, &target_)) ||
         FAILED(target_->BindDC(memory_dc_, &bounds)) ||
-        FAILED(target_->CreateBitmapFromWicBitmap(picture, &picture_)) ||
-        FAILED(::DWriteCreateFactory(
-            DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory5),
-            reinterpret_cast<IUnknown**>(write_.GetAddressOf())))) {
+        FAILED(target_->CreateBitmapFromWicBitmap(picture, &picture_))) {
       return false;
     }
     // Text on a target with alpha takes grayscale smoothing only.
@@ -247,6 +244,13 @@ class SplashPainter {
   // rest fill in what it lacks, then the OS — or the OS's own face when
   // there are none.
   ComPtr<IDWriteTextFormat> MakeFormat() {
+    // Made at the first stage, not before the picture is up.
+    if (!write_ &&
+        FAILED(::DWriteCreateFactory(
+            DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory5),
+            reinterpret_cast<IUnknown**>(write_.GetAddressOf())))) {
+      return nullptr;
+    }
     const float size = static_cast<float>(height_) * kStageSize;
     std::vector<std::wstring> families;
     ComPtr<IDWriteFontSetBuilder1> builder;
@@ -396,6 +400,11 @@ void RunSplash(RECT work, std::promise<HWND> shown) {
           static_cast<int>(width), static_cast<int>(height), nullptr,
           nullptr, ::GetModuleHandle(nullptr), nullptr);
     }
+    // Handed over as soon as it exists: the runner starts the engine while
+    // this thread decodes and draws the picture (measured 2026-10-21 —
+    // waiting for the drawing held the engine back about 0.45s). Stages
+    // said meanwhile wait in this thread's queue.
+    shown.set_value(window);
     if (window && painter.Start(window, width, height, picture.Get())) {
       painter.Paint();
       ::ShowWindow(window, SW_SHOWNORMAL);
@@ -403,8 +412,13 @@ void RunSplash(RECT work, std::promise<HWND> shown) {
     } else if (window) {
       ::DestroyWindow(window);
       window = nullptr;
+      // The stages said to a splash that never showed.
+      MSG left;
+      while (::PeekMessage(&left, nullptr, kStageMessage, kStageMessage,
+                           PM_REMOVE)) {
+        delete reinterpret_cast<Stage*>(left.lParam);
+      }
     }
-    shown.set_value(window);
 
     MSG message;
     while (window && ::GetMessage(&message, nullptr, 0, 0) > 0) {
