@@ -537,8 +537,35 @@ void main() {
       expect(plan.targetAfter!.timeline[0]!.frameId, const FrameId('a-f1'));
       expect(plan.returnedFrameIds, isEmpty);
       // [2,4) pushed behind the landed block: [3,5).
-      expect(plan.targetAfter!.timeline[3]!.frameId, const FrameId('b-f1'));
+      expect(plan.targetAfter!.timeline[3]?.frameId, const FrameId('b-f1'));
       expect(plan.targetAfter!.timeline.length, 2);
+    });
+
+    test('…and carried LEFTWARD, it pushes the block it lands on toward '
+        'frame 0', () {
+      final source = layerWith(
+        'a',
+        {8: const TimelineExposure.drawing(FrameId('a-f1'), length: 2)},
+        frameIds: ['a-f1'],
+      );
+      final target = layerWith(
+        'b',
+        {3: const TimelineExposure.drawing(FrameId('b-f1'), length: 3)},
+        frameIds: ['b-f1'],
+      );
+
+      final plan = planBlock(
+        source: source,
+        target: target,
+        blockStartIndex: 8,
+        frameDelta: -4,
+        landing: const LandingPushesThem(),
+      );
+
+      expect(plan?.destinationStartIndex, 4);
+      expect(plan?.targetAfter?.timeline[4]?.frameId, const FrameId('a-f1'));
+      // [3,6) pushed ahead of the landed block: [1,4).
+      expect(plan?.targetAfter?.timeline[1]?.frameId, const FrameId('b-f1'));
     });
 
     // 🗣️F-384-Q1 (유저 2026-10-21): 「덮인 블록이 떠난 자리로 — 자리 바꾸기」.
