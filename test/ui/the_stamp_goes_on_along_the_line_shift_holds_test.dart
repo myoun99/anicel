@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_piece.dart';
@@ -44,7 +45,13 @@ void main() {
     originTop: 0,
   );
 
-  Future<void> pumpStamp(WidgetTester tester) async {
+  late ValueNotifier<BrushToolState> brush;
+
+  /// The panel with [tool] in hand — the cut tool's shape a lasso.
+  Future<void> pumpStamp(
+    WidgetTester tester, {
+    CanvasTool tool = CanvasTool.cutStamp,
+  }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -52,6 +59,13 @@ void main() {
     );
     final slot = CutPieceSlot()..hold(piece());
     addTearDown(slot.dispose);
+    brush = ValueNotifier(
+      BrushToolState.defaults.copyWith(
+        tool: tool,
+        cutShape: CanvasShapeKind.lasso,
+      ),
+    );
+    addTearDown(brush.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -59,9 +73,7 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            brushToolState: ValueNotifier(
-              BrushToolState.defaults.copyWith(tool: CanvasTool.cutStamp),
-            ),
+            brushToolState: brush,
             cutPieceSlot: slot,
             viewport: seedFromRender(tester, CanvasViewport()),
           ),
@@ -130,6 +142,56 @@ void main() {
     expect(box.rightExclusive, inInclusiveRange(110, 113));
     expect(box.bottomExclusive, inInclusiveRange(110, 113));
   });
+
+  testWidgets('🚨and the drag it begins goes on along the line', (
+    tester,
+  ) async {
+    await pumpStamp(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await alongTheDiagonal(tester);
+    // Nearly level from (110, 110), where the press fell: its own eight ways
+    // would lay it flat. Along y = x, (170, 118) is (144, 144).
+    await stampAlong(tester, const [Offset(100, 120), Offset(170, 118)]);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    expect(ink().bottomExclusive, inInclusiveRange(140, 147));
+  });
+
+  testWidgets('🚨let go between them, the press stamps where it is', (
+    tester,
+  ) async {
+    await pumpStamp(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await alongTheDiagonal(tester);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await stampAlong(tester, const [Offset(100, 120)]);
+
+    final box = ink();
+    expect(box.bottomExclusive, inInclusiveRange(120, 123));
+    expect(box.rightExclusive, inInclusiveRange(100, 103));
+  });
+
+  // ONE line for the panel: whichever path the hand drew under the hold,
+  // the stamp's press goes on along it.
+  for (final (verb, tool) in [
+    ('a stroke', CanvasTool.brush),
+    ('a lasso', CanvasTool.cut),
+  ]) {
+    testWidgets('🚨the line $verb locked under the hold is the one the stamp '
+        'presses onto', (tester) async {
+      await pumpStamp(tester, tool: tool);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await alongTheDiagonal(tester);
+      brush.value = brush.value.copyWith(tool: CanvasTool.cutStamp);
+      await tester.pumpAndSettle();
+      await stampAlong(tester, const [Offset(100, 120)]);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+      expect(ink().bottomExclusive, inInclusiveRange(110, 113));
+      // The cut tool's drag leaves a timer running (measured): it runs out.
+      await tester.pump(const Duration(seconds: 10));
+    });
+  }
 
   testWidgets('🚨Shift pressed anew between them is a new hold: the press '
       'stamps where it is', (tester) async {

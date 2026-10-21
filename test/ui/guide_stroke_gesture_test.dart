@@ -483,8 +483,8 @@ void main() {
     /// lay it flat from (40, 80).
     Future<void> nearlyLevel(WidgetTester tester) => dragCanvas(tester, const [
       Offset(40, 80),
-      Offset(100, 86),
-      Offset(160, 90),
+      Offset(120, 66),
+      Offset(180, 70),
     ]);
 
     void pickedItsOwnWay(List<BrushDab> dabs) {
@@ -523,7 +523,7 @@ void main() {
       expect(stroke(1).first.center.x, closeTo(40, 1e-6));
       expect(stroke(1).first.center.y, closeTo(80, 1e-6));
       expect(
-        stroke(1).any((dab) => dab.center.y > 81),
+        stroke(1).any((dab) => (dab.center.y - 80).abs() > 1),
         isTrue,
         reason: 'free: the wobble is kept',
       );
@@ -762,7 +762,7 @@ void main() {
         await lift(tester, pen);
       }
 
-      const nearlyLevel = [Offset(40, 80), Offset(100, 86), Offset(160, 90)];
+      const nearlyLevel = [Offset(40, 80), Offset(120, 66), Offset(180, 70)];
       var finger = await rest(tester);
       await penStroke(const [
         Offset(20, 20),
@@ -784,6 +784,29 @@ void main() {
       for (final dab in commits[2].sourceDabs) {
         expect(dab.center.y, closeTo(80, 1e-6), reason: 'its own way');
       }
+    });
+
+    testWidgets('⛔a finger is no Shift to the stroke it draws: the line a key '
+        'held is gone once the key is let go (I-121)', (tester) async {
+      switchedOn();
+      await tester.pumpWidget(app(CutGuides.empty, line: ShiftLine()));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await dragCanvas(tester, const [
+        Offset(20, 20),
+        Offset(60, 66),
+        Offset(100, 94),
+        Offset(150, 154),
+      ], pointer: 5);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await dragCanvas(tester, const [
+        Offset(40, 80),
+        Offset(120, 66),
+        Offset(180, 70),
+      ], pointer: 6);
+
+      expect(commits, hasLength(2));
+      expect(commits[1].sourceDabs.first.center.x, closeTo(40, 1e-6));
+      expect(commits[1].sourceDabs.first.center.y, closeTo(80, 1e-6));
     });
   });
 }

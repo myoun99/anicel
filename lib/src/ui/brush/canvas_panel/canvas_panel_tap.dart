@@ -462,7 +462,7 @@ class _CanvasPanelTap {
   /// ([StrokeLock.finish]), and the drag is over.
   void _endStampDrag() {
     final lock = _stampDrag?.lock;
-    if (lock != null && canvasToolStamps(_state._brush.tool)) {
+    if (lock != null) {
       _stampAlong(lock.finish());
     }
     _stampDrag = null;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -386,6 +387,50 @@ void main() {
         isTrue,
         reason: 'and the press still draws',
       );
+    });
+
+    // 🗣️I-121 (유저 2026-10-21): 「스냅 발생하면 쉬프트 떼기 전까지는
+    // 같은스냅」 — on the timesheet too: each window keeps the line its
+    // strokes' Shift locked onto, and the layer hears the keyboard for it.
+    group('the line Shift holds past the pen (I-121)', () {
+      /// A point of page 0's grid, [dx] and [dy] on from a corner of it.
+      Offset grid(double dx, double dy) => Offset(
+        layout.halfLeft(0, 0) + 30 + dx,
+        layout.halfRowsTop(0) + 30 + dy,
+      );
+
+      /// A stroke Shift locks onto the grid's diagonal, ending at (60, 60).
+      Future<void> alongTheDiagonal(WidgetTester tester, Offset origin) =>
+          stroke(tester, origin, [grid(0, 0), grid(30, 34), grid(62, 60)]);
+
+      testWidgets('🚨held through the pen-up, the next press lands on the '
+          'line the window kept', (tester) async {
+        final origin = await pumpSheet(tester);
+        final page = window('page-0');
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await alongTheDiagonal(tester, origin);
+        // (100, 120) falls across the diagonal at (110, 110).
+        await stroke(tester, origin, [grid(100, 120)]);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+        expect(inkUnder(page, grid(110, 110)), isTrue);
+        expect(inkUnder(page, grid(100, 120)), isFalse);
+      });
+
+      testWidgets('🚨Shift pressed anew between them is a new hold: the press '
+          'lands where it is', (tester) async {
+        final origin = await pumpSheet(tester);
+        final page = window('page-0');
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await alongTheDiagonal(tester, origin);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await stroke(tester, origin, [grid(100, 120)]);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+        expect(inkUnder(page, grid(100, 120)), isTrue);
+        expect(inkUnder(page, grid(110, 110)), isFalse);
+      });
     });
   });
 
