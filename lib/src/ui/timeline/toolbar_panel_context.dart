@@ -18,6 +18,7 @@ import '../paste_linked_asking_first.dart';
 import '../paste_with_its_media.dart';
 import '../session/block_naming.dart' show AutoNameCuts, AutoNameTargets;
 import '../session/frame_clipboard.dart' show ClipboardPlace;
+import '../session/storyboard_cursor.dart' show CommaTarget;
 import '../session/what_a_copy_brings.dart' show BringsMedia;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
@@ -101,6 +102,10 @@ abstract class ToolbarPanelContext {
   /// PANEL the comma off the V row wherever the cut carried a storyboard
   /// layer; the panel takes it on the conte row now, and the V row's block
   /// is its cut again (I-73).
+  ///
+  /// What the press re-times — the ladder its gate, its dispatch and its
+  /// window (I-24-open-entry) read alike ([StoryboardCursor]).
+  CommaTarget? get commaTarget;
   bool get canSetComma;
   void setComma(int comma);
 
@@ -447,7 +452,11 @@ class TimelineToolbarPanelContext
   void markEvery(int every) => session.layerMarks.markEvery(every);
 
   @override
-  bool get canSetComma => session.storyboardCursor.canSetCommaForTimelineCursor;
+  CommaTarget? get commaTarget =>
+      session.storyboardCursor.timelineCommaTarget();
+
+  @override
+  bool get canSetComma => commaTarget != null;
 
   @override
   void setComma(int comma) => session.edgeDrag.setCommaForTimelineCursor(comma);
@@ -757,7 +766,11 @@ class StoryboardToolbarPanelContext
   void markEvery(int every) => _timelinesCells?.markEvery(every);
 
   @override
-  bool get canSetComma => session.storyboardCursor.canSetCommaForStoryboardCursor;
+  CommaTarget? get commaTarget =>
+      session.storyboardCursor.storyboardCommaTarget();
+
+  @override
+  bool get canSetComma => commaTarget != null;
 
   @override
   void setComma(int comma) => session.edgeDrag.setCommaForStoryboardCursor(comma);

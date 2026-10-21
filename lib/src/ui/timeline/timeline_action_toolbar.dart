@@ -8,6 +8,7 @@ import '../input/control_press_claim.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
+import '../session/storyboard_cursor.dart' show CommaTargetKind;
 import '../widgets/app_icon_button.dart';
 import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
@@ -38,13 +39,25 @@ Future<void> showTimelineCommaCountDialog(
   EditorSessionManager session, {
   required ToolbarPanelContext panel,
 }) async {
+  final target = panel.commaTarget;
+  if (target == null) {
+    return;
+  }
+  // 🗣️I-24-open-entry (유저 2026-10-01): 「노출 길이 설정 (프레임), 노출
+  // 길이 설정 (컷) 이렇게 하자 … 길이 설정도 기존 길이 띄워둔다」 — what the
+  // press will re-time, read off the ladder the press itself takes.
+  final shown = session.storyboardCursor.commaTargetShown(target);
+  final strings = AppText.strings;
   final comma = await _askFrameCount(
     context,
     session,
     keyPrefix: 'set-comma-n',
-    title: AppText.strings.setCommasTitle,
+    title: strings.windowTitleOn(
+      strings.setLengthAction,
+      _commaTargetNoun(shown.kinds),
+    ),
     titleIcon: Icons.timelapse_outlined,
-    field: AppText.strings.setCommasField,
+    initialCount: shown.length,
   );
   if (comma != null && comma >= 1) {
     panel.setComma(comma);
@@ -61,13 +74,19 @@ Future<void> showMarkEveryDialog(
   EditorSessionManager session, {
   required ToolbarPanelContext panel,
 }) async {
+  final strings = AppText.strings;
   final every = await _askFrameCount(
     context,
     session,
     keyPrefix: 'mark-every',
-    title: editorActionLabel(EditorActionIds.frameMarkEvery),
+    // The marks go down frame blocks alone ([LayerMarks.markEvery]).
+    title: strings.windowTitleOn(
+      editorActionLabel(EditorActionIds.frameMarkEvery),
+      strings.tlFrame,
+    ),
     titleIcon: _markEveryIcon,
-    field: AppText.strings.markEveryField,
+    // The interval is the one number the title does not say.
+    field: strings.markEveryField,
   );
   if (every != null && every >= 1) {
     panel.markEvery(every);
@@ -75,6 +94,21 @@ Future<void> showMarkEveryDialog(
 }
 
 const _markEveryIcon = Icons.linear_scale;
+
+/// What a comma window names in its title's brackets: the kinds it
+/// re-times, together where it re-times several.
+String _commaTargetNoun(List<CommaTargetKind> kinds) {
+  final strings = AppText.strings;
+  return [
+    for (final kind in kinds)
+      switch (kind) {
+        CommaTargetKind.cut => strings.tlCut,
+        CommaTargetKind.frame => strings.tlFrame,
+        CommaTargetKind.se => strings.tlKindSe,
+        CommaTargetKind.transition => strings.tlKindTransition,
+      },
+  ].join(' · ');
+}
 
 /// A count of frames, asked in a window and popped as frames — null when
 /// it closes without one. Every window that asks for a count of frames
@@ -85,7 +119,8 @@ Future<int?> _askFrameCount(
   required String keyPrefix,
   required String title,
   required IconData titleIcon,
-  required String field,
+  String? field,
+  int? initialCount,
 }) => showDialog<int>(
   context: context,
   builder: (context) => _FrameCountWindow(
@@ -93,6 +128,7 @@ Future<int?> _askFrameCount(
     title: title,
     titleIcon: titleIcon,
     field: field,
+    initialCount: initialCount,
     framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
     // 🗣️I-24-open-entry-Q1 (유저 2026-10-01): 「마지막에 쓴 방식으로 연다」
     // — the entry last switched to, kept as an app setting so a restart
@@ -115,14 +151,16 @@ class _FrameCountWindow extends StatefulWidget {
     required this.framesPerSecond,
     required this.entry,
     required this.onEntryChanged,
+    required this.initialCount,
   });
 
   /// `<keyPrefix>-dialog`, `<keyPrefix>-apply`, and the field's own.
   final String keyPrefix;
   final String title;
   final IconData titleIcon;
-  final String field;
+  final String? field;
   final int framesPerSecond;
+  final int? initialCount;
 
   /// The entry the window opens on.
   final FrameCountEntry entry;
@@ -153,6 +191,7 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
         onChanged: (count) => _count = count,
         onSubmitted: _apply,
         initialEntry: widget.entry,
+        initialCount: widget.initialCount,
         onEntryChanged: widget.onEntryChanged,
       ),
       actions: [

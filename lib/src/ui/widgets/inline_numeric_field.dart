@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../text/full_width_numerals.dart';
+import 'selected_text_controller.dart';
 
 /// The ONE inline numeric field (R10 R5).
 ///
@@ -67,16 +68,9 @@ class InlineNumericField extends StatefulWidget {
 }
 
 class _InlineNumericFieldState extends State<InlineNumericField> {
-  late final TextEditingController _controller =
-      TextEditingController.fromValue(
-        TextEditingValue(
-          text: widget.initialText,
-          selection: TextSelection(
-            baseOffset: 0,
-            extentOffset: widget.initialText.length,
-          ),
-        ),
-      );
+  late final TextEditingController _controller = selectedTextController(
+    widget.initialText,
+  );
 
   /// Commit exactly once. `onSubmitted` and `onTapOutside` can both land
   /// for one edit (Enter, then the focus loss it causes), and a host that

@@ -15,9 +15,8 @@ class RenameLayerDialog extends StatelessWidget {
     final strings = AppText.strings;
     return AppPromptDialog.keyed(
       keyPrefix: 'rename-layer',
-      title: strings.renameLayerTitle,
+      title: strings.windowTitleOn(strings.editNameAction, strings.tlLayer),
       titleIcon: Icons.drive_file_rename_outline,
-      fieldLabel: strings.renameLayerField,
       initialValue: initialName,
       confirmLabel: strings.commonRename,
       emptyError: strings.renameLayerEmpty,

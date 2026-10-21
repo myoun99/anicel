@@ -318,19 +318,23 @@ enum AppStrings {
   String get commonPreview => _s('commonPreview');
 
   // --- The rename family (AppPromptDialog) ---
-  String get renameLayerTitle => _s('renameLayerTitle');
-  String get renameLayerField => _s('renameLayerField');
-  String get renameLayerEmpty => _s('renameLayerEmpty');
-  String get renameCutTitle => _s('renameCutTitle');
-  String get renameCutField => _s('renameCutField');
-  String get renameCutEmpty => _s('renameCutEmpty');
-  String get renameFrameTitle => _s('renameFrameTitle');
-  String get renameFrameField => _s('renameFrameField');
 
-  /// A KEY's name is a link, exactly as a frame's is: same name, same
-  /// value. The wording stays parallel because the flow is the same one.
-  String get renameKeyTitle => _s('renameKeyTitle');
-  String get renameKeyField => _s('renameKeyField');
+  /// A timeline button's window names what it does and, in brackets,
+  /// what it does it to — 🗣️I-24-open-entry (유저 2026-10-01): 「노출 길이
+  /// 설정 (프레임), 노출 길이 설정 (컷) 이렇게 하자 … 컷이름같은거
+  /// 안써도되 … 이 규칙은 다른 타임라인 버튼도 동일하게. 이름편집같은거.
+  /// 이름 편집 (레이어) 이렇게」. The KIND of thing, never its own name.
+  String windowTitleOn(String action, String target) =>
+      _s('windowTitleTemplate')
+          .replaceAll('{action}', action)
+          .replaceAll('{target}', target);
+
+  /// ↩️Each window wore its own title (「레이어 이름 변경」 …) and a cap
+  /// over its field that said it again (「레이어 이름」) — 「텍스트편집위에
+  /// 레이어 이름이나 프레임 이름이란 텍스트 필요없음」.
+  String get editNameAction => _s('editNameAction');
+  String get renameLayerEmpty => _s('renameLayerEmpty');
+  String get renameCutEmpty => _s('renameCutEmpty');
 
   /// A drawing guide's name — the label the overlay paints over its axis,
   /// so an empty one has nothing to draw and is refused.
@@ -339,8 +343,7 @@ enum AppStrings {
   String get renameGuideEmpty => _s('renameGuideEmpty');
 
   /// The cut's note — empty is allowed, it CLEARS the note.
-  String get cutNoteTitle => _s('cutNoteTitle');
-  String get cutNoteField => _s('cutNoteField');
+  String get editNoteAction => _s('editNoteAction');
 
   // --- Confirmations ---
   String get deleteLayerTitle => _s('deleteLayerTitle');
@@ -891,6 +894,7 @@ enum AppStrings {
   String get tlFrameCommands => _s('tlFrameCommands');
   String get tlLayer => _s('tlLayer');
   String get tlFrame => _s('tlFrame');
+  String get tlKey => _s('tlKey');
   /// I-25: the link window's button, and why it is off on a linked cut's row.
   String get linkWindowUnlink => _s('linkWindowUnlink');
   String get linkWindowUnlinkLinkedCut => _s('linkWindowUnlinkLinkedCut');
@@ -1872,8 +1876,7 @@ enum AppStrings {
 
 
   // --- Timeline toolbar prompts ---
-  String get setCommasTitle => _s('setCommasTitle');
-  String get setCommasField => _s('setCommasField');
+  String get setLengthAction => _s('setLengthAction');
 
   /// I-58: how many koma apart the ● goes down a block.
   String get markEveryField => _s('markEveryField');
@@ -1985,21 +1988,14 @@ enum AppStrings {
     'commonRename': 'Rename',
     'commonLink': 'Link',
     'commonPreview': 'Preview',
-    'renameLayerTitle': 'Rename layer',
-    'renameLayerField': 'Layer name',
+    'windowTitleTemplate': '{action} ({target})',
+    'editNameAction': 'Edit name',
+    'editNoteAction': 'Edit note',
     'renameLayerEmpty': 'Layer name cannot be empty.',
-    'renameCutTitle': 'Rename cut',
-    'renameCutField': 'Cut name',
     'renameCutEmpty': 'Cut name cannot be empty.',
-    'renameFrameTitle': 'Rename frame',
-    'renameFrameField': 'Frame name',
-    'renameKeyTitle': 'Rename key',
-    'renameKeyField': 'Key name',
     'renameGuideTitle': 'Rename guide',
     'renameGuideField': 'Guide name',
     'renameGuideEmpty': 'Guide name cannot be empty.',
-    'cutNoteTitle': 'Edit cut note',
-    'cutNoteField': 'Cut note',
     'deleteLayerTitle': 'Delete layer',
     'deleteLayersMessage': 'Delete the layers below?',
     'deleteLayersHeading': 'Layers to delete',
@@ -3080,6 +3076,7 @@ enum AppStrings {
     'tlCut': 'Cut',
     'tlLayer': 'Layer',
     'tlFrame': 'Frame',
+    'tlKey': 'Key',
     'linkWindowUnlink': 'Unlink',
     'linkWindowUnlinkLinkedCut': "A linked cut's layers unlink with the cut",
     'tlResetGroup': 'Reset (keeps keys)',
@@ -3119,8 +3116,7 @@ enum AppStrings {
     'tlProjectAudioRate': 'Project audio sample rate',
     'tlShowSeRows': 'Show SE rows',
     'tlShowCameraRows': 'Show camera rows',
-    'setCommasTitle': 'Set commas',
-    'setCommasField': 'Exposure frames',
+    'setLengthAction': 'Set exposure length',
     'markEveryField': 'Interval',
     'frameCountEntryFrames': 'Frames',
     'frameCountEntrySecondsPlusFrames': 'Seconds+frames',
@@ -3215,21 +3211,14 @@ enum AppStrings {
     'commonRename': '名前を変更',
     'commonLink': 'リンク',
     'commonPreview': 'プレビュー',
-    'renameLayerTitle': 'レイヤー名の変更',
-    'renameLayerField': 'レイヤー名',
+    'windowTitleTemplate': '{action}（{target}）',
+    'editNameAction': '名前の編集',
+    'editNoteAction': 'メモの編集',
     'renameLayerEmpty': 'レイヤー名を空にはできません。',
-    'renameCutTitle': 'カット名の変更',
-    'renameCutField': 'カット名',
     'renameCutEmpty': 'カット名を空にはできません。',
-    'renameFrameTitle': 'フレーム名の変更',
-    'renameFrameField': 'フレーム名',
-    'renameKeyTitle': 'キー名の変更',
-    'renameKeyField': 'キー名',
     'renameGuideTitle': 'ガイド名の変更',
     'renameGuideField': 'ガイド名',
     'renameGuideEmpty': 'ガイド名を空にはできません。',
-    'cutNoteTitle': 'カットメモの編集',
-    'cutNoteField': 'カットメモ',
     'deleteLayerTitle': 'レイヤーの削除',
     'deleteLayersMessage': '下のレイヤーを削除しますか？',
     'deleteLayersHeading': '削除するレイヤー',
@@ -4706,6 +4695,7 @@ enum AppStrings {
     'tlCut': 'カット',
     'tlLayer': 'レイヤー',
     'tlFrame': 'フレーム',
+    'tlKey': 'キー',
     'shortcutAction.layer-duplicate': 'レイヤーを複製',
     'shortcutAction.frame-select-row-span': '行全体を選択',
     'linkWindowUnlink': 'リンクを解除',
@@ -4747,8 +4737,7 @@ enum AppStrings {
     'tlShowSeRows': 'SE行を表示',
     'tlShowCameraRows': 'カメラ行を表示',
     'shortcutAction.layer-storyboard': '絵コンテレイヤー',
-    'setCommasTitle': 'コマ数の設定',
-    'setCommasField': '露光フレーム数',
+    'setLengthAction': '露光の長さの設定',
     'markEveryField': '間隔',
     'frameCountEntryFrames': 'コマ数',
     'frameCountEntrySecondsPlusFrames': '秒+コマ',
@@ -4843,21 +4832,14 @@ enum AppStrings {
     'commonRename': '이름 변경',
     'commonLink': '링크',
     'commonPreview': '미리보기',
-    'renameLayerTitle': '레이어 이름 변경',
-    'renameLayerField': '레이어 이름',
+    'windowTitleTemplate': '{action} ({target})',
+    'editNameAction': '이름 편집',
+    'editNoteAction': '메모 편집',
     'renameLayerEmpty': '레이어 이름은 비울 수 없습니다.',
-    'renameCutTitle': '컷 이름 변경',
-    'renameCutField': '컷 이름',
     'renameCutEmpty': '컷 이름은 비울 수 없습니다.',
-    'renameFrameTitle': '프레임 이름 변경',
-    'renameFrameField': '프레임 이름',
-    'renameKeyTitle': '키 이름 변경',
-    'renameKeyField': '키 이름',
     'renameGuideTitle': '가이드 이름 변경',
     'renameGuideField': '가이드 이름',
     'renameGuideEmpty': '가이드 이름은 비울 수 없습니다.',
-    'cutNoteTitle': '컷 메모 편집',
-    'cutNoteField': '컷 메모',
     'deleteLayerTitle': '레이어 삭제',
     'deleteLayersMessage': '아래 레이어를 삭제할까요?',
     'deleteLayersHeading': '삭제할 레이어',
@@ -6322,6 +6304,7 @@ enum AppStrings {
     'tlCut': '컷',
     'tlLayer': '레이어',
     'tlFrame': '프레임',
+    'tlKey': '키',
     'shortcutAction.layer-duplicate': '레이어 복제',
     'shortcutAction.frame-select-row-span': '행 전체 선택',
     'linkWindowUnlink': '링크 해제',
@@ -6364,8 +6347,7 @@ enum AppStrings {
     'tlShowSeRows': 'SE 행 표시',
     'tlShowCameraRows': '카메라 행 표시',
     'shortcutAction.layer-storyboard': '콘티 레이어',
-    'setCommasTitle': '코마 수 설정',
-    'setCommasField': '노출 프레임 수',
+    'setLengthAction': '노출 길이 설정',
     'markEveryField': '간격',
     'frameCountEntryFrames': '프레임',
     'frameCountEntrySecondsPlusFrames': '초+코마',
@@ -6464,21 +6446,14 @@ enum AppStrings {
     'commonRename': 'Renommer',
     'commonLink': 'Lier',
     'commonPreview': 'Aperçu',
-    'renameLayerTitle': 'Renommer le calque',
-    'renameLayerField': 'Nom du calque',
+    'windowTitleTemplate': '{action} ({target})',
+    'editNameAction': 'Modifier le nom',
+    'editNoteAction': 'Modifier la note',
     'renameLayerEmpty': 'Le nom du calque ne peut pas être vide.',
-    'renameCutTitle': 'Renommer le plan',
-    'renameCutField': 'Nom du plan',
     'renameCutEmpty': 'Le nom du plan ne peut pas être vide.',
-    'renameFrameTitle': "Renommer l'image",
-    'renameFrameField': "Nom de l'image",
-    'renameKeyTitle': 'Renommer la clé',
-    'renameKeyField': 'Nom de la clé',
     'renameGuideTitle': 'Renommer le repère',
     'renameGuideField': 'Nom du repère',
     'renameGuideEmpty': 'Le nom du repère ne peut pas être vide.',
-    'cutNoteTitle': 'Modifier la note du plan',
-    'cutNoteField': 'Note du plan',
     'deleteLayerTitle': 'Supprimer le calque',
     'deleteLayersMessage': 'Supprimer les calques ci-dessous ?',
     'deleteLayersHeading': 'Calques à supprimer',
@@ -8061,6 +8036,7 @@ enum AppStrings {
     'tlCut': 'Plan',
     'tlLayer': 'Calque',
     'tlFrame': 'Image',
+    'tlKey': 'Clé',
     'shortcutAction.layer-duplicate': 'Dupliquer le calque',
     'shortcutAction.frame-select-row-span': 'Sélectionner toute la ligne',
     'linkWindowUnlink': 'Délier',
@@ -8106,8 +8082,7 @@ enum AppStrings {
     'tlShowSeRows': 'Afficher les lignes SE',
     'tlShowCameraRows': 'Afficher les lignes caméra',
     'shortcutAction.layer-storyboard': 'Calque storyboard',
-    'setCommasTitle': 'Définir les commas',
-    'setCommasField': "Images d'exposition",
+    'setLengthAction': "Définir la durée d'exposition",
     'markEveryField': 'Intervalle',
     'frameCountEntryFrames': 'Images',
     'frameCountEntrySecondsPlusFrames': 'Secondes+images',
@@ -8200,21 +8175,14 @@ enum AppStrings {
     'commonRename': '重命名',
     'commonLink': '链接',
     'commonPreview': '预览',
-    'renameLayerTitle': '重命名图层',
-    'renameLayerField': '图层名称',
+    'windowTitleTemplate': '{action}（{target}）',
+    'editNameAction': '编辑名称',
+    'editNoteAction': '编辑备注',
     'renameLayerEmpty': '图层名称不能为空。',
-    'renameCutTitle': '重命名镜头',
-    'renameCutField': '镜头名称',
     'renameCutEmpty': '镜头名称不能为空。',
-    'renameFrameTitle': '重命名帧',
-    'renameFrameField': '帧名称',
-    'renameKeyTitle': '重命名关键帧',
-    'renameKeyField': '关键帧名称',
     'renameGuideTitle': '重命名参考线',
     'renameGuideField': '参考线名称',
     'renameGuideEmpty': '参考线名称不能为空。',
-    'cutNoteTitle': '编辑镜头备注',
-    'cutNoteField': '镜头备注',
     'deleteLayerTitle': '删除图层',
     'deleteLayersMessage': '要删除下列图层吗？',
     'deleteLayersHeading': '要删除的图层',
@@ -9585,6 +9553,7 @@ enum AppStrings {
     'tlCut': '镜头',
     'tlLayer': '图层',
     'tlFrame': '帧',
+    'tlKey': '关键帧',
     'shortcutAction.layer-duplicate': '复制图层',
     'shortcutAction.frame-select-row-span': '选择整行',
     'linkWindowUnlink': '取消链接',
@@ -9628,8 +9597,7 @@ enum AppStrings {
     'tlShowSeRows': '显示 SE 行',
     'tlShowCameraRows': '显示摄影机行',
     'shortcutAction.layer-storyboard': '分镜图层',
-    'setCommasTitle': '设置格数',
-    'setCommasField': '曝光帧数',
+    'setLengthAction': '设置曝光长度',
     'markEveryField': '间隔',
     'frameCountEntryFrames': '帧数',
     'frameCountEntrySecondsPlusFrames': '秒+帧',

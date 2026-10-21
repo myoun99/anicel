@@ -2562,7 +2562,6 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     camera: camera,
     rangeSelections: rangeSelections,
-    cells: cells,
   );
 
   @override

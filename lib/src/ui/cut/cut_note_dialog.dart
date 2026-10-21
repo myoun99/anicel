@@ -15,9 +15,8 @@ class CutNoteDialog extends StatelessWidget {
     final strings = AppText.strings;
     return AppPromptDialog(
       windowKey: const ValueKey<String>('cut-note-dialog'),
-      title: strings.cutNoteTitle,
+      title: strings.windowTitleOn(strings.editNoteAction, strings.tlCut),
       titleIcon: Icons.sticky_note_2_outlined,
-      fieldLabel: strings.cutNoteField,
       initialValue: initialNote,
       confirmLabel: strings.commonSave,
       multiline: true,
