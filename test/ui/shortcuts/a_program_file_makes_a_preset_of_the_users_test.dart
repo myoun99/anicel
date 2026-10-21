@@ -284,8 +284,10 @@ void main() {
     expect(bindings.preset, ShortcutPreset.clipStudio);
   });
 
-  test('a row with no keys names none: its action keeps the registry\'s '
-      'under the preset', () {
+  // ↩️It kept the registry's H until F-417, where a row its program does not
+  // name took the other program's keys.
+  test('a row with no keys names none: its action takes what it holds '
+      'without the program — TVPaint\'s, under the Clip Studio preset', () {
     final rows = presetRows(ShortcutPreset.clipStudio);
     expect(
       rows[EditorActionIds.canvasFlipHorizontal]!.keys,
@@ -295,7 +297,7 @@ void main() {
 
     bindings.setPreset(ShortcutPreset.clipStudio);
 
-    expect(keysOf(EditorActionIds.canvasFlipHorizontal), ['H']);
+    expect(keysOf(EditorActionIds.canvasFlipHorizontal), ['[']);
   });
 
   test('every TVPaint command a row names has its Japanese name, for the '
