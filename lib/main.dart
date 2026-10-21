@@ -36,7 +36,7 @@ import 'src/ui/theme/app_theme.dart';
 import 'src/ui/ui_scale.dart';
 import 'src/ui/ui_scale_binding.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> handedAtLaunch) async {
   // FIRST, before anything reaches for a platform channel. The pen
   // sidecars do: PencilInteractionService installs a handler on
   // `qa_pen/ios`, and a MethodChannel needs the binding's messenger to
@@ -174,7 +174,7 @@ Future<void> main() async {
   MemoryBlackBox.lastUnfinished = MemoryBlackBox.unfinishedEntry();
   MemoryBlackBox.reset();
   LaunchSplash.drawing(AppText.strings);
-  runApp(const AnicelApp());
+  runApp(AnicelApp(handedAtLaunch: handedAtLaunch));
   // 🗣️F-178 (유저 2026-09-24): 「ios에서 녹음누르면 권한묻는데 그게아니라 앱
   // 실행시로 못하나? 한번 권한 얻으면 심플하잖아」. Once, at launch, after the
   // first frame so the system dialog lands on the app rather than on an empty
@@ -200,7 +200,10 @@ Future<void> main() async {
 }
 
 class AnicelApp extends StatelessWidget {
-  const AnicelApp({super.key});
+  const AnicelApp({super.key, this.handedAtLaunch = const []});
+
+  /// The files the OS opened the app with ([HomePage.handedAtLaunch]).
+  final List<String> handedAtLaunch;
 
   @override
   Widget build(BuildContext context) {
@@ -258,7 +261,10 @@ class AnicelApp extends StatelessWidget {
             child: child ?? const SizedBox.shrink(),
           ),
         ),
-        home: HomePage(battery: DeviceBattery.shown),
+        home: HomePage(
+          battery: DeviceBattery.shown,
+          handedAtLaunch: handedAtLaunch,
+        ),
       ),
     );
   }

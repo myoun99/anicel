@@ -121,6 +121,7 @@ class HomePage extends StatefulWidget {
     this.fontLibraryService,
     this.languageSettingsStore,
     this.battery,
+    this.handedAtLaunch = const [],
   });
 
   final Project? initialProject;
@@ -156,6 +157,11 @@ class HomePage extends StatefulWidget {
   /// which the app hands in) — null on a device without one, and in a test
   /// that does not hand one in.
   final ValueListenable<BatteryReading>? battery;
+
+  /// The files the OS opened the app with — its launch arguments, which is
+  /// how Windows' 「연결 프로그램」 and a double-click in the Explorer hand a
+  /// file over (`open-door-windows-open-with`), and Linux's file managers.
+  final List<String> handedAtLaunch;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -529,6 +535,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // I-7: both are for every open project, and the workspace that used to
     // hear them is the window's, not a project's.
     WidgetsBinding.instance.addObserver(this);
+    // What the OS opened the app with goes through the one door, as a drop
+    // on the window does — after the first frame, once the workspace that
+    // holds the door has bound it.
+    final handed = widget.handedAtLaunch;
+    if (handed.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _workspaceDoor.openPaths(handed),
+      );
+    }
     // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with

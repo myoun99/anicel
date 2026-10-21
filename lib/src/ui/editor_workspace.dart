@@ -1247,6 +1247,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       this,
       openFiles: () => unawaited(_pickAndOpen()),
       openFolder: () => unawaited(_pickFolderAndOpen()),
+      openPaths: (paths) => unawaited(_openHanded(paths)),
     );
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
     for (final slot in _viewerSlots.values) {
@@ -2154,10 +2155,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       place.take(paths);
       return;
     }
-    unawaited(
-      _door.open(context, [for (final path in paths) handedPath(path)]),
-    );
+    unawaited(_openHanded(paths));
   }
+
+  /// Paths handed over with nothing granted for them — a drop on the
+  /// window, the files the OS opened the app with — through the one door.
+  Future<void> _openHanded(List<String> paths) =>
+      _door.open(context, [for (final path in paths) handedPath(path)]);
 
   /// The place a drag from the OS is over now, lit while it is
   /// ([OsFileDropPlace.hover]). A drop is left first: the plugin says the
@@ -2188,8 +2192,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     openProjects: widget.onOpenProjects,
     importWindow: (picked, {required toPool}) =>
         _openImportWindow(picked: picked, poolOnly: toPool),
-    bringBrushes: (name, bytes) =>
-        _presetLibrary.importFile((name: name, bytes: bytes)),
+    // After the library has landed, as a resumed tool choice is
+    // ([_WorkspaceBrushPresets.libraryLanded]): the read puts back what the
+    // file holds, and brushes brought before it would go under it — a file
+    // the OS opened the app with knocks in the first frame
+    // (`open-door-windows-open-with`).
+    bringBrushes: (name, bytes) async {
+      await _brushPresets.libraryLanded;
+      return _presetLibrary.importFile((name: name, bytes: bytes));
+    },
     bringFont: (bytes) async {
       final outcome = await _fonts.importBytes(bytes);
       final family = outcome.family;
