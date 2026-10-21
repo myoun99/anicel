@@ -37,6 +37,8 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/app_shortcuts.dart';
+
 const k = LogicalKeyboardKey.keyK;
 
 /// The bar's menu rows, in the bar's order — 컷 · 레이어 · 프레임 · fx.
@@ -624,6 +626,10 @@ void main() {
     testWidgets('the frame pill\'s ＋ × ● and the n-koma ● wear their '
         'actions\' names too', (tester) async {
       await pumpApp(tester);
+      // Shift+I is anicel's. Clip Studio's preset, which an install opens
+      // on, takes New Frame from TVPaint's `I`, a key Clip Studio keeps for
+      // its own, and so leaves it without one (F-417-Q2, bf542a298).
+      await useAnicelKeys(tester);
       String tooltip(String key) => tester
           .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)).first)
           .tooltip;
