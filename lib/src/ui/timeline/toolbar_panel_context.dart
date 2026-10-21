@@ -315,7 +315,9 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   @override
   bool get canPasteLinkedFrame => _pastesRows
       ? session.layerClipboard.canPasteRowsLinked
-      : !_pastesKeys && session.clipboard.canPasteLinkedAt(clipboardPlace);
+      : _pastesKeys
+      ? session.keyClipboard.canPasteLinked
+      : session.clipboard.canPasteLinkedAt(clipboardPlace);
 
   /// On a row the copy was not taken from it links by NAME, and asks before
   /// it joins a name the row already holds ([pasteLinkedAskingFirst], I-71).
@@ -323,23 +325,29 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// nothing until it is told to join.
   ///
   /// ROWS in hand are linked whole, each beside the row you stand on, and
-  /// have nothing to ask.
+  /// have nothing to ask. KEYS ask the same way, of a name the lane they
+  /// land on already holds at another value (F-388).
   @override
   void pasteLinkedFrame() {
     if (_pastesRows) {
       session.layerClipboard.pasteRowsLinked();
       return;
     }
-    if (_pastesKeys) {
-      return;
-    }
     final context = waitIn;
     if (context == null) {
-      session.clipboard.pasteLinkedAt(clipboardPlace);
+      _pastesKeys
+          ? session.keyClipboard.pasteLinked()
+          : session.clipboard.pasteLinkedAt(clipboardPlace);
       return;
     }
     unawaited(
-      pasteLinkedAskingFirst(context, session, place: () => clipboardPlace),
+      _pastesKeys
+          ? pasteLinkedKeysAskingFirst(context, session)
+          : pasteLinkedAskingFirst(
+              context,
+              session,
+              place: () => clipboardPlace,
+            ),
     );
   }
 }

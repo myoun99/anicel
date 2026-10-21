@@ -162,6 +162,62 @@ void main() {
     expect(now().transformTrack.opacity.keys[30]?.value, 0.5);
   });
 
+  // 🗣️F-388-Q2 (유저 2026-10-20): 「이름 있는 키만 링크 — 그냥 생각할것도없이
+  // 프레임블록 복붙이랑 똑같은 규칙」 · I-71 (10-05): 「기존에 이름 존재한다면
+  // 링크시킬지 묻는것도 띄우고」.
+  group('링크 붙여넣기', () {
+    test('keeps each key\'s name — on its own lane the name\'s key, asking '
+        'nothing', () {
+      key('rotation', {7: 20}, name: 'A');
+      standOn('rotation', at: 7);
+      pill.copyFrame();
+
+      standOn('rotation', at: 2);
+      expect(pill.canPasteLinkedFrame, isTrue);
+      pill.pasteLinkedFrame();
+
+      final keys = now().transformTrack.rotation.keys;
+      expect((keys[2]?.name, keys[2]?.value), ('A', 20));
+      expect((keys[8]?.name, keys[8]?.value), ('A', 20));
+    });
+
+    test('has nothing to keep of unnamed keys — the independent paste alone '
+        'is lit', () {
+      key('rotation', {7: 20});
+      standOn('rotation', at: 7);
+      pill.copyFrame();
+
+      standOn('rotation', at: 2);
+      expect(
+        (pill.canPasteIndependentFrame, pill.canPasteLinkedFrame),
+        (true, false),
+      );
+    });
+
+    test('🚨under a name the lane holds at another value it asks first — '
+        'and joined, the key takes what the name holds there', () {
+      key('rotation', {7: 0.8}, name: 'A');
+      key('opacity', {20: 0.3}, name: 'A');
+      standOn('rotation', at: 7);
+      pill.copyFrame();
+
+      standOn('opacity', at: 2);
+      pill.pasteLinkedFrame();
+      expect(
+        now().transformTrack.opacity.keys.keys,
+        [20],
+        reason: 'with no window to ask in, nothing is written',
+      );
+      expect(s.keyClipboard.pasteLinked(), {'A'});
+      expect(now().transformTrack.opacity.keys.keys, [20]);
+
+      expect(s.keyClipboard.pasteLinked(joinTakenNames: true), isNull);
+      final keys = now().transformTrack.opacity.keys;
+      expect((keys[2]?.name, keys[2]?.value), ('A', 0.3));
+      expect(keys[21]?.value, 0.3, reason: 'the name\'s key, moved back');
+    });
+  });
+
   test('one undo takes the whole paste back; on the layer row the keys in '
       'hand go nowhere', () {
     key('rotation', {3: 10, 7: 20});

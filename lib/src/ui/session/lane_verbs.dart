@@ -10,7 +10,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/property_track.dart'
     show KeyExit, KeyPath, KeySide, KeySidesEdit, KeyTypePick, PropertyKey;
-import '../../models/se_name_tag.dart' show SeNameTag;
+import '../../models/se_name_tag.dart' show SeNameTag, SeNameTagTrack;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_camera_row.dart' show isTrackCameraRow;
@@ -30,7 +30,6 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithRemoved;
 import '../timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, parseEffectLaneId;
-import '../timeline/property_lane_lens.dart' show PropertyLaneEdit;
 import '../timeline/reference_lane_policy.dart'
     show
         laneIsReference,
@@ -1368,26 +1367,54 @@ class LaneVerbs {
     ];
   }
 
-  /// [copy] put down where the press stands ([laneVerbRange]) as a frame
-  /// paste puts its run down ([laneKeysSpliced]): a selection replaced,
-  /// standing in at the playhead — each key unnamed, a value of its own, or
-  /// with its name kept ([keepNames]). One undo. Returns whether anything
-  /// was put down (F-388).
-  bool pasteLaneKeys(KeyCopy copy, {required bool keepNames}) {
-    final pasted = _laneKeysPasted(copy, keepNames: keepNames);
-    return pasted != null &&
-        _commitSpanEdit(
-          pasted.scope,
-          pasted.edit,
-          description: keepNames ? 'Paste linked keys' : 'Paste keys',
-        );
+  /// 독립 붙여넣기 of [copy] where the press stands ([laneVerbRange]), as a
+  /// frame paste puts its run down ([laneKeysSpliced]): a selection
+  /// replaced, standing in at the playhead — each key unnamed, a value of
+  /// its own (유저 확정, of frames: 「독립 붙여넣기 = 그냥 복제」). One undo
+  /// (F-388).
+  void pasteLaneKeys(KeyCopy copy) {
+    if (_laneKeysPasted(copy, keepNames: false) case final pasted?) {
+      _commitSpanEdit(pasted.scope, pasted.edit, description: 'Paste keys');
+    }
   }
 
-  /// Whether [pasteLaneKeys] puts any of [copy] down here.
+  /// Whether a paste of [copy] puts any of it down here.
   bool canPasteLaneKeys(KeyCopy copy) =>
       _laneKeysPasted(copy, keepNames: false) != null;
 
-  ({_SpanScope scope, LaneEdit edit})? _laneKeysPasted(
+  /// 링크 붙여넣기 of [copy]: [pasteLaneKeys] with each key's name kept. A
+  /// name the lane's naming space holds already is that name's key there,
+  /// so the key pasted under it takes what it holds — as a frame pasted
+  /// under a name its row holds shows the row's drawing (I-71). Where that
+  /// would put down another value than the copied one and [joinTakenNames]
+  /// was not given, this writes NOTHING and hands back the names, for the
+  /// caller to ask about once; null when it pasted, or had nothing to do.
+  ///
+  /// 🗣️F-388-Q2 (유저 2026-10-20): 「이름 있는 키만 링크 — 그냥
+  /// 생각할것도없이 프레임블록 복붙이랑 똑같은 규칙」: an unnamed key has no
+  /// name to link by and goes down as its value.
+  Set<String>? pasteLinkedLaneKeys(
+    KeyCopy copy, {
+    bool joinTakenNames = false,
+  }) {
+    final pasted = _laneKeysPasted(copy, keepNames: true);
+    if (pasted == null) {
+      return null;
+    }
+    if (!joinTakenNames && pasted.joins.isNotEmpty) {
+      return pasted.joins;
+    }
+    _commitSpanEdit(
+      pasted.scope,
+      pasted.edit,
+      description: 'Paste linked keys',
+    );
+    return null;
+  }
+
+  /// What a paste of [copy] here writes, and with [keepNames] the names it
+  /// joins at another value — null where it lands nothing.
+  ({_SpanScope scope, LaneEdit edit, Set<String> joins})? _laneKeysPasted(
     KeyCopy copy, {
     required bool keepNames,
   }) {
@@ -1407,23 +1434,81 @@ class LaneVerbs {
         for (final laneId in home.laneIds) (home: home, laneId: laneId),
     ]);
     final liftCount = _selectedLaneSpan == null ? 0 : lane.lengthFrames;
-    PropertyLaneEdit? Function(String) splicedOn(Object home) => (laneId) {
-      final keys = paired[(home: home, laneId: laneId)];
-      return keys == null
-          ? null
-          : laneKeysSpliced(
-              start: lane.startIndex,
-              liftCount: liftCount,
-              length: copy.length,
-              keys: keepNames ? keys : _unnamed(keys),
-            );
+    final lifted = {
+      for (var frame = 0; frame < liftCount; frame += 1)
+        lane.startIndex + frame,
     };
-    final edit = rowLaneHomesEdited(
-      scope.subject,
-      homes,
-      <T>(LaneHome<T> home) => home.editedEach(splicedOn(home)),
+    final holders = _nameHoldersOf(scope);
+    final joins = <String>{};
+    // [home]'s lanes with their keys put down — named keys as the name's
+    // key there ([heldOf]: what holds a name on a lane of it, or null).
+    T? pastedOn<T>(
+      LaneHome<T> home,
+      PropertyKey<Object?>? Function(String laneId, String name) heldOf,
+    ) => home.editedEach((laneId) {
+      final keys = paired[(home: home, laneId: laneId)];
+      if (keys == null) {
+        return null;
+      }
+      return laneKeysSpliced(
+        start: lane.startIndex,
+        liftCount: liftCount,
+        length: copy.length,
+        keys: {
+          for (final MapEntry(key: frame, value: key) in keys.entries)
+            frame: switch (keepNames ? key.name : null) {
+              null => key.copyWith(name: () => null),
+              final name => switch (heldOf(laneId, name)) {
+                null => key,
+                final held => _joined(key, held, joins),
+              },
+            },
+        },
+      );
+    });
+    PropertyKey<Object?>? Function(String, String) namedIn<T>(
+      LaneHome<T> home,
+      T? Function(String laneId, String name, Set<int> frames) holder,
+    ) => (laneId, name) => switch (holder(laneId, name, lifted)) {
+      null => null,
+      final held => home
+          .lensOf(laneId)
+          ?.keysOf(held)
+          .values
+          .where((key) => key.name == name)
+          .firstOrNull,
+    };
+    final edit = LaneEdit(
+      transform: (
+        own: pastedOn(homes.own, namedIn(homes.own, holders.own)),
+        reference: pastedOn(
+          homes.reference,
+          namedIn(homes.reference, holders.reference),
+        ),
+      ),
+      effects: pastedOn(
+        homes.effects,
+        (laneId, name) => holders.effects(laneId, name, lifted),
+      ),
+      nameTag: scope.subject.nameTagWith(
+        pastedOn(homes.nameTag, namedIn(homes.nameTag, holders.nameTag)),
+      ),
     );
-    return edit.isEmpty ? null : (scope: scope, edit: edit);
+    return edit.isEmpty ? null : (scope: scope, edit: edit, joins: joins);
+  }
+
+  /// [key] under a name [held] already holds: the held key's value, sides,
+  /// path and time, and its own name — [joins] taking the name where that
+  /// is another value than the key's own.
+  static PropertyKey<Object?> _joined(
+    PropertyKey<Object?> key,
+    PropertyKey<Object?> held,
+    Set<String> joins,
+  ) {
+    if (held.held != key.held) {
+      joins.add(key.name!);
+    }
+    return key.withHeld(held.held);
   }
 
   /// Which of [targets] takes which lane of [copied] — 🚨THE FRAME PASTE'S
@@ -1450,14 +1535,6 @@ class LaneVerbs {
           target: copied[index].keys,
     };
   }
-
-  /// [keys] with their names taken off — each a value of its own.
-  static Map<int, PropertyKey<Object?>> _unnamed(
-    Map<int, PropertyKey<Object?>> keys,
-  ) => {
-    for (final MapEntry(key: frame, value: key) in keys.entries)
-      frame: key.copyWith(name: () => null),
-  };
 
   /// The names the range's keys carry — null for an unnamed one.
   Set<String?> _laneRangeKeyNames() => {
@@ -1642,7 +1719,7 @@ class LaneVerbs {
     }
     final layer = scope.layer;
     final homes = scope.homes;
-    final cutId = _activeCut.cutOfRow(layer.id);
+    final holders = _nameHoldersOf(scope);
     final asked = naming?.name;
     final adopt = naming?.adopt ?? false;
     final named = naming == null
@@ -1650,10 +1727,8 @@ class LaneVerbs {
         : (name: asked, preferredFrame: _laneVerbFrameFor(lane.layerId));
 
     // Every lane is READ before any is written — the keys it covers, and
-    // what already holds the name — so a taken name stops the verb while
-    // the range is still untouched. Each home is its own naming space: a
-    // row's own lanes and its effects name across its 겸용 link group, a
-    // reference fx's (F-374) and a name tag's on themselves alone.
+    // what already holds the name ([_nameHoldersOf]) — so a taken name
+    // stops the verb while the range is still untouched.
     var taken = false;
     T? written<T, H extends Object>(
       LaneHome<T> home,
@@ -1697,49 +1772,22 @@ class LaneVerbs {
       adoptFrom: holder,
       pick: pick,
     );
-    final fx = homes.reference.keys;
-    final tag = homes.nameTag.keys;
     final edit = LaneEdit(
       transform: (
         own: written(
           homes.own,
-          (laneId, frames) => _laneTransformHoldingName(
-            layer,
-            transformPropertyOfLaneId(laneId)!,
-            asked!,
-            excludeFrames: frames,
-          ),
+          (laneId, frames) => holders.own(laneId, asked!, frames),
           transformWritten,
         ),
         reference: written(
           homes.reference,
-          (laneId, frames) =>
-              transformLaneUsesName(
-                fx,
-                transformPropertyOfLaneId(laneId)!,
-                asked!,
-                excludeFrames: frames,
-              )
-              ? fx
-              : null,
+          (laneId, frames) => holders.reference(laneId, asked!, frames),
           transformWritten,
         ),
       ),
       effects: written(
         homes.effects,
-        (laneId, frames) => switch (parseEffectLaneId(laneId)) {
-          (:final effectId, parameterId: final parameterId?)
-              when cutId != null =>
-            _project.cutCommandCoordinator.namedEffectKeyInSpace(
-              cutId: cutId,
-              layerId: layer.id,
-              effectId: effectId,
-              parameterId: parameterId,
-              name: asked!,
-              excludeFramesOnSource: frames,
-            ),
-          _ => null,
-        },
+        (laneId, frames) => holders.effects(laneId, asked!, frames),
         (effects, laneId, frames, adopted) => effectsWithLaneKeysWritten(
           effects,
           laneId: laneId,
@@ -1752,10 +1800,7 @@ class LaneVerbs {
       nameTag: scope.subject.nameTagWith(
         written(
           homes.nameTag,
-          (laneId, frames) =>
-              seNameTagLaneUsesName(tag, laneId, asked!, excludeFrames: frames)
-              ? tag
-              : null,
+          (laneId, frames) => holders.nameTag(laneId, asked!, frames),
           (keys, laneId, frames, holder) => seNameTagTrackWithLaneKeysWritten(
             keys,
             laneId: laneId,
@@ -1773,6 +1818,55 @@ class LaneVerbs {
     return (
       taken: false,
       edit: edit.isEmpty ? null : (layer: layer, edit: edit),
+    );
+  }
+
+  /// What already holds a name on each home's lanes of [scope], outside the
+  /// frames given — the keys a key joining the name takes. Each home is its
+  /// own naming space: a row's own lanes and its effects name across its
+  /// 겸용 link group, a reference fx's (F-374) and a name tag's on
+  /// themselves alone. Null where the name is free.
+  ///
+  /// The key window's naming reads it ([_laneKeysWriteOver]) and so does a
+  /// 링크 붙여넣기 of keys ([_laneKeysPasted], F-388): one answer to 「who
+  /// holds this name here」.
+  _NameHolders _nameHoldersOf(_SpanScope scope) {
+    final layer = scope.layer;
+    final cutId = _activeCut.cutOfRow(layer.id);
+    final fx = scope.homes.reference.keys;
+    final tag = scope.homes.nameTag.keys;
+    return (
+      own: (laneId, name, frames) => _laneTransformHoldingName(
+        layer,
+        transformPropertyOfLaneId(laneId)!,
+        name,
+        excludeFrames: frames,
+      ),
+      reference: (laneId, name, frames) =>
+          transformLaneUsesName(
+            fx,
+            transformPropertyOfLaneId(laneId)!,
+            name,
+            excludeFrames: frames,
+          )
+          ? fx
+          : null,
+      effects: (laneId, name, frames) => switch (parseEffectLaneId(laneId)) {
+        (:final effectId, parameterId: final parameterId?) when cutId != null =>
+          _project.cutCommandCoordinator.namedEffectKeyInSpace(
+            cutId: cutId,
+            layerId: layer.id,
+            effectId: effectId,
+            parameterId: parameterId,
+            name: name,
+            excludeFramesOnSource: frames,
+          ),
+        _ => null,
+      },
+      nameTag: (laneId, name, frames) =>
+          seNameTagLaneUsesName(tag, laneId, name, excludeFrames: frames)
+          ? tag
+          : null,
     );
   }
 
@@ -2251,6 +2345,18 @@ typedef _LaneRangeKey = ({
 /// A lane a paste of keys can land on: the home it lives in, by identity,
 /// and its id there ([LaneVerbs._keysPairedWith]).
 typedef _PastedLane = ({Object home, String laneId});
+
+/// What holds a name on a lane of each home ([LaneVerbs._nameHoldersOf]),
+/// asked with the lane, the name and the frames left out.
+typedef _NameHolders = ({
+  TransformTrack? Function(String laneId, String name, Set<int> frames) own,
+  TransformTrack? Function(String laneId, String name, Set<int> frames)
+  reference,
+  PropertyKey<double>? Function(String laneId, String name, Set<int> frames)
+  effects,
+  SeNameTagTrack? Function(String laneId, String name, Set<int> frames)
+  nameTag,
+});
 
 typedef _SpanScope = ({
   Layer layer,

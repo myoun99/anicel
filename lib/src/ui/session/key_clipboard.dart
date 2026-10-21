@@ -91,9 +91,34 @@ class KeyClipboard {
   /// none (유저 확정, of frames: 「독립 붙여넣기 = 그냥 복제」).
   void pasteIndependent() {
     if (_board._copy case final copy?) {
-      _laneVerbs.pasteLaneKeys(copy, keepNames: false);
+      _laneVerbs.pasteLaneKeys(copy);
     }
   }
+
+  /// Whether a 링크 붙여넣기 here has a name to keep: the keys in hand carry
+  /// one, and a paste here puts them down. With none the press would be the
+  /// independent paste under another button, and that button alone is lit
+  /// — the frame board's law (F-115).
+  bool get canPasteLinked => switch (_board._copy) {
+    final copy? =>
+      copy.lanes.any(
+            (lane) => lane.keys.values.any((key) => key.name != null),
+          ) &&
+          _laneVerbs.canPasteLaneKeys(copy),
+    null => false,
+  };
+
+  /// 링크 붙여넣기 of the keys in hand ([LaneVerbs.pasteLinkedLaneKeys]):
+  /// null when it pasted, or the names it would join at another value,
+  /// writing nothing, where [joinTakenNames] was not given.
+  Set<String>? pasteLinked({bool joinTakenNames = false}) =>
+      switch (_board._copy) {
+        final copy? => _laneVerbs.pasteLinkedLaneKeys(
+          copy,
+          joinTakenNames: joinTakenNames,
+        ),
+        null => null,
+      };
 
   /// The keys in hand, lane by lane, as frames from the copy's first —
   /// empty when the hand holds none.
