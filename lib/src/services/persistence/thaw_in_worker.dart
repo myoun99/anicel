@@ -89,10 +89,10 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
 }
 
 /// A HOT cel's picture — its blocks on the main isolate, named where they
-/// lie ([celBlocksOf]) — behind [reach] and as [move] leaves it, worked out
-/// on a worker and laid into that isolate's tile blocks for it to adopt
-/// ([laidCelSurface]): the blit [moveCelInWorker] makes of a kept cel, for
-/// one already thawed.
+/// lie ([celBlocksOf]) — as [move] leaves it, worked out on a worker and
+/// laid into that isolate's tile blocks for it to adopt ([laidCelSurface]):
+/// the blit [moveCelInWorker] makes of a kept cel, for one already thawed —
+/// and so already behind its store's wall, with nothing past it to cut.
 ///
 /// 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1 (유저 2026-10-22:
 /// 「다시 하기도 대기 창 뒤에서 옮긴다」): a redo's cels are the ones its undo
@@ -103,17 +103,11 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
 Future<AnicelLaidCel> moveHotCelInWorker(
   BrushFrameKey key,
   AnicelLaidCel at, {
-  required PasteboardReach reach,
   required CelMove move,
 }) {
   final blocks = BitmapTile.blocks;
   return onAWorker(
-    () => _layMoved(
-      key,
-      surfaceBehindReach(copiedCelSurface(at), reach),
-      move,
-      tileBlocksHere(blocks),
-    ),
+    () => _layMoved(key, copiedCelSurface(at), move, tileBlocksHere(blocks)),
   );
 }
 

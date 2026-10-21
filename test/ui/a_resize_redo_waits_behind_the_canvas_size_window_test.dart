@@ -156,4 +156,30 @@ void main() {
     await shown;
     expect(store.celsMovedHere, movedHere, reason: 'moved ahead, not here');
   });
+
+  testWidgets('a 겸용 변경 whose canvases agree moves nothing, and does not '
+      'wait', (tester) async {
+    final session = await openApp(tester);
+    session.cutVerbs.duplicateActiveCut();
+    await tester.pumpAndSettle();
+    final origin = session.requireActiveCut;
+    final shown = showConvertActiveCutToLinked(
+      tester.element(find.byType(EditorCanvasArea)),
+      session,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('convert-linked-cut-confirm-button')),
+    );
+    await tester.pump();
+    expect(window, findsNothing);
+    await tester.pumpAndSettle();
+    await shown;
+    expect(
+      session.layerVerbs.isLayerLinked(session.activeLayer!.id),
+      isTrue,
+      reason: 'converted all the same',
+    );
+    expect(session.requireActiveCut.id, origin.id);
+  });
 }

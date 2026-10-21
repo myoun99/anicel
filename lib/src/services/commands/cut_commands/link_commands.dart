@@ -141,23 +141,16 @@ class _LinkCommands {
 
   /// What [convertCutToLinked] works out ahead: its resize's, the target's
   /// canvas taken to the origin's ([ResizeCutCanvasCommand.workAhead]) —
-  /// null when the two canvases already agree, or the conversion links
-  /// nothing.
+  /// null when the two canvases already agree.
   WorkAhead? convertCutToLinkedAhead({
     required CutId originCutId,
     required CutId targetCutId,
   }) {
     final project = _coordinator.repository.requireProject();
-    final linksAnything = convertToLinkedCutPreview(
-      originCutId: originCutId,
-      targetCutId: targetCutId,
-    ).linksAnything;
-    return linksAnything
-        ? _convertResize(
-            requireCut(project, originCutId),
-            requireCut(project, targetCutId),
-          )?.workAhead(undo: false)
-        : null;
+    return _convertResize(
+      requireCut(project, originCutId),
+      requireCut(project, targetCutId),
+    )?.workAhead(undo: false);
   }
 
   /// The resize a conversion of [targetCut] to link [originCut] starts with

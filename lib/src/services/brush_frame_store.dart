@@ -1835,10 +1835,11 @@ class BrushFrameStore {
         final laid = await moveHotCelInWorker(
           key,
           celBlocksOf(surface),
-          reach: _pasteboardReach,
           move: move,
         );
         // [surface] is held to here, past the worker that read its blocks.
+        // Walled as the step will wall it ([_storeHot]): a laid cel carries
+        // no wall of its own.
         answers[key] = (from: surface, moved: _behind(laidCelSurface(laid)));
       } on Object {
         // The move makes it where it is taken, as it always did.
