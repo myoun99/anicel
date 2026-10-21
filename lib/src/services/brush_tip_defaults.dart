@@ -25,6 +25,9 @@ final List<BrushTipEntry> defaultBrushTipEntries = List.unmodifiable([
   _entry(paperGrainTextureMask, 'Paper Grain'),
   _entry(canvasWeaveTextureMask, 'Canvas Weave'),
   _entry(coldPressTextureMask, 'Cold Press'),
+  _entry(pencilSideBrushTipMask, 'Pencil Side'),
+  _entry(graphiteToothTextureMask, 'Graphite Tooth'),
+  _entry(colorFleckBrushTipMask, 'Color Flecks'),
 ]);
 
 BrushTipEntry _entry(BrushTipMask mask, String name) => BrushTipEntry(

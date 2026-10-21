@@ -24,14 +24,25 @@ void main() {
     paperGrainTextureMask,
     canvasWeaveTextureMask,
     coldPressTextureMask,
+    pencilSideBrushTipMask,
+    graphiteToothTextureMask,
+    colorFleckBrushTipMask,
   ];
 
   test('every bundled mask is 64 a side with an alpha per cell — but the '
-      'cold-press paper, whose tooth needs 256', () {
+      'four that need 256', () {
     // Board F-218: a 64-texel tile scaled up to read as paper repeats every
-    // couple of centimetres of a stroke (see `coldPressTextureMask`).
+    // couple of centimetres of a stroke (see `coldPressTextureMask`). F-433:
+    // the lead's side is a hard edge at any dab size, the graphite tooth a
+    // speck of a pixel or two, and the flecks a few texels long.
+    const wide = {
+      'builtin-cold-press',
+      'builtin-pencil-side',
+      'builtin-graphite-tooth',
+      'builtin-color-flecks',
+    };
     for (final mask in masks) {
-      final side = mask.id == 'builtin-cold-press' ? 256 : 64;
+      final side = wide.contains(mask.id) ? 256 : 64;
       expect(mask.size, side, reason: mask.id);
       expect(mask.alpha.length, side * side, reason: mask.id);
     }
@@ -68,6 +79,10 @@ void main() {
       'builtin-canvas-weave': 692736,
       // Measured 2026-10-01 as it first shipped (board F-218).
       'builtin-cold-press': 12500549,
+      // Measured 2026-10-21 as they first shipped (F-433).
+      'builtin-pencil-side': 14553373,
+      'builtin-graphite-tooth': 9601082,
+      'builtin-color-flecks': 1085497,
     };
 
     expect(

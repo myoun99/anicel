@@ -128,40 +128,106 @@ void main() {
       }
     });
 
-    test('the pencil laid on its side spreads wide, pale and soft', () {
+    test('🚨the pencil laid on its side takes its tone from the pressure '
+        'alone, and cuts as hard lying down as upright (F-433)', () {
       // 「각도에 따라 눕히는 연필 … 아날로그에서. 그런거 그대로 재현한 연필」.
+      // ↩️It paled and softened as it lay down; 유저 F-433: 「불투명도
+      // 제한같은거? 기울기 이런거 걸어놧는데, 없애고 똑같이 불투명도 필압으로」
+      // and 「진짜 연필처럼 딱딱한느낌? 실루엣」.
       final tilted = byId('builtin-shading-pencil').settings;
       final curves = tilted.shape.curves;
-      expect(
-        curves[(BrushPressureTarget.size, BrushInputSource.tilt)],
-        isNotNull,
-      );
+      for (final target in [
+        BrushPressureTarget.opacity,
+        BrushPressureTarget.flow,
+        BrushPressureTarget.hardness,
+      ]) {
+        expect(
+          curves[(target, BrushInputSource.tilt)],
+          isNull,
+          reason: 'no tilt row on its ${target.name}',
+        );
+      }
       final opacity =
-          curves[(BrushPressureTarget.opacity, BrushInputSource.tilt)]!;
-      expect(opacity.evaluate(1.0), lessThan(opacity.evaluate(0.0)));
-      final hardness =
-          curves[(BrushPressureTarget.hardness, BrushInputSource.tilt)]!;
-      expect(hardness.evaluate(1.0), lessThan(hardness.evaluate(0.0)));
+          curves[(BrushPressureTarget.opacity, BrushInputSource.pressure)]!;
+      expect(opacity.evaluate(1.0), greaterThan(opacity.evaluate(0.2)));
+      expect(tilted.hardness, 1.0);
+      expect(tilted.tipMask?.id, 'builtin-pencil-side');
+      expect(tilted.textureMaskSource?.id, 'builtin-graphite-tooth');
     });
 
-    test('🚨and its mark follows the pen, long as it lies down', () {
+    test('🚨and its mark follows the pen: the point upright, a strip four '
+        'times as long as it is wide lying down', () {
       // F-176-Q4 (유저 2026-10-18): 「세워서그리면 얇은선, 눕혀서 그리면
       // 연필처럼 dab이 길어지는? … 펜 실제 각도에 따라 dab 각도 바뀌는건가
-      // 했는데 그거조차도아님. 가능하도록」.
+      // 했는데 그거조차도아님. 가능하도록」. ↩️F-433 (유저 2026-10-21):
+      // 「최대한 세우면 최대한 dab이 얇은 … 세웠을때 얇은게 안되있음」 — upright
+      // was the brush's whole size.
       final tilted = byId('builtin-shading-pencil').settings;
       expect(tilted.rotationMode, BrushTipRotationMode.penTilt);
       final curves = tilted.shape.curves;
       final size = curves[(BrushPressureTarget.size, BrushInputSource.tilt)]!;
       final roundness =
           curves[(BrushPressureTarget.roundness, BrushInputSource.tilt)]!;
-      // Upright: the plain round lead.
-      expect(size.evaluate(0.0), 1.0);
+      // Upright: the point of the lead, the thinnest it draws.
+      expect(size.evaluate(0.0), lessThan(0.1));
+      for (final lean in [0.2, 0.4, 0.65, 1.0]) {
+        expect(size.evaluate(lean), greaterThan(size.evaluate(0.0)));
+      }
       expect(roundness.evaluate(0.0), closeTo(1.0, 1e-12));
-      // Flat: as long as it is wide, four times over.
-      expect(
-        size.evaluate(1.0) / (size.evaluate(1.0) * roundness.evaluate(1.0)),
-        closeTo(4.0, 1e-9),
-      );
+      // Laid as flat as a Wacom pen reports (lean ⅔): its whole size, as
+      // long as it is wide four times over.
+      expect(size.evaluate(0.65), closeTo(1.0, 1e-12));
+      expect(1.0 / roundness.evaluate(0.65), closeTo(4.0, 1e-9));
+    });
+
+    test('every other graphite pencil leans a little with the pen — at its '
+        'own size upright (F-433)', () {
+      // 유저: 「일반 연필에도 어느정도 기울기로 형태 바뀌는거 넣고」.
+      for (final id in [
+        'builtin-hard-pencil',
+        'builtin-pencil',
+        'builtin-soft-pencil',
+        'builtin-dark-pencil',
+        'builtin-colored-pencil',
+      ]) {
+        final settings = byId(id).settings;
+        final curves = settings.shape.curves;
+        final size =
+            curves[(BrushPressureTarget.size, BrushInputSource.tilt)]!;
+        final roundness =
+            curves[(BrushPressureTarget.roundness, BrushInputSource.tilt)]!;
+        expect(settings.rotationMode, BrushTipRotationMode.penTilt, reason: id);
+        expect(size.evaluate(0.0), 1.0, reason: '$id upright');
+        expect(size.evaluate(0.65), greaterThan(1.0), reason: '$id leaned');
+        expect(roundness.evaluate(0.65), lessThan(1.0), reason: '$id leaned');
+        expect(settings.tipMask?.id, 'builtin-pencil-side', reason: id);
+        expect(
+          settings.textureMaskSource?.id,
+          'builtin-graphite-tooth',
+          reason: id,
+        );
+      }
+    });
+
+    test('🚨the sharp is the user\'s own, as they exported it (F-433)', () {
+      // 유저: 「프리셋 기본 샤프 연필, 내가 만든 샤프로 교체」.
+      final sharp = byId('builtin-mechanical-pencil').settings;
+      expect(sharp.size, 1.5);
+      expect(sharp.spacing, 0.0207);
+      expect(sharp.textureMaskSource?.id, 'builtin-canvas-weave');
+      expect(sharp.textureDensity, 1.0);
+      // The file's 뒤에 blend and no anti-alias wait on F-433-Q1: until then
+      // the sharp blends and edges like every pencil.
+      expect(sharp.blendMode, BrushBlendMode.color);
+    });
+
+    test('⛔the colouring pencil ships no other program\'s tip (F-433)', () {
+      // The user's own wore a tip taken from another program's brush; a
+      // third party's brush may not ship (`ip-review-clean`).
+      final coloring = byId('builtin-coloring-pencil').settings;
+      expect(coloring.tipMask?.id, 'builtin-color-flecks');
+      expect(coloring.angleJitter, 1.0);
+      expect(coloring.size, 454);
     });
 
     test('one watercolour carries paper, and it is cold-press', () {
@@ -322,14 +388,12 @@ void main() {
     const grain = 'its grain is the gap between stamps';
     const ownGap = <String, String>{
       'builtin-chalk-preset': grain,
-      // Board F-218: the graphite grades and the tilted pencil wear the grain
-      // tip now.
-      'builtin-hard-pencil': grain,
-      'builtin-pencil': grain,
-      'builtin-soft-pencil': grain,
-      'builtin-shading-pencil': grain,
-      'builtin-dark-pencil': grain,
-      'builtin-colored-pencil': grain,
+      // ↩️Board F-218 put the graphite grades and the tilted pencil on the
+      // grain tip; F-433 moved their grain to the paper, so they lay at the
+      // finest step again. The two pencils the user made keep theirs.
+      'builtin-mechanical-pencil': 'the user\'s own sharp, at its own step',
+      'builtin-coloring-pencil':
+          'the user\'s own colouring pencil, at its own step',
       'builtin-dry-ink': grain,
       'builtin-pastel': grain,
       'builtin-crayon': grain,

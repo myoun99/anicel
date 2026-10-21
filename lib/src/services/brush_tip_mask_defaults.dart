@@ -85,6 +85,38 @@ final BrushTipMask canvasWeaveTextureMask = _generateCanvasWeaveMask();
 /// every couple of centimetres of a stroke — the grid the eye finds first.
 final BrushTipMask coldPressTextureMask = _generateColdPressMask();
 
+/// 🚨THE SIDE OF A LEAD (유저 F-433, 2026-10-21: 「크게해서 dab 찍어보면 이건
+/// 연필모양이아님. 그냥 그물모양임 … 진짜 연필처럼 딱딱한느낌? 실루엣」, and of
+/// the laid state 「참고는 안둥글고 직각같은느낌」). A block with straight sides
+/// and barely rounded corners, its rim broken only finely, its face nearly
+/// solid. The tip squashed along the pen's lean is the strip a lead lying
+/// flat leaves; upright, shrunk to a few pixels, it is the point.
+///
+/// ⛔NO GRAIN IN THE TIP: a tip scales with the dab, so grain baked into it
+/// grows into the net the user saw on [grainBrushTipMask] at a large size.
+/// The graphite's grain is the PAPER's ([graphiteToothTextureMask]), which
+/// stays a pixel or two at any size.
+///
+/// 256 texels, like [coldPressTextureMask]: the edge is the point of this
+/// tip, and at 64 a dab of a few hundred pixels would blur it.
+final BrushTipMask pencilSideBrushTipMask = _generatePencilSideMask();
+
+/// Paper TOOTH for graphite (F-433): a speckle a pixel across over a swell
+/// of three, a share of it bare — the valleys a lead never reaches, which
+/// is what keeps a heavy pass grained instead of filling to a flat tone.
+final BrushTipMask graphiteToothTextureMask = _generateGraphiteToothMask();
+
+/// A colouring pencil's scumble (F-433: the user's 「色鉛筆シャープ」 made into
+/// a built-in). Short wax flecks laid one way inside a wide ellipse, denser
+/// in clumps — a brush that turns every dab at random builds them into a
+/// soft, fibrous fill.
+///
+/// ⛔Not the tip the user's own brush wore: that one was taken from another
+/// program's brush (`tvpaint_色鉛筆_シャープ`), and a third party's brush may
+/// not ship here (`ip-review-clean`). This is generated afresh to the same
+/// purpose.
+final BrushTipMask colorFleckBrushTipMask = _generateColorFleckMask();
+
 const int _maskSize = 64;
 
 /// Every round tip is one disc about the mask centre, a pixel short of the
@@ -507,6 +539,125 @@ BrushTipMask _generateColdPressMask() {
     }
   }
   return (tooth, highest);
+}
+
+/// The side of a lead ([pencilSideBrushTipMask]): halfway between the
+/// fourth- and the eighth-power superellipse — square enough to read as a
+/// cut block, round enough at the corners not to read as a stamp — its rim
+/// moved in and out by a fine noise, its face mottled by a slow one.
+///
+/// ⚠️`sqrt` only, no `pow`: the bytes are pinned by their sum, and `sqrt` is
+/// the one root every platform rounds alike.
+BrushTipMask _generatePencilSideMask() {
+  const size = 256;
+  const centre = size / 2.0;
+  const radius = size / 2.0 - 3.0;
+  final ragged = _seamlessValueNoise(48, 0x3C6EF372, size: size);
+  final mottle = _seamlessValueNoise(7, 0x2545F491, size: size);
+  final alpha = Uint8List(size * size);
+  for (var y = 0; y < size; y += 1) {
+    final down = (y + 0.5 - centre) / radius;
+    final down4 = down * down * down * down;
+    for (var x = 0; x < size; x += 1) {
+      final across = (x + 0.5 - centre) / radius;
+      final across4 = across * across * across * across;
+      final fourth = math.sqrt(math.sqrt(across4 + down4));
+      final eighth = math.sqrt(
+        math.sqrt(math.sqrt(across4 * across4 + down4 * down4)),
+      );
+      final reach = (fourth + eighth) / 2.0;
+      final index = y * size + x;
+      final rim = 0.988 + ragged[index] * 0.024;
+      // A texel and a half of ramp across the rim: hard, never aliased.
+      final cover = ((rim - reach) * radius / 1.5 + 0.5).clamp(0.0, 1.0);
+      alpha[index] = (255 * cover * (0.9 + mottle[index] * 0.1)).round();
+    }
+  }
+  return BrushTipMask(id: 'builtin-pencil-side', size: size, alpha: alpha);
+}
+
+/// Graphite tooth ([graphiteToothTextureMask]): per texel a hashed speck
+/// (six parts) over a three-texel swell (four parts), cut so the lowest
+/// part of the range is bare and the top fills. It tiles: the speck is the
+/// texel's own and the swell's lattice wraps.
+BrushTipMask _generateGraphiteToothMask() {
+  const size = 256;
+  final swell = _seamlessValueNoise(85, 0xB5297A4D, size: size);
+  final alpha = Uint8List(size * size);
+  for (var y = 0; y < size; y += 1) {
+    for (var x = 0; x < size; x += 1) {
+      final index = y * size + x;
+      final speck = _texelHash(x, y) / 65535.0;
+      final height = speck * 0.6 + swell[index] * 0.4;
+      alpha[index] = (255 * ((height - 0.15) / 0.6).clamp(0.0, 1.0)).round();
+    }
+  }
+  return BrushTipMask(id: 'builtin-graphite-tooth', size: size, alpha: alpha);
+}
+
+/// A texel's own 16 pseudo-random bits, from its cell alone. ⛔Not a walk of
+/// [_nextSeed]: a stream read texel by texel lays its low bits down the
+/// rows, and the eye finds the stripes in a speckle one texel across.
+int _texelHash(int x, int y) {
+  var hash = (x * 374761393 + y * 668265263) & 0xFFFFFFFF;
+  hash = ((hash ^ (hash >> 13)) * 1274126177) & 0xFFFFFFFF;
+  return (hash ^ (hash >> 16)) & 0xFFFF;
+}
+
+/// Colour flecks ([colorFleckBrushTipMask]): 1,800 short strokes, each four
+/// to twenty-two texels long, nearly level, fading to its ends. Where one
+/// lands is drawn against the ellipse's falloff and a slow envelope, how
+/// strongly against clumps — so the patch is denser in places, the way wax
+/// catches on paper.
+BrushTipMask _generateColorFleckMask() {
+  const size = 256;
+  const centre = size / 2.0;
+  const radius = size / 2.0 - 4.0;
+  const aspect = 2.2;
+  final envelope = _seamlessValueNoise(6, 0x1234567, size: size);
+  final clumps = _seamlessValueNoise(22, 0x0C0FFEE, size: size);
+  final laid = List<double>.filled(size * size, 0);
+  var state = 0x5EED;
+  double draw() {
+    state = _nextSeed(state);
+    return ((state >> 8) & 0xFFFF) / 65535.0;
+  }
+
+  var placed = 0;
+  while (placed < 1800) {
+    final across = draw() * 2.0 - 1.0;
+    final down = draw() * 2.0 - 1.0;
+    final reach = across * across + down * down;
+    if (reach >= 1.0) {
+      continue;
+    }
+    final centreX = centre + across * radius;
+    final centreY = centre + down / aspect * radius;
+    final cell = centreY.floor() * size + centreX.floor();
+    if (draw() > (1.0 - reach) * (0.3 + 0.7 * envelope[cell])) {
+      continue;
+    }
+    placed += 1;
+    final length = 4.0 + draw() * 18.0;
+    final slope = (draw() * 2.0 - 1.0) * 0.25;
+    final clump = clumps[cell];
+    final strength = (0.1 + draw() * 0.45) * (0.35 + 1.3 * clump * clump);
+    for (var along = -length / 2.0; along <= length / 2.0; along += 0.5) {
+      final x = (centreX + along).round();
+      final y = (centreY + along * slope).round();
+      if (x < 0 || y < 0 || x >= size || y >= size) {
+        continue;
+      }
+      final fade = 1.0 - (2.0 * along / length).abs();
+      final index = y * size + x;
+      laid[index] += strength * fade * (1.0 - laid[index]);
+    }
+  }
+  final alpha = Uint8List(size * size);
+  for (var index = 0; index < alpha.length; index += 1) {
+    alpha[index] = (255 * laid[index].clamp(0.0, 1.0)).round();
+  }
+  return BrushTipMask(id: 'builtin-color-flecks', size: size, alpha: alpha);
 }
 
 /// Value noise on a [lattice]×[lattice] grid, smoothly interpolated up to

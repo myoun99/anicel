@@ -199,6 +199,43 @@ Map<BrushDynamicsKey, BrushPressureCurve> _randomRows({
       ),
 };
 
+/// 🚨A PENCIL'S MARK LEANS WITH THE PEN (유저 F-433, 2026-10-21: 「눕혀쓰는연필
+/// 말고 일반 연필에도 어느정도 기울기로 형태 바뀌는거 넣고」). Leaned over, a
+/// lead touches with more of its side: the mark widens a little along the
+/// lean and narrows across it. Upright it is the pencil's own size — the
+/// 最小値 of 100% on the size row is load-bearing for the same reason as the
+/// old tilted pencil's was: a pen held straight sits at lean 0.
+///
+/// ⚠️Both rows reach their end at a lean of 0.65, not 1.0: a Wacom pen
+/// reports little past 60° from upright (altitude ⅓, lean ⅔), so a row
+/// that ran to 1.0 would never show its end on the tablet it was made on.
+Map<BrushDynamicsKey, BrushPressureCurve> _leanRows({
+  required double widest,
+  required double narrowest,
+}) => {
+  (BrushPressureTarget.size, BrushInputSource.tilt): BrushPressureCurve(
+    _leaningIn,
+    minimum: 1.0,
+    maximum: widest,
+  ),
+  (BrushPressureTarget.roundness, BrushInputSource.tilt): BrushPressureCurve(
+    _leaningOut,
+    minimum: narrowest,
+  ),
+};
+
+/// A lean's response, all of it by 0.65 ([_leanRows]): rising, and falling.
+const _leaningIn = [
+  BrushCurvePoint(0.0, 0.0),
+  BrushCurvePoint(0.65, 1.0),
+  BrushCurvePoint(1.0, 1.0),
+];
+const _leaningOut = [
+  BrushCurvePoint(0.0, 1.0),
+  BrushCurvePoint(0.65, 0.0),
+  BrushCurvePoint(1.0, 0.0),
+];
+
 final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // ---- Basic -----------------------------------------------------------
   // 🚨THE TWO ROUNDS ARE OLD BRUSHES UNDER NEW NAMES (board F-218): the ids
@@ -234,12 +271,20 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // 🚨A PENCIL SET IS ITS GRADES (board F-218, 유저 2026-09-28: 「연필은 싹
   // 다 비슷비슷한 브러시라 차이를 못느끼겠음. 제대로 차이 두도록. 현실기반?」).
   // Three of the eight pencils here were plain round tips with no graphite in
-  // them at all — a thin pen each. Now every graphite pencil wears the grain
-  // tip and the paper's tooth, and the four grades step the way the leads
-  // do: the harder, the paler, finer and crisper; the softer, the darker,
-  // coarser and broader. ⚠️The picker draws every row at one size, so the
-  // grades are kept apart by what it CAN draw — tone (flow · opacity),
-  // grain (texture density) and edge (hardness) — never by size alone.
+  // them at all — a thin pen each. Now every graphite pencil wears the paper's
+  // tooth, and the four grades step the way the leads do: the harder, the
+  // paler, finer and crisper; the softer, the darker, coarser and broader.
+  // ⚠️The picker draws every row at one size, so the grades are kept apart
+  // by what it CAN draw — tone (flow · opacity), grain (texture density) and
+  // edge (hardness) — never by size alone.
+  //
+  // ↩️THE LEAD IS A BLOCK, AND THE GRAIN IS THE PAPER'S (유저 F-433,
+  // 2026-10-21: 「크게해서 dab 찍어보면 … 그물모양임 … 다른 연필 브러시도
+  // 조정」). The grades wore the grain TIP, whose speckle grows with the dab;
+  // now they wear the lead's side ([pencilSideBrushTipMask]) on the graphite
+  // tooth ([graphiteToothTextureMask]), which stays a pixel or two at any
+  // size. With no grain in the tip, the gap between stamps is no longer what
+  // they look like, so they lay at the finest spacing like any general brush.
   BrushPreset(
     id: const BrushPresetId('builtin-hard-pencil'),
     name: '2H Pencil',
@@ -249,13 +294,15 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 1.0,
       flow: 0.45,
       opacity: 0.65,
-      spacing: 0.05,
-      tips: [grainBrushTipMask],
-      textureMaskSource: paperGrainTextureMask,
+      spacing: BrushShape.minSpacing,
+      rotationMode: BrushTipRotationMode.penTilt,
+      tips: [pencilSideBrushTipMask],
+      textureMaskSource: graphiteToothTextureMask,
       textureScale: 1.0,
-      textureDensity: 0.35,
+      textureDensity: 0.55,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.75),
       opacityPressureCurve: BrushPressureCurve.linearFrom(0.6),
+      curves: _leanRows(widest: 1.6, narrowest: 0.6),
     ),
   ),
   BrushPreset(
@@ -264,16 +311,18 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _pencilGroup,
     settings: BrushSettings(
       size: 4,
-      hardness: 0.9,
+      hardness: 0.95,
       flow: 0.65,
       opacity: 0.8,
-      spacing: 0.05,
-      tips: [grainBrushTipMask],
-      textureMaskSource: paperGrainTextureMask,
+      spacing: BrushShape.minSpacing,
+      rotationMode: BrushTipRotationMode.penTilt,
+      tips: [pencilSideBrushTipMask],
+      textureMaskSource: graphiteToothTextureMask,
       textureScale: 1.2,
-      textureDensity: 0.5,
+      textureDensity: 0.7,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.6),
       opacityPressureCurve: BrushPressureCurve.linearFrom(0.5),
+      curves: _leanRows(widest: 1.6, narrowest: 0.6),
     ),
   ),
   BrushPreset(
@@ -282,16 +331,18 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _pencilGroup,
     settings: BrushSettings(
       size: 6,
-      hardness: 0.75,
+      hardness: 0.85,
       flow: 0.8,
       opacity: 0.9,
-      spacing: 0.05,
-      tips: [grainBrushTipMask],
-      textureMaskSource: paperGrainTextureMask,
+      spacing: BrushShape.minSpacing,
+      rotationMode: BrushTipRotationMode.penTilt,
+      tips: [pencilSideBrushTipMask],
+      textureMaskSource: graphiteToothTextureMask,
       textureScale: 1.3,
-      textureDensity: 0.6,
+      textureDensity: 0.8,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.45),
       opacityPressureCurve: BrushPressureCurve.linearFrom(0.45),
+      curves: _leanRows(widest: 1.6, narrowest: 0.6),
     ),
   ),
   BrushPreset(
@@ -300,33 +351,41 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _pencilGroup,
     settings: BrushSettings(
       size: 8,
-      hardness: 0.5,
-      flow: 1.0,
-      spacing: 0.05,
-      tips: [grainBrushTipMask],
-      textureMaskSource: paperGrainTextureMask,
+      hardness: 0.75,
+      flow: 0.9,
+      spacing: BrushShape.minSpacing,
+      rotationMode: BrushTipRotationMode.penTilt,
+      tips: [pencilSideBrushTipMask],
+      textureMaskSource: graphiteToothTextureMask,
       textureScale: 1.4,
-      textureDensity: 0.7,
+      textureDensity: 0.9,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.35),
+      curves: _leanRows(widest: 1.6, narrowest: 0.6),
     ),
   ),
+  // 🚨THE USER'S OWN SHARP (유저 F-433, 2026-10-21: 「프리셋 기본 샤프 연필,
+  // 내가 만든 샤프로 교체」). The values are what their exported brush
+  // (`シャープ.anibrush`) carried — the preset as shipped, with what their hand
+  // had set laid over it: the finer size, step and pressure rows and the
+  // canvas weave at full density. Its tilt is left as they made it: a lead
+  // this thin has no side to lean on.
+  // ⚠️TWO OF ITS VALUES WAIT ON THE USER (F-433-Q1): the file also set the
+  // 뒤에 (behind) blend and no anti-alias, and no preset ships at no
+  // anti-alias — 「애니펜 이런거」 (board F-218, a pixel line is the 없음 step
+  // any brush can take). So those two stay at every pencil's, until asked.
   BrushPreset(
     id: const BrushPresetId('builtin-mechanical-pencil'),
     name: 'Mechanical Pencil',
     groupId: _pencilGroup,
     settings: BrushSettings(
-      size: 2,
+      size: 1.5,
       hardness: 1.0,
-      spacing: BrushShape.minSpacing,
-      // ⚠️The tooth, not the grain tip: a 64-texel tip at two pixels samples
-      // to noise, while the paper's tooth bites a fine line the way it bites
-      // a thin lead.
-      textureMaskSource: paperGrainTextureMask,
+      spacing: 0.0207,
+      textureMaskSource: canvasWeaveTextureMask,
       textureScale: 1.0,
-      textureDensity: 0.3,
-      // A lead has one width; pressure darkens it rather than widening it.
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.9),
-      opacityPressureCurve: BrushPressureCurve.linearFrom(0.45),
+      textureDensity: 1.0,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.7083),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.4821),
     ),
   ),
   BrushPreset(
@@ -336,18 +395,50 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 6,
       flow: 0.55,
-      spacing: 0.08,
-      tips: [grainBrushTipMask],
-      textureMaskSource: paperGrainTextureMask,
+      spacing: BrushShape.minSpacing,
+      rotationMode: BrushTipRotationMode.penTilt,
+      tips: [pencilSideBrushTipMask],
+      textureMaskSource: graphiteToothTextureMask,
       textureScale: 1.4,
       textureDensity: 0.7,
       opacityPressureCurve: BrushPressureCurve.identity(),
+      curves: _leanRows(widest: 1.6, narrowest: 0.6),
+    ),
+  ),
+  // 🚨THE USER'S COLOURING PENCIL (유저 F-433: 「색연필 샤프도 내가 만든거
+  // 프리셋에 등록 … 눕힌 연필같은식으로 연필느낌나는 칠하는 연필」). Its size,
+  // flow, step, both pressure rows and the dab turned at random every stamp
+  // are what their `色鉛筆シャープ.anibrush` carried. ⛔ITS TIP IS NOT: theirs
+  // was taken from another program's brush, so this one wears a scumble
+  // generated here to the same purpose ([colorFleckBrushTipMask]).
+  BrushPreset(
+    id: const BrushPresetId('builtin-coloring-pencil'),
+    name: 'Coloring Pencil',
+    groupId: _pencilGroup,
+    settings: BrushSettings(
+      size: 454,
+      hardness: 1.0,
+      spacing: 0.0398,
+      angleJitter: 1.0,
+      tips: [colorFleckBrushTipMask],
+      sizePressureCurve: BrushPressureCurve(const [
+        BrushCurvePoint(0.0, 0.1488),
+        BrushCurvePoint(0.5247, 0.3274),
+        BrushCurvePoint(0.8333, 0.7798),
+        BrushCurvePoint(1.0, 1.0),
+      ]),
+      opacityPressureCurve: BrushPressureCurve(const [
+        BrushCurvePoint(0.0, 0.0),
+        BrushCurvePoint(0.4012, 0.2083),
+        BrushCurvePoint(0.7037, 0.6607),
+        BrushCurvePoint(1.0, 1.0),
+      ]),
     ),
   ),
   // 🚨THE PENCIL LAID ON ITS SIDE (board F-218, 유저: 「각도에 따라 눕히는
   // 연필. 연필 눕혀서 그리기도 하잖아 아날로그에서. 그런거 그대로 재현한
   // 연필」). Upright it draws a line; leaned over, the side of the lead
-  // spreads the same graphite wide, pale and soft-edged.
+  // spreads the same graphite wide.
   //
   // ↩️F-176-Q4 (유저 2026-10-18): 「세워서그리면 얇은선, 눕혀서 그리면 연필처럼
   // dab이 길어지는? 그런거 기대했는데 전혀아니고 펜 실제 각도에 따라 dab 각도
@@ -356,57 +447,49 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // bigger. Now the tip turns with the pen's lean (ペンの方向) and squashes
   // as it lies down: round under an upright pen, a mark four times as long
   // as it is wide along the way the pen leans when it is flat.
+  //
+  // ↩️UPRIGHT IS THE THINNEST NOW, and the size is what it lays FLAT (유저
+  // F-433, 2026-10-21: 「최대한 세우면 최대한 dab이 얇은? 느낌이어야하고
+  // 기울일수록 커지고 원형률 바뀌고 해야함. 후자는 되는데 세웠을때 얇은게
+  // 안되있음」). The tilt size row's 最小値 was 100% — "lean 0.0 is where a
+  // pen held UPRIGHT sits … lower it and this brush draws below its size for
+  // anyone who holds the stylus straight" — and that is exactly what the user
+  // asked of this one brush: held straight it is the point of the lead.
+  // ↩️And its tone answers the PRESSURE alone (「불투명도 제한같은거? 기울기
+  // 이런거 걸어놧는데, 없애고 똑같이 불투명도 필압으로 하는게 좋을듯. 그게
+  // 리얼한 느낌나니까」): the tilt rows that paled it and softened its edge as
+  // it lay down are gone — a lead's side cuts as hard as its point.
   BrushPreset(
     id: const BrushPresetId('builtin-shading-pencil'),
     name: 'Tilted Pencil',
     groupId: _pencilGroup,
     settings: BrushSettings(
-      size: 6,
-      hardness: 0.7,
-      flow: 0.8,
-      spacing: 0.05,
+      size: 48,
+      hardness: 1.0,
+      flow: 0.9,
+      spacing: BrushShape.minSpacing,
       rotationMode: BrushTipRotationMode.penTilt,
-      tips: [grainBrushTipMask],
-      textureMaskSource: paperGrainTextureMask,
-      textureScale: 1.2,
-      textureDensity: 0.5,
-      // 🚨THE 最小値 OF 100% ON THE TILT SIZE ROW IS LOAD-BEARING, not taste:
-      // lean 0.0 is where a pen held UPRIGHT sits, and the row answers its
-      // 最小値 there. Lower it and this brush draws below its size for anyone
-      // who holds the stylus straight.
-      // ↩️This was a 0.25 floor on a curve with maximum 4.0 — the same
-      // response, from before a curve held its 最小値 apart from its shape.
-      // ⛔The reason used to be "that is where a mouse sits, because a device
-      // reporting no tilt reads as an upright pen". That premise is gone: a
-      // device with no tilt now answers null and the source is SKIPPED, so a
-      // mouse never reaches this curve at all. The floor survives on its own
-      // merit, which is why it is restated rather than deleted.
+      tips: [pencilSideBrushTipMask],
+      textureMaskSource: graphiteToothTextureMask,
+      textureScale: 1.0,
+      textureDensity: 0.85,
       curves: {
         (BrushPressureTarget.size, BrushInputSource.pressure):
-            BrushPressureCurve.linearFrom(0.45),
-        (BrushPressureTarget.size, BrushInputSource.tilt):
-            BrushPressureCurve.linearFrom(1.0, maximum: 4.0),
-        // Lying down, the lead's side is long and narrow: the mark keeps its
-        // width while it grows along the lean. A shape that FALLS — legal;
-        // only x must increase.
+            BrushPressureCurve.linearFrom(0.8),
+        (BrushPressureTarget.opacity, BrushInputSource.pressure):
+            BrushPressureCurve.linearFrom(0.15),
+        // Light pressure catches only the tooth's peaks; a heavy one fills
+        // towards its valleys — the grain thins out as it darkens.
+        (BrushPressureTarget.flow, BrushInputSource.pressure):
+            BrushPressureCurve.linearFrom(0.2),
+        (BrushPressureTarget.size, BrushInputSource.tilt): BrushPressureCurve(
+          _leaningIn,
+          minimum: 0.08,
+        ),
+        // Lying down, the lead's side is long and narrow: four times as long
+        // as it is wide when it is flat.
         (BrushPressureTarget.roundness, BrushInputSource.tilt):
-            BrushPressureCurve(const [
-              BrushCurvePoint(0.0, 1.0),
-              BrushCurvePoint(1.0, 0.0),
-            ], minimum: 0.25),
-        // Leaning the pencil over spreads the same graphite thinner.
-        (BrushPressureTarget.opacity, BrushInputSource.tilt):
-            BrushPressureCurve(const [
-              BrushCurvePoint(0.0, 1.0),
-              BrushCurvePoint(1.0, 0.4),
-            ]),
-        // And the side of a lead has no point: the edge goes soft as it
-        // lies down.
-        (BrushPressureTarget.hardness, BrushInputSource.tilt):
-            BrushPressureCurve(const [
-              BrushCurvePoint(0.0, 1.0),
-              BrushCurvePoint(1.0, 0.35),
-            ]),
+            BrushPressureCurve(_leaningOut, minimum: 0.25),
       },
     ),
   ),
