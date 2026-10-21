@@ -49,6 +49,7 @@ import 'canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import 'canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'canvas/flip_hud_model.dart';
 import 'canvas/flip_hud_rows.dart';
+import 'canvas/view_hand.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
 import 'storyboard_cut_blocks_painter.dart';
@@ -241,6 +242,7 @@ import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
 import 'listenable_rebind.dart';
+import 'session/rail_legends.dart';
 import 'session/row_spans.dart' show trackRowMaterialBlocks;
 import 'sliced_value_listenable_builder.dart'
     show SlicedListenable, SlicedListenableBuilder;
@@ -679,7 +681,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onSeekCutFrame,
     this.dragPreview,
     this.legend,
-    this.onLegendMenus,
+    this.legendHand,
     this.rowFilter = TimelineRowFilter.none,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -1297,9 +1299,9 @@ class StoryboardPanel extends StatefulWidget {
   /// through the same session hooks. Null renders a display-only legend.
   final LayerLegendCallbacks? legend;
 
-  /// Told the menus the legend header opens each time it is built, and
-  /// null when the panel goes — what a key presses one of (I-40).
-  final ValueChanged<TimelineLegendMenus?>? onLegendMenus;
+  /// Where this panel holds up the menus its legend header opens, written
+  /// each time it is built — what a key presses one of (I-40).
+  final ViewHand<RailLegendHold>? legendHand;
 
   /// The legend's row filter (R5 #9 — "있는거면 다 달아서 통일").
   ///
@@ -1620,9 +1622,16 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         ),
       );
 
+  /// This panel's legend, held up for as long as it is mounted: a panel
+  /// built anew comes up before this one goes, so this one puts down only
+  /// its own ([ViewHand] — card `rail-legend-menus-lost-to-an-old-goodbye`).
+  final RailLegendHold _legend = RailLegendHold();
+  late final ViewHand<RailLegendHold>? _legendKeeper = widget.legendHand;
+
   @override
   void initState() {
     super.initState();
+    _legendKeeper?.up(_legend);
     _horizontalController.addListener(_frameAxis.handleScroll);
     _letGoOfKeptRows = followKeptAxis(
       _verticalController,
@@ -1736,7 +1745,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   @override
   void dispose() {
-    widget.onLegendMenus?.call(null);
+    _legendKeeper?.down(_legend);
     widget.rowsChannel?.unbind(this);
     widget.revealSelectionTick?.removeListener(_handleRevealSelection);
     widget.playheadFrame?.removeListener(_handlePlaybackPage);
@@ -1821,7 +1830,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   TimelineLayerControlsHeader _publishedLegend(
     TimelineLayerControlsHeader header,
   ) {
-    widget.onLegendMenus?.call(header.legend == null ? null : header.menus);
+    _legend.menus = header.legend == null ? null : header.menus;
     return header;
   }
 

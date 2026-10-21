@@ -6,8 +6,10 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/ui/canvas/view_hand.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/session/rail_legends.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -124,9 +126,9 @@ void main() {
   testWidgets('the menus the header tells go with the panel — not with a '
       'turn, which builds the other grid\'s header before the grid it '
       'replaces goes', (tester) async {
-    final told = <TimelineLegendMenus?>[];
-    await _show(tester, _panel('one', [], onMenus: told.add));
-    expect(told.last, isNotNull, reason: '⛔premise: the rail told them');
+    final hand = ViewHand<RailLegendHold>();
+    await _show(tester, _panel('one', [], legendHand: hand));
+    expect(hand.now?.menus, isNotNull, reason: '⛔premise: the rail told them');
 
     await _show(
       tester,
@@ -134,14 +136,33 @@ void main() {
         'one',
         [],
         orientation: TimelineOrientation.vertical,
-        onMenus: told.add,
+        legendHand: hand,
       ),
     );
     expect(find.byType(XSheetTimelineGrid), findsOneWidget);
-    expect(told.last, isNotNull, reason: 'the corner\'s, last');
+    expect(hand.now?.menus, isNotNull, reason: 'the corner\'s, last');
 
     await tester.pumpWidget(const SizedBox());
-    expect(told.last, isNull, reason: 'the panel went, and they with it');
+    expect(hand.now, isNull, reason: 'the panel went, and they with it');
+  });
+
+  testWidgets('a panel built anew comes up before the one it replaces goes, '
+      'and its legend stays held up (rail-legend-menus-lost-to-an-old-'
+      'goodbye)', (tester) async {
+    final hand = ViewHand<RailLegendHold>();
+    await _show(
+      tester,
+      _panel('one', [], legendHand: hand, key: const ValueKey('old')),
+    );
+    final old = hand.now;
+    expect(old?.menus, isNotNull, reason: '⛔premise: the rail told them');
+
+    await _show(
+      tester,
+      _panel('one', [], legendHand: hand, key: const ValueKey('new')),
+    );
+    expect(hand.now, isNot(same(old)), reason: '⛔premise: built anew');
+    expect(hand.now?.menus, isNotNull);
   });
 
   testWidgets('nor a switch to a cut of other marks and kinds, whose flyouts '
@@ -300,13 +321,15 @@ Widget _panel(
   bool marked = false,
   int rows = 3,
   TimelineOrientation orientation = TimelineOrientation.horizontal,
-  ValueChanged<TimelineLegendMenus?>? onMenus,
+  ViewHand<RailLegendHold>? legendHand,
+  Key? key,
   List<double>? values,
   List<Layer>? layers,
   ValueChanged<String>? onSeMute,
 }) => MaterialApp(
   home: Scaffold(
     body: TimelinePanel(
+      key: key,
       layers: layers ?? _layersOf(cut, marked: marked, rows: rows),
       activeLayerId: rows == 0 ? null : LayerId('$cut-1'),
       substrateGeneration: cut,
@@ -322,7 +345,7 @@ Widget _panel(
       onLayerMarkSelected: (_, _) {},
       orientation: orientation,
       onOrientationChanged: (_) {},
-      onLegendMenus: onMenus,
+      legendHand: legendHand,
       legend: LayerLegendCallbacks(
         onShowAllLayers: () {},
         onHideAllLayers: () {},

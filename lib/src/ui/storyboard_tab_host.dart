@@ -1057,9 +1057,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // down here, with no row filter, until then.
                     visibilitySoloEnabled: _session.visibilitySolo.layerVisibilitySoloEnabled,
                     // What its legend opens, for a key on this panel (I-40).
-                    onLegendMenus: (menus) => _session.railLegends.publish(
+                    legendHand: _session.railLegends.handOf(
                       WorkingPanel.storyboard,
-                      menus,
                     ),
                     legend: sessionLegendCallbacks(
                       _session,

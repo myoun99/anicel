@@ -18,31 +18,16 @@ void main() {
   test('no dispose in lib hands a widget\'s callback null', () {
     final hits = [
       for (final file in dartFilesUnder('lib'))
-        ..._hitsIn(libPath(file), file.readAsStringSync()),
+        for (final name in _nullGoodbyes(file.readAsStringSync()))
+          '${libPath(file)}: widget.$name(null)',
     ];
     expect(
       hits,
       isEmpty,
       reason:
           'hold the hand up in a ViewHand the keeper owns — a view built '
-          'anew says hello before the old one says goodbye. One that must '
-          'keep a callback goes in the ledger, with why',
+          'anew says hello before the old one says goodbye',
     );
-  });
-
-  test('every ledger entry still hands null, and says why', () {
-    final sources = {
-      for (final file in dartFilesUnder('lib'))
-        libPath(file): file.readAsStringSync(),
-    };
-    for (final MapEntry(key: (path, name), value: why) in _ledger.entries) {
-      expect(why.length, greaterThan(20), reason: '$path needs a reason');
-      expect(
-        _nullGoodbyes(sources[path] ?? ''),
-        contains(name),
-        reason: '$path no longer hands `$name` null — take it off the ledger',
-      );
-    }
   });
 
   test('the scan sees a planted goodbye, and none outside a dispose', () {
@@ -67,32 +52,7 @@ void main() {
 ''';
     expect(_nullGoodbyes(planted), ['onShapeShowChanged', 'onLander']);
   });
-
-  test('the ledger lets through only its own callback in its own file', () {
-    const planted = '''
-  @override
-  void dispose() {
-    widget.onLegendMenus?.call(null);
-    widget.onShapeShowChanged?.call(null);
-  }
-''';
-    expect(_hitsIn('lib/src/ui/storyboard_panel.dart', planted), [
-      'lib/src/ui/storyboard_panel.dart: widget.onShapeShowChanged(null)',
-    ]);
-    expect(
-      _hitsIn('lib/src/ui/other_panel.dart', planted),
-      hasLength(2),
-      reason: 'another file\'s goodbye is not the ledger\'s',
-    );
-  });
 }
-
-/// What the scan says of the file at [path] holding [source]: each
-/// goodbye the ledger does not keep.
-List<String> _hitsIn(String path, String source) => [
-  for (final name in _nullGoodbyes(source))
-    if (!_ledger.containsKey((path, name))) '$path: widget.$name(null)',
-];
 
 /// The names of the widget callbacks each `dispose` in [source] hands null.
 List<String> _nullGoodbyes(String source) => [
@@ -110,13 +70,3 @@ Iterable<String> _disposeBodies(String source) sync* {
     if (close != null) yield source.substring(start.end, close);
   }
 }
-
-/// The goodbyes that keep a callback, keyed by file and callback, with why.
-const _ledger = <(String, String), String>{
-  ('lib/src/ui/storyboard_panel.dart', 'onLegendMenus'):
-      'the rail legend\'s menus are handed over again on every build, a '
-      'promise no count can keep; a panel built anew heals the null at its '
-      'next build (card rail-legend-menus-lost-to-an-old-goodbye)',
-  ('lib/src/ui/timeline/timeline_panel.dart', 'onLegendMenus'):
-      'the rail legend\'s menus, as the storyboard panel\'s are',
-};

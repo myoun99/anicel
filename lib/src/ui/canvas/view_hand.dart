@@ -21,9 +21,10 @@
 ///
 /// ★The one keeping every keeper of a view's hand does: the main canvas
 /// panel's shape and lander, each sheet window's shape (F-420, which
-/// counted first, by hand) and the session's lander. A view hands its
-/// keeper this, not a callback — the type leaves no keeper that can take
-/// the last word, and `a_view_holds_its_hand_up_in_a_view_hand_test`
+/// counted first, by hand), the session's lander and each panel's rail
+/// legend (`RailLegends`, which took a callback's null last). A view hands
+/// its keeper this, not a callback — the type leaves no keeper that can
+/// take the last word, and `a_view_holds_its_hand_up_in_a_view_hand_test`
 /// scans for a `dispose` that hands a callback null.
 class ViewHand<T extends Object> {
   final List<T> _up = [];
