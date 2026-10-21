@@ -551,10 +551,14 @@ void main() {
           if (room.existsSync()) {
             room.deleteSync(recursive: true);
           }
-          File(SessionScratch.stagedFolder())
+          final blocker = File(SessionScratch.stagedFolder())
             ..createSync(recursive: true)
             ..writeAsBytesSync(const [0]);
-          addTearDown(() => File(SessionScratch.stagedFolder()).deleteSync());
+          addTearDown(() {
+            if (blocker.existsSync()) {
+              blocker.deleteSync();
+            }
+          });
           if (ahead) {
             await store.cutKeptCelsAhead(PasteboardReach.quarter);
           }
@@ -566,6 +570,15 @@ void main() {
                 'and into a room that never took them',
           );
           expectCut(store.bakedSurfaceOrNull(cut));
+
+          blocker.deleteSync();
+          store.adoptPasteboardReach(PasteboardReach.whole);
+          expect(
+            store.adoptPasteboardReach(PasteboardReach.quarter).keys,
+            [cut],
+            reason: '⛔a cut the room refused is not a picture that stands '
+                'behind the wall: the next move cuts it',
+          );
         });
       }
     });

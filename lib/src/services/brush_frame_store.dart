@@ -165,7 +165,7 @@ class BrushFrameStore {
         skips: (key, ref) => _wallPasses(key, ref, reach),
         rewrite: (surface) => cutBehindReach(surface, reach),
         ahead: ahead?.reach == reach ? ahead?.answers : null,
-        stands: (ref) => _learnStandsBehind(ref, reach),
+        stands: (ref) => _standsBehind[ref] = reach,
       );
       for (final key in kept.keys) {
         _editTicks[key] = ++_editTick;
@@ -227,21 +227,19 @@ class BrushFrameStore {
     await Future.wait([
       for (final (:key, :ref, :read) in jobs)
         celThawTurns.run(() async {
-          String? parkAt;
           try {
             final blob = read(ref);
             if (blob == null) {
               return;
             }
-            parkAt = ScratchCelFiles.pathFor(
-              _scratchNamespace,
-              '${anicelCelEntryName(key)}-ahead$round',
-            );
             final cut = await cutCelInWorker(
               key,
               blob,
               reach,
-              parkAt: parkAt,
+              parkAt: ScratchCelFiles.pathFor(
+                _scratchNamespace,
+                '${anicelCelEntryName(key)}-ahead$round',
+              ),
             );
             answers[ref] = cut == null
                 ? null
@@ -253,10 +251,9 @@ class BrushFrameStore {
               _dropCutAhead(ahead);
             }
           } on Object {
-            // The move reads it again, as it always did.
-            if (parkAt != null && !answers.containsKey(ref)) {
-              ScratchFile.remove(parkAt);
-            }
+            // The move reads it again, as it always did. A throw after the
+            // park leaves its bytes to the room's own ending, as a removal
+            // that fails does (`ScratchFile.remove`).
           } finally {
             done += 1;
             report?.call(done / jobs.length);
@@ -301,14 +298,10 @@ class BrushFrameStore {
   /// learnt where its bytes were read for a move of the wall, so a move
   /// back and forth, an undo's redo among them, reads them once. A
   /// property of the bytes alone: a ref kept anew knows nothing.
+  ///
+  /// ⚠️Learnt only where the wall did not pass ([_wallPasses]), so what is
+  /// learnt is always nearer than what was known.
   final Expando<PasteboardReach> _standsBehind = Expando('stands behind');
-
-  void _learnStandsBehind(AnicelCelFileRef ref, PasteboardReach reach) {
-    final known = _standsBehind[ref];
-    if (known == null || reach.quartersPerEdge < known.quartersPerEdge) {
-      _standsBehind[ref] = reach;
-    }
-  }
 
   final Map<BrushFrameKey, BrushFrameDrawingState> _frames = {};
 
