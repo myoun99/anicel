@@ -70,12 +70,16 @@ void main() {
         reason: 'one row of all of them',
       );
       final button = find.named('$prefix-layer-camera-path-$camera');
-      bool lit() => tester
-          .widget<RailGlyphButton>(
-            find.ancestor(of: button, matching: find.byType(RailGlyphButton)),
-          )
-          .isSelected;
+      RailGlyphButton railButton() => tester.widget<RailGlyphButton>(
+        find.ancestor(of: button, matching: find.byType(RailGlyphButton)),
+      );
+      bool lit() => railButton().isSelected;
       expect(lit(), isFalse);
+      expect(
+        railButton().danger,
+        isFalse,
+        reason: "it warns of nothing — the red is the reference button's",
+      );
       expect(
         tester.getSize(button),
         sizeAlong(orientation.axis, along: 22, across: 26),
