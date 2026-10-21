@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
+import '../core/contain_rect.dart';
 import '../models/cut_id.dart';
 import '../models/storyboard_coverage.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
@@ -549,8 +550,8 @@ class StoryboardCutBlocksPainter extends CustomPainter
     if (thumbnails == null || !_stripShowsPictures(strip)) {
       return const [];
     }
-    // The picture is drawn the strip's height tall ([_pictureIn]), so that
-    // many device pixels is what it asks for — the conte cell's law.
+    // The picture is drawn at most the strip's height tall ([_pictureIn]),
+    // so that many device pixels is what it asks for — the conte cell's law.
     //
     // 🗣️유저 2026-09-26: 「최대값은 최대한 키울수있으면 좋아」 — a V row may
     // grow to [StoryboardPanel.maxTrackLaneHeightFor], and a picture stretched
@@ -936,19 +937,18 @@ class StoryboardCutBlocksPainter extends CustomPainter
   static bool _stripShowsPictures(Rect strip) =>
       strip.width > 0 && strip.height > 0;
 
-  /// Where [image] lands in [slot] — before the slot clips it.
+  /// Where [image] lands in [slot]: the WHOLE picture, as large as the slot
+  /// holds it undistorted, in its middle ([containRect]).
   ///
-  /// The picture is sized by the ROW's height alone and LEFT-aligned: a
-  /// shorter comma shows LESS of it, never a smaller copy of it (user,
-  /// 2026-07-28). Fitting the width instead made the picture shrink as the
-  /// block narrowed, so a row of short holds read as a row of tiny
-  /// thumbnails rather than as short holds. The slot's clip is what turns
-  /// "less width" into "less picture".
-  static Rect _pictureIn(Rect slot, ui.Image image) => Rect.fromLTWH(
-    slot.left,
-    slot.top,
-    image.width * slot.height / image.height,
-    slot.height,
+  /// 🗣️F-356 (유저 2026-10-14): 「스토리보드프로처럼 세로 가로 둘다 신경써서
+  /// 안에 들어가게 … 세로 유지하기 위해 가로 잘리는거 감수하는게아니라 그냥
+  /// 세로가로 유지하는 방향성으로 그림 자체가 작아지도록」. ↩️It was sized by
+  /// the ROW's height alone and LEFT-aligned, the slot's clip cutting what
+  /// ran past: 「a shorter comma shows LESS of it, never a smaller copy of
+  /// it」 (user, 2026-07-28).
+  static Rect _pictureIn(Rect slot, ui.Image image) => containRect(
+    Size(image.width.toDouble(), image.height.toDouble()),
+    slot,
   );
 
   /// What a mark over [block] stands on besides its plate, row-local: its
