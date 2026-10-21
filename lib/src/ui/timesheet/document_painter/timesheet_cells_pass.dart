@@ -72,35 +72,6 @@ class _TimesheetCellsPass {
     return (first.clamp(0, rowCount), last.clamp(0, rowCount));
   }
 
-  /// [firstRow], walked back to the start of the span that reaches it.
-  ///
-  /// 🗣️F-78 (유저 2026-09-11): 「타임시트의 se행. se블록의 이름란이 뷰포트에서
-  /// 안보이면 대사 텍스트가 사라짐」. A span's START cell writes down the
-  /// whole span — an SE entry its name and dialogue, a hold chain its word, a
-  /// repeat chain its word — so culling the start row dropped ink the clip
-  /// would have kept: the one thing [_rowRange] may not do. The rows a word
-  /// runs down read as EMPTY, so the walk steps over empty rows up to the
-  /// first cell that says where its span is.
-  int _spanStartRow(List<TimesheetCell> cells, int startFrame, int firstRow) {
-    for (var row = firstRow; row >= 0; row -= 1) {
-      final frame = startFrame + row;
-      if (frame >= cells.length) {
-        return firstRow;
-      }
-      final cell = cells[frame];
-      final length = cell.spanLength;
-      if (length == null) {
-        if (cell.kind == TimesheetCellKind.empty) {
-          continue;
-        }
-        return firstRow;
-      }
-      final start = row - (cell.spanOffset ?? 0);
-      return start + length > firstRow ? math.max(0, start) : firstRow;
-    }
-    return firstRow;
-  }
-
   void paintHalf(
     Canvas canvas, {
     required int pageIndex,
@@ -634,6 +605,35 @@ class _TimesheetCellsPass {
         break;
     }
   }
+}
+
+/// [firstRow], walked back to the start of the span that reaches it.
+///
+/// 🗣️F-78 (유저 2026-09-11): 「타임시트의 se행. se블록의 이름란이 뷰포트에서
+/// 안보이면 대사 텍스트가 사라짐」. A span's START cell writes down the
+/// whole span — an SE entry its name and dialogue, a hold chain its word, a
+/// repeat chain its word — so culling the start row dropped ink the clip
+/// would have kept: the one thing [_TimesheetCellsPass._rowRange] may not
+/// do. The rows a word runs down read as EMPTY, so the walk steps over
+/// empty rows up to the first cell that says where its span is.
+int _spanStartRow(List<TimesheetCell> cells, int startFrame, int firstRow) {
+  for (var row = firstRow; row >= 0; row -= 1) {
+    final frame = startFrame + row;
+    if (frame >= cells.length) {
+      return firstRow;
+    }
+    final cell = cells[frame];
+    final length = cell.spanLength;
+    if (length == null) {
+      if (cell.kind == TimesheetCellKind.empty) {
+        continue;
+      }
+      return firstRow;
+    }
+    final start = row - (cell.spanOffset ?? 0);
+    return start + length > firstRow ? math.max(0, start) : firstRow;
+  }
+  return firstRow;
 }
 
 /// The top and the bottom of the grid [slot] is printed in — its half page.
