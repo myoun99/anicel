@@ -3,6 +3,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -53,6 +54,33 @@ void main() {
 
   Finder pill(String keyValue) => find.byKey(ValueKey<String>(keyValue));
 
+  /// The pill as it stands — read off the widget, not its words: a toggle
+  /// sets its other word too, unseen, to keep its width
+  /// ([PillItem.otherLabel]), so both words are always found.
+  Pill pillOf(WidgetTester tester, String keyValue) =>
+      tester.widget<Pill>(pill(keyValue));
+
+  void expectInUse(WidgetTester tester, {required bool inUse}) {
+    final toggle = pillOf(tester, 'pasteboard-in-use');
+    expect(toggle.selected, inUse);
+    expect(
+      toggle.label,
+      inUse
+          ? AppText.strings.pasteboardInUse
+          : AppText.strings.pasteboardNotInUse,
+    );
+  }
+
+  void expectSize(WidgetTester tester, PasteboardSize chosen) {
+    for (final size in PasteboardSize.values) {
+      expect(
+        pillOf(tester, 'pasteboard-size-${size.name}').selected,
+        size == chosen,
+        reason: size.label,
+      );
+    }
+  }
+
   testWidgets('the size and the use are in the window and hand on', (
     tester,
   ) async {
@@ -66,57 +94,37 @@ void main() {
       uses: uses,
     );
     await tapInViewSettings(tester, 'canvas-pasteboard-color-button');
-
-    for (final size in PasteboardSize.values) {
-      expect(pill('pasteboard-size-${size.name}'), findsOneWidget);
-    }
-    final strings = AppText.strings;
-    expect(
-      find.descendant(
-        of: pill('pasteboard-in-use'),
-        matching: find.text(strings.pasteboardInUse),
-      ),
-      findsOneWidget,
-    );
+    expectInUse(tester, inUse: true);
+    expectSize(tester, PasteboardSize.two);
 
     await tester.tap(pill('pasteboard-size-oneAndAHalf'));
     await tester.pumpAndSettle();
     expect(sizes, [PasteboardSize.oneAndAHalf]);
+    expectSize(tester, PasteboardSize.oneAndAHalf);
 
     await tester.tap(pill('pasteboard-in-use'));
     await tester.pumpAndSettle();
     expect(uses, [false]);
-    expect(
-      find.descendant(
-        of: pill('pasteboard-in-use'),
-        matching: find.text(strings.pasteboardNotInUse),
-      ),
-      findsOneWidget,
-      reason: 'the pill says what it is now, as the window stays open',
-    );
+    expectInUse(tester, inUse: false);
 
     // Off, the size is still the user's to pick for when it is on again.
     await tester.tap(pill('pasteboard-size-three'));
     await tester.pumpAndSettle();
     expect(sizes, [PasteboardSize.oneAndAHalf, PasteboardSize.three]);
+    expectSize(tester, PasteboardSize.three);
   });
 
   testWidgets('the window opens on the project\'s values', (tester) async {
     await pumpPanel(
       tester,
-      size: PasteboardSize.three,
+      size: PasteboardSize.oneAndAHalf,
       inUse: false,
       sizes: [],
       uses: [],
     );
     await tapInViewSettings(tester, 'canvas-pasteboard-color-button');
-    expect(
-      find.descendant(
-        of: pill('pasteboard-in-use'),
-        matching: find.text(AppText.strings.pasteboardNotInUse),
-      ),
-      findsOneWidget,
-    );
+    expectInUse(tester, inUse: false);
+    expectSize(tester, PasteboardSize.oneAndAHalf);
   });
 
   testWidgets('the paper\'s window has no pasteboard row', (tester) async {

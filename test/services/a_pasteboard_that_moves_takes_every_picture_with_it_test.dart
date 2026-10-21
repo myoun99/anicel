@@ -265,6 +265,37 @@ void main() {
       store.storeBakedSurface(cut, drawn());
       expectCut(store.bakedSurfaceOrNull(cut));
     });
+
+    test('a save that ran across the cut leaves the cut to the next save', (
+    ) async {
+      final store = BrushFrameStore()..hotCelByteBudget = 0;
+      store.storeBakedSurface(cut, drawn());
+      store.storeBakedSurface(clean, inkInside());
+      await store.drainCooling();
+      expect(store.isCelCold(cut), isTrue, reason: 'premise: parked, dirty');
+      // The save reads its snapshot, the wall moves while it writes, and
+      // the save lands with the bytes from before the cut.
+      final snapshot = store.bakedSnapshotForSave();
+      expect(snapshot.dirtyTicks.keys, contains(cut));
+      store.adoptPasteboardReach(PasteboardReach.quarter);
+      store.adoptSavedFile({
+        cut: const AnicelCelFileRef(
+          filePath: 'unused.anicel',
+          dataOffset: 0,
+          length: 1,
+          canvasSize: canvas,
+          tileSize: tileSize,
+          photoPaths: [],
+        ),
+      }, dirtyTicksAtSnapshot: snapshot.dirtyTicks);
+      expect(
+        store.dirtyCelKeysSinceSave,
+        contains(cut),
+        reason: 'the save wrote the picture before the cut: the cut is '
+            'unsaved work',
+      );
+      expectCut(store.bakedSurfaceOrNull(cut));
+    });
   });
 
   group('SetProjectPasteboardCommand', () {
