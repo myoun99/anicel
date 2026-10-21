@@ -575,7 +575,12 @@ void main() {
   /// those travel as one `_BrushPart` now, and the four 「imported without
   /// it」 sentences are one (`_leftOut`). 🔬`clean_code_diff` against the
   /// lanes' base (`243dd8074`, at 409) named that one gone.
-  const wideSignatures = 408;
+  ///
+  /// ⚠️408 → 407 on 2026-10-21, lowered as the rule asks (F-398 ⑤): the
+  /// 겸용 conversion's `_celKey` (five) left the list — it takes the side
+  /// a key is in. 🔬The lane's scan against master (`5cd21708d`, at 408)
+  /// named that one gone and nothing added.
+  const wideSignatures = 407;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -832,7 +837,13 @@ void main() {
   /// named those four added and nothing gone. ⛔Not split to fit: a
   /// category's rows are what its header folds, and a list cut in two
   /// would fold as one anyway.
-  const longBodies = 416;
+  ///
+  /// ⚠️416 → 413 on 2026-10-21, lowered as the rule asks (F-398 ⑤): the
+  /// 겸용 conversion's `execute` is its steps now — the pairs, the rows one
+  /// side holds and the write — and master stood at 414, two under the
+  /// ceiling. 🔬The lane's scan against master (`5cd21708d`, at 414) named
+  /// `execute` gone and nothing added.
+  const longBodies = 413;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

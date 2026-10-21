@@ -282,9 +282,9 @@ class ConvertToLinkedCutCommandInputPlan {
   /// (owning cut, source layer) → new copy id in the OTHER cut.
   final Map<(CutId, LayerId), LayerId> unionLayerIdMap;
 
-  /// (sibling, target-only source layer) → its copy's id in that 겸용
-  /// sibling of the origin: the origin takes the row, so its siblings do
-  /// (F-398).
+  /// (sibling, one-side-only source layer) → its copy's id in that 겸용
+  /// sibling: the origin's siblings take the target-only rows the origin
+  /// takes, the target's the origin-only rows the target takes (F-398).
   final Map<(CutId, LayerId), LayerId> siblingUnionLayerIdMap;
 
   /// The fresh panel each sibling copy of a row born with a frame is born
@@ -331,13 +331,19 @@ ConvertToLinkedCutCommandInputPlan planConvertToLinkedCutCommandInput({
   }
   // 🗣️F-398 (유저 2026-10-18): 「관련 링크안되는것들 다른것도 조사 법 통일」
   // — a row the origin takes in from the target is an added row there, and
-  // the origin's 겸용 siblings take it too. ↩️Only the two cuts matched.
-  for (final sibling in linkedCutSiblings(project, cutId: originCut.id)) {
-    if (sibling == targetCut.id) {
-      continue;
-    }
-    for (final layerId in plan.targetOnlyLayerIds) {
-      siblingCopies.plan(targetCut, layerId, key: (sibling, layerId));
+  // the origin's 겸용 siblings take it too; so do the target's, of the rows
+  // the target takes in (⑤). ↩️Only the two cuts matched.
+  for (final (cut, other, onlyIds) in [
+    (originCut, targetCut, plan.targetOnlyLayerIds),
+    (targetCut, originCut, plan.originOnlyLayerIds),
+  ]) {
+    for (final sibling in linkedCutSiblings(project, cutId: cut.id)) {
+      if (sibling == other.id) {
+        continue;
+      }
+      for (final layerId in onlyIds) {
+        siblingCopies.plan(other, layerId, key: (sibling, layerId));
+      }
     }
   }
 
