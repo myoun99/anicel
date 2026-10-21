@@ -469,6 +469,68 @@ void main() {
     );
 
     testWidgets(
+      'and with the lean UIKit later measured for it — a wait keeps each '
+      'sample\'s own reading, and the measurement is the measurement',
+      (tester) async {
+        final altitudes = <Duration, PenLedgerReading>{
+          _ms(0): _estimatedReading,
+          _ms(8): _estimatedReading,
+        };
+        QaPenLedger.debugAltitude = (at) => altitudes[at];
+        addTearDown(() => QaPenLedger.debugAltitude = null);
+        final laid = debugStrokeDabsLaid = <BrushDab>[];
+        addTearDown(() => debugStrokeDabsLaid = null);
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _pressureBrush, results);
+        ledger[_ms(0)] = _estimatedReading;
+        ledger[_ms(8)] = _estimatedReading;
+        for (final (at, x) in const [(0, 4.0), (8, 20.0)]) {
+          (at == 0 ? _down : _move)(
+            tester,
+            Offset(x, 8),
+            time: _ms(at),
+            force: 0.5,
+            tilt: 0.3,
+            pressureMax: _pencilMax,
+          );
+          await tester.pump();
+        }
+        expect(laid, isEmpty, reason: '⛔CONTROL: both wait for a force');
+        // The Bluetooth report lands: UIKit measures the two leans...
+        altitudes[_ms(0)] = measured(1.2);
+        altitudes[_ms(8)] = measured(1.0);
+        ledger[_ms(0)] = measured(1.2);
+        ledger[_ms(8)] = measured(1.0);
+        ledger[_ms(16)] = measured(0.8);
+        _move(
+          tester,
+          const Offset(36, 8),
+          time: _ms(16),
+          force: 0.8,
+          tilt: 0.3,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _up(tester, const Offset(36, 8), time: _ms(20));
+        await tester.pump();
+
+        final dabs = results.single;
+        expect(dabs.first.center.x, 4);
+        expect(dabs.first.tiltAltitude, closeTo(1.2 / (math.pi / 2), 1e-9));
+        expect(
+          dabs.where((dab) => dab.center.x == 20).single.tiltAltitude,
+          closeTo(1.0 / (math.pi / 2), 1e-9),
+        );
+        expect(
+          dabs.last.tiltAltitude,
+          closeTo(1 - 0.3 / (math.pi / 2), 1e-9),
+          reason: '⛔CONTROL: a lean nothing measured is the pen\'s own',
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
       'a steadied line lifts reading what its last sample was measured '
       'with, not the stand-in the pen still reads — UIKit measured the '
       'short stroke only after its last move (F-418)',
