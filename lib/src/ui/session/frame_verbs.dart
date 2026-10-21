@@ -234,8 +234,12 @@ class FrameVerbs {
           : ClipLanding.ownDrawings,
       ids: _frameIds,
     );
+    // The duplicate only lengthens its row: the cut it moves grows past the
+    // playhead, never under it, so the cut command's tidy-up is not owed —
+    // it drops the frame selection, which nobody asked a duplicate to do
+    // (F-264 found the same on the shove).
     final controller = _controllers.timelineController;
-    final cutMoved = commitSpliceKeepingTheCutOnItsRow(
+    commitSpliceKeepingTheCutOnItsRow(
       project: _project,
       controller: controller,
       edits: controller.splicedLayers(
@@ -273,9 +277,6 @@ class FrameVerbs {
         handwritingOf: (inkId) =>
             ink.bakedSurfaceOrNull(conteInkRowKey(cut.id, inkId)),
       );
-    }
-    if (cutMoved) {
-      _changes.refreshAfterCutCommand();
     }
     _changes.notifyChanged();
   }
