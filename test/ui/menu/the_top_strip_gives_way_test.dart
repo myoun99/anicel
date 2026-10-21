@@ -246,6 +246,16 @@ void main() {
             size: widthOf(tester, sizeBar),
             opacity: widthOf(tester, opacityBar),
           );
+          // [widthOf] is the bar's own width, which a group the strip draws
+          // smaller keeps — 「Where it fits, nothing is scaled」
+          // (KeptTailRow). ↩️Without this, full bars held 3px past their
+          // room went unseen: the strip drew the group smaller and still
+          // fit (2026-10-21, a mutant the sweep let live).
+          expect(
+            tester.getRect(inStrip(sizeBar)).width,
+            closeTo(now.size, 0.01),
+            reason: 'the bars are drawn at their own width — at $width',
+          );
           expect(now.size, lessThanOrEqualTo(last.size), reason: 'at $width');
           expect(
             now.opacity,
