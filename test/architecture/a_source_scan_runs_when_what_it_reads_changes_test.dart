@@ -6,7 +6,13 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/affected_tests.dart'
-    show forcesFullRun, kNearConfigImports, kNearImports, selectTests;
+    show
+        changesTheEngine,
+        forcesFullRun,
+        kNearConfigImports,
+        kNearImports,
+        parityTests,
+        selectTests;
 import '../../tool/import_graph.dart'
     show buildImportGraph, kGraphRoots, pathsReadAsText;
 
@@ -290,6 +296,32 @@ void main() {
       pathsReadAsText("File('android/app/build.gradle.kts')"),
       {'android/app/build.gradle.kts'},
     );
+  });
+
+  test('🚨the engine\'s C runs every suite only in the wide run — near, it '
+      'is the tests that exercise the engine', () {
+    // 유저 10-21 (tests-crowd-the-machine-Q14): a lane that changed the C ran
+    // all 2,500 files before it landed; the wide check after landing runs
+    // them all against that C.
+    const c = 'packages/qa_native/src/brush.c';
+    expect(changesTheEngine(c), isTrue);
+    expect(changesTheEngine('lib/src/native/qa_engine_abi.dart'), isFalse);
+    expect(forcesFullRun(c), isTrue, reason: 'the wide run');
+    expect(forcesFullRun(c, near: true), isFalse, reason: 'the near run');
+    for (final blanket in [
+      'pubspec.yaml',
+      'analysis_options.yaml',
+      'test/flutter_test_config.dart',
+      'assets/fonts/BIZUDPGothic-Regular.ttf',
+    ]) {
+      expect(forcesFullRun(blanket, near: true), isTrue, reason: blanket);
+    }
+    final parity = parityTests();
+    expect(parity, isNotNull,
+        reason: 'tool/native_parity_tests.sh is the one answer');
+    expect(parity, contains('test/services/native_engine_present_test.dart'));
+    expect(parity!.length, lessThan(400),
+        reason: 'the engine\'s tests, not the suite');
   });
 
   test('🚨a tool a test runs through is walked into — what that tool '

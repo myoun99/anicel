@@ -338,10 +338,21 @@ Future<void> main(List<String> args) async {
     exit(0);
   }
 
-  final blanket = changed.where(forcesFullRun).toList()..sort();
+  final blanket = changed
+      .where((path) => forcesFullRun(path, near: !wide))
+      .toList()
+    ..sort();
   if (blanket.isNotEmpty) {
     _report('running everything: ${blanket.first} changed'
         '${blanket.length > 1 ? ' (and ${blanket.length - 1} more like it)' : ''}.');
+    await run(_wholeSuite());
+  }
+  final engine = changed.where(changesTheEngine).toList()..sort();
+  final parity = wide || engine.isEmpty ? const <String>[] : parityTests();
+  if (parity == null) {
+    _report('running everything: ${engine.first} changed and '
+        'tool/native_parity_tests.sh chose no test that exercises the '
+        'engine.');
     await run(_wholeSuite());
   }
 
@@ -357,8 +368,15 @@ Future<void> main(List<String> args) async {
       within: within,
       configWithin: configWithin,
     ),
+    ...parity,
     ...named,
   };
+  if (parity.isNotEmpty) {
+    _report('${engine.first} is the engine\'s C — near, that is the '
+        '${parity.length} test(s) that exercise the engine '
+        '(tool/native_parity_tests.sh); every suite runs against it in the '
+        'wide check after landing.');
+  }
 
   final present = selected.where((f) => File(f).existsSync()).toList()..sort();
   if (present.isEmpty) {
@@ -531,10 +549,44 @@ List<String> _gitLines(List<String> args) {
 }
 
 /// Whether a change to [path] is one the graph cannot answer
-/// ([_runEverything]), so the whole suite runs.
-bool forcesFullRun(String path) => _runEverything.any(
-      (prefix) => prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
+/// ([_runEverything]), so the whole suite runs — but in a [near] run, never
+/// for the engine's own sources ([changesTheEngine]).
+///
+/// 🗣️유저 2026-10-21, tests-crowd-the-machine-Q14 「C 레인도 착지 전엔
+/// 가까운 것만」: a lane that changed the C ran all 2,500 files before it
+/// landed — two such lanes were 1,256 of the line's 4,000 waiting
+/// machine-minutes that evening. Narrowing by the graph buys nothing (2,041
+/// of 2,625 suites reach `lib/src/native/`), so a near run takes the tests
+/// that exercise the engine instead ([parityTests]) — the list the land's
+/// gate runs with the C tests — and the wide check after landing
+/// (`master_check`) runs every suite against that C, as it does for Dart.
+bool forcesFullRun(String path, {bool near = false}) =>
+    !(near && changesTheEngine(path)) &&
+    _runEverything.any(
+      (prefix) =>
+          prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
     );
+
+/// Whether [path] is one of the engine's sources — the C behind FFI that no
+/// import edge reaches.
+bool changesTheEngine(String path) => path.startsWith(kEngineSources);
+
+/// Where the engine's sources live.
+const kEngineSources = 'packages/';
+
+/// The tests that exercise the engine: `tool/native_parity_tests.sh`'s
+/// answer, asked rather than copied (the one answer — its header), or null
+/// when it gives none.
+List<String>? parityTests() {
+  final result = Process.runSync('bash', ['tool/native_parity_tests.sh']);
+  if (result.exitCode != 0) return null;
+  final files = const LineSplitter()
+      .convert(result.stdout as String)
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toList();
+  return files.isEmpty ? null : files;
+}
 
 /// The files `flutter test` runs as suites, out of [graph].
 ///
