@@ -482,6 +482,17 @@ void main() {
         expect(parkedAhead().difference(before), isEmpty);
       });
 
+      test('a wall that does not shrink works nothing out', () async {
+        final store = BrushFrameStore();
+        keepInAFile(store, {cut: drawn()});
+        final reports = <double>[];
+        await store.cutKeptCelsAhead(
+          PasteboardReach.whole,
+          report: reports.add,
+        );
+        expect(reports, isEmpty, reason: 'only a wall that shrinks cuts');
+      });
+
       test('a move that goes nowhere lets what was worked out go', () async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
@@ -569,8 +580,9 @@ void main() {
             reason: '⛔its bytes stay where they were — not out of the file '
                 'and into a room that never took them',
           );
-          expectCut(store.bakedSurfaceOrNull(cut));
 
+          // ⚠️Not read before this: a read thaws it, and a hot cel is cut by
+          // its own pass whatever was learnt of its bytes.
           blocker.deleteSync();
           store.adoptPasteboardReach(PasteboardReach.whole);
           expect(
@@ -579,6 +591,7 @@ void main() {
             reason: '⛔a cut the room refused is not a picture that stands '
                 'behind the wall: the next move cuts it',
           );
+          expectCut(store.bakedSurfaceOrNull(cut));
         });
       }
     });
