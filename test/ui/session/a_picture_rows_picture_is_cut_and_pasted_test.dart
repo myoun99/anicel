@@ -25,9 +25,10 @@ import 'package:anicel/src/ui/session/frame_clipboard.dart';
 /// cel had asked it since (`rowTakesNewCels`) — the paste kept its own
 /// spelling of that rule, one clause behind.
 ///
-/// ⚠️A row HOLDING its picture still takes no paste (the pins of that are
-/// `image_layer_session_test.dart`'s), and what a BAND does with a picture
-/// row is not decided here — it passes them over as it did.
+/// ⚠️With nothing selected, a row HOLDING its picture still takes no paste
+/// (the pins of that are `image_layer_session_test.dart`'s). A BAND lifts
+/// it first — 「그림이 있어도 갈아끼운다」 (image-row-cut-paste-Q1), the
+/// group at the end.
 void main() {
   FrameClipboard clipboardOf(EditorSessionManager s) => s.clipboard;
 
@@ -202,5 +203,119 @@ void main() {
       reason: 'X, the first — Y stayed on the board',
     );
     expect(rowOf(s, cels).frames, hasLength(2), reason: 'the source is whole');
+  });
+
+  // 🗣️image-row-cut-paste-Q1 (유저 2026-10-07): 「밴드도 이미지 행을 다룬다 —
+  // 그림이 있어도 갈아끼운다」. ↩️A band passed every picture row over: a
+  // copy did not take its picture, a cut did not lift it, a paste did not
+  // put one down.
+  group('a BAND over a picture row', () {
+    /// The band over [rows] from [start], stood on the first of them.
+    void sweep(
+      EditorSessionManager s,
+      List<LayerId> rows, {
+      int start = 0,
+      int end = 3,
+    }) {
+      s.selectLayer(rows.first);
+      s.selectFrameIndex(start);
+      s.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: rows.first,
+        startIndex: start,
+        endIndexExclusive: end,
+        layerIds: rows,
+      );
+    }
+
+    test('잘라내기 lifts its picture with the cels — the row stands empty — '
+        'and a linked paste of the band brings the SAME picture back', () {
+      final (:s, :cels, :picture, :held) = celsAndAPictureRow();
+      sweep(s, [cels, picture]);
+
+      clipboardOf(s).cutRunAtCurrentFrame();
+
+      expect(rowOf(s, picture).timeline, isEmpty);
+      sweep(s, [cels, picture]);
+      expect(s.canPasteLinkedFrameAtCurrentFrame, isTrue);
+      s.pasteLinkedFrameAtCurrentFrame();
+
+      expect(shown(s, picture), held, reason: 'the same cel, so the same ink');
+      expectItsOneHeldPicture(s, picture);
+      expect(shadeOf(s, picture, held), 77);
+    });
+
+    test("a paste over a picture row that HOLDS its picture puts the clip's "
+        'first in its place — and one undo gives the old one back', () {
+      final (:s, :cels, :picture, :held) = celsAndAPictureRow();
+      sweep(s, [cels]);
+      s.copyFrameAtCurrentFrame();
+      sweep(s, [cels, picture]);
+      expect(s.canPasteIndependentFrameAtCurrentFrame, isTrue);
+
+      s.pasteIndependentFrameAtCurrentFrame();
+
+      final made = shown(s, picture);
+      expect(made, isNot(held));
+      expectItsOneHeldPicture(s, picture);
+      expect(shadeOf(s, picture, made!), 10, reason: 'X, the first');
+      s.undo();
+      expect(shown(s, picture), held);
+    });
+
+    test('stood on the picture row, a band over its block lights both '
+        'pastes — a link keeps the name — and one over the hold past it '
+        'lifts nothing there, so neither is lit', () {
+      final (:s, :cels, :picture, held: _) = celsAndAPictureRow();
+      s.selectLayer(cels);
+      s.selectFrameIndex(0);
+      expect(s.frameVerbs.renameSelectedFrame('X'), isNull, reason: '⛔전제');
+      s.copyFrameAtCurrentFrame();
+
+      sweep(s, [picture], start: 2, end: 4);
+      expect(
+        [
+          s.canPasteIndependentFrameAtCurrentFrame,
+          s.canPasteLinkedFrameAtCurrentFrame,
+        ],
+        [false, false],
+        reason: 'the hold is not the block, as it is not to the delete',
+      );
+      sweep(s, [picture], end: 2);
+      expect(
+        [
+          s.canPasteIndependentFrameAtCurrentFrame,
+          s.canPasteLinkedFrameAtCurrentFrame,
+        ],
+        [true, true],
+      );
+
+      s.pasteLinkedFrameAtCurrentFrame();
+
+      expectItsOneHeldPicture(s, picture);
+      final now = rowOf(s, picture).frameById(shown(s, picture)!);
+      expect(now?.name, 'X');
+      expect(shadeOf(s, picture, now!.id), 10);
+    });
+
+    test('the board pairs by PLACE in the band: a picture row the paste '
+        'leaves holding its picture keeps its seat, and takes nothing', () {
+      final (:s, :cels, :picture, :held) = celsAndAPictureRow();
+      s.layerStack.addLayerOfKind(LayerKind.animation);
+      final other = s.activeLayer!.id;
+      s.selectFrameIndex(0);
+      s.createDrawingAtCurrentFrame();
+      paint(s, other, rowOf(s, other).timeline[0]!.frameId!, 30);
+      sweep(s, [cels, picture, other], end: 1);
+      s.copyFrameAtCurrentFrame();
+
+      sweep(s, [cels, picture, other], start: 4, end: 5);
+      s.pasteIndependentFrameAtCurrentFrame();
+
+      expect(shown(s, picture), held, reason: 'the hold is not the block');
+      expect(rowOf(s, picture).frames, hasLength(1), reason: 'none minted');
+      final landed = rowOf(s, other).timeline[4]?.frameId;
+      expect(landed, isNotNull);
+      expect(shadeOf(s, other, landed!), 30, reason: "its own row's drawing");
+    });
   });
 }
