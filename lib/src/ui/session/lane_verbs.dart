@@ -359,15 +359,34 @@ class LaneVerbs {
     ];
   }
 
-  /// Whether [cut]'s camera can be written as [track]: it puts no key out
-  /// of the frames the cut is drawn for ([cameraWriteKeepsKeysIn],
-  /// 🗣️I-73-camera-row-Q2). Both camera arms below ask it, so what a drag
-  /// shows is what its release keeps.
-  bool _cameraTakes(Cut cut, TransformTrack track) => cameraWriteKeepsKeysIn(
-    cut.camera.track,
-    track,
-    drawnFrameCount: _drawnFramesOf(cut),
-  );
+  /// The cut whose camera the camera row [layer] writes as [track] — null
+  /// where no cut holds the row, or where [track] puts a key out of the
+  /// frames the cut is drawn for ([cameraWriteKeepsKeysIn],
+  /// 🗣️I-73-camera-row-Q2). The commit, a drag's preview and a paste's
+  /// gate all ask it, so what a drag shows and a button lights is what the
+  /// press keeps. ↩️The gate did not ask, and a paste that pushed a key
+  /// past the cut's end lit and wrote nothing (F-388, 관제 10-22).
+  Cut? _cutTakingCamera(Layer layer, TransformTrack track) {
+    final cut = _cutWriting(layer);
+    return cut != null &&
+            cameraWriteKeepsKeysIn(
+              cut.camera.track,
+              track,
+              drawnFrameCount: _drawnFramesOf(cut),
+            )
+        ? cut
+        : null;
+  }
+
+  /// Whether the commit of [edit] on [layer] refuses its OWN transform
+  /// lanes: the camera's, where a key would leave the cut
+  /// ([_cutTakingCamera]).
+  bool _refusesOwn(Layer layer, LaneEdit edit) {
+    final own = edit.transform.own;
+    return own != null &&
+        _transformHomeOf(layer) == _TransformHome.cutCamera &&
+        _cutTakingCamera(layer, own) == null;
+  }
 
   /// The cut [layer] is read and written in ([ActiveCutEdits.cutOfRow]):
   /// the one holding it, stood in or not — a header graph draws a line for
@@ -1059,8 +1078,7 @@ class LaneVerbs {
   }) {
     switch (_transformHomeOf(layer)) {
       case _TransformHome.cutCamera:
-        final cut = _cutWriting(layer);
-        if (cut != null && _cameraTakes(cut, track)) {
+        if (_cutTakingCamera(layer, track) != null) {
           _updateCameraTrack(layer.id, track, description: description);
         }
       case _TransformHome.nowhere:
@@ -1167,8 +1185,8 @@ class LaneVerbs {
   TimelineDragPreview? _ownTransformPreview(Layer layer, TransformTrack track) {
     switch (_transformHomeOf(layer)) {
       case _TransformHome.cutCamera:
-        final cut = _cutWriting(layer);
-        return cut == null || !_cameraTakes(cut, track)
+        final cut = _cutTakingCamera(layer, track);
+        return cut == null
             ? null
             : LaneEditPreview.camera(
                 cameraCutId: cut.id,
@@ -1460,7 +1478,9 @@ class LaneVerbs {
   }
 
   /// What a paste of [copy] here writes, and with [keepNames] the names it
-  /// joins at another value — null where it lands nothing.
+  /// joins at another value — null where it lands nothing, the commit's
+  /// refusal included ([_refusesOwn]): one answer for the gate and the
+  /// press (I-19/T25).
   ({_SpanScope scope, LaneEdit edit, Set<String> joins})? _laneKeysPasted(
     KeyCopy copy, {
     required bool keepNames,
@@ -1480,7 +1500,7 @@ class LaneVerbs {
       ),
       keepNames: keepNames,
     );
-    return pasted.edit.isEmpty
+    return pasted.edit.isEmpty || _refusesOwn(scope.layer, pasted.edit)
         ? null
         : (scope: scope, edit: pasted.edit, joins: pasted.joins);
   }
