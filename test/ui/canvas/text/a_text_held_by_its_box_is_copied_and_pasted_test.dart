@@ -414,5 +414,33 @@ void main() {
 
       expect(celOf(tester).texts.single.plate.keys, [inside]);
     });
+
+    testWidgets('🚨a tile the wall crosses keeps what lies inside it and '
+        'loses what lies past it — the cut is to the pixel', (tester) async {
+      await pumpTextToolApp(tester);
+      final wall = coordinatorOf(tester).sessionStore.pasteboard.region;
+      final size = celOf(tester).tileSize;
+      final edge = wall.rightExclusive % size;
+      expect(edge, isNot(0), reason: '⛔fixture: the wall crosses a tile');
+      expect(wall.top, lessThanOrEqualTo(0), reason: '⛔fixture');
+      final crossed = TileCoord(x: wall.rightExclusive ~/ size, y: 0);
+      // The tile's top row inked on its last column inside the wall and on
+      // its first one past it.
+      final pixels = Uint8List(BitmapTile.bytesFor(size));
+      for (final column in [edge - 1, edge]) {
+        pixels.fillRange(column * 4, column * 4 + 4, 0xFF);
+      }
+      holdCopy(tester, (
+        content: hiIn(null),
+        plate: {crossed: BitmapTile(size: size, pixels: pixels)},
+      ));
+
+      sessionOf(tester).textClipboard.pasteIndependent();
+
+      final kept = Uint8List(BitmapTile.bytesFor(size));
+      celOf(tester).texts.single.plate[crossed]!.copyPixelsInto(kept);
+      expect(kept[(edge - 1) * 4 + 3], 0xFF, reason: 'inside the wall');
+      expect(kept[edge * 4 + 3], 0, reason: 'past it');
+    });
   });
 }
