@@ -18,6 +18,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 
@@ -34,9 +35,11 @@ void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const layerId = LayerId('layer');
   const frameId = FrameId('frame-a');
+  const rowB = LayerId('layer-b');
 
-  /// One cel held across the cut's 24 frames, nothing after them.
-  EditorSessionManager session() {
+  /// One cel held across the cut's 24 frames, nothing after them — and,
+  /// [withRowB], a bare row beside it.
+  EditorSessionManager session({bool withRowB = false}) {
     final s = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
@@ -63,6 +66,7 @@ void main() {
                       0: const TimelineExposure.drawing(frameId, length: 24),
                     },
                   ),
+                  if (withRowB) Layer(id: rowB, name: 'B', frames: const []),
                 ],
               ),
             ],
@@ -195,6 +199,35 @@ void main() {
       expect(s.playbackRig.playbackCache.playbackReadyRuns(0, 24), [
         (startIndex: 0, endIndexExclusive: 24, unreadable: true),
       ]);
+    });
+  });
+
+  testWidgets('🚨a cel a drag carries onto another row is red there too — '
+      'its pixels are still under the row it came from (F-313)', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final s = session(withRowB: true);
+      loseTheCelsFile(s);
+      await readTheCel(s);
+      final stack = s.layerStack;
+      final carried = s.layerById(rowB)!.copyWith(
+        frames: [Frame(id: frameId, duration: 1, strokes: const [])],
+        timeline: {0: const TimelineExposure.drawing(frameId, length: 24)},
+      );
+      expect(
+        stack.celCannotBeReadForLayer(carried, 0),
+        isFalse,
+        reason: '⛔CONTROL: with no drag in flight nothing of it is under B',
+      );
+
+      s.dragPreview.value = BlockMoveDragPreview(
+        previewLayers: {rowB: carried},
+        rekeys: const [(from: layerId, to: rowB, frameId: frameId)],
+      );
+
+      expect(stack.celCannotBeReadForLayer(carried, 0), isTrue);
+      s.dragPreview.value = null;
     });
   });
 }
