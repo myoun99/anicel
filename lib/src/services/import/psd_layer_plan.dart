@@ -14,6 +14,7 @@ import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/timeline_exposure.dart';
 import '../layer_pose_matrix.dart' show LayerPlacement, picturePlacement;
+import '../photoshop/psd_blend_modes.dart';
 import '../photoshop/psd_reader.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 import 'raster_cel_import.dart' show fitPose;
@@ -86,27 +87,6 @@ class PsdExpandPlan {
   final List<PsdLayerPlacement> placements;
   final List<ImportWarning> warnings;
 }
-
-/// Photoshop's four-character blend codes. Everything absent from this map
-/// arrives as [LayerBlendMode.normal] with the layer named in a warning:
-/// silently drawing "linear burn" as normal is a picture that is wrong in a
-/// way nobody can see the reason for.
-const Map<String, LayerBlendMode> psdBlendModes = {
-  'pass': LayerBlendMode.passThrough,
-  'norm': LayerBlendMode.normal,
-  'dark': LayerBlendMode.darken,
-  'mul ': LayerBlendMode.multiply,
-  'idiv': LayerBlendMode.colorBurn,
-  'lite': LayerBlendMode.lighten,
-  'scrn': LayerBlendMode.screen,
-  'div ': LayerBlendMode.colorDodge,
-  'lddg': LayerBlendMode.add,
-  'over': LayerBlendMode.overlay,
-  'sLit': LayerBlendMode.softLight,
-  'hLit': LayerBlendMode.hardLight,
-  'diff': LayerBlendMode.difference,
-  'smud': LayerBlendMode.exclusion,
-};
 
 /// Plans [document]'s expansion into [canvas].
 ///
