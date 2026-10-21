@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
+import '../helpers/files_written_under.dart';
 import '../helpers/panel_finders.dart';
 import 'flyout_test_helpers.dart' show flyoutOwnerByItemKey;
 
@@ -194,73 +195,73 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('a smaller pasteboard, pressed in its window, cuts the cels '
-      'kept in files ahead of the move', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
-    );
-    await tester.pumpAndSettle();
-    final session = tester
-        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
-        .session;
-    expect(
-      session.repository.requireProject().pasteboardSize,
-      PasteboardSize.three,
-      reason: 'premise: 1.5x is a smaller wall',
-    );
-    // A cel kept in a file, wholly past the 1.5x wall — x -16..-13 of a
-    // paper 16 wide, inside the 3x one.
-    keepInAFile(session.renderCaches.brushFrameStore, {
-      const BrushFrameKey(
-        projectId: ProjectId('p'),
-        trackId: TrackId('t'),
-        cutId: CutId('c'),
-        layerId: LayerId('l'),
-        frameId: FrameId('kept'),
-      ): BitmapSurface(
-        canvasSize: const CanvasSize(width: 16, height: 8),
-        tileSize: 4,
-      ).putTiles([
-        (
-          coord: TileCoord(x: -4, y: 0),
-          tile: BitmapTile(
-            size: 4,
-            pixels: Uint8List(64)..fillRange(0, 64, 50),
+  // Both doors of the pasteboard row run ahead: its size, and whether it is
+  // in use at all — each a smaller wall from 3x.
+  for (final press in ['pasteboard-size-oneAndAHalf', 'pasteboard-in-use']) {
+    testWidgets('$press, pressed in its window, cuts the cels kept in files '
+        'ahead of the move', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+      );
+      await tester.pumpAndSettle();
+      final session = tester
+          .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+          .session;
+      expect(
+        session.repository.requireProject().pasteboardSize,
+        PasteboardSize.three,
+        reason: 'premise: 1.5x, and none, are smaller walls',
+      );
+      // A cel kept in a file, wholly past the 1.5x wall — x -16..-13 of a
+      // paper 16 wide, inside the 3x one.
+      keepInAFile(session.renderCaches.brushFrameStore, {
+        const BrushFrameKey(
+          projectId: ProjectId('p'),
+          trackId: TrackId('t'),
+          cutId: CutId('c'),
+          layerId: LayerId('l'),
+          frameId: FrameId('kept'),
+        ): BitmapSurface(
+          canvasSize: const CanvasSize(width: 16, height: 8),
+          tileSize: 4,
+        ).putTiles([
+          (
+            coord: TileCoord(x: -4, y: 0),
+            tile: BitmapTile(
+              size: 4,
+              pixels: Uint8List(64)..fillRange(0, 64, 50),
+            ),
+          ),
+        ]),
+      });
+      Set<String> parkedAhead() => {
+        for (final path in filesWrittenUnder(
+          Directory(SessionScratch.stagedFolder()),
+        ))
+          if (path.contains('-ahead')) path,
+      };
+
+      final before = parkedAhead();
+      await tester.tap(
+        find.descendant(
+          of: mainCanvasPanelShell(),
+          matching: find.byKey(
+            const ValueKey<String>('canvas-pasteboard-color-button'),
           ),
         ),
-      ]),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>(press)));
+      await tester.pumpAndSettle();
+      expect(
+        parkedAhead().difference(before),
+        hasLength(1),
+        reason: 'the cut was worked out ahead, and the move took it',
+      );
+      await tester.pump(const Duration(milliseconds: 950));
+      await tester.pumpAndSettle();
     });
-    Set<String> parkedAhead() {
-      final room = Directory(SessionScratch.stagedFolder());
-      return {
-        if (room.existsSync())
-          for (final file in room.listSync(recursive: true))
-            if (file is File && file.path.contains('-ahead')) file.path,
-      };
-    }
-
-    final before = parkedAhead();
-    await tester.tap(
-      find.descendant(
-        of: mainCanvasPanelShell(),
-        matching: find.byKey(
-          const ValueKey<String>('canvas-pasteboard-color-button'),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('pasteboard-size-oneAndAHalf')),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      parkedAhead().difference(before),
-      hasLength(1),
-      reason: 'the cut was worked out ahead, and the move took it',
-    );
-    await tester.pump(const Duration(milliseconds: 950));
-    await tester.pumpAndSettle();
-  });
+  }
 }

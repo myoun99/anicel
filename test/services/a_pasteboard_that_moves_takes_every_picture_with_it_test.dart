@@ -30,6 +30,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
+import '../helpers/files_written_under.dart';
 
 /// 🚨I-109 — THE PASTEBOARD'S WALL MOVES WITH EVERY PICTURE.
 ///
@@ -362,15 +363,15 @@ void main() {
     // compressed again on the UI thread. It is worked out ahead now, on the
     // machine's workers, while the wait window is up.
     group('worked out ahead (F-432)', () {
+      /// Every file in the run's room, by its path inside it.
+      Set<String> roomFiles() =>
+          filesWrittenUnder(Directory(SessionScratch.stagedFolder())).toSet();
+
       /// What the rounds worked out ahead have parked in the room.
-      Set<String> parkedAhead() {
-        final room = Directory(SessionScratch.stagedFolder());
-        return {
-          if (room.existsSync())
-            for (final file in room.listSync(recursive: true))
-              if (file is File && file.path.contains('-ahead')) file.path,
-        };
-      }
+      Set<String> parkedAhead() => {
+        for (final path in roomFiles())
+          if (path.contains('-ahead')) path,
+      };
 
       void expectSamePicture(BitmapSurface? actual, BitmapSurface expected) {
         expect(actual!.tiles.keys.toSet(), expected.tiles.keys.toSet());
@@ -481,6 +482,54 @@ void main() {
         expect(parkedAhead().difference(before), isEmpty);
       });
 
+      test('a move that goes nowhere lets what was worked out go', () async {
+        final store = BrushFrameStore();
+        keepInAFile(store, {cut: drawn()});
+        final before = parkedAhead();
+        await store.cutKeptCelsAhead(PasteboardReach.quarter);
+        expect(store.adoptPasteboardReach(PasteboardReach.whole), isEmpty);
+        expect(parkedAhead().difference(before), isEmpty);
+      });
+
+      test('answers landing after their round was let go leave nothing', (
+      ) async {
+        final store = BrushFrameStore();
+        keepInAFile(store, {cut: drawn()});
+        final before = parkedAhead();
+        final working = store.cutKeptCelsAhead(PasteboardReach.none);
+        parkCold(store, const {});
+        await working;
+        expect(parkedAhead().difference(before), isEmpty);
+      });
+
+      test('parked cold, the bytes a cut replaces leave the room', () async {
+        final before = roomFiles();
+        final store = BrushFrameStore();
+        parkCold(store, {cut: drawn(), clean: inkInside()});
+        await store.cutKeptCelsAhead(PasteboardReach.quarter);
+        store.adoptPasteboardReach(PasteboardReach.quarter);
+        expect(
+          roomFiles().difference(before),
+          hasLength(2),
+          reason: "the clean cel's, and the cut parked ahead — the cut's "
+              'last bytes went when it was kept anew',
+        );
+      });
+
+      test('a cel the move cut stands behind its wall: moved back and forth, '
+          'nothing is worked out for it again', () async {
+        final store = BrushFrameStore();
+        keepInAFile(store, {cut: drawn()});
+        expect(store.adoptPasteboardReach(PasteboardReach.quarter).keys, [cut]);
+        store.adoptPasteboardReach(PasteboardReach.whole);
+        final reports = <double>[];
+        await store.cutKeptCelsAhead(
+          PasteboardReach.quarter,
+          report: reports.add,
+        );
+        expect(reports, isEmpty, reason: 'no cel to work out');
+      });
+
       test('a move back and forth reads the kept bytes once', () {
         final store = BrushFrameStore();
         final refs = keepInAFile(store, {clean: inkInside()});
@@ -491,28 +540,34 @@ void main() {
         expect(store.isCelFileBacked(clean), isTrue);
       });
 
-      test('a room that will not take the cut leaves the cel as it was', () {
-        final store = BrushFrameStore();
-        keepInAFile(store, {cut: drawn()});
-        // A FILE where the room's folder has to go — a revoked scope or a
-        // full disk (`a_cooled_cel_parks_on_disk_test`).
-        final room = Directory(SessionScratch.stagedFolder());
-        if (room.existsSync()) {
-          room.deleteSync(recursive: true);
-        }
-        File(SessionScratch.stagedFolder())
-          ..createSync(recursive: true)
-          ..writeAsBytesSync(const [0]);
-        addTearDown(() => File(SessionScratch.stagedFolder()).deleteSync());
-        expect(store.adoptPasteboardReach(PasteboardReach.quarter), isEmpty);
-        expect(
-          store.isCelFileBacked(cut),
-          isTrue,
-          reason: '⛔its bytes stay where they were — not out of the file '
-              'and into a room that never took them',
-        );
-        expectCut(store.bakedSurfaceOrNull(cut));
-      });
+      for (final ahead in [false, true]) {
+        test('a room that will not take the cut leaves the cel as it was'
+            '${ahead ? ' — worked out ahead too' : ''}', () async {
+          final store = BrushFrameStore();
+          keepInAFile(store, {cut: drawn()});
+          // A FILE where the room's folder has to go — a revoked scope or a
+          // full disk (`a_cooled_cel_parks_on_disk_test`).
+          final room = Directory(SessionScratch.stagedFolder());
+          if (room.existsSync()) {
+            room.deleteSync(recursive: true);
+          }
+          File(SessionScratch.stagedFolder())
+            ..createSync(recursive: true)
+            ..writeAsBytesSync(const [0]);
+          addTearDown(() => File(SessionScratch.stagedFolder()).deleteSync());
+          if (ahead) {
+            await store.cutKeptCelsAhead(PasteboardReach.quarter);
+          }
+          expect(store.adoptPasteboardReach(PasteboardReach.quarter), isEmpty);
+          expect(
+            store.isCelFileBacked(cut),
+            isTrue,
+            reason: '⛔its bytes stay where they were — not out of the file '
+                'and into a room that never took them',
+          );
+          expectCut(store.bakedSurfaceOrNull(cut));
+        });
+      }
     });
   });
 

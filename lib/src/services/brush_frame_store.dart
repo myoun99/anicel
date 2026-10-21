@@ -170,9 +170,6 @@ class BrushFrameStore {
       for (final key in kept.keys) {
         _editTicks[key] = ++_editTick;
         crossed = _recordCelContent(key) || crossed;
-        if (_coldCels[key] case final rewritten?) {
-          _learnStandsBehind(rewritten, reach);
-        }
       }
       cut.addAll(kept);
     }
@@ -1826,7 +1823,8 @@ class BrushFrameStore {
   ///
   /// [ahead] holds what was worked out already, by the ref it was worked
   /// out from ([cutKeptCelsAhead]) — null for a cel left as it is — and a
-  /// ref it holds is not read again. [stands] hears each ref left as it is.
+  /// ref it holds is not read again. [stands] hears each ref the pass
+  /// leaves standing: one left as it is, and one kept anew.
   Map<BrushFrameKey, BitmapSurface> _rewriteKeptCels({
     required bool Function(BrushFrameKey key, AnicelCelFileRef ref) skips,
     required BitmapSurface? Function(BitmapSurface surface) rewrite,
@@ -1858,6 +1856,7 @@ class BrushFrameStore {
           from.remove(key);
         }
         _keepCold(key, next.kept);
+        stands?.call(next.kept);
         _dirtySinceSave.add(key);
         rewritten[key] = next.was;
       }

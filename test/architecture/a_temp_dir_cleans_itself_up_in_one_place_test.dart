@@ -52,6 +52,9 @@ void main() {
     // scope or a full disk — so the folder has to be gone first.
     'test/services/a_cooled_cel_parks_on_disk_test.dart':
         'room.deleteSync(recursive: true);',
+    // The same premise, for a wall's move whose cut the room will not take.
+    'test/services/a_pasteboard_that_moves_takes_every_picture_with_it_test.dart':
+        'room.deleteSync(recursive: true);',
     // The stand-in coordinator replaces the destination whole, as the native
     // one does; a quiet failure would be a replace that did not happen.
     'test/ui/coordinated_replace_fallback_test.dart':
