@@ -570,8 +570,11 @@ void main() {
     );
     await pumpFrames(tester);
 
+    // The main canvas's panel — it is not the only one the app holds up.
     tester
-        .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+        .widget<BrushCanvasPanel>(
+          find.byKey(const ValueKey<String>('main-canvas-brush-host')),
+        )
         .cutPieceSlot!
         .pasteAtOriginHandler!();
     await pumpFrames(tester);
