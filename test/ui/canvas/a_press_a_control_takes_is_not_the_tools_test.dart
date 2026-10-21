@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -216,6 +217,72 @@ void main() {
       toldNotDrawable(),
       isTrue,
       reason: '⛔CONTROL: the notice is there to be seen in this harness',
+    );
+    await press.up();
+    await tester.pumpAndSettle();
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  // R27 #15: only a press that would DRAW is told why the row takes none —
+  // a finger whose slot flips is navigating, and telling it was noise on
+  // every page flip. Pinned where the tool's entrance itself answers: on
+  // the camera row the cel it shows is borrowed and the row takes no
+  // stroke, so no layer under the entrance hears the press
+  // (`_CanvasPanelTap.pressNoLayerHears`) — in the camera size's frame,
+  // whose middle is no handle (the test above). ↩️A hidden row's press is
+  // the drawing view's own (its cel is not the editable one), so a pin
+  // there never reached this question (F-377's N3 lived through it,
+  // measured 10-20); nor does the canvas beside the camera's own box,
+  // which that box takes (measured 10-22).
+  testWidgets('in the camera size\'s frame, a finger that flips is told '
+      'nothing and a paint press is told why', (tester) async {
+    // The product's slot: the test corpus starts a finger drawing.
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.flip,
+    );
+    addTearDown(
+      () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
+    );
+    final session = await open(tester);
+    session.camera.setProjectCameraSize(
+      const CanvasSize(width: 200, height: 150),
+    );
+    session.selectLayer(camera);
+    await pumpFrames(tester);
+    session.canvasAdjust.begin(
+      CameraSizeDraft(size: session.camera.cameraFrameSize),
+    );
+    await pumpFrames(tester);
+    final box = find.descendant(
+      of: find.byType(CameraAdjustLayer),
+      matching: find.byType(RowTransformBox),
+    );
+    final middle = onScreen(
+      tester,
+      box,
+      tester.widget<RowTransformBox>(box).pose.center,
+    );
+
+    final finger = await tester.startGesture(
+      middle,
+      kind: PointerDeviceKind.touch,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(toldNotDrawable(), isFalse, reason: 'the finger flips: no stroke');
+    await finger.up();
+    await tester.pumpAndSettle();
+
+    final press = await tester.startGesture(
+      middle,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(
+      toldNotDrawable(),
+      isTrue,
+      reason: 'LIVENESS — the same place with a paint press is told',
     );
     await press.up();
     await tester.pumpAndSettle();
