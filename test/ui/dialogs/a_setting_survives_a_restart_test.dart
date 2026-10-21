@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/pixel_verb_settings.dart';
+import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
+import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_pixel_verb_settings_store.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
@@ -195,8 +198,25 @@ void main() {
     );
     final pixelVerbs = _RecordingPixelVerbStore();
     final session = run(_RecordingInputStore(), pixelVerbs: pixelVerbs);
-    // The list opens on a cel with a drawing in it.
+    // The list opens on a cel with a drawing in it, with the editing stack
+    // the canvas hands the pixel verbs (`PixelEditing`) — no canvas is up
+    // here to hand it.
     drawOnCurrentFrame(session);
+    final cel = session.editingCanvas.activeBrushEditorSelection!;
+    final cut = session.requireActiveCut;
+    session.pixelEditing.coordinator = BrushFrameEditingCoordinator(
+      initialFrameKey: session.brushFrameKeyForCut(
+        cut,
+        cel.layerId,
+        cel.frameId,
+      ),
+      frameStore: session.renderCaches.brushFrameStore,
+      sessionStore: BrushFrameEditSessionStore(
+        canvasSize: cut.canvasSize,
+        tileSize: 256,
+      ),
+      historyPolicy: const BrushHistoryPolicy(),
+    );
     await pumpTheToolbar(tester, session);
     final head = find.byKey(
       const ValueKey<String>('shared-colour-edit-button'),

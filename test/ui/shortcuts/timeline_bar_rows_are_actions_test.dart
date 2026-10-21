@@ -240,9 +240,9 @@ void main() {
       );
     });
 
-    test('the colour edit list\'s eight are menu rows too — the third list '
+    test('the colour edit list\'s nine are menu rows too — the third list '
         'on the one rule', () {
-      expect(colourEditRows, hasLength(8), reason: '⛔premise');
+      expect(colourEditRows, hasLength(9), reason: '⛔premise');
       for (final id in colourEditRows) {
         expect(
           editorActionDefinitions
