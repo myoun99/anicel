@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/source_brackets.dart' show matchingClose;
 import '../helpers/dart_sources.dart';
 
 /// 🚨A HAND A VIEW HOLDS UP WHILE IT IS MOUNTED GOES THROUGH A `ViewHand`
@@ -102,22 +103,11 @@ List<String> _nullGoodbyes(String source) => [
 final _nullGoodbye = RegExp(r'widget\.(\w+)(?:\?\.call|\.call)?\(null\)');
 
 /// Each `dispose` body in [source], from its opening brace to the one
-/// that closes it.
+/// that closes it ([matchingClose]).
 Iterable<String> _disposeBodies(String source) sync* {
   for (final start in RegExp(r'void dispose\(\) \{').allMatches(source)) {
-    var depth = 0;
-    for (var at = start.end - 1; at < source.length; at += 1) {
-      final char = source[at];
-      if (char == '{') {
-        depth += 1;
-      } else if (char == '}') {
-        depth -= 1;
-        if (depth == 0) {
-          yield source.substring(start.end, at);
-          break;
-        }
-      }
-    }
+    final close = matchingClose(source, start.end - 1);
+    if (close != null) yield source.substring(start.end, close);
   }
 }
 

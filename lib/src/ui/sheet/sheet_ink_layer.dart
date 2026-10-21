@@ -960,7 +960,13 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// A window taken away mid-stroke never reports the stroke's end, and
   /// the pen would stay down for good. After the frame: this runs during
   /// build, and the flag's listeners rebuild widgets.
+  ///
+  /// A window gone takes its hand for a shape with it too, once no view of
+  /// it holds one up.
   void _releaseWindowsGone(Set<String> mountedIds) {
+    _shapeShows.removeWhere(
+      (id, hand) => hand.now == null && !mountedIds.contains(id),
+    );
     final gone = [
       for (final id in _stroking)
         if (!mountedIds.contains(id)) id,
@@ -989,13 +995,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
         if (regions[index] case final region?)
           (index: index, window: windows[index], region: region),
     ];
-    final mountedIds = {for (final entry in keeping) entry.window.id};
-    _releaseWindowsGone(mountedIds);
-    // A window gone takes its hand for a shape with it, once no view of it
-    // holds one up.
-    _shapeShows.removeWhere(
-      (id, hand) => hand.now == null && !mountedIds.contains(id),
-    );
+    _releaseWindowsGone({for (final entry in keeping) entry.window.id});
     // Where each shows its own (F-216) — what it keeps past the edges of
     // the windows above it is never on screen — the print's answer too
     // (F-215).
