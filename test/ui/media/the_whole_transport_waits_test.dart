@@ -8,6 +8,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 
@@ -165,6 +166,35 @@ void main() {
       reason: '🪦the viewer was completely silent until 2026-09-08 — a movie '
           'turned its pages and its soundtrack was never asked for',
     );
+  });
+
+  // playback-waits-for-its-sound (유저 2026-10-16: 「소리가 준비될 때까지
+  // 기다린다」): the wait asks the sound as well as the pictures. Every page
+  // landed, so only the sound can hold the run — where the pictures are not
+  // there yet, they hold it, and a wait that never asked the sound passed
+  // (a mutant that unwired it lived, 10-21).
+  testWidgets('🚨a movie whose every page has landed still stands for its '
+      'sound on its way, and goes on with it from where it stood', (
+    tester,
+  ) async {
+    const look = Duration(microseconds: 16667);
+    sound.answers = const OutputComing();
+    final fake = await openMovie(tester);
+    await pressPlay(tester);
+    await settleAsync(tester, () => fake.asked.contains(11));
+    await lendBothClocks(tester, rounds: 5);
+    for (var i = 0; i < 15; i += 1) {
+      await tester.pump(look);
+    }
+
+    expect(playing(tester), isTrue, reason: 'a run that waits plays');
+    expect(sound.resumes, 0, reason: 'its sound has not come');
+    expect(slot.position.value, 0, reason: 'it stands where it was put');
+
+    sound.answers = RecordingViewerSound.armed;
+    await tester.pump(look);
+    expect(sound.resumedFrom, [0.0], reason: 'the sound started there');
+    await pressPlay(tester);
   });
 
   testWidgets('🚨a buffer that runs dry HOLDS the sound, and refilling '
