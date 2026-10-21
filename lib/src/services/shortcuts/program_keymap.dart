@@ -222,8 +222,9 @@ List<(String, String)>? _keyboardSection(List<String> lines) {
     }
     // From the second character: a key named `=` is written `equal`, so
     // the first `=` past the key's first letter is the one before the
-    // command.
-    final at = line.indexOf('=', 1);
+    // command. TVPaint's own config.ini ends the section on a blank line,
+    // which has no second character.
+    final at = line.isEmpty ? -1 : line.indexOf('=', 1);
     final command = at < 0 ? '' : line.substring(at + 1).trim();
     if (command.isNotEmpty && command != 'none') {
       bound.add((line.substring(0, at).trim(), command));

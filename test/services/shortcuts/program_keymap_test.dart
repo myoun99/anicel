@@ -40,6 +40,8 @@ void main() {
         'del=SelectDel',
         'a=none',
         'ctrl wheel up=ZoomIn',
+        // TVPaint 12's own config.ini ends the section on a blank line.
+        '',
         // The room's copy of the map — not the keyboard's.
         '[room-1]',
         'x=Undo',
