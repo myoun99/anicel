@@ -14,10 +14,12 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/export/xdts_builder.dart';
+import 'package:anicel/src/ui/editor_command_actions.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timesheet/cut_sheet_document.dart';
 
@@ -201,5 +203,39 @@ void main() {
     final sheet = sheetOf301(s);
     expect(transitionColumnOf(sheet, s), isNull);
     expect(sheet.drawnFrameCount, 24 + 6);
+  });
+
+  // 🗣️F-338 ② (유저 2026-10-11): a block made on the transition row right
+  // after an O.L turned the sheet red. The cut view's ＋ makes a one-frame
+  // span there (F-180), and the sheet's transition column counted from the
+  // cut's place while its rows count from its own frame 0, so the block
+  // printed over the O.L's rows (I-73-ol-sheet-columns).
+  test('a block the cut view makes right after the O.L prints on its own '
+      'row of the cut the O.L arrives into, and past the cut it leaves', () {
+    final s = session();
+    addTearDown(s.dispose);
+    s.selectCut(const CutId('302'));
+    s.standOnRow(LayerRowAddress(s.activeTrack.transitionLayer.id));
+    s.selectFrameIndex(12);
+    expect(s.editingGlobalFrame, 30, reason: '⛔전제: the frame after the O.L');
+    expect(s.cellInstances.canCreateInstance, isTrue, reason: '⛔전제');
+
+    createActiveInstance(s);
+
+    expect(
+      s.activeTrack.transitionLayer.instructions.keys,
+      [18, 30],
+      reason: '⛔전제: the ＋ made its span',
+    );
+    List<int> startsOn(TimesheetDocument sheet) => [
+      for (final (row, cell) in transitionColumnOf(sheet, s)!.cells.indexed)
+        if (cell.kind == TimesheetCellKind.instructionStart) row,
+    ];
+    final cuts = s.activeTrack.cuts;
+    expect(
+      startsOn(cutSheetDocument(s, cut: cuts.last, cutStartFrame: 24)),
+      contains(12),
+    );
+    expect(startsOn(sheetOf301(s)), [18]);
   });
 }
