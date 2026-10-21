@@ -164,6 +164,22 @@ void main() {
       expect(lit(tester), ['continuousBezier']);
     });
 
+    testWidgets('the four speak the program language — in Korean the words '
+        'the user chose', (tester) async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      await pumpPathRow(tester, const []);
+      expect(
+        [
+          for (final pill in tester.widgetList<Pill>(find.byType(Pill)))
+            pill.label,
+        ],
+        ['선형', '베지어', '연속 베지어', '자동 베지어'],
+      );
+    });
+
     // As wide as the side rows' (I-89 ②, 400): every name says its word
     // whole, in the faces the app draws it in.
     for (final language in AppLanguage.values) {
