@@ -148,9 +148,12 @@ const kUnknownWork = 3600;
 /// ⚠️[Standing.since] IS READ, NEVER WRITTEN: a run of a tool from before
 /// the run kept its place (tests-crowd-the-machine-Q15) counts its own wait
 /// from its last batch and decides its turn by that, so the line reads it
-/// so too — two runs that each read the other as first held six of
-/// eighteen suites idle for twenty minutes the evening it landed. Once no
-/// such run is left it reads null for everyone.
+/// so too — runs that each read the others as first left suites idle from
+/// the evening it landed, and by midnight none of eighteen was held with
+/// fifteen runs waiting. Once no such run is left it reads null for
+/// everyone. ⚠️Whatever changes how the line orders its runs has to give
+/// the order a run of the tool before it gives, for as long as one is in
+/// line: each run decides its own turn.
 typedef Standing = ({
   String name,
   int? suites,

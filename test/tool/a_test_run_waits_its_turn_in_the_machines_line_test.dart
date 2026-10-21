@@ -202,8 +202,8 @@ void main() {
 
     test('⚠️a run of a tool from before stands from when it says it began '
         'to wait — as it reads its own turn', () {
-      // Two runs that each read the other as first held six of eighteen
-      // suites idle the evening the run kept its place (Q15).
+      // Runs that each read the others as first held no suite at all, with
+      // fifteen waiting, the night the run kept its place (Q15).
       final old = (
         name: askedAs('old', 1000),
         suites: null,
