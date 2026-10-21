@@ -139,16 +139,14 @@ const kUnknownWork = 3600;
 /// while it waits; the test files its `flutter test` names — null when it
 /// names none (the whole suite, a folder) or is no `flutter test`; the
 /// machine-seconds that `flutter test` should take ([workOf]) — null when
-/// it cannot say; since when it has waited, or run — null when it did not
-/// say, and then the line reads when it was asked ([askedAt]); and whether
-/// its tool takes what is left of its share ([suitesToRun]) — false for a
-/// tool from before, which takes all of it or waits.
+/// it cannot say; and whether its tool takes what is left of its share
+/// ([suitesToRun]) — false for a tool from before, which takes all of it or
+/// waits. Since when it stands in the line is its [name]'s ([askedAt]).
 typedef Standing = ({
   String name,
   int? suites,
   int? files,
   int? work,
-  DateTime? since,
   bool takesWhatIsLeft,
 });
 
@@ -185,6 +183,14 @@ double _wallOf(Standing standing, int suites) =>
 /// over its run — the highest-response-ratio-next rule. A short run comes
 /// forward fast, and a long one comes forward too as it waits, so no run
 /// waits for ever; runs alike keep the order they asked in.
+///
+/// 🗣️IT HAS WAITED SINCE ITS TICKET WAS ASKED, whatever batches it ran
+/// since (유저 2026-10-21, tests-crowd-the-machine-Q15 「실행 전체가 자리를
+/// 지킨다」): the run, not the batch, is what stands in the line, and its run
+/// is all the work it has left. ↩️From 10-20 every batch counted its wait
+/// from naught, so a run that had just put a batch down stood behind every
+/// run waiting — that evening one asked at 13:37 still had 610 files left
+/// at 20:50, and the long runs took turns and all ended late together.
 double _forwardness(
   Standing standing,
   List<Standing> line,
@@ -192,7 +198,7 @@ double _forwardness(
   required int machine,
 }) {
   final wall = _wallOf(standing, _wants(standing, line, machine: machine));
-  final since = standing.since ?? askedAt(standing.name) ?? now;
+  final since = askedAt(standing.name) ?? now;
   final waited = math.max(0, now.difference(since).inMilliseconds / 1000);
   return (waited + wall) / wall;
 }
@@ -412,8 +418,8 @@ List<String> heldTickets(
 }
 
 /// What the run holding the ticket [name] in [line] said: the suites it
-/// holds — none while it waits — the files its `flutter test` names, the
-/// work it should take and since when it waits or runs ([Standing]). One
+/// holds — none while it waits — the files its `flutter test` names and
+/// the work it should take ([Standing]). One
 /// that has said nothing readable waits, names none and cannot say its
 /// work, which keeps it from halving or overtaking anyone it should not.
 Standing standingOf(Directory line, String name) {
@@ -427,7 +433,6 @@ Standing standingOf(Directory line, String name) {
         suites: about['state'] == 'running' ? about['suites'] as int? : null,
         files: about['files'] as int?,
         work: about['work'] as int?,
-        since: DateTime.tryParse('${about['since'] ?? ''}'),
         takesWhatIsLeft: about['takesWhatIsLeft'] == true,
       );
     }
@@ -439,7 +444,6 @@ Standing standingOf(Directory line, String name) {
     suites: null,
     files: null,
     work: null,
-    since: null,
     takesWhatIsLeft: false,
   );
 }
@@ -511,13 +515,12 @@ class Ticket {
     }
   }
 
-  /// Holds no suites since [since], and its next `flutter test` names
-  /// [files] and should take [work] machine-seconds.
-  void waiting(int? files, {int? work, DateTime? since}) => _tell({
+  /// Holds no suites, and its next `flutter test` names [files] and should
+  /// take [work] machine-seconds.
+  void waiting(int? files, {int? work}) => _tell({
     'state': 'waiting',
     'files': files,
     'work': work,
-    'since': (since ?? DateTime.now()).toIso8601String(),
   });
 
   void running(int suites, int? files, {int? work}) => _tell({
@@ -525,7 +528,6 @@ class Ticket {
     'suites': suites,
     'files': files,
     'work': work,
-    'since': DateTime.now().toIso8601String(),
   });
 
   void giveBack() {
@@ -609,8 +611,7 @@ class Turn {
       // No machine folder: no line to stand in, and the machine is its own.
       return [kMachineSuites, ?asked, ?files].reduce(math.min);
     }
-    var since = DateTime.now();
-    _ticket!.waiting(files, work: work, since: since);
+    _ticket!.waiting(files, work: work);
     _noteUsage();
     List<Standing> standings() => [
       for (final name in heldTickets(folder, mine: _ticket!.name, ended: ended))
@@ -620,7 +621,6 @@ class Turn {
             suites: null,
             files: files,
             work: work,
-            since: since,
             takesWhatIsLeft: true,
           )
         else
@@ -632,9 +632,7 @@ class Turn {
       // A ticket swept in the instant between being made and being locked
       // stands nowhere; it takes another at the back.
       if (!_ticket!.file.existsSync()) {
-        since = DateTime.now();
-        _ticket = Ticket.take(folder, _what)
-          ..waiting(files, work: work, since: since);
+        _ticket = Ticket.take(folder, _what)..waiting(files, work: work);
       }
       final line = standings();
       final machine = machineSuitesOf(folder);

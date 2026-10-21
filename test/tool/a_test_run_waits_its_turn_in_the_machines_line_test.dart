@@ -41,33 +41,30 @@ void main() {
   // The moment every line below is decided at.
   final t0 = DateTime(2026, 10, 20, 14);
   DateTime ago(int seconds) => t0.subtract(Duration(seconds: seconds));
+  // A run is named here as its ticket is: when it was asked, then who it is
+  // — the line reads since when it stands off the name ([askedAt]).
+  String askedAs(String who, int waited) =>
+      '${ago(waited).microsecondsSinceEpoch.toString().padLeft(17, '0')}-$who';
+  String whoOf(String name) => name.substring(name.indexOf('-') + 1);
   /// [old]: its tool is from before the line handed out what is left.
   Standing waiting(
-    String name, {
+    String who, {
     int? files,
     int? work,
     int waited = 0,
     bool old = false,
   }) => (
-    name: name,
+    name: askedAs(who, waited),
     suites: null,
     files: files,
     work: work,
-    since: ago(waited),
     takesWhatIsLeft: !old,
   );
-  Standing runningAt(
-    String name,
-    int suites, {
-    int? files,
-    int? work,
-    int ran = 0,
-  }) => (
-    name: name,
+  Standing runningAt(String who, int suites, {int? files, int? work}) => (
+    name: askedAs(who, 0),
     suites: suites,
     files: files,
     work: work,
-    since: ago(ran),
     takesWhatIsLeft: true,
   );
   int? decide(
@@ -75,9 +72,18 @@ void main() {
     List<Standing> line, {
     int? asked,
     int machine = kMachineSuites,
-  }) => suitesToRun(mine, line, asked: asked, now: t0, machine: machine);
+  }) => suitesToRun(
+    [
+      for (final s in line)
+        if (whoOf(s.name) == mine) s.name,
+    ].firstOrNull ?? mine,
+    line,
+    asked: asked,
+    now: t0,
+    machine: machine,
+  );
   List<String> turnOrder(List<Standing> line) => [
-    for (final s in waitingInTurn(line, t0)) s.name,
+    for (final s in waitingInTurn(line, t0)) whoOf(s.name),
   ];
 
   group('the line', () {
@@ -190,22 +196,6 @@ void main() {
         'b', 'a', //
       ]);
       expect(turnOrder([waiting('b'), waiting('a')]), ['a', 'b']);
-    });
-
-    test('a run that did not say since when it waits stands from when its '
-        'ticket was asked', () {
-      final name = ticketName(ago(100).microsecondsSinceEpoch, 1);
-      Standing unsaid() =>
-          (
-            name: name,
-            suites: null,
-            files: null,
-            work: null,
-            since: null,
-            takesWhatIsLeft: true,
-          );
-      expect(turnOrder([waiting('a', waited: 50), unsaid()]), [name, 'a']);
-      expect(turnOrder([waiting('a', waited: 200), unsaid()]), ['a', name]);
     });
 
     test('beside the first in line a run starts when both fit now — and '
@@ -443,14 +433,13 @@ void main() {
       expect(runHasEnded(ticket('a.ticket')), isTrue);
     });
 
-    test('a ticket says its suites while running, its files, its work, since '
-        'when and how it takes; waiting or unreadable holds none', () {
+    test('a ticket says its suites while running, its files, its work and '
+        'how it takes; waiting or unreadable holds none', () {
       ticket('a.ticket', told: {
         'state': 'running',
         'suites': 5,
         'files': 1,
         'work': 300,
-        'since': t0.toIso8601String(),
         'takesWhatIsLeft': true,
       });
       ticket('b.ticket', told: {'state': 'waiting', 'files': 2});
@@ -461,7 +450,6 @@ void main() {
         suites: 5,
         files: 1,
         work: 300,
-        since: t0,
         takesWhatIsLeft: true,
       ));
       // A tool from before says nothing of how it takes: all or nothing.
@@ -470,7 +458,6 @@ void main() {
         suites: null,
         files: 2,
         work: null,
-        since: null,
         takesWhatIsLeft: false,
       ));
       expect(standingOf(line, 'c.ticket').suites, isNull);
@@ -479,31 +466,28 @@ void main() {
         suites: null,
         files: null,
         work: null,
-        since: null,
         takesWhatIsLeft: false,
       ));
     });
 
     test('--list shows the running runs, then the waiting ones in turn', () {
-      ticket('a.ticket', told: {
+      final aMinuteAgo = ago(60).microsecondsSinceEpoch;
+      ticket(ticketName(aMinuteAgo, 1), told: {
         'state': 'waiting',
         'what': 'long',
         'work': 3600,
-        'since': ago(60).toIso8601String(),
       });
-      ticket('b.ticket', told: {
+      ticket(ticketName(t0.microsecondsSinceEpoch, 2), told: {
         'state': 'running',
         'suites': 5,
         'what': 'running',
         'work': 3000,
-        'since': t0.toIso8601String(),
       });
-      ticket('c.ticket', told: {
+      ticket(ticketName(aMinuteAgo, 3), told: {
         'state': 'waiting',
         'what': 'short',
         'files': 2,
         'work': 120,
-        'since': ago(60).toIso8601String(),
       });
       final rows = describeLine(line, now: t0);
       expect(rows, hasLength(3));
@@ -673,7 +657,7 @@ void main() {
       expect(ran, 1);
     });
 
-    test('a run of many batches keeps its place, says what each holds, and '
+    test('a run of many batches keeps its ticket, says what each holds, and '
         'is decided afresh at every batch', () async {
       late File behind;
       Standing? whileWaiting;
@@ -707,7 +691,6 @@ void main() {
       expect(whileWaiting!.suites, isNull);
       expect(whileWaiting!.files, 40);
       expect(whileWaiting!.work, 2400);
-      expect(whileWaiting!.since, isNotNull);
       expect(
         whileWaiting!.takesWhatIsLeft,
         isTrue,
@@ -718,11 +701,6 @@ void main() {
       expect(seen.$2.suites, 10);
       expect(seen.$2.files, 40);
       expect(seen.$2.work, 2400);
-      expect(
-        seen.$2.since!.isBefore(whileWaiting!.since!),
-        isFalse,
-        reason: 'running, it says since when it runs',
-      );
       expect(seen.$3, isNull);
       expect(seen.$4, 5);
       expect(seen.$5, isTrue);
@@ -742,15 +720,17 @@ void main() {
         (turn) async {
           events.add('batch at ${await turn.take()}');
           turn.putDown();
-          short = askedAfter({
-            'state': 'waiting',
-            'files': 1,
-            'work': 30,
-            'since': DateTime.now()
+          short = standing(
+            DateTime.now()
                 .subtract(const Duration(minutes: 1))
-                .toIso8601String(),
-            'takesWhatIsLeft': true,
-          });
+                .microsecondsSinceEpoch,
+            {
+              'state': 'waiting',
+              'files': 1,
+              'work': 30,
+              'takesWhatIsLeft': true,
+            },
+          );
           events.add('batch at ${await turn.take()}');
           turn.putDown();
         },
@@ -768,7 +748,6 @@ void main() {
                 'suites': 1,
                 'files': 1,
                 'work': 30,
-                'since': DateTime.now().toIso8601String(),
               }),
             );
             events.add('short runs at 1');
