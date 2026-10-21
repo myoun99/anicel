@@ -670,11 +670,7 @@ class RangeSelections {
     // block is cut. A lane's keys are points — raw cells, the lane domain's
     // own rule — so a span of lanes alone IS the raw span.
     final span = snapSpanToRowsBlocks(
-      rows: [
-        for (final id in blockIds)
-          if (_project.rangeLayerById(id) case final spanned?)
-            (layer: spanned, runs: _rowSpans.aggregateRunsForRow(spanned)),
-      ],
+      rows: _blockRowsOf(blockIds),
       anchorIndex: anchorIndex,
       headIndex: headIndex,
     );
@@ -964,13 +960,12 @@ class RangeSelections {
   void growOverTheBlocksItHolds() {
     final inCut = _selection.frameRangeSelection.value;
     if (inCut != null) {
-      final end = _grownEnd(
-        [
-          for (final id in inCut.spanLayerIds)
-            if (_project.rangeLayerById(id) case final layer?)
-              ...rowBlockLanes(layer, _rowSpans.aggregateRunsForRow(layer)),
-        ],
-        inCut.startIndex,
+      final end = _endPast(
+        snapSpanToRowsBlocks(
+          rows: _blockRowsOf(inCut.spanLayerIds),
+          anchorIndex: inCut.startIndex,
+          headIndex: inCut.endIndexExclusive - 1,
+        ),
         inCut.endIndexExclusive,
       );
       if (end != null) {
@@ -983,12 +978,15 @@ class RangeSelections {
       return;
     }
     final axis = _projectSettings.axisForTrack(onTrack.trackId);
-    final end = _grownEnd(
-      [
-        for (final row in onTrack.spanRows)
-          ?_rowSpans.trackRowSnapLane(row, axis),
-      ],
-      onTrack.startFrame,
+    final end = _endPast(
+      snapSpanToBlocks(
+        lanes: [
+          for (final row in onTrack.spanRows)
+            ?_rowSpans.trackRowSnapLane(row, axis),
+        ],
+        anchorIndex: onTrack.startFrame,
+        headIndex: onTrack.endFrameExclusive - 1,
+      ),
       onTrack.endFrameExclusive,
     );
     if (end != null) {
@@ -996,23 +994,22 @@ class RangeSelections {
     }
   }
 
-  /// Where the shared snap of `[start, endExclusive)` over [lanes] ends,
-  /// when that is past [endExclusive]; null when it ends there.
-  static int? _grownEnd(
-    List<RangeBlockAt> lanes,
-    int start,
-    int endExclusive,
-  ) {
-    final snapped = snapSpanToBlocks(
-      lanes: lanes,
-      anchorIndex: start,
-      headIndex: endExclusive - 1,
-    );
-    return switch (snapped?.endIndexExclusive) {
-      final end? when end > endExclusive => end,
-      _ => null,
-    };
-  }
+  /// Where [snapped] ends, when that is past [endExclusive]; null when it
+  /// ends there.
+  static int? _endPast(RangeSpan? snapped, int endExclusive) =>
+      switch (snapped?.endIndexExclusive) {
+        final end? when end > endExclusive => end,
+        _ => null,
+      };
+
+  /// The rows of [ids] a band snaps over — each with the runs its members
+  /// make, the folder case ([snapSpanToRowsBlocks]).
+  List<({Layer layer, List<({int start, int endExclusive})> runs})>
+  _blockRowsOf(Iterable<LayerId> ids) => [
+    for (final id in ids)
+      if (_project.rangeLayerById(id) case final layer?)
+        (layer: layer, runs: _rowSpans.aggregateRunsForRow(layer)),
+  ];
 
   /// Where the last retimed block of [startsByLayer] ends now (max across
   /// rows), each row's commit keys brought [behind] frames back onto the

@@ -287,7 +287,7 @@ RangeSpan? snapSpanToRowsBlocks({
   required int anchorIndex,
   required int headIndex,
 }) => snapSpanToBlocks(
-  lanes: [for (final row in rows) ...rowBlockLanes(row.layer, row.runs)],
+  lanes: [for (final row in rows) ..._blockLanesOf(row.layer, row.runs)],
   anchorIndex: anchorIndex,
   headIndex: headIndex,
 );
@@ -297,11 +297,11 @@ RangeSpan? snapSpanToRowsBlocks({
 /// snaps to, so what you stand on and what a click there selects are one
 /// answer.
 StandingUnit standingUnitOnRow(Layer layer, int frameIndex) =>
-    standingUnitAt(lanes: rowBlockLanes(layer, const []), index: frameIndex);
+    standingUnitAt(lanes: _blockLanesOf(layer, const []), index: frameIndex);
 
 /// [layer]'s lanes of blocks: its exposures, its instruction events, and —
 /// the folder case — the runs its members make ([aggregateRunBlockAt]).
-List<RangeBlockAt> rowBlockLanes(
+List<RangeBlockAt> _blockLanesOf(
   Layer layer,
   List<({int start, int endExclusive})> aggregateRuns,
 ) => [
