@@ -2883,7 +2883,7 @@ function rowHtml(c, g){
   var when = c.checks ? c.since : c.updated;
   var a = age(when);
   var pick = g.pick
-    ? '<input type="checkbox" class="pick" data-pick="' + esc(c.id) + '"' + (S.picked.has(c.id) ? ' checked' : '') + '>'
+    ? '<label class="pickcell"><input type="checkbox" class="pick" data-pick="' + esc(c.id) + '"' + (S.picked.has(c.id) ? ' checked' : '') + '></label>'
     : '<span class="dot s-' + c.status + '" title="' + STATUS[c.status] + '"></span>';
   var prio = c.prio && skip.indexOf('prio') < 0 ? '<span class="pri p' + prioRank(c.prio) + '">' + esc(c.prio) + '</span>' : '';
   var areas = c.areas.slice(0, 2).map(function(t){ return '<span class="chip">' + esc(t) + '</span>'; }).join('');
@@ -3313,6 +3313,10 @@ document.addEventListener('click', function(e){
   }
   var ok = e.target.closest('[data-confirm]');
   if (ok) { confirmGroup(ok); return; }
+  // The cell round the box is the box (유저 2026-10-22: 「체크 여러개 클릭하는데
+  // 3번에 한번꼴로 그 카드로 들어가져」): the label hands its click on to the
+  // box, which comes back here as its own click — never the row's.
+  if (e.target.closest(".pickcell") && !e.target.closest("[data-pick]")) return;
   var pk = e.target.closest('[data-pick]');
   if (pk) { if (pk.checked) S.picked.add(pk.dataset.pick); else S.picked.delete(pk.dataset.pick);
     renderList(); return; }
@@ -3417,12 +3421,14 @@ position:sticky;top:0;background:var(--bg);z-index:1}
 .note{font-size:11.5px;color:var(--ink3)}
 .gh .picks{margin-left:auto;display:flex;align-items:center;gap:6px}
 .none{margin:0;padding:6px 18px 8px;font-size:12.5px;color:var(--ink3)}
-.row{display:grid;grid-template-columns:14px 104px minmax(0,1fr) auto;gap:10px;
+.row{display:grid;grid-template-columns:18px 104px minmax(0,1fr) auto;gap:10px;
 align-items:center;padding:7px 18px;border-top:1px solid var(--line);cursor:pointer}
 .row.static{cursor:default}
 .row:hover{background:var(--sunk)}
 .row[aria-selected="true"]{background:var(--card);box-shadow:inset 3px 0 0 var(--live)}
-.row .pick{margin:0}
+.row .pickcell{align-self:stretch;display:flex;align-items:center;justify-content:center;
+margin:-7px -10px -7px -18px;padding:0 10px 0 18px;cursor:default}
+.row .pick{margin:0;width:18px;height:18px;cursor:pointer}
 .rid{font-family:var(--mono);font-size:12px;color:var(--ink3);overflow:hidden;
 text-overflow:ellipsis;white-space:nowrap}
 .rt{min-width:0;display:flex;align-items:center;gap:6px}
@@ -3468,7 +3474,7 @@ body.reading .detail{display:block;position:fixed;inset:0;z-index:5;border-left:
 .app,body.reading .app{grid-template-columns:minmax(0,1fr)}
 .rail{border-right:0;border-bottom:1px solid var(--line);max-height:40vh}
 .views{flex-direction:row;flex-wrap:wrap}
-.row{grid-template-columns:14px minmax(0,1fr) auto}
+.row{grid-template-columns:18px minmax(0,1fr) auto}
 .rid,.own{display:none}
 }
 /* ---- a card's body, as the board has always drawn it */
