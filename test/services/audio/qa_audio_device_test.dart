@@ -405,7 +405,10 @@ void main() {
       );
 
       expect(
-        await waitFor(() => device.positionSamples > first - lead + 2400),
+        await waitOnTheDevice(
+          device,
+          () => device.positionSamples > first - lead + 2400,
+        ),
         isTrue,
       );
       // The peak first: a block that sounds is stored before the count that
@@ -424,7 +427,10 @@ void main() {
             'the first picture',
       );
 
-      expect(await waitFor(() => device.peakFor(0) > 0), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0),
+        isTrue,
+      );
       expect(
         device.positionSamples,
         greaterThan(first),
@@ -450,10 +456,28 @@ void main() {
       // No whole number of callbacks of any size a device asks for (480,
       // 512, 1024 …): the lead ends inside one.
       device.play(startSample: first, leadSamples: 48007);
-      // It sounds for one callback: watched without a pause, not polled.
+      // ⛔The meter is the engine's one: a peak the last run left on it
+      // passed this for nothing (a lead held silent to its block's end
+      // lived as a mutant, 10-18). Watched only once the lead has zeroed
+      // it, still short of the first sample.
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) == 0),
+        isTrue,
+        reason: '⛔premise: the lead has silenced the meter',
+      );
+      expect(
+        device.positionSamples,
+        lessThan(first),
+        reason: '⛔premise: still in the lead',
+      );
+      // It sounds for one callback: watched without a pause, not polled —
+      // for three seconds of what the device hands, as every wait on it.
       var heard = false;
-      final watch = Stopwatch()..start();
-      while (!heard && watch.elapsedMilliseconds < 3000) {
+      final handed = Handed(device);
+      final wall = Stopwatch()..start();
+      while (!heard &&
+          handed.samples < 3 * device.sampleRate &&
+          wall.elapsed < deviceStoppedAfter) {
         heard = device.peakFor(0) > 0;
       }
       expect(
@@ -475,17 +499,20 @@ void main() {
         looping: true,
         leadSamples: 24000,
       );
-      expect(await waitFor(() => device.positionSamples > 6000), isTrue);
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      // A third of a second of looks — longer than a lap.
-      for (var look = 0; look < 12; look += 1) {
-        expect(
-          device.positionSamples,
-          inInclusiveRange(0, 12000),
-          reason: 'wrapped into the lead, every lap would start silent',
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 30));
-      }
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples > 6000),
+        isTrue,
+      );
+      // Looked at for two laps and more of what the device hands.
+      expect(
+        await waitOnTheDevice(
+          device,
+          () => device.positionSamples < 0 || device.positionSamples > 12000,
+          budget: const Duration(milliseconds: 600),
+        ),
+        isFalse,
+        reason: 'wrapped into the lead, every lap would start silent',
+      );
     }, skip: skip);
 
     test('the meter reads silence through the lead, after a run that '
@@ -493,11 +520,17 @@ void main() {
       final device = openNull();
       scheduleTone(device);
       device.play(startSample: 0);
-      expect(await waitFor(() => device.peakFor(0) > 0), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0),
+        isTrue,
+      );
       // Started again ahead with no stop between, as a run is re-armed.
       device.play(startSample: 144000, leadSamples: 48000);
       expect(
-        await waitFor(() => device.positionSamples > 96000 + 2400),
+        await waitOnTheDevice(
+          device,
+          () => device.positionSamples > 96000 + 2400,
+        ),
         isTrue,
       );
       final bars = [device.peakFor(0), device.peakFor(1)];
@@ -519,7 +552,7 @@ void main() {
       device.play(startSample: 480000, leadSamples: 48000);
       device.seek(0);
       expect(
-        await waitFor(() => device.peakFor(0) > 0),
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0),
         isTrue,
         reason: 'held silent to the run\'s first sample, ten seconds of '
             'sound would be lost',
