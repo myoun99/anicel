@@ -522,9 +522,10 @@ void main() {
       return rows.sublist(foot + 1, head);
     }
 
-    testWidgets('its pages are folders of ONE file, the first on top — each '
-        'its strata, laying up into the page its PNG is — over the first '
-        'page whole, laid a page at a time', (tester) async {
+    testWidgets('its pages are folders of ONE file, the first at the bottom '
+        'and alone shown (I-117-Q4: 「1페이지가 맨 아래, 눈 1페이지만 켬」) — '
+        'each its strata, laying up into the page its PNG is — over the '
+        'first page whole, laid a page at a time', (tester) async {
       final session = film();
       final state = await pumpDialog(tester, session, tab: 'conte');
 
@@ -565,12 +566,15 @@ void main() {
               (row.name, row.role, row.blendKey, row.visible),
         ],
         [
-          for (final page in ['p2', 'p1']) ...[
+          for (final page in ['p1', 'p2']) ...[
             for (final name in strata)
               (name, PsdLayerRole.raster, 'norm', true),
-            (page, PsdLayerRole.groupOpen, 'pass', true),
+            (page, PsdLayerRole.groupOpen, 'pass', page == 'p1'),
           ],
         ],
+        reason: 'bottom-up: the first page\'s folder, the only one shown, '
+            'then the next over it — every row inside each shown, so a '
+            'folder whose eye is put on shows its page whole',
       );
       expect(read.composite, pages.first, reason: 'the first page whole');
       for (final (index, page) in pages.indexed) {

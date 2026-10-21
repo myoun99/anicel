@@ -95,8 +95,12 @@ typedef ExportLayerRow = ({
 });
 
 /// A folder of a layered still file — a conte page's strata (I-117): its
-/// name, and its rows, bottom-up.
-typedef ExportLayerFolder = ({String name, List<ExportLayerRow> rows});
+/// name, whether it is shown, and its rows, bottom-up.
+typedef ExportLayerFolder = ({
+  String name,
+  bool visible,
+  List<ExportLayerRow> rows,
+});
 
 /// The bytes a still in [format] is written as where its picture is laid
 /// up of rows: a PSD keeps them apart ([encodePsd] — [rows] is asked only
@@ -169,7 +173,7 @@ final class LayeredPsd {
   /// [folder] over every row laid before it, its rows inside it — as
   /// [addRows] answers.
   Future<bool> addFolder(ExportLayerFolder folder) async {
-    _builder.openGroup(name: folder.name);
+    _builder.openGroup(name: folder.name, visible: folder.visible);
     if (!await addRows(folder.rows)) {
       return false;
     }

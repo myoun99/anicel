@@ -2531,9 +2531,12 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// The conte's pages as ONE Photoshop document — 🗣️I-117 (유저
   /// 2026-10-21): 「콘티용지탭 psd 출력시 페이지별로 하나의 그룹으로
-  /// 묶어서 … 한 파일안에 여러 페이지 그룹」: a folder a page, the first
-  /// on top, each holding its page's strata, over the first page whole.
-  /// Laid a page at a time, as the PDF is, and stopped between pages.
+  /// 묶어서 … 한 파일안에 여러 페이지 그룹」: a folder a page, each holding
+  /// its page's strata, over the first page whole. The first page lies at
+  /// the bottom and alone is shown — I-117-Q4 (유저 2026-10-22): 「1페이지가
+  /// 맨 아래, 눈 1페이지만 켬」. ↩️It lay on top, every page shown, until
+  /// that answer came. Laid a page at a time, as the PDF is, and stopped
+  /// between pages.
   Future<String> _exportContePsd(
     List<ContePageLayout> pages,
     ConteSheetSource source, {
@@ -2552,11 +2555,10 @@ class ExportDialogState extends State<ExportDialog> {
     final document = LayeredPsd(width: paper.width, height: paper.height);
     final total = pages.length + 1;
     _reportProgress(0, total);
-    // Bottom-up: the last page is laid first, so the first lies on top.
-    for (var laid = 0; laid < pages.length; laid += 1) {
-      final index = pages.length - 1 - laid;
+    for (var index = 0; index < pages.length; index += 1) {
       final folder = (
         name: _contePageToken(index),
+        visible: index == 0,
         rows: sheetStrataRows(
           SheetPaintLayer.values,
           (layers) => render(index, layers),
@@ -2568,7 +2570,7 @@ class ExportDialogState extends State<ExportDialog> {
       if (_cancelRequested) {
         return AppText.strings.exCancelled;
       }
-      _reportProgress(laid + 1, total);
+      _reportProgress(index + 1, total);
     }
     final composite = await render(0);
     final List<int>? bytes;
