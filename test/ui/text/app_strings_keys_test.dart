@@ -628,6 +628,8 @@ void main() {
     'imSize': (s) => s.imSize,
     'imResolution': (s) => s.imResolution,
     'imExcluded': (s) => s.imExcluded,
+    'imFolderAsOneCut': (s) => s.imFolderAsOneCut,
+    'imFolderPerRow': (s) => s.imFolderPerRow,
     'imModeKeep': (s) => s.imModeKeep,
     'imModeReference': (s) => s.imModeReference,
     'imBake': (s) => s.imBake,

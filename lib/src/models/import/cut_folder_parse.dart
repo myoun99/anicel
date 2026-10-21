@@ -344,6 +344,19 @@ class CutFolderParseResult {
             .where((each) => each.symbol == layer.symbol)
             .where((each) => each.correction == null)
             .firstOrNull;
+
+  /// Whether [layer] corrects only cels its symbol's own layer has — so it
+  /// rides that layer SYNCED, each correction on its cel's frames, and FREE
+  /// when one is new (🗣️07-29, the planner's `_FolderCut`). False for a
+  /// layer that rides none ([baseOf]).
+  bool correctsOnlyItsBaseCels(ParsedCelLayer layer) {
+    final base = baseOf(layer);
+    if (base == null) {
+      return false;
+    }
+    final cels = {for (final cel in base.cells) cel.label};
+    return layer.cells.every((cel) => cels.contains(cel.label));
+  }
 }
 
 /// Rule N's process vocabulary, LONGEST FIRST (`ss` is 총작감, never

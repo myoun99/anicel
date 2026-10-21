@@ -1,7 +1,7 @@
+import '../../models/import/import_destination.dart';
 import '../../models/kept_span.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/import_layer_spot.dart';
-import '../../services/import/media_import_planner.dart' show ImportDestination;
 import '../text/app_strings.dart';
 
 /// What one FILE in the import window is set to.
@@ -417,7 +417,7 @@ ImportFileSettings resolvedImportSettings(
   // 고정」); else what the row was answered.
   final into =
       spot?.answeredDestination ??
-      (hasActiveCut ? settings.into : ImportDestination.newCut);
+      importDestinationGiven(settings.into, hasOpenCut: hasActiveCut);
   final fit = importFitLocked(settings.copyWith(into: into), placing: placing)
       ? MediaFitMode.none
       : settings.fit;

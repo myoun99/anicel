@@ -12,6 +12,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart'
+    show createDefaultCut;
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import '../../helpers/reference_to.dart';
 
@@ -212,10 +214,19 @@ void main() {
   });
 
   group('planCutFolderImport', () {
+    /// The cut the project has open: 24 frames long.
+    final open = createDefaultCut(
+      cutId: const CutId('open'),
+      name: 'open',
+      layerId: const LayerId('open-drawing'),
+      canvasSize: const CanvasSize(width: 640, height: 360),
+    ).copyWith(duration: 24);
+
     CutFolderImportPlan planFor(
       String folderName,
       List<String> files, {
       CutFolderEdits edits = const CutFolderEdits(),
+      bool cutOpen = true,
     }) => planCutFolderImport(
       parsed: parseCutFolder(
         folderName: folderName,
@@ -223,7 +234,7 @@ void main() {
       ),
       edits: edits,
       resolveFile: (relative) => 'C:/folder/$relative',
-      canvasSize: const CanvasSize(width: 640, height: 360),
+      openCut: cutOpen ? open : null,
       mint: mint(),
     );
 
@@ -238,8 +249,8 @@ void main() {
         'LO/A1.png',
       ]);
 
-      expect(plan.cut.duration, 2, reason: 'longest layer = 2 cels');
-      final layers = plan.cut.layers;
+      expect(plan.cuts.single.duration, 2, reason: 'longest layer = 2 cels');
+      final layers = plan.cuts.single.layers;
       expect(layers.take(4).map((l) => l.name), ['BG', 'A', 'A', 'B']);
       final base = layers[1];
       final correction = layers[2];
@@ -262,7 +273,7 @@ void main() {
     test('every layer comes in wearing its colour label — the stage, and '
         'the correction its letters name; a picture is born an image', () {
       final plan = planFor('csm_13_074_gen', ['A1.png', 'A1s.png', '_BG.png']);
-      final [picture, base, correction, ...] = plan.cut.layers;
+      final [picture, base, correction, ...] = plan.cuts.single.layers;
 
       expect(picture.kind, LayerKind.image);
       expect(picture.mark, LayerMark.bornOfKind(LayerKind.image));
@@ -280,10 +291,10 @@ void main() {
         'A3.png',
         'A2s.png',
       ]);
-      final base = plan.cut.layers.firstWhere(
+      final base = plan.cuts.single.layers.firstWhere(
         (l) => l.name == 'A' && l.attachedToLayerId == null,
       );
-      final correction = plan.cut.layers.firstWhere(
+      final correction = plan.cuts.single.layers.firstWhere(
         (l) => l.attachedToLayerId == base.id,
       );
 
@@ -298,8 +309,8 @@ void main() {
         for (final (index, cel) in base.frames.indexed) cel.id: mirrors[index],
       });
       expect(
-        cutWithReconciledAttachedMirrors(plan.cut),
-        same(plan.cut),
+        cutWithReconciledAttachedMirrors(plan.cuts.single),
+        same(plan.cuts.single),
         reason: 'the always-mirror shape is born whole, as .clip\'s is',
       );
       final bake = plan.bakes.singleWhere(
@@ -312,10 +323,10 @@ void main() {
     test('a correction that draws a cel the base lacks is FREE, laid one '
         'comma each like every layer of the folder (07-29)', () {
       final plan = planFor('csm_13_074_lo', ['B1.png', 'B1e.png', 'B2e.png']);
-      final base = plan.cut.layers.firstWhere(
+      final base = plan.cuts.single.layers.firstWhere(
         (l) => l.name == 'B' && l.attachedToLayerId == null,
       );
-      final correction = plan.cut.layers.firstWhere(
+      final correction = plan.cuts.single.layers.firstWhere(
         (l) => l.attachedToLayerId == base.id,
       );
 
@@ -341,7 +352,7 @@ void main() {
     test('two corrections of one symbol both ride the symbol\'s own layer '
         '— neither rides the other', () {
       final plan = planFor('csm_13_074_lo', ['A1.png', 'A1e.png', 'A1s.png']);
-      final [base, direction, animationDirector, ...] = plan.cut.layers;
+      final [base, direction, animationDirector, ...] = plan.cuts.single.layers;
 
       expect(base.attachedToLayerId, isNull);
       expect(
@@ -357,7 +368,7 @@ void main() {
     test('a correction with no layer of its symbol to ride is a layer of '
         'its own, still wearing its correction', () {
       final plan = planFor('csm_13_074_lo', ['B1s.png', 'B2s.png']);
-      final b = plan.cut.layers.singleWhere((l) => l.name == 'B');
+      final b = plan.cuts.single.layers.singleWhere((l) => l.name == 'B');
 
       expect(b.attachedToLayerId, isNull);
       expect(b.mark.revise, LayerRevise.animationDirector);
@@ -367,7 +378,7 @@ void main() {
     test('a multi-cut folder is ONE cut, named after its first number '
         '(F-429-Q3)', () {
       final plan = planFor('csm_13_069_077_086_loeks', ['A1.png']);
-      expect(plan.cut.name, '069');
+      expect(plan.cuts.single.name, '069');
     });
 
     group('as the import window answered it (F-429)', () {
@@ -375,7 +386,7 @@ void main() {
         final plan = planFor('csm_13_069_loeks', [
           'A1.png',
         ], edits: const CutFolderEdits(cutName: '070'));
-        expect(plan.cut.name, '070');
+        expect(plan.cuts.single.name, '070');
       });
 
       test('a row wears the colour label picked for it, and its correction '
@@ -385,7 +396,7 @@ void main() {
           'A1.png',
           'A1s.png',
         ], edits: const CutFolderEdits(marks: {'A': layout}));
-        final [base, correction, ...] = plan.cut.layers;
+        final [base, correction, ...] = plan.cuts.single.layers;
 
         expect(base.mark, layout);
         expect(correction.mark.revise, LayerRevise.animationDirector);
@@ -400,8 +411,8 @@ void main() {
         ], edits: const CutFolderEdits(
           kinds: {'A': LayerKind.image, 'B': LayerKind.image},
         ));
-        final a = plan.cut.layers.singleWhere((l) => l.name == 'A');
-        final b = plan.cut.layers.singleWhere((l) => l.name == 'B');
+        final a = plan.cuts.single.layers.singleWhere((l) => l.name == 'A');
+        final b = plan.cuts.single.layers.singleWhere((l) => l.name == 'B');
 
         expect(a.kind, LayerKind.image);
         expect(a.frames.single.name, isNull, reason: 'an image cel goes '
@@ -422,7 +433,7 @@ void main() {
             'A animation-director': LayerKind.animation,
           },
         ));
-        final [base, correction, ...] = plan.cut.layers;
+        final [base, correction, ...] = plan.cuts.single.layers;
 
         expect(base.kind, LayerKind.image);
         expect(correction.kind, LayerKind.image);
@@ -435,7 +446,7 @@ void main() {
           'A2.png',
           '_BG.png',
         ], edits: const CutFolderEdits(kinds: {'_BG': LayerKind.animation}));
-        final bg = plan.cut.layers.first;
+        final bg = plan.cuts.single.layers.first;
 
         expect(bg.name, 'BG');
         expect(bg.kind, LayerKind.animation);
@@ -450,9 +461,111 @@ void main() {
           'A1.png',
           '_BG.png',
         ], edits: const CutFolderEdits(fits: {'A': MediaFitMode.none}));
-        final [bg, a, ...] = plan.cut.layers;
+        final [bg, a, ...] = plan.cuts.single.layers;
 
         expect(plan.fits, {a.id: MediaFitMode.none, bg.id: MediaFitMode.contain});
+      });
+    });
+
+    test('a folder with no cel or picture lands nothing, and says so', () {
+      final plan = planFor('csm_13_069_lo', ['_069_ts_lo.png']);
+
+      expect(plan.cuts, isEmpty);
+      expect(plan.openCutLayers, isEmpty);
+      expect(
+        plan.warnings.map((warning) => warning.key),
+        contains('folderNothing'),
+      );
+    });
+
+    group('「커스텀」 — each row where its own 넣을 곳 says (F-429-Q1)', () {
+      String fileOf(PlannedCelBake bake) => bake.sourceFile.split('/').last;
+
+      test('a row sent to a cut of its own is one — named as the row, as long '
+          'as its layer, its correction riding along — and the rest join the '
+          'open cut, a picture held over its length', () {
+        final plan = planFor(
+          'csm_13_069_lo',
+          ['A1.png', 'A2.png', 'A1s.png', 'B1.png', '_BG.png'],
+          edits: const CutFolderEdits(
+            custom: true,
+            into: {'A': ImportDestination.newCut},
+          ),
+        );
+
+        final own = plan.cuts.single;
+        expect(own.name, 'A');
+        expect(own.duration, 2);
+        expect(own.canvasSize, open.canvasSize, reason: 'the project\'s size');
+        final [base, correction, ...] = own.layers;
+        expect(base.name, 'A');
+        expect(correction.attachedToLayerId, base.id);
+        expect(correction.attachedMode, AttachedMode.synced);
+
+        expect(plan.openCutLayers.map((l) => l.name), ['BG', 'B']);
+        final bg = plan.openCutLayers.first;
+        expect(bg.timeline[0]!.length, 24, reason: 'the open cut\'s length');
+        expect({for (final bake in plan.bakes) fileOf(bake): bake.cutId}, {
+          '_BG.png': open.id,
+          'A1.png': own.id,
+          'A2.png': own.id,
+          'A1s.png': own.id,
+          'B1.png': open.id,
+        });
+      });
+
+      test('a correction sent somewhere of its own is a layer of its own — '
+          'riding nothing, its kind its own to pick', () {
+        final plan = planFor(
+          'csm_13_069_lo',
+          ['A1.png', 'A2.png', 'A1s.png'],
+          edits: const CutFolderEdits(
+            custom: true,
+            into: {'A animation-director': ImportDestination.activeCutLayer},
+            kinds: {'A animation-director': LayerKind.image},
+          ),
+        );
+        final [base, correction] = plan.openCutLayers;
+
+        expect(base.kind, LayerKind.animation);
+        expect(correction.name, 'A');
+        expect(correction.attachedToLayerId, isNull);
+        expect(correction.kind, LayerKind.image, reason: 'one cel, an image');
+        expect(correction.mark.revise, LayerRevise.animationDirector);
+        expect(plan.cuts, isEmpty, reason: 'nothing asked for a cut');
+      });
+
+      test('with no cut open every row is a cut of its own, met from the '
+          'bottom of the stack up', () {
+        final plan = planFor(
+          'csm_13_069_lo',
+          ['A1.png', 'A2.png', 'B1.png', '_BG.png'],
+          edits: const CutFolderEdits(custom: true),
+          cutOpen: false,
+        );
+
+        expect(plan.cuts.map((cut) => cut.name), ['BG', 'A', 'B']);
+        expect(plan.cuts.map((cut) => cut.duration), [1, 2, 1]);
+        expect(plan.openCutLayers, isEmpty);
+      });
+
+      test('「컷」 leaves what 「커스텀」 picked aside — every row is a layer of '
+          'the one cut, a correction riding its symbol', () {
+        final plan = planFor(
+          'csm_13_069_lo',
+          ['A1.png', 'A1s.png', 'B1.png'],
+          edits: const CutFolderEdits(
+            into: {
+              'A': ImportDestination.newCut,
+              'A animation-director': ImportDestination.activeCutLayer,
+            },
+          ),
+        );
+
+        final [a, correction, b, ...] = plan.cuts.single.layers;
+        expect([a.name, b.name], ['A', 'B']);
+        expect(correction.attachedToLayerId, a.id);
+        expect(plan.openCutLayers, isEmpty);
       });
     });
   });

@@ -9,9 +9,9 @@ import 'dart:io';
 import '../../models/import/cut_folder_edits.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../models/media_asset.dart';
+import '../../services/commands/cut_command_input_planner.dart'
+    show planAddLayersCommandInput;
 import '../../services/commands/import_media_command.dart';
-import '../../services/editing/default_cut_helpers.dart'
-    show defaultCutCanvasSize;
 import '../../services/import/cut_folder_listing.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/import/raster_cel_import.dart';
@@ -53,12 +53,15 @@ class CutFolderImportDoor {
   final HoldMediaBytes _holdBytes;
 
   /// Imports a CUT FOLDER (the field's delivery structure) parsed by
-  /// [parseCutFolder], as the import window answered it ([edits]): ONE
-  /// fully-formed cut — symbol layers with named cels one comma each,
-  /// their corrections as attach rows, `_BG`/`_BOOK` picture layers — in
-  /// one undo. 🗣️F-429-Q3 (유저 10-21): 「겸용컷으로 읽는 로직 삭제. 항상
-  /// 한 컷으로만 들어오는느낌」 — a folder naming several cuts is one cut too.
-  /// Returns the parse-and-plan warnings, or null when nothing imported.
+  /// [parseCutFolder], as the import window answered it ([edits]) — the
+  /// folder's ONE fully-formed cut, or under 「커스텀」 each row where its
+  /// 넣을 곳 says: a new layer of the open cut, or a cut of its own
+  /// ([planCutFolderImport]) — symbol layers with named cels one comma
+  /// each, their corrections as attach rows, `_BG`/`_BOOK` picture layers,
+  /// all in one undo. 🗣️F-429-Q3 (유저 10-21): 「겸용컷으로 읽는 로직 삭제.
+  /// 항상 한 컷으로만 들어오는느낌」 — a folder naming several cuts is one
+  /// cut too. Returns the parse-and-plan warnings, or null when nothing
+  /// imported.
   ///
   /// The folder's timesheet scans and reference movie are not this door's:
   /// the window lists them as files of their own and registers or places
@@ -90,77 +93,87 @@ class CutFolderImportDoor {
     }
     final parsed = parseCutFolderAt(folderPath, entries: entries);
 
-    final canvasSize =
-        _project.activeCutOrNull?.canvasSize ?? defaultCutCanvasSize;
+    final openCut = _project.activeCutOrNull;
     final plan = planCutFolderImport(
       parsed: parsed,
       edits: edits,
       resolveFile: (relativePath) => cutFolderFilePath(folderPath, relativePath),
-      canvasSize: canvasSize,
+      openCut: openCut,
       mint: _landing.idMint(),
     );
     if (plan.bakes.isEmpty) {
       return plan.warnings;
     }
 
+    // The rows joining the open cut go in as every new row of it does —
+    // on top, with their copies in its 겸용 siblings (F-398).
+    final joining = plan.openCutLayers;
     _project.historyManager.execute(
       ImportMediaCommand(
         repository: _project.repository,
         editingSession: _timeline.editingSession,
         trackId: _selection.selectedTrackId,
-        newCuts: [plan.cut],
+        newCuts: plan.cuts,
+        targetCutId: joining.isEmpty ? null : openCut?.id,
+        newLayers: joining,
+        layerPlans: joining.isEmpty || openCut == null
+            ? const []
+            : planAddLayersCommandInput(
+                project: _project.repository.requireProject(),
+                cutId: openCut.id,
+                layers: joining,
+              ),
         description: 'Import folder ${mediaFileName(folderPath)}',
       ),
     );
 
-    final bakedCut = _project.cutById(plan.cut.id);
-    if (bakedCut != null) {
-      // Each file bakes exactly once — decode, bake, dispose, so the
-      // peak stays ONE image no matter how large the folder (the
-      // measured folders run past 100 scanned cels).
-      for (final (index, bake) in plan.bakes.indexed) {
-        onProgress?.call(index, plan.bakes.length);
-        final List<DecodedImageFrame> frames;
-        try {
-          frames = await decodeImageFrames(
-            await readHeldMediaBytes(_holdBytes, bake.sourceFile),
-          );
-        } on Object {
-          continue; // Unreadable file — the cel stays empty.
-        }
-        if (frames.isEmpty) {
-          continue;
-        }
-        try {
-          final picture = frames.first.picture;
-          final surface = await layCelPicture(
-            picture: picture,
-            canvas: bakedCut.canvasSize,
-            placement: fitPlacement(
-              picture.size,
-              bakedCut.canvasSize,
-              plan.fits[bake.layerId]!,
-            ),
-          );
-          bakeCelSurface(
-            _renderCaches.brushFrameStore,
-            _project.brushFrameKeyForCut(
-              bakedCut,
-              bake.layerId,
-              bake.frameId,
-            ),
-            surface,
-          );
-        } finally {
-          for (final frame in frames) {
-            frame.picture.dispose();
-          }
-        }
-      }
+    // Each file bakes exactly once — decode, bake, dispose, so the peak
+    // stays ONE image no matter how large the folder (the measured folders
+    // run past 100 scanned cels).
+    for (final (index, bake) in plan.bakes.indexed) {
+      onProgress?.call(index, plan.bakes.length);
+      await _bake(bake, plan.fits[bake.layerId]!);
     }
 
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
     return plan.warnings;
+  }
+
+  /// [bake]'s file laid on its cut's canvas with [fit] and baked into its
+  /// cel — an unreadable file leaves the cel empty.
+  Future<void> _bake(PlannedCelBake bake, MediaFitMode fit) async {
+    final cut = _project.cutById(bake.cutId);
+    if (cut == null) {
+      return;
+    }
+    final List<DecodedImageFrame> frames;
+    try {
+      frames = await decodeImageFrames(
+        await readHeldMediaBytes(_holdBytes, bake.sourceFile),
+      );
+    } on Object {
+      return;
+    }
+    try {
+      final picture = frames.firstOrNull?.picture;
+      if (picture == null) {
+        return;
+      }
+      final surface = await layCelPicture(
+        picture: picture,
+        canvas: cut.canvasSize,
+        placement: fitPlacement(picture.size, cut.canvasSize, fit),
+      );
+      bakeCelSurface(
+        _renderCaches.brushFrameStore,
+        _project.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
+        surface,
+      );
+    } finally {
+      for (final frame in frames) {
+        frame.picture.dispose();
+      }
+    }
   }
 }

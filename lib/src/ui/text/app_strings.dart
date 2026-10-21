@@ -1350,6 +1350,14 @@ enum AppStrings {
   /// row that names it (F-429).
   String get imExcluded => _s('imExcluded');
 
+  /// A cut folder's 넣을 곳: the folder lands as ONE cut, every row a new
+  /// layer of it (F-429-Q1).
+  String get imFolderAsOneCut => _s('imFolderAsOneCut');
+
+  /// A cut folder's 넣을 곳: each row where its own 넣을 곳 says — a new layer
+  /// of the open cut, or a cut of its own (F-429-Q1).
+  String get imFolderPerRow => _s('imFolderPerRow');
+
   /// The placement strip and the window's title when it places one file, and
   /// the words for a pill that cannot be used from where the window opened.
   String imPlaceTitle(String name) =>
@@ -2614,6 +2622,8 @@ enum AppStrings {
     'imSize': 'Size',
     'imResolution': 'Resolution',
     'imExcluded': 'Excluded',
+    'imFolderAsOneCut': 'Cut',
+    'imFolderPerRow': 'Custom',
     'imPlaceTitleTemplate': 'Place — {name}',
     'imModeKeep': 'Keep',
     'imModeReference': 'Link',
@@ -4103,6 +4113,8 @@ enum AppStrings {
     'imSize': 'サイズ',
     'imResolution': '解像度',
     'imExcluded': '除外',
+    'imFolderAsOneCut': 'カット',
+    'imFolderPerRow': 'カスタム',
     'imPlaceTitleTemplate': '配置 — {name}',
     'imModeKeep': '埋め込み',
     'imModeReference': 'リンク',
@@ -5694,6 +5706,8 @@ enum AppStrings {
     'imSize': '크기',
     'imResolution': '해상도',
     'imExcluded': '제외',
+    'imFolderAsOneCut': '컷',
+    'imFolderPerRow': '커스텀',
     'imPlaceTitleTemplate': '배치 — {name}',
     'imModeKeep': '품기',
     'imModeReference': '참조',
@@ -7407,6 +7421,8 @@ enum AppStrings {
     'imSize': 'Taille',
     'imResolution': 'Résolution',
     'imExcluded': 'Exclu',
+    'imFolderAsOneCut': 'Plan',
+    'imFolderPerRow': 'Personnalisé',
     'imPlaceTitleTemplate': 'Placer — {name}',
     'imModeKeep': 'Intégrer',
     'imModeReference': 'Lier',
@@ -8942,6 +8958,8 @@ enum AppStrings {
     'imSize': '大小',
     'imResolution': '分辨率',
     'imExcluded': '已排除',
+    'imFolderAsOneCut': '镜头',
+    'imFolderPerRow': '自定义',
     'imPlaceTitleTemplate': '放置 — {name}',
     'imModeKeep': '内嵌',
     'imModeReference': '链接',

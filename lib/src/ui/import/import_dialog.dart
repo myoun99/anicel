@@ -56,6 +56,7 @@ import '../widgets/app_window.dart';
 import '../widgets/dock_edge_splitter.dart';
 import '../widgets/panel_flyout.dart'
     show PanelFlyoutChoice, PanelFlyoutValueChoices, showPanelFlyout;
+import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import '../text/model_vocabulary.dart';
 
 /// The import window (§6-z21): ONE window for every import, defaults
@@ -255,10 +256,22 @@ final class _LeftOut {
   String toString() => 'left-out';
 }
 
+/// The Into answer of a cut folder's correction riding its symbol's own
+/// layer: wherever that goes, as its attach row (🗣️F-429-Q5: 「기준
+/// 행(A)을 따라감」 · 「기본값 따라가고 넣을곳 컷일때도 기본값대로 따라가게.
+/// 물론 넣을곳 변경가능」) — worded on its row as the timeline's drag words
+/// an attach ([_ImportDialogState._attachWord]).
+final class _WithItsBase {
+  const _WithItsBase();
+
+  /// What its popup row is keyed by.
+  @override
+  String toString() => 'with-its-base';
+}
+
 /// A row of the table that stands for no one file of its own: what a cut
 /// FOLDER brings ([CutFolderParseResult]) — a symbol's layer or a picture,
-/// each a layer of the ONE cut the folder lands as — and the row naming
-/// what it leaves out.
+/// each a layer it lands — and the row naming what it leaves out.
 ///
 /// 🗣️F-429 (유저 2026-10-21): 「일반 임포트창 거의 그대로」 — a folder's
 /// layers are rows of the window every file comes in through, asked its
@@ -292,20 +305,24 @@ final class _FolderLeftOutRow extends _FolderRow {
 }
 
 /// What a column asks the rows a cut folder brings ([_FolderRow]) where the
-/// [ImportColumn] it rides asks a file: the answers a row can give — none,
-/// and its cell is a dash; one, and it stands locked — the one it gives,
-/// and what a pick changes.
+/// [ImportColumn] it rides asks a file: the answers a row is asked — none,
+/// and its cell is a dash; one it can give, and it stands locked — the one
+/// it gives, and what a pick changes.
 class _FolderColumn {
   const _FolderColumn({
     required this.answers,
     required this.valueOf,
+    this.enabledFor,
     this.wordOf,
     this.onPick,
   });
 
   final List<Object?> Function(_FolderRow row) answers;
   final Object? Function(_FolderRow row) valueOf;
-  final String? Function(_FolderRow row)? wordOf;
+
+  /// Whether [row] can give an answer it is asked — every one, when null.
+  final bool Function(_FolderRow row, Object? value)? enabledFor;
+  final String? Function(_FolderRow row, Object? value)? wordOf;
   final void Function(Iterable<_FolderRow> rows, Object? value)? onPick;
 }
 
@@ -363,11 +380,16 @@ class _ImportDialogState extends State<ImportDialog> {
   /// pool's changes meaning with it, per row.
   bool _placing(String path) => !_registersOnly(path);
 
-  /// Whether a placement has a cut to land a new layer in: the open one, or
-  /// the cut a folder lands as — made, and opened, before anything else of
-  /// the press is placed ([_importAll]).
+  /// Whether a placement has a cut to land a new layer in: the cut a folder
+  /// lands as — made, and opened, before anything else of the press is
+  /// placed ([_importAll]) — or the open one.
   bool get _hasCutToPlaceIn =>
-      _folder != null || widget.session.activeCutOrNull != null;
+      _folderLandsAsOneCut || widget.session.activeCutOrNull != null;
+
+  /// Whether the folder lands as ONE cut — 넣을 곳 「컷」, every row of it a
+  /// new layer there — rather than each row where 「커스텀」 sends it
+  /// ([CutFolderEdits.custom]).
+  bool get _folderLandsAsOneCut => _folder != null && !_folderEdits.custom;
 
   /// One answer set per FILE. The window used to hold one for the whole
   /// batch and be wrong about at least one file most of the time.
@@ -414,10 +436,10 @@ class _ImportDialogState extends State<ImportDialog> {
       runLength: _runOf(path)?.pictures.length,
     ).copyWith(
       intoPool: _registersOnly(path),
-      // In a cut folder's window every placement is a new layer of the cut
-      // the folder lands as — a media row's too (F-429-Q4: 「새 레이어 ·
-      // 미디어 중에서 고릅니다」).
-      into: _folder == null ? null : ImportDestination.activeCutLayer,
+      // While a cut folder lands as one cut, every placement is a new layer
+      // of it — a media row's too (F-429-Q4: 「새 레이어 · 미디어 중에서
+      // 고릅니다」); under 「커스텀」 a media row is asked what every file is.
+      into: _folderLandsAsOneCut ? ImportDestination.activeCutLayer : null,
     );
     // A file the pool already holds has answered the pool's question: the
     // window does not ask it again, and no answer pressed here stands in
@@ -2188,7 +2210,8 @@ class _ImportDialogState extends State<ImportDialog> {
       return null;
     }
     final attached =
-        row is _FolderLayerRow && _parsed!.baseOf(row.layer) != null;
+        row is _FolderLayerRow &&
+        _folderEdits.ridesItsBase(_parsed!, row.layer);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: layerRailLeadingCells(
@@ -2364,7 +2387,7 @@ class _ImportDialogState extends State<ImportDialog> {
       null => files.answersFor(key),
     },
     wordOf: (key, value) => switch (_folderRowAt(key)) {
-      final row? => folder.wordOf?.call(row),
+      final row? => folder.wordOf?.call(row, value),
       null => files.wordOf?.call(key, value),
     },
     valueOf: (key) => switch (_folderRowAt(key)) {
@@ -2376,14 +2399,20 @@ class _ImportDialogState extends State<ImportDialog> {
       null => files.appliesTo(key),
     },
     enabledFor: (key, value) => switch (_folderRowAt(key)) {
-      final row? => folder.answers(row).contains(value),
+      final row? =>
+        folder.answers(row).contains(value) &&
+            (folder.enabledFor?.call(row, value) ?? true),
       null => files.enabledFor(key, value),
     },
     onPick: (keys, value) {
-      files.onPick([
-        for (final key in keys)
-          if (_folderRowAt(key) == null) key,
-      ], value);
+      // An answer the files are never asked — a folder row's own — is not
+      // theirs to take.
+      if (files.values.contains(value)) {
+        files.onPick([
+          for (final key in keys)
+            if (_folderRowAt(key) == null) key,
+        ], value);
+      }
       // A row that cannot give the answer lets it pass, as a file's resolves
       // it away.
       folder.onPick?.call([
@@ -2394,17 +2423,79 @@ class _ImportDialogState extends State<ImportDialog> {
     },
   );
 
-  /// Where a folder's row goes: a new layer of the cut the folder lands as
-  /// — the one answer, locked (🗣️F-429-Q1: 「컷 누르면 … 임포트하는 항목들
-  /// 새 레이어로 해두고 비활성화색」) — and nowhere, for what it leaves out.
+  /// Where a folder's row goes. Under 「컷」, a new layer of the cut the
+  /// folder lands as — the one answer, locked (🗣️F-429-Q1: 「컷 누르면 …
+  /// 임포트하는 항목들 새 레이어로 해두고 비활성화색」); under 「커스텀」, a
+  /// new layer of the open cut or a new cut, as every file is asked
+  /// (「커스텀하면 레이어당 하나하나 새 컷 만들어서 넣는다거나 새 레이어
+  /// 정한다거나 가능」). A correction rides its symbol under both until
+  /// 「커스텀」 sends it elsewhere ([CutFolderEdits.ridesItsBase]); what the
+  /// folder leaves out goes nowhere.
   _FolderColumn get _folderInto => _FolderColumn(
-    answers: (row) => [_folderIntoOf(row)],
+    answers: _folderIntoAnswers,
     valueOf: _folderIntoOf,
+    enabledFor: (row, value) =>
+        value != ImportDestination.activeCutLayer || _hasCutToPlaceIn,
+    wordOf: (row, value) => value is _WithItsBase ? _attachWord(row) : null,
+    onPick: _pickFolderInto,
   );
 
-  static Object _folderIntoOf(_FolderRow row) => row is _FolderLeftOutRow
-      ? const _LeftOut()
-      : ImportDestination.activeCutLayer;
+  List<Object> _folderIntoAnswers(_FolderRow row) => switch (row) {
+    _FolderLeftOutRow() => const [_LeftOut()],
+    _ when !_folderEdits.custom => [_folderIntoOf(row)],
+    _FolderLayerRow(:final layer) when _parsed!.baseOf(layer) != null =>
+      const [
+        _WithItsBase(),
+        ImportDestination.activeCutLayer,
+        ImportDestination.newCut,
+      ],
+    _ => ImportDestination.values,
+  };
+
+  Object _folderIntoOf(_FolderRow row) {
+    final layer = _folderLayerOf(row);
+    if (layer == null) {
+      return const _LeftOut();
+    }
+    if (row is _FolderLayerRow &&
+        _folderEdits.ridesItsBase(_parsed!, row.layer)) {
+      return const _WithItsBase();
+    }
+    return _folderEdits.custom
+        ? _folderEdits.intoOf(
+            layer.key,
+            hasOpenCut: widget.session.activeCutOrNull != null,
+          )
+        : ImportDestination.activeCutLayer;
+  }
+
+  /// [row]'s ride in words — the timeline's own, as its drag names an
+  /// attach: the symbol, and whether it rides SYNCED or FREE
+  /// ([CutFolderParseResult.correctsOnlyItsBaseCels]).
+  String? _attachWord(_FolderRow row) {
+    if (row is! _FolderLayerRow) {
+      return null;
+    }
+    final template = _parsed!.correctsOnlyItsBaseCels(row.layer)
+        ? AppText.strings.tlDropAttachSyncedTemplate
+        : AppText.strings.tlDropAttachFreeTemplate;
+    return template.replaceAll('{name}', row.layer.symbol);
+  }
+
+  /// [value] as the 넣을 곳 of [rows]: a destination kept for each, or —
+  /// riding its symbol — none of its own.
+  void _pickFolderInto(Iterable<_FolderRow> rows, Object? value) {
+    final into = {..._folderEdits.into};
+    for (final row in rows) {
+      final key = _folderLayerOf(row)!.key;
+      if (value case final ImportDestination destination) {
+        into[key] = destination;
+      } else {
+        into.remove(key);
+      }
+    }
+    setState(() => _folderEdits = _folderEdits.copyWith(into: into));
+  }
 
   /// A folder's cels bake, every one — they are what is drawn on next
   /// (§6-z22) — the one answer, locked.
@@ -2439,7 +2530,7 @@ class _ImportDialogState extends State<ImportDialog> {
   _FolderColumn get _folderOption => _FolderColumn(
     answers: (row) => row is _FolderLayerRow ? const [_RunSpan()] : const [],
     valueOf: (row) => const _RunSpan(),
-    wordOf: (row) => _spanWord([
+    wordOf: (row, value) => _spanWord([
       for (final file in _folderFilesOf(row)) mediaFileNameParts(file).name,
     ]),
   );
@@ -2713,7 +2804,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// every locked answer in this table has. So is a pool's door's: every
   /// row there registers. A file a cut folder lists goes into the cut it
   /// lands as, or the pool (🗣️F-429-Q4: 「미디어 행은 새 레이어 · 미디어 중에서
-  /// 고릅니다」).
+  /// 고릅니다」) — under 「커스텀」, wherever every file goes.
   List<Object?> _intoAnswers(String path) {
     final spot = widget.spot;
     final answering = _answeredSpot;
@@ -2729,9 +2820,9 @@ class _ImportDialogState extends State<ImportDialog> {
     if (answering != null) {
       return [answering];
     }
-    return _folder == null
-        ? const [...ImportDestination.values, _IntoThePool()]
-        : const [ImportDestination.activeCutLayer, _IntoThePool()];
+    return _folderLandsAsOneCut
+        ? const [ImportDestination.activeCutLayer, _IntoThePool()]
+        : const [...ImportDestination.values, _IntoThePool()];
   }
 
   /// A drop's answer in words: 「새 레이어」 for the canvas, 「새 컷」 for the
@@ -2831,36 +2922,63 @@ class _ImportDialogState extends State<ImportDialog> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (parsed != null) ..._cutNameField(theme, parsed),
+          if (parsed != null) ..._folderLanding(theme, parsed),
         ],
       ),
     );
   }
 
-  /// The name of the cut a folder lands as, beside the folder it comes
-  /// from — the folder's own cut number until it is typed over (F-429-Q1:
-  /// 「컷 이름만 남기고」), and the folder's again when left empty.
-  List<Widget> _cutNameField(ThemeData theme, CutFolderParseResult parsed) => [
-    const SizedBox(width: 12),
-    Text(
-      AppText.strings.renameCutField,
-      style: theme.textTheme.labelSmall?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-      ),
-    ),
-    const SizedBox(width: 6),
-    SizedBox(
-      width: 120,
-      child: TextField(
-        key: const ValueKey<String>('import-cut-name-field'),
-        controller: _cutName,
-        enabled: !_busy && _folderToLand != null,
-        decoration: InputDecoration(
-          hintText: const CutFolderEdits().nameOf(parsed),
+  /// Where a folder lands, beside the folder it comes from: as ONE cut —
+  /// named in the field beside it, the folder's own cut number until typed
+  /// over and the folder's again when left empty — or 「커스텀」, each row
+  /// where its own 넣을 곳 says, the name dimmed in its place (🗣️F-429-Q1:
+  /// 「컷 이름만 남기고, 그 쪽에 넣을 곳 컷/커스텀 버튼 만들어서, 컷 누르면 컷
+  /// 이름 텍스트같은거 활성화되면서」).
+  List<Widget> _folderLanding(ThemeData theme, CutFolderParseResult parsed) {
+    final open = !_busy && _folderToLand != null;
+    PillItem choice(String key, String label, {required bool custom}) =>
+        PillItem(
+          keyValue: 'import-folder-into-$key',
+          label: label,
+          selected: _folderEdits.custom == custom,
+          onTap: open
+              ? () => setState(
+                  () => _folderEdits = _folderEdits.copyWith(custom: custom),
+                )
+              : null,
+        );
+    final caption = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return [
+      const SizedBox(width: 12),
+      Text(AppText.strings.imInto, style: caption),
+      const SizedBox(width: 6),
+      // Its own width, so the path beside it takes the rest.
+      IntrinsicWidth(
+        child: PillStrip(
+          items: [
+            choice('cut', AppText.strings.imFolderAsOneCut, custom: false),
+            choice('custom', AppText.strings.imFolderPerRow, custom: true),
+          ],
         ),
       ),
-    ),
-  ];
+      const SizedBox(width: 12),
+      Text(AppText.strings.renameCutField, style: caption),
+      const SizedBox(width: 6),
+      SizedBox(
+        width: 120,
+        child: TextField(
+          key: const ValueKey<String>('import-cut-name-field'),
+          controller: _cutName,
+          enabled: open && !_folderEdits.custom,
+          decoration: InputDecoration(
+            hintText: const CutFolderEdits().nameOf(parsed),
+          ),
+        ),
+      ),
+    ];
+  }
 
   int _sizeOf(String path) => _fileSizes.putIfAbsent(path, () {
     try {

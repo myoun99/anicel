@@ -98,7 +98,7 @@ class ImportArrival {
     if (cut == null) {
       return lengthFrames ?? projectFps;
     }
-    return cut.duration < 1 ? 1 : cut.duration;
+    return stillHoldIn(cut);
   }
 
   /// This arrival on a canvas of [size] — the destination gate has already

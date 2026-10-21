@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -17,6 +18,7 @@ import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/import_warnings.dart';
@@ -177,6 +179,13 @@ void main() {
     final into = column(tester, 'into');
     expect(into.answersFor(a), [ImportDestination.activeCutLayer]);
     expect(into.cellWordOf(a), AppText.strings.imIntoNewLayer);
+    const correction = 'folder:A animation-director';
+    expect(into.answersFor(correction), hasLength(1), reason: 'locked');
+    expect(
+      into.cellWordOf(correction),
+      AppText.strings.tlDropAttachSyncedTemplate.replaceAll('{name}', 'A'),
+      reason: 'F-429-Q5: it rides A, as the timeline\'s drag says it',
+    );
     expect(
       [for (final answer in into.answersFor(scan)) into.labelOf(answer)],
       [AppText.strings.imIntoNewLayer, AppText.strings.panelMedia],
@@ -334,5 +343,224 @@ void main() {
 
     final cuts = session.repository.requireProject().tracks.first.cuts;
     expect(cuts.where((cut) => cut.name == 'scans'), hasLength(1));
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey<String>('import-cut-name-field')),
+          )
+          .enabled,
+      isFalse,
+      reason: 'a landed cut takes no name',
+    );
+    expect(
+      tester
+          .widget<Pill>(
+            find.byKey(const ValueKey<String>('import-folder-into-custom')),
+          )
+          .onTap,
+      isNull,
+      reason: 'nor a place to land',
+    );
+  });
+
+  testWidgets('「커스텀」 dims the cut name in its place and asks every row '
+      'where it goes — 새 레이어 · 새 컷, a correction riding its symbol until '
+      'sent elsewhere, the folder\'s scan whatever any file is asked', (
+    tester,
+  ) async {
+    final folder = await aFolder(tester, 'csm_13_069_lo', [
+      'A1.png',
+      'A2.png',
+      'A1s.png',
+      'B1.png',
+      'B2s.png',
+      '_069_ts_lo.png',
+    ]);
+    await openOn(tester, aSession(), folder);
+    Pill pill(String key) => tester.widget<Pill>(
+      find.byKey(ValueKey<String>('import-folder-into-$key')),
+    );
+    TextField name() => tester.widget<TextField>(
+      find.byKey(const ValueKey<String>('import-cut-name-field')),
+    );
+    expect(pill('cut').selected, isTrue);
+    expect(name().enabled, isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-folder-into-custom')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(pill('custom').selected, isTrue);
+    expect(name().enabled, isFalse, reason: 'dimmed, in its place');
+    final into = column(tester, 'into');
+    expect(into.answersFor('folder:A'), ImportDestination.values);
+    expect(into.cellWordOf('folder:A'), AppText.strings.imIntoNewLayer);
+    const correction = 'folder:A animation-director';
+    expect(into.answersFor(correction), hasLength(3));
+    expect(
+      into.cellWordOf(correction),
+      AppText.strings.tlDropAttachSyncedTemplate.replaceAll('{name}', 'A'),
+    );
+    expect(
+      into.cellWordOf('folder:B animation-director'),
+      AppText.strings.tlDropAttachFreeTemplate.replaceAll('{name}', 'B'),
+      reason: 'B2 is a cel B has not: it rides FREE, as the timeline says it',
+    );
+    final scan = '$folder/_069_ts_lo.png';
+    expect(
+      [for (final answer in into.answersFor(scan)) into.labelOf(answer)],
+      [
+        AppText.strings.imIntoNewLayer,
+        AppText.strings.imIntoNewCut,
+        AppText.strings.panelMedia,
+      ],
+    );
+
+    // The correction's popup says its ride as its cell does; sent to a cut
+    // of its own it rides nothing, and its kind is its own to pick.
+    final rides = AppText.strings.tlDropAttachSyncedTemplate.replaceAll(
+      '{name}',
+      'A',
+    );
+    Future<void> pick(String row, String option) async {
+      await tester.tap(find.byKey(ValueKey<String>('import-cell-into-$row')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(ValueKey<String>('import-option-into-$option')),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Finder option(String key, String word) => find.descendant(
+      of: find.byKey(ValueKey<String>('import-option-into-$key')),
+      matching: find.text(word),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-cell-into-$correction')),
+    );
+    await tester.pumpAndSettle();
+    expect(option('with-its-base', rides), findsOneWidget);
+    expect(
+      option('newCut', AppText.strings.imIntoNewCut),
+      findsOneWidget,
+      reason: 'the ride alone is worded as the row\'s',
+    );
+    expect(
+      tester
+          .renderObject<RenderParagraph>(option('with-its-base', rides))
+          .didExceedMaxLines,
+      isFalse,
+      reason: 'the popup is as wide as the words it lists',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-into-newCut')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      column(tester, 'into').cellWordOf(correction),
+      AppText.strings.imIntoNewCut,
+    );
+    expect(
+      tester
+          .widget<LayerTypeButton>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is LayerTypeButton && widget.idValue == correction,
+            ),
+          )
+          .onTap,
+      isNotNull,
+      reason: 'sent to a cut of its own, it is no longer its symbol\'s kind',
+    );
+
+    // Back on its symbol — and a scan pressed with it is not moved by an
+    // answer only a folder's row has.
+    for (final row in [scan, correction]) {
+      await tester.tap(find.byKey(ValueKey<String>('import-name-$row')));
+      await tester.pump();
+    }
+    await settleLoadedPages(tester);
+    await pick(correction, 'with-its-base');
+    String wordOf(String row) => column(tester, 'into').cellWordOf(row);
+    expect(wordOf(correction), rides);
+    expect(wordOf(scan), AppText.strings.panelMedia);
+
+    // An answer both are asked, one press gives both.
+    await pick(scan, 'newCut');
+    expect(wordOf(scan), AppText.strings.imIntoNewCut);
+    expect(wordOf(correction), AppText.strings.imIntoNewCut);
+  });
+
+  testWidgets('with no cut open, 「컷」 still has a cut to lay its rows in — '
+      'the one it makes — while 「커스텀」 sends every row to a cut of its '
+      'own', (tester) async {
+    final folder = await aFolder(tester, 'csm_13_069_lo', [
+      'A1.png',
+      '_069_ts_lo.png',
+    ]);
+    final session = aSession()..selectGlobalFrame(500);
+    expect(session.activeCutOrNull, isNull, reason: 'premise: parked');
+    await openOn(tester, session, folder);
+    final scan = '$folder/_069_ts_lo.png';
+    const newLayer = ImportDestination.activeCutLayer;
+
+    var into = column(tester, 'into');
+    expect(into.cellWordOf('folder:A'), AppText.strings.imIntoNewLayer);
+    expect(into.enabledFor(scan, newLayer), isTrue, reason: 'the folder\'s');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-folder-into-custom')),
+    );
+    await tester.pumpAndSettle();
+
+    into = column(tester, 'into');
+    expect(into.cellWordOf('folder:A'), AppText.strings.imIntoNewCut);
+    for (final row in ['folder:A', scan]) {
+      expect(into.enabledFor(row, newLayer), isFalse, reason: row);
+    }
+  });
+
+  testWidgets('a 「커스텀」 run lands each row where it was sent, as ONE undo: '
+      'A in a cut of its own, its correction riding it, and B a new layer of '
+      'the open cut', (tester) async {
+    final folder = await aFolder(tester, 'csm_13_069_lo', [
+      'A1.png',
+      'A2.png',
+      'A1s.png',
+      'B1.png',
+    ]);
+    final session = aSession();
+    final open = session.activeCutOrNull!;
+    await openOn(tester, session, folder);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-folder-into-custom')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-cell-into-folder:A')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-into-newCut')),
+    );
+    await tester.pumpAndSettle();
+    await importAll(tester, session);
+
+    List<Cut> cuts() => session.repository.requireProject().tracks.first.cuts;
+    Iterable<String> openLayers() => cuts()
+        .singleWhere((cut) => cut.id == open.id)
+        .layers
+        .map((layer) => layer.name);
+    final [base, correction, ...] = cuts()
+        .singleWhere((cut) => cut.name == 'A')
+        .layers;
+    expect(base.name, 'A');
+    expect(correction.attachedToLayerId, base.id);
+    expect(openLayers(), contains('B'));
+
+    session.undo();
+    expect(cuts().where((cut) => cut.name == 'A'), isEmpty);
+    expect(openLayers(), isNot(contains('B')));
   });
 }

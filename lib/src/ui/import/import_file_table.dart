@@ -94,17 +94,20 @@ class ImportColumn<T> {
 
   final void Function(Iterable<String> paths, T value) onPick;
 
-  /// What a row's cell says for its answer when the row has more to say
-  /// than the answer's [labelOf] — null where it has not. 🗣️I-76-Q1 ·
-  /// F-282 시안 ④: a numbered run's cell names the span it brings,
-  /// 「A2–A3 (2장)」 — picked on the preview, so its one answer is that word.
+  /// What a row says for an answer — on its cell, and in the popup its cell
+  /// opens — when the row has more to say than the answer's [labelOf]; null
+  /// where it has not. 🗣️I-76-Q1 · F-282 시안 ④: a numbered run's cell names
+  /// the span it brings, 「A2–A3 (2장)」 — picked on the preview, so its one
+  /// answer is that word. F-429-Q5: a cut folder's correction names the
+  /// symbol it rides, 「A에 어태치 (싱크)」.
   final String? Function(String path, T value)? wordOf;
 
+  /// The word [path]'s row says for [value].
+  String wordFor(String path, T value) =>
+      wordOf?.call(path, value) ?? labelOf(value);
+
   /// The word [path]'s cell shows.
-  String cellWordOf(String path) {
-    final value = valueOf(path);
-    return wordOf?.call(path, value) ?? labelOf(value);
-  }
+  String cellWordOf(String path) => wordFor(path, valueOf(path));
 }
 
 class ImportFileRow {
@@ -599,6 +602,7 @@ class _HeaderButton extends StatelessWidget {
             answers: column.values,
             targets: paths,
             enabledFor: (value) => true,
+            wordOf: column.labelOf,
             current: null,
           )
         : null;
@@ -675,6 +679,7 @@ class _OptionCell extends StatelessWidget {
             answers: answers,
             targets: targets,
             enabledFor: (option) => column.enabledFor(path, option),
+            wordOf: (option) => column.wordFor(path, option),
             current: value,
           );
     final wordStyle = theme.textTheme.labelSmall?.copyWith(
@@ -732,13 +737,15 @@ class _OptionCell extends StatelessWidget {
   }
 }
 
-/// One column's [answers], anchored under whatever was pressed.
+/// One column's [answers], anchored under whatever was pressed — each in
+/// the word [wordOf] gives it: the row's, under a row's cell.
 void _openColumnPopup(
   BuildContext context, {
   required ImportColumn<Object?> column,
   required List<Object?> answers,
   required Iterable<String> targets,
   required bool Function(Object? value) enabledFor,
+  required String Function(Object? value) wordOf,
   required Object? current,
 }) {
   final rows = answers;
@@ -752,7 +759,7 @@ void _openColumnPopup(
       label: column.label,
       width: math.max(
         132,
-        text.widest(rows.map(column.labelOf)) + 2 * _PopupRow.padH + 8,
+        text.widest(rows.map(wordOf)) + 2 * _PopupRow.padH + 8,
       ),
       height: 8.0 + rows.length * rowHeight,
       builder: (context, close) => Column(
@@ -762,7 +769,7 @@ void _openColumnPopup(
           for (final value in rows)
             _PopupRow(
               keyValue: 'import-option-${column.id}-${_optionKey(value)}',
-              label: column.labelOf(value),
+              label: wordOf(value),
               height: rowHeight,
               selected: value == current,
               enabled: enabledFor(value),

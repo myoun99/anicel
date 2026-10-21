@@ -4,10 +4,21 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/import/cut_folder_edits.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -458,6 +469,122 @@ void main() {
     expect(drawn(attach.baseFrameLinks[a2.id]!), isTrue, reason: 'A2s');
     expect(drawn(attach.baseFrameLinks[a1.id]!), isFalse);
     expect(s.layerStack.celHoldsAPicture(cut, base.id, a1.id), isTrue);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('importCutFolder under 「커스텀」: a row sent to a cut of its own '
+      'bakes there, a row joining the open cut bakes in it — each laid with '
+      'its own fit (F-429-Q1)', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final open = s.activeCutOrNull!;
+
+    await tester.runAsync(() async {
+      const root = 'csm_13_069_lo';
+      final sep = Platform.pathSeparator;
+      await writePng('$root${sep}A1.png');
+      await writePng('$root${sep}B1.png');
+      await cutFolderDoorOf(s).importCutFolder(
+        folderPath: '${tempDir.path}$sep$root',
+        edits: const CutFolderEdits(
+          custom: true,
+          into: {'A': ImportDestination.newCut},
+          fits: {'B': MediaFitMode.none},
+        ),
+      );
+    });
+
+    final cuts = s.repository.requireProject().tracks.first.cuts;
+    final own = cuts.singleWhere((cut) => cut.name == 'A');
+    final joined = cuts.singleWhere((cut) => cut.id == open.id);
+    final a = own.layers.firstWhere((layer) => layer.name == 'A');
+    final b = joined.layers.firstWhere((layer) => layer.name == 'B');
+    int tiles(Cut cut, Layer layer) =>
+        s.renderCaches.brushFrameStore
+            .bakedSurfaceOrNull(
+              s.brushFrameKeyForCut(cut, layer.id, layer.frames.single.id),
+            )
+            ?.tiles
+            .length ??
+        0;
+    expect(tiles(own, a), greaterThan(1), reason: 'contained: the canvas over');
+    expect(
+      tiles(joined, b),
+      1,
+      reason: '1:1, eight pixels — in the cut it joined, not the one the '
+          'import stands in after',
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('importCutFolder under 「커스텀」 into a 겸용 cut: a row joining '
+      'it joins its sibling too, as every row added to it does (F-398)', (
+    tester,
+  ) async {
+    Cut cut(String id) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 12,
+      canvasSize: const CanvasSize(width: 64, height: 64),
+      layers: [
+        Layer(id: LayerId('$id-cel'), name: 'S', frames: const []),
+        Layer(
+          id: LayerId('$id-cam'),
+          name: 'Camera',
+          kind: LayerKind.camera,
+          frames: const [],
+        ),
+      ],
+    );
+    LayerLinkMember shared(String id) => LayerLinkMember(
+      trackId: const TrackId('t'),
+      cutId: CutId(id),
+      layerId: LayerId('$id-cel'),
+    );
+    final s = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('p'),
+        name: 'P',
+        createdAt: DateTime.utc(2026, 10, 22),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'V',
+            cuts: [cut('a'), cut('b')],
+          ),
+        ],
+        linkRegistry: LayerLinkRegistry(
+          groups: [
+            LayerLinkGroup(id: 'link-0', members: [shared('a'), shared('b')]),
+          ],
+        ),
+      ),
+    );
+    addTearDown(s.dispose);
+    expect(s.activeCutOrNull?.id, const CutId('a'), reason: 'premise');
+
+    await tester.runAsync(() async {
+      const root = 'csm_13_069_lo';
+      final sep = Platform.pathSeparator;
+      await writePng('$root${sep}B1.png');
+      await cutFolderDoorOf(s).importCutFolder(
+        folderPath: '${tempDir.path}$sep$root',
+        edits: const CutFolderEdits(custom: true),
+      );
+    });
+
+    final project = s.repository.requireProject();
+    final b = project.tracks.single.cuts.first.layers.firstWhere(
+      (layer) => layer.name == 'B',
+    );
+    expect(
+      project.linkRegistry.counterpartIn(
+        cutId: const CutId('a'),
+        layerId: b.id,
+        targetCutId: const CutId('b'),
+      ),
+      isNotNull,
+    );
     await tester.pumpAndSettle();
   });
 }
