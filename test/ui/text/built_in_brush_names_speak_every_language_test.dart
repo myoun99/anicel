@@ -70,6 +70,17 @@ void main() {
     });
   }
 
+  test('the pencil laid on its side is 「눕힌 연필」 in Korean (F-433)', () {
+    // 유저 2026-10-21: 「눕혀쓰는연필은 이름 기니 눕힌 연필로」.
+    expect(
+      AppStrings.of(AppLanguage.ko).builtinBrushName(
+        'builtin-shading-pencil',
+        untabled,
+      ),
+      '눕힌 연필',
+    );
+  });
+
   test('⛔and no table names a built-in the defaults no longer make', () {
     final made = {
       for (final group in defaultBrushGroups) 'builtinBrush.${group.id.value}',
