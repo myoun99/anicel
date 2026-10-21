@@ -31,6 +31,14 @@ void main() {
       for (var x = 0; x < width; x += 1) (x, y): rgba,
   });
 
+  /// A blank picture of [channels] at [w]×[h].
+  StillPixels blank(int w, int h, int channels) => (
+    pixels: Uint8List(w * h * channels),
+    width: w,
+    height: h,
+    channels: channels,
+  );
+
   const red = [200, 10, 10, 255];
   const blue = [10, 20, 220, 255];
   const green = [10, 200, 30, 128];
@@ -59,6 +67,12 @@ void main() {
     return builder.build(composite: filled(red));
   }
 
+  /// One row of [picture] in a document of its own, over [picture].
+  Uint8List oneRow(String name, StillPixels picture, {double opacity = 1}) =>
+      (PsdBuilder(width: width, height: height)
+            ..addLayer(name: name, picture: picture, opacity: opacity))
+          .build(composite: picture);
+
   test('reads back through the app\'s own reader, row for row: the folder '
       'brackets its members, and every name, mode, strength and eye is '
       'what was written', () {
@@ -83,6 +97,11 @@ void main() {
       ('mul ', 128, false),
     );
     expect(read.layers[4].blendKey, 'pass', reason: 'Photoshop\'s 「통과」');
+    expect(
+      [for (final layer in read.layers) layer.clipping],
+      everyElement(isFalse),
+      reason: 'no row is clipped to the one below it',
+    );
     expect(read.warnings, isEmpty);
   });
 
@@ -108,11 +127,42 @@ void main() {
     );
   });
 
-  test('the composite is the picture handed in, its alpha the fourth '
-      'channel', () {
-    final read = readPsdDocument(document());
+  test('a row\'s box is its drawn pixels\' box, wherever the scan meets the '
+      'last of them', () {
+    final two = readPsdDocument(
+      oneRow('Two', picture({(5, 1): blue, (2, 3): blue})),
+    ).layers.single;
 
-    expect(read.composite, filled(red).pixels);
+    expect((two.left, two.top, two.right, two.bottom), (2, 1, 6, 4));
+  });
+
+  test('the composite is the picture handed in, its alpha the fourth '
+      'channel — and the count of rows says that channel is its '
+      'transparency', () {
+    final seen = picture({(1, 1): green, (6, 4): blue});
+
+    expect(
+      readPsdDocument(oneRow('Only', seen)).composite,
+      seen.pixels,
+      reason: 'a fourth channel the count does not claim is read opaque',
+    );
+    expect(readPsdDocument(document()).composite, filled(red).pixels);
+  });
+
+  test('a composite with no alpha is three channels, and the count of rows '
+      'claims no transparency', () {
+    final rgb = blank(width, height, 3);
+    for (var i = 0; i < rgb.pixels.length; i += 3) {
+      rgb.pixels.setAll(i, [1, 2, 3]);
+    }
+    final bytes = (PsdBuilder(width: width, height: height)
+          ..addLayer(name: 'Only', picture: filled(red)))
+        .build(composite: rgb);
+
+    expect(readPsdDocument(bytes).composite, [
+      for (var i = 0; i < width * height; i += 1) ...[1, 2, 3, 255],
+    ]);
+    expect(img.PsdDecoder().decodePsd(bytes)!.hasAlpha, isFalse);
   });
 
   test('a reader that is not ours takes it too — the same rows, at the same '
@@ -122,6 +172,7 @@ void main() {
     expect(psd, isNotNull);
 
     expect(psd!.layers, hasLength(6));
+    expect(psd.hasAlpha, isTrue, reason: 'the composite\'s alpha is merged');
     final line = psd.layers[2];
     expect(
       (line.left, line.top, line.width, line.height, line.isVisible()),
@@ -131,6 +182,32 @@ void main() {
     expect(
       [pixel.r, pixel.g, pixel.b, pixel.a].map((c) => c.toInt()),
       blue,
+    );
+    expect(
+      [psd.layers[1].flags & 0x18, psd.layers[4].flags & 0x18],
+      [0x18, 0x18],
+      reason: 'a folder\'s two records say their pixels are nothing to the '
+          'picture, as Photoshop writes them',
+    );
+  });
+
+  test('a folder that hides, fades and buffers is written so', () {
+    final folder = readPsdDocument(
+      (PsdBuilder(width: width, height: height)
+            ..openGroup(
+              name: 'Box',
+              opacity: 0.25,
+              visible: false,
+              blendMode: LayerBlendMode.normal,
+            )
+            ..addLayer(name: 'Inside', picture: filled(blue))
+            ..closeGroup())
+          .build(composite: filled(blue)),
+    ).layers.last;
+
+    expect(
+      (folder.role, folder.blendKey, folder.opacity, folder.visible),
+      (PsdLayerRole.groupOpen, 'norm', 64, false),
     );
   });
 
@@ -145,6 +222,35 @@ void main() {
     expect(readPsdDocument(bytes).layers.last.collapsed, isTrue);
   });
 
+  test('a name is whole in the unicode name; in the short one — all a reader '
+      'that knows no other takes — 「?」 stands for each letter past ASCII, '
+      'and it stops at 255', () {
+    final long = 'n' * 300;
+    final bytes = (PsdBuilder(width: width, height: height)
+          ..addLayer(name: '선화 A', picture: filled(red))
+          ..addLayer(name: long, picture: filled(red)))
+        .build(composite: filled(red));
+
+    expect(
+      [for (final layer in readPsdDocument(bytes).layers) layer.name],
+      ['선화 A', long],
+    );
+    final theirs = img.PsdDecoder().decodePsd(bytes)!;
+    expect(
+      [for (final layer in theirs.layers) layer.name],
+      ['?? A', 'n' * 255],
+    );
+  });
+
+  test('a strength a hair past full is full, not wrapped round to none', () {
+    expect(
+      readPsdDocument(
+        oneRow('Full', filled(red), opacity: 1.002),
+      ).layers.single.opacity,
+      255,
+    );
+  });
+
   group('refused', () {
     test('a folder left open', () {
       final builder = PsdBuilder(width: width, height: height)
@@ -155,20 +261,53 @@ void main() {
       );
     });
 
-    test('a row not at the document\'s size', () {
+    test('a folder closed that was never opened', () {
       expect(
-        () => PsdBuilder(width: width + 1, height: height).addLayer(
-          name: 'Wrong',
-          picture: filled(red),
-        ),
-        throwsArgumentError,
+        () => PsdBuilder(width: width, height: height).closeGroup(),
+        throwsStateError,
       );
     });
 
-    test('a side past what a Photoshop document can name', () {
+    test('a row that is not RGBA at the document\'s size', () {
+      final builder = PsdBuilder(width: width, height: height);
+      for (final row in [
+        blank(width + 1, height, 4),
+        blank(width, height + 1, 4),
+        blank(width, height, 3),
+      ]) {
+        expect(
+          () => builder.addLayer(name: 'Wrong', picture: row),
+          throwsArgumentError,
+        );
+      }
+    });
+
+    test('a composite that is not RGB or RGBA at the document\'s size', () {
+      for (final composite in [
+        blank(width + 1, height, 4),
+        blank(width, height + 1, 3),
+        blank(width, height, 2),
+      ]) {
+        expect(
+          () => PsdBuilder(width: width, height: height)
+              .build(composite: composite),
+          throwsArgumentError,
+        );
+      }
+    });
+
+    test('a side of nothing, or past what a Photoshop document can name', () {
+      for (final (w, h) in [
+        (0, 1),
+        (1, 0),
+        (psdMaxSide + 1, 1),
+        (1, psdMaxSide + 1),
+      ]) {
+        expect(() => PsdBuilder(width: w, height: h), throwsArgumentError);
+      }
       expect(
-        () => PsdBuilder(width: psdMaxSide + 1, height: 1),
-        throwsArgumentError,
+        PsdBuilder(width: psdMaxSide, height: psdMaxSide).width,
+        psdMaxSide,
       );
     });
   });

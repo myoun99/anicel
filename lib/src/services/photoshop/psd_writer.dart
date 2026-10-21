@@ -98,7 +98,7 @@ class PsdBuilder {
         name: '</Layer group>',
         bounds: null,
         opacity: 1,
-        flags: _sectionFlags | (visible ? 0 : _hidden),
+        flags: _sectionFlags,
         blendKey: psdBlendKeyOf(LayerBlendMode.normal),
         channels: _emptyChannels,
         section: _boundingSection,
