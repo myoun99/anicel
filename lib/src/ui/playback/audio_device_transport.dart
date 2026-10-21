@@ -242,15 +242,7 @@ class AudioDeviceTransport {
     if (!_carrying || device == null) {
       return;
     }
-    final schedule = buildAudioPlaybackSchedule(
-      window: controller.window,
-      project: resolveProject(),
-      rate: _rate,
-      durationSecondsFor: conformStore.durationSecondsFor,
-      soloedLayerIds: resolveSoloedLayerIds?.call(),
-      mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
-      extraClips: resolveCueClips?.call(),
-    );
+    final schedule = _scheduleOfThisRun();
     final mix = audioMixScheduleFrom(
       schedule: schedule,
       rate: _rate,
@@ -263,6 +255,18 @@ class AudioDeviceTransport {
       _cannotPlay = cannotPlay;
     }
   }
+
+  /// What this run plays, at its frame rate, as the project stands now —
+  /// the one schedule an activation arms and a mid-run refresh re-uploads.
+  List<ScheduledAudioClip> _scheduleOfThisRun() => buildAudioPlaybackSchedule(
+    window: controller.window,
+    project: resolveProject(),
+    rate: _rate,
+    durationSecondsFor: conformStore.durationSecondsFor,
+    soloedLayerIds: resolveSoloedLayerIds?.call(),
+    mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
+    extraClips: resolveCueClips?.call(),
+  );
 
   /// Moves the streaming window to [centerSample]. Anything but
   /// [OutputArmed] uploads nothing, so any old schedule keeps playing.
@@ -382,15 +386,7 @@ class AudioDeviceTransport {
       return;
     }
     _rate = resolveFrameRate();
-    final schedule = buildAudioPlaybackSchedule(
-      window: controller.window,
-      project: resolveProject(),
-      rate: _rate,
-      durationSecondsFor: conformStore.durationSecondsFor,
-      soloedLayerIds: resolveSoloedLayerIds?.call(),
-      mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
-      extraClips: resolveCueClips?.call(),
-    );
+    final schedule = _scheduleOfThisRun();
     // Every scheduled file must be resident at the DEVICE rate — or
     // streamable from its conform (AUDIO-PRO R6) — before the device can
     // promise anything. One on its way holds the run where it starts.
