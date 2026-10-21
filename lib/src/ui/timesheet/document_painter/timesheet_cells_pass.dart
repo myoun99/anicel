@@ -378,8 +378,12 @@ class _TimesheetCellsPass {
         final cellCenterY = cellTop + TimesheetDocumentLayout.rowHeight / 2;
         if (cell.kind == TimesheetCellKind.empty) {
           // SE columns mark their empty stretches the print-sheet way: a
-          // dotted center guide, washed light gray while the toggle is on.
-          if (seColumn && frame < _painter.document.playbackFrameCount) {
+          // dotted center guide, washed light gray while the toggle is on —
+          // on every row the column shows, down to the line the cut is
+          // drawn to ([rowsShown]). 🗣️F-340 (유저 2026-10-11): 「OL여백으로
+          // 생긴 엔드라인은 … 진짜 엔드라인을 대체하는 방식인데, SE행이 아직
+          // 그 방식 안쓰는듯」. ↩️It stopped at the conte 尺.
+          if (seColumn) {
             _painter._se.paintSeEmptyRow(
               canvas,
               columnLeft: columnLeft,
