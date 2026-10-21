@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/project_background.dart';
@@ -31,7 +32,8 @@ import '../../helpers/wait_window.dart';
 /// png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로 클립하는건
 /// 당연」 — Q7 (09-30): 「내보내기 「이미지」와 같은 깨끗한 한 장」, Q1
 /// (10-08): 「「다른 이름으로 저장」에 둘째 단 — 프로젝트(.anicel) · PNG ·
-/// JPG」, F-335 (10-10): 「다른이름저장의 png, 형식 기본값 RGB의
+/// JPG」 — and I-117-Q1 (10-21) the export window's four new formats after
+/// them: 「넷 다 넣음」 — F-335 (10-10): 「다른이름저장의 png, 형식 기본값 RGB의
 /// 배경흰색으로」 — taken back for the PNG by F-371 (10-16): 「그냥 저번처럼
 /// RGBA 고정으로」 · 「바탕 앱에서 설정한 캔버스 색 따라감. 캔버스색이 없으면
 /// 투명인거고 그런식」 — and for the JPG with it: 「jpg도 바탕 흰색고정말고
@@ -154,7 +156,9 @@ void main() {
 
   /// The RGBA at the canvas's far corner — off the dab, so the paper and
   /// what the file stands it on are all there is — of the picture Save As
-  /// writes as [format] once [session]'s paper is [paper].
+  /// writes as [format] once [session]'s paper is [paper]. Read back by the
+  /// `image` package, by the file's name, so every format Save As writes is
+  /// read one way — Flutter's own decoder reads neither TGA nor TIFF.
   Future<List<int>> cornerOn(
     WidgetTester tester,
     EditorSessionManager session,
@@ -172,20 +176,30 @@ void main() {
     }) async => FolderGrant.granted(path: target, kind: GrantKind.file);
     await pressRow(tester, 'menu-${saveAsImageActionId(format)}');
     await watchUntil(tester, () => File(target).existsSync() && noWindowUp());
-    final picture = await pixelsOf(tester, File(target).readAsBytesSync(), [
-      (canvas.width - 1, canvas.height - 1),
-    ]);
-    return picture!.rgba.single;
+    final picture = img.decodeNamedImage(
+      target,
+      File(target).readAsBytesSync(),
+    )!;
+    final corner = picture.getPixel(canvas.width - 1, canvas.height - 1);
+    return [
+      for (final channel in [corner.r, corner.g, corner.b, corner.a])
+        channel.toInt(),
+    ];
   }
 
-  testWidgets('「다른 이름으로 저장」 opens a second level of three — the '
-      'project, PNG, JPG — and runs nothing itself', (tester) async {
+  testWidgets('「다른 이름으로 저장」 opens a second level of seven — the '
+      'project, then PNG, JPG and I-117-Q1\'s BMP, TGA, TIFF, WEBP — and '
+      'runs nothing itself', (tester) async {
     await pumpApp(tester);
     await tapKey(tester, 'top-strip-project-button');
     const rows = [
       'menu-file-save-as',
       'menu-file-save-as-png',
       'menu-file-save-as-jpg',
+      'menu-file-save-as-bmp',
+      'menu-file-save-as-tga',
+      'menu-file-save-as-tiff',
+      'menu-file-save-as-webp',
     ];
     for (final row in rows) {
       expect(
@@ -209,9 +223,17 @@ void main() {
         tester.getTopLeft(find.byKey(ValueKey<String>(row))).dy,
     ];
     expect([...tops]..sort(), tops, reason: 'the project first, as asked');
-    expect(find.text('Project (.anicel)…'), findsOneWidget);
-    expect(find.text('PNG…'), findsOneWidget);
-    expect(find.text('JPG…'), findsOneWidget);
+    for (final label in [
+      'Project (.anicel)…',
+      'PNG…',
+      'JPG…',
+      'BMP…',
+      'TGA…',
+      'TIFF…',
+      'WEBP…',
+    ]) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
     expect(noWindowUp(), isTrue, reason: 'the door opened a level, no more');
   });
 
@@ -351,6 +373,43 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('🚨I-117-Q1: BMP, TGA, TIFF and WEBP are written as their rows '
+      'say, on the paper as the PNG is — its colour, and nothing where the '
+      'paper is absent', (tester) async {
+    final strip = await pumpApp(tester);
+    final session = strip.projects.active;
+    drawOnCurrentFrame(session);
+
+    for (final format in [
+      ExportStillFormat.bmp,
+      ExportStillFormat.tga,
+      ExportStillFormat.tiff,
+      ExportStillFormat.webp,
+    ]) {
+      expect(
+        await cornerOn(
+          tester,
+          session,
+          format,
+          const ProjectBackground.color(0xFF2040C0),
+        ),
+        [0x20, 0x40, 0xC0, 0xFF],
+        reason: '$format: 「앱에서 설정한 캔버스 색 따라감」',
+      );
+      expect(
+        await cornerOn(
+          tester,
+          session,
+          format,
+          const ProjectBackground.color(0xFF2040C0, none: true),
+        ),
+        [0, 0, 0, 0],
+        reason: '$format: 「캔버스색이 없으면 투명」',
+      );
+    }
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('🚨F-371: the JPG stands on the paper too — its colour, and '
       'white where the paper is absent or thin, as a file with no alpha '
       'can only show it', (tester) async {
@@ -474,18 +533,25 @@ void main() {
         .menuRows(tester.element(find.byType(EditorTopStrip)))
         .singleWhere((row) => row.shortcuts.contains(action));
 
-    testWidgets('without a JPG encoder, JPG — and PNG stays live', (
-      tester,
-    ) async {
+    testWidgets('without a JPG encoder, JPG — and every other picture stays '
+        'live', (tester) async {
       QaImageEncoder.debugForceAbsent = true;
       addTearDown(() => QaImageEncoder.debugForceAbsent = false);
       final strip = await pumpApp(tester);
 
       expect(rowOf(strip, tester, 'file-save-as-jpg').enabled, isFalse);
-      expect(rowOf(strip, tester, 'file-save-as-png').enabled, isTrue);
+      for (final action in [
+        'file-save-as-png',
+        'file-save-as-bmp',
+        'file-save-as-tga',
+        'file-save-as-tiff',
+        'file-save-as-webp',
+      ]) {
+        expect(rowOf(strip, tester, action).enabled, isTrue, reason: action);
+      }
     });
 
-    testWidgets('off a cut, both pictures — as Export is — and the project '
+    testWidgets('off a cut, every picture — as Export is — and the project '
         'is still saved as', (tester) async {
       final strip = await pumpApp(tester);
       strip.projects.active.selectGlobalFrame(500);
@@ -496,7 +562,14 @@ void main() {
         reason: '⛔premise: the playhead is parked in the gap',
       );
 
-      for (final action in ['file-save-as-png', 'file-save-as-jpg']) {
+      for (final action in [
+        'file-save-as-png',
+        'file-save-as-jpg',
+        'file-save-as-bmp',
+        'file-save-as-tga',
+        'file-save-as-tiff',
+        'file-save-as-webp',
+      ]) {
         expect(rowOf(strip, tester, action).enabled, isFalse, reason: action);
       }
       expect(rowOf(strip, tester, 'file-export').enabled, isFalse);

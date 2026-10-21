@@ -683,8 +683,17 @@ String addEffectActionLabel(EffectKind kind, AppLanguage language) =>
 /// made from this list.
 ///
 /// 🗣️backlog-21-Q1 (유저 2026-10-08): 「「다른 이름으로 저장」에 둘째 단 —
-/// 프로젝트(.anicel) · PNG · JPG」. The two the answer names, and no more.
-const saveAsImageFormats = [ExportStillFormat.png, ExportStillFormat.jpg];
+/// 프로젝트(.anicel) · PNG · JPG」 — and I-117-Q1 (유저 2026-10-21): the
+/// four formats the export window learned then, after them: 「넷 다 넣음」.
+/// The formats the answers name, and no more.
+const saveAsImageFormats = [
+  ExportStillFormat.png,
+  ExportStillFormat.jpg,
+  ExportStillFormat.bmp,
+  ExportStillFormat.tga,
+  ExportStillFormat.tiff,
+  ExportStillFormat.webp,
+];
 
 /// Save As's picture rows as actions, one per format it writes.
 ///

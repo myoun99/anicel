@@ -415,7 +415,8 @@ class EditorTopStrip extends StatelessWidget {
       onPressed: () => unawaited(saveProject(context, session)),
     ),
     // 🗣️backlog-21-Q1 (유저 2026-10-08): 「「다른 이름으로 저장」에 둘째 단 —
-    // 프로젝트(.anicel) · PNG · JPG」. The format is chosen HERE, the same
+    // 프로젝트(.anicel) · PNG · JPG」, and after those the formats I-117-Q1
+    // added ([saveAsImageFormats]). The format is chosen HERE, the same
     // on every platform: Android's and iOS's save windows take one type
     // before they open and offer no list. The first row is the Save As there
     // always was, and Ctrl+Shift+S still presses it.

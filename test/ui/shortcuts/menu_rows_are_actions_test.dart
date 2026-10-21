@@ -95,11 +95,16 @@ void main() {
           EditorActionIds.fileSaveAs,
           'file-save-as-png',
           'file-save-as-jpg',
+          // I-117-Q1 (유저 2026-10-21): 「넷 다 넣음」.
+          'file-save-as-bmp',
+          'file-save-as-tga',
+          'file-save-as-tiff',
+          'file-save-as-webp',
           EditorActionIds.fileBackUpFailedCopy,
           EditorActionIds.fileExport,
         ],
       );
-      expect(menuActions, hasLength(26));
+      expect(menuActions, hasLength(30));
       expect(
         editorActionDefinitions.last.shelf,
         ShortcutShelf.panels,
