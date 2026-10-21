@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/ui/timeline/instruction_icon_palette.dart';
@@ -182,6 +184,68 @@ void main() {
 
       final bounds = bitmapSurfaceContentBounds(moved)!;
       expect((bounds.left, bounds.top), (3, 2));
+    });
+
+    // Card `a-resize-redo-moves-every-cel-on-the-ui-thread`: the blit reads
+    // each tile where it keeps its pixels, and one inked pixel in one tile
+    // could not tell a row lost, a tile read for another, or a row kept
+    // past the wall.
+    test('🚨a FRACTIONAL shift moves EVERY pixel of every tile, and clips '
+        'at the wall to the pixel', () {
+      // A 20px canvas of 8px tiles: the wall is [-20, 40), and the tiles
+      // it keeps start at -24 — four rows of a kept tile lie past it.
+      const canvas = CanvasSize(width: 20, height: 20);
+      BitmapTile patterned(int seed) {
+        final pixels = Uint8List(8 * 8 * 4);
+        for (var i = 0; i < 64; i += 1) {
+          pixels
+            ..[i * 4] = seed
+            ..[i * 4 + 1] = i
+            ..[i * 4 + 3] = 0xFF;
+        }
+        return BitmapTile(size: 8, pixels: pixels);
+      }
+
+      Map<(int, int), (int, int)> inkOf(BitmapSurface surface) => {
+        for (final MapEntry(key: coord, value: tile) in surface.tiles.entries)
+          for (var i = 0; i < 64; i += 1)
+            if (tile.pixels[i * 4 + 3] != 0)
+              (coord.x * 8 + i % 8, coord.y * 8 + i ~/ 8): (
+                tile.pixels[i * 4],
+                tile.pixels[i * 4 + 1],
+              ),
+      };
+
+      final surface = BitmapSurface(
+        canvasSize: canvas,
+        tileSize: 8,
+        tiles: {
+          TileCoord(x: -2, y: -2): patterned(1),
+          TileCoord(x: 0, y: 0): patterned(2),
+          TileCoord(x: 1, y: 1): patterned(3),
+        },
+      );
+      const dx = -5;
+      const dy = -7;
+      final wall = canvas.pasteboardAt(surface.pasteboardReach);
+      final expected = {
+        for (final MapEntry(key: (x, y), :value) in inkOf(surface).entries)
+          if (x + dx >= wall.left && y + dy >= wall.top)
+            (x + dx, y + dy): value,
+      };
+      // The pin bites at the wall: the top row moved onto it is kept, the
+      // row above it is not — though both lie in the same kept tile.
+      expect(expected.keys.map((p) => p.$2).reduce(min), wall.top);
+      expect(inkOf(surface).keys.any((p) => p.$2 + dy == wall.top - 1), isTrue);
+
+      final moved = translateBitmapSurface(
+        surface,
+        dx: dx,
+        dy: dy,
+        canvasSize: canvas,
+      );
+
+      expect(inkOf(moved), expected);
     });
 
     test('fully transparent output tiles are DROPPED — a shifted surface '
