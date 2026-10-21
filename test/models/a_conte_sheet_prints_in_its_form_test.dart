@@ -72,6 +72,42 @@ void main() {
         },
   ].join('\n');
 
+  /// [rules] hold one rule round [window] on each side, just outside it —
+  /// four real rects that together are [window] grown by [width], so the
+  /// picture in it covers none of them.
+  void expectRuledRound(
+    Iterable<SheetRule> rules,
+    Rect window,
+    double width,
+    String what,
+  ) {
+    final round = [
+      for (final rule in rules)
+        if (rule.rect.overlaps(window.inflate(width)) &&
+            !rule.rect.overlaps(window))
+          rule.rect,
+    ];
+    expect(round, hasLength(4), reason: '$what: a rule a side');
+    for (final rect in round) {
+      expect(rect.width > 0 && rect.height > 0, isTrue, reason: '$what: $rect');
+    }
+    expect(
+      round.reduce((a, b) => a.expandToInclude(b)),
+      window.inflate(width),
+      reason: '$what: just outside it',
+    );
+    expect(
+      (
+        round.any((rect) => rect.bottom == window.top),
+        round.any((rect) => rect.top == window.bottom),
+        round.any((rect) => rect.right == window.left),
+        round.any((rect) => rect.left == window.right),
+      ),
+      (true, true, true, true),
+      reason: '$what: on its four edges',
+    );
+  }
+
   /// The rules across the body — the cuts' ends.
   List<SheetRule> cutEnds(List<SheetMark> marks) => [
     for (final rule in marks.whereType<SheetRule>())
@@ -195,33 +231,11 @@ void main() {
             isEmpty,
           );
           for (var row = 0; row < m.rowsPerPage; row += 1) {
-            final window = m.windowRect(row);
-            final round = [
-              for (final rule in rules)
-                if (rule.layer == SheetPaintLayer.form &&
-                    rule.rect.overlaps(window.inflate(m.ruleWidth)) &&
-                    !rule.rect.overlaps(window))
-                  rule.rect,
-            ];
-            expect(
-              round.any((rect) => rect.bottom == window.top),
-              isTrue,
-              reason: 'row $row: above',
-            );
-            expect(
-              round.any((rect) => rect.top == window.bottom),
-              isTrue,
-              reason: 'row $row: below',
-            );
-            expect(
-              round.any((rect) => rect.right == window.left),
-              isTrue,
-              reason: 'row $row: left',
-            );
-            expect(
-              round.any((rect) => rect.left == window.right),
-              isTrue,
-              reason: 'row $row: right',
+            expectRuledRound(
+              rules.where((rule) => rule.layer == SheetPaintLayer.form),
+              m.windowRect(row),
+              m.ruleWidth,
+              'row $row',
             );
           }
           final black = pageIn(form);
@@ -307,21 +321,11 @@ void main() {
             hasLength(1),
             reason: 'the box is paper over the rules beneath it',
           );
-          final window = contePictureSlot(cell, page.metrics);
-          final round = [
-            for (final rule in pictures.whereType<SheetRule>())
-              if (rule.rect.overlaps(window.inflate(page.metrics.ruleWidth)) &&
-                  !rule.rect.overlaps(window))
-                rule.rect,
-          ];
-          expect(
-            (
-              round.any((rect) => rect.bottom == window.top),
-              round.any((rect) => rect.top == window.bottom),
-              round.any((rect) => rect.right == window.left),
-              round.any((rect) => rect.left == window.right),
-            ),
-            (true, true, true, true),
+          expectRuledRound(
+            pictures.whereType<SheetRule>(),
+            contePictureSlot(cell, page.metrics),
+            page.metrics.ruleWidth,
+            'the moving camera\'s window',
           );
         });
       });
