@@ -378,6 +378,12 @@ void main() {
           'to stand up and down',
     );
 
+    // The tip's picture, inside the sprite's moving layer.
+    Layer? tipPicture() =>
+        (tester.renderObject(cursor).debugLayer?.firstChild as ContainerLayer?)
+            ?.firstChild;
+    final tipBefore = tipPicture();
+    expect(tipBefore, isA<PictureLayer>(), reason: '⛔전제: the tip is drawn');
     final canvasBefore = canvasPaints[0];
     final chromeBefore = chromePaints[0];
     final (:rebuilt, :painted) = await frameCensus(
@@ -399,7 +405,10 @@ void main() {
       return false;
     }
 
-    expect(painted, contains(sprite));
+    // The tip drew again — by its picture, as for a brush change: the
+    // sprite is a boundary of its own under its tick (F-428), and the
+    // census hears a paint only from the parent that paints a child.
+    expect(tipPicture(), isNot(same(tipBefore)), reason: 'the tip drew again');
     expect([
       for (final object in painted)
         if (!leadsToTheCursor(object) &&
