@@ -199,10 +199,49 @@ const int _tiffStripBytes = 64 * 1024;
 /// Deflate loses nothing and every reader we hand pictures to reads it —
 /// the same call the TGA's compression made, and with no option either.
 Uint8List encodeTiff(StillPixels picture) {
+  final (pixels: _, :width, :height, :channels) = picture;
+  final rowsPerStrip = (_tiffStripBytes ~/ (width * channels)).clamp(1, height);
+  final strips = _deflatedStrips(picture, rowsPerStrip);
+
+  final file = _TiffFile();
+  // 'II', 42, and where the directory is — written last.
+  file.putAligned(const [0x49, 0x49, 42, 0, 0, 0, 0, 0]);
+  final stripOffsets = [for (final strip in strips) file.putAligned(strip)];
+  final bitsAt = file.putAligned(_shorts(List<int>.filled(channels, 8)));
+  final resolutionAt = file.putAligned(_longs(const [72, 1, 72, 1]));
+  // One strip's offset and byte count fit their entries' own value fields;
+  // more are written out, and the entries point at them.
+  final oneStrip = strips.length == 1;
+  final offsets = oneStrip
+      ? stripOffsets.single
+      : file.putAligned(_longs(stripOffsets));
+  final counts = oneStrip
+      ? strips.single.length
+      : file.putAligned(_longs([for (final strip in strips) strip.length]));
+
+  return file.finish([
+    (256, _tiffLong, 1, width),
+    (257, _tiffLong, 1, height),
+    (258, _tiffShort, channels, bitsAt),
+    (259, _tiffShort, 1, 8), // Adobe Deflate
+    (262, _tiffShort, 1, 2), // RGB
+    (273, _tiffLong, strips.length, offsets),
+    (277, _tiffShort, 1, channels),
+    (278, _tiffLong, 1, rowsPerStrip),
+    (279, _tiffLong, strips.length, counts),
+    (282, _tiffRational, 1, resolutionAt),
+    (283, _tiffRational, 1, resolutionAt + 8),
+    (284, _tiffShort, 1, 1), // chunky: RGBRGB…
+    (296, _tiffShort, 1, 2), // the resolution is per inch
+    if (channels == 4) (338, _tiffShort, 1, 2), // unassociated alpha
+  ]);
+}
+
+/// [picture]'s rows, [rowsPerStrip] at a time, each run deflated.
+List<Uint8List> _deflatedStrips(StillPixels picture, int rowsPerStrip) {
   final (:pixels, :width, :height, :channels) = picture;
   final rowBytes = width * channels;
-  final rowsPerStrip = (_tiffStripBytes ~/ rowBytes).clamp(1, height);
-  final strips = <Uint8List>[
+  return [
     for (var y = 0; y < height; y += rowsPerStrip)
       Uint8List.fromList(
         ZLibEncoder().convert(
@@ -214,89 +253,55 @@ Uint8List encodeTiff(StillPixels picture) {
         ),
       ),
   ];
+}
 
-  final out = BytesBuilder(copy: false);
-  var at = 0;
-  void put(List<int> bytes) {
-    out.add(bytes);
-    at += bytes.length;
-  }
+/// The TIFF field types the directory writes.
+const int _tiffShort = 3;
+const int _tiffLong = 4;
+const int _tiffRational = 5;
 
-  // Every offset a TIFF names lands on a word boundary.
-  void align() {
-    if (at.isOdd) {
-      put(const [0]);
+/// A little-endian TIFF being laid down: every offset it names lands on a
+/// word boundary, and the header learns where the directory is last.
+class _TiffFile {
+  final BytesBuilder _out = BytesBuilder(copy: false);
+  int _at = 0;
+
+  /// Lays [bytes] at the next word boundary, and says where they start.
+  int putAligned(List<int> bytes) {
+    if (_at.isOdd) {
+      _out.addByte(0);
+      _at += 1;
     }
+    final start = _at;
+    _out.add(bytes);
+    _at += bytes.length;
+    return start;
   }
 
-  put(const [0x49, 0x49, 42, 0, 0, 0, 0, 0]); // 'II', 42, IFD offset later
-  final stripOffsets = <int>[];
-  for (final strip in strips) {
-    align();
-    stripOffsets.add(at);
-    put(strip);
-  }
-  align();
-  final bitsAt = at;
-  put(_shorts(List<int>.filled(channels, 8)));
-  final resolutionAt = at;
-  put(_longs(const [72, 1, 72, 1]));
-  final offsetsAt = at;
-  if (strips.length > 1) {
-    put(_longs(stripOffsets));
-  }
-  final countsAt = at;
-  if (strips.length > 1) {
-    put(_longs([for (final strip in strips) strip.length]));
-  }
-  align();
-  final ifdAt = at;
-
-  const short = 3;
-  const long = 4;
-  const rational = 5;
-  final entries = <(int, int, int, int)>[
-    (256, long, 1, width),
-    (257, long, 1, height),
-    (258, short, channels, bitsAt),
-    (259, short, 1, 8), // Adobe Deflate
-    (262, short, 1, 2), // RGB
-    (273, long, strips.length, strips.length > 1 ? offsetsAt : stripOffsets[0]),
-    (277, short, 1, channels),
-    (278, long, 1, rowsPerStrip),
-    (
-      279,
-      long,
-      strips.length,
-      strips.length > 1 ? countsAt : strips[0].length,
-    ),
-    (282, rational, 1, resolutionAt),
-    (283, rational, 1, resolutionAt + 8),
-    (284, short, 1, 1), // chunky: RGBRGB…
-    (296, short, 1, 2), // the resolution is per inch
-    if (channels == 4) (338, short, 1, 2), // unassociated alpha
-  ];
-  final ifd = ByteData(2 + entries.length * 12 + 4)
-    ..setUint16(0, entries.length, Endian.little);
-  for (var i = 0; i < entries.length; i += 1) {
-    final (tag, type, count, value) = entries[i];
-    final entry = 2 + i * 12;
-    ifd
-      ..setUint16(entry, tag, Endian.little)
-      ..setUint16(entry + 2, type, Endian.little)
-      ..setUint32(entry + 4, count, Endian.little);
-    // One SHORT sits in the value field's first two bytes; anything that
-    // does not fit four bytes is an offset.
-    if (type == short && count == 1) {
-      ifd.setUint16(entry + 8, value, Endian.little);
-    } else {
-      ifd.setUint32(entry + 8, value, Endian.little);
+  /// The file, ended by its one directory: each entry its tag, type, count,
+  /// and its value — or, where the values do not fit four bytes, where they
+  /// are.
+  Uint8List finish(List<(int, int, int, int)> entries) {
+    final ifd = ByteData(2 + entries.length * 12 + 4)
+      ..setUint16(0, entries.length, Endian.little);
+    for (final (i, (tag, type, count, value)) in entries.indexed) {
+      final entry = 2 + i * 12;
+      ifd
+        ..setUint16(entry, tag, Endian.little)
+        ..setUint16(entry + 2, type, Endian.little)
+        ..setUint32(entry + 4, count, Endian.little);
+      // One SHORT sits in the value field's first two bytes.
+      if (type == _tiffShort && count == 1) {
+        ifd.setUint16(entry + 8, value, Endian.little);
+      } else {
+        ifd.setUint32(entry + 8, value, Endian.little);
+      }
     }
+    final ifdAt = putAligned(ifd.buffer.asUint8List());
+    final bytes = _out.takeBytes();
+    ByteData.sublistView(bytes).setUint32(4, ifdAt, Endian.little);
+    return bytes;
   }
-  put(ifd.buffer.asUint8List());
-  final bytes = out.takeBytes();
-  ByteData.sublistView(bytes).setUint32(4, ifdAt, Endian.little);
-  return bytes;
 }
 
 Uint8List _shorts(List<int> values) {

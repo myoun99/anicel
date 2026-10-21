@@ -745,30 +745,40 @@ class ExportPaperFormatModule extends StatelessWidget {
   ///
   /// [before] and [after] come as the window's pills ([PillItem]), so they
   /// keep the window's law for a press while an export runs — their own
-  /// dead [PillItem.onTap] — and are listed as they are.
+  /// dead [PillItem.onTap] — and are listed as they are. Every row is then
+  /// one value of the app's one picker ([PanelFlyoutValueChoices]).
   List<PanelFlyoutEntry> _entries() {
     final changed = onImageChanged;
-    PanelFlyoutItem listed(PillItem item) => PanelFlyoutItem(
-      keyValue: item.keyValue,
+    ({String key, String label, bool current, VoidCallback? pick}) listed(
+      PillItem item,
+    ) => (
+      key: item.keyValue,
       label: item.label,
-      selected: item.selected,
-      enabled: item.onTap != null,
-      onSelected: item.onTap,
+      current: item.selected,
+      pick: item.onTap,
     );
-    return [
+    final rows = [
       for (final item in before) listed(item),
       for (final format in paperPictureFormats)
-        PanelFlyoutItem(
-          keyValue: '$keyPrefix-${format.jsonValue}',
+        (
+          key: '$keyPrefix-${format.jsonValue}',
           label: format.label,
-          selected: pictured && image.stillFormat == format,
-          enabled: changed != null,
-          onSelected: changed == null
+          current: pictured && image.stillFormat == format,
+          pick: changed == null
               ? null
               : () => changed(image.copyWith(stillFormat: format)),
         ),
       for (final item in after) listed(item),
     ];
+    return rows.asFlyoutValueChoices(
+      current: rows.where((row) => row.current).firstOrNull,
+      choiceOf: (row) => PanelFlyoutChoice(
+        key: row.key,
+        label: row.label,
+        enabled: row.pick != null,
+      ),
+      onPicked: (row) => row.pick?.call(),
+    );
   }
 
   @override
