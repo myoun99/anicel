@@ -1423,20 +1423,34 @@ class LaneVerbs {
     if (lane == null || scope == null) {
       return null;
     }
+    final pasted = _keysSplicedInto(
+      scope,
+      _keysPairedWith(copy.lanes, _pasteTargetsOf(scope.homes)),
+      (
+        start: lane.startIndex,
+        liftCount: _selectedLaneSpan == null ? 0 : lane.lengthFrames,
+        length: copy.length,
+      ),
+      keepNames: keepNames,
+    );
+    return pasted.edit.isEmpty
+        ? null
+        : (scope: scope, edit: pasted.edit, joins: pasted.joins);
+  }
+
+  /// [paired]'s keys put in on [scope]'s lanes over [span] — the frames
+  /// from its start it lifts, and the frames it puts in ([laneKeysSpliced])
+  /// — with the names they join at another value ([keepNames]).
+  ({LaneEdit edit, Set<String> joins}) _keysSplicedInto(
+    _SpanScope scope,
+    Map<_PastedLane, Map<int, PropertyKey<Object?>>> paired,
+    ({int start, int liftCount, int length}) span, {
+    required bool keepNames,
+  }) {
     final homes = scope.homes;
-    final paired = _keysPairedWith(copy.lanes, [
-      for (final LaneHome<Object?> home in [
-        homes.own,
-        homes.reference,
-        homes.effects,
-        homes.nameTag,
-      ])
-        for (final laneId in home.laneIds) (home: home, laneId: laneId),
-    ]);
-    final liftCount = _selectedLaneSpan == null ? 0 : lane.lengthFrames;
     final lifted = {
-      for (var frame = 0; frame < liftCount; frame += 1)
-        lane.startIndex + frame,
+      for (var frame = 0; frame < span.liftCount; frame += 1)
+        span.start + frame,
     };
     final holders = _nameHoldersOf(scope);
     final joins = <String>{};
@@ -1445,39 +1459,29 @@ class LaneVerbs {
     T? pastedOn<T>(
       LaneHome<T> home,
       PropertyKey<Object?>? Function(String laneId, String name) heldOf,
-    ) => home.editedEach((laneId) {
-      final keys = paired[(home: home, laneId: laneId)];
-      if (keys == null) {
-        return null;
-      }
-      return laneKeysSpliced(
-        start: lane.startIndex,
-        liftCount: liftCount,
-        length: copy.length,
-        keys: {
-          for (final MapEntry(key: frame, value: key) in keys.entries)
-            frame: switch (keepNames ? key.name : null) {
-              null => key.copyWith(name: () => null),
-              final name => switch (heldOf(laneId, name)) {
-                null => key,
-                final held => _joined(key, held, joins),
-              },
-            },
-        },
-      );
-    });
+    ) => home.editedEach(
+      (laneId) => switch (paired[(home: home, laneId: laneId)]) {
+        null => null,
+        final keys => laneKeysSpliced(
+          start: span.start,
+          liftCount: span.liftCount,
+          length: span.length,
+          keys: {
+            for (final MapEntry(key: frame, value: key) in keys.entries)
+              frame: _pastedKey(
+                key,
+                keepNames ? (name) => heldOf(laneId, name) : null,
+                joins,
+              ),
+          },
+        ),
+      },
+    );
     PropertyKey<Object?>? Function(String, String) namedIn<T>(
       LaneHome<T> home,
       T? Function(String laneId, String name, Set<int> frames) holder,
-    ) => (laneId, name) => switch (holder(laneId, name, lifted)) {
-      null => null,
-      final held => home
-          .lensOf(laneId)
-          ?.keysOf(held)
-          .values
-          .where((key) => key.name == name)
-          .firstOrNull,
-    };
+    ) => (laneId, name) =>
+        _keyNamed(home, laneId, holder(laneId, name, lifted), name);
     final edit = LaneEdit(
       transform: (
         own: pastedOn(homes.own, namedIn(homes.own, holders.own)),
@@ -1494,8 +1498,53 @@ class LaneVerbs {
         pastedOn(homes.nameTag, namedIn(homes.nameTag, holders.nameTag)),
       ),
     );
-    return edit.isEmpty ? null : (scope: scope, edit: edit, joins: joins);
+    return (edit: edit, joins: joins);
   }
+
+  /// Every lane of [homes], each with the home it lives in — what a paste
+  /// of keys pairs its lanes with ([_keysPairedWith]), in the order a copy
+  /// reads them ([laneKeysCopiedFrom]).
+  static List<_PastedLane> _pasteTargetsOf(RowLaneHomes homes) => [
+    for (final LaneHome<Object?> home in [
+      homes.own,
+      homes.reference,
+      homes.effects,
+      homes.nameTag,
+    ])
+      for (final laneId in home.laneIds) (home: home, laneId: laneId),
+  ];
+
+  /// [key] as a paste puts it down: with no name kept ([heldOf] null) or
+  /// none to keep, unnamed — a value of its own; under a name its lane
+  /// holds already, that name's key ([_joined]); else as it was copied.
+  static PropertyKey<Object?> _pastedKey(
+    PropertyKey<Object?> key,
+    PropertyKey<Object?>? Function(String name)? heldOf,
+    Set<String> joins,
+  ) {
+    final name = key.name;
+    if (heldOf == null || name == null) {
+      return key.copyWith(name: () => null);
+    }
+    final held = heldOf(name);
+    return held == null ? key : _joined(key, held, joins);
+  }
+
+  /// The key called [name] on [laneId] of [home]'s keys [holder] — null
+  /// where nothing holds the name.
+  static PropertyKey<Object?>? _keyNamed<T>(
+    LaneHome<T> home,
+    String laneId,
+    T? holder,
+    String name,
+  ) => holder == null
+      ? null
+      : home
+            .lensOf(laneId)
+            ?.keysOf(holder)
+            .values
+            .where((key) => key.name == name)
+            .firstOrNull;
 
   /// [key] under a name [held] already holds: the held key's value, sides,
   /// path and time, and its own name — [joins] taking the name where that
