@@ -457,6 +457,28 @@ void main() {
   });
 
   group('cross-layer move', () {
+    test('a drop left of frame 0 lands at the wall, as an insertion\'s '
+        'does', () {
+      final source = layerWith(
+        'a',
+        {2: const TimelineExposure.drawing(FrameId('a-f1'), length: 2)},
+        frameIds: ['a-f1'],
+      );
+      final target = layerWith('b', {});
+      DrawingBlockMovePlan? plan;
+      expect(
+        () => plan = planBlock(
+          source: source,
+          target: target,
+          blockStartIndex: 2,
+          frameDelta: -5,
+        ),
+        returnsNormally,
+      );
+      expect(plan!.destinationStartIndex, 0);
+      expect(shown(plan!.targetAfter!), {0: 'a-f1×2'});
+    });
+
     test('carries the cel: timelines and frames update on both layers', () {
       final source = layerWith(
         'a',

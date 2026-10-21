@@ -1299,6 +1299,61 @@ void main() {
     expect(seLayer(1).audioClips.map((clip) => clip.filePath), ['two.wav']);
   });
 
+  test('…and in a later cut, where an SE passenger reads the selection on '
+      'the track\'s frames', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.cutVerbs.createCut();
+    s.layerStack.addLayerOfKind(LayerKind.animation);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame(); // block on A at cut frame 0
+    final aId = s.activeLayer!.id;
+    s.layerStack.addLayer();
+    final bId = s.activeLayer!.id;
+    final start = s.activeCutGlobalStartFrame;
+    expect(start, greaterThan(0), reason: 'LIVENESS — a cut after the first');
+
+    final seIds = [for (final l in s.activeTrack.seLayers) l.id];
+    Layer saying(Layer row, Map<int, String> cels) => row.copyWith(
+      frames: [
+        for (final cel in cels.values)
+          Frame(id: FrameId(cel), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        for (final MapEntry(key: at, value: cel) in cels.entries)
+          at: TimelineExposure.drawing(FrameId(cel), length: 1),
+      },
+    );
+    final [first, second, ...] = s.activeTrack.seLayers;
+    // The first row holds a sound in the FIRST cut too, at the frame the
+    // selection would name on the track were it read as the cut's.
+    s.repository.replaceLayer(
+      layer: saying(first, {0: 'first-cut', start: 'se-1'}),
+    );
+    s.repository.replaceLayer(layer: saying(second, {start: 'se-2'}));
+    Map<int, String> seRow(int index) => {
+      for (final MapEntry(:key, :value) in s.activeTrack.seLayers
+          .firstWhere((l) => l.id == seIds[index])
+          .timeline
+          .entries)
+        key: value.frameId!.value,
+    };
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: seIds[0],
+    );
+    expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
+    rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    rangeMove(s).endFrameRangeMoveDrag();
+
+    expect(seRow(0), {0: 'first-cut', start: 'se-2'});
+    expect(seRow(1), {start: 'se-1'});
+  });
+
   test('a multi-row shift that would push a row off the lattice HOLDS the '
       'last valid landing (UI-R23 #9 + #10)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());

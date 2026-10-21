@@ -112,6 +112,46 @@ void main() {
     });
   });
 
+  // F-384: a block the move lands on goes back to the row it left — but
+  // not one whose cel another lane of its own row's bank still shows: the
+  // move is refused rather than split the link, as a moved cel's is.
+  group('a block the move lands on whose cel ANOTHER lane of its row\'s '
+      'bank', () {
+    MultiRowRangeMovePlan? landOnB(TimelineExposure shownBeside) =>
+        planMultiRowRangeMove(
+          orderedLayers: [
+            _drawingLayer('a', {0: ('a0', 1)}),
+            _drawingLayer('b', {0: ('b0', 1)}),
+          ],
+          sourceLayerIds: const [LayerId('a')],
+          rangeStartIndex: 0,
+          rangeEndIndexExclusive: 1,
+          frameDelta: 0,
+          rowDelta: 1,
+          bankOf: (id) => id == const LayerId('b')
+              ? CelBankLanes([
+                  {3: shownBeside},
+                ])
+              : CelBankLanes.unshared,
+        );
+
+    test('shows refuses the move', () {
+      expect(
+        landOnB(const TimelineExposure.drawing(FrameId('b0'), length: 1)),
+        isNull,
+      );
+    });
+
+    test('does not show goes back', () {
+      expect(
+        landOnB(
+          const TimelineExposure.drawing(FrameId('elsewhere'), length: 1),
+        ),
+        isNotNull,
+      );
+    });
+  });
+
   test('a block pointing at a cel the layer does not hold blocks the move', () {
     // Two source rows, and the broken one SECOND: a single broken row is
     // refused by the "nothing selected" guard as well, which is what let

@@ -981,9 +981,7 @@ class FrameRangeMoveDrag {
         sourceBank: _controllers.timelineController.bankLanesOf(
           sourceLayer.id,
         ),
-        landing: LandingSwapsThem(
-          _controllers.timelineController.bankLanesOf(targetLayer.id),
-        ),
+        landing: _swapsOn(targetLayer.id),
         cutFrameCount: _project.activeCutFrameCount,
       );
       if (plan == null) {
@@ -1686,9 +1684,7 @@ class FrameRangeMoveDrag {
             rangeEndIndexExclusive: selection.endIndexExclusive,
             frameDelta: frameDelta,
             sourceBank: _controllers.timelineController.bankLanesOf(source.id),
-            landing: LandingSwapsThem(
-              _controllers.timelineController.bankLanesOf(target.id),
-            ),
+            landing: _swapsOn(target.id),
             cutFrameCount: _project.activeCutFrameCount,
           );
     if (plan == null) {
@@ -1882,6 +1878,12 @@ class FrameRangeMoveDrag {
   /// beyond it only once it reaches it ([planDrawingRangeMove]), so `went`
   /// can fall short of what was asked. One row alone shows that as it is;
   /// several agree on it first ([_rigidSlideDelta]).
+  /// A landing on [layerId]'s row: the blocks it lands on go back to the
+  /// row the move left (F-384), unless another lane of that row's bank
+  /// still shows their cels.
+  LandingSwapsThem _swapsOn(LayerId layerId) =>
+      LandingSwapsThem(_controllers.timelineController.bankLanesOf(layerId));
+
   ({DrawingBlockMovePlan plan, int went})? _slideOnOwnRow(
     Layer row,
     TimelineFrameRangeSelection selection,
@@ -1899,9 +1901,7 @@ class FrameRangeMoveDrag {
       sourceBank: _controllers.timelineController.bankLanesOf(row.id),
       // A slide along its own row lands on nothing of another's — the
       // move's law all the same.
-      landing: LandingSwapsThem(
-        _controllers.timelineController.bankLanesOf(row.id),
-      ),
+      landing: _swapsOn(row.id),
       cutFrameCount: _project.activeCutFrameCount,
     );
     if (plan == null) {

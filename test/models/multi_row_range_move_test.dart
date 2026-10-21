@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/cel_bank_lanes.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -192,6 +193,67 @@ void main() {
         'd': {0: 'a0×1'},
         'e': {0: 'b0×1'},
       }, reason: 'a row passed over and not landed on is left as it is');
+    });
+
+    test('a row the move enters, and not one it still stands on, hands its '
+        'blocks over — the first entered to the first left', () {
+      final rows = [
+        drawingLayer('a', {0: ('a0', 1)}),
+        drawingLayer('b', {0: ('b0', 1)}),
+        drawingLayer('c', {0: ('c0', 1)}),
+        drawingLayer('d', {0: ('d0', 1)}),
+        drawingLayer('e', {}),
+      ];
+      expect(moved(rows, ['a', 'b', 'c'], rowDelta: 2), {
+        'a': {0: 'd0×1'},
+        'b': <int, String>{},
+        'c': {0: 'a0×1'},
+        'd': {0: 'b0×1'},
+        'e': {0: 'c0×1'},
+      });
+    });
+
+    test('rows the moved rows still stand on, landed on by the slide, hand '
+        'their blocks on down the line to a row left empty — the rows '
+        'entered first, then in row order', () {
+      final rows = [
+        drawingLayer('a', {0: ('a0', 2)}),
+        drawingLayer('b', {0: ('b0', 2), 2: ('b2', 2)}),
+        drawingLayer('c', {0: ('c0', 2), 2: ('c2', 2)}),
+        drawingLayer('d', {2: ('d2', 2)}),
+      ];
+      expect(
+        moved(rows, ['a', 'b', 'c'], rowDelta: 1, frameDelta: 2, rangeEnd: 2),
+        {
+          'a': {2: 'c2×2', 4: 'b2×2', 6: 'd2×2'},
+          'b': {2: 'a0×2'},
+          'c': {2: 'b0×2'},
+          'd': {2: 'c0×2'},
+        },
+      );
+    });
+
+    test('the sounds go with their cels, both ways', () {
+      Layer sounding(Layer row, String cel, String file) => row.copyWith(
+        audioClips: [AudioClip(filePath: file, frameId: FrameId(cel))],
+      );
+      final a = sounding(drawingLayer('a', {0: ('a0', 1)}), 'a0', 'a.wav');
+      final b = sounding(drawingLayer('b', {0: ('b0', 1)}), 'b0', 'b.wav');
+      final plan = planMultiRowRangeMove(
+        orderedLayers: [a, b],
+        sourceLayerIds: const [LayerId('a')],
+        rangeStartIndex: 0,
+        rangeEndIndexExclusive: 1,
+        frameDelta: 0,
+        rowDelta: 1,
+        bankOf: (_) => CelBankLanes.unshared,
+      )!;
+      List<String> files(String id) => [
+        for (final clip in plan.layersAfter[LayerId(id)]!.audioClips)
+          clip.filePath,
+      ];
+      expect(files('a'), ['b.wav']);
+      expect(files('b'), ['a.wav']);
     });
 
     test('a block in a row the moved rows still stand on, landed on only by '
