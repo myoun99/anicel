@@ -240,7 +240,14 @@ void main() {
       s.runFramesAdd.endRunFramesAddDrag();
 
       // 0–2, three new, the 5 run pushed one on (the gap took two), three new.
-      expect(drawnStarts(layerOf(s, a)), [0, 2, 3, 4, 5, 6, 8, 9, 10]);
+      final row = layerOf(s, a);
+      expect(drawnStarts(row), [0, 2, 3, 4, 5, 6, 8, 9, 10]);
+      expect(
+        {for (final start in [3, 4, 5, 8, 9, 10]) row.timeline[start]!.frameId},
+        hasLength(6),
+        reason: 'each run takes drawings of its own, not the other\'s',
+      );
+      expect({for (final frame in row.frames) frame.id}, hasLength(3 + 6));
     });
 
     test('dragged on a run the band does not hold, it adds to that run '

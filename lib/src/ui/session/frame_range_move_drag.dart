@@ -233,7 +233,7 @@ class FrameRangeMoveDragVerbs {
           final bound = mode == TimelineRunEdgeMode.repeat && scopeToSelection
               ? _selectionPatternBound(id, side, run)
               : null;
-          _markRunEdge(timeline, run, side, mode, bound: bound);
+          _markRunEdge(timeline, run, (side: side, mode: mode), bound: bound);
         }
       }
       final after = rederiveRunBehaviors(
@@ -252,8 +252,8 @@ class FrameRangeMoveDragVerbs {
     _changes.notifyChanged();
   }
 
-  /// Writes [mode] on [side] of [run] into [timeline], [bound] bounding a
-  /// Repeat's pattern.
+  /// Writes [edge]'s mode on its side of [run] into [timeline], [bound]
+  /// bounding a Repeat's pattern.
   ///
   /// The property sits on its EDGE block (UI-R10 #4): the end side on the
   /// run's LAST block, the start side on the FIRST — splitting the run
@@ -263,10 +263,10 @@ class FrameRangeMoveDragVerbs {
   static void _markRunEdge(
     SplayTreeMap<int, TimelineExposure> timeline,
     TimelineGluedRun run,
-    TimelineRunEdgeSide side,
-    TimelineRunEdgeMode? mode, {
+    ({TimelineRunEdgeSide side, TimelineRunEdgeMode? mode}) edge, {
     required int? bound,
   }) {
+    final (:side, :mode) = edge;
     final edgeBlock = side == TimelineRunEdgeSide.end
         ? run.blockStarts.last
         : run.blockStarts.first;
