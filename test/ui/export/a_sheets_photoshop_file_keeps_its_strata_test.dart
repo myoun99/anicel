@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/path_names.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -34,8 +35,12 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/move_into_folder.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
+import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart'
+    show debugOperatingSystemOverride;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
@@ -95,11 +100,15 @@ void main() {
   PsdDocument psd(String name) =>
       readPsdDocument(written(name).readAsBytesSync());
 
+  /// The window on [tab] — asking its place of [temp] before a run, or
+  /// where a place [asksAfter] what is made, as iOS asks it, of no window
+  /// a test stands in for.
   Future<ExportDialogState> pumpDialog(
     WidgetTester tester,
     EditorSessionManager session, {
     required String tab,
     ExportFormatAvailability? availability,
+    bool asksAfter = false,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -109,7 +118,7 @@ void main() {
         home: Scaffold(
           body: ExportDialog(
             session: session,
-            exportDirectoryPicker: () async => temp.path,
+            exportDirectoryPicker: asksAfter ? null : () async => temp.path,
             formatAvailability:
                 availability ?? ExportFormatAvailability.permissive(),
           ),
@@ -597,6 +606,39 @@ void main() {
             'a picture is made for its row and the ink for its own — and '
             'the first page, whole, is the blank back',
       );
+    });
+
+    testWidgets('handed over once it is made — iOS asks its place of what is '
+        'made — it is the one file the window named: a PSD by its name, '
+        'not the PDF\'s', (tester) async {
+      debugOperatingSystemOverride = 'ios';
+      FolderPicker.debugOperatingSystem = 'ios';
+      final handed = <String>[];
+      FolderPicker.debugFilesExporter = (sources) async {
+        for (final source in sources) {
+          handed.add(fileNameOfPath(source));
+          moveIntoFolder(source, temp.path);
+        }
+        return FolderGrant.granted(path: temp.path);
+      };
+      addTearDown(() {
+        debugOperatingSystemOverride = null;
+        FolderPicker.debugOperatingSystem = null;
+        FolderPicker.debugFilesExporter = null;
+      });
+      final state = await pumpDialog(
+        tester,
+        film(),
+        tab: 'conte',
+        asksAfter: true,
+      );
+      await pickPaperFormat(tester, 'export-conteformat', 'psd');
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(handed, ['$sheet.psd']);
+      expect(psd('$sheet.psd').layers, isNotEmpty);
     });
 
     testWidgets('stopped between pages, it writes nothing', (tester) async {
