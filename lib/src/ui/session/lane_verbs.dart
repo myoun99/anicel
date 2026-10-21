@@ -57,6 +57,7 @@ import '../timeline/se_name_tag_lane_policy.dart'
         seNameTagLaneDisplayOrder,
         seNameTagLaneTakesSides,
         seNameTagLaneUsesName;
+import '../timeline/property_lane_model.dart' show LaneKeyValues;
 import '../timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
 import '../timeline/timeline_drag_preview.dart'
@@ -681,6 +682,33 @@ class LaneVerbs {
         ),
   );
 
+  /// [subject] — [layer]'s keys, or what an edit in flight leaves them at —
+  /// with [values] written into the keys they name, each as the value
+  /// editor writes it at its frame ([setLaneValueAt]), one after another
+  /// into ONE edit: a header graph's keys moved in their values (I-3 ②).
+  /// Null where none changes.
+  LaneEdit? laneValuesWritten(
+    Layer layer,
+    LaneEditSubject subject,
+    LaneKeyValues values,
+  ) {
+    var written = const LaneEdit();
+    var now = subject;
+    for (final MapEntry(key: laneId, value: inputs) in values.inputs.entries) {
+      for (final MapEntry(key: frame, value: input) in inputs.entries) {
+        final step = _laneEditOn(
+          layer,
+          now,
+          (laneId: laneId, frame: frame),
+          _valueEdits(laneId, input, scaleLinked: values.scaleLinked),
+        );
+        written = written.then(step);
+        now = now.after(step);
+      }
+    }
+    return written.isEmpty ? null : written;
+  }
+
   /// The ONE dispatch behind every lane verb at a frame: which of a row's
   /// keyed families [laneId] names, the row and frame to edit it on, and
   /// what [edits] leaves that family at — or null when it changes nothing.
@@ -701,31 +729,50 @@ class LaneVerbs {
       frameIndex,
       frameIsGlobal: frameIsGlobal,
     );
+    final edit = _laneEditOn(
+      layer,
+      laneEditSubjectOf(layer),
+      (laneId: laneId, frame: frame),
+      edits,
+    );
+    return edit.isEmpty ? null : (layer: layer, edit: edit);
+  }
+
+  /// What [edits] leaves the family of [from] that [cell]'s lane names at,
+  /// on its frame of [layer]'s row — [from] the row's keys as they stand,
+  /// or as an edit before this one in the same step leaves them.
+  LaneEdit _laneEditOn(
+    Layer layer,
+    LaneEditSubject from,
+    ({String laneId, int frame}) cell,
+    _LaneEdits edits,
+  ) {
+    final (:laneId, :frame) = cell;
     // R5 #7: the name tag is a fixed FIELD on the row, so it lands through
     // its own funnel — not the transform track, not the chain.
-    final LaneEdit edit;
     if (laneIsSeNameTag(laneId)) {
-      edit = LaneEdit(
-        nameTag: edits.nameTag(layer.seNameTag ?? const SeNameTag(), frame),
-      );
-    } else if (parseEffectLaneId(laneId) != null) {
-      edit = LaneEdit(effects: edits.effects(layer.effects, frame));
-    } else {
-      // A reference's fx is a transform's lanes in another home (F-374).
-      final reference = laneIsReference(laneId);
-      final next = edits.transform(
-        layer,
-        _transformTrackAt(layer, reference: reference),
-        frame,
-        reference: reference,
-      );
-      edit = LaneEdit(
-        transform: next == null
-            ? (own: null, reference: null)
-            : _transformHomesWith(next, reference: reference),
+      return LaneEdit(
+        nameTag: edits.nameTag(from.seNameTag ?? const SeNameTag(), frame),
       );
     }
-    return edit.isEmpty ? null : (layer: layer, edit: edit);
+    if (parseEffectLaneId(laneId) != null) {
+      return LaneEdit(effects: edits.effects(from.effects, frame));
+    }
+    // A reference's fx is a transform's lanes in another home (F-374).
+    final reference = laneIsReference(laneId);
+    final next = edits.transform(
+      layer,
+      reference
+          ? (from.referenceFx ?? TransformTrack.empty())
+          : from.transformTrack,
+      frame,
+      reference: reference,
+    );
+    return LaneEdit(
+      transform: next == null
+          ? (own: null, reference: null)
+          : _transformHomesWith(next, reference: reference),
+    );
   }
 
   /// Writes [target] as one undo step — after dropping any lane edit in

@@ -671,7 +671,10 @@ class TimelineLaneRangeHooks {
   final VoidCallback onTapClear;
 
   final bool Function() onMoveBegin;
-  final void Function(int frameDelta) onMoveUpdate;
+
+  /// A move step: the selection [frameDelta] frames along — and, carried
+  /// by a header graph's key, its keys' [values] (I-3 ②).
+  final void Function(int frameDelta, {LaneKeyValues? values}) onMoveUpdate;
   final VoidCallback onMoveEnd;
   final VoidCallback onMoveCancel;
 }
@@ -751,7 +754,10 @@ class TimelineLaneRangeCallbacks {
   final VoidCallback onTapClear;
 
   final bool Function() onMoveBegin;
-  final void Function(int frameDelta) onMoveUpdate;
+
+  /// A move step: the selection [frameDelta] frames along — and, carried
+  /// by a header graph's key, its keys' [values] (I-3 ②).
+  final void Function(int frameDelta, {LaneKeyValues? values}) onMoveUpdate;
   final VoidCallback onMoveEnd;
   final VoidCallback onMoveCancel;
 }

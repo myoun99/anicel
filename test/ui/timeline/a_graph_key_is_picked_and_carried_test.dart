@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
@@ -244,6 +245,183 @@ void main() {
     final (:painter, :box) = _graphOf(tester);
     expect(painter.keysIn(box.size), isEmpty);
   });
+
+  // I-3 ② — 🗣️I-3-Q1 B (유저 2026-10-21): 「고른 키 전부 (AE)」. AE's value
+  // graph: a key dragged up or down changes its value, and every key picked
+  // goes with it.
+  testWidgets('dragged up the graph, the key\'s value goes with the hand: '
+      'under the hand while carried, nothing written until it is let go, '
+      'then what was shown is written, in one undo', (tester) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    final undoable = s.historyManager.canUndo;
+    final press = _keyOnScreen(tester, 8);
+
+    final gesture = await tester.startGesture(
+      press,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump();
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump();
+
+    expect(_rotationAt(s, 8), 45, reason: 'shown, not written');
+    expect(
+      _keyOnScreen(tester, 8),
+      offsetMoreOrLessEquals(press + const Offset(0, -40), epsilon: 0.01),
+      reason: 'the key stays under the hand',
+    );
+    final shown = _shownAt(tester, 8).single;
+    expect(shown, greaterThan(45), reason: 'up the graph is up the value');
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_keyedFrames(s), [0, 8]);
+    expect(_rotationAt(s, 8), closeTo(shown, 1e-9));
+    expect(_rotationAt(s, 0), 0, reason: 'a key not picked stays');
+    s.undo();
+    expect(_rotationAt(s, 8), 45);
+    expect(s.historyManager.canUndo, undoable);
+  });
+
+  testWidgets('dragged along the frames and up the graph at once, the key '
+      'takes its frame and its value together, in one undo', (tester) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    final cell = _cellExtent(tester);
+    final undoable = s.historyManager.canUndo;
+
+    final gesture = await tester.startGesture(
+      _keyOnScreen(tester, 8),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(Offset(cell * 1.5, -15));
+    await tester.pump();
+    await gesture.moveBy(Offset(cell * 1.5, -15));
+    await tester.pump();
+    final shown = _shownAt(tester, 11).single;
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(_keyedFrames(s), [0, 11]);
+    expect(shown, greaterThan(45));
+    expect(_rotationAt(s, 11), closeTo(shown, 1e-9));
+    s.undo();
+    expect(_keyedFrames(s), [0, 8]);
+    expect(_rotationAt(s, 8), 45);
+    expect(s.historyManager.canUndo, undoable);
+  });
+
+  testWidgets('every key the selection holds goes as far as the hand on the '
+      'screen, each by its line\'s range', (tester) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    s.updateLaneRangeSelectionDrag(
+      layerId: _drawId,
+      laneId: 'rotation',
+      anchorIndex: 0,
+      headIndex: 8,
+      spanLaneIds: const ['rotation'],
+    );
+    await tester.pumpAndSettle();
+    final first = _keyOnScreen(tester, 0);
+    final press = _keyOnScreen(tester, 8);
+
+    final gesture = await tester.startGesture(
+      press,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(0, -30));
+    await tester.pump();
+
+    expect(
+      _keyOnScreen(tester, 0),
+      offsetMoreOrLessEquals(first + const Offset(0, -30), epsilon: 0.01),
+    );
+    expect(
+      _keyOnScreen(tester, 8),
+      offsetMoreOrLessEquals(press + const Offset(0, -30), epsilon: 0.01),
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_rotationAt(s, 0), greaterThan(0));
+    expect(
+      _rotationAt(s, 8) - _rotationAt(s, 0),
+      closeTo(45, 1e-9),
+      reason: 'one line, one range: one step',
+    );
+  });
+
+  testWidgets('of a line of two numbers, the one the key in hand is on goes '
+      'and the other stays — 「한 번에 숫자 하나」', (tester) async {
+    final s = await _pump(
+      tester,
+      transform: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>()
+            .withKey(0, CanvasPoint(x: 100, y: 150))
+            .withKey(8, CanvasPoint(x: 200, y: 50)),
+      ),
+    );
+    await _openTheGraph(tester, s, lane: 'position');
+
+    await _carryUp(tester, _keyOnScreen(tester, 8, part: 1), 30);
+    final down = _transformOf(s).position.keys[8]!.value;
+    expect((down.x, down.y > 50), (200, true));
+
+    await _carryUp(tester, _keyOnScreen(tester, 8), 30);
+    final across = _transformOf(s).position.keys[8]!.value;
+    expect((across.x > 200, across.y), (true, down.y));
+  });
+
+  testWidgets('a Scale carried keeps to the chain — the transform tool\'s '
+      '「배율 연동」, its row\'s chain — as its value editor does: linked, '
+      'the other number goes along; unlinked, it stays', (
+    tester,
+  ) async {
+    final s = await _pump(
+      tester,
+      transform: TransformTrack.empty().copyWith(
+        scale: PropertyTrack<CanvasPoint>()
+            .withKey(0, CanvasPoint(x: 1, y: 1.5))
+            .withKey(8, CanvasPoint(x: 2, y: 1)),
+      ),
+    );
+    await _openTheGraph(tester, s, lane: 'scale');
+    final chain = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .transformOptions!;
+    expect(chain.value.scaleLinked, isTrue, reason: '⛔전제: the default');
+
+    await _carryUp(tester, _keyOnScreen(tester, 8), 30);
+    final linked = _transformOf(s).scale.keys[8]!.value;
+    expect(linked.x, greaterThan(2));
+    expect(linked.y / linked.x, closeTo(0.5, 1e-9));
+
+    s.undo();
+    chain.value = chain.value.copyWith(scaleLinked: false);
+    await tester.pumpAndSettle();
+    await _carryUp(tester, _keyOnScreen(tester, 8), 30);
+    final unlinked = _transformOf(s).scale.keys[8]!.value;
+    expect((unlinked.x > 2, unlinked.y), (true, 1));
+  });
+}
+
+/// A press on the key at [at], carried [by] pixels up the graph and let go.
+Future<void> _carryUp(WidgetTester tester, Offset at, double by) async {
+  final gesture = await tester.startGesture(
+    at,
+    kind: PointerDeviceKind.mouse,
+  );
+  await tester.pump();
+  await gesture.moveBy(Offset(0, -by));
+  await tester.pump();
+  await gesture.up();
+  await tester.pumpAndSettle();
 }
 
 const _drawId = LayerId('draw');
@@ -251,10 +429,20 @@ const _drawId = LayerId('draw');
 String get _transformGroup =>
     laneGroupKey(_drawId, transformGroupHeaderLane.laneId);
 
+TransformTrack _transformOf(EditorSessionManager s) =>
+    s.requireActiveCut.layers.byId(_drawId)!.transformTrack;
+
 List<int> _keyedFrames(EditorSessionManager s) => [
-  ...s.requireActiveCut.layers.byId(_drawId)!.transformTrack.rotation.keys
-      .keys,
+  ..._transformOf(s).rotation.keys.keys,
 ]..sort();
+
+double _rotationAt(EditorSessionManager s, int frame) =>
+    _transformOf(s).rotation.keys[frame]!.value;
+
+/// The numbers the graph's line shows on [frame] — what a carry in flight
+/// shows there.
+List<double> _shownAt(WidgetTester tester, int frame) =>
+    _graphOf(tester).painter.own.single.lane.curve!.at(frame.toDouble());
 
 /// The timeline's graph as it is drawn: the painter, and the box it paints.
 ({TimelineLaneGraphPainter painter, RenderBox box}) _graphOf(
@@ -284,12 +472,13 @@ double _cellExtent(WidgetTester tester) => _graphOf(
   tester,
 ).painter.frameAxis.geometry.value.frameCellExtent;
 
-/// Where the graph marks Rotation's key on [frame], on the screen.
-Offset _keyOnScreen(WidgetTester tester, int frame) {
+/// Where the graph marks its lane's key on [frame] — of its numbers, the
+/// [part]th's — on the screen.
+Offset _keyOnScreen(WidgetTester tester, int frame, {int part = 0}) {
   final (:painter, :box) = _graphOf(tester);
   final key = painter
       .keysIn(box.size)
-      .singleWhere((key) => key.frame == frame);
+      .singleWhere((key) => key.frame == frame && key.part == part);
   return box.localToGlobal(key.at);
 }
 
@@ -306,8 +495,12 @@ ScrollPosition _rowsScroll(WidgetTester tester) => tester
     .position;
 
 /// The drawing's lanes twirled open and its Transform graph with them, its
-/// Rotation stood on — the one lane the graph then draws.
-Future<void> _openTheGraph(WidgetTester tester, EditorSessionManager s) async {
+/// [lane] stood on — the one lane the graph then draws.
+Future<void> _openTheGraph(
+  WidgetTester tester,
+  EditorSessionManager s, {
+  String lane = 'rotation',
+}) async {
   await _tapNamed(tester, 'timeline-lane-toggle-${_drawId.value}');
   await _tapNamed(
     tester,
@@ -317,7 +510,7 @@ Future<void> _openTheGraph(WidgetTester tester, EditorSessionManager s) async {
     tester,
     'timeline-lane-group-graph-draw-${transformGroupHeaderLane.laneId}',
   );
-  s.standOnRow(const LaneRowAddress(_drawId, 'rotation'));
+  s.standOnRow(LaneRowAddress(_drawId, lane));
   await tester.pumpAndSettle();
 }
 
@@ -329,15 +522,21 @@ Future<void> _tapNamed(WidgetTester tester, String name) async {
   await tester.pumpAndSettle();
 }
 
-/// [under]: that many layers' rows under the drawing's.
+/// [under]: that many layers' rows under the drawing's. [transform]: the
+/// drawing's, where not its Rotation keyed 0 on frame 0 and 45 on 8.
 Future<EditorSessionManager> _pump(
   WidgetTester tester, {
   int under = 0,
+  TransformTrack? transform,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1400, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project(under: under))),
+    MaterialApp(
+      home: HomePage(
+        initialProject: _project(under: under, transform: transform),
+      ),
+    ),
   );
   await tester.pumpAndSettle();
   await tester.drag(
@@ -348,7 +547,7 @@ Future<EditorSessionManager> _pump(
   return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 }
 
-Project _project({required int under}) => Project(
+Project _project({required int under, TransformTrack? transform}) => Project(
   id: const ProjectId('graph-key'),
   name: 'Graph Key',
   createdAt: DateTime.utc(2026, 10, 20),
@@ -375,11 +574,13 @@ Project _project({required int under}) => Project(
               id: _drawId,
               name: 'Drawing',
               frames: const [],
-              transformTrack: TransformTrack.empty().copyWith(
-                rotation: PropertyTrack<double>()
-                    .withKey(0, 0)
-                    .withKey(8, 45),
-              ),
+              transformTrack:
+                  transform ??
+                  TransformTrack.empty().copyWith(
+                    rotation: PropertyTrack<double>()
+                        .withKey(0, 0)
+                        .withKey(8, 45),
+                  ),
             ),
           ],
         ),

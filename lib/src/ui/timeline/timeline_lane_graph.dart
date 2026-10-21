@@ -471,6 +471,17 @@ class _HandleInHand {
   KeySidesEdit? edit;
 }
 
+/// A key the hand lifts with the one in hand (I-3 ②): its lane, its frame
+/// and its numbers as they stood, which of them the hand raises, and the
+/// range its line was fitted to across the graph.
+typedef _KeyLifted = ({
+  String laneId,
+  int frame,
+  List<double> numbers,
+  int part,
+  LaneGraphRange range,
+});
+
 /// A KEY in hand (I-3): the key the press went down on, where, what the
 /// picture is held to meanwhile, and how far the selection's move has
 /// carried it — none until the hand moves, and none where there was
@@ -483,6 +494,14 @@ class _KeyInHand {
   final Map<String, LaneGraphFit> fits;
   bool moving = false;
   int frames = 0;
+
+  /// How far across the graph the hand has gone, in pixels — what a value
+  /// graph raises the keys by (I-3 ②).
+  double rise = 0;
+
+  /// The keys it lifts, as they stood when the move began — none until it
+  /// does ([_LaneGraphPictureState._liftedBy]).
+  List<_KeyLifted> lifted = const [];
 
   /// The row the key is on — what a grid holds built while it is carried.
   TimelineRowAddress get row =>
@@ -583,12 +602,14 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       return;
     }
     inHand.moving = true;
+    inHand.lifted = _liftedBy(inHand);
     lanes.onGripTaken?.call(inHand.row);
   }
 
   /// The selection goes along the frames as far as the hand has, by whole
   /// frames — the band's own step ([commaDragFrameDelta]) — and the view
   /// pans where the hand reaches its edge, as under a band's drag (D42).
+  /// Across, its keys' values go as far as the hand ([_valuesRaised]).
   void _carryTo(_KeyInHand inHand, DragUpdateDetails details) {
     if (!inHand.moving) {
       return;
@@ -599,15 +620,85 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       globalPosition: details.globalPosition,
       axis: axis,
     );
+    final moved = details.localPosition - inHand.press;
     final frames = commaDragFrameDelta(
-      accumulatedDelta: partAlong(axis, details.localPosition - inHand.press),
+      accumulatedDelta: partAlong(axis, moved),
       frameCellExtent: widget.frameAxis.geometry.value.frameCellExtent,
     );
-    if (frames == inHand.frames) {
+    final rise = partAcross(axis, moved);
+    if (frames == inHand.frames && rise == inHand.rise) {
       return;
     }
     inHand.frames = frames;
-    widget.lanes!.onMoveUpdate(frames);
+    inHand.rise = rise;
+    widget.lanes!.onMoveUpdate(frames, values: _valuesRaised(inHand));
+  }
+
+  /// The keys the selection holds on this graph's own lines, as they stand
+  /// when [inHand]'s move begins — what the hand raises them from: the
+  /// lines draw the move in flight, so they are read before it.
+  ///
+  /// 🗣️I-3-Q1 B (유저 2026-10-21): 「고른 키 전부 (AE)」 — every key picked
+  /// goes as far as the hand on the screen, each line by its own range: the
+  /// one it was fitted to when the key was taken. Of a line of two numbers
+  /// (a position, a Scale), the one the key in hand is on — 「한 번에 숫자
+  /// 하나」, the value scrub's law (10-10).
+  ///
+  /// ⚠️Mine: a line of one number answers for the key in hand's either way,
+  /// and a line of two the first of its own where the key in hand is on a
+  /// line of one. A key the graph does not draw — another group's — goes
+  /// along the frames alone: it has no range to go across by.
+  List<_KeyLifted> _liftedBy(_KeyInHand inHand) {
+    final selection = widget.lanes!.selection.value;
+    if (selection == null) {
+      return const [];
+    }
+    return [
+      for (final line in widget.own)
+        if ((
+              line.lane.curve,
+              inHand.fits[laneGroupKey(line.layer.id, line.lane.laneId)],
+            )
+            case (final curve?, final fit?))
+          for (final frame in line.lane.keyedFrames)
+            if (laneSelectionPicksKey(
+              selection,
+              line.layer.id,
+              line.lane.laneId,
+              frame,
+            ))
+              (
+                laneId: line.lane.laneId,
+                frame: frame,
+                numbers: curve.at(frame.toDouble()),
+                part: math.min(inHand.key.part, fit.ranges.length - 1),
+                range: fit.ranges[math.min(
+                  inHand.key.part,
+                  fit.ranges.length - 1,
+                )],
+              ),
+    ];
+  }
+
+  /// What [inHand]'s lifted keys say once the hand has gone
+  /// [_KeyInHand.rise] across the graph — each as far as the hand on its
+  /// own range — null where it has not, or lifts none.
+  LaneKeyValues? _valuesRaised(_KeyInHand inHand) {
+    if (inHand.rise == 0 || inHand.lifted.isEmpty) {
+      return null;
+    }
+    final axis = widget.frameAxis.axis;
+    final extent = extentAcross(axis, context.size!);
+    final inputs = <String, Map<int, String>>{};
+    for (final (:laneId, :frame, :numbers, :part, :range) in inHand.lifted) {
+      final raised = [...numbers];
+      raised[part] += laneGraphValueRise(inHand.rise, range, extent, axis);
+      (inputs[laneId] ??= {})[frame] = raised.join(', ');
+    }
+    return (
+      inputs: inputs,
+      scaleLinked: widget.edits?.valueLink?.isOn() ?? false,
+    );
   }
 
   /// The key let go of: the move it carried ends by [finished] — landed on
@@ -1299,11 +1390,30 @@ double laneGraphAcross(
   Axis axis,
 ) {
   final share = (value - range.low) / (range.high - range.low);
-  final padding = math.min(_laneGraphPadding, extent / 4);
-  final room = extent - 2 * padding;
+  final (:padding, :room) = _laneGraphRoom(extent);
   return axis == Axis.horizontal
       ? extent - padding - share * room
       : padding + share * room;
+}
+
+/// How far a value fitted to [range] moves for a hand gone [rise] pixels
+/// across a graph [extent] deep — [laneGraphAcross] the other way: up the
+/// timeline's graph, and right across the sheet's.
+double laneGraphValueRise(
+  double rise,
+  LaneGraphRange range,
+  double extent,
+  Axis axis,
+) {
+  final by = rise / _laneGraphRoom(extent).room * (range.high - range.low);
+  return axis == Axis.horizontal ? -by : by;
+}
+
+/// What a graph [extent] deep keeps clear at either edge across it, and
+/// the room between that its values are fitted to.
+({double padding, double room}) _laneGraphRoom(double extent) {
+  final padding = math.min(_laneGraphPadding, extent / 4);
+  return (padding: padding, room: extent - 2 * padding);
 }
 
 /// The times a line is read at across [window], its frames [cell] long:

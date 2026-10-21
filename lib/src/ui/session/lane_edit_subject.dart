@@ -56,6 +56,18 @@ class LaneEditSubject {
   /// [LaneEdit] goes back home by home, in ONE step.
   final void Function(LaneEdit next, String description) commit;
 
+  /// The row as [edit] leaves it — each family it leaves alone as it is:
+  /// what an edit made after it reads (I-3: a graph's key moved in its
+  /// value, then along the frames).
+  LaneEditSubject after(LaneEdit edit) => LaneEditSubject(
+    transformTrack: edit.transform.own ?? transformTrack,
+    referenceFx: edit.transform.reference ?? referenceFx,
+    effects: edit.effects ?? effects,
+    seNameTag: edit.nameTag ?? seNameTag,
+    commit: commit,
+    preview: preview,
+  );
+
   /// What an edit in flight shows as — null where it shows nothing (a V
   /// row's carrier has no transform to show), and where [commit] would
   /// refuse it.
@@ -91,4 +103,15 @@ class LaneEdit {
       transform.reference == null &&
       effects == null &&
       nameTag == null;
+
+  /// This edit and then [later], made on what this one leaves: each family
+  /// as the last of the two to touch it leaves it.
+  LaneEdit then(LaneEdit later) => LaneEdit(
+    transform: (
+      own: later.transform.own ?? transform.own,
+      reference: later.transform.reference ?? transform.reference,
+    ),
+    effects: later.effects ?? effects,
+    nameTag: later.nameTag ?? nameTag,
+  );
 }

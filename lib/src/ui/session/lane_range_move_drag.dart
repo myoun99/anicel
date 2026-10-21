@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'drags/lane_range_move_drag.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../timeline/property_lane_model.dart' show LaneKeyValues;
 import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'session_roles.dart';
 import 'lane_verbs.dart';
@@ -64,6 +65,8 @@ class LaneRangeMoveDragVerbs {
       laneVerbTargets: _laneVerbs.laneVerbTargets,
       preview: _dragPreview,
       selectionChannel: _selection.laneRangeSelection,
+      write: (subject, values) =>
+          _laneVerbs.laneValuesWritten(layer, subject, values),
     );
     if (drag == null) {
       return false;
@@ -73,11 +76,14 @@ class LaneRangeMoveDragVerbs {
   }
 
   /// A lane-move drag step: shifts EVERY spanned lane's ranged keys by
-  /// [frameDelta] (R26 #3 — one rigid group, all-or-nothing across lanes)
+  /// [frameDelta] (R26 #3 — one rigid group, all-or-nothing across lanes),
+  /// their [values] written first where a graph's key carries them (I-3 ②),
   /// and previews via [_dragPreview]. A blocked landing HOLDS the last valid
   /// preview (UI-R23 #10 — no snap-back).
-  void updateLaneRangeMoveDrag({required int frameDelta}) =>
-      _laneMoveDrag?.update(frameDelta: frameDelta);
+  void updateLaneRangeMoveDrag({
+    required int frameDelta,
+    LaneKeyValues? values,
+  }) => _laneMoveDrag?.update(frameDelta: frameDelta, values: values);
 
   /// Commits the lane move as ONE undo step; the selection stays on the
   /// landed span.

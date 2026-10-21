@@ -364,6 +364,17 @@ typedef PropertyLaneValueLink = ({
   VoidCallback toggle,
 });
 
+/// What a header graph's key drag writes into the keys the lane selection
+/// holds as it carries them (I-3 ②): each key's value as its lane's value
+/// editor reads it ([PropertyLaneEditCallbacks.onSetValue]), by lane and
+/// by frame, and whether a Scale's two numbers are chained
+/// ([PropertyLaneEditCallbacks.valueLink]) — the value editor's write,
+/// key by key.
+typedef LaneKeyValues = ({
+  Map<String, Map<int, String>> inputs,
+  bool scaleLinked,
+});
+
 /// Lane key edit hooks — layer-generic on purpose: the camera routes them
 /// into its transform track today, and every layer (and FX property) plugs
 /// into the same signatures with the layer-transform work.

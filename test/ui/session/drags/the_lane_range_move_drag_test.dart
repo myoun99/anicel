@@ -13,6 +13,9 @@ import 'package:anicel/src/ui/timeline/effect_lane_editing.dart'
     show effectLaneKeyFrames;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectLaneId;
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show LaneKeyValues;
+import 'package:anicel/src/ui/timeline/scale_lane_form.dart' show TwoScales;
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 
@@ -67,6 +70,7 @@ void main() {
     List<LayerEffect> effects = const [],
     List<String> laneIds = const ['position'],
     bool previewRefuses = false,
+    LaneValuesWrite? write,
   }) {
     final preview = ValueNotifier<TimelineDragPreview?>(null);
     final outline = ValueNotifier<TimelineLaneSelection?>(null);
@@ -103,6 +107,7 @@ void main() {
         laneVerbTargets: (spanLaneIds, {effects = const []}) => spanLaneIds,
         preview: preview,
         selectionChannel: outline,
+        write: write ?? (_, _) => null,
       ),
       preview: preview,
       outline: outline,
@@ -284,6 +289,62 @@ void main() {
     );
     expect(session.outline.value?.startIndex, 4);
     expect(session.preview.value, isNull);
+  });
+
+  group('🎯I-3 ② — a header graph\'s key carries the keys\' values', () {
+    // What a key carried up the graph hands the drag: the key at 3's
+    // Position, as its value editor reads it.
+    const carried = (
+      inputs: {
+        'position': {3: '30, 0'},
+      },
+      scaleLinked: false,
+    );
+
+    // The value editor's own write ([LaneVerbs.laneValuesWritten]).
+    LaneEdit? written(LaneEditSubject subject, LaneKeyValues values) {
+      final MapEntry(key: frame, value: input) =
+          values.inputs['position']!.entries.single;
+      return LaneEdit(
+        transform: (
+          own: transformTrackWithLaneValueEdited(
+            subject.transformTrack,
+            laneId: 'position',
+            frameIndex: frame,
+            input: input,
+            scaleForm: const TwoScales(),
+            scaleLinked: values.scaleLinked,
+          ),
+          reference: null,
+        ),
+      );
+    }
+
+    test('a step that carries values writes them, then shifts the row it '
+        'wrote — ONE step', () {
+      final session = open(write: written);
+
+      session.drag!.update(frameDelta: 2, values: carried);
+      session.drag!.commit();
+
+      final own = session.commits.single.transform.own!;
+      expect(transformLaneKeyFrames(own, 'position'), {0, 5, 6, 9});
+      expect(own.position.keys[5]!.value.x, 30, reason: 'it rode the shift');
+    });
+
+    test('carried straight up, no frame moved, the values are shown and '
+        'land', () {
+      final session = open(write: written);
+
+      session.drag!.update(frameDelta: 0, values: carried);
+      expect(session.preview.value, isNotNull);
+      expect(session.outline.value?.startIndex, 2);
+      session.drag!.commit();
+
+      final own = session.commits.single.transform.own!;
+      expect(transformLaneKeyFrames(own, 'position'), {0, 3, 4, 9});
+      expect(own.position.keys[3]!.value.x, 30);
+    });
   });
 
   test('cancel writes nothing and puts the outline back', () {

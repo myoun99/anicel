@@ -788,8 +788,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // instead of leaving a one-cell band behind.
               onTapClear: _session.clearLaneRangeSelection,
               onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
-              onMoveUpdate: (frameDelta) =>
-                  _session.laneMove.updateLaneRangeMoveDrag(frameDelta: frameDelta),
+              onMoveUpdate: (frameDelta, {values}) => _session.laneMove
+                  .updateLaneRangeMoveDrag(
+                    frameDelta: frameDelta,
+                    values: values,
+                  ),
               onMoveEnd: _session.laneMove.endLaneRangeMoveDrag,
               onMoveCancel: _session.laneMove.cancelLaneRangeMoveDrag,
             ),

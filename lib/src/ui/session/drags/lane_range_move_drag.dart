@@ -2,9 +2,15 @@ import 'package:flutter/foundation.dart';
 
 import '../../../models/layer_effect.dart';
 import '../../../models/timeline_frame_range.dart';
+import '../../timeline/property_lane_model.dart' show LaneKeyValues;
 import '../../timeline/timeline_drag_preview.dart';
 import '../lane_edit_subject.dart';
 import '../lane_homes.dart';
+
+/// What [subject]'s row is with [values] written into its keys — null
+/// where none changes ([LaneVerbs.laneValuesWritten]).
+typedef LaneValuesWrite =
+    LaneEdit? Function(LaneEditSubject subject, LaneKeyValues values);
 
 /// The lane-key range MOVE drag (UI-R23 #3 part 2).
 ///
@@ -22,17 +28,23 @@ import '../lane_homes.dart';
 /// three-branch shape when it was moved off the session (2026-09-02): a
 /// design change during a move was what that brief forbade.
 ///
+/// And a header graph's key carries the keys' VALUES with it (I-3 ②,
+/// AE's graph editor): written as the value editor writes each — the row
+/// [LaneValuesWrite] hands back — and then shifted, in the one step.
+///
 /// ⛔It does NOT sign `EditorDragSession`.
 class LaneRangeMoveDrag {
   LaneRangeMoveDrag._({
     required LaneEditSubject subject,
     required TimelineLaneSelection selectionBefore,
-    required RowLaneHomes homes,
+    required List<String> laneIds,
+    required LaneValuesWrite write,
     required ValueNotifier<TimelineDragPreview?> preview,
     required ValueNotifier<TimelineLaneSelection?> selection,
   }) : _subject = subject,
        _selectionBefore = selectionBefore,
-       _homes = homes,
+       _laneIds = laneIds,
+       _write = write,
        _preview = preview,
        _selection = selection;
 
@@ -44,8 +56,12 @@ class LaneRangeMoveDrag {
   /// step back to zero delta, restore the outline to.
   final TimelineLaneSelection _selectionBefore;
 
-  /// The span's lanes in the homes they live in, as the grip found them.
-  final RowLaneHomes _homes;
+  /// The span's lanes, as the homes of the row's keys name them — what
+  /// [_shiftedBy] finds the homes of on the row it shifts.
+  final List<String> _laneIds;
+
+  /// The keys' values written into a row ([LaneValuesWrite]).
+  final LaneValuesWrite _write;
 
   final ValueNotifier<TimelineDragPreview?> _preview;
   final ValueNotifier<TimelineLaneSelection?> _selection;
@@ -65,49 +81,64 @@ class LaneRangeMoveDrag {
     laneVerbTargets,
     required ValueNotifier<TimelineDragPreview?> preview,
     required ValueNotifier<TimelineLaneSelection?> selectionChannel,
+    required LaneValuesWrite write,
   }) {
-    final homes = rowLaneHomes(
-      subject,
-      laneVerbTargets(selection.spanLaneIds, effects: subject.effects),
+    final laneIds = laneVerbTargets(
+      selection.spanLaneIds,
+      effects: subject.effects,
     );
-    if (!rowLaneHomesKeyedWhere(homes, selection.contains)) {
+    if (!rowLaneHomesKeyedWhere(
+      rowLaneHomes(subject, laneIds),
+      selection.contains,
+    )) {
       return null;
     }
     return LaneRangeMoveDrag._(
       subject: subject,
       selectionBefore: selection,
-      homes: homes,
+      laneIds: laneIds,
+      write: write,
       preview: preview,
       selection: selectionChannel,
     );
   }
 
-  /// Shifts every spanned lane's ranged keys by [frameDelta] and previews
-  /// the result. A blocked landing returns having changed nothing, which is
-  /// what makes the last valid preview and outline hold.
-  void update({required int frameDelta}) {
-    if (frameDelta == 0) {
+  /// Shifts every spanned lane's ranged keys by [frameDelta] — their
+  /// [values] written first, where a graph's key carries them — and
+  /// previews the result. A blocked landing returns having changed nothing,
+  /// which is what makes the last valid preview and outline hold.
+  void update({required int frameDelta, LaneKeyValues? values}) {
+    final written = values == null ? null : _write(_subject, values);
+    if (frameDelta == 0 && written == null) {
       _shifted = null;
       _preview.value = null;
       _selection.value = _selectionBefore;
       return;
     }
-    final shifted = _shiftedBy(frameDelta);
-    final shown = shifted == null ? null : _subject.preview(shifted);
+    final moved = frameDelta == 0
+        ? written
+        : _shiftedBy(
+            written == null ? _subject : _subject.after(written),
+            frameDelta,
+          );
+    final edit = moved == null || written == null
+        ? moved
+        : written.then(moved);
+    final shown = edit == null ? null : _subject.preview(edit);
     if (shown == null) {
       // Blocked landing — or one its home will not take, a camera key put
       // out of its cut: the last valid preview and outline HOLD.
       return;
     }
-    _shifted = shifted;
+    _shifted = edit;
     _preview.value = shown;
     _rideSelection(frameDelta);
   }
 
-  /// The span's keys shifted by [frameDelta], home by home: ONE rigid
+  /// [row]'s span of keys shifted by [frameDelta], home by home: ONE rigid
   /// group, so a home whose landing is blocked blocks the move, and a home
   /// with no key in the span rides along. Null when blocked.
-  LaneEdit? _shiftedBy(int frameDelta) {
+  LaneEdit? _shiftedBy(LaneEditSubject row, int frameDelta) {
     var blocked = false;
     T? shifted<T>(LaneHome<T> home) {
       if (!home.keyedWhere(_selectionBefore.contains)) {
@@ -118,7 +149,11 @@ class LaneRangeMoveDrag {
       return next;
     }
 
-    final edit = rowLaneHomesEdited(_subject, _homes, shifted);
+    final edit = rowLaneHomesEdited(
+      row,
+      rowLaneHomes(row, _laneIds),
+      shifted,
+    );
     return blocked || edit.isEmpty ? null : edit;
   }
 
