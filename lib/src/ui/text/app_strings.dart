@@ -2034,7 +2034,8 @@ enum AppStrings {
     'convertLinkedCutNothing':
         'Nothing to link — the cuts are already fully linked or share no '
         'drawing layers.',
-    'convertLinkedCutUndoNote': 'Undo restores both cuts.',
+    'convertLinkedCutUndoNote':
+        'Undo restores every cut the conversion touched.',
     'convertLinkedCutResizeFirst':
         'These cuts have different canvas sizes. Linked cuts share one '
         'canvas, so this cut will be resized to the origin\'s size. Undo '
@@ -3252,7 +3253,7 @@ enum AppStrings {
     'convertLinkedCutNothing':
         'リンクするものがありません — 既に完全にリンク済みか、共有できる'
         '作画レイヤーがありません。',
-    'convertLinkedCutUndoNote': '元に戻すと両方のカットが復元されます。',
+    'convertLinkedCutUndoNote': '元に戻すと、変換で変わったカットがすべて復元されます。',
     'convertLinkedCutResizeFirst':
         'キャンバスサイズが異なります。兼用カットはキャンバスを共有するため'
         'このカットは元のカットのサイズに変更されます。元に戻すと復元されます。',
@@ -4863,7 +4864,7 @@ enum AppStrings {
     'convertLinkedCutNothing':
         '링크할 것이 없습니다 — 이미 완전히 링크됐거나 공유할 그리기 '
         '레이어가 없습니다.',
-    'convertLinkedCutUndoNote': '실행 취소하면 두 컷 모두 복원됩니다.',
+    'convertLinkedCutUndoNote': '실행 취소하면 변환이 건드린 컷이 모두 복원됩니다.',
     'convertLinkedCutResizeFirst':
         '두 컷의 캔버스 크기가 다릅니다. 겸용컷은 캔버스를 함께 쓰므로 '
         '이 컷이 원본 컷의 크기로 바뀝니다. 실행 취소하면 되돌아갑니다.',
@@ -6262,7 +6263,7 @@ enum AppStrings {
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
-    'sbOneStoryboardRowPerCut': '이 컷에는 이미 스토리보드 레이어가 있습니다. 컷당 하나만 가능합니다.',
+    'sbOneStoryboardRowPerCut': '이 컷에는 이미 콘티 레이어가 있습니다. 컷당 하나만 가능합니다.',
     'cnHeadCut': '컷',
     'cnHeadPicture': '화면',
     'cnHeadAction': '내용',
@@ -6469,7 +6470,8 @@ enum AppStrings {
     'convertLinkedCutNothing':
         'Rien à lier — les plans sont déjà entièrement liés ou ne partagent '
         'aucun calque de dessin.',
-    'convertLinkedCutUndoNote': 'Annuler restaure les deux plans.',
+    'convertLinkedCutUndoNote':
+        'Annuler restaure tous les plans touchés par la conversion.',
     'convertLinkedCutResizeFirst':
         'Ces plans ont des tailles de canevas différentes. Les plans liés '
         'partagent une seule image, donc la taille du plan d\'origine '
@@ -8184,7 +8186,7 @@ enum AppStrings {
     'convertLinkedCutNothing':
         '没有可链接的内容 — 两个镜头已完全链接，'
         '或没有可共用的绘制图层。',
-    'convertLinkedCutUndoNote': '撤销会同时还原两个镜头。',
+    'convertLinkedCutUndoNote': '撤销会还原此次转换涉及的所有镜头。',
     'convertLinkedCutResizeFirst':
         '两个镜头的画布尺寸不同。共用镜头共享同一张画，因此以原镜头的尺寸为准 '
         '— 建议先统一尺寸再进行更改。',
