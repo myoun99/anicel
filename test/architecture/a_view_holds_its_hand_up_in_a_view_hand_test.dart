@@ -17,9 +17,7 @@ void main() {
   test('no dispose in lib hands a widget\'s callback null', () {
     final hits = [
       for (final file in dartFilesUnder('lib'))
-        for (final name in _nullGoodbyes(file.readAsStringSync()))
-          if (!_ledger.containsKey((libPath(file), name)))
-            '${libPath(file)}: widget.$name(null)',
+        ..._hitsIn(libPath(file), file.readAsStringSync()),
     ];
     expect(
       hits,
@@ -68,7 +66,32 @@ void main() {
 ''';
     expect(_nullGoodbyes(planted), ['onShapeShowChanged', 'onLander']);
   });
+
+  test('the ledger lets through only its own callback in its own file', () {
+    const planted = '''
+  @override
+  void dispose() {
+    widget.onLegendMenus?.call(null);
+    widget.onShapeShowChanged?.call(null);
+  }
+''';
+    expect(_hitsIn('lib/src/ui/storyboard_panel.dart', planted), [
+      'lib/src/ui/storyboard_panel.dart: widget.onShapeShowChanged(null)',
+    ]);
+    expect(
+      _hitsIn('lib/src/ui/other_panel.dart', planted),
+      hasLength(2),
+      reason: 'another file\'s goodbye is not the ledger\'s',
+    );
+  });
 }
+
+/// What the scan says of the file at [path] holding [source]: each
+/// goodbye the ledger does not keep.
+List<String> _hitsIn(String path, String source) => [
+  for (final name in _nullGoodbyes(source))
+    if (!_ledger.containsKey((path, name))) '$path: widget.$name(null)',
+];
 
 /// The names of the widget callbacks each `dispose` in [source] hands null.
 List<String> _nullGoodbyes(String source) => [
