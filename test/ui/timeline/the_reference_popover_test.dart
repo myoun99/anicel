@@ -42,6 +42,7 @@ import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 void main() {
   late Directory tempDir;
@@ -382,6 +383,45 @@ void main() {
           current(s, movie).mediaReference == null,
     );
     expect(current(s, movie).frames, hasLength(6));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('two rows baked in one press fill ONE bar — each its own half, '
+      'the second from where the first ends', (tester) async {
+    final (s, _) = await movieSession(tester, frameCount: 6, inFrame: 0);
+    await tester.runAsync(() async {
+      final path = '${tempDir.path}${Platform.pathSeparator}second.mov';
+      await File(path).writeAsBytes(const [0, 0, 0, 24]);
+      await s.importDoors.importVideoFile(
+        path: path,
+        settings: const ImportFileSettings(
+          mode: ImportFileMode.reference,
+          movieParts: MovieParts.picture,
+        ),
+      );
+    });
+    final rows = [
+      for (final layer in s.requireActiveCut.layers)
+        if (isMovieReference(layer)) layer.id,
+    ];
+    expect(rows, hasLength(2), reason: 'the premise: two takes placed');
+    final menuContext = await hostedContext(tester);
+
+    final told = watchTheBar(tester);
+    unawaited(
+      rasterizeReferenceRows(menuContext, s, [
+        for (final row in rows) current(s, row),
+      ]),
+    );
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          rows.every((row) => current(s, row).mediaReference == null),
+    );
+
+    // Six cels a row: the first row's third is a quarter of the bar.
+    expectOneBar(told, [0.25, 0.5, 0.75, 1]);
     await tester.pumpAndSettle();
   });
 

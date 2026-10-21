@@ -540,9 +540,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    await tester.pump();
     final told = watchTheBar(tester);
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     session.playbackRig.prerenderScheduler.cancel();
 

@@ -2221,15 +2221,14 @@ void main() {
     await pick('into', linked, 'pool');
     await pick('file', linked, 'reference');
 
-    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    await tester.pump();
     final told = watchTheBar(tester);
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     session.playbackRig.prerenderScheduler.cancel();
 
-    // Four files, a quarter each: the pool's two — registered within the
-    // window's first frame, before anything can listen — then the placed
-    // two, from half the bar.
-    expectOneBar(told, [0.5, 0.75, 1]);
+    // Four files, a quarter each: the pool's two — the kept one carried
+    // before the linked one registers — then the placed two, from half the
+    // bar.
+    expectOneBar(told, [0.25, 0.5, 0.75, 1]);
   });
 }

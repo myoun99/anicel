@@ -23,22 +23,36 @@ import 'settle_async.dart';
 /// the busier the machine the likelier (2026-10-08 — 3 runs in 16 on one
 /// master). `a_run_the_window_waits_out_stops_the_warmer_test` holds every
 /// caller to it.
-/// Every share of the bar the wait window up now is told from here on —
-/// read off the window's own listenable, not off its frames, so no report
-/// falls between two of them.
+/// Every share of the bar a wait window tells — read off the window's own
+/// listenable, not off its frames, so no report falls between two of them.
+///
+/// Called before the frame that puts the window up, it listens from inside
+/// that frame: the window starts its work right after it (`endOfFrame`),
+/// and a stretch that takes no real time — a pool registering small files
+/// — has told all of itself before a test body after `pump()` can listen.
 List<double> watchTheBar(WidgetTester tester) {
-  final progress = tester
-      .widget<AppProgressDialog>(find.byType(AppProgressDialog))
-      .progress;
+  final window = find.byType(AppProgressDialog);
   final told = <double>[];
-  void record() {
-    if (progress.value.fraction case final fraction?) {
-      told.add(fraction);
+  void listen() {
+    final progress = tester.widget<AppProgressDialog>(window).progress;
+    void record() {
+      if (progress.value.fraction case final fraction?) {
+        told.add(fraction);
+      }
     }
+
+    record();
+    progress.addListener(record);
   }
 
-  record();
-  progress.addListener(record);
+  void atTheFrame(Duration _) => window.evaluate().isEmpty
+      ? tester.binding.addPostFrameCallback(atTheFrame)
+      : listen();
+  if (window.evaluate().isEmpty) {
+    tester.binding.addPostFrameCallback(atTheFrame);
+  } else {
+    listen();
+  }
   return told;
 }
 
