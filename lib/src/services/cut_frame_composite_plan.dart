@@ -116,12 +116,17 @@ CanvasPoint? resolveLayerAnchorPointAt({
 double resolveLayerEffectiveOpacityAt({
   required Layer layer,
   required int frameIndex,
-}) {
-  final sample = layer.transformEnabled
-      ? resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex)
-      : 1.0;
-  return (layer.opacity * sample).clamp(0.0, 1.0).toDouble();
-}
+}) => _ownStrengthAt(layer, layer, frameIndex).clamp(0.0, 1.0).toDouble();
+
+/// [layer]'s OWN strength at [frameIndex], before any folder's: its static
+/// opacity × its fx [carrier]'s animated Opacity sample — the sample only
+/// while the carrier's fx is on (R8). Unclamped: the composite folds the
+/// folders' strength in before it clamps ([_resolveLayerNode]).
+double _ownStrengthAt(Layer layer, Layer carrier, int frameIndex) =>
+    carrier.transformEnabled
+    ? layer.opacity *
+          resolveOpacityTrackAt(carrier.transformTrack.opacity, frameIndex)
+    : layer.opacity;
 
 /// Resolves the drawable surface for a layer's frame (e.g. by replaying the
 /// brush store's paint commands); `null` when the frame has no artwork.
@@ -642,6 +647,67 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
         frameIndex: frameIndex,
       );
 
+/// [layer] as a row that paints a picture of its own: the row whose fx it
+/// wears — itself, or its base for an attach row — and that base. Null for
+/// a row that paints nothing of its own: a folder composites its MEMBERS,
+/// whose picture its eye, opacity, blend and FX reach through
+/// [resolveFolderChainAt] (flat) or a [CompositeGroup] (tree); an
+/// adjustment filters what is under it. And null for an attach row whose
+/// base is gone — a dangling link contributes nothing.
+({Layer carrier, Layer? base})? _paintingRowOf(Cut cut, Layer layer) {
+  if (!layer.kind.paintsArtwork) {
+    return null;
+  }
+  if (!isAttachedLayer(layer)) {
+    return (carrier: layer, base: null);
+  }
+  final base = attachedBaseOf(layer, cut.layers);
+  return base == null ? null : (carrier: base, base: base);
+}
+
+/// What [layer] draws at [frameIndex] in [cut], shown or not: the cel it
+/// exposes there — none where it exposes none — and how: its OWN strength,
+/// its own blend, where it lies under every folder above it, and the chain
+/// of the row whose fx it wears. Null for a row that paints nothing of its
+/// own ([_paintingRowOf]).
+///
+/// The composite's answer for a row short of its gates — the eye, the
+/// static opacity, a hidden folder — and of what it folds in from the
+/// folders above, their strength and blend ([_resolveLayerNode]): what a
+/// file that keeps every row apart lays each row by, a hidden one hidden
+/// and each folder's strength and blend on the folder (I-117-Q2, 유저
+/// 2026-10-22: 「층을 지키고 그 효과는 뺀다」).
+({Frame? frame, ResolvedRowRender render})? layerDrawingAt({
+  required Cut cut,
+  required Layer layer,
+  required int frameIndex,
+}) {
+  final painting = _paintingRowOf(cut, layer);
+  if (painting == null) {
+    return null;
+  }
+  return (
+    frame: _celOf(layer, painting.base, frameIndex),
+    render: (
+      opacity: _ownStrengthAt(
+        layer,
+        painting.carrier,
+        frameIndex,
+      ).clamp(0.0, 1.0).toDouble(),
+      blendMode: layer.blendMode,
+      placement: layerPlacementAt(
+        cut: cut,
+        layer: layer,
+        frameIndex: frameIndex,
+      ),
+      effects: resolveLayerEffectsAt(
+        effects: painting.carrier.effects,
+        frameIndex: frameIndex,
+      ),
+    ),
+  );
+}
+
 /// What one layer contributes at a frame: its resolved
 /// [CutFrameCompositeEntry], a [CutFrameCompositeLiveRow] when it is the
 /// LIVE row and has no cel exposed here, or null when it contributes
@@ -660,17 +726,8 @@ CutFrameCompositeRow? _resolveLayerNode(
   ({int frameIndex, bool foldBufferedFolders, LayerId? liveLayerId}) at,
 ) {
   final frameIndex = at.frameIndex;
-  // Folder rows composite their MEMBERS, not a surface of their own —
-  // their eye/opacity/blend/FX reach the picture through
-  // [resolveFolderChainAt] (flat) or [CutFrameCompositeGroup] (tree).
-  if (!layer.kind.paintsArtwork) {
-    return null;
-  }
-  final base = isAttachedLayer(layer)
-      ? attachedBaseOf(layer, cut.layers)
-      : null;
-  if (isAttachedLayer(layer) && base == null) {
-    // Dangling attach link (base gone): the row contributes nothing.
+  final painting = _paintingRowOf(cut, layer);
+  if (painting == null) {
     return null;
   }
   // Each row's OWN eye and static opacity gate it — the base's eye
@@ -690,16 +747,9 @@ CutFrameCompositeRow? _resolveLayerNode(
   if (!folderChain.visible) {
     return null;
   }
-  final fxCarrier = base ?? layer;
-  final fxEnabled = fxCarrier.transformEnabled;
+  final fxCarrier = painting.carrier;
   final opacity =
-      ((fxEnabled
-                  ? layer.opacity *
-                        resolveOpacityTrackAt(
-                          fxCarrier.transformTrack.opacity,
-                          frameIndex,
-                        )
-                  : layer.opacity) *
+      (_ownStrengthAt(layer, fxCarrier, frameIndex) *
               folderChain.opacityFactor)
           .clamp(0.0, 1.0)
           .toDouble();
@@ -707,7 +757,7 @@ CutFrameCompositeRow? _resolveLayerNode(
     return null;
   }
 
-  final frame = _celOf(layer, base, frameIndex);
+  final frame = _celOf(layer, painting.base, frameIndex);
 
   // R6: effects ride the FX carrier exactly like the pose and the
   // animated opacity — an attach row wears its base's chain, and the

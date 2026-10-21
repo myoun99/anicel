@@ -1224,6 +1224,7 @@ enum AppStrings {
   String get exStratumContent => _s('exStratumContent');
   String get exStratumPicture => _s('exStratumPicture');
   String get exStratumInk => _s('exStratumInk');
+  String get exLeftOutOfTheFile => _s('exLeftOutOfTheFile');
   String get exNoCels => _s('exNoCels');
   String get exNoCuts => _s('exNoCuts');
   String get exPresets => _s('exPresets');
@@ -2555,6 +2556,7 @@ enum AppStrings {
     'exStratumContent': 'Text',
     'exStratumPicture': 'Pictures',
     'exStratumInk': 'Ink',
+    'exLeftOutOfTheFile': 'Not everything could be kept in the file.',
     'exNoCels': '(no cels)',
     'exNoCuts': '(no cuts)',
     'exPresets': 'Presets',
@@ -3970,6 +3972,7 @@ enum AppStrings {
     'exStratumContent': 'テキスト',
     'exStratumPicture': '絵',
     'exStratumInk': 'インク',
+    'exLeftOutOfTheFile': 'ファイルに収められなかったものがあります。',
     'exNoCels': '（セルなし）',
     'exNoCuts': '（カットなし）',
     'exPresets': 'プリセット',
@@ -5572,6 +5575,7 @@ enum AppStrings {
     'exStratumContent': '텍스트',
     'exStratumPicture': '그림',
     'exStratumInk': '잉크',
+    'exLeftOutOfTheFile': '파일에 담지 못한 것이 있습니다.',
     'exNoCels': '(셀 없음)',
     'exNoCuts': '(컷 없음)',
     'exPresets': '프리셋',
@@ -7227,6 +7231,7 @@ enum AppStrings {
     'exStratumContent': 'Texte',
     'exStratumPicture': 'Images',
     'exStratumInk': 'Encre',
+    'exLeftOutOfTheFile': 'Tout n’a pas pu être conservé dans le fichier.',
     'exNoCels': '(aucun cellulo)',
     'exNoCuts': '(aucun plan)',
     'exPresets': 'Préréglages',
@@ -8850,6 +8855,7 @@ enum AppStrings {
     'exStratumContent': '文字',
     'exStratumPicture': '画面',
     'exStratumInk': '墨水',
+    'exLeftOutOfTheFile': '部分内容未能保存到文件中。',
     'exNoCels': '（无赛璐珞）',
     'exNoCuts': '（无镜头）',
     'exPresets': '预设',

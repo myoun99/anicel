@@ -83,46 +83,74 @@ Future<List<int>?> _encodeStill(
   });
 }
 
-/// A row of a layered still file (PSD — I-117): its name, how the file lays
-/// it over the rows under it, and its picture — drawn when the file comes
-/// to it, whole and in no blend on nothing, and let go once it is packed:
-/// one row's pixels at a time ([PsdBuilder]).
-typedef ExportLayerRow = ({
-  String name,
-  double opacity,
-  LayerBlendMode blendMode,
-  Future<ui.Image> Function() draw,
-});
+/// What a layered still file (PSD — I-117) is laid up of, bottom-up: rows
+/// and folders of them, each under its name, shown or hidden, and laid
+/// over what is under it by its strength and blend.
+sealed class ExportLayerNode {
+  const ExportLayerNode({
+    required this.name,
+    required this.opacity,
+    required this.blendMode,
+    required this.visible,
+  });
 
-/// A folder of a layered still file — a conte page's strata (I-117): its
-/// name, whether it is shown, and its rows, bottom-up.
-typedef ExportLayerFolder = ({
-  String name,
-  bool visible,
-  List<ExportLayerRow> rows,
-});
+  final String name;
+  final double opacity;
+  final LayerBlendMode blendMode;
+  final bool visible;
+}
+
+/// A row of a layered still file and its picture — drawn when the file
+/// comes to it, whole and in no blend on nothing, and let go once it is
+/// packed: one row's pixels at a time ([PsdBuilder]).
+final class ExportLayerRow extends ExportLayerNode {
+  const ExportLayerRow({
+    required super.name,
+    super.opacity = 1,
+    super.blendMode = LayerBlendMode.normal,
+    super.visible = true,
+    required this.draw,
+  });
+
+  final Future<ui.Image> Function() draw;
+}
+
+/// A folder of a layered still file — a conte page's strata, a cut's folder
+/// (I-117) — and what is inside it, bottom-up: 통과 unless it says
+/// otherwise, as a folder is in the app.
+final class ExportLayerFolder extends ExportLayerNode {
+  const ExportLayerFolder({
+    required super.name,
+    super.opacity = 1,
+    super.blendMode = LayerBlendMode.passThrough,
+    super.visible = true,
+    required this.children,
+  });
+
+  final List<ExportLayerNode> children;
+}
 
 /// The bytes a still in [format] is written as where its picture is laid
-/// up of rows: a PSD keeps them apart ([encodePsd] — [rows] is asked only
+/// up of rows: a PSD keeps them apart ([encodePsd] — [nodes] is asked only
 /// then), every other still is the picture alone ([stillEncoderFor]).
 ExportImageEncoder? layeredEncoderFor(
   ExportFormatSelection format,
-  List<ExportLayerRow> Function() rows,
-) => format.stillFormat == ExportStillFormat.psd
-    ? (composite) => encodePsd(composite, format, rows())
+  List<ExportLayerNode> Function() nodes,
+) => format.keepsRowsApart
+    ? (composite) => encodePsd(composite, format, nodes())
     : stillEncoderFor(format);
 
-/// [composite] as a Photoshop document of [rows], bottom-up ([LayeredPsd]).
+/// [composite] as a Photoshop document of [nodes], bottom-up ([LayeredPsd]).
 Future<List<int>?> encodePsd(
   ui.Image composite,
   ExportFormatSelection format,
-  List<ExportLayerRow> rows,
+  List<ExportLayerNode> nodes,
 ) async {
   final document = LayeredPsd(
     width: composite.width,
     height: composite.height,
   );
-  return await document.addRows(rows)
+  return await document.add(nodes)
       ? document.encode(composite, format)
       : null;
 }
@@ -137,44 +165,60 @@ final class LayeredPsd {
 
   final PsdBuilder _builder;
 
-  /// [rows] over every row laid before them. False where a picture could
-  /// not be read: the document is then no document.
-  Future<bool> addRows(List<ExportLayerRow> rows) async {
-    for (final row in rows) {
-      final picture = await row.draw();
-      final width = picture.width;
-      final height = picture.height;
-      final ByteData? data;
-      try {
-        data = await picture.toByteData(
-          format: ui.ImageByteFormat.rawStraightRgba,
-        );
-      } finally {
-        picture.dispose();
-      }
-      if (data == null) {
+  /// [nodes] over every row laid before them, each folder's inside it.
+  /// False where a picture could not be read: the document is then no
+  /// document.
+  Future<bool> add(List<ExportLayerNode> nodes) async {
+    for (final node in nodes) {
+      final laid = await switch (node) {
+        final ExportLayerRow row => _addRow(row),
+        final ExportLayerFolder folder => _addFolder(folder),
+      };
+      if (!laid) {
         return false;
       }
-      final rgba = Uint8List.sublistView(data);
-      _builder.addLayer(
-        name: row.name,
-        pixels: await Isolate.run(
-          () => packPsdLayer(
-            (pixels: rgba, width: width, height: height, channels: 4),
-          ),
-        ),
-        opacity: row.opacity,
-        blendMode: row.blendMode,
-      );
     }
     return true;
   }
 
-  /// [folder] over every row laid before it, its rows inside it — as
-  /// [addRows] answers.
-  Future<bool> addFolder(ExportLayerFolder folder) async {
-    _builder.openGroup(name: folder.name, visible: folder.visible);
-    if (!await addRows(folder.rows)) {
+  Future<bool> _addRow(ExportLayerRow row) async {
+    final picture = await row.draw();
+    final width = picture.width;
+    final height = picture.height;
+    final ByteData? data;
+    try {
+      data = await picture.toByteData(
+        format: ui.ImageByteFormat.rawStraightRgba,
+      );
+    } finally {
+      picture.dispose();
+    }
+    if (data == null) {
+      return false;
+    }
+    final rgba = Uint8List.sublistView(data);
+    _builder.addLayer(
+      name: row.name,
+      pixels: await Isolate.run(
+        () => packPsdLayer(
+          (pixels: rgba, width: width, height: height, channels: 4),
+        ),
+      ),
+      opacity: row.opacity,
+      visible: row.visible,
+      blendMode: row.blendMode,
+    );
+    return true;
+  }
+
+  Future<bool> _addFolder(ExportLayerFolder folder) async {
+    _builder.openGroup(
+      name: folder.name,
+      opacity: folder.opacity,
+      visible: folder.visible,
+      blendMode: folder.blendMode,
+    );
+    if (!await add(folder.children)) {
       return false;
     }
     _builder.closeGroup();

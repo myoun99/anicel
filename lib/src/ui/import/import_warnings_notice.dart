@@ -15,10 +15,15 @@ import '../text/model_vocabulary.dart' show WarningLine;
 /// paragraph buried what was said of it. F-370-Q1 (유저 2026-10-17: 「끝 줄을
 /// 「경고 N가지」 버튼으로 — 누르면 같은 묶음 알림」): the import window's last
 /// line was its first three warnings, joined.
+///
+/// And an export's, under its own [message]: what a file it wrote could not
+/// hold — 🗣️I-117-Q2 (유저 2026-10-22): 「내보내기가 끝나면 무엇이
+/// 빠졌는지 알린다(PSD 를 읽을 때 못 담은 것을 알리듯이)」.
 Future<void> showImportWarnings(
   BuildContext context, {
   required Key windowKey,
   required List<WarningLine> warnings,
+  String? message,
 }) {
   final alone = <String>[];
   final named = <String, List<String>>{};
@@ -33,7 +38,7 @@ Future<void> showImportWarnings(
     context,
     windowKey: windowKey,
     title: AppText.strings.commonNotice,
-    message: [AppText.strings.imLeftBehind, ...alone].join('\n'),
+    message: [message ?? AppText.strings.imLeftBehind, ...alone].join('\n'),
     details: [
       for (final MapEntry(key: says, value: names) in named.entries)
         NoticeDetails(names, heading: says, open: true, oneLineEach: true),

@@ -197,6 +197,10 @@ class ExportFormatSelection {
 
   bool get wantsAlpha => effectiveChannels == ExportChannels.rgba;
 
+  /// Whether the file keeps the rows its picture is laid up of apart: a
+  /// PSD's (I-117).
+  bool get keepsRowsApart => isStill && stillFormat == ExportStillFormat.psd;
+
   /// The output file extension for the current choice.
   String get fileExtension =>
       isVideo ? container.fileExtension : stillFormat.fileExtension;

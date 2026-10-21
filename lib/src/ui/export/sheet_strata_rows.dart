@@ -1,6 +1,5 @@
 import 'dart:ui' as ui;
 
-import '../../models/layer_blend_mode.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../text/app_strings.dart';
 import 'still_image_encoders.dart' show ExportLayerRow;
@@ -24,12 +23,7 @@ List<ExportLayerRow> sheetStrataRows(
   Future<ui.Image> Function(Set<SheetPaintLayer> layers) draw,
 ) => [
   for (final stratum in strata)
-    (
-      name: _nameOf(stratum),
-      opacity: 1,
-      blendMode: LayerBlendMode.normal,
-      draw: () => draw({stratum}),
-    ),
+    ExportLayerRow(name: _nameOf(stratum), draw: () => draw({stratum})),
 ];
 
 String _nameOf(SheetPaintLayer stratum) => switch (stratum) {

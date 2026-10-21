@@ -1351,11 +1351,11 @@ void main() {
 
     // 🗣️I-117 (유저 2026-10-21): 「시퀀스는 psd 지원안하도록?」 — and 「셀은
     // … 소재 하나당 해당 어태치레이어 구조 그대로」, which the Cels tab
-    // writes; the Image tab's waits on I-117-Q2.
-    testWidgets('the Cels tab lists every still with PSD on, the Image tab '
-        'every one — PSD there but off, saying why — and the Sequence tab '
-        'every one but PSD; a still this machine cannot write is off in '
-        'each', (tester) async {
+    // writes; and the Image tab the cut's rows — I-117-Q2 (유저 2026-10-22:
+    // 「층을 지키고 그 효과는 뺀다」). ↩️PSD stood off there until that answer.
+    testWidgets('the Cels and the Image tab list every still with PSD on, '
+        'and the Sequence tab every one but PSD; a still this machine cannot '
+        'write is off in each', (tester) async {
       // A binary with no JPG encoder.
       final noJpg = ExportFormatAvailability(
         encoderResolver: () => null,
@@ -1408,7 +1408,7 @@ void main() {
       expect(await listed(), {
         'png': true,
         'jpg': false,
-        'psd': false,
+        'psd': true,
         'bmp': true,
         'tga': true,
         'tiff': true,

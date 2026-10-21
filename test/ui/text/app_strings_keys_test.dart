@@ -585,6 +585,7 @@ void main() {
     'exStratumContent': (s) => s.exStratumContent,
     'exStratumPicture': (s) => s.exStratumPicture,
     'exStratumInk': (s) => s.exStratumInk,
+    'exLeftOutOfTheFile': (s) => s.exLeftOutOfTheFile,
     'exNoCels': (s) => s.exNoCels,
     'exNoCuts': (s) => s.exNoCuts,
     'exPresets': (s) => s.exPresets,

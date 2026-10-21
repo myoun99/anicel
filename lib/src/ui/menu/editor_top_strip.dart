@@ -2674,6 +2674,9 @@ Future<bool> Function(String path) _pictureSaveAsWrites(
       name: fileNameOfPath(path),
       isCancelled: null,
       onProgress: null,
+      // Its pictures are the picture alone ([saveAsImageFormats] has no
+      // PSD): nothing is left out of one.
+      onLeftOut: null,
     ),
     paper: paper,
   );

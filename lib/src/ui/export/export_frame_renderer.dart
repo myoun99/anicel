@@ -14,6 +14,8 @@ import '../../models/drawing_guide.dart' show DrawingGuide;
 import '../../models/export_format_selection.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
+import '../../models/import/import_warning.dart'
+    show ImportWarning, layerEffectsNotApplied, unsupportedLayerKind;
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
@@ -58,7 +60,8 @@ import 'export_plan.dart';
 import 'held_pictures.dart';
 import 'held_rows.dart';
 import 'offscreen_raster.dart';
-import 'still_image_encoders.dart' show ExportLayerRow;
+import 'still_image_encoders.dart'
+    show ExportLayerFolder, ExportLayerNode, ExportLayerRow;
 import '../text/app_strings.dart';
 
 /// The ground a frame is rendered on unless a caller names another — what
@@ -97,6 +100,7 @@ class ExportFrameRenderer {
     required this.session,
     CameraFrameRenderService? renderService,
     this.applyLayerFx = true,
+    this.keepsRowsApart = false,
     ui.Color background = exportFrameGround,
   }) : renderService =
            renderService ?? CameraFrameRenderService(background: background);
@@ -104,7 +108,8 @@ class ExportFrameRenderer {
   /// A renderer for a run written in [format], on the ground its files are
   /// made on: none where the file keeps its alpha — a still asked for RGBA,
   /// a video with an alpha channel ([alphaVideo]) — the format's colour
-  /// under any other still, and white under a video.
+  /// under any other still, and white under a video. A PSD keeps the rows
+  /// apart ([keepsRowsApart]).
   ///
   /// ↩️The export window spelled this for itself; it lives here since
   /// 「다른 이름으로 저장」 writes the image tab's picture (backlog-21-Q7).
@@ -116,6 +121,7 @@ class ExportFrameRenderer {
   }) : this(
          session: session,
          applyLayerFx: applyLayerFx,
+         keepsRowsApart: format.keepsRowsApart,
          background: (alphaVideo || (format.isStill && format.wantsAlpha))
              ? const ui.Color(0x00000000)
              : format.isStill
@@ -131,6 +137,16 @@ class ExportFrameRenderer {
   /// bypasses EVERY layer's FX — raw cels at their static opacity, no
   /// transforms. The cut fade and the camera work are cut-level and stay.
   final bool applyLayerFx;
+
+  /// Whether the frames drawn here go into a file that keeps the cut's rows
+  /// apart — a PSD ([frameRows]). Its picture is then the one those rows
+  /// lay up: what no row of the file can hold is left out of it as well —
+  /// a folder's effects, an adjustment row's filter ([leftOutOfRows]).
+  ///
+  /// 🗣️I-117-Q2 (유저 2026-10-22): 「층을 지키고 그 효과는 뺀다」 — and the
+  /// cost it was chosen at: the file's picture differs from the app's by
+  /// those effects.
+  final bool keepsRowsApart;
 
   /// The cels the frame being drawn has read, and the ones the frame before
   /// it read — all this renderer holds (card `render-reads-thaw-into-hot`).
@@ -316,25 +332,38 @@ class ExportFrameRenderer {
   /// master toggle expressed as DATA. Cheaper to reason about than an
   /// override threaded through the plan, and impossible for another route
   /// to forget: the plan renders exactly the cut it is given.
+  ///
+  /// For a file that keeps the rows apart ([keepsRowsApart]), the effects
+  /// of every row that paints nothing of its own — a folder, an adjustment
+  /// row — read off the same way: the file has no row to hold them.
   Cut _cutForRender(Cut cut) {
-    if (applyLayerFx) {
+    if (applyLayerFx && !keepsRowsApart) {
       return cut;
     }
     return _fxStrippedByCut.putIfAbsent(
       cut.id,
       () => cut.copyWith(
-        layers: [
-          for (final layer in cut.layers)
-            layer.copyWith(
-              transformEnabled: false,
-              effects: [
-                for (final effect in layer.effects) effect.copyWith(enabled: false),
-              ],
-            ),
-        ],
+        layers: [for (final layer in cut.layers) _layerForRender(layer)],
       ),
     );
   }
+
+  /// [layer] as [_cutForRender] hands it to the plan.
+  Layer _layerForRender(Layer layer) {
+    if (!applyLayerFx) {
+      return layer.copyWith(
+        transformEnabled: false,
+        effects: _switchedOff(layer.effects),
+      );
+    }
+    return layer.kind.paintsArtwork
+        ? layer
+        : layer.copyWith(effects: _switchedOff(layer.effects));
+  }
+
+  static List<LayerEffect> _switchedOff(List<LayerEffect> effects) => [
+    for (final effect in effects) effect.copyWith(enabled: false),
+  ];
 
   /// Each contribution's UNIT ALPHA: its own share of the frame. (↩️Times
   /// its track's static opacity, until the V row lost it — I-73,
@@ -400,6 +429,148 @@ class ExportFrameRenderer {
       paper: paper,
     );
   }
+
+  /// [task]'s frame as the rows a layered file keeps apart, bottom-up — the
+  /// cut's own rows, as its layer list holds them (I-117-Q2, 유저
+  /// 2026-10-22: 「층을 지키고 그 효과는 뺀다」): a folder, a folder of the
+  /// file with what is in it, 통과 kept 통과; a row that paints, its picture
+  /// here — its pose and its effects on it, drawn by itself on nothing
+  /// through the view [renderComposite] looks through, whole and in no
+  /// blend — laid by its own strength and blend; an adjustment row, a row of
+  /// no picture under its name ([leftOutOfRows]). Each keeps its eye: a
+  /// hidden row is in the file, hidden. Under them all, the ground
+  /// [renderComposite] lays them on and [paper] with it, where there is
+  /// either.
+  ///
+  /// ⚠️It starts no frame: drawn after [renderComposite]'s picture of the
+  /// same frame, as [celGroupRows] is after its cel's.
+  List<ExportLayerNode> frameRows(
+    ExportFrameTask task,
+    ExportSizeMode mode, {
+    ProjectBackground? paper,
+  }) {
+    final frameIndex = task.frameIndex;
+    final view = _viewFor(task.cut, frameIndex, mode);
+    // A picture of the file: what [laid] hands over, by itself on
+    // [service]'s ground, through the view and cut at the canvas's edge as
+    // the frame is ([_composite]).
+    Future<ui.Image> drawn(
+      CameraFrameRenderService service, {
+      CutFrameCompositeLayer? Function()? laid,
+      ProjectBackground? paper,
+    }) async {
+      await _hydrate(task.cut, frameIndex);
+      final layer = laid?.call();
+      return service.renderThroughCamera(
+        layers: [?layer],
+        pose: view.pose,
+        cameraFrameSize: view.frameSize,
+        cutTo: task.cut.canvasSize,
+        paper: paper,
+      );
+    }
+
+    final cut = _cutForRender(task.cut);
+    final childrenOf = <LayerId?, List<ExportLayerNode>>{};
+    for (final layer in cut.layers) {
+      final ExportLayerNode? node;
+      if (layer.kind.groupsLayers) {
+        node = ExportLayerFolder(
+          name: layer.name,
+          opacity: resolveFolderOpacityAt(
+            folder: layer,
+            frameIndex: frameIndex,
+          ),
+          blendMode: layer.blendMode,
+          visible: layer.isVisible,
+          children: childrenOf.remove(layer.id) ?? const [],
+        );
+      } else if (layer.kind.filtersBelow) {
+        node = ExportLayerRow(
+          name: layer.name,
+          opacity: resolveLayerEffectiveOpacityAt(
+            layer: layer,
+            frameIndex: frameIndex,
+          ),
+          blendMode: layer.blendMode,
+          visible: layer.isVisible,
+          draw: () => drawn(_transparentRenderService),
+        );
+      } else {
+        node = switch (layerDrawingAt(
+          cut: cut,
+          layer: layer,
+          frameIndex: frameIndex,
+        )) {
+          null => null,
+          final drawing => ExportLayerRow(
+            name: layer.name,
+            opacity: drawing.render.opacity,
+            blendMode: drawing.render.blendMode,
+            visible: layer.isVisible,
+            draw: () => drawn(
+              _transparentRenderService,
+              laid: () => _laidAlone(task.cut, layer, drawing),
+            ),
+          ),
+        };
+      }
+      if (node != null) {
+        (childrenOf[layer.folderId] ??= []).add(node);
+      }
+    }
+    return [
+      if (renderService.background.a > 0 || paper != null)
+        ExportLayerRow(
+          name: AppText.strings.exBackground,
+          draw: () => drawn(renderService, paper: paper),
+        ),
+      ...?childrenOf[null],
+    ];
+  }
+
+  /// [layer]'s [drawing] by itself — whole, in no blend, its pose and its
+  /// effects on it: the picture a layered file lays by the row's own
+  /// strength and blend ([frameRows]). None where it exposes no cel here,
+  /// or one with nothing on it.
+  CutFrameCompositeLayer? _laidAlone(
+    Cut cut,
+    Layer layer,
+    ({Frame? frame, ResolvedRowRender render}) drawing,
+  ) {
+    final frame = drawing.frame;
+    final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
+    return surface == null
+        ? null
+        : CutFrameCompositeLayer(
+            surface: surface,
+            opacity: 1,
+            placement: drawing.render.placement,
+            effects: drawing.render.effects,
+          );
+  }
+
+  /// What a file that keeps [task]'s rows apart leaves out of them
+  /// ([keepsRowsApart]) — every adjustment row, whose filter no row of the
+  /// file holds, and every folder whose effects are on here — each said as
+  /// a PSD's reader says what it could not bring in. None where the file is
+  /// the picture alone.
+  ///
+  /// 🗣️I-117-Q2 (유저 2026-10-22): 「내보내기가 끝나면 무엇이 빠졌는지
+  /// 알린다(PSD 를 읽을 때 못 담은 것을 알리듯이)」.
+  List<ImportWarning> leftOutOfRows(ExportFrameTask task) => [
+    if (keepsRowsApart)
+      for (final layer in task.cut.layers)
+        if (layer.kind.filtersBelow)
+          unsupportedLayerKind(layer.name)
+        else if (layer.kind.groupsLayers &&
+            applyLayerFx &&
+            resolveFolderEffectsAt(
+              folder: layer,
+              frameIndex: task.frameIndex,
+            ).isNotEmpty)
+          layerEffectsNotApplied(layer.name),
+  ];
 
   /// A panel's picture — the storyboard's, the conte's: [cut] at
   /// [frameIndex] through its camera, or over the canvas [region] a conte
@@ -1149,23 +1320,20 @@ class ExportFrameRenderer {
       cameraFrameSize: cel.view.frameSize,
       overlayPass: overlayPass,
     );
-    ExportLayerRow laidOver(String name, CameraOverlayPass pass) => (
-      name: name,
-      opacity: 1,
-      blendMode: LayerBlendMode.normal,
-      draw: () => drawn(_transparentRenderService, overlayPass: pass),
-    );
+    ExportLayerRow laidOver(String name, CameraOverlayPass pass) =>
+        ExportLayerRow(
+          name: name,
+          draw: () => drawn(_transparentRenderService, overlayPass: pass),
+        );
     final strings = AppText.strings;
     return [
       if (renderService.background.a > 0)
-        (
+        ExportLayerRow(
           name: strings.exBackground,
-          opacity: 1,
-          blendMode: LayerBlendMode.normal,
           draw: () => drawn(renderService),
         ),
       for (final row in cel.rows)
-        (
+        ExportLayerRow(
           name: row.layer.name,
           opacity: row.layer.opacity,
           blendMode: row.layer.blendMode,

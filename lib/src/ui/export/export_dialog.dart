@@ -12,6 +12,7 @@ import '../../models/cut.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
+import '../../models/import/import_warning.dart' show ImportWarning;
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/camera_path.dart' show CameraPath;
@@ -41,6 +42,7 @@ import '../../models/envelope/cut_envelope_presets.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/guide_overlay.dart' show guideColorOf;
 import '../canvas/tiled_surface_compose.dart';
+import '../import/import_warnings_notice.dart';
 import '../conte/conte_picture_ink.dart' show contePicturesOverInkIn;
 import '../conte/conte_sheet_builder.dart';
 import '../conte/conte_words_in.dart';
@@ -91,6 +93,7 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../text/app_face.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart' show ImportWarningWords;
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/cursor_notice.dart';
@@ -229,6 +232,10 @@ class ExportDialogState extends State<ExportDialog> {
   bool _cancelRequested = false;
   String? _statusMessage;
 
+  /// What the files of the run under way left out of them — said when it
+  /// ends ([_sayWhatWasLeftOut]).
+  final List<ImportWarning> _leftOut = [];
+
   /// Where the end of the footer's bar stands for the run under way, in the
   /// bar's own pixels ([_barPixels]) — null when no run is. The bar is all
   /// that hears it ([_footerBetween]).
@@ -257,9 +264,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// until it has been.
   int _barPixels = 0;
 
-  // The preview's renderers key on (FX, ground): both change what a frame
-  // looks like (EX4).
-  final Map<(bool, int), ExportFrameRenderer> _previewRenderers = {};
+  // The preview's renderers key on (FX, ground, rows kept apart): each
+  // changes what a frame looks like (EX4; a PSD's — I-117-Q2).
+  final Map<(bool, int, bool), ExportFrameRenderer> _previewRenderers = {};
   late ExportFormatAvailability _availability;
   bool _ownsAvailability = false;
   int _sequencePosition = 0;
@@ -373,10 +380,11 @@ class ExportDialogState extends State<ExportDialog> {
   }) {
     final bgKey = _groundKeyOf(format);
     return _previewRenderers.putIfAbsent(
-      (applyLayerFx, bgKey),
+      (applyLayerFx, bgKey, format.keepsRowsApart),
       () => ExportFrameRenderer(
         session: _session,
         applyLayerFx: applyLayerFx,
+        keepsRowsApart: format.keepsRowsApart,
         background: bgKey == -1 ? const ui.Color(0x00000000) : ui.Color(bgKey),
       ),
     );
@@ -1443,7 +1451,12 @@ class ExportDialogState extends State<ExportDialog> {
     );
     return ExportPreviewDocument(
       subject: ExportTab.image,
-      look: (spec.sizeMode, spec.applyLayerFx, _groundKeyOf(spec.format)),
+      look: (
+        spec.sizeMode,
+        spec.applyLayerFx,
+        _groundKeyOf(spec.format),
+        spec.format.keepsRowsApart,
+      ),
       shape: ExportPreviewShape.runs,
       framesPerSecond: _previewRate,
       pageCount: math.max(1, cut.duration),
@@ -1840,8 +1853,31 @@ class ExportDialogState extends State<ExportDialog> {
       if (mounted) {
         _progress.value = null;
         setState(() => _isExporting = false);
+        _sayWhatWasLeftOut();
       }
     }
+  }
+
+  /// What the files of the run just ended left out of them ([_leftOut]),
+  /// in the notice a reader of a file says what it could not bring in —
+  /// 🗣️I-117-Q2 (유저 2026-10-22): 「내보내기가 끝나면 무엇이 빠졌는지
+  /// 알린다(PSD 를 읽을 때 못 담은 것을 알리듯이)」.
+  void _sayWhatWasLeftOut() {
+    if (_leftOut.isEmpty) {
+      return;
+    }
+    final warnings = [
+      for (final warning in _leftOut) warning.partsFor(AppText.language),
+    ];
+    _leftOut.clear();
+    unawaited(
+      showImportWarnings(
+        context,
+        windowKey: const ValueKey<String>('export-left-out-notice'),
+        message: AppText.strings.exLeftOutOfTheFile,
+        warnings: warnings,
+      ),
+    );
   }
 
   /// [run] where the destination sends it: into [_location] — its lone file
@@ -2213,6 +2249,7 @@ class ExportDialogState extends State<ExportDialog> {
         });
         _persist();
         _settleStanding();
+        _sayWhatWasLeftOut();
       }
     }
   }
@@ -2416,7 +2453,7 @@ class ExportDialogState extends State<ExportDialog> {
     // the PDF — about 170dpi on the printed sheet.
     final cameraSize = _session.camera.cameraFrameSize;
     if (spec.format == ExportConteFormat.pageImage) {
-      if (spec.image.stillFormat == ExportStillFormat.psd) {
+      if (spec.image.keepsRowsApart) {
         return _exportContePsd(
           pages,
           source,
@@ -2556,15 +2593,15 @@ class ExportDialogState extends State<ExportDialog> {
     final total = pages.length + 1;
     _reportProgress(0, total);
     for (var index = 0; index < pages.length; index += 1) {
-      final folder = (
+      final folder = ExportLayerFolder(
         name: _contePageToken(index),
         visible: index == 0,
-        rows: sheetStrataRows(
+        children: sheetStrataRows(
           SheetPaintLayer.values,
           (layers) => render(index, layers),
         ),
       );
-      if (!await document.addFolder(folder)) {
+      if (!await document.add([folder])) {
         return _exportDone(AppText.strings.exFileCount(0), skipped: 1);
       }
       if (_cancelRequested) {
@@ -2697,6 +2734,7 @@ class ExportDialogState extends State<ExportDialog> {
       name: fileName,
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
+      onLeftOut: _leftOut.addAll,
     ));
     return written
         ? AppText.strings.exDoneFile(fileName)
@@ -3576,10 +3614,8 @@ class ExportDialogState extends State<ExportDialog> {
       ),
       _formatAccordion(
         format: spec.format,
-        // 🗣️I-117-Q2 is open: what the Image tab's PSD keeps of the rows a
-        // PSD cannot hold (adjustments, a folder's effects). Its rows wait
-        // for the answer, so PSD stays off here until then.
-        capabilities: _stillOnlyCapabilities(layered: false),
+        // A frame's PSD keeps the cut's rows ([_exportCurrentFrame]).
+        capabilities: _stillOnlyCapabilities(),
         onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
       ),
       _sizeAccordion(
@@ -4045,7 +4081,7 @@ class ExportDialogState extends State<ExportDialog> {
       _formatAccordion(
         format: spec.format,
         // A cel's PSD keeps the rows it is made of ([_exportCels]).
-        capabilities: _stillOnlyCapabilities(layered: true),
+        capabilities: _stillOnlyCapabilities(),
         onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
       ),
       _sheetFormatAccordion(spec),
@@ -4334,15 +4370,12 @@ class ExportDialogState extends State<ExportDialog> {
   );
 
   /// The still-only format lineup the Image and Cels tabs share; the
-  /// Sequence tab's table carries video and is its own value. PSD is live
-  /// where the tab lays its picture out as the file's rows ([layered]).
-  ExportFormatCapabilities _stillOnlyCapabilities({required bool layered}) =>
-      ExportFormatCapabilities(
-        stills: ExportStillFormat.values,
-        stillEnabled: (format) =>
-            (layered || format != ExportStillFormat.psd) &&
-            _availability.stillAllowed(format),
-      );
+  /// Sequence tab's table carries video and is its own value. Both lay their
+  /// picture out as a PSD's rows (I-117).
+  ExportFormatCapabilities _stillOnlyCapabilities() => ExportFormatCapabilities(
+    stills: ExportStillFormat.values,
+    stillEnabled: _availability.stillAllowed,
+  );
 
   /// The "this cut or the whole film" accordion every tab offers.
   ///

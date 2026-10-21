@@ -205,6 +205,7 @@ void main() {
           name: 'frame.png',
           isCancelled: null,
           onProgress: (completed, total) => told.add((completed, total)),
+          onLeftOut: null,
         )),
       );
       expect(written, isTrue);
@@ -221,6 +222,7 @@ void main() {
           name: 'frame.png',
           isCancelled: () => true,
           onProgress: null,
+          onLeftOut: null,
         )),
       );
       expect(written, isFalse);
@@ -256,6 +258,7 @@ void main() {
               name: name,
               isCancelled: null,
               onProgress: null,
+              onLeftOut: null,
             ),
           );
           final codec = await ui.instantiateImageCodec(
