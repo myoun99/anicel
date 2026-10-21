@@ -184,6 +184,42 @@ void main() {
       expect(moved.laidBounds, isNull);
       expect(moved.tiles, isEmpty);
     });
+
+    // Card `a-resize-redo-moves-every-cel-on-the-ui-thread`: the file's
+    // pass keeps the tiles its rect touches, so only the rect's own bottom
+    // tells a drawn row below it from the file.
+    test('a move carries past the wall the file\'s rect to the row, and '
+        'not the drawn row below it', () {
+      // The file's rect ends two rows into its tile, and a drawn pixel
+      // sits on the first row below it, inside the wall: (-31, 6).
+      final shallow = DirtyRegion(
+        left: -44,
+        top: 0,
+        rightExclusive: 4,
+        bottomExclusive: 6,
+      );
+      final drawn = tileOf({
+        (1, 6): [5, 5, 5, 255],
+      });
+      final picture = BitmapSurface(
+        canvasSize: celTextTestCanvas,
+        tileSize: celTextTestTileSize,
+        tiles: {beyond: edge, TileCoord(x: -4, y: 0): drawn},
+        laidBounds: shallow,
+      );
+
+      // Three left puts it past the wall, one down on the rect's new
+      // bottom row — the first the file does not cover, in a tile it does.
+      final moved = translateBitmapSurface(
+        picture,
+        dx: -3,
+        dy: 1,
+        canvasSize: celTextTestCanvas,
+      );
+
+      expect(pixelAt(moved, -43 - 3, 1 + 1), pastTheWall);
+      expect(pixelAt(moved, -34, 7) ?? const [0, 0, 0, 0], [0, 0, 0, 0]);
+    });
   });
 
   group('a file\'s picture laid on the cel', () {
