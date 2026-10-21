@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/main.dart' show AnicelApp;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_preset.dart';
@@ -109,6 +110,23 @@ void main() {
       tester,
       HomePage(initialProject: createDefaultProject(), handedAtLaunch: [path]),
     );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('unsupported-file-notice')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the app hands its shell what it was opened with', (
+    tester,
+  ) async {
+    final path = '${spelled(folder.path)}/notes.txt';
+    File(path).writeAsStringSync('not a picture');
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(AnicelApp(handedAtLaunch: [path]));
     await tester.pumpAndSettle();
 
     expect(
