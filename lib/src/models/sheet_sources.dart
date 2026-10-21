@@ -46,21 +46,6 @@ class SheetSources {
       spans: transitionSpans,
     );
     final drawnFrameCount = handles.drawnFrames(playbackFrameCount);
-    // SE rows are track-owned: window their global timelines to this cut
-    // (spill-in synthesizes a display block). Cut-owned SE layers remain
-    // for legacy fixtures.
-    //
-    // 🗣️I-73-ol-sheet-columns: the window opens where the cut's OWN frame 0
-    // stands — its conte start less the のりしろ an O.L arriving into it
-    // asks — as the cut view's does (`TrackSeDisplay.trackSeWindow`). The
-    // sheet's rows are the cut's own frames, its cel columns' and its
-    // sounds' alike. ↩️It opened at the cut's place, so in a cut an O.L
-    // arrives into a sound printed the のりしろ above the picture it is
-    // heard with (🧪10-09: the picture's head on row 12, the sound's on 6).
-    final seWindow = TrackSeWindow(
-      cutStartFrame: cutStartFrame - handles.head,
-      cutDurationFrames: handles.head + cut.duration,
-    );
     // The display window is open-ended on the right now (SE globalization
     // — the timeline's runway shows the neighbours' sounds), but a printed
     // page is no runway: entries starting at or past the line the cut is
@@ -87,23 +72,50 @@ class SheetSources {
           if (layerTakesSheetCelColumn(layer)) layer,
       ],
       actionBooks: sheetBooksOf(_actionBlockRows(cut.layers)),
-      seLayers: [
-        for (final layer in cut.layers)
-          if (layerPrintsSheetLines(layer))
-            (layer: layer, spillInLeadFrames: null),
-        for (final layer in trackSeLayers)
-          if (layerPrintsSheetLines(layer))
-            (
-              layer: clipToSheet(seWindow.displayLayer(layer)),
-              spillInLeadFrames: seWindow.spillInLeadFrames(layer),
-            ),
-      ],
+      seLayers: _seRowsOf(
+        cut,
+        trackSeLayers,
+        window: TrackSeWindow(
+          cutStartFrame: cutStartFrame - handles.head,
+          cutDurationFrames: handles.head + cut.duration,
+        ),
+        clipToSheet: clipToSheet,
+      ),
       instructionLayers: [
         for (final layer in cut.layers)
           if (layer.kind == LayerKind.instruction && layer.onTimesheet) layer,
       ],
     );
   }
+
+  /// The SE rows the sheet prints. SE rows are track-owned: their global
+  /// timelines are windowed to this cut (spill-in synthesizes a display
+  /// block) and clipped as the sheet is ([clipToSheet]). Cut-owned SE
+  /// layers remain for legacy fixtures.
+  ///
+  /// 🗣️I-73-ol-sheet-columns: the [window] opens where the cut's OWN frame
+  /// 0 stands — its conte start less the のりしろ an O.L arriving into it
+  /// asks — as the cut view's does (`TrackSeDisplay.trackSeWindow`). The
+  /// sheet's rows are the cut's own frames, its cel columns' and its
+  /// sounds' alike. ↩️It opened at the cut's place, so in a cut an O.L
+  /// arrives into a sound printed the のりしろ above the picture it is
+  /// heard with (🧪10-09: the picture's head on row 12, the sound's on 6).
+  static List<({Layer layer, int? spillInLeadFrames})> _seRowsOf(
+    Cut cut,
+    List<Layer> trackSeLayers, {
+    required TrackSeWindow window,
+    required Layer Function(Layer displayClone) clipToSheet,
+  }) => [
+    for (final layer in cut.layers)
+      if (layerPrintsSheetLines(layer))
+        (layer: layer, spillInLeadFrames: null),
+    for (final layer in trackSeLayers)
+      if (layerPrintsSheetLines(layer))
+        (
+          layer: clipToSheet(window.displayLayer(layer)),
+          spillInLeadFrames: window.spillInLeadFrames(layer),
+        ),
+  ];
 
   /// The rows the ACTION block's books lie among: every row that takes no
   /// cel column, and the ACTION block's own cel rows. The CELL block's rows
