@@ -48,6 +48,7 @@ void main() {
   });
 
   late ViewHand<StrokeLander> landers;
+  late ViewHand<ShapeShow> shapes;
   late List<BrushStrokeCommitData> commits;
   late List<bool> strokeActive;
 
@@ -68,6 +69,7 @@ void main() {
       inputSettings: BrushEditCanvasInputSettings.new,
       onSourceStrokeCommitted: commits.add,
       strokeLander: landers,
+      shapeShow: shapes,
       onActiveStrokeChanged: strokeActive.add,
     );
     await tester.pumpWidget(
@@ -92,6 +94,7 @@ void main() {
 
   setUp(() {
     landers = ViewHand();
+    shapes = ViewHand();
     commits = <BrushStrokeCommitData>[];
     strokeActive = <bool>[];
   });
@@ -133,6 +136,24 @@ void main() {
       isFalse,
       reason: 'it is the new view\'s',
     );
+  });
+
+  // The shape tool's hand goes up and down beside the lander: the view
+  // that came up last keeps it, and a gone view leaves none — a show
+  // whose view is gone would lay a shape into tiles already given back.
+  testWidgets('a canvas holds up its shape show the same way', (
+    tester,
+  ) async {
+    await pumpInk(tester);
+    final first = shapes.now;
+    expect(first, isNotNull, reason: 'a mounted canvas shows the shape');
+
+    await pumpInk(tester, wrapped: true);
+    expect(shapes.now, isNotNull, reason: 'the old goodbye came last');
+    expect(identical(shapes.now, first), isFalse);
+
+    await pumpInk(tester, mounted: false);
+    expect(shapes.now, isNull, reason: 'a gone canvas puts it down');
   });
 
   testWidgets('🚨★★★and the published lander really lands the stroke — the '
