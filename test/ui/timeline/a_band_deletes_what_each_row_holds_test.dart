@@ -561,12 +561,11 @@ void main() {
             );
             await tester.pumpAndSettle();
           }
+          // The add shows the row's lanes, its header open (F-396).
           final toggle = find.named(
             '${vertical ? 'xsheet' : 'timeline'}-lane-toggle-${layer.id.value}',
           );
           await tester.ensureVisible(toggle);
-          await tester.pumpAndSettle();
-          await tester.tap(toggle);
           await tester.pumpAndSettle();
           final header = find.byKey(
             ValueKey<String>(
