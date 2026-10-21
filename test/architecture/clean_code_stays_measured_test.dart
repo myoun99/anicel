@@ -618,7 +618,16 @@ void main() {
   /// its child's key as `stripAlong` does. 🔬`clean_code_diff` against
   /// master (`41c4dfa72`, at 410) named those two added and nothing gone.
   /// ⛔Not split to fit: each parameter is one of the widget it turns.
-  const wideSignatures = 412;
+  /// ⚠️412 → 413 on 2026-10-22, named as the rule above asks (F-176-Q7 —
+  /// the brush cursor is the tip a hovering pen would lay down).
+  /// `brushInputFactor` (five) takes the sources the reading HAS: a pen
+  /// that has not touched yet has only how it is held, so its pressure and
+  /// speed rows are skipped as a source the device cannot answer is.
+  /// ⛔Not bundled with `random`: the throw is the stroke's, which sources
+  /// a reading has is the reading's — two questions. 🔬`clean_code_diff`
+  /// against the lane's base (`fdbdd1a3d`, at 408) named that one added and
+  /// nothing gone; the lane laid over master at 412, 413.
+  const wideSignatures = 413;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
