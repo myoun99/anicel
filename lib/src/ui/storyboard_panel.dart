@@ -576,11 +576,13 @@ typedef StoryboardMediaDropAccepts =
     bool Function(TimelineRowAddress row, int globalFrame, String path);
 
 /// The unworked-block tint's source for the conte rows, which cross every
-/// cut (F-357): whether one cut's cel holds a picture, and the signal that
-/// an answer may have moved — the timeline's own
+/// cut (F-357): whether one cut's cel holds a picture, whether it could not
+/// be read (its block red — frame-picture-indicator-Q1 b), and the signal
+/// that an answer may have moved — the timeline's own
 /// ([TimelineCelContentSource]), asked of the cut a frame stands in.
 typedef ConteCelContent = ({
   bool Function(Cut cut, LayerId row, FrameId cel) holdsAPicture,
+  bool Function(Cut cut, LayerId row, FrameId cel) cannotBeRead,
   ValueListenable<int> revision,
 });
 

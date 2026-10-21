@@ -221,10 +221,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   // committed seek repaints those cells instead of rebuilding the panel.
 
   /// F-357: the unworked-block tint's fact for the conte row, which crosses
-  /// every cut — and its event, bound once like the timeline host's
+  /// every cut, and the red of a cel that cannot be read (as the timeline's
+  /// rows wear it) — and their event, bound once like the timeline host's
   /// (a fresh record per build would re-subscribe the row's painter).
   late final ConteCelContent _conteCelContent = (
     holdsAPicture: _session.layerStack.celHoldsAPicture,
+    cannotBeRead: _session.layerStack.celCannotBeRead,
     revision: _session.layerStack.celTintRevision,
   );
 

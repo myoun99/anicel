@@ -442,13 +442,32 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     if (kept != null && kept.content == content) {
       return kept.source;
     }
+    // The cel the block at [frame] shows and the cut it lies in — null on a
+    // cell no block covers, where neither the grey nor the red is.
+    ({Cut cut, LayerId layer, FrameId cel})? celAt(Layer row, int frame) {
+      final cel = coveringDrawingBlockAt(row.timeline, frame)?.frameId;
+      final strip = _stripAt(frame);
+      return cel == null || strip == null
+          ? null
+          : (cut: strip.entry.cut, layer: strip.layer.id, cel: cel);
+    }
+
     final source = TimelineCelContentSource(
-      hasContent: (row, frame) {
-        final cel = coveringDrawingBlockAt(row.timeline, frame)?.frameId;
-        final strip = _stripAt(frame);
-        return cel == null ||
-            strip == null ||
-            content.holdsAPicture(strip.entry.cut, strip.layer.id, cel);
+      hasContent: (row, frame) => switch (celAt(row, frame)) {
+        null => true,
+        (:final cut, :final layer, :final cel) => content.holdsAPicture(
+          cut,
+          layer,
+          cel,
+        ),
+      },
+      cannotRead: (row, frame) => switch (celAt(row, frame)) {
+        null => false,
+        (:final cut, :final layer, :final cel) => content.cannotBeRead(
+          cut,
+          layer,
+          cel,
+        ),
       },
       revision: content.revision,
     );

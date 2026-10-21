@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard/storyboard_rows_channel.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineUnreadableCelPaperColor;
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/cel_text_fixture.dart' show drawingOf, tileFilledWith;
@@ -72,6 +74,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1400, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final drawn = <(CutId, LayerId, FrameId)>{p2, q1};
+    final unreadable = <(CutId, LayerId, FrameId)>{};
     final asked = <(CutId, LayerId, FrameId)>[];
     final revision = ValueNotifier<int>(0);
     addTearDown(revision.dispose);
@@ -80,6 +83,8 @@ void main() {
         asked.add((cut.id, row, cel));
         return drawn.contains((cut.id, row, cel));
       },
+      cannotBeRead: (Cut cut, LayerId row, FrameId cel) =>
+          unreadable.contains((cut.id, row, cel)),
       revision: revision,
     );
     final channel = StoryboardRowsChannel();
@@ -157,6 +162,21 @@ void main() {
       expect(painter.celContentRevision, isNot(before));
       expect(has(1), isTrue);
       expect(paper(1), paper(5));
+
+      // frame-picture-indicator-Q1 b: a cel that cannot be read is red, as
+      // the timeline's block is — asked of its own cut, as the grey is.
+      bool red(int frame) =>
+          painter.celCannotBeReadForLayer!(painter.layer, frame);
+      expect(red(16), isFalse);
+      unreadable.add(q1);
+      revision.value += 1;
+      expect(red(16), isTrue, reason: 'q1 cannot be read');
+      expect(paper(16), timelineUnreadableCelPaperColor);
+      expect(red(5), isFalse, reason: 'p2 can');
+      expect(red(13), isFalse, reason: 'a gap has no block to redden');
+      unreadable.remove(q1);
+      revision.value += 1;
+      expect(paper(16), isNot(timelineUnreadableCelPaperColor));
     }
   });
 
@@ -211,5 +231,14 @@ void main() {
     );
     expect(drawnAtTheStart(), isTrue);
     expect(painter.celContentRevision, isNot(before));
+
+    // And the session's red: a cel noted unreadable reddens its block.
+    bool redAtTheStart() =>
+        painter.celCannotBeReadForLayer!(painter.layer, 0);
+    expect(redAtTheStart(), isFalse);
+    session.renderCaches.layerFrameImageCache.unreadable.note(
+      session.brushFrameKeyForCut(cut, conte.id, cel),
+    );
+    expect(redAtTheStart(), isTrue);
   });
 }

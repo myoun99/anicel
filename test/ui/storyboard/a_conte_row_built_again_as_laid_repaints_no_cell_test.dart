@@ -26,6 +26,7 @@ void main() {
     addTearDown(revision.dispose);
     final ConteCelContent content = (
       holdsAPicture: (cut, row, cel) => false,
+      cannotBeRead: (cut, row, cel) => false,
       revision: revision,
     );
     final project = conteTrackProject();
