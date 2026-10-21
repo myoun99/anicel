@@ -496,6 +496,9 @@ void main() {
     // them back.
     'lib/src/ui/timeline/timeline_grid_tile_store.dart': 1,
     'test/ui/timeline/timeline_grid_tile_store_test.dart': 1,
+    // A calibration strip's texel counts, laid one way or the other for the
+    // engine's halving (0e4e87ea5) — ints, and no widget's axis.
+    'lib/src/ui/canvas/level_image.dart': 1,
     // A line on a raster, by its pixel index — no widget's axis.
     'test/services/fill_gap_close_test.dart': 1,
   };
