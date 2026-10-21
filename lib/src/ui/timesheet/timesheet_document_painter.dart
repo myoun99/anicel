@@ -662,7 +662,7 @@ class TimesheetDocumentPainter extends CustomPainter
   final CutId? cutId;
 
   bool _draws(SheetPaintLayer layer) =>
-      layers == null || layers!.contains(layer);
+      drawsSheetLayer(layers, layer);
 
   bool get _drawPaper => _draws(SheetPaintLayer.paper);
   bool get _drawForm => _draws(SheetPaintLayer.form);

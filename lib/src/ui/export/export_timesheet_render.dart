@@ -51,7 +51,9 @@ class ExportTimesheetPageTask {
 /// export IS the panel's picture, no second sheet layout to disagree with
 /// it — the saved [ink] included: the windows it shows through (the
 /// panel's own walk), each window's baked raster and the photos laid under
-/// it (I-97), whose files are the ones it asks [images] for.
+/// it (I-97), whose files are the ones it asks [images] for. [layers]
+/// draws those strata alone — a Photoshop document's rows (I-117); null
+/// draws the page whole.
 ///
 /// ↩️A scale multiplied the page's size in the FORM'S UNITS, which was the
 /// paper while a unit was a pixel of it. F-294 gave the paper pixels of its
@@ -73,6 +75,7 @@ Future<ui.Image> renderTimesheetPageImage({
   })?
   ink,
   SheetImageRun? images,
+  Set<SheetPaintLayer>? layers,
 }) {
   final page = layout.pageRect(pageIndex);
   final paper = layout.paperPixelSize;
@@ -83,12 +86,12 @@ Future<ui.Image> renderTimesheetPageImage({
   );
   // The panel's strata, in the panel's order ([SheetStratum]), which
   // differ in nothing but the strata.
-  TimesheetDocumentPainter painterOf(SheetStratum stratum) =>
+  TimesheetDocumentPainter painterOf(Set<SheetPaintLayer> drawn) =>
       TimesheetDocumentPainter(
         document: document,
         layout: layout,
         face: face,
-        layers: stratum.layers,
+        layers: drawn,
         words: words,
         ink: ink?.windows ?? const [],
         inkImageFor: ink?.rasterFor,
@@ -103,7 +106,13 @@ Future<ui.Image> renderTimesheetPageImage({
     canvas.translate(-page.left, -page.top);
     canvas.clipRect(page);
     for (final stratum in SheetStratum.values) {
-      painterOf(stratum).paint(canvas, layout.documentSize);
+      final drawn = {
+        for (final layer in stratum.layers)
+          if (drawsSheetLayer(layers, layer)) layer,
+      };
+      if (drawn.isNotEmpty) {
+        painterOf(drawn).paint(canvas, layout.documentSize);
+      }
     }
   }
 

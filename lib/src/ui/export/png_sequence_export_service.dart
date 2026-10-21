@@ -27,7 +27,8 @@ class PngSequenceExportService {
 
   /// [encoderFor] names the encoder of each file whose bytes are not the
   /// default's — the engine PNG + the sRGB tag — (JPG, a PNG without alpha,
-  /// later PSD). It is asked a FILE: one run writes files of more than one
+  /// the stills the engine has no writer for, a PSD of its picture's rows).
+  /// It is asked a FILE: one run writes files of more than one
   /// format (the Cels tab's cels beside its sheets and envelopes). A null
   /// encoder is the default; a null encode RESULT skips the file like a null
   /// render does.

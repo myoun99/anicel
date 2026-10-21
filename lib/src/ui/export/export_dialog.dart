@@ -34,6 +34,7 @@ import '../../models/conte/conte_page_marks.dart'
     show contePictureOf, contePictureRenderWidth;
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/sheet_marks.dart' show SheetPictureKey;
+import '../../models/sheet_paint_layer.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../envelope/cut_envelope_ink.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
@@ -74,6 +75,7 @@ import 'export_queue_column.dart';
 import 'export_settings_modules.dart';
 import 'export_timesheet_render.dart';
 import 'png_sequence_export_service.dart';
+import 'sheet_strata_rows.dart';
 import 'still_image_encoders.dart';
 import 'video_export_service.dart';
 import '../../models/cut_id.dart';
@@ -973,7 +975,7 @@ class ExportDialogState extends State<ExportDialog> {
     final name = _typedName(ExportTab.conte);
     return pageCount == 1
         ? '$name.$extension'
-        : '${name}_p${index + 1}.$extension';
+        : '${name}_${_contePageToken(index)}.$extension';
   }
 
   /// The cut envelope [sheet] is, laid out on the paper the tab's format
@@ -1009,12 +1011,21 @@ class ExportDialogState extends State<ExportDialog> {
   ///
   /// The ink is read as a LOOK, like every render's cel ([CelRead.look]):
   /// a sheet nobody has open keeps its ink parked.
-  Future<_SheetInkRun> _renderSheetInk(Iterable<BrushFrameKey> keys) async {
+  ///
+  /// None is read for a render whose [layers] draw no ink — a Photoshop
+  /// document's other rows (I-117).
+  Future<_SheetInkRun> _renderSheetInk(
+    Iterable<BrushFrameKey> keys, {
+    Set<SheetPaintLayer>? layers,
+  }) async {
     final caches = _session.renderCaches;
     final ink = (
       rasters: <BrushFrameKey, ui.Image>{},
       photos: <BrushFrameKey, List<CelPhoto>>{},
     );
+    if (!drawsSheetLayer(layers, SheetPaintLayer.ink)) {
+      return ink;
+    }
     final read = <BrushFrameKey>{};
     for (final key in keys) {
       if (!read.add(key)) {
@@ -1026,6 +1037,7 @@ class ExportDialogState extends State<ExportDialog> {
       if (surface == null) {
         continue;
       }
+      _sheetPartsMade += 1;
       final image = await composeTiledSurfaceImage(
         surface,
         reuse: BitmapTileImageCache.instance,
@@ -1050,8 +1062,9 @@ class ExportDialogState extends State<ExportDialog> {
         readSheetImage(_session.projectFile.holdMediaBytes, path, width),
   );
 
-  /// One envelope image — every stratum of the sheet — with the ink
-  /// composed and freed around it.
+  /// One envelope image — every stratum of the sheet, or the [layers] a
+  /// Photoshop document's row is (I-117) — with the ink composed and freed
+  /// around it where it is drawn.
   ///
   /// ⛔THE EXPORT AND THE PREVIEW RENDER THROUGH HERE. They differ only in
   /// [outputSize] (the preview fits its pane); rendered separately, the
@@ -1060,11 +1073,12 @@ class ExportDialogState extends State<ExportDialog> {
     ExportEnvelopeTask task, {
     required TextStyle face,
     ({int width, int height})? outputSize,
+    Set<SheetPaintLayer>? layers,
   }) async {
     final ink = await _renderSheetInk([
       for (final window in envelopeInkWindows(task.layout, task.owner.id))
         window.key,
-    ]);
+    ], layers: layers);
     final images = _sheetImageRun();
     try {
       return await renderCutEnvelopeImage(
@@ -1076,6 +1090,7 @@ class ExportDialogState extends State<ExportDialog> {
         inkImageFor: (key) => ink.rasters[key],
         inkPhotosFor: (key) => ink.photos[key] ?? const [],
         outputSize: outputSize,
+        layers: layers,
       );
     } finally {
       images.dispose();
@@ -1086,7 +1101,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// One timesheet page with its saved ink composed and freed around it —
   /// the preview's and the page-image export's one routine; they differ
   /// only in [outputSize] (the preview fits its pane, the file is the page
-  /// at its paper's own pixels).
+  /// at its paper's own pixels). [layers] draws a Photoshop document's row
+  /// (I-117), with the ink composed only where it is drawn.
   ///
   /// The ink is the page's windows of the panel's own walk
   /// ([timesheetInkWindows]) — until 2026-09-26 the timesheet exported no
@@ -1095,6 +1111,7 @@ class ExportDialogState extends State<ExportDialog> {
     ExportTimesheetPageTask task, {
     required TextStyle face,
     CanvasSize? outputSize,
+    Set<SheetPaintLayer>? layers,
   }) async {
     final (_, document, layout) = _sheetDocFor(task.cut);
     final page = layout.pageRect(task.pageIndex);
@@ -1105,7 +1122,9 @@ class ExportDialogState extends State<ExportDialog> {
       ))
         if (window.documentRect.overlaps(page)) window.mark,
     ];
-    final ink = await _renderSheetInk([for (final w in windows) w.key]);
+    final ink = await _renderSheetInk([
+      for (final w in windows) w.key,
+    ], layers: layers);
     final images = _sheetImageRun();
     try {
       return await renderTimesheetPageImage(
@@ -1121,6 +1140,7 @@ class ExportDialogState extends State<ExportDialog> {
           photosFor: (key) => ink.photos[key] ?? const [],
         ),
         images: images,
+        layers: layers,
       );
     } finally {
       images.dispose();
@@ -1131,11 +1151,13 @@ class ExportDialogState extends State<ExportDialog> {
   /// The conte ink for [pages] (R5): the page plane plus each cell's row
   /// band — the windows the page prints them through ([conteInkMarks]),
   /// which this used to walk once more for itself. Caller disposes it.
-  Future<_SheetInkRun> _renderConteInk(List<ContePageLayout> pages) =>
-      _renderSheetInk([
-        for (final page in pages)
-          for (final ink in conteInkMarks(page, page.metrics)) ink.key,
-      ]);
+  Future<_SheetInkRun> _renderConteInk(
+    List<ContePageLayout> pages, {
+    Set<SheetPaintLayer>? layers,
+  }) => _renderSheetInk([
+    for (final page in pages)
+      for (final ink in conteInkMarks(page, page.metrics)) ink.key,
+  ], layers: layers);
 
   Cut? _conteCutById(String cutId) {
     for (final track in _session.repository.requireProject().tracks) {
@@ -1179,6 +1201,7 @@ class ExportDialogState extends State<ExportDialog> {
         if (cut == null) {
           continue;
         }
+        _sheetPartsMade += 1;
         await take(
           key,
           await renderer.renderPicture(
@@ -1198,15 +1221,20 @@ class ExportDialogState extends State<ExportDialog> {
   /// page-image export's one routine; they differ only in the values they
   /// pass ([pictureWidth], and [outputSize] for a fitted preview against
   /// [scale] for a run — both already [renderContePageImage]'s own).
+  /// [layers] draws a Photoshop document's row (I-117), with the pictures
+  /// and the ink made only where they are drawn.
   Future<ui.Image> _renderContePage(
     ContePageLayout page,
     ConteSheetSource source, {
     required int pictureWidth,
     CanvasSize? outputSize,
     required ConteWords words,
+    Set<SheetPaintLayer>? layers,
   }) async {
-    final pictures = await _renderContePictures([page], width: pictureWidth);
-    final ink = await _renderConteInk([page]);
+    final pictures = drawsSheetLayer(layers, SheetPaintLayer.picture)
+        ? await _renderContePictures([page], width: pictureWidth)
+        : <SheetPictureKey, ui.Image>{};
+    final ink = await _renderConteInk([page], layers: layers);
     final images = _sheetImageRun();
     try {
       return await renderContePageImage(
@@ -1219,6 +1247,7 @@ class ExportDialogState extends State<ExportDialog> {
         picturesOverInk: contePicturesOverInkIn(_session, page),
         outputSize: outputSize,
         words: words,
+        layers: layers,
       );
     } finally {
       for (final image in pictures.values) {
@@ -1281,6 +1310,14 @@ class ExportDialogState extends State<ExportDialog> {
   @visibleForTesting
   CanvasSize? get debugContePictureSize => _contePictureSize;
   CanvasSize? _contePictureSize;
+
+  /// Test seam: how many of a sheet's costly parts — a conte cell's
+  /// picture, a window of saved ink — the runs have made, which no file
+  /// can tell a test: a Photoshop document's row makes only the parts it
+  /// draws (I-117).
+  @visibleForTesting
+  int get debugSheetPartsMade => _sheetPartsMade;
+  int _sheetPartsMade = 0;
 
   String _sequenceFileNameFor(int index) {
     final naming = _specs.sequence.naming;
@@ -1638,12 +1675,12 @@ class ExportDialogState extends State<ExportDialog> {
           return (name: null, absent: false);
         }
         return (
-          name: _specs.conte.format == ExportConteFormat.pdf
-              ? _firstOutputFile().name
-              : _contePageFileName(
-                  _contePosition.clamp(0, pages.length - 1),
-                  pages.length,
-                ),
+          name:
+              _loneFileName() ??
+              _contePageFileName(
+                _contePosition.clamp(0, pages.length - 1),
+                pages.length,
+              ),
           absent: false,
         );
     }
@@ -1763,7 +1800,14 @@ class ExportDialogState extends State<ExportDialog> {
   String _joinLocation(String name) =>
       _placedFile ?? '$_outputDirectory${Platform.pathSeparator}$name';
 
+  /// Test seam: hears every step a run reports, which the bar — counted in
+  /// its own pixels, and laid out only when a frame is drawn — cannot show
+  /// a test while the run is under way.
+  @visibleForTesting
+  void Function(int completed, int total)? debugOnProgress;
+
   void _reportProgress(int completed, int total) {
+    debugOnProgress?.call(completed, total);
     if (mounted) {
       _progress.value = (
         end: total <= 0 ? 0 : completed * _barPixels ~/ total,
@@ -2040,8 +2084,10 @@ class ExportDialogState extends State<ExportDialog> {
       ExportTab.sequence,
       _specs.sequence.format.container.fileExtension,
     ),
-    ExportTab.conte when _specs.conte.format == ExportConteFormat.pdf =>
-      _singleFileName(ExportTab.conte, 'pdf'),
+    ExportTab.conte => switch (_specs.conte.documentExtension) {
+      final extension? => _singleFileName(ExportTab.conte, extension),
+      null => null,
+    },
     _ => null,
   };
 
@@ -2371,6 +2417,14 @@ class ExportDialogState extends State<ExportDialog> {
     // the PDF — about 170dpi on the printed sheet.
     final cameraSize = _session.camera.cameraFrameSize;
     if (spec.format == ExportConteFormat.pageImage) {
+      if (spec.image.stillFormat == ExportStillFormat.psd) {
+        return _exportContePsd(
+          pages,
+          source,
+          pictureWidth: cameraSize.width,
+          words: words,
+        );
+      }
       // Streamed like every image export: ONE page's cell pictures live
       // at a time (a cut spanning two pages re-renders once per page —
       // cheaper than holding the whole film's cells).
@@ -2470,7 +2524,72 @@ class ExportDialogState extends State<ExportDialog> {
     _reportProgress(pages.length + 1, pages.length + 1);
     // Named as written: the sentence once said 'conte.pdf' whatever was
     // typed, true only while the field came filled with 'conte' (F-404).
-    return AppText.strings.exDoneContePdf(
+    return AppText.strings.exDoneConteDocument(
+      fileNameOfPath(file.path),
+      AppText.strings.exPageCount(pages.length),
+    );
+  }
+
+  /// The conte's pages as ONE Photoshop document — 🗣️I-117 (유저
+  /// 2026-10-21): 「콘티용지탭 psd 출력시 페이지별로 하나의 그룹으로
+  /// 묶어서 … 한 파일안에 여러 페이지 그룹」: a folder a page, the first
+  /// on top, each holding its page's strata, over the first page whole.
+  /// Laid a page at a time, as the PDF is, and stopped between pages.
+  Future<String> _exportContePsd(
+    List<ContePageLayout> pages,
+    ConteSheetSource source, {
+    required int pictureWidth,
+    required ConteWords words,
+  }) async {
+    Future<ui.Image> render(int index, [Set<SheetPaintLayer>? layers]) =>
+        _renderContePage(
+          pages[index],
+          source,
+          pictureWidth: pictureWidth,
+          words: words,
+          layers: layers,
+        );
+    final paper = pages.first.metrics.paperPixelSize;
+    final document = LayeredPsd(width: paper.width, height: paper.height);
+    final total = pages.length + 1;
+    _reportProgress(0, total);
+    // Bottom-up: the last page is laid first, so the first lies on top.
+    for (var laid = 0; laid < pages.length; laid += 1) {
+      final index = pages.length - 1 - laid;
+      final folder = (
+        name: _contePageToken(index),
+        rows: sheetStrataRows(
+          SheetPaintLayer.values,
+          (layers) => render(index, layers),
+        ),
+      );
+      if (!await document.addFolder(folder)) {
+        return _exportDone(AppText.strings.exFileCount(0), skipped: 1);
+      }
+      if (_cancelRequested) {
+        return AppText.strings.exCancelled;
+      }
+      _reportProgress(laid + 1, total);
+    }
+    final composite = await render(0);
+    final List<int>? bytes;
+    try {
+      bytes = await document.encode(composite, _specs.conte.image);
+    } finally {
+      composite.dispose();
+    }
+    if (bytes == null) {
+      return _exportDone(AppText.strings.exFileCount(0), skipped: 1);
+    }
+    final file = File(
+      _joinLocation(
+        _singleFileName(ExportTab.conte, ExportStillFormat.psd.fileExtension),
+      ),
+    );
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes, flush: true);
+    _reportProgress(total, total);
+    return AppText.strings.exDoneConteDocument(
       fileNameOfPath(file.path),
       AppText.strings.exPageCount(pages.length),
     );
@@ -2623,30 +2742,48 @@ class ExportDialogState extends State<ExportDialog> {
           ),
           // A cel's PSD is a document of the rows its picture lays into
           // one (I-117), drawn after that picture.
-          encoder: spec.format.stillFormat == ExportStillFormat.psd
-              ? (picture) => encodePsd(
-                  picture,
-                  spec.format,
-                  renderer.celGroupRows(
-                    task,
-                    spec.sizeMode,
-                    guideColor: guideInk,
-                  ),
-                )
-              : stillEncoderFor(spec.format),
+          encoder: layeredEncoderFor(
+            spec.format,
+            () => renderer.celGroupRows(
+              task,
+              spec.sizeMode,
+              guideColor: guideInk,
+            ),
+          ),
         ),
+      // A sheet's PSD is a document of its strata (I-117).
       for (final sheet in plan.writtenDocuments)
         if (sheet.kind == ExportCelKind.envelope)
           (
             fileName: sheet.fileName,
             render: () => _renderEnvelope(_envelopeTask(sheet), face: face),
-            encoder: stillEncoderFor(spec.envelopeImage),
+            encoder: layeredEncoderFor(
+              spec.envelopeImage,
+              () => sheetStrataRows(
+                paperSheetStrata,
+                (layers) => _renderEnvelope(
+                  _envelopeTask(sheet),
+                  face: face,
+                  layers: layers,
+                ),
+              ),
+            ),
           )
         else if (!isDigitalSheet(sheet))
           (
             fileName: sheet.fileName,
             render: () => _renderSheetPage(_sheetPageTask(sheet), face: face),
-            encoder: stillEncoderFor(spec.sheetImage),
+            encoder: layeredEncoderFor(
+              spec.sheetImage,
+              () => sheetStrataRows(
+                paperSheetStrata,
+                (layers) => _renderSheetPage(
+                  _sheetPageTask(sheet),
+                  face: face,
+                  layers: layers,
+                ),
+              ),
+            ),
           ),
     ];
     return _runImageExport(
@@ -3978,6 +4115,7 @@ class ExportDialogState extends State<ExportDialog> {
         keyPrefix: 'export-tsformat',
         label: AppText.strings.exFormat,
         image: spec.sheetImage,
+        stillEnabled: _availability.stillAllowed,
         pictured: pictured,
         onImageChanged: _isExporting
             ? null
@@ -4021,6 +4159,7 @@ class ExportDialogState extends State<ExportDialog> {
             keyPrefix: 'export-envelope-format',
             label: strings.exImage,
             image: spec.envelopeImage,
+            stillEnabled: _availability.stillAllowed,
             onImageChanged: _isExporting
                 ? null
                 : (image) => _updateSpec(spec.copyWith(envelopeImage: image)),
@@ -4080,6 +4219,7 @@ class ExportDialogState extends State<ExportDialog> {
           keyPrefix: 'export-conteformat',
           label: AppText.strings.exFormat,
           image: spec.image,
+          stillEnabled: _availability.stillAllowed,
           pictured: pictured,
           onImageChanged: _isExporting
               ? null
@@ -4339,3 +4479,8 @@ void _disposeSheetInk(_SheetInkRun ink) {
     image.dispose();
   }
 }
+
+/// What tells the conte page at [index] from the book's others: its file's
+/// suffix where each page is a file, its folder where they are one
+/// document (I-117).
+String _contePageToken(int index) => 'p${index + 1}';

@@ -101,7 +101,7 @@ class CutEnvelopePainter extends CustomPainter
   final Set<BrushFrameKey> liveInkKeys;
 
   bool _draws(SheetPaintLayer layer) =>
-      layers == null || layers!.contains(layer);
+      drawsSheetLayer(layers, layer);
 
   @override
   void paint(Canvas canvas, Size size) {

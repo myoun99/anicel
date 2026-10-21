@@ -36,11 +36,15 @@ class ExportEnvelopeTask {
 /// paper, its form, what is filled in and what is written over it, and the
 /// photos laid under the writing ([inkPhotosFor] — I-97). The media images
 /// it prints — the logo, a 도장, the photos' files — are the ones it asks
-/// [images] for.
+/// [images] for. [layers] draws those strata alone — a Photoshop
+/// document's rows ([SheetPaintLayer]); null draws the sheet whole.
 ///
 /// 🪦It could draw a chosen few of the strata, a call a layer — how the
 /// export's 「레이어마다 한 장」 shipped. 유저 2026-10-05: 「레이어 항목
 /// 버튼? 용지 서식 내용 선화 고르는거 싹 다 필요없어보이니 삭제」.
+/// ↩️I-117 (유저 2026-10-21) brought the strata back as the rows of ONE
+/// file — 「컷봉투도 마찬가지. 밑 흰색 용지, 서식, 텍스트들, 잉크」 — never
+/// as a file each, and with no buttons to pick them.
 Future<ui.Image> renderCutEnvelopeImage({
   required CutEnvelopeLayout layout,
   required CutEnvelopeSource source,
@@ -50,6 +54,7 @@ Future<ui.Image> renderCutEnvelopeImage({
   ui.Image? Function(BrushFrameKey key)? inkImageFor,
   List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor,
   ({int width, int height})? outputSize,
+  Set<SheetPaintLayer>? layers,
 }) {
   final width = (outputSize?.width ?? layout.paperWidth.round()).clamp(
     1,
@@ -67,6 +72,7 @@ Future<ui.Image> renderCutEnvelopeImage({
     inkOwner: inkOwner,
     inkImageFor: inkImageFor,
     inkPhotosFor: inkPhotosFor,
+    layers: layers,
   ).paint(canvas, ui.Size(width.toDouble(), height.toDouble()));
   return rasterizeOffscreen(
     width: width,

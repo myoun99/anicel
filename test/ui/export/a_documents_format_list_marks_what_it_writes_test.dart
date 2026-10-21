@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
@@ -22,6 +24,7 @@ void main() {
     WidgetTester tester, {
     required bool pictured,
     required PillItem after,
+    bool Function(ExportStillFormat format)? stillEnabled,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -30,6 +33,7 @@ void main() {
             keyPrefix: 'paper',
             label: 'Format',
             image: paperDocumentFormat,
+            stillEnabled: stillEnabled ?? (_) => true,
             pictured: pictured,
             onImageChanged: (_) {},
             after: [after],
@@ -47,7 +51,7 @@ void main() {
   }
 
   final pictureRows = [
-    for (final format in paperPictureFormats) 'paper-${format.jsonValue}',
+    for (final format in ExportStillFormat.values) 'paper-${format.jsonValue}',
   ];
 
   testWidgets('while the document\'s own format is written, its row is the '
@@ -83,5 +87,32 @@ void main() {
       for (final picture in pictureRows) picture: true,
       'paper-xdts': false,
     });
+  });
+
+  testWidgets('every still is listed, a PSD among them (I-117), and one this '
+      'machine cannot write is off and says why — as the Format module\'s '
+      'list is', (tester) async {
+    final rows = await rowsOf(
+      tester,
+      pictured: true,
+      after: PillItem(
+        keyValue: 'paper-xdts',
+        label: 'XDTS',
+        selected: false,
+        onTap: () {},
+      ),
+      stillEnabled: (format) => format != ExportStillFormat.jpg,
+    );
+    final jpg = 'paper-${ExportStillFormat.jpg.jsonValue}';
+    expect(
+      {for (final row in rows) row.keyValue: (row.enabled, row.warning)},
+      {
+        for (final picture in pictureRows)
+          picture: picture == jpg
+              ? (false, AppText.strings.exNotInThisBuild)
+              : (true, null),
+        'paper-xdts': (true, null),
+      },
+    );
   });
 }

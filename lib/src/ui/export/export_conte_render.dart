@@ -41,7 +41,8 @@ Set<String> contePageImagePaths(
 /// The page rasters at its PAPER'S PIXELS — the paper at its own
 /// resolution, the panel's 100% (`ConteSheetMetrics.paperPixelSize`, F-294;
 /// ↩️it multiplied the page's size in points, 595×842 at 1x) — or at
-/// [outputSize], for a preview.
+/// [outputSize], for a preview. [layers] draws those strata alone — a
+/// Photoshop document's rows (I-117); null draws the page whole.
 Future<ui.Image> renderContePageImage({
   required ContePageLayout page,
   required ConteSheetSource source,
@@ -52,6 +53,7 @@ Future<ui.Image> renderContePageImage({
   List<SheetPictureOverInk> picturesOverInk = const [],
   CanvasSize? outputSize,
   required ConteWords words,
+  Set<SheetPaintLayer>? layers,
 }) {
   final metrics = page.metrics;
   final paper = metrics.paperPixelSize;
@@ -69,6 +71,7 @@ Future<ui.Image> renderContePageImage({
     inkPhotosFor: inkPhotosFor,
     picturesOverInk: picturesOverInk,
     words: words,
+    layers: layers,
   ).paint(canvas, ui.Size(width.toDouble(), height.toDouble()));
   return rasterizeOffscreen(
     width: width,

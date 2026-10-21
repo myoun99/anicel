@@ -284,38 +284,50 @@ void main() {
       }
     });
 
-    test('a paper document is a still on its paper: any picture format but '
-        'PSD, never a format with no paper under it — and one the file names '
-        'wrongly reads as PNG', () {
+    test('a paper document is a still on its paper: any still format, never '
+        'one with no paper under it', () {
       expect(paperDocumentFormat.isStill, isTrue);
       expect(paperDocumentFormat.wantsAlpha, isFalse);
       expect(paperDocumentFormat.stillFormat, ExportStillFormat.png);
       expect(paperDocumentFormatFromJson(null), paperDocumentFormat);
       // I-117 (유저 2026-10-21): 「새 출력형식으로서 BMP TGA TIFF WEBP」 —
-      // a sheet is written in each. PSD's layers are a round of their own.
-      expect(paperPictureFormats, [
-        for (final format in ExportStillFormat.values)
-          if (format != ExportStillFormat.psd) format,
-      ]);
-      for (final format in paperPictureFormats) {
+      // a sheet is written in each — and 「타임시트는 알듯이 층
+      // 나눠져있는대로 출력」: a PSD of its strata.
+      for (final format in ExportStillFormat.values) {
         final named = const ExportFormatSelection(
           kind: ExportMediaKind.still,
+          jpgQuality: 55,
         ).copyWith(stillFormat: format).toJson();
-        expect(
-          paperDocumentFormatFromJson(named).stillFormat,
-          format,
-          reason: format.label,
-        );
+        final read = paperDocumentFormatFromJson(named);
+        expect(read.stillFormat, format, reason: format.label);
+        expect(read.wantsAlpha, isFalse, reason: format.label);
+        expect(read.jpgQuality, 55, reason: 'the quality is kept for a JPG');
       }
-      final psd = const ExportFormatSelection(
-        kind: ExportMediaKind.still,
-        stillFormat: ExportStillFormat.psd,
-        jpgQuality: 55,
-      ).toJson();
-      final read = paperDocumentFormatFromJson(psd);
-      expect(read.stillFormat, ExportStillFormat.png);
-      expect(read.wantsAlpha, isFalse);
-      expect(read.jpgQuality, 55, reason: 'the quality is kept for a JPG');
+    });
+
+    test('I-117: the conte is ONE file as a PDF or as a Photoshop document — '
+        '「콘티용지탭 psd 출력시 … 한 파일안에 여러 페이지 그룹」 — and a '
+        'file a page as any other picture', () {
+      ConteExportSpec pages(ExportStillFormat format) => ConteExportSpec(
+        format: ExportConteFormat.pageImage,
+        image: paperDocumentFormat.copyWith(stillFormat: format),
+      );
+      expect(const ConteExportSpec().documentExtension, 'pdf');
+      expect(
+        ConteExportSpec(
+          image: paperDocumentFormat.copyWith(
+            stillFormat: ExportStillFormat.psd,
+          ),
+        ).documentExtension,
+        'pdf',
+        reason: 'the PDF is vector: the picture format is not asked',
+      );
+      expect(pages(ExportStillFormat.psd).documentExtension, 'psd');
+      for (final format in ExportStillFormat.values) {
+        if (format != ExportStillFormat.psd) {
+          expect(pages(format).documentExtension, isNull, reason: format.label);
+        }
+      }
     });
 
     test('🚨F-294: a paper document goes out at its paper\'s own pixels — '

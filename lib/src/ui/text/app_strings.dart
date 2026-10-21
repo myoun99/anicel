@@ -1218,6 +1218,11 @@ enum AppStrings {
   String get exWhite => _s('exWhite');
   String get exBlack => _s('exBlack');
   String get exBackground => _s('exBackground');
+  String get exStratumPaper => _s('exStratumPaper');
+  String get exStratumForm => _s('exStratumForm');
+  String get exStratumContent => _s('exStratumContent');
+  String get exStratumPicture => _s('exStratumPicture');
+  String get exStratumInk => _s('exStratumInk');
   String get exNoCels => _s('exNoCels');
   String get exNoCuts => _s('exNoCuts');
   String get exPresets => _s('exPresets');
@@ -1269,8 +1274,8 @@ enum AppStrings {
       _s('exDoneFileTemplate').replaceAll('{name}', name);
   String exDoneVideo(String count) =>
       _s('exDoneVideoTemplate').replaceAll('{count}', count);
-  String exDoneContePdf(String name, String count) => _s(
-    'exDoneContePdfTemplate',
+  String exDoneConteDocument(String name, String count) => _s(
+    'exDoneConteDocumentTemplate',
   ).replaceAll('{name}', name).replaceAll('{count}', count);
   String get exNothingInFrame => _s('exNothingInFrame');
   String exFailed(Object error) =>
@@ -2546,6 +2551,11 @@ enum AppStrings {
     'exWhite': 'White',
     'exBlack': 'Black',
     'exBackground': 'BG',
+    'exStratumPaper': 'Paper',
+    'exStratumForm': 'Form',
+    'exStratumContent': 'Text',
+    'exStratumPicture': 'Pictures',
+    'exStratumInk': 'Ink',
     'exNoCels': '(no cels)',
     'exNoCuts': '(no cuts)',
     'exPresets': 'Presets',
@@ -2581,7 +2591,7 @@ enum AppStrings {
     'exDoneSkippedTemplate': 'Exported {count} ({skipped} empty skipped).',
     'exDoneFileTemplate': 'Exported {name}.',
     'exDoneVideoTemplate': 'Exported video ({count}).',
-    'exDoneContePdfTemplate': 'Exported {name} ({count}).',
+    'exDoneConteDocumentTemplate': 'Exported {name} ({count}).',
     'exNothingInFrame': 'Nothing to export (empty frame).',
     'exFailedTemplate': 'Export failed: {error}',
     'exQueueRestTemplate': 'Queue: {count} done{failed}{rest}.',
@@ -3953,6 +3963,11 @@ enum AppStrings {
     'exWhite': '白',
     'exBlack': '黒',
     'exBackground': '背景',
+    'exStratumPaper': '用紙',
+    'exStratumForm': '書式',
+    'exStratumContent': 'テキスト',
+    'exStratumPicture': '絵',
+    'exStratumInk': 'インク',
     'exNoCels': '（セルなし）',
     'exNoCuts': '（カットなし）',
     'exPresets': 'プリセット',
@@ -4072,7 +4087,7 @@ enum AppStrings {
     'exDoneSkippedTemplate': '{count}を書き出しました（空の{skipped}件は飛ばしました）。',
     'exDoneFileTemplate': '{name}を書き出しました。',
     'exDoneVideoTemplate': '動画を書き出しました（{count}）。',
-    'exDoneContePdfTemplate': '{name}を書き出しました（{count}）。',
+    'exDoneConteDocumentTemplate': '{name}を書き出しました（{count}）。',
     'exNothingInFrame': '書き出すものがありません（空のフレーム）。',
     'exFailedTemplate': '書き出しに失敗しました: {error}',
     'exQueueRestTemplate': 'キュー: {count}完了{failed}{rest}。',
@@ -5547,6 +5562,11 @@ enum AppStrings {
     'exWhite': '흰색',
     'exBlack': '검정',
     'exBackground': '배경',
+    'exStratumPaper': '용지',
+    'exStratumForm': '서식',
+    'exStratumContent': '텍스트',
+    'exStratumPicture': '그림',
+    'exStratumInk': '잉크',
     'exNoCels': '(셀 없음)',
     'exNoCuts': '(컷 없음)',
     'exPresets': '프리셋',
@@ -5665,7 +5685,7 @@ enum AppStrings {
     'exDoneSkippedTemplate': '{count} 내보냈습니다(빈 것 {skipped}개는 건너뜀).',
     'exDoneFileTemplate': '{name} 내보냈습니다.',
     'exDoneVideoTemplate': '영상을 내보냈습니다({count}).',
-    'exDoneContePdfTemplate': '{name} 내보냈습니다({count}).',
+    'exDoneConteDocumentTemplate': '{name} 내보냈습니다({count}).',
     'exNothingInFrame': '내보낼 것이 없습니다(빈 프레임).',
     'exFailedTemplate': '내보내기 실패: {error}',
     'exQueueRestTemplate': '대기열: {count} 완료{failed}{rest}.',
@@ -7193,6 +7213,11 @@ enum AppStrings {
     'exWhite': 'Blanc',
     'exBlack': 'Noir',
     'exBackground': 'Fond',
+    'exStratumPaper': 'Papier',
+    'exStratumForm': 'Formulaire',
+    'exStratumContent': 'Texte',
+    'exStratumPicture': 'Images',
+    'exStratumInk': 'Encre',
     'exNoCels': '(aucun cellulo)',
     'exNoCuts': '(aucun plan)',
     'exPresets': 'Préréglages',
@@ -7380,7 +7405,7 @@ enum AppStrings {
     'exDoneSkippedTemplate': 'Exporté : {count} ({skipped} vides ignorés).',
     'exDoneFileTemplate': 'Exporté : {name}.',
     'exDoneVideoTemplate': 'Vidéo exportée ({count}).',
-    'exDoneContePdfTemplate': 'Exporté : {name} ({count}).',
+    'exDoneConteDocumentTemplate': 'Exporté : {name} ({count}).',
     'exNothingInFrame': 'Rien à exporter (image vide).',
     'exFailedTemplate': 'Échec de l\'export : {error}',
     'exQueueRestTemplate': 'File : {count} terminé{failed}{rest}.',
@@ -8808,6 +8833,11 @@ enum AppStrings {
     'exWhite': '白色',
     'exBlack': '黑色',
     'exBackground': '背景',
+    'exStratumPaper': '用纸',
+    'exStratumForm': '格式',
+    'exStratumContent': '文字',
+    'exStratumPicture': '画面',
+    'exStratumInk': '墨水',
     'exNoCels': '（无赛璐珞）',
     'exNoCuts': '（无镜头）',
     'exPresets': '预设',
@@ -8917,7 +8947,7 @@ enum AppStrings {
     'exDoneSkippedTemplate': '已导出{count}（跳过{skipped}个空白）。',
     'exDoneFileTemplate': '已导出 {name}。',
     'exDoneVideoTemplate': '已导出视频（{count}）。',
-    'exDoneContePdfTemplate': '已导出 {name}（{count}）。',
+    'exDoneConteDocumentTemplate': '已导出 {name}（{count}）。',
     'exNothingInFrame': '没有可导出的内容（空帧）。',
     'exFailedTemplate': '导出失败：{error}',
     'exQueueRestTemplate': '队列：已完成{count}{failed}{rest}。',

@@ -177,7 +177,7 @@ class ContePagePainter extends CustomPainter
       ),
       printed,
     );
-    if (layers?.contains(SheetPaintLayer.ink) ?? true) {
+    if (drawsSheetLayer(layers, SheetPaintLayer.ink)) {
       printInkAsLive(
         canvas,
         size,
@@ -222,7 +222,7 @@ class ContePagePainter extends CustomPainter
   /// live window is showing.
   List<SheetMark> _printed() => [
     for (final mark in marks())
-      if ((layers?.contains(mark.layer) ?? true) &&
+      if (drawsSheetLayer(layers, mark.layer) &&
           !(mark is SheetInk && liveInkKeys.contains(mark.key)))
         mark,
   ];

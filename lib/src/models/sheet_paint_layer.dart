@@ -49,6 +49,15 @@ enum SheetPaintLayer {
   }
 }
 
+/// Whether a print handed [layers] draws [layer]: those it names, or every
+/// one where it names none (null — the whole sheet).
+///
+/// ⛔ONE READING. Two painters, the conte page and the sheet printer each
+/// spelled it for themselves, and a sheet's Photoshop rows (I-117) were
+/// about to spell it again.
+bool drawsSheetLayer(Set<SheetPaintLayer>? layers, SheetPaintLayer layer) =>
+    layers?.contains(layer) ?? true;
+
 /// The strata a sheet is BAKED in, bottom to top — each re-recorded only
 /// when what it prints changes (유저 2026-09-25: 「그림 수정하거나 텍스트
 /// 바뀌거나 하는데 용지 리빌드하면 너무 비효율적이잖아」 · 「캔버스베이스

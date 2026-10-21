@@ -584,7 +584,7 @@ class SheetCanvasPrinter {
       canvas.clipRect(Offset.zero & size);
     }
     for (final mark in marks) {
-      if (layers?.contains(mark.layer) ?? true) {
+      if (drawsSheetLayer(layers, mark.layer)) {
         page.printMark(mark);
       }
     }

@@ -94,47 +94,98 @@ typedef ExportLayerRow = ({
   Future<ui.Image> Function() draw,
 });
 
-/// [composite] as a Photoshop document of [rows], bottom-up. Each row is
-/// read back straight, as a layer keeps its colour, and packed in an
-/// isolate before the next is drawn ([packPsdLayer]); the composite is
-/// written as every other still in [format] is ([_encodeStill]).
+/// A folder of a layered still file — a conte page's strata (I-117): its
+/// name, and its rows, bottom-up.
+typedef ExportLayerFolder = ({String name, List<ExportLayerRow> rows});
+
+/// The bytes a still in [format] is written as where its picture is laid
+/// up of rows: a PSD keeps them apart ([encodePsd] — [rows] is asked only
+/// then), every other still is the picture alone ([stillEncoderFor]).
+ExportImageEncoder? layeredEncoderFor(
+  ExportFormatSelection format,
+  List<ExportLayerRow> Function() rows,
+) => format.stillFormat == ExportStillFormat.psd
+    ? (composite) => encodePsd(composite, format, rows())
+    : stillEncoderFor(format);
+
+/// [composite] as a Photoshop document of [rows], bottom-up ([LayeredPsd]).
 Future<List<int>?> encodePsd(
   ui.Image composite,
   ExportFormatSelection format,
   List<ExportLayerRow> rows,
 ) async {
-  final builder = PsdBuilder(width: composite.width, height: composite.height);
-  for (final row in rows) {
-    final picture = await row.draw();
-    final width = picture.width;
-    final height = picture.height;
-    final ByteData? data;
-    try {
-      data = await picture.toByteData(
-        format: ui.ImageByteFormat.rawStraightRgba,
-      );
-    } finally {
-      picture.dispose();
-    }
-    if (data == null) {
-      return null;
-    }
-    final rgba = Uint8List.sublistView(data);
-    builder.addLayer(
-      name: row.name,
-      pixels: await Isolate.run(
-        () => packPsdLayer(
-          (pixels: rgba, width: width, height: height, channels: 4),
+  final document = LayeredPsd(
+    width: composite.width,
+    height: composite.height,
+  );
+  return await document.addRows(rows)
+      ? document.encode(composite, format)
+      : null;
+}
+
+/// A Photoshop document laid up row by row, bottom-up (I-117) — for a
+/// caller that lays it in steps of its own, as the conte's pages are. Each
+/// row is drawn, read back straight — as a layer keeps its colour — and
+/// packed in an isolate before the next is drawn ([packPsdLayer]).
+final class LayeredPsd {
+  LayeredPsd({required int width, required int height})
+    : _builder = PsdBuilder(width: width, height: height);
+
+  final PsdBuilder _builder;
+
+  /// [rows] over every row laid before them. False where a picture could
+  /// not be read: the document is then no document.
+  Future<bool> addRows(List<ExportLayerRow> rows) async {
+    for (final row in rows) {
+      final picture = await row.draw();
+      final width = picture.width;
+      final height = picture.height;
+      final ByteData? data;
+      try {
+        data = await picture.toByteData(
+          format: ui.ImageByteFormat.rawStraightRgba,
+        );
+      } finally {
+        picture.dispose();
+      }
+      if (data == null) {
+        return false;
+      }
+      final rgba = Uint8List.sublistView(data);
+      _builder.addLayer(
+        name: row.name,
+        pixels: await Isolate.run(
+          () => packPsdLayer(
+            (pixels: rgba, width: width, height: height, channels: 4),
+          ),
         ),
-      ),
-      opacity: row.opacity,
-      blendMode: row.blendMode,
-    );
+        opacity: row.opacity,
+        blendMode: row.blendMode,
+      );
+    }
+    return true;
   }
-  return _encodeStill(
+
+  /// [folder] over every row laid before it, its rows inside it — as
+  /// [addRows] answers.
+  Future<bool> addFolder(ExportLayerFolder folder) async {
+    _builder.openGroup(name: folder.name);
+    if (!await addRows(folder.rows)) {
+      return false;
+    }
+    _builder.closeGroup();
+    return true;
+  }
+
+  /// The document over [composite], which is written as every other still
+  /// in [format] is ([_encodeStill]).
+  Future<List<int>?> encode(
+    ui.Image composite,
+    ExportFormatSelection format,
+  ) => _encodeStill(
     composite,
     format,
-    (pixels) => builder.build(composite: pixels),
+    (pixels) => _builder.build(composite: pixels),
   );
 }
 

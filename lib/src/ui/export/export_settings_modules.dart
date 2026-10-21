@@ -685,10 +685,11 @@ class ExportJpgQualityRow extends StatelessWidget {
 }
 
 /// What a PAPER DOCUMENT is written as — a timesheet's pages, a cut
-/// envelope, the conte's page images: a picture of [paperPictureFormats],
-/// JPG at a quality ([paperDocumentFormat]; 유저 2026-10-05: 「시트 그리고
-/// png말고 jpg도 추가」 · I-117, 10-21: 「새 출력형식으로서 BMP TGA TIFF
-/// WEBP」).
+/// envelope, the conte's page images: any still, JPG at a quality
+/// ([paperDocumentFormat]; 유저 2026-10-05: 「시트 그리고 png말고 jpg도
+/// 추가」 · I-117, 10-21: 「새 출력형식으로서 BMP TGA TIFF WEBP」, and a PSD
+/// of its strata). A still this machine cannot write stays in the list,
+/// off, saying why — the Format module's law ([stillEnabled]).
 ///
 /// A document that has a format which is no picture — the timesheet's
 /// digital sheet, the conte's PDF — offers it in the same list ([before] ·
@@ -701,6 +702,7 @@ class ExportPaperFormatModule extends StatelessWidget {
     required this.label,
     required this.image,
     required this.onImageChanged,
+    required this.stillEnabled,
     this.pictured = true,
     this.before = const [],
     this.after = const [],
@@ -715,6 +717,10 @@ class ExportPaperFormatModule extends StatelessWidget {
   /// A picture format, picked — or its quality, moved. Null while the
   /// window is busy.
   final ValueChanged<ExportFormatSelection>? onImageChanged;
+
+  /// Whether this machine writes a still in a format — the answer the
+  /// Format module's list is greyed by ([ExportFormatCapabilities]).
+  final bool Function(ExportStillFormat format) stillEnabled;
   final bool pictured;
   final List<PillItem> before;
   final List<PillItem> after;
@@ -749,17 +755,23 @@ class ExportPaperFormatModule extends StatelessWidget {
   /// one value of the app's one picker ([PanelFlyoutValueChoices]).
   List<PanelFlyoutEntry> _entries() {
     final changed = onImageChanged;
-    ({String key, String label, bool current, VoidCallback? pick}) listed(
-      PillItem item,
-    ) => (
+    ({
+      String key,
+      String label,
+      bool current,
+      VoidCallback? pick,
+      bool writable,
+    })
+    listed(PillItem item) => (
       key: item.keyValue,
       label: item.label,
       current: item.selected,
       pick: item.onTap,
+      writable: true,
     );
     final rows = [
       for (final item in before) listed(item),
-      for (final format in paperPictureFormats)
+      for (final format in ExportStillFormat.values)
         (
           key: '$keyPrefix-${format.jsonValue}',
           label: format.label,
@@ -767,6 +779,7 @@ class ExportPaperFormatModule extends StatelessWidget {
           pick: changed == null
               ? null
               : () => changed(image.copyWith(stillFormat: format)),
+          writable: stillEnabled(format),
         ),
       for (final item in after) listed(item),
     ];
@@ -775,7 +788,8 @@ class ExportPaperFormatModule extends StatelessWidget {
       choiceOf: (row) => PanelFlyoutChoice(
         key: row.key,
         label: row.label,
-        enabled: row.pick != null,
+        enabled: row.writable && row.pick != null,
+        warning: row.writable ? null : AppText.strings.exNotInThisBuild,
       ),
       onPicked: (row) => row.pick?.call(),
     );

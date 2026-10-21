@@ -596,7 +596,9 @@ class CelsExportSpec extends ExportTabSpec {
 
 /// The picture a PAPER DOCUMENT is written as — a timesheet page, a conte
 /// page, a cut envelope: PNG, or JPG at a quality (F-289, 유저 2026-10-05:
-/// 「시트 그리고 png말고 jpg도 추가」).
+/// 「시트 그리고 png말고 jpg도 추가」), and since I-117 every other still —
+/// a PSD keeping its strata apart (유저 2026-10-21: 「타임시트는 알듯이 층
+/// 나눠져있는대로 출력. 컷봉투도 마찬가지」).
 ///
 /// The format module's own value ([ExportFormatSelection]), held to what a
 /// sheet of paper can be: a still, opaque — the paper is its ground.
@@ -611,32 +613,21 @@ const ExportFormatSelection paperDocumentFormat = ExportFormatSelection(
   channels: ExportChannels.rgb,
 );
 
-/// The pictures a paper document can be written as, in the lineup's order:
-/// every still but PSD, whose layers — paper, form, words, ink — are a round
-/// of their own (I-117).
-final List<ExportStillFormat> paperPictureFormats = [
-  for (final format in ExportStillFormat.values)
-    if (format != ExportStillFormat.psd) format,
-];
-
 /// [json] read as a paper document's picture: [paperDocumentFormat] where
-/// the file names none, and a format a paper cannot be
-/// ([paperPictureFormats]) is PNG.
+/// the file names none.
 ExportFormatSelection paperDocumentFormatFromJson(Object? json) {
   if (json is! Map<String, dynamic>) {
     return paperDocumentFormat;
   }
   final read = ExportFormatSelection.fromJson(json);
   return paperDocumentFormat.copyWith(
-    stillFormat: paperPictureFormats.contains(read.stillFormat)
-        ? read.stillFormat
-        : ExportStillFormat.png,
+    stillFormat: read.stillFormat,
     jpgQuality: read.jpgQuality,
   );
 }
 
 /// The Conte tab: the storyboard sheet as one vector PDF, or its pages as
-/// images.
+/// images — as a Photoshop document, the pages all in one.
 class ConteExportSpec extends ExportTabSpec {
   const ConteExportSpec({
     this.format = ExportConteFormat.pdf,
@@ -648,6 +639,17 @@ class ConteExportSpec extends ExportTabSpec {
   /// The picture a page image is written as ([paperDocumentFormat]); the
   /// PDF is vector and does not ask it.
   final ExportFormatSelection image;
+
+  /// The extension of the ONE file the conte is written as — the vector
+  /// PDF, or a Photoshop document holding every page (I-117, 유저
+  /// 2026-10-21: 「콘티용지탭 psd 출력시 페이지별로 하나의 그룹으로 묶어서
+  /// … 한 파일안에 여러 페이지 그룹」) — or null where each page is a
+  /// picture of its own.
+  String? get documentExtension => switch ((format, image.stillFormat)) {
+    (ExportConteFormat.pdf, _) => 'pdf',
+    (_, ExportStillFormat.psd) => ExportStillFormat.psd.fileExtension,
+    _ => null,
+  };
 
   @override
   ExportTab get tab => ExportTab.conte;
