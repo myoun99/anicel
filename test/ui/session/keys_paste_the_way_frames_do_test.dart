@@ -1,10 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/key_clipboard.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
@@ -81,17 +84,43 @@ void main() {
   }
 
   test('standing, the keys go in at the playhead and every key from there '
-      'on moves back by the copy\'s length', () {
+      'on moves back by the copy\'s length — the one standing there too', () {
     key('rotation', {3: 10, 7: 20, 12: 30});
     standOn('rotation', at: 7);
     pill.copyFrame();
     expect(s.keyClipboard.holdsKeys, isTrue, reason: '⛔전제');
 
-    standOn('rotation', at: 5);
+    standOn('rotation', at: 3);
     expect(pill.canPasteIndependentFrame, isTrue);
     pill.pasteIndependentFrame();
 
-    expect(rotation(), {3: 10, 5: 20, 8: 20, 13: 30});
+    expect(rotation(), {3: 20, 4: 10, 8: 20, 13: 30});
+  });
+
+  test('a header\'s copy goes in on every member — one with no key in it '
+      'takes the run too, its keys after moving back', () {
+    key('rotation', {3: 10});
+    key('opacity', {8: 0.5});
+    standOn(transformGroupHeaderLane.laneId, at: 3);
+    pill.copyFrame();
+
+    standOn(transformGroupHeaderLane.laneId, at: 5);
+    pill.pasteIndependentFrame();
+
+    expect(rotation(), {3: 10, 5: 10});
+    expect(now().transformTrack.opacity.keys.keys, [9]);
+  });
+
+  test('one lane pasted on a header goes on its own lane alone', () {
+    key('rotation', {20: 0.5});
+    standOn('rotation', at: 20);
+    pill.copyFrame();
+
+    standOn(transformGroupHeaderLane.laneId, at: 30);
+    pill.pasteIndependentFrame();
+
+    expect(rotation()[30], 0.5);
+    expect(now().transformTrack.opacity.keys, isEmpty);
   });
 
   test('over a selection, the selection is replaced and what follows it '
@@ -162,6 +191,63 @@ void main() {
     expect(now().transformTrack.opacity.keys[30]?.value, 0.5);
   });
 
+  group('where none of the copied lanes is there', () {
+    late EffectId blurA;
+    late EffectId blurB;
+    double? keyed(EffectId effect, String parameter, int frame) => now()
+        .effects
+        .firstWhere((it) => it.id == effect)
+        .parameters[parameter]!
+        .track
+        .keys[frame]
+        ?.value;
+    void type(EffectId effect, String parameter, int frame, String value) =>
+        s.laneVerbs.setLaneValueAt(
+          before.id,
+          effectLaneId(effect, parameter),
+          frame,
+          value,
+          frameIsGlobal: false,
+          description: 'Type',
+          scaleLinked: false,
+        );
+
+    setUp(() {
+      s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+      s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+      blurA = now().effects.first.id;
+      blurB = now().effects.last.id;
+    });
+
+    test('several pair with the lanes in order, as a frame copy\'s rows '
+        'pair with a band\'s', () {
+      type(blurA, 'blurX', 4, '1');
+      type(blurA, 'blurY', 4, '2');
+      expect(keyed(blurA, 'blurY', 4), 2, reason: '⛔전제');
+      standOn(effectGroupLaneId(blurA), at: 4);
+      pill.copyFrame();
+
+      standOn(effectGroupLaneId(blurB), at: 6);
+      pill.pasteIndependentFrame();
+
+      expect((keyed(blurB, 'blurX', 6), keyed(blurB, 'blurY', 6)), (1, 2));
+    });
+
+    test('one goes on every lane of its kind — 「모든 행에 같은 것을」', () {
+      key('rotation', {20: 0.5});
+      standOn('rotation', at: 20);
+      pill.copyFrame();
+
+      standOn(effectGroupLaneId(blurB), at: 10);
+      pill.pasteIndependentFrame();
+
+      expect(
+        (keyed(blurB, 'blurX', 10), keyed(blurB, 'blurY', 10)),
+        (0.5, 0.5),
+      );
+    });
+  });
+
   // 🗣️F-388-Q2 (유저 2026-10-20): 「이름 있는 키만 링크 — 그냥 생각할것도없이
   // 프레임블록 복붙이랑 똑같은 규칙」 · I-71 (10-05): 「기존에 이름 존재한다면
   // 링크시킬지 묻는것도 띄우고」.
@@ -215,6 +301,21 @@ void main() {
       final keys = now().transformTrack.opacity.keys;
       expect((keys[2]?.name, keys[2]?.value), ('A', 0.3));
       expect(keys[21]?.value, 0.3, reason: 'the name\'s key, moved back');
+    });
+
+    test('a name only the keys a selection replaces held is free — the key '
+        'brings its own value, asking nothing', () {
+      key('rotation', {7: 0.8}, name: 'A');
+      key('opacity', {12: 0.3}, name: 'A');
+      standOn('rotation', at: 7);
+      pill.copyFrame();
+
+      select('opacity', 11, 14);
+      expect(s.keyClipboard.pasteLinked(), isNull);
+
+      final keys = now().transformTrack.opacity.keys;
+      expect(keys.keys, [11]);
+      expect((keys[11]?.name, keys[11]?.value), ('A', 0.8));
     });
   });
 
