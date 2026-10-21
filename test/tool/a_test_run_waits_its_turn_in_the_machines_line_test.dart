@@ -58,6 +58,7 @@ void main() {
     suites: null,
     files: files,
     work: work,
+    since: null,
     takesWhatIsLeft: !old,
   );
   Standing runningAt(String who, int suites, {int? files, int? work}) => (
@@ -65,6 +66,7 @@ void main() {
     suites: suites,
     files: files,
     work: work,
+    since: null,
     takesWhatIsLeft: true,
   );
   int? decide(
@@ -196,6 +198,22 @@ void main() {
         'b', 'a', //
       ]);
       expect(turnOrder([waiting('b'), waiting('a')]), ['a', 'b']);
+    });
+
+    test('⚠️a run of a tool from before stands from when it says it began '
+        'to wait — as it reads its own turn', () {
+      // Two runs that each read the other as first held six of eighteen
+      // suites idle the evening the run kept its place (Q15).
+      final old = (
+        name: askedAs('old', 1000),
+        suites: null,
+        files: null,
+        work: null,
+        since: ago(10),
+        takesWhatIsLeft: true,
+      );
+      expect(turnOrder([old, waiting('new', waited: 100)]), ['new', 'old']);
+      expect(turnOrder([waiting('new', waited: 5), old]), ['old', 'new']);
     });
 
     test('beside the first in line a run starts when both fit now — and '
@@ -442,7 +460,12 @@ void main() {
         'work': 300,
         'takesWhatIsLeft': true,
       });
-      ticket('b.ticket', told: {'state': 'waiting', 'files': 2});
+      // A tool from before 10-21 also says since when it began to wait.
+      ticket('b.ticket', told: {
+        'state': 'waiting',
+        'files': 2,
+        'since': t0.toIso8601String(),
+      });
       ticket('c.ticket');
       File('${line.path}/d.ticket.json').writeAsStringSync('not json');
       expect(standingOf(line, 'a.ticket'), (
@@ -450,6 +473,7 @@ void main() {
         suites: 5,
         files: 1,
         work: 300,
+        since: null,
         takesWhatIsLeft: true,
       ));
       // A tool from before says nothing of how it takes: all or nothing.
@@ -458,6 +482,7 @@ void main() {
         suites: null,
         files: 2,
         work: null,
+        since: t0,
         takesWhatIsLeft: false,
       ));
       expect(standingOf(line, 'c.ticket').suites, isNull);
@@ -466,6 +491,7 @@ void main() {
         suites: null,
         files: null,
         work: null,
+        since: null,
         takesWhatIsLeft: false,
       ));
     });

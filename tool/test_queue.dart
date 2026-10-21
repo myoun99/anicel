@@ -139,14 +139,24 @@ const kUnknownWork = 3600;
 /// while it waits; the test files its `flutter test` names — null when it
 /// names none (the whole suite, a folder) or is no `flutter test`; the
 /// machine-seconds that `flutter test` should take ([workOf]) — null when
-/// it cannot say; and whether its tool takes what is left of its share
-/// ([suitesToRun]) — false for a tool from before, which takes all of it or
-/// waits. Since when it stands in the line is its [name]'s ([askedAt]).
+/// it cannot say; since when a run of a tool from before 2026-10-21 says it
+/// has waited ([Standing.since]) — null for every run of this tool, which
+/// stands from its [name] ([askedAt]); and whether its tool takes what is
+/// left of its share ([suitesToRun]) — false for a tool from before, which
+/// takes all of it or waits.
+///
+/// ⚠️[Standing.since] IS READ, NEVER WRITTEN: a run of a tool from before
+/// the run kept its place (tests-crowd-the-machine-Q15) counts its own wait
+/// from its last batch and decides its turn by that, so the line reads it
+/// so too — two runs that each read the other as first held six of
+/// eighteen suites idle for twenty minutes the evening it landed. Once no
+/// such run is left it reads null for everyone.
 typedef Standing = ({
   String name,
   int? suites,
   int? files,
   int? work,
+  DateTime? since,
   bool takesWhatIsLeft,
 });
 
@@ -198,7 +208,7 @@ double _forwardness(
   required int machine,
 }) {
   final wall = _wallOf(standing, _wants(standing, line, machine: machine));
-  final since = askedAt(standing.name) ?? now;
+  final since = standing.since ?? askedAt(standing.name) ?? now;
   final waited = math.max(0, now.difference(since).inMilliseconds / 1000);
   return (waited + wall) / wall;
 }
@@ -433,6 +443,7 @@ Standing standingOf(Directory line, String name) {
         suites: about['state'] == 'running' ? about['suites'] as int? : null,
         files: about['files'] as int?,
         work: about['work'] as int?,
+        since: DateTime.tryParse('${about['since'] ?? ''}'),
         takesWhatIsLeft: about['takesWhatIsLeft'] == true,
       );
     }
@@ -444,6 +455,7 @@ Standing standingOf(Directory line, String name) {
     suites: null,
     files: null,
     work: null,
+    since: null,
     takesWhatIsLeft: false,
   );
 }
@@ -621,6 +633,7 @@ class Turn {
             suites: null,
             files: files,
             work: work,
+            since: null,
             takesWhatIsLeft: true,
           )
         else
