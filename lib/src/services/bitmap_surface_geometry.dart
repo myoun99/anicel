@@ -665,24 +665,29 @@ class _MovedBlit {
     final bottom = clip.bottomExclusive;
     final right = clip.rightExclusive;
     for (final entry in tiles) {
-      final pixels = entry.value.pixels;
       final sourceLeft = entry.key.x * tileSize + dx;
       final sourceTop = entry.key.y * tileSize + dy;
       final width = right == null || right >= sourceLeft + tileSize
           ? tileSize
           : right - sourceLeft;
-      for (var row = 0; row < tileSize; row += 1) {
-        final worldY = sourceTop + row;
-        if (worldY < clip.top || (bottom != null && worldY >= bottom)) {
-          continue;
+      // 🔬Read where the tile keeps them: [BitmapTile.pixels] copies the
+      // whole tile, and a resize reads every tile its cut holds — S5_BA's
+      // 12,789, 818 MB copied for nothing (card
+      // `a-resize-redo-moves-every-cel-on-the-ui-thread`).
+      entry.value.readPixels((_, pixels) {
+        for (var row = 0; row < tileSize; row += 1) {
+          final worldY = sourceTop + row;
+          if (worldY < clip.top || (bottom != null && worldY >= bottom)) {
+            continue;
+          }
+          _row(
+            pixels,
+            (row: row, worldY: worldY, from: sourceLeft, width: width),
+            left: clip.left,
+            keeps: keeps,
+          );
         }
-        _row(
-          pixels,
-          (row: row, worldY: worldY, from: sourceLeft, width: width),
-          left: clip.left,
-          keeps: keeps,
-        );
-      }
+      });
     }
   }
 
