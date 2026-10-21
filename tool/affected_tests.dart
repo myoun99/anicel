@@ -774,6 +774,10 @@ Future<int> _runTests(
     });
   }
 
+  // ⚠️No pin reaches this one line, and its mutant lives (10-21): a pin
+  // would run a whole list. Each hop beside it is pinned — the gates pass
+  // the flag (lane.sh, scanned), [lineFor] answers it, and [outsideTheLine]
+  // holds what it asked at once.
   if (inTheLine) {
     await standInLine(
       'affected_tests',
