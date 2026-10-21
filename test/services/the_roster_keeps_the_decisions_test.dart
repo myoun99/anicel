@@ -44,16 +44,11 @@ void main() {
       defaultBrushGroups.map((group) => group.name.toLowerCase()),
       isNot(contains('pixel')),
     );
-    // ↩️Nor a pixel ROW (board F-218, 유저 2026-09-28: 「이상한것들 쳐내고.
-    // 애니펜 이런거」): Anime Pen was that row, and a pixel line is the 없음
-    // step any brush can take.
-    for (final preset in defaultBrushPresets) {
-      expect(
-        preset.settings.antiAlias,
-        isNot(BrushAntiAlias.none),
-        reason: '${preset.name} would be the pixel pen again',
-      );
-    }
+    // ↩️Nor, for a while, a preset at no anti-alias (board F-218, 유저
+    // 2026-09-28: 「이상한것들 쳐내고. 애니펜 이런거」 — Anime Pen was that
+    // row). Lifted by F-433-Q1 (유저 2026-10-21: 「aa없는 프리셋을 금지한다고
+    // 내가 발언했다면 지금 철회함. 브러시 개성에 맞춰서 없거나 1단계거나
+    // 다르게 하는거 가능. 중요한건 개성」): the sharp ships at none.
   });
 
   // Board F-218 (유저 2026-09-28, answered 2026-10-01 「개편안 승인. 너가
@@ -216,8 +211,9 @@ void main() {
       expect(sharp.spacing, 0.0207);
       expect(sharp.textureMaskSource?.id, 'builtin-canvas-weave');
       expect(sharp.textureDensity, 1.0);
-      // The file's 뒤에 blend and no anti-alias wait on F-433-Q1: until then
-      // the sharp blends and edges like every pencil.
+      // Its no anti-alias too; its 뒤에 blend was a slip (F-433-Q1: 「뒤에는
+      // 내가 잘못 지정한채로 내보낸거임. 블렌드는 표준. 기본aa는 없음」).
+      expect(sharp.antiAlias, BrushAntiAlias.none);
       expect(sharp.blendMode, BrushBlendMode.color);
     });
 

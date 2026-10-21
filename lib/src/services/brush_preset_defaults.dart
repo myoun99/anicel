@@ -1,3 +1,4 @@
+import '../models/brush_anti_alias.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_group.dart';
 import '../models/brush_group_icon.dart';
@@ -366,13 +367,16 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // 🚨THE USER'S OWN SHARP (유저 F-433, 2026-10-21: 「프리셋 기본 샤프 연필,
   // 내가 만든 샤프로 교체」). The values are what their exported brush
   // (`シャープ.anibrush`) carried — the preset as shipped, with what their hand
-  // had set laid over it: the finer size, step and pressure rows and the
-  // canvas weave at full density. Its tilt is left as they made it: a lead
-  // this thin has no side to lean on.
-  // ⚠️TWO OF ITS VALUES WAIT ON THE USER (F-433-Q1): the file also set the
-  // 뒤에 (behind) blend and no anti-alias, and no preset ships at no
-  // anti-alias — 「애니펜 이런거」 (board F-218, a pixel line is the 없음 step
-  // any brush can take). So those two stay at every pencil's, until asked.
+  // had set laid over it: the finer size, step and pressure rows, the
+  // canvas weave at full density and no anti-alias. Its tilt is left as
+  // they made it: a lead this thin has no side to lean on.
+  // 🗣️All but its blend (F-433-Q1, 유저 2026-10-21: 「뒤에는 내가 잘못
+  // 지정한채로 내보낸거임. 블렌드는 표준. 기본aa는 없음」) — the file's 뒤에
+  // (behind) was a slip, so it blends like every pencil.
+  // ↩️No anti-alias was barred from every preset (board F-218, 09-28: a
+  // pixel line is the 없음 step any brush can take), and the same answer
+  // lifted it: 「aa없는 프리셋을 금지한다고 내가 발언했다면 지금 철회함.
+  // 브러시 개성에 맞춰서 없거나 1단계거나 다르게 하는거 가능. 중요한건 개성」.
   BrushPreset(
     id: const BrushPresetId('builtin-mechanical-pencil'),
     name: 'Mechanical Pencil',
@@ -386,6 +390,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       textureDensity: 1.0,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.7083),
       opacityPressureCurve: BrushPressureCurve.linearFrom(0.4821),
+      antiAlias: BrushAntiAlias.none,
     ),
   ),
   BrushPreset(
