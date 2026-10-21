@@ -145,6 +145,53 @@ void main() {
     expect(bake.recordCount, 3, reason: 'and the buffer its own again');
   });
 
+  // 🚨oil-family-vertical-stroke-paints-a-black-box (2026-10-22): a slot is
+  // replayed by every paint under its key and extent — a patch's few pixels,
+  // a carry's band, the whole buffer — so what it holds cannot depend on the
+  // clip of the one that recorded it. Recorded under a carry's 132×2 band
+  // after an undo moved the extent, the paper came back there alone: the
+  // next stroke's patch was black, and its undo the whole page.
+  test('🚨a slot recorded under a patch\'s clip replays the whole extent',
+      () async {
+    final bake = StaticCompositeBake();
+    addTearDown(bake.dispose);
+    bake.keepFor('key');
+    const extent = Rect.fromLTWH(0, 0, 16, 8);
+    bake.ensureExtent(extent);
+    void paper(Canvas canvas) {
+      canvas.drawRect(extent, Paint()..color = const Color(0xFF00FF00));
+    }
+
+    await rasterBytes(
+      (canvas) {
+        canvas.clipRect(const Rect.fromLTWH(4, 0, 4, 2));
+        bake.draw(canvas, 'd0:backdrop', paper);
+      },
+      16,
+      8,
+    );
+    final whole = await rasterBytes(
+      (canvas) => bake.draw(canvas, 'd0:backdrop', paper),
+      16,
+      8,
+    );
+
+    expect(
+      bake.recordCount,
+      1,
+      reason: '⛔CONTROL: the whole paint replayed the patch\'s recording',
+    );
+    expect(
+      [
+        for (var i = 0; i < whole.length; i += 4)
+          if (whole[i + 1] != 255 || whole[i + 3] != 255) (i ~/ 4) % 16,
+      ],
+      isEmpty,
+      reason: 'the paper over all of it, not only the band it was recorded '
+          'under',
+    );
+  });
+
   testWidgets('the painter declares its extent — a resized paint equals a '
       'fresh paint at the new size', (tester) async {
     // A 16-wide canvas with INK ON THE RIGHT: the narrow paint's backdrop

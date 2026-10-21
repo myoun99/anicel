@@ -148,9 +148,19 @@ class StaticCompositeBake {
       return;
     }
     final recorder = ui.PictureRecorder();
-    // Bounded by what the canvas it replays on can see, so a draw in it asks
-    // what it would ask there (`drawPosedLayerImage`, a picture in pieces).
-    record(Canvas(recorder, canvas.getLocalClipBounds()));
+    // Bounded, so a draw in it can ask what it lands on
+    // (`drawPosedLayerImage`, a picture in pieces) — by the EXTENT the slots
+    // are declared under ([ensureExtent]), the bound [drawRaster]'s rect
+    // always had, and unbounded where none was declared.
+    // ↩️It was bounded by the clip of the paint that happened to record it
+    // (2026-10-21), and a slot is replayed by EVERY paint under its key and
+    // extent — a patch's few pixels, a carry's band, the whole buffer. 🔬A
+    // stroke past the page's edge, undone, moved the extent and dropped the
+    // slots; the carry after it recorded the backdrop under its 132×2 band,
+    // and every paint after that laid the paper there alone: the next
+    // stroke's patch came out black, and its undo the whole page
+    // (oil-family-vertical-stroke-paints-a-black-box, 2026-10-22).
+    record(Canvas(recorder, _extent));
     _recordCount += 1;
     final picture = recorder.endRecording();
     _slots[id] = picture;
