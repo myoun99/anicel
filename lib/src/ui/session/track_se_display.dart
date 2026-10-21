@@ -65,8 +65,14 @@ class TrackSeDisplay {
   bool isTrackSeLayerId(LayerId layerId) => trackSeAnywhere(layerId) != null;
 
   /// How far [layerId]'s OWN frame axis runs ahead of the cut's: the open
-  /// cut's global start for a track-owned SE row, whose keys live on the
-  /// track's frames, and zero for every row keyed on the cut.
+  /// cut's global start for a row whose keys live on the track's frames — a
+  /// track-owned SE row, and the V row's lane carrier, whose fx chain is
+  /// sampled at the track's frame (`trackEffectsAt`) — and zero for every
+  /// row keyed on the cut.
+  ///
+  /// ↩️The carrier answered zero: a lane verb stood on a V row's lane past
+  /// the first cut — a double click's ＋, a key's name — keyed the cut's own
+  /// number as a track frame, a whole cut early (I-89 ⓕ, 2026-10-21).
   ///
   /// 🚨ASKED HERE AND NOWHERE ELSE. Six verbs wrote this conditional out by
   /// hand — the controllers' frame offset, the lane verbs' write axis, the
@@ -76,7 +82,10 @@ class TrackSeDisplay {
   /// ones that part later; the source scan
   /// `the_row_axis_offset_is_asked_in_one_place_test` keeps it here.
   int rowAxisOffset(LayerId layerId) =>
-      isTrackSeLayerId(layerId) ? _project.activeCutMediaStartFrame : 0;
+      isTrackSeLayerId(layerId) ||
+          trackIdOfTransformLaneCarrier(layerId) != null
+      ? _project.activeCutMediaStartFrame
+      : 0;
 
   /// Whether [layerId] is a TRACK-OWNED row of the storyboard's rail — an SE
   /// lane or the transition row.
