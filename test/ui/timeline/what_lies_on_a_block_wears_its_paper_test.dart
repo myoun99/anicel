@@ -13,7 +13,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
-    show endAcross, rectAlong, startAcross, startAlong;
+    show endAcross, offsetAlong, rectAlong, startAcross, startAlong;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
@@ -180,6 +180,14 @@ void main() {
         : Rect.fromLTWH(0, start * cell, paper, length * cell).shift(origin);
   }
 
+  /// The name chip's stretch of [paper]'s row: its [seNameBoxExtent] from
+  /// [from] along, the paper's width across.
+  Rect chipOf(Axis axis, Rect paper, {required double from}) => rectAlong(
+    axis,
+    along: (from: from, to: from + seNameBoxExtent),
+    across: (from: startAcross(axis, paper), to: endAcross(axis, paper)),
+  );
+
   for (final axis in Axis.values) {
     testWidgets('the SE name\'s tint ends where the paper ends — round at '
         'the block\'s corners, short of the row seam ($axis)', (tester) async {
@@ -197,12 +205,7 @@ void main() {
       );
       final paper = paperOf(axis, 0, 4);
       // The chip's stretch of the paper: its 16 from the block's start.
-      final start = startAlong(axis, paper);
-      final chip = rectAlong(
-        axis,
-        along: (from: start, to: start + seNameBoxExtent),
-        across: (from: startAcross(axis, paper), to: endAcross(axis, paper)),
-      );
+      final chip = chipOf(axis, paper, from: startAlong(axis, paper));
       expect(
         shot.alphaAt(chip.center),
         greaterThan(0),
@@ -308,19 +311,11 @@ void main() {
         ),
       );
       final paper = paperOf(axis, 2, 4);
-      final chip = axis == Axis.horizontal
-          ? Rect.fromLTWH(
-              paper.left - seNameBoxExtent,
-              paper.top,
-              seNameBoxExtent,
-              paper.height,
-            )
-          : Rect.fromLTWH(
-              paper.left,
-              paper.top - seNameBoxExtent,
-              paper.width,
-              seNameBoxExtent,
-            );
+      final chip = chipOf(
+        axis,
+        paper,
+        from: startAlong(axis, paper) - seNameBoxExtent,
+      );
       expect(shot.alphaAt(chip.center), greaterThan(0), reason: '⛔전제');
       expect(shot.painted, chip, reason: 'just before the block, and only');
       expect(shot.cornersOf(chip), (0, 0, 0, 0), reason: 'a block\'s corner');
@@ -339,9 +334,7 @@ void main() {
         ),
       );
       final paper = paperOf(axis, 1, 4);
-      final chip = axis == Axis.horizontal
-          ? Rect.fromLTWH(paper.left, paper.top, seNameBoxExtent, paper.height)
-          : Rect.fromLTWH(paper.left, paper.top, paper.width, seNameBoxExtent);
+      final chip = chipOf(axis, paper, from: startAlong(axis, paper));
       expect(shot.painted, chip, reason: 'the head\'s stretch of the paper');
     });
 
@@ -370,11 +363,7 @@ void main() {
       expect(name.clips, isEmpty, reason: 'nothing laid on the block');
       expect(name.rects, isEmpty);
       expect(name.rrects, [
-        shape.shift(
-          axis == Axis.horizontal
-              ? const Offset(-seNameBoxExtent, 0)
-              : const Offset(0, -seNameBoxExtent),
-        ),
+        shape.shift(offsetAlong(axis, along: -seNameBoxExtent, across: 0)),
       ]);
       expect(
         name.colors,
