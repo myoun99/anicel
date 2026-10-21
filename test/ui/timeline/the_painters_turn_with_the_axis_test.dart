@@ -332,7 +332,7 @@ void main() {
     const frames = 6;
     const mainExtent = cellExtent * frames;
 
-    Future<({Rect wave, Size strip, List<int> inks})> painted(
+    Future<({Rect wave, Offset hump, Size strip, List<int> inks})> painted(
       WidgetTester tester,
       Axis axis,
     ) async {
@@ -381,8 +381,12 @@ void main() {
       final strip = tester.getSize(mark);
       final spy = _CanvasSpy();
       paint.painter!.paint(spy, strip);
+      final wave = spy.paths.single;
+      // A quarter of the way along: the top of the first hump.
+      final metric = wave.computeMetrics().single;
       return (
-        wave: spy.paths.single.getBounds(),
+        wave: wave.getBounds(),
+        hump: metric.getTangentForOffset(metric.length / 4)!.position,
         strip: strip,
         inks: spy.pathInks,
       );
@@ -391,7 +395,7 @@ void main() {
     for (final axis in Axis.values) {
       testWidgets('$axis: a red wave running ALONG the flow, in the middle '
           'of its strip across the row', (tester) async {
-        final (:wave, :strip, :inks) = await painted(tester, axis);
+        final (:wave, :strip, :inks, hump: _) = await painted(tester, axis);
         expect(inks, [AppColors.danger.toARGB32()]);
         expect(wave.center.dx, closeTo(strip.width / 2, 0.01));
         expect(wave.center.dy, closeTo(strip.height / 2, 0.01));
@@ -400,6 +404,17 @@ void main() {
             : (wave.height, wave.width);
         expect(along, closeTo(seCrossingMarkLength, 0.01));
         expect(across, closeTo(2 * seCrossingMarkSwing, 0.01));
+      });
+
+      testWidgets('$axis: its first hump stands up out of a row, as the '
+          'glyph\'s does — turned a quarter, to the right of a column', (
+        tester,
+      ) async {
+        final (:wave, :hump, strip: _, inks: _) = await painted(tester, axis);
+        final out = axis == Axis.horizontal
+            ? wave.center.dy - hump.dy
+            : hump.dx - wave.center.dx;
+        expect(out, closeTo(seCrossingMarkSwing, 0.01));
       });
     }
   });
