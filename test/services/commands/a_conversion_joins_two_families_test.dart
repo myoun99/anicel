@@ -65,6 +65,19 @@ void main() {
   final originFrames = [frame('f-o1', '1')];
   final targetFrames = [frame('f-t1', '1'), frame('f-t2', '2')];
 
+  ProjectRepository repositoryOf(
+    List<Cut> cuts,
+    List<LayerLinkGroup> groups,
+  ) => ProjectRepository(
+    initialProject: Project(
+      id: const ProjectId('p'),
+      name: 'P',
+      createdAt: DateTime.utc(2026, 10, 21),
+      tracks: [Track(id: track, name: 'V', cuts: cuts)],
+      linkRegistry: LayerLinkRegistry(groups: groups),
+    ),
+  );
+
   /// Two families: the origin and its sibling share A and C, the target and
   /// its sibling share A and B — the target's sibling holding A's pictures
   /// ([targetSiblingFirst]) or the target holding them.
@@ -76,60 +89,36 @@ void main() {
     final siblingA = member(sibling, 'a-sibling');
     final targetA = member(target, 'a-target');
     final targetSiblingA = member(targetSibling, 'a-target-sibling');
-    return ProjectRepository(
-      initialProject: Project(
-        id: const ProjectId('p'),
-        name: 'P',
-        createdAt: DateTime.utc(2026, 10, 21),
-        tracks: [
-          Track(
-            id: track,
-            name: 'V',
-            cuts: [
-              cut(origin, [
-                rowA('a-origin', originFrames),
-                row('c-origin', 'C'),
-              ]),
-              cut(sibling, [
-                rowA('a-sibling', originFrames),
-                row('c-sibling', 'C'),
-              ]),
-              cut(target, [
-                rowA('a-target', targetFrames),
-                row('b-target', 'B'),
-              ]),
-              cut(targetSibling, [
-                rowA('a-target-sibling', targetFrames),
-                row('b-target-sibling', 'B'),
-              ]),
-            ],
-          ),
-        ],
-        linkRegistry: LayerLinkRegistry(
-          groups: [
-            group(
-              'link-a',
-              originSiblingFirst
-                  ? [siblingA, originA]
-                  : [originA, siblingA],
-            ),
-            group('link-c', [
-              member(origin, 'c-origin'),
-              member(sibling, 'c-sibling'),
-            ]),
-            group(
-              'link-target-a',
-              targetSiblingFirst
-                  ? [targetSiblingA, targetA]
-                  : [targetA, targetSiblingA],
-            ),
-            group('link-target-b', [
-              member(target, 'b-target'),
-              member(targetSibling, 'b-target-sibling'),
-            ]),
-          ],
+    return repositoryOf(
+      [
+        cut(origin, [rowA('a-origin', originFrames), row('c-origin', 'C')]),
+        cut(sibling, [rowA('a-sibling', originFrames), row('c-sibling', 'C')]),
+        cut(target, [rowA('a-target', targetFrames), row('b-target', 'B')]),
+        cut(targetSibling, [
+          rowA('a-target-sibling', targetFrames),
+          row('b-target-sibling', 'B'),
+        ]),
+      ],
+      [
+        group(
+          'link-a',
+          originSiblingFirst ? [siblingA, originA] : [originA, siblingA],
         ),
-      ),
+        group('link-c', [
+          member(origin, 'c-origin'),
+          member(sibling, 'c-sibling'),
+        ]),
+        group(
+          'link-target-a',
+          targetSiblingFirst
+              ? [targetSiblingA, targetA]
+              : [targetA, targetSiblingA],
+        ),
+        group('link-target-b', [
+          member(target, 'b-target'),
+          member(targetSibling, 'b-target-sibling'),
+        ]),
+      ],
     );
   }
 
@@ -224,6 +213,46 @@ void main() {
       expect(row.timeline[3]!.frameId, const FrameId('f-t2'), reason: layer);
       expect(row.frames.map((drawn) => drawn.id.value), ['f-o1', 'f-t2']);
     }
+  });
+
+  test('a target in no group takes the merged bank — a drawing the '
+      'origin\'s supersedes is the origin\'s there', () {
+    final repository = repositoryOf([
+      cut(origin, [rowA('a-origin', originFrames)]),
+      cut(target, [rowA('a-target', targetFrames)]),
+    ], const []);
+    convert(repository, HistoryManager(), storeOf(repository));
+
+    final row = layerIn(repository, target, 'a-target');
+    expect(row.timeline[0]!.frameId, const FrameId('f-o1'));
+    expect(row.timeline[3]!.frameId, const FrameId('f-t2'));
+    expect(row.frames.map((drawn) => drawn.id.value), ['f-o1', 'f-t2']);
+  });
+
+  test('converted again, a pair 겸용 already copies a row one cut holds '
+      'into the other — and none into the cut that holds it', () {
+    final repository = repositoryOf(
+      [
+        cut(origin, [rowA('a-origin', originFrames)]),
+        cut(target, [rowA('a-target', originFrames), row('b-target', 'B')]),
+      ],
+      [
+        group('link-a', [
+          member(origin, 'a-origin'),
+          member(target, 'a-target'),
+        ]),
+      ],
+    );
+    convert(repository, HistoryManager(), storeOf(repository));
+
+    expect(layersIn(repository, target).map((it) => it.id.value), [
+      'a-target',
+      'b-target',
+    ]);
+    expect(
+      layersIn(repository, origin).map((it) => it.name),
+      unorderedEquals(['A', 'B']),
+    );
   });
 
   test('a row only the origin holds lands in the target\'s sibling too, '
