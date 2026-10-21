@@ -264,6 +264,11 @@ void main() {
           await together(pieces.pieces),
           await together(whole.pieces),
         );
+        expect(
+          pieces.pieces.estimatedBytes,
+          whole.pieces.estimatedBytes,
+          reason: 'weighed as the one picture they are',
+        );
 
         expect(
           [for (final piece in halved.pieces) piece.worldRect],

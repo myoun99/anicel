@@ -19,6 +19,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/import/cel_picture.dart'
+    show debugPictureSideLimit;
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
@@ -257,43 +259,65 @@ void main() {
     );
   });
 
-  testWidgets('🚨and what it draws is the very picture the pyramid makes — '
-      'byte for byte', (tester) async {
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final store = storeWithTheCel();
-    final images = LayerFrameImageCache(frameStore: store);
-    addTearDown(images.dispose);
-    const seeded = 'entering-seeded';
-    const made = 'entering-made';
-    addTearDown(() => TilePyramid.instance.drop(seeded));
-    addTearDown(() => TilePyramid.instance.drop(made));
+  // And from a picture held in pieces (board
+  // a-cel-past-the-device-side-composes-smaller): at a side of 8 texels the
+  // row's image at half (32×16) is 4 × 2 pieces, so every block is drawn
+  // from the four it lies across.
+  for (final (inPieces, side) in [('', null), (', from its pieces', 8)]) {
+    testWidgets('🚨and what it draws is the very picture the pyramid makes — '
+        'byte for byte$inPieces', (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final wholeSide = debugPictureSideLimit;
+      debugPictureSideLimit = side ?? wholeSide;
+      addTearDown(() => debugPictureSideLimit = wholeSide);
+      final store = storeWithTheCel();
+      final images = LayerFrameImageCache(frameStore: store);
+      addTearDown(images.dispose);
+      final seeded = 'entering-seeded$side';
+      final made = 'entering-made$side';
+      addTearDown(() => TilePyramid.instance.drop(seeded));
+      addTearDown(() => TilePyramid.instance.drop(made));
 
-    final entered = await enterTheSlot(tester, images, store, seeded);
-    expect(TilePyramid.instance.debugTileCountOf(seeded), 0);
+      final entered = await enterTheSlot(tester, images, store, seeded);
+      expect(TilePyramid.instance.debugTileCountOf(seeded), 0);
+      expect(
+        images
+            .validImageOrNull(
+              key,
+              PlaybackQuality.forLevel(1),
+              canvasSize: canvasSize,
+              sourceEffects: const [],
+            )
+            ?.pieces,
+        hasLength(side == null ? 1 : 8),
+        reason: 'fixture',
+      );
 
-    // The same cel as the active row in a stack that held no image of it:
-    // no seed, so the pyramid makes every block.
-    await pumpStack(
-      tester,
-      images,
-      active: true,
-      painter: painterOf(entered.surface, made),
-      stackKey: UniqueKey(),
-    );
-    expect(
-      TilePyramid.instance.debugTileCountOf(made),
-      2,
-      reason: 'fixture: the pyramid made both blocks this time',
-    );
-    expect(
-      await onScreen(tester),
-      entered.bytes,
-      reason: 'a level of the whole image and the halving of its blocks are '
-          'the same means — the seed may change how the frame is made, never '
-          'what it shows',
-    );
-  });
+      // The same cel as the active row in a stack that held no image of it:
+      // no seed, so the pyramid makes every block.
+      await pumpStack(
+        tester,
+        images,
+        active: true,
+        painter: painterOf(entered.surface, made),
+        stackKey: UniqueKey(),
+      );
+      expect(
+        TilePyramid.instance.debugTileCountOf(made),
+        2,
+        reason: 'fixture: the pyramid made both blocks this time',
+      );
+      expect(
+        await onScreen(tester),
+        entered.bytes,
+        reason:
+            'a level of the whole image and the halving of its blocks are '
+            'the same means — the seed may change how the frame is made, '
+            'never what it shows',
+      );
+    });
+  }
 
   testWidgets('a block whose tile changed is made; the block beside it is '
       'still drawn from the image', (tester) async {
