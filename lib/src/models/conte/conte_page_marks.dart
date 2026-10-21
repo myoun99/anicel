@@ -297,15 +297,12 @@ Iterable<SheetMark> _rules(ConteSheetMetrics m) sync* {
 /// keeps the rounded corners it wore before).
 ///
 /// Taken off (유저 2026-10-21, I-118: 「화면에 검은 외곽선 적용/미적용」),
-/// each window is a rule round it on the paper instead — the same window,
-/// so a picture lands where it lands in the black.
+/// nothing stands round a window, and its picture takes the cell
+/// ([ConteSheetMetrics.windowInset]). ↩️Each window was ruled round in the
+/// black's place, the picture where it stood in the black, until the
+/// user's 「그만큼 그림이 작아지는것임 … 괘선은 삭제」 the same day.
 Iterable<SheetMark> _silhouette(ConteSheetMetrics m) sync* {
-  if (!m.outlined) {
-    for (var row = 0; row < m.rowsPerPage; row += 1) {
-      yield* _windowRule(m, m.windowRect(row), SheetPaintLayer.form);
-    }
-    return;
-  }
+  if (!m.outlined) return;
   yield SheetFill(
     SheetPaintLayer.form,
     rect: Rect.fromLTRB(m.pictureLeft, m.bodyTop, m.actionLeft, m.bodyBottom),
@@ -318,35 +315,6 @@ Iterable<SheetMark> _silhouette(ConteSheetMetrics m) sync* {
       argb: _paper,
     );
   }
-}
-
-/// A rule round [window], just outside it — where the silhouette's black
-/// would meet it, so the picture in it covers none of the rule.
-Iterable<SheetMark> _windowRule(
-  ConteSheetMetrics m,
-  Rect window,
-  SheetPaintLayer layer,
-) sync* {
-  final w = m.ruleWidth;
-  final outside = window.inflate(w);
-  SheetRule rule(Rect rect, SheetRuleHold hold) =>
-      SheetRule(layer, rect: rect, argb: _rule, hold: hold);
-  yield rule(
-    Rect.fromLTRB(outside.left, outside.top, outside.right, window.top),
-    SheetRuleHold.far,
-  );
-  yield rule(
-    Rect.fromLTRB(outside.left, window.bottom, outside.right, outside.bottom),
-    SheetRuleHold.near,
-  );
-  yield rule(
-    Rect.fromLTRB(outside.left, outside.top, window.left, outside.bottom),
-    SheetRuleHold.far,
-  );
-  yield rule(
-    Rect.fromLTRB(window.right, outside.top, outside.right, outside.bottom),
-    SheetRuleHold.near,
-  );
 }
 
 /// The head's words, in the notation language — a word longer than its
@@ -413,7 +381,7 @@ Iterable<SheetMark> _content(
       );
     }
   }
-  yield* _cutEnds(page);
+  yield* _rulesAcross(page);
   for (final cell in page.cells) {
     yield* _cell(m, source, cell);
   }
@@ -434,18 +402,23 @@ Iterable<SheetMark> _content(
 /// In the digital form, a rule across the table under every cut that ends
 /// above the page's foot (유저 2026-10-21, I-118: 「컷 마다 가로로 선 그어서
 /// 칸 제대로 나누는방식」) — a cut's words stop on it
-/// ([ContePlacedCell.actionRect]). Content, since where a cut ends is the
-/// film's. Not over the silhouette: its black between two windows parts
-/// them already.
-Iterable<SheetMark> _cutEnds(ContePageLayout page) sync* {
+/// ([ContePlacedCell.actionRect]) — and under every row no cut takes
+/// (「컷이 없는 공간도 1칸마다 가로선 긋도록. 지금 컷 없으면 가로선
+/// 없으니까」). Content, since where a cut ends is the film's. Not over the
+/// silhouette: its black between two windows parts them already.
+Iterable<SheetMark> _rulesAcross(ContePageLayout page) sync* {
   final m = page.metrics;
   if (m.form != ConteSheetForm.digital) return;
   final w = m.ruleWidth;
   final spans = m.outlined
       ? [(m.cutColumnLeft, m.pictureLeft), (m.actionLeft, m.bodyRight)]
       : [(m.cutColumnLeft, m.bodyRight)];
-  for (final band in page.cutBands) {
-    final y = band.cutRect.bottom;
+  final ends = [
+    for (final band in page.cutBands) band.cutRect.bottom,
+    if (page.emptyRowsFrom case final empty?)
+      for (var row = empty + 1; row < m.rowsPerPage; row += 1) m.rowTop(row),
+  ];
+  for (final y in ends) {
     if (y >= m.bodyBottom - 1e-9) continue;
     for (final (left, right) in spans) {
       yield SheetRule(
@@ -457,11 +430,12 @@ Iterable<SheetMark> _cutEnds(ContePageLayout page) sync* {
   }
 }
 
-/// Where [cell]'s picture is printed — inside the silhouette's border. The
+/// Where [cell]'s picture is printed — inside the silhouette's border, or
+/// with none inside the cell's rules ([ConteSheetMetrics.windowInset]). The
 /// brush draws into the picture through this same slot, so the pen lands
 /// where the picture shows the stroke.
 Rect contePictureSlot(ContePlacedCell cell, ConteSheetMetrics m) =>
-    cell.pictureRect.deflate(m.silhouetteBorder);
+    cell.pictureRect.deflate(m.windowInset);
 
 /// [cell]'s picture as the page prints it — and as a live picture shows
 /// its corner while the brush draws into it: the camera's shape contained
@@ -469,8 +443,10 @@ Rect contePictureSlot(ContePlacedCell cell, ConteSheetMetrics m) =>
 ///
 /// A cell whose camera moves shows the canvas that camera sweeps instead
 /// ([ConteCameraWork.field] — 유저 2026-09-29: 「일단 카메라 팬대로 해당
-/// 코마에서 보여주고」), at the plan's scale ([ConteCameraPlan.scale]) from
-/// the top of its slot — a slot its own size (H48: 「위쪽정렬로 배치」).
+/// 코마에서 보여주고」), as large as its slot holds it, from the top of the
+/// slot (H48: 「위쪽정렬로 배치」) — the plan's own scale
+/// ([ConteCameraPlan.scale]) where the black stands round it, a slot the
+/// picture's size; larger where none does.
 SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) {
   final slot = contePictureSlot(cell, m);
   final work = cell.source.camera;
@@ -478,7 +454,10 @@ SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) {
   if (work == null) {
     frame = containRect(Size(m.cameraAspect, 1), slot);
   } else {
-    final scale = conteCameraPlan(m, work).scale;
+    final scale = math.min(
+      slot.width / work.field.width,
+      slot.height / work.field.height,
+    );
     frame = Rect.fromLTWH(
       slot.left,
       slot.top,
@@ -588,28 +567,21 @@ Iterable<SheetMark> _cell(
 /// picture, at the top of those rows (유저 2026-09-30, H48: 「칸은 2칸공간
 /// 차지하더라도 검은칸은 필요한 만큼만」). The picture column over the
 /// cell's rows turns paper, and the box stands on it: black round a window
-/// of paper, the picture's.
+/// of paper, the picture's. With no black there is nothing to turn paper —
+/// the window alone is paper, over the rules of the columns it grew into.
 Iterable<SheetMark> _cameraWork(
   ConteSheetMetrics m,
   ContePlacedCell cell,
 ) sync* {
   if (cell.source.camera == null) return;
   final box = cell.pictureRect;
-  yield* _pictureColumnPaper(
-    m,
-    box.top,
-    m.rowTop(cell.rowOnPage + cell.rowSpan),
-  );
-  // With no silhouette the box is paper, ruled round its window as every
-  // window is ([_silhouette]).
-  yield SheetFill(
-    SheetPaintLayer.picture,
-    rect: box,
-    argb: m.outlined ? _ink : _paper,
-  );
-  if (!m.outlined) {
-    yield* _windowRule(m, contePictureSlot(cell, m), SheetPaintLayer.picture);
-    return;
+  if (m.outlined) {
+    yield* _pictureColumnPaper(
+      m,
+      box.top,
+      m.rowTop(cell.rowOnPage + cell.rowSpan),
+    );
+    yield SheetFill(SheetPaintLayer.picture, rect: box, argb: _ink);
   }
   yield SheetFill(
     SheetPaintLayer.picture,

@@ -72,43 +72,35 @@ void main() {
         },
   ].join('\n');
 
-  /// [rules] hold one rule round [window] on each side, just outside it —
-  /// four real rects that together are [window] grown by [width], so the
-  /// picture in it covers none of them.
-  void expectRuledRound(
-    Iterable<SheetRule> rules,
-    Rect window,
-    double width,
+  /// [picture]'s frame sits inside its slot and is larger every way than
+  /// [inTheBlack]'s.
+  void expectLargerThanInTheBlack(
+    SheetPicture picture,
+    SheetPicture inTheBlack,
     String what,
   ) {
-    final round = [
-      for (final rule in rules)
-        if (rule.rect.overlaps(window.inflate(width)) &&
-            !rule.rect.overlaps(window))
-          rule.rect,
-    ];
-    expect(round, hasLength(4), reason: '$what: a rule a side');
-    for (final rect in round) {
-      expect(rect.width > 0 && rect.height > 0, isTrue, reason: '$what: $rect');
-    }
+    final (slot, frame) = (picture.slot.inflate(1e-9), picture.frame);
     expect(
-      round.reduce((a, b) => a.expandToInclude(b)),
-      window.inflate(width),
-      reason: '$what: just outside it',
+      (
+        frame.left >= slot.left,
+        frame.top >= slot.top,
+        frame.right <= slot.right,
+        frame.bottom <= slot.bottom,
+      ),
+      (true, true, true, true),
+      reason: '$what: $frame inside its slot $slot',
     );
     expect(
       (
-        round.any((rect) => rect.bottom == window.top),
-        round.any((rect) => rect.top == window.bottom),
-        round.any((rect) => rect.right == window.left),
-        round.any((rect) => rect.left == window.right),
+        picture.frame.width > inTheBlack.frame.width,
+        picture.frame.height > inTheBlack.frame.height,
       ),
-      (true, true, true, true),
-      reason: '$what: on its four edges',
+      (true, true),
+      reason: '$what: ${picture.frame} against ${inTheBlack.frame}',
     );
   }
 
-  /// The rules across the body — the cuts' ends.
+  /// The rules across the body — the cuts' ends and the empty rows'.
   List<SheetRule> cutEnds(List<SheetMark> marks) => [
     for (final rule in marks.whereType<SheetRule>())
       if (!rule.isUpright && rule.layer == SheetPaintLayer.content) rule,
@@ -192,6 +184,47 @@ void main() {
       expect({for (final rule in ends) rule.rect.center.dy}, {m.rowTop(3)});
     });
 
+    // 🗣️유저 2026-10-21 (I-118): 「컷이 없는 공간도 1칸마다 가로선 긋도록.
+    // 지금 컷 없으면 가로선 없으니까」.
+    test('a rule under every row no cut takes, as under a cut — on a page '
+        'with no cut at all too', () {
+      final short = ConteSheetSource(
+        framesPerSecond: 24,
+        cuts: source.cuts.take(1).toList(),
+      );
+      final ends = cutEnds(
+        marksOf(pageIn(ConteSheetForm.digital, of: short), of: short),
+      );
+      expect(
+        {for (final rule in ends) rule.rect.center.dy},
+        {m.rowTop(3), m.rowTop(4)},
+        reason: 'A ends on the fourth row; the fourth is empty',
+      );
+      expect(
+        {for (final rule in ends) (rule.rect.left, rule.rect.right)},
+        {(m.cutColumnLeft, m.pictureLeft), (m.actionLeft, m.bodyRight)},
+        reason: 'not over the black',
+      );
+
+      const none = ConteSheetSource(framesPerSecond: 24, cuts: []);
+      final bare = pageIn(ConteSheetForm.digital, of: none);
+      expect(bare.cutBands, isEmpty, reason: 'fixture');
+      expect(
+        {
+          for (final rule in cutEnds(marksOf(bare, of: none)))
+            rule.rect.center.dy,
+        },
+        {for (var row = 1; row < m.rowsPerPage; row += 1) m.rowTop(row)},
+      );
+      expect(
+        cutEnds(
+          marksOf(pageIn(ConteSheetForm.analog, of: none), of: none),
+        ),
+        isEmpty,
+        reason: 'the analog form rules no row',
+      );
+    });
+
     test('a cut\'s words stop on its rule — in the analog form they run to '
         'the foot', () {
       final analog = pageIn(ConteSheetForm.analog);
@@ -224,25 +257,65 @@ void main() {
         final marks = marksOf(page);
         final rules = marks.whereType<SheetRule>().toList();
 
-        test('no black: each window is ruled just outside it, and a picture '
-            'lands where it lands in the black', () {
+        // 🗣️유저 2026-10-21 (I-118): 「외곽선 적용은 외곽선 영역이 추가되니
+        // 그만큼 그림이 작아지는것임. 미적용은 외곽선 영역이 없으니 화면
+        // 칸에 맞춰서 그림이 위치하도록. 즉 적용에 비해서 커짐. 그러니
+        // 그렇게 하고 괘선은 삭제.」
+        test('no black and no rule round a window: a picture takes its cell '
+            'inside the cell\'s rules, larger than in the black, the table '
+            'laid as the black lays it', () {
           expect(
             marks.whereType<SheetFill>().where((fill) => fill.argb == _black),
             isEmpty,
           );
+          final w = m.ruleWidth;
           for (var row = 0; row < m.rowsPerPage; row += 1) {
-            expectRuledRound(
-              rules.where((rule) => rule.layer == SheetPaintLayer.form),
+            expect(
               m.windowRect(row),
-              m.ruleWidth,
-              'row $row',
+              Rect.fromLTRB(
+                m.pictureLeft,
+                m.rowTop(row),
+                m.actionLeft,
+                m.rowTop(row + 1),
+              ).deflate(w),
+              reason: 'row $row',
             );
           }
+          final column = Rect.fromLTRB(
+            m.pictureLeft + w,
+            m.bodyTop,
+            m.actionLeft - w,
+            m.bodyBottom - w,
+          );
+          expect(
+            [
+              for (final rule in rules)
+                if (rule.layer == SheetPaintLayer.form &&
+                    rule.rect.overlaps(column))
+                  rule.rect,
+            ],
+            isEmpty,
+            reason: 'no rule stands in the picture column',
+          );
           final black = pageIn(form);
+          expect(
+            (m.pictureLeft, m.actionLeft, m.rowHeight),
+            (
+              black.metrics.pictureLeft,
+              black.metrics.actionLeft,
+              black.metrics.rowHeight,
+            ),
+          );
           for (final (index, cell) in page.cells.indexed) {
+            expectLargerThanInTheBlack(
+              contePictureOf(cell, m),
+              contePictureOf(black.cells[index], black.metrics),
+              '${cell.cutId}${cell.cellIndex}',
+            );
             expect(
-              contePictureOf(cell, m).slot,
-              contePictureOf(black.cells[index], black.metrics).slot,
+              contePictureOf(cell, m).frame.width,
+              closeTo(m.windowRect(0).width, 1e-9),
+              reason: 'as wide as its cell holds it',
             );
           }
         });
@@ -293,8 +366,9 @@ void main() {
           );
         });
 
-        test('a cell whose camera moves stands in paper, its window ruled as '
-            'every window is', () {
+        test('a cell whose camera moves shows its window as paper over the '
+            'columns it grew into, no rule round it, its picture larger '
+            'than in the black', () {
           final moving = ConteSheetSource(
             framesPerSecond: 24,
             cuts: [
@@ -314,18 +388,28 @@ void main() {
             ),
             isEmpty,
           );
+          final window = contePictureSlot(cell, page.metrics);
+          expect(window, cell.pictureRect.deflate(page.metrics.ruleWidth));
           expect(
-            pictures.whereType<SheetFill>().where(
-              (fill) => fill.rect == cell.pictureRect && fill.argb == _paper,
-            ),
-            hasLength(1),
-            reason: 'the box is paper over the rules beneath it',
+            [
+              for (final fill in pictures.whereType<SheetFill>())
+                (fill.rect, fill.argb),
+            ],
+            [(window, _paper)],
+            reason: 'the window is paper over the rules beneath it',
           );
-          expectRuledRound(
-            pictures.whereType<SheetRule>(),
-            contePictureSlot(cell, page.metrics),
-            page.metrics.ruleWidth,
-            'the moving camera\'s window',
+          expect(pictures.whereType<SheetRule>(), isEmpty);
+          final black = pageIn(form, of: moving);
+          final picture = contePictureOf(cell, page.metrics);
+          expectLargerThanInTheBlack(
+            picture,
+            contePictureOf(black.cells.single, black.metrics),
+            'the moving camera\'s picture',
+          );
+          expect(
+            picture.frame.topLeft,
+            window.topLeft,
+            reason: 'from the top of its window',
           );
         });
       });

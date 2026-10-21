@@ -142,6 +142,14 @@ class ConteSheetMetrics {
   double get silhouetteBorder => 5;
   double get ruleWidth => 0.8;
 
+  /// What stands between a picture window and its cell's edge: the
+  /// silhouette's black, or — with none — the cell's own rule, which the
+  /// picture then covers none of (유저 2026-10-21, I-118: 「외곽선 적용은
+  /// 외곽선 영역이 추가되니 그만큼 그림이 작아지는것임. 미적용은 외곽선
+  /// 영역이 없으니 화면 칸에 맞춰서 그림이 위치하도록. 즉 적용에 비해서
+  /// 커짐」). The cells are laid as the black lays them either way.
+  double get windowInset => outlined ? silhouetteBorder : ruleWidth;
+
   /// The project's camera ratio. Every picture WINDOW is exactly this shape
   /// and the column is the window plus the silhouette's black — the picture
   /// keeps the film's shape and the text columns take what is left. A
@@ -157,6 +165,8 @@ class ConteSheetMetrics {
   double get bodyHeight => bodyBottom - bodyTop;
   double get rowHeight => bodyHeight / rowsPerPage;
 
+  /// A window's height where the black stands round it — the measure the
+  /// cells are laid by, black or none.
   double get windowHeight => rowHeight - 2 * silhouetteBorder;
   double get pictureWidth =>
       windowHeight * cameraAspect + 2 * silhouetteBorder;
@@ -175,7 +185,8 @@ class ConteSheetMetrics {
 
   double rowTop(int rowOnPage) => bodyTop + rowOnPage * rowHeight;
 
-  /// Row [row]'s picture window — the silhouette's hole.
+  /// Row [row]'s picture window — the silhouette's hole, or with no black
+  /// the cell inside its rules ([windowInset]).
   ///
   /// ↩️SQUARE, like every window of the sheet (유저 2026-09-30: 「칸 자체를
   /// 둥근걸 버리고 네모낳게 한다는게 맞아. 보통칸이든 뭐든 진짜 상관없이
@@ -183,11 +194,11 @@ class ConteSheetMetrics {
   /// 처럼 모서리 둥글게하자」) until a window grown by camera work had to be
   /// drawn: 「근데 그냥 둥근모서리 포기하자. 사각형으로하자」.
   Rect windowRect(int row) => Rect.fromLTRB(
-    pictureLeft + silhouetteBorder,
-    rowTop(row) + silhouetteBorder,
-    actionLeft - silhouetteBorder,
-    rowTop(row + 1) - silhouetteBorder,
-  );
+    pictureLeft,
+    rowTop(row),
+    actionLeft,
+    rowTop(row + 1),
+  ).deflate(windowInset);
 
   Rect get pageNumberSlot =>
       Rect.fromLTWH(marginX, topBandTop, 120, topBandHeight);
