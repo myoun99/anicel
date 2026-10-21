@@ -1727,7 +1727,7 @@ class BrushFrameStore {
   ) {
     final ahead = _movedAhead?.move == move ? _movedAhead : null;
     final answer = ahead?.answers.remove(key);
-    if (ahead == null || ahead.answers.isEmpty) {
+    if (ahead == null) {
       _movedAhead = null;
     }
     if (answer != null && identical(answer.from, surface)) {
@@ -1751,9 +1751,9 @@ class BrushFrameStore {
   /// AHEAD on the machine's workers ([moveCelInWorker], in [celThawTurns])
   /// — each thawed as a read here thaws it and kept hot, and moved by [move]
   /// as the resize moves it — while a wait window is up, which hears through
-  /// [report] how much is done, from 0 to 1. With nothing to move, the thaw
-  /// alone: the resize's undo holds every cel it touched, and reading them
-  /// is what took the time.
+  /// [report] how much is done, from 0 to 1. The thaw is ahead even where
+  /// the move is not: the resize's undo holds every cel it touched, and
+  /// reading them is what took the time.
   ///
   /// 🔬Card `a-canvas-resize-rewrites-kept-cels-on-the-ui-thread` (S5_BA
   /// saved and opened again — 127 cels of 2436×1524, `flutter test`,
@@ -1764,37 +1764,28 @@ class BrushFrameStore {
   /// taken only for it ([_moved]): a cel made hot or kept anew since is
   /// moved there as it always was. ⛔So an answer can go stale, and never
   /// wrong. A hot cel is not worked out here — its pixels are not bytes a
-  /// worker can be handed.
+  /// worker can be handed — and a move of whole tiles, nothing to move
+  /// among them, is thawed alone ([moveCelInWorker]).
   Future<void> moveCutCelsAhead(
     Iterable<CutId> cutIds,
     CelMove move, {
     void Function(double done)? report,
   }) async {
-    final moves = move.dx != 0 || move.dy != 0;
     final answers = <BrushFrameKey, _MovedCel>{};
-    _movedAhead = moves ? (move: move, answers: answers) : null;
+    _movedAhead = (move: move, answers: answers);
     final keys = [for (final cutId in cutIds) ..._celKeysOfCut(cutId)];
     var done = 0;
     await Future.wait([
       for (final key in keys)
-        (moves ? _moveOnAWorker(key, move, answers) : _thawKeptAhead(key))
-            .whenComplete(() {
-              done += 1;
-              report?.call(done / keys.length);
-            }),
+        _moveOnAWorker(key, move, answers).whenComplete(() {
+          done += 1;
+          report?.call(done / keys.length);
+        }),
     ]);
   }
 
-  /// [key]'s kept bytes thawed on a worker, at whatever size they were kept
-  /// — once, however many ask ([_thawing]).
-  Future<void> _thawKeptAhead(BrushFrameKey key) => _thawing.join(
-    key,
-    () => _thawOnAWorker(key, () => _kept(key)?.ref, _layThawed),
-  );
-
   /// [key]'s kept cel thawed and moved by [move] on a worker
-  /// ([moveCelInWorker]): kept hot here, and its move held in [answers]
-  /// while they are still the ones [adoptCutCanvasSize] will ask.
+  /// ([moveCelInWorker]): kept hot here, and its move held in [answers].
   Future<void> _moveOnAWorker(
     BrushFrameKey key,
     CelMove move,
@@ -1815,15 +1806,14 @@ class BrushFrameStore {
       return _behind(laidCelSurface(laid.was));
     });
     final worked = moved;
-    if (from != null &&
-        worked != null &&
-        identical(_movedAhead?.answers, answers)) {
+    if (from != null && worked != null) {
       answers[key] = (from: from, moved: worked);
     }
   }
 
-  /// What [moveCutCelsAhead] last worked out — until [adoptCutCanvasSize]
-  /// takes the last of it, or the next one replaces it.
+  /// What [moveCutCelsAhead] last worked out — until the next one replaces
+  /// it, a move it was not worked out for asks ([_moved]), or the store is
+  /// laid in anew.
   _MovedAhead? _movedAhead;
 
   /// [key] as [moveCutCelsAhead] worked out its move, while it is held.
