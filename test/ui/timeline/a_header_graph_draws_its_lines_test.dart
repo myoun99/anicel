@@ -491,7 +491,8 @@ void main() {
     expect(
       enlarge.width,
       greaterThanOrEqualTo(20),
-      reason: 'the pills give their width up, the button none of its own',
+      reason: 'the pills give their width up, and then the pen — the '
+          'enlarge button none of its own',
     );
     expect(
       enlarge.right,

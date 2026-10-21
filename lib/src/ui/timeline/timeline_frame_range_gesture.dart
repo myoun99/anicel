@@ -632,6 +632,7 @@ class TimelineLaneRangeHooks {
     required this.onMoveEnd,
     required this.onMoveCancel,
     this.onActivateAt,
+    this.onCreateKeys,
   });
 
   /// The session's live LANE selection.
@@ -670,6 +671,11 @@ class TimelineLaneRangeHooks {
   /// settled into a tap, so a click on an fx row left a one-cell band.
   final VoidCallback onTapClear;
 
+  /// The ＋ on the lane selection as it stands — see
+  /// [TimelineLaneRangeCallbacks.onCreateKeys]. Null leaves a header
+  /// graph's pen adding nothing.
+  final VoidCallback? onCreateKeys;
+
   final bool Function() onMoveBegin;
 
   /// A move step: the selection [frameDelta] frames along — and, carried
@@ -696,6 +702,7 @@ class TimelineLaneRangeCallbacks {
     this.onGripTaken,
     this.onGripReleased,
     this.onActivateAt,
+    this.onCreateKeys,
   });
 
   /// The same A5/D42 grip seam the cells layer carries: a lane drag holds
@@ -752,6 +759,14 @@ class TimelineLaneRangeCallbacks {
   /// family's [TimelineRangeGestureCallbacks.onTapClear], restated for
   /// lanes (H18, 유저 2026-08-22: 「fx헤더,멤버행의 선택범위 규칙이 다름」).
   final VoidCallback onTapClear;
+
+  /// The ＋ on the lane selection as it stands — a key on each of its
+  /// unkeyed frames, the value there kept: what a header graph's pen
+  /// presses once it has picked the cell its line was pressed in (I-3 ④,
+  /// AE's pen puts a key on the line). The ＋'s own verb, so the pen's key
+  /// is the one the button would have made there. Null leaves the pen
+  /// without one.
+  final VoidCallback? onCreateKeys;
 
   final bool Function() onMoveBegin;
 

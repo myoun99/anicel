@@ -946,6 +946,8 @@ void main() {
     'laneGraphSpeed': (s) => s.laneGraphSpeed,
     'laneGraphEnlarge': (s) => s.laneGraphEnlarge,
     'laneGraphEnlargeOn': (s) => s.laneGraphEnlargeOn,
+    'laneGraphPen': (s) => s.laneGraphPen,
+    'laneGraphPenOn': (s) => s.laneGraphPenOn,
     'railFillReferenceOn': (s) => s.railFillReferenceOn,
     'railFillReference': (s) => s.railFillReference,
     'tlLayerMark': (s) => s.tlLayerMark,

@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../core/segment_share.dart' show nearestOnSegment;
 import '../input/control_press_claim.dart' show DragVerbClaim;
 import '../repaint_props.dart';
 import '../widgets/axis_bar_gesture.dart' show OwningPanGestureRecognizer;
@@ -186,17 +187,6 @@ class ColorWheelGeometry {
     return (degrees + 360) % 360;
   }
 
-  static Offset _closestPointOnSegment(Offset point, Offset a, Offset b) {
-    final ab = b - a;
-    final lengthSquared = ab.dx * ab.dx + ab.dy * ab.dy;
-    if (lengthSquared == 0) {
-      return a;
-    }
-    final ap = point - a;
-    final t = ((ap.dx * ab.dx + ap.dy * ab.dy) / lengthSquared).clamp(0.0, 1.0);
-    return a + ab * t;
-  }
-
   /// [position] if inside the triangle, otherwise the nearest point on its
   /// boundary — how drags locked to the triangle clamp.
   Offset clampToTriangle(Offset position) {
@@ -207,7 +197,7 @@ class ColorWheelGeometry {
     Offset? best;
     var bestDistance = double.infinity;
     for (var i = 0; i < 3; i += 1) {
-      final candidate = _closestPointOnSegment(
+      final candidate = nearestOnSegment(
         position,
         corners[i],
         corners[(i + 1) % 3],

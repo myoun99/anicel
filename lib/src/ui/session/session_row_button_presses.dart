@@ -223,6 +223,7 @@ class SessionRowButtonPresses {
     plot: plotLaneGraph,
     resize: resizeLaneGraph,
     enlarge: enlargeLaneGraph,
+    pen: penLaneGraph,
   );
 
   /// A group's HEADER GRAPH on or off, by the group's key — on every use of
@@ -296,6 +297,17 @@ class SessionRowButtonPresses {
   /// no undo.
   void plotLaneGraph(String groupKey, LaneGraphMode mode) =>
       _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(mode: mode));
+
+  /// A group's open graph's PEN taken up or put down (I-3 ④), on every use
+  /// of its row — what the pressed one has, all of them turned to the
+  /// other. View state, no undo.
+  void penLaneGraph(String groupKey) {
+    final pressed = session.railView.laneGraphs.value.open[groupKey];
+    if (pressed == null) {
+      return;
+    }
+    _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(pen: !pressed.pen));
+  }
 
   /// How far a group's open graph stands along the rail — its grip's — on
   /// every use of its row. View state, no undo.

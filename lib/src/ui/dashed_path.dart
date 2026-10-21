@@ -21,6 +21,18 @@ class DashPattern {
   /// One dash and the gap after it.
   double get period => on + off;
 
+  /// Where the first dash starts along a contour: [phase] back from its
+  /// start, taken into one [period].
+  double get firstDashStart => -phase % period;
+
+  /// Whether [distance] along a contour is on one of the dashes
+  /// [dashesAlong] draws there, off the same start — what a press on a
+  /// dashed line asks (F-262: 「보이는 만큼 존재하도록」).
+  bool dashesAt(double distance) {
+    final from = distance - firstDashStart;
+    return from >= 0 && from % period <= on;
+  }
+
   /// This pattern, slid [phase] back.
   DashPattern marchedBy(double phase) =>
       DashPattern(on: on, off: off, phase: phase);
@@ -39,7 +51,7 @@ class DashPattern {
 Iterable<Path> dashesAlong(Path source, DashPattern dashes) sync* {
   for (final metric in source.computeMetrics()) {
     for (
-      var start = -dashes.phase % dashes.period;
+      var start = dashes.firstDashStart;
       start < metric.length;
       start += dashes.period
     ) {

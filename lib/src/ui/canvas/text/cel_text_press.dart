@@ -152,8 +152,7 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
 /// ⚠️Its cost was named with the answer: a palm on the glass while the pen
 /// picks letters carries the box instead.
 bool _carriesTheBox(PointerDownEvent event) {
-  return ModifierKeys.isControlPressed ||
-      ModifierKeys.isMetaPressed ||
+  return ModifierKeys.isControlOrCommandPressed ||
       CanvasTouchContacts.aFingerDownBesides(event.pointer);
 }
 

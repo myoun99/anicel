@@ -1860,6 +1860,8 @@ enum AppStrings {
   String get laneGraphSpeed => _s('laneGraphSpeed');
   String get laneGraphEnlarge => _s('laneGraphEnlarge');
   String get laneGraphEnlargeOn => _s('laneGraphEnlargeOn');
+  String get laneGraphPen => _s('laneGraphPen');
+  String get laneGraphPenOn => _s('laneGraphPenOn');
   String get railFillReferenceOn => _s('railFillReferenceOn');
   String get railFillReference => _s('railFillReference');
   String get tlLayerMark => _s('tlLayerMark');
@@ -3019,6 +3021,8 @@ enum AppStrings {
     'laneGraphSpeed': 'Speed',
     'laneGraphEnlarge': 'Enlarge',
     'laneGraphEnlargeOn': 'Enlarge (on)',
+    'laneGraphPen': 'Pen',
+    'laneGraphPenOn': 'Pen (on)',
     'railFillReferenceOn': 'Fill reference layer (on)',
     'railFillReference': 'Fill reference layer',
     'tlLayerMark': 'Layer mark',
@@ -4620,6 +4624,8 @@ enum AppStrings {
     'laneGraphSpeed': '速度',
     'laneGraphEnlarge': '拡大表示',
     'laneGraphEnlargeOn': '拡大表示（オン）',
+    'laneGraphPen': 'ペン',
+    'laneGraphPenOn': 'ペン（オン）',
     'railFillReferenceOn': '塗り参照レイヤー（オン）',
     'railFillReference': '塗り参照レイヤー',
     'tlLayerMark': 'レイヤーマーク',
@@ -6248,6 +6254,8 @@ enum AppStrings {
     'laneGraphSpeed': '속도',
     'laneGraphEnlarge': '크게 보기',
     'laneGraphEnlargeOn': '크게 보기 (켜짐)',
+    'laneGraphPen': '펜',
+    'laneGraphPenOn': '펜 (켜짐)',
     'railFillReferenceOn': '채색 참조 레이어 (켜짐)',
     'railFillReference': '채색 참조 레이어',
     'tlLayerMark': '레이어 마크',
@@ -8013,6 +8021,8 @@ enum AppStrings {
     'laneGraphSpeed': 'Vitesse',
     'laneGraphEnlarge': 'Agrandir',
     'laneGraphEnlargeOn': 'Agrandir (activé)',
+    'laneGraphPen': 'Plume',
+    'laneGraphPenOn': 'Plume (activée)',
     'railFillReferenceOn': 'Calque de référence de remplissage (activé)',
     'railFillReference': 'Calque de référence de remplissage',
     'tlLayerMark': 'Repère de calque',
@@ -9566,6 +9576,8 @@ enum AppStrings {
     'laneGraphSpeed': '速度',
     'laneGraphEnlarge': '放大',
     'laneGraphEnlargeOn': '放大（开）',
+    'laneGraphPen': '钢笔',
+    'laneGraphPenOn': '钢笔（开）',
     'railFillReferenceOn': '填充参考图层（开）',
     'railFillReference': '填充参考图层',
     'tlLayerMark': '图层标记',

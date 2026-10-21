@@ -4,14 +4,15 @@ import 'package:flutter/foundation.dart'
 /// What a grid's header graphs are told (I-89 ③), each by the key of the
 /// group or the lane it was pressed on (`laneGroupKey`): a group's graph
 /// on or off, a lane pinned to every graph or let go, what a graph plots,
-/// how far it stands along the rail, and a graph enlarged over every other
-/// row or let back.
+/// how far it stands along the rail, a graph enlarged over every other
+/// row or let back, and its pen taken up or put down.
 typedef LaneGraphVerbs = ({
   ValueChanged<String> toggle,
   ValueChanged<String> togglePin,
   void Function(String groupKey, LaneGraphMode mode) plot,
   void Function(String groupKey, double extent) resize,
   ValueChanged<String> enlarge,
+  ValueChanged<String> pen,
 });
 
 /// What a header graph plots: the values, or how fast they change — a
@@ -35,13 +36,15 @@ double laneGraphMostExtent(double view, double rowExtent) =>
     view - rowExtent > 0 ? view - rowExtent : 0;
 
 /// ONE group's open header graph (I-89 ③): how far it stands along the
-/// rail, what it plots, and whether it is enlarged over the rest.
+/// rail, what it plots, whether it is enlarged over the rest, and whether
+/// its pen is up.
 @immutable
 class LaneGraph {
   const LaneGraph({
     this.extent,
     this.mode = LaneGraphMode.value,
     this.enlarged = false,
+    this.pen = false,
   });
 
   /// The grip's extent; null until a grip has said one.
@@ -58,28 +61,44 @@ class LaneGraph {
   /// row.
   final bool enlarged;
 
+  /// Whether its PEN is up (I-3 ④, AE's pen in the graph editor): a press
+  /// on one of its lines puts a key there, the value it holds kept — what
+  /// a Ctrl+click does with no pen ([LaneGraphPicture]). A finger has no
+  /// Ctrl, so a switch.
+  ///
+  /// ⚠️Mine: one graph's, beside [enlarged] in its tools and kept as that
+  /// is — with the graph, on every use of its row (F-302). AE's pen is the
+  /// one tool of the window; this app's graph tools are each graph's own.
+  final bool pen;
+
   /// How far the graph stands on a rail of [rowExtent] rows: the grip's,
   /// or [laneGraphOpeningRows] rows — so a graph nobody has sized follows
   /// the OS text size its rows do.
   double extentAt(double rowExtent) =>
       extent ?? laneGraphOpeningRows * rowExtent;
 
-  LaneGraph copyWith({double? extent, LaneGraphMode? mode, bool? enlarged}) =>
-      LaneGraph(
-        extent: extent ?? this.extent,
-        mode: mode ?? this.mode,
-        enlarged: enlarged ?? this.enlarged,
-      );
+  LaneGraph copyWith({
+    double? extent,
+    LaneGraphMode? mode,
+    bool? enlarged,
+    bool? pen,
+  }) => LaneGraph(
+    extent: extent ?? this.extent,
+    mode: mode ?? this.mode,
+    enlarged: enlarged ?? this.enlarged,
+    pen: pen ?? this.pen,
+  );
 
   @override
   bool operator ==(Object other) =>
       other is LaneGraph &&
       other.extent == extent &&
       other.mode == mode &&
-      other.enlarged == enlarged;
+      other.enlarged == enlarged &&
+      other.pen == pen;
 
   @override
-  int get hashCode => Object.hash(extent, mode, enlarged);
+  int get hashCode => Object.hash(extent, mode, enlarged, pen);
 }
 
 /// THE RAIL'S HEADER GRAPHS (I-89 ③) — a view setting, kept in the file

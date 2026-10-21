@@ -84,10 +84,11 @@ class ProjectResume {
   final Map<String, double> layerAxisOffsets;
 
   /// The header graphs standing open — how tall, plotting what, enlarged or
-  /// not — and the lanes pinned to them (I-89 ③): a view setting kept here
-  /// as the zooms are (유저 답 F-360-Q1 「보기 설정처럼 — 저장은 되고 언두는
-  /// 안 됨」). Turning one is no edit, so no undo step takes it back and
-  /// nothing marks the film unsaved, and the file still keeps it.
+  /// not, their pen up or not — and the lanes pinned to them (I-89 ③): a
+  /// view setting kept here as the zooms are (유저 답 F-360-Q1 「보기 설정처럼
+  /// — 저장은 되고 언두는 안 됨」). Turning one is no edit, so no undo step
+  /// takes it back and nothing marks the film unsaved, and the file still
+  /// keeps it.
   final LaneGraphsView laneGraphs;
 
   /// The page and the framing each file was left at in the viewers, by the
@@ -116,6 +117,7 @@ class ProjectResume {
             if (graph.extent != null) 'extent': graph.extent,
             if (graph.mode != LaneGraphMode.value) 'mode': graph.mode.name,
             if (graph.enlarged) 'enlarged': true,
+            if (graph.pen) 'pen': true,
           },
       },
     if (laneGraphs.pinned.isNotEmpty) 'pinnedLanes': [...laneGraphs.pinned],
@@ -174,7 +176,8 @@ class ProjectResume {
   }
 
   /// The header graph [json] holds — a part it does not hold readably
-  /// stands as on a graph nobody has sized, plotted or enlarged.
+  /// stands as on a graph nobody has sized, plotted, enlarged or taken
+  /// the pen up in.
   static LaneGraph _laneGraph(Map<String, Object?> json) => LaneGraph(
     extent: _positive(json['extent']),
     mode:
@@ -183,6 +186,7 @@ class ProjectResume {
             .firstOrNull ??
         LaneGraphMode.value,
     enlarged: json['enlarged'] == true,
+    pen: json['pen'] == true,
   );
 
   /// [value] as a zoom or an offset can be read back: a finite number above

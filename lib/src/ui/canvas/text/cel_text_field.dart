@@ -211,7 +211,7 @@ class CelTextField extends StatelessWidget {
   /// 만들지말고 법 통일해서 작동하도록」), and two tools alone keep theirs
   /// (`canvasToolReadsAlt`).
   bool _arrow(KeyEvent event) {
-    if (ModifierKeys.isControlPressed || ModifierKeys.isMetaPressed) {
+    if (ModifierKeys.isControlOrCommandPressed) {
       return false;
     }
     final selection = letters.selection;

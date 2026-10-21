@@ -19,6 +19,7 @@ import '../../models/key_side.dart'
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
+import '../../core/segment_share.dart' show shareAlongSegment;
 import '../../services/input/modifier_keys.dart' show ModifierKeys;
 import '../dashed_path.dart' show DashPattern, dashesAlong;
 import '../input/hit_gate.dart' show HitGate;
@@ -333,6 +334,7 @@ class TimelineLaneGraph extends StatelessWidget {
                 edits: grid.laneEdit,
                 lanes: grid.laneRange,
                 mode: seat.graph.mode,
+                pen: seat.graph.pen,
               ),
             ),
           ),
@@ -365,6 +367,8 @@ class TimelineLaneGraph extends StatelessWidget {
             onEnlarge: verbs == null
                 ? null
                 : () => verbs.enlarge(seat.groupKey),
+            pen: seat.graph.pen,
+            onPen: verbs == null ? null : () => verbs.pen(seat.groupKey),
           ),
         ),
         if (guests.isNotEmpty)
@@ -430,6 +434,10 @@ class TimelineLaneGraph extends StatelessWidget {
 /// lanes' own law (2026-08-08: a key is moved by moving the selection that
 /// holds it), so a key carried here lands where its row would have put it.
 ///
+/// And its PEN (I-3 ④, AE's pen in the graph editor): with it up, or Ctrl
+/// held (⌘ on a Mac), a press on a line puts a key there, the value it
+/// holds kept — through the ＋ its lanes' rows take, on the cell pressed.
+///
 /// While a handle or a key is in hand the picture is held to what its
 /// lines were fitted to when it was taken ([TimelineLaneGraphPainter.held]).
 class LaneGraphPicture extends StatefulWidget {
@@ -441,6 +449,7 @@ class LaneGraphPicture extends StatefulWidget {
     required this.edits,
     required this.lanes,
     required this.mode,
+    this.pen = false,
   });
 
   final List<LaneGraphLine> own;
@@ -457,6 +466,9 @@ class LaneGraphPicture extends StatefulWidget {
   /// rows'; null where the host takes none, and a key takes no press.
   final TimelineLaneRangeCallbacks? lanes;
   final LaneGraphMode mode;
+
+  /// Whether its graph's pen is up ([LaneGraph.pen]).
+  final bool pen;
 
   @override
   State<LaneGraphPicture> createState() => _LaneGraphPictureState();
@@ -539,12 +551,24 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     );
   }
 
-  /// Whether a press at [position] is the picture's: on a handle, or on a
-  /// key where a key takes a press.
+  /// Whether a press at [position] is the picture's: on a handle, on a
+  /// key where a key takes a press, or on a line where the pen puts a key.
   bool _takesPressAt(Offset position) {
     final size = context.size!;
     return _painter.handleAt(position, size) != null ||
-        (widget.lanes != null && _painter.keyAt(position, size) != null);
+        (widget.lanes != null && _painter.keyAt(position, size) != null) ||
+        _penAt(position) != null;
+  }
+
+  /// Where a press at [position] puts a key (I-3 ④): the line it lands on
+  /// and the frame of its own pressed — with the pen up or Ctrl held (⌘ on
+  /// a Mac), where the host takes the ＋; null anywhere else.
+  ({LaneGraphLine line, int frame})? _penAt(Offset position) {
+    if (widget.lanes?.onCreateKeys == null ||
+        !(widget.pen || ModifierKeys.isControlOrCommandPressed)) {
+      return null;
+    }
+    return _painter.curveAt(position, context.size!);
   }
 
   // A drag the platform cancels once it has started ends as a release does
@@ -578,10 +602,12 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final lanes = widget.lanes;
     final position = details.localPosition;
     final size = context.size!;
-    final key = lanes == null || _painter.handleAt(position, size) != null
-        ? null
-        : _painter.keyAt(position, size);
-    if (lanes == null || key == null) {
+    if (lanes == null || _painter.handleAt(position, size) != null) {
+      return;
+    }
+    final key = _painter.keyAt(position, size);
+    if (key == null) {
+      _putKeyAt(position, lanes);
       return;
     }
     final (:line, :frame, part: _, at: _, mark: _) = key;
@@ -591,10 +617,32 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       line.lane.laneId,
       frame,
     )) {
-      lanes.onSelectUpdate(line.layer.id, line.lane.laneId, frame, frame, 0);
+      _pickCell(lanes, line, frame);
     }
     setState(() => _keyInHand = _KeyInHand(key, position, _painter.fits));
   }
+
+  /// A press on a line where the pen puts a key ([_penAt]) PUTS ONE THERE
+  /// (I-3 ④) — the cell pressed picked, as a press on a key picks its own,
+  /// and the ＋ pressed on it: the key the button would make there, the
+  /// value the line holds kept, and none where one stands already.
+  ///
+  /// 🗣️I-3-Q2 (유저 2026-10-21): 「곡선 선 위만 (AE · 보이는 만큼)」 — the
+  /// mouse's Ctrl+click and the pen's tap alike, on the line as drawn.
+  void _putKeyAt(Offset position, TimelineLaneRangeCallbacks lanes) {
+    if (_penAt(position) case (:final line, :final frame)) {
+      _pickCell(lanes, line, frame);
+      lanes.onCreateKeys!();
+    }
+  }
+
+  /// [line]'s cell on [frame] picked — the lane selection its row's band
+  /// makes there.
+  static void _pickCell(
+    TimelineLaneRangeCallbacks lanes,
+    LaneGraphLine line,
+    int frame,
+  ) => lanes.onSelectUpdate(line.layer.id, line.lane.laneId, frame, frame, 0);
 
   /// The hand moved off the key it picked: the selection's move begins —
   /// nothing, where the selection holds nothing to move.
@@ -897,15 +945,15 @@ class _LaneGraphGripState extends State<LaneGraphGrip> {
 
 /// What a graph's tools keep clear of the view's start along the frames
 /// and of the graph's edge across them, what their well keeps around the
-/// pills, and what stands between the pills and the enlarge button (the
-/// mock's, 5판).
+/// pills, and what stands between the pills and each button (the mock's,
+/// 5판).
 const double _graphToolsInset = 6;
 const double _graphToolsPadding = 2;
 const double _graphToolsGap = 6;
 
 /// A graph's own tools, at the view's start (I-89 ③, the mock's 5판): what
-/// it plots — its values, or how fast they change — and the button that
-/// enlarges it over every other row or lets it back (③D).
+/// it plots — its values, or how fast they change — its pen (I-3 ④), and
+/// the button that enlarges it over every other row or lets it back (③D).
 class LaneGraphTools extends StatelessWidget {
   const LaneGraphTools({
     super.key,
@@ -915,6 +963,8 @@ class LaneGraphTools extends StatelessWidget {
     required this.onPlot,
     required this.enlarged,
     required this.onEnlarge,
+    this.pen = false,
+    this.onPen,
   });
 
   /// The grid's key prefix and the graph's group, which its pills' keys
@@ -934,6 +984,21 @@ class LaneGraphTools extends StatelessWidget {
 
   /// Null where the host hands the graph no verbs, as [onPlot].
   final VoidCallback? onEnlarge;
+
+  /// Whether the graph's pen is up — its button on ([LaneGraph.pen]).
+  final bool pen;
+
+  /// Null where the host hands the graph no verbs, as [onPlot].
+  final VoidCallback? onPen;
+
+  /// The pills and the pen are laid out in the room they are given, but
+  /// never in less than the pen's own.
+  static BoxConstraints _roomForThePen(BoxConstraints room) => room.copyWith(
+    maxWidth: math.max(
+      room.maxWidth,
+      _graphToolsGap + AppIconButtonSize.strip.maxWidth,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -955,12 +1020,41 @@ class LaneGraphTools extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // ⚠️Mine: in a view too narrow for both buttons, the pen gives
+            // its width up after the pills — cut where their room ends —
+            // and the enlarge button keeps all of its own, as it did before
+            // the pen stood beside it.
             Flexible(
-              child: PillStrip(
-                items: [
-                  pill(LaneGraphMode.value, strings.laneGraphValue),
-                  pill(LaneGraphMode.speed, strings.laneGraphSpeed),
-                ],
+              child: ConstraintsTransformBox(
+                alignment: AlignmentDirectional.centerStart,
+                clipBehavior: Clip.hardEdge,
+                constraintsTransform: _roomForThePen,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: PillStrip(
+                        items: [
+                          pill(LaneGraphMode.value, strings.laneGraphValue),
+                          pill(LaneGraphMode.speed, strings.laneGraphSpeed),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: _graphToolsGap),
+                    // ⚠️Mine: Material draws no pen nib (AE's glyph); this
+                    // one is a pen drawing its line.
+                    AppIconButton(
+                      keyValue: '$keyPrefix-lane-graph-pen-$groupKey',
+                      tooltip: pen
+                          ? strings.laneGraphPenOn
+                          : strings.laneGraphPen,
+                      size: AppIconButtonSize.strip,
+                      isSelected: pen,
+                      icon: const Icon(Icons.draw),
+                      onPressed: onPen,
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(width: _graphToolsGap),
@@ -1465,15 +1559,15 @@ Iterable<double> laneGraphTimes(
   yield to;
 }
 
-/// One paint of a graph: the [frames] its grid lays, the [window] of them
-/// it draws, the [times] it reads each line at, and how far across it
-/// reaches.
-typedef _LaneGraphPass = ({
-  Canvas canvas,
-  TimelineFrameGeometry frames,
-  ({int startIndex, int endIndexExclusive}) window,
-  List<double> times,
-  double extent,
+/// One STROKE of a graph's line (I-3 ④): [line]'s number — in a speed
+/// graph, the one speed its numbers move at — through [points], in
+/// [color], in dashes for a guest's. What is painted, and so what a pen
+/// press is asked against.
+typedef _LaneGraphStroke = ({
+  LaneGraphLine line,
+  List<Offset> points,
+  Color color,
+  bool dashed,
 });
 
 /// A KEY a value graph marks (I-89 ③), and a press picks (I-3): [line]'s
@@ -1621,12 +1715,13 @@ class TimelineLaneGraphPainter extends CustomPainter {
   static String _lineKey(LaneGraphLine line) =>
       laneGroupKey(line.layer.id, line.lane.laneId);
 
-  /// The handles and the keys [_readIn] last read, and where they were
-  /// read for.
+  /// The strokes, the handles and the keys [_readIn] last read, and where
+  /// they were read for.
   ({
     Size size,
     TimelineFrameGeometry frames,
     ({int startIndex, int endIndexExclusive}) window,
+    List<_LaneGraphStroke> strokes,
     List<LaneGraphHandle> handles,
     List<LaneGraphKey> keys,
   })?
@@ -1700,24 +1795,20 @@ class TimelineLaneGraphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final frames = frameAxis.geometry.value;
-    final window = visibleFrameWindow();
-    final pass = (
-      canvas: canvas,
-      frames: frames,
-      window: window,
-      times: laneGraphTimes(window, frames.frameCellExtent).toList(),
-      extent: extentAcross(axis, size),
-    );
     // A pull bends a line past what it was fitted to, and a handle stands
     // off its line: the picture stays inside its own box.
     canvas.clipRect(Offset.zero & size);
+    final (:strokes, :handles, :keys) = _readIn(size);
     // The marks go on last, over every line and the handles' stems — and
     // the handles over them (the mock's, 5판).
-    for (final plot in _plots) {
-      _drawLine(pass, plot);
+    for (final (line: _, :points, :color, :dashed) in strokes) {
+      _strokeLaneGraphLine(
+        canvas,
+        Path()..addPolygon(points, false),
+        color,
+        dashed: dashed,
+      );
     }
-    final (:handles, :keys) = _readIn(size);
     final stem = Paint()
       ..strokeWidth = _laneGraphStemStroke
       ..color = AppColors.textDim;
@@ -1781,6 +1872,50 @@ class TimelineLaneGraphPainter extends CustomPainter {
     );
   }
 
+  /// Where a pen press at [position] puts a key on a picture [size] big
+  /// (I-3 ④, AE's pen): the line it lands on — on its stroke as drawn and
+  /// nowhere round it ([_drawnLastAt], [_strokeHolds]) — and the frame of
+  /// the line's own whose cell it is in. Null off every line, and off the
+  /// frames the line has.
+  ({LaneGraphLine line, int frame})? curveAt(Offset position, Size size) {
+    final stroke = _drawnLastAt(
+      _readIn(size).strokes,
+      (stroke) => _strokeHolds(stroke, position),
+    );
+    if (stroke == null) {
+      return null;
+    }
+    final frames = frameAxis.geometry.value;
+    final cell = frames.cellAt(partAlong(axis, position));
+    final line = stroke.line;
+    final frame = cell - _shiftOf(line);
+    return frames.contains(cell) && _reaches(line, frame)
+        ? (line: line, frame: frame)
+        : null;
+  }
+
+  /// Whether [position] is on [stroke] as it is drawn: within half its
+  /// width of the line through its points — and, a guest's, on one of its
+  /// dashes ([DashPattern.dashesAt]).
+  static bool _strokeHolds(_LaneGraphStroke stroke, Offset position) {
+    final (line: _, :points, color: _, :dashed) = stroke;
+    var along = 0.0;
+    for (var index = 0; index + 1 < points.length; index += 1) {
+      final from = points[index];
+      final to = points[index + 1];
+      final share = shareAlongSegment(position, from, to).clamp(0.0, 1.0);
+      final length = (to - from).distance;
+      final nearest = from + (to - from) * share;
+      if ((nearest - position).distance <= _laneGraphStroke / 2 &&
+          (!dashed ||
+              _laneGraphGuestDashes.dashesAt(along + share * length))) {
+        return true;
+      }
+      along += length;
+    }
+    return false;
+  }
+
   /// Of [marks], in the order they are drawn, the one drawn last that a
   /// press [hits] — on what is drawn of it, and nowhere round it (F-262:
   /// 「보이는 만큼 존재하도록」). Null where there is none.
@@ -1807,21 +1942,29 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// keys' tests.
   List<LaneGraphKey> keysIn(Size size) => _readIn(size).keys;
 
-  /// The handles and the keys a picture [size] big shows — read once for
-  /// where the grid lays its window, since a mouse asks [handleAt] and
-  /// [keyAt] on every move it makes over the picture.
-  ({List<LaneGraphHandle> handles, List<LaneGraphKey> keys}) _readIn(
-    Size size,
-  ) {
+  /// The strokes, the handles and the keys a picture [size] big shows —
+  /// read once for where the grid lays its window, since a mouse asks
+  /// [handleAt], [keyAt] and [curveAt] on every move it makes over the
+  /// picture, and what a press is asked against is what was painted.
+  ({
+    List<_LaneGraphStroke> strokes,
+    List<LaneGraphHandle> handles,
+    List<LaneGraphKey> keys,
+  })
+  _readIn(Size size) {
     final frames = frameAxis.geometry.value;
     final window = visibleFrameWindow();
     if (_read case final last?
         when last.size == size &&
             last.frames == frames &&
             last.window == window) {
-      return (handles: last.handles, keys: last.keys);
+      return (strokes: last.strokes, handles: last.handles, keys: last.keys);
     }
     final extent = extentAcross(axis, size);
+    final times = laneGraphTimes(window, frames.frameCellExtent).toList();
+    final strokes = [
+      for (final plot in _plots) ..._strokesOf(plot, frames, times, extent),
+    ];
     final handles = [
       for (final plot in _plots) ..._handlesOf(plot, frames, window, extent),
     ];
@@ -1832,10 +1975,11 @@ class TimelineLaneGraphPainter extends CustomPainter {
       size: size,
       frames: frames,
       window: window,
+      strokes: strokes,
       handles: handles,
       keys: keys,
     );
-    return (handles: handles, keys: keys);
+    return (strokes: strokes, handles: handles, keys: keys);
   }
 
   /// The handles [plot]'s line takes (the mock's, 5판): one on each side of
@@ -2038,17 +2182,21 @@ class TimelineLaneGraphPainter extends CustomPainter {
     }
   }
 
-  /// Draws [plot]'s line through [pass] — every number it holds, or in a
-  /// speed graph the one speed they move at (I-89-Q5 B) — in dashes for a
-  /// guest.
-  void _drawLine(_LaneGraphPass pass, _LaneGraphPlot plot) {
+  /// [plot]'s line as it is stroked over [frames], read at [times] on a
+  /// graph [extent] across — every number it holds, or in a speed graph the
+  /// one speed they move at (I-89-Q5 B) — in dashes for a guest.
+  Iterable<_LaneGraphStroke> _strokesOf(
+    _LaneGraphPlot plot,
+    TimelineFrameGeometry frames,
+    List<double> times,
+    double extent,
+  ) sync* {
     final (:line, :dashed, :fit) = plot;
     final curve = line.lane.curve;
     if (curve == null || fit == null) {
       return;
     }
     final (:keyed, :ranges) = fit;
-    final (:canvas, :frames, window: _, :times, :extent) = pass;
     final shift = _shiftOf(line);
     final at = _placerOf(line, ranges, frames, extent);
     // The times it is drawn at, its own.
@@ -2070,13 +2218,13 @@ class TimelineLaneGraphPainter extends CustomPainter {
     // takes its first number's colour — mine (I-89-Q5 B): the mock drew a
     // point's speed as two lines, and AE's one line has no colour of ours.
     for (var part = 0; part < ranges.length; part += 1) {
-      _strokeLaneGraphLine(
-        canvas,
-        Path()..addPolygon([
+      yield (
+        line: line,
+        points: [
           for (final (:time, :numbers) in readings)
             at(time, numbers[part], part),
-        ], false),
-        curve.parts[part],
+        ],
+        color: curve.parts[part],
         dashed: dashed,
       );
     }

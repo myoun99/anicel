@@ -51,6 +51,14 @@ abstract final class ModifierKeys {
       _windowsHolds(vkLeftWindows) ||
       _windowsHolds(vkRightWindows);
 
+  /// Whether Ctrl is held — or ⌘, which is Ctrl on a Mac or an iPad
+  /// (`canvasRotateHold`'s note): what a Ctrl+click and a Ctrl+arrow ask.
+  ///
+  /// ONE ASK: the text tool's box press and its arrows each asked both, and
+  /// a header graph's Ctrl+click would have been the third (I-3 ④).
+  static bool get isControlOrCommandPressed =>
+      isControlPressed || isMetaPressed;
+
   /// The keyboard as a shortcut's activator reads it (`accepts`): the
   /// engine's record, with each modifier these getters say is held put
   /// back where the record let go of it.

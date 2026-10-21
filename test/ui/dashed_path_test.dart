@@ -66,6 +66,28 @@ void main() {
     ]);
   });
 
+  test('whether a point along a line is on a dash is the walk\'s own '
+      'answer — a phase\'s piece before the start not drawn there either', () {
+    // Dashes 0–5, 9–14 and from 18.
+    expect(
+      [0.5, 4.5, 6.0, 8.5, 9.5, 13.5, 16.0, 18.5].map(fiveFour.dashesAt),
+      [true, true, false, false, true, true, false, true],
+    );
+    // Three back: dashes 6–11 and from 15, and none before 6.
+    expect(
+      [
+        1.0,
+        3.0,
+        5.5,
+        6.5,
+        10.5,
+        12.0,
+        15.5,
+      ].map(fiveFour.marchedBy(3).dashesAt),
+      [false, false, false, true, true, false, true],
+    );
+  });
+
   test('a dash follows the line round a corner', () {
     final corner = Path()
       ..moveTo(0, 0)

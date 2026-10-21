@@ -167,6 +167,7 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
     onTapAt: hostLaneRange.onTapAt,
     onActivateAt: hostLaneRange.onActivateAt,
     onTapClear: hostLaneRange.onTapClear,
+    onCreateKeys: hostLaneRange.onCreateKeys,
     onMoveBegin: hostLaneRange.onMoveBegin,
     onMoveUpdate: hostLaneRange.onMoveUpdate,
     onMoveEnd: hostLaneRange.onMoveEnd,

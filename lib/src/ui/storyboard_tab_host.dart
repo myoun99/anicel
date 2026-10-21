@@ -969,6 +969,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           ),
                       // H18: the cells family's release rule, here too.
                       onTapClear: _session.clearLaneRangeSelection,
+                      onCreateKeys:
+                          _session.cellInstances.createInstancesForSelection,
                       onActivateAt: (_, _, globalFrame) =>
                           unawaited(_activateLaneCell(globalFrame)),
                       onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,

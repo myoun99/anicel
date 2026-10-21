@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
@@ -29,6 +30,8 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show timelineLaneKeyMarkerSize;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import 'package:anicel/src/ui/widgets/app_icon_button.dart'
+    show AppIconButtonFace;
 
 import '../../helpers/named_finders.dart';
 
@@ -478,6 +481,89 @@ void main() {
     expect(_keyedFrames(s), [0, 8]);
     expect(_rotationAt(s, 8), greaterThan(45));
   });
+
+  // I-3 ④ — AE's pen in the graph editor: a click on a line adds a key
+  // there, the value kept; a Ctrl+click does so without the pen.
+  testWidgets('the pen button takes the graph\'s pen up and puts it down, '
+      'its face on while it is up', (tester) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    bool penUp() => s.railView.laneGraphs.value.open[_transformGroup]!.pen;
+    AppIconButtonFace face() => tester.widget<AppIconButtonFace>(_penButton);
+    expect(penUp(), isFalse, reason: '⛔전제');
+    expect(face().isSelected, isFalse);
+    expect(face().tooltip, AppText.strings.laneGraphPen);
+
+    await _tapThePen(tester);
+    expect(penUp(), isTrue);
+    expect(face().isSelected, isTrue);
+    expect(face().tooltip, AppText.strings.laneGraphPenOn);
+
+    await _tapThePen(tester);
+    expect(penUp(), isFalse);
+  });
+
+  testWidgets('with the pen up, a finger on the line puts a key on the '
+      'frame it is in — the value the line holds there kept, the key '
+      'picked, in one undo', (tester) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    await _tapThePen(tester);
+    final held = _shownAt(tester, 4).single;
+    final undoable = s.historyManager.canUndo;
+
+    await _tapTheLine(tester, 4, PointerDeviceKind.touch);
+
+    expect(_keyedFrames(s), [0, 4, 8]);
+    expect(_rotationAt(s, 4), closeTo(held, 1e-9));
+    final picked = s.laneRangeSelection.value!;
+    expect(
+      (picked.layerId, picked.startIndex, picked.endIndexExclusive),
+      (_drawId, 4, 5),
+    );
+    expect(picked.spanLaneIds, ['rotation']);
+    s.undo();
+    expect(_keyedFrames(s), [0, 8]);
+    expect(s.historyManager.canUndo, undoable);
+  });
+
+}
+
+Finder get _penButton =>
+    find.byKey(ValueKey<String>('timeline-lane-graph-pen-$_transformGroup'));
+
+/// A tap on the graph's pen button.
+Future<void> _tapThePen(WidgetTester tester) async {
+  await tester.tap(_penButton);
+  await tester.pumpAndSettle();
+}
+
+/// A tap of [kind] on the graph's line at [frame].
+Future<void> _tapTheLine(
+  WidgetTester tester,
+  int frame,
+  PointerDeviceKind kind,
+) async {
+  await tester.tapAt(_lineOnScreen(tester, frame.toDouble()), kind: kind);
+  await tester.pumpAndSettle();
+}
+
+/// Where the graph draws its lane's line at [time], on the screen.
+Offset _lineOnScreen(WidgetTester tester, double time) {
+  final (:painter, :box) = _graphOf(tester);
+  final line = painter.own.single;
+  final fit = painter.fits[laneGroupKey(line.layer.id, line.lane.laneId)]!;
+  return box.localToGlobal(
+    Offset(
+      laneGraphAlong(time, painter.frameAxis.geometry.value),
+      laneGraphAcross(
+        line.lane.curve!.at(time).single,
+        fit.ranges.single,
+        box.size.height,
+        Axis.horizontal,
+      ),
+    ),
+  );
 }
 
 /// A press on the key at [at], carried [by] and let go.
@@ -568,6 +654,10 @@ ScrollPosition _rowsScroll(WidgetTester tester) => tester
 
 /// The drawing's lanes twirled open and its Transform graph with them, its
 /// [lane] stood on — the one lane the graph then draws.
+///
+/// Pulled taller than it opens: a line's top stands about where the tools
+/// in the view's near corner end, and the key on 8 is that top — half under
+/// them once the pen joined them (I-3 ④).
 Future<void> _openTheGraph(
   WidgetTester tester,
   EditorSessionManager s, {
@@ -582,6 +672,7 @@ Future<void> _openTheGraph(
     tester,
     'timeline-lane-group-graph-draw-${transformGroupHeaderLane.laneId}',
   );
+  SessionRowButtonPresses(s).resizeLaneGraph(_transformGroup, 320);
   s.standOnRow(LaneRowAddress(_drawId, lane));
   await tester.pumpAndSettle();
 }

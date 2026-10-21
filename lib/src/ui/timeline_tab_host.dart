@@ -788,6 +788,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // that turned out to be a tap takes its anchor span back
               // instead of leaving a one-cell band behind.
               onTapClear: _session.clearLaneRangeSelection,
+              onCreateKeys: _session.cellInstances.createInstancesForSelection,
               onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
               onMoveUpdate: (frameDelta, {values}) => _session.laneMove
                   .updateLaneRangeMoveDrag(

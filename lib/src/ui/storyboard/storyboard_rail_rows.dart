@@ -1804,6 +1804,7 @@ class _StoryboardRailRows {
       onTapAt: host.onTapAt,
       onActivateAt: host.onActivateAt,
       onTapClear: host.onTapClear,
+      onCreateKeys: host.onCreateKeys,
       onMoveBegin: host.onMoveBegin,
       onMoveUpdate: host.onMoveUpdate,
       onMoveEnd: host.onMoveEnd,
@@ -2078,6 +2079,7 @@ class _StoryboardRailRows {
       plot: (key, mode) => verbs.plot(held(key), mode),
       resize: (key, extent) => verbs.resize(held(key), extent),
       enlarge: (key) => verbs.enlarge(held(key)),
+      pen: (key) => verbs.pen(held(key)),
     );
   }
 

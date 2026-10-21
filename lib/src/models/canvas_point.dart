@@ -1,4 +1,7 @@
 import 'dart:math' as math;
+import 'dart:ui' show Offset;
+
+import '../core/segment_share.dart' show shareAlongSegment;
 
 class CanvasPoint {
   CanvasPoint({required this.x, required this.y}) {
@@ -32,14 +35,10 @@ class CanvasPoint {
 
   /// [lerp] undone: where [value] falls along the line from [a] (0) to [b]
   /// (1) — its projection onto that line, 0 when the two are one point.
-  static double inverseLerp(CanvasPoint a, CanvasPoint b, CanvasPoint value) {
-    final dx = b.x - a.x;
-    final dy = b.y - a.y;
-    final length = dx * dx + dy * dy;
-    return length == 0
-        ? 0
-        : ((value.x - a.x) * dx + (value.y - a.y) * dy) / length;
-  }
+  static double inverseLerp(CanvasPoint a, CanvasPoint b, CanvasPoint value) =>
+      shareAlongSegment(value._offset, a._offset, b._offset);
+
+  Offset get _offset => Offset(x, y);
 
   /// How far this point is from the segment [a]–[b] — the 後補正's measure
   /// of a wobble, and the measure of which point of a turn is its corner
