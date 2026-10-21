@@ -239,8 +239,7 @@ class _PhotoBoxState extends State<_PhotoBox> {
     final box = RowTransformBox(
       corners: sheetPhotoCorners(widget.photo),
       pose: pose,
-      // A sheet keeps the whole wall: it sets no pasteboard size (I-109 ⓑ).
-      pasteboard: window.canvasSize.pasteboardAt(PasteboardReach.whole),
+      pasteboard: _sheetWall(window.canvasSize),
       viewport: window.viewport,
       presses: RowBoxPresses.taken,
       onCancelled: () => hold.dropShowing(at),
@@ -290,3 +289,9 @@ class _PhotoBoxState extends State<_PhotoBox> {
 }
 
 bool _anywhere(Offset position) => true;
+
+/// A sheet's wall: a sheet sets no pasteboard size — it has no pasteboard
+/// plane and no colour window of its own (F-179 · F-272) — so its photos
+/// stand behind the whole one (I-109 ⓑ).
+PasteboardWall _sheetWall(CanvasSize canvas) =>
+    canvas.pasteboardAt(PasteboardReach.whole);

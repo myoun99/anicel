@@ -877,6 +877,8 @@ void main() {
     'valueTypeIn': (s) => s.valueTypeIn,
     'viewCanvasColor': (s) => s.viewCanvasColor,
     'viewPasteboardColor': (s) => s.viewPasteboardColor,
+    'pasteboardInUse': (s) => s.pasteboardInUse,
+    'pasteboardNotInUse': (s) => s.pasteboardNotInUse,
     'viewBackdropColor': (s) => s.viewBackdropColor,
     'colorUseCurrent': (s) => s.colorUseCurrent,
     'colorNone': (s) => s.colorNone,

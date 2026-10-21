@@ -231,10 +231,8 @@ BitmapSurface surfaceBehindReach(
     laid: surface.laidBounds,
     tileSize: surface.tileSize,
   );
-  return BitmapSurface(
-    canvasSize: surface.canvasSize,
+  return surface.copyWith(
     pasteboardReach: reach,
-    tileSize: surface.tileSize,
     tiles: behind.tilesOf(surface.tiles),
     texts: [
       for (final text in surface.texts)
@@ -244,8 +242,6 @@ BitmapSurface surfaceBehindReach(
           plate: behind.tilesOf(text.plate),
         ),
     ],
-    photos: surface.photos,
-    laidBounds: surface.laidBounds,
   );
 }
 

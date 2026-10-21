@@ -113,8 +113,11 @@ void main() {
   /// The places that put the texts, the photos and where a file lies back
   /// themselves, and how many times each says so.
   const carriers = <String, ({int texts, int photos, int laid})>{
+    // The fourth text is a picture put behind a nearer wall (I-109): it
+    // derives (`copyWith`), so its photos and where its file lies come
+    // with it, and only its letters are cut and handed back.
     'lib/src/services/bitmap_surface_geometry.dart': (
-      texts: 3,
+      texts: 4,
       photos: 3,
       laid: 3,
     ),

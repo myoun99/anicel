@@ -359,6 +359,7 @@ void main() {
     const canvas = CanvasSize(width: 60, height: 38);
     const cutId = CutId('cut');
     const blue = 0xFF0000FF;
+    const black = 0xFF000000;
     // Ink to the canvas's edge and not a pixel past it.
     final filled = surfaceOf(
       canvas,
@@ -369,9 +370,10 @@ void main() {
       ],
     );
 
-    /// The cut through a camera at [pose], on a blue apron: filled to the
-    /// edge where [inked], blank where not; [size] for a canvas, and a
-    /// camera, other than the group's.
+    /// The cut through a camera at [pose], on a blue apron over a black
+    /// floor — the apron stops at the pasteboard's wall (I-109), and the
+    /// floor shows past it: filled to the edge where [inked], blank where
+    /// not; [size] for a canvas, and a camera, other than the group's.
     (EditorSessionManager, ExportFrameRenderer) filmAt(
       CameraPose pose, {
       bool inked = true,
@@ -383,6 +385,7 @@ void main() {
           name: 'Project',
           cameraSize: size,
           pasteboardArgb: blue,
+          backdropArgb: black,
           tracks: [
             Track(
               id: const TrackId('track'),
@@ -521,10 +524,18 @@ void main() {
             ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
           ], ExportSizeMode.camera).frame(0),
         );
+        // Film pixel p sees canvas [4 + (p − 4) × 4, 4 + (p − 3) × 4):
+        // pixel 2, [-4, 0), is past the canvas and inside the 3x wall at
+        // -8; pixel 0, [-12, -8), is past the wall.
         expect(
-          pixelOf(film, small.width, 0, 0),
+          pixelOf(film, small.width, 2, 2),
           (0, 0, 255, 255),
           reason: 'LIVENESS: the apron past the canvas',
+        );
+        expect(
+          pixelOf(film, small.width, 0, 0),
+          (0, 0, 0, 255),
+          reason: 'the floor past the pasteboard\'s wall (I-109)',
         );
         expect(pixelOf(film, small.width, 4, 4), (255, 255, 255, 255));
       });
