@@ -40,7 +40,11 @@ import '../models/track_camera_row.dart';
 import '../models/track_id.dart';
 import '../models/track_conte_row.dart';
 import '../models/track_projection_row.dart'
-    show projectionRowIdOf, projectionRowInHandOn, trackIdOfProjectionRow;
+    show
+        projectionRowIdOf,
+        projectionRowInHandOn,
+        projectionRowUnder,
+        trackIdOfProjectionRow;
 import '../models/track_transform_lane_carrier.dart';
 import '../models/transform_track.dart' show TransformTrack;
 import '../models/track_transitions.dart' show transitionRowSpans;
@@ -145,10 +149,13 @@ import '../models/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
 import 'timeline/timeline_beat_lines.dart'
     show
+        TimelineGridDash,
         TimelineGridLaw,
+        TimelineGridRow,
         TimelineGridRows,
         TimelineGridSheet,
         timelineBlockPaperShape,
+        timelineGridLineSnap,
         timelineLaneGround,
         timelineRowPaperExtent;
 import 'timeline/timeline_double_tap.dart'
@@ -2152,6 +2159,29 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     );
   }
 
+  /// The grid sheet off the rail's own row table, on the ground the law
+  /// hands down — rebuilt only where a drag moves a cut's start (the
+  /// projection rows' dashes, [_StoryboardRailRows.gridRows]).
+  Widget _gridSheet(BuildContext context, _StoryboardBodyFrame frame) {
+    final ground = TimelineGridLaw.maybeOf(context)?.ground;
+    final preview = widget.dragPreview ?? _noDragPreview;
+    return SlicedListenableBuilder<TimelineGridRows>(
+      listenable: preview,
+      slice: () => ground == null
+          ? TimelineGridRows.none
+          : _railRows.gridRows(
+              frame.project.tracks,
+              ground,
+              preview: preview.value,
+            ),
+      builder: (context, rows) => TimelineGridSheet(
+        key: const ValueKey<String>('storyboard-grid-sheet'),
+        frameCellExtent: frame.scale.pixelsPerFrame,
+        rows: rows,
+      ),
+    );
+  }
+
   Expanded _scrollArea(_StoryboardBodyFrame frame) {
     final playheadListenable = frame.playheadListenable;
     return Expanded(
@@ -2317,26 +2347,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                         child: IgnorePointer(
                                           child: RepaintBoundary(
                                             child: Builder(
-                                              builder: (context) {
-                                                final ground =
-                                                    TimelineGridLaw.maybeOf(
-                                                      context,
-                                                    )?.ground;
-                                                return TimelineGridSheet(
-                                                  key: const ValueKey<String>(
-                                                    'storyboard-grid-sheet',
-                                                  ),
-                                                  frameCellExtent: frame
-                                                      .scale
-                                                      .pixelsPerFrame,
-                                                  rows: ground == null
-                                                      ? TimelineGridRows.none
-                                                      : _railRows.gridRows(
-                                                          frame.project.tracks,
-                                                          ground,
-                                                        ),
-                                                );
-                                              },
+                                              builder: (context) =>
+                                                  _gridSheet(context, frame),
                                             ),
                                           ),
                                         ),

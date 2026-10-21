@@ -108,6 +108,7 @@ class CollapsedRowOverlay extends StatefulWidget {
     this.frameAxisOffset,
     this.drawnFrameCount,
     this.follows,
+    this.dashedFrames = const [],
   });
 
   /// The rail row itself, chromeless — see the class doc. Null on a lane row.
@@ -137,6 +138,12 @@ class CollapsedRowOverlay extends StatefulWidget {
   /// What turns [frameAxisOffset] — see [CollapsedRowFollows]. Null leaves
   /// the axis where the host puts it.
   final CollapsedRowFollows? follows;
+
+  /// The frames whose boundary the row strokes a dash of its own on — the
+  /// storyboard's projection rows' cut starts — and the grid under it
+  /// leaves to the dash, as the open panel's does
+  /// ([TimelineGridRows.dashes], F-347).
+  final List<int> dashedFrames;
 
   /// ⑩ 뿌리 C: the FRAME half, built by the caller from the same row widget
   /// the timeline draws — the other half of "the overlay owns no drawing
@@ -506,6 +513,13 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
       key: const ValueKey<String>('collapsed-grid-sheet'),
       frameCellExtent: cell,
       frameStartIndex: first,
+      rows: TimelineGridRows(
+        const [],
+        dashes: [
+          for (final frame in widget.dashedFrames)
+            (frame: frame, from: 0, to: widget.height),
+        ],
+      ),
     );
     return OverflowBox(
       alignment: Alignment.centerLeft,

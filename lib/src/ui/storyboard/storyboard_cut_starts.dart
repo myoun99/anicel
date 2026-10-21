@@ -66,7 +66,10 @@ class StoryboardCutStartsPainter extends CustomPainter with RepaintOnProps {
   static const DashPattern dashes = DashPattern(on: 2, off: 3);
 
   /// Where each cut begins inside the window, row-local x — THE probe
-  /// surface, and what [paint] strokes.
+  /// surface, and what [paint] strokes. On the grid's own line, snapped as
+  /// it is ([timelineGridLineSnap]) — the sheet leaves that line to the
+  /// dash ([TimelineGridRows.dashes], F-347); ↩️stroked on the bare edge,
+  /// it ran half a pixel beside the line it should have been.
   List<double> cutStarts() {
     final frames = geometry.value;
     if (frames.frameCellExtent <= 0) {
@@ -82,7 +85,7 @@ class StoryboardCutStartsPainter extends CustomPainter with RepaintOnProps {
     return [
       for (final start in starts)
         if (start >= window.startIndex && start < window.endIndexExclusive)
-          frames.edgeAt(start),
+          frames.edgeAt(start) + timelineGridLineSnap,
     ];
   }
 

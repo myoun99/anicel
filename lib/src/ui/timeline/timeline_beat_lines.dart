@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
@@ -606,6 +608,12 @@ class TimelineOutsideCutWashPainter extends CustomPainter with RepaintOnProps {
 /// the ground it stands on. Every row is ruled off at its trailing edge.
 typedef TimelineGridRow = ({double extent, Color ground});
 
+/// A boundary where a row strokes a dash of its own in place of the
+/// sheet's line: [frame]'s, across the sheet's cross axis from [from] to
+/// [to] — the row's own stretch of it, so a sheet that lays no rows (the
+/// folded row's) yields as one that does.
+typedef TimelineGridDash = ({int frame, double from, double to});
+
 /// The rows a grid sheet lays down, in order from its cross-axis origin.
 ///
 /// A VALUE, so a sheet rebuilt over the same rows repaints nothing: the
@@ -614,19 +622,30 @@ typedef TimelineGridRow = ({double extent, Color ground});
 /// would re-record the whole content-long sheet each time.
 @immutable
 class TimelineGridRows {
-  const TimelineGridRows(this.rows);
+  const TimelineGridRows(this.rows, {this.dashes = const []});
 
   /// No rows: the lines alone, over the host's ground and nothing else.
   static const TimelineGridRows none = TimelineGridRows([]);
 
   final List<TimelineGridRow> rows;
 
-  @override
-  bool operator ==(Object other) =>
-      other is TimelineGridRows && listEquals(other.rows, rows);
+  /// The boundaries the sheet leaves unruled across a row, for the dash
+  /// that row strokes there — a projection row's cut starts.
+  ///
+  /// 🗣️F-347 (유저 2026-10-12): 「기존 세로선 위에 점선 얹는거같은데 그
+  /// 부분의 세로선을 그냥 점선으로 교체할수있나? 기존 타임라인 가볍게한
+  /// 굽기로직같은거 최대한 그대로 활용하면서」 — the line yields in this one
+  /// recorded sheet, and the dash stands on its pixel.
+  final List<TimelineGridDash> dashes;
 
   @override
-  int get hashCode => Object.hashAll(rows);
+  bool operator ==(Object other) =>
+      other is TimelineGridRows &&
+      listEquals(other.rows, rows) &&
+      listEquals(other.dashes, dashes);
+
+  @override
+  int get hashCode => Object.hash(Object.hashAll(rows), Object.hashAll(dashes));
 }
 
 /// THE grid sheet — every host's frame grid, drawn once, UNDER its rows.
@@ -785,11 +804,6 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
     final (:from, :to, :ground) = stretch;
     Color inkOn(({Color color, double strokeWidth}) ink) =>
         ground == null ? ink.color : timelineGridLineInkOnGround(ink, ground);
-    void line(double position, Paint paint) => canvas.drawLine(
-      offsetAlong(axis, along: position, across: from),
-      offsetAlong(axis, along: position, across: to),
-      paint,
-    );
     // The first boundary of period [period] at or after the window start —
     // the hoisted form of "which absolute frames does this canvas show".
     int firstBoundary(int period) => frameStartIndex <= 0
@@ -800,6 +814,22 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
         timelineFrameBoundaryLinePosition(frame, frameCellExtent) - origin;
     bool shown(int frame) =>
         timelineFrameEdge(frame, frameCellExtent) - origin <= mainExtent;
+    void rule(double position, _Span span, Paint paint) => canvas.drawLine(
+      offsetAlong(axis, along: position, across: span.from),
+      offsetAlong(axis, along: position, across: span.to),
+      paint,
+    );
+    void line(int frame, Paint paint) {
+      final position = positionOf(frame);
+      final gaps = _dashed[frame];
+      if (gaps == null) {
+        rule(position, (from: from, to: to), paint);
+        return;
+      }
+      for (final span in _around(gaps, (from: from, to: to))) {
+        rule(position, span, paint);
+      }
+    }
 
     // Every boundary a line can stand on, walked once at the step the three
     // marks share ([timelineFrameLineStep]), each asking THE law which mark
@@ -817,13 +847,43 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
       );
       if (ink != null) {
         line(
-          positionOf(frame),
+          frame,
           paints[ink] ??= (Paint()
             ..color = inkOn(ink)
             ..strokeWidth = ink.strokeWidth),
         );
       }
     }
+  }
+
+  /// Each boundary a row dashes ([TimelineGridRows.dashes]), and the cross
+  /// spans of the rows that dash it, in order.
+  late final Map<int, List<_Span>> _dashed = () {
+    final dashed = <int, List<_Span>>{};
+    for (final (:frame, :from, :to) in rows.dashes) {
+      (dashed[frame] ??= []).add((from: from, to: to));
+    }
+    for (final spans in dashed.values) {
+      spans.sort((a, b) => a.from.compareTo(b.from));
+    }
+    return dashed;
+  }();
+
+  /// What of [span] lies outside every one of [gaps] — in order, and
+  /// apart.
+  static List<_Span> _around(List<_Span> gaps, _Span span) {
+    final outside = <_Span>[];
+    var from = span.from;
+    for (final gap in gaps) {
+      if (gap.from > from) {
+        outside.add((from: from, to: math.min(gap.from, span.to)));
+      }
+      from = math.max(from, gap.to);
+      if (from >= span.to) {
+        return outside;
+      }
+    }
+    return [...outside, (from: from, to: span.to)];
   }
 
   @override
@@ -841,3 +901,6 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
 /// One stretch of a grid sheet's cross axis and the ground it stands on —
 /// what [TimelineGridSheetPainter] lines at a time.
 typedef _Stretch = ({double from, double to, Color? ground});
+
+/// A stretch of a grid sheet's cross axis, `from` to `to`.
+typedef _Span = ({double from, double to});

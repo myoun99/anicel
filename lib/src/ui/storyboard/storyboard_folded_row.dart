@@ -56,23 +56,35 @@ class _StoryboardFolded {
     FlipHudSnapshot snapshot() =>
         _state._sheet.flipHudSnapshot(FlipHudAxis.frame, standing: standing);
     if (slot.lane) {
-      return (height: slot.height, snapshot: snapshot, rail: null, frames: null);
+      return (
+        height: slot.height,
+        snapshot: snapshot,
+        rail: null,
+        frames: null,
+        dashes: const [],
+      );
     }
-    final strip = _stripOf(track, trackIndex, slot);
+    final entries = [
+      for (final entry in buildStoryboardTimelineLayout(_state.widget.project))
+        if (entry.trackId == track.id) entry,
+    ];
+    final strip = _stripOf(track, trackIndex, slot, entries);
     return (
       height: slot.height,
       snapshot: snapshot,
       rail: strip.rail,
       frames: strip.frames,
+      dashes: _StoryboardRailRows._dashedOn(slot, entries),
     );
   }
 
   /// [slot]'s label and strip — the rail's own widgets for its kind.
-  _FoldedStrip _stripOf(Track track, int trackIndex, _StoryboardRailSlot slot) {
-    final entries = [
-      for (final entry in buildStoryboardTimelineLayout(_state.widget.project))
-        if (entry.trackId == track.id) entry,
-    ];
+  _FoldedStrip _stripOf(
+    Track track,
+    int trackIndex,
+    _StoryboardRailSlot slot,
+    List<StoryboardTimelineLayoutEntry> entries,
+  ) {
     if (slot.standRow case final stood?) {
       return switch (trackConteRowOf(stood.layerId)) {
         final conte? => _conte(track, conte.seat, entries, slot.height),

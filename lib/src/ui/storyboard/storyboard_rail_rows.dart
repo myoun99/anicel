@@ -1865,22 +1865,65 @@ class _StoryboardRailRows {
   /// An open header graph is ONE row of it, its lanes and its room: the
   /// timeline's sheet rules a graph so ([TimelineRowEdges.unitSpanOf]) — it
   /// rests on the lane ground, and no seam runs through its picture.
-  TimelineGridRows gridRows(List<Track> tracks, Color hostGround) {
+  ///
+  /// Where a row strokes a dash of its own ([_dashedOn]) the sheet leaves
+  /// its line to it ([TimelineGridRows.dashes], F-347) — read off the strip
+  /// [preview] lays, the one those rows are built from
+  /// ([trackGroupSection]).
+  TimelineGridRows gridRows(
+    List<Track> tracks,
+    Color hostGround, {
+    required TimelineDragPreview? preview,
+  }) {
     final laneGround = timelineLaneGround(hostGround);
     final seating = _laneSeating;
-    return TimelineGridRows([
-      for (final track in tracks)
-        for (final slot in _trackGroupRowGeometry(track))
-          if (slot.graph == null)
-            (extent: slot.height, ground: slot.lane ? laneGround : hostGround)
-          else if (seating.at[slot.display?.address] case final index?
-              when seating.edges.unitOf(index).first == index)
-            (
-              extent: seating.edges.unitSpanOf(index).extent,
-              ground: laneGround,
-            ),
-    ]);
+    final layout = buildStoryboardTimelineLayout(_state.widget.project);
+    final rows = <TimelineGridRow>[];
+    final dashes = <TimelineGridDash>[];
+    var edge = 0.0;
+    void lay(TimelineGridRow row, {List<int> dashed = const []}) {
+      dashes.addAll([
+        for (final frame in dashed)
+          (frame: frame, from: edge, to: edge + row.extent),
+      ]);
+      rows.add(row);
+      edge += row.extent;
+    }
+
+    for (final (index, track) in tracks.indexed) {
+      final entries = _previewedEntriesFor(index, preview, [
+        for (final entry in layout)
+          if (entry.trackIndex == index) entry,
+      ]);
+      for (final slot in _trackGroupRowGeometry(track)) {
+        if (slot.graph == null) {
+          lay(
+            (extent: slot.height, ground: slot.lane ? laneGround : hostGround),
+            dashed: _dashedOn(slot, entries),
+          );
+        } else if (seating.at[slot.display?.address] case final index?
+            when seating.edges.unitOf(index).first == index) {
+          lay((
+            extent: seating.edges.unitSpanOf(index).extent,
+            ground: laneGround,
+          ));
+        }
+      }
+    }
+    return TimelineGridRows(rows, dashes: dashes);
   }
+
+  /// Where [slot] strokes a dash of its own over [entries]' cuts: at each
+  /// one's start on a projection row, its lanes too ([projectionRowUnder] —
+  /// the rows that mount [StoryboardCutStartsPainter]), and nowhere on any
+  /// other. The sheet under the open rows ([gridRows]) and the folded row's
+  /// ([_StoryboardFolded]) both leave those boundaries to it (F-347).
+  static List<int> _dashedOn(
+    _StoryboardRailSlot slot,
+    List<StoryboardTimelineLayoutEntry> entries,
+  ) => projectionRowUnder(slot.display?.address) == null
+      ? const []
+      : [for (final entry in entries) entry.startFrame];
 
   /// [track]'s rows as the rail is drawn from them ([_trackGroupSlots]),
   /// each lane laid as the header graphs stand (I-89 ①): at its extent,
