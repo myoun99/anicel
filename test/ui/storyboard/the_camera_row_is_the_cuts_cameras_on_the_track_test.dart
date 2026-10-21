@@ -32,6 +32,8 @@ import 'package:anicel/src/ui/storyboard_panel.dart'
         StoryboardPanel;
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineGridLineSnap;
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
     show TimelineBlockText;
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
@@ -405,7 +407,10 @@ void main() {
     testWidgets('a dashed line where each cut begins', (tester) async {
       await pumpPanel(tester);
 
-      expect(cutStartsOf(tester), [0.0, 24 * 12.0, 52 * 12.0]);
+      // On the grid's own line, as the sheet snaps it (F-347).
+      expect(cutStartsOf(tester), [
+        for (final frame in [0, 24, 52]) frame * 12.0 + timelineGridLineSnap,
+      ]);
       expect(ground(tester).noriShiroWashes(), isEmpty, reason: 'no のりしろ');
       expect(ground(tester).sharedMiddles(), isEmpty);
     });
@@ -552,7 +557,7 @@ void main() {
       expect(sharedFrames(tester), [(18.0, 30.0)]);
       expect(
         cutStartsOf(tester),
-        [0.0, 24 * px, 52 * px],
+        [for (final frame in [0, 24, 52]) frame * px + timelineGridLineSnap],
         reason: 'b begins at its place, not where its のりしろ is drawn from',
       );
     });
