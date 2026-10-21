@@ -75,6 +75,23 @@ void main() {
       expect((p.top, p.bottom, p.left, p.width), (0, 0, 84, 28));
       expect((p.right, p.height), (null, null));
     });
+
+    test('held off its start: the near end moves, the far end stays', () {
+      final lying = stripAcross(
+        Axis.horizontal,
+        across: 84,
+        alongStart: 36,
+        child: child,
+      );
+      expect((lying.left, lying.right), (36, 0));
+      final stood = stripAcross(
+        Axis.vertical,
+        across: 84,
+        alongStart: 36,
+        child: child,
+      );
+      expect((stood.top, stood.bottom), (36, 0));
+    });
   });
 
   group('stripAlong', () {
