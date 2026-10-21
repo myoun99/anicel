@@ -1,3 +1,4 @@
+import '../core/turn_trig.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
@@ -586,15 +587,34 @@ class _Carrier {
 
   CanvasPoint centre(CanvasPoint shown) => placement.apply(shown);
 
+  /// A key's handles as the placement carries them: a split pair each
+  /// stretched and turned, a joined pair's one line turned and both its
+  /// reaches stretched as far as the line is — still one line.
   KeyPath path(KeyPath shown) => switch (shown) {
-    HandledPath(:final tangent) => HandledPath(
-      CanvasPoint(
-        x: placement.a * tangent.x + placement.c * tangent.y,
-        y: placement.b * tangent.x + placement.d * tangent.y,
-      ),
+    SplitPath(:final ahead, :final behind) => SplitPath(
+      ahead: _stretched(ahead),
+      behind: _stretched(behind),
     ),
+    JoinedPath() => _joined(shown),
     _ => shown,
   };
+
+  JoinedPath _joined(JoinedPath shown) {
+    final JoinedPath(:degrees, :ahead, :behind) = shown;
+    final stretch = _stretched(
+      CanvasPoint(x: turnCos(degrees), y: turnSin(degrees)),
+    ).distanceTo(CanvasPoint(x: 0, y: 0));
+    return JoinedPath(
+      degrees: placement.mapAxisAngleDegrees(degrees),
+      ahead: ahead * stretch,
+      behind: behind * stretch,
+    );
+  }
+
+  CanvasPoint _stretched(CanvasPoint reach) => CanvasPoint(
+    x: placement.a * reach.x + placement.c * reach.y,
+    y: placement.b * reach.x + placement.d * reach.y,
+  );
 
   double turned(double shown) => turn + shown;
 

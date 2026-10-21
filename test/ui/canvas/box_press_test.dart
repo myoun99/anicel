@@ -191,14 +191,14 @@ void main() {
       boxCrossFootprint(at),
       'the cross',
     );
-    // A tangent whose passive end stands under its knob: the knob alone.
+    // A tangent whose knobs stand on its key: the knob alone.
     // Its disc's own box is where the disc reaches — the press is taken on
     // the disc itself (the next test).
     const reach = 7.5;
     sameBox(
       await painted(
         (canvas) => paintBoxTangents(canvas, const [
-          (ahead: at, behind: at),
+          (at: at, ahead: at, behind: at),
         ], color: const Color(0xFFFF0000)),
       ),
       Rect.fromCircle(center: at, radius: reach),

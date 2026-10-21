@@ -246,13 +246,16 @@ void main() {
             0: PropertyKey(
               offMiddle,
               outgoing: const EaseSide(influence: 0.5),
-              path: HandledPath(CanvasPoint(x: 40, y: -20)),
+              path: SplitPath(
+                ahead: CanvasPoint(x: 40, y: -20),
+                behind: CanvasPoint(x: -10, y: 30),
+              ),
               name: 'up',
             ),
             12: PropertyKey(
               CanvasPoint(x: 250, y: 170),
               incoming: const EaseSide(speed: 2),
-              path: KeyPath.auto,
+              path: const JoinedPath(degrees: 0, ahead: 10, behind: 30),
             ),
           },
         ),
@@ -289,13 +292,18 @@ void main() {
       0: PropertyKey(
         CanvasPoint(x: 310, y: 30),
         outgoing: const EaseSide(influence: 0.5),
-        path: HandledPath(CanvasPoint(x: 40, y: 80)),
+        path: SplitPath(
+          ahead: CanvasPoint(x: 40, y: 80),
+          behind: CanvasPoint(x: -60, y: -20),
+        ),
         name: 'up',
       ),
       12: PropertyKey(
         CanvasPoint(x: 190, y: 270),
         incoming: const EaseSide(speed: 2),
-        path: KeyPath.auto,
+        // A joined pair stays one line: turned a quarter, both reaches
+        // twice as long.
+        path: const JoinedPath(degrees: 90, ahead: 20, behind: 60),
       ),
     });
     expect(valuesOf(track.scale), {6: CanvasPoint(x: 3, y: 3)});

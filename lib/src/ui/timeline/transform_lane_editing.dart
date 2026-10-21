@@ -3,7 +3,10 @@
 // (or null when the edit is a no-op/invalid) — callers commit it as ONE
 // undo step.
 
+import 'dart:ui' show Offset;
+
 import '../../models/canvas_point.dart';
+import '../../models/key_path_walk.dart' show keyPathPulled;
 import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
 import 'lane_span_keys_shift.dart';
@@ -212,22 +215,31 @@ TransformTrack transformTrackWithPositionDragged(
   );
 }
 
-/// A path's knob carried on the canvas (I-89 ④-Q4 A: 「캔버스에서 끈 접선 —
-/// 반대쪽은 거울」): the key at [frameIndex] of lane [property] — one whose
-/// keys walk a path ([walksAPath]) — bends along [tangent], how far the
-/// knob stands from the key — its mirror behind it. The key's value, sides
-/// and name stay as they are, and where no such key stands nothing
-/// changes.
+/// A path's knob carried on the canvas (I-89 ④ · ②): the key at
+/// [frameIndex] of lane [property] — one whose keys walk a path
+/// ([walksAPath]) — bends as its [handle] — the one [ahead] of it or the
+/// one behind — reaching [reach] out of it leaves it ([keyPathPulled]).
+/// The key's value, sides and name stay as they are, and where no such key
+/// stands nothing changes.
 TransformTrack transformTrackWithPathHandle(
   TransformTrack track, {
   required TransformPropertyId property,
   required int frameIndex,
-  required CanvasPoint tangent,
+  required ({bool ahead, CanvasPoint reach}) handle,
 }) {
-  final bent = transformPathLaneOf(
-    track,
-    property,
-  )?.withKeyPath(frameIndex, HandledPath(tangent));
+  final lane = transformPathLaneOf(track, property);
+  if (lane == null || lane.keyAt(frameIndex) == null) {
+    return track;
+  }
+  final bent = lane.withKeyPath(
+    frameIndex,
+    keyPathPulled(
+      lane.keys,
+      frameIndex,
+      ahead: handle.ahead,
+      reach: Offset(handle.reach.x, handle.reach.y),
+    ),
+  );
   if (bent == null) {
     return track;
   }

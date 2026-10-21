@@ -1,7 +1,9 @@
 import 'dart:collection';
+import 'dart:math' as math;
 import 'dart:ui' show Offset;
 
 import '../core/cubic_curve.dart';
+import '../core/turn_trig.dart';
 import 'canvas_point.dart';
 import 'property_track.dart';
 
@@ -39,8 +41,9 @@ SegmentWalk<CanvasPoint> keyPathBetween(
 /// towards the key before:
 ///
 /// - a corner ([KeyPath.straight]) has none;
-/// - a handle the hand placed ([HandledPath]) reaches its tangent ahead and
-///   its mirror behind (④-Q4 A: 「반대쪽 핸들은 거울처럼 따라옵니다」);
+/// - handles the hand placed reach as it left them: a joined pair
+///   ([JoinedPath]) along its one line, a split pair ([SplitPath]) each its
+///   own way;
 /// - an auto key ([KeyPath.auto]) lies along the line from the key before
 ///   it to the key after it, reaching a third of the way to the neighbour
 ///   on that side — none at the first and the last key, which have no
@@ -57,9 +60,12 @@ Offset keyPathHandle(
   switch (key.path) {
     case StraightPath():
       return Offset.zero;
-    case HandledPath(:final tangent):
-      final reach = Offset(tangent.x, tangent.y);
-      return ahead ? reach : -reach;
+    case JoinedPath(:final degrees, ahead: final front, :final behind):
+      final way = Offset(turnCos(degrees), turnSin(degrees));
+      return ahead ? way * front : way * -behind;
+    case SplitPath(ahead: final front, :final behind):
+      final reach = ahead ? front : behind;
+      return Offset(reach.x, reach.y);
     case AutoPath():
       final before = keys.lastKeyBefore(frame);
       final after = keys.firstKeyAfter(frame);
@@ -77,40 +83,105 @@ Offset keyPathHandle(
   }
 }
 
-/// A curved key's handle as the canvas draws it (I-89 ④, the mock's 5판):
-/// the key at [frame], standing [at], its handle ending [ahead] of it —
-/// the knob the hand takes — and [behind] it.
+/// The path the key at [frame] of [keys] walks once the hand has carried
+/// its handle [ahead] of it, or behind, to reach [reach] out of it
+/// (I-89 ②): a split pair's other handle stays as it was; any other key's
+/// turns to keep the two in one line, its own length kept — AE's
+/// continuous bezier, which an auto key becomes the moment its handle is
+/// pulled. Carried onto the key itself, the handle keeps the way the pair
+/// lay.
+///
+/// ⚠️That the other handle keeps its length is this round's reading of
+/// AE's model (a key's two tangents are kept apart — [JoinedPath]); what
+/// AE's own drag does to it the Adobe pages do not say
+/// (anchor-walks-a-path-Q3).
+KeyPath keyPathPulled(
+  SplayTreeMap<int, PropertyKey<CanvasPoint>> keys,
+  int frame, {
+  required bool ahead,
+  required Offset reach,
+}) {
+  if (keys[frame]!.path case SplitPath(ahead: final front, :final behind)) {
+    final carried = CanvasPoint(x: reach.dx, y: reach.dy);
+    return SplitPath(
+      ahead: ahead ? carried : front,
+      behind: ahead ? behind : carried,
+    );
+  }
+  final other = keyPathHandle(keys, frame, ahead: !ahead).distance;
+  final front = ahead ? reach : -reach;
+  return JoinedPath(
+    degrees: front == Offset.zero ? _wayOf(keys, frame) : _degrees(front),
+    ahead: ahead ? reach.distance : other,
+    behind: ahead ? other : reach.distance,
+  );
+}
+
+/// The way, in degrees, the handle ahead of the key at [frame] of [keys]
+/// points as the key lies — or, where it reaches nowhere, away from the one
+/// behind; along the canvas's x axis where neither reaches.
+double _wayOf(SplayTreeMap<int, PropertyKey<CanvasPoint>> keys, int frame) {
+  if (keys[frame]!.path case JoinedPath(:final degrees)) {
+    return degrees;
+  }
+  final front = keyPathHandle(keys, frame, ahead: true);
+  final way = front != Offset.zero
+      ? front
+      : -keyPathHandle(keys, frame, ahead: false);
+  return way == Offset.zero ? 0 : _degrees(way);
+}
+
+double _degrees(Offset way) => way.direction * 180 / math.pi;
+
+/// A curved key's handles as the canvas draws them (I-89 ④, the mock's
+/// 5판 · ②): the key at [frame], standing [at], where its handle [ahead]
+/// of it ends and where the one [behind] it does — each a knob the hand
+/// takes, and none on a side no segment leaves by: a first key's behind,
+/// a last key's ahead.
+///
+/// ⚠️That an end key offers its one live handle alone is this round's
+/// choice: with both on it, a last key's knob of no length would pull the
+/// handle ahead, which bends nothing. ↩️One knob, ahead, its mirror
+/// bending the segment behind.
 typedef KeyPathKnob = ({
   int frame,
   CanvasPoint at,
-  CanvasPoint ahead,
-  CanvasPoint behind,
+  CanvasPoint? ahead,
+  CanvasPoint? behind,
 });
 
 /// The handles [keys]' curved keys reach out with ([keyPathHandle]), from
 /// frame [from] to frame [to] where the canvas keeps to some — a corner
-/// has none. One of no length stands on its key: a smooth end key's, which
-/// the hand pulls out from there.
+/// has none, nor a key no segment reaches. One of no length stands on its
+/// key: a smooth end key's, which the hand pulls out from there.
 List<KeyPathKnob> keyPathKnobs(
   SplayTreeMap<int, PropertyKey<CanvasPoint>> keys, {
   int? from,
   int? to,
 }) {
-  CanvasPoint reached(CanvasPoint at, Offset handle) =>
-      CanvasPoint(x: at.x + handle.dx, y: at.y + handle.dy);
+  CanvasPoint? reached(int frame, {required bool ahead}) {
+    final neighbour = ahead
+        ? keys.firstKeyAfter(frame)
+        : keys.lastKeyBefore(frame);
+    if (neighbour == null) {
+      return null;
+    }
+    final at = keys[frame]!.value;
+    final handle = keyPathHandle(keys, frame, ahead: ahead);
+    return CanvasPoint(x: at.x + handle.dx, y: at.y + handle.dy);
+  }
+
   return [
     for (final MapEntry(key: frame, :value) in keys.entries)
       if (value.path.curved &&
+          keys.length > 1 &&
           frame >= (from ?? frame) &&
           frame <= (to ?? frame))
         (
           frame: frame,
           at: value.value,
-          ahead: reached(value.value, keyPathHandle(keys, frame, ahead: true)),
-          behind: reached(
-            value.value,
-            keyPathHandle(keys, frame, ahead: false),
-          ),
+          ahead: reached(frame, ahead: true),
+          behind: reached(frame, ahead: false),
         ),
   ];
 }

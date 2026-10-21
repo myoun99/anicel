@@ -12,7 +12,7 @@ import '../models/pasteboard_bounds.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart' show Cut;
 import '../models/layer_id.dart';
-import '../models/key_path_walk.dart' show keyPathKnobs;
+import '../models/key_path_walk.dart' show KeyPathKnob, keyPathKnobs;
 import '../models/project_background.dart';
 import '../models/property_track.dart' show PropertyTrack;
 import '../services/canvas_color_sampler.dart';
@@ -1549,6 +1549,37 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     }
     final (:property, :lane, :axisOffset, space: shown) = path;
     final (:from, :to) = settings.framesShownAt(session.currentFrameIndex);
+    RowBoxKnob? knobOf(KeyPathKnob knob, {required bool ahead}) {
+      final end = ahead ? knob.ahead : knob.behind;
+      if (end == null) {
+        return null;
+      }
+      return (
+        at: shown.toCanvas(end),
+        landing: _handleLandings<CanvasPoint>(
+          session,
+          rowId,
+          (carried) => (track, _) {
+            final reached = shown.fromCanvas(carried);
+            return transformTrackWithPathHandle(
+              track,
+              property: property,
+              frameIndex: knob.frame,
+              handle: (
+                ahead: ahead,
+                reach: CanvasPoint(
+                  x: reached.x - knob.at.x,
+                  y: reached.y - knob.at.y,
+                ),
+              ),
+            );
+          },
+          description: '$description at frame '
+              '${knob.frame - axisOffset + 1}',
+        ),
+      );
+    }
+
     return [
       for (final knob in keyPathKnobs(
         lane.keys,
@@ -1556,26 +1587,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         to: to == null ? null : to + axisOffset,
       ))
         (
-          at: shown.toCanvas(knob.ahead),
-          behind: shown.toCanvas(knob.behind),
-          landing: _handleLandings<CanvasPoint>(
-            session,
-            rowId,
-            (end) => (track, _) {
-              final reached = shown.fromCanvas(end);
-              return transformTrackWithPathHandle(
-                track,
-                property: property,
-                frameIndex: knob.frame,
-                tangent: CanvasPoint(
-                  x: reached.x - knob.at.x,
-                  y: reached.y - knob.at.y,
-                ),
-              );
-            },
-            description: '$description at frame '
-                '${knob.frame - axisOffset + 1}',
-          ),
+          at: shown.toCanvas(knob.at),
+          ahead: knobOf(knob, ahead: true),
+          behind: knobOf(knob, ahead: false),
         ),
     ];
   }

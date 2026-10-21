@@ -21,7 +21,10 @@ void main() {
     position: PropertyTrack(
       keys: {
         0: PropertyKey(p(0, 0)),
-        10: PropertyKey(p(100, 0), path: HandledPath(p(4, 4))),
+        10: PropertyKey(
+          p(100, 0),
+          path: const JoinedPath(degrees: 45, ahead: 4, behind: 4),
+        ),
       },
     ),
     scale: PropertyTrack(keys: {0: PropertyKey(p(1, 1))}),
@@ -37,7 +40,7 @@ void main() {
     );
     expect(
       pathLaneKeyed(lane, 10, p(90, 10)).keyAt(10)!.path,
-      HandledPath(p(4, 4)),
+      const JoinedPath(degrees: 45, ahead: 4, behind: 4),
     );
   });
 

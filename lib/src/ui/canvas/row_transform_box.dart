@@ -78,15 +78,19 @@ final class RowBoxEdges extends RowBoxScale {
   final RowBoxLanding<Rect> landing;
 }
 
-/// A path's handle at one of a row's position keys, bent at hand (I-89 ④):
-/// the tangent's end the hand takes, standing [at] on the canvas, the end
-/// [behind] the key that follows it, and where the tangent's end is carried
-/// to lands ([landing]).
+/// A path's handles at one of a row's keys, bent at hand (I-89 ④ · ②):
+/// the key standing [at] on the canvas, the knob [ahead] of it and the
+/// knob [behind] it — the hand takes either, where a segment leaves by
+/// that side (`keyPathKnobs`).
 typedef RowBoxTangent = ({
   CanvasPoint at,
-  CanvasPoint behind,
-  RowBoxLanding<CanvasPoint> landing,
+  RowBoxKnob? ahead,
+  RowBoxKnob? behind,
 });
+
+/// One end of a path's handle: standing [at] on the canvas, and where it
+/// lands carried ([landing]).
+typedef RowBoxKnob = ({CanvasPoint at, RowBoxLanding<CanvasPoint> landing});
 
 /// Which presses a box takes ([RowTransformBox.presses]).
 ///
@@ -220,8 +224,8 @@ class RowTransformBox extends StatefulWidget {
   })?
   cross;
 
-  /// The handles of the row's curved position keys, where the canvas draws
-  /// its path (I-89 ④): a press on one's tangent carries it.
+  /// The handles of the row's curved keys, where the canvas draws its path
+  /// (I-89 ④): a press on either knob carries it.
   final List<RowBoxTangent> tangents;
 
   @override
@@ -229,13 +233,13 @@ class RowTransformBox extends StatefulWidget {
 }
 
 class _RowTransformBoxState extends State<RowTransformBox> {
-  /// The grab in flight, and the pose, the cross and the tangent it started
+  /// The grab in flight, and the pose, the cross and the knob it started
   /// from — captured once: [RowTransformBox.pose] is the grabbed value
   /// mid-drag, and measuring against it would count every move twice.
   BoxPress? _grab;
   TransformPose? _start;
   CanvasPoint? _crossStart;
-  RowBoxTangent? _tangentStart;
+  RowBoxKnob? _knobStart;
   Offset _press = Offset.zero;
 
   /// The handle a [BoxPress.handle] grab took ([_screenHandles]' index),
@@ -305,19 +309,38 @@ class _RowTransformBoxState extends State<RowTransformBox> {
         : widget.viewport.canvasToViewportOffset(cross.at);
   }
 
-  List<BoxTangentChrome> get _screenTangents => [
-    for (final tangent in widget.tangents)
-      (
-        ahead: widget.viewport.canvasToViewportOffset(tangent.at),
-        behind: widget.viewport.canvasToViewportOffset(tangent.behind),
-      ),
+  List<BoxTangentChrome> get _screenTangents {
+    final viewport = widget.viewport;
+    Offset? onScreen(RowBoxKnob? knob) =>
+        knob == null ? null : viewport.canvasToViewportOffset(knob.at);
+    return [
+      for (final (:at, :ahead, :behind) in widget.tangents)
+        (
+          at: viewport.canvasToViewportOffset(at),
+          ahead: onScreen(ahead),
+          behind: onScreen(behind),
+        ),
+    ];
+  }
+
+  /// Every tangent's knobs in the order they are painted — behind, then
+  /// ahead over it ([paintBoxTangents]) — the order a press reads back to
+  /// front.
+  List<RowBoxKnob> get _knobs => [
+    for (final (at: _, :ahead, :behind) in widget.tangents) ...[
+      ?behind,
+      ?ahead,
+    ],
   ];
 
   BoxPressHit? _pressAt(Offset local) => boxPressAt(
     local,
     anchor: _crossOnScreen,
     handles: _screenHandles,
-    tangents: [for (final tangent in _screenTangents) tangent.ahead],
+    tangents: [
+      for (final knob in _knobs)
+        widget.viewport.canvasToViewportOffset(knob.at),
+    ],
     inside: (press) =>
         widget.move != null &&
         widget.corners.length >= 3 &&
@@ -359,9 +382,7 @@ class _RowTransformBoxState extends State<RowTransformBox> {
     _startCorners = widget.corners;
     _start = pose;
     _crossStart = widget.cross?.value;
-    _tangentStart = hit?.press == BoxPress.tangent
-        ? widget.tangents[hit!.handle]
-        : null;
+    _knobStart = hit?.press == BoxPress.tangent ? _knobs[hit!.handle] : null;
     _press = local;
     _commit = null;
     _turned = 0;
@@ -433,8 +454,8 @@ class _RowTransformBoxState extends State<RowTransformBox> {
       case BoxPress.anchor:
         _carry(widget.cross!.landing, _crossStart!, local);
       case BoxPress.tangent:
-        final tangent = _tangentStart!;
-        _carry(tangent.landing, tangent.at, local);
+        final knob = _knobStart!;
+        _carry(knob.landing, knob.at, local);
     }
   }
 

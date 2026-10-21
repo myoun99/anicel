@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -170,6 +172,26 @@ void main() {
     expect(actual.y, closeTo(expected.y, 1e-6), reason: '$what y');
   }
 
+  /// [bent], a joined pair (I-89 ②): its handle ahead reaching [ahead],
+  /// the one behind as long as [behind].
+  void expectJoined(
+    KeyPath bent,
+    ({double x, double y}) ahead,
+    double behind,
+    String what,
+  ) {
+    expect(bent, isA<JoinedPath>(), reason: what);
+    final joined = bent as JoinedPath;
+    final way = math.atan2(ahead.y, ahead.x) * 180 / math.pi;
+    expect(joined.degrees, closeTo(way, 1e-6), reason: '$what: way');
+    expect(
+      joined.ahead,
+      closeTo(math.sqrt(ahead.x * ahead.x + ahead.y * ahead.y), 1e-6),
+      reason: '$what: ahead',
+    );
+    expect(joined.behind, closeTo(behind, 1e-6), reason: '$what: behind');
+  }
+
   KeyPath pathAt5(EditorSessionManager s) => s.requireActiveCut.layers
       .byId(row)!
       .transformTrack
@@ -262,24 +284,18 @@ void main() {
     // Smooth at 5 through its neighbours, (200, 150) apart: its handle a
     // third of the way to 10 ahead, of the way to 0 behind.
     final handle = box(tester).tangents.single;
-    expectNear(handle.at, shown(200 + 40, 30), 'ahead');
-    expectNear(handle.behind, shown(200 - 160 / 3, -40), 'behind');
+    expectNear(handle.ahead!.at, shown(200 + 40, 30), 'ahead');
+    expectNear(handle.behind!.at, shown(200 - 160 / 3, -40), 'behind');
 
     final trailBefore = overlay(tester).path.cornerTrailsBetween(0, 10);
-    handle.landing.committed(shown(250, 50));
+    handle.ahead!.landing.committed(shown(250, 50));
     await tester.pump();
     expect(
       overlay(tester).path.cornerTrailsBetween(0, 10),
       isNot(trailBefore),
       reason: 'the path follows the bend',
     );
-    final bent = pathAt5(s);
-    expect(bent, isA<HandledPath>());
-    expectNear(
-      (bent as HandledPath).tangent,
-      CanvasPoint(x: 50, y: 50),
-      'the tangent, in the folder',
-    );
+    expectJoined(pathAt5(s), (x: 50, y: 50), 200 / 3, 'in the folder');
 
     s.undo();
     await tester.pump();
@@ -326,15 +342,14 @@ void main() {
     }
 
     final handle = box(tester).tangents.single;
-    expectNear(handle.at, shown(200 + 40, 30), 'ahead');
-    handle.landing.committed(shown(250, 50));
+    expectNear(handle.ahead!.at, shown(200 + 40, 30), 'ahead');
+    handle.ahead!.landing.committed(shown(250, 50));
     await tester.pump();
-    final bent = rowTrack(s).anchorPoint.keyAt(5)!.path;
-    expect(bent, isA<HandledPath>());
-    expectNear(
-      (bent as HandledPath).tangent,
-      CanvasPoint(x: 50, y: 50),
-      'the tangent, on the picture',
+    expectJoined(
+      rowTrack(s).anchorPoint.keyAt(5)!.path,
+      (x: 50, y: 50),
+      200 / 3,
+      'on the picture',
     );
     expect(rowTrack(s).position.keys, isEmpty, reason: 'the anchor\'s key');
 
@@ -435,22 +450,22 @@ void main() {
     final handles = box(tester).tangents;
     expect(handles, hasLength(3), reason: '⛔전제');
     expectNear(
-      handles[1].at,
+      handles[1].ahead!.at,
       shot.apply(CanvasPoint(x: 300 + 40, y: 100 + 30)),
       'in the shot',
     );
-    handles[1].landing.committed(
+    handles[1].ahead!.landing.committed(
       shot.apply(CanvasPoint(x: 300 + 50, y: 100 + 50)),
     );
     await tester.pump();
     final written = s.activeTrack.seLayers.first.transformTrack.position
         .keyAt(s.activeCutGlobalStartFrame + 5)!
         .path;
-    expect(written, isA<HandledPath>(), reason: 'on the track\'s frame');
-    expectNear(
-      (written as HandledPath).tangent,
-      CanvasPoint(x: 50, y: 50),
-      'back through the shot',
+    expectJoined(
+      written,
+      (x: 50, y: 50),
+      200 / 3,
+      'on the track\'s frame, back through the shot',
     );
 
     await drain(tester);

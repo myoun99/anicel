@@ -65,6 +65,7 @@ void main() {
     VoidCallback? onCancelled,
     bool Function(CanvasPoint at)? stage,
     ValueChanged<PointerDownEvent>? onPressedPast,
+    List<RowBoxTangent> tangents = const [],
   }) => RowTransformBox(
     corners: at ?? corners,
     pose: pose ?? TransformPose(center: anchor),
@@ -85,6 +86,7 @@ void main() {
     cross: anchors == null
         ? null
         : (at: anchor, value: anchor, landing: into(anchors)),
+    tangents: tangents,
   );
 
   Future<void> pumpBox(WidgetTester tester, Widget child) async {
@@ -1153,5 +1155,87 @@ void main() {
 
     expect(cancels, 1, reason: 'no release will come to drop it');
     await gesture.up();
+  });
+
+  group('a path\'s handles (I-89 ②)', () {
+    /// A key off the picture at (20, 20), its knob ahead at [ahead] and
+    /// its knob behind at [behind] (none where null), each landing in its
+    /// own list.
+    RowBoxTangent tangent({
+      required CanvasPoint? ahead,
+      required CanvasPoint? behind,
+      required List<CanvasPoint> aheads,
+      required List<CanvasPoint> behinds,
+    }) => (
+      at: CanvasPoint(x: 20, y: 20),
+      ahead: ahead == null ? null : (at: ahead, landing: into(aheads)),
+      behind: behind == null ? null : (at: behind, landing: into(behinds)),
+    );
+
+    testWidgets('either knob carried lands where it was let go, on its own '
+        'side', (tester) async {
+      final aheads = <CanvasPoint>[];
+      final behinds = <CanvasPoint>[];
+      final handle = tangent(
+        ahead: CanvasPoint(x: 50, y: 20),
+        behind: CanvasPoint(x: 20, y: 280),
+        aheads: aheads,
+        behinds: behinds,
+      );
+      await pumpBox(tester, box(tangents: [handle]));
+
+      await tester.dragFrom(const Offset(20, 280), const Offset(10, -20));
+      await tester.pumpAndSettle();
+      expect(behinds, [CanvasPoint(x: 30, y: 260)]);
+      expect(aheads, isEmpty);
+
+      await tester.dragFrom(const Offset(50, 20), const Offset(0, 10));
+      await tester.pumpAndSettle();
+      expect(aheads, [CanvasPoint(x: 50, y: 30)]);
+      expect(behinds, hasLength(1));
+    });
+
+    testWidgets('where the two stand on one point the one drawn over the '
+        'other — ahead — is taken; an end key\'s one knob is taken alone', (
+      tester,
+    ) async {
+      final aheads = <CanvasPoint>[];
+      final behinds = <CanvasPoint>[];
+      await pumpBox(
+        tester,
+        box(
+          tangents: [
+            tangent(
+              ahead: CanvasPoint(x: 20, y: 20),
+              behind: CanvasPoint(x: 20, y: 20),
+              aheads: aheads,
+              behinds: behinds,
+            ),
+          ],
+        ),
+      );
+      await tester.dragFrom(const Offset(20, 20), const Offset(10, 0));
+      await tester.pumpAndSettle();
+      expect(aheads, [CanvasPoint(x: 30, y: 20)]);
+      expect(behinds, isEmpty);
+
+      final ends = <CanvasPoint>[];
+      await pumpBox(
+        tester,
+        box(
+          tangents: [
+            tangent(
+              ahead: null,
+              behind: CanvasPoint(x: 20, y: 20),
+              aheads: aheads,
+              behinds: ends,
+            ),
+          ],
+        ),
+      );
+      await tester.dragFrom(const Offset(20, 20), const Offset(10, 0));
+      await tester.pumpAndSettle();
+      expect(ends, [CanvasPoint(x: 30, y: 20)]);
+    });
   });
 }

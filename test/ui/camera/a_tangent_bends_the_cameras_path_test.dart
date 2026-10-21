@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,11 +18,12 @@ import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 
-/// I-89 ④ 3b — a curved key's handle on the canvas, the mock's 5판: shown
-/// with the camera's path, in space too (F-368 — ↩️in time alone), its
-/// tangent carried by the hand bends the key through it — the other side
-/// its mirror (④-Q4 A: 「캔버스에서 끈 접선 — 반대쪽은 거울」), one undo
-/// where it is let go.
+/// I-89 ④ 3b — a curved key's handles on the canvas, the mock's 5판: shown
+/// with the camera's path, in space too (F-368 — ↩️in time alone), either
+/// knob carried by the hand bends the key through it — the other turned
+/// into its line, as long as it was (②, AE's continuous bezier — ↩️its
+/// mirror, ④-Q4 A, and the knob ahead alone the hand's), one undo where it
+/// is let go.
 void main() {
   void reset() =>
       CameraPathSettings.settings.value = const CameraPathSettings();
@@ -166,8 +169,9 @@ void main() {
   }
 
   testWidgets('a smooth key wears its handle where the path is shown in '
-      'time: its tangent a third of the way to the key after, along the '
-      'line through its neighbours, its passive end behind', (tester) async {
+      'time: its knob ahead a third of the way to the key after, along the '
+      'line through its neighbours, its knob behind a third of the way '
+      'back', (tester) async {
     final (s, _) = turning();
     addTearDown(s.dispose);
     await pumpArea(tester, s);
@@ -176,56 +180,62 @@ void main() {
     expect(shown, hasLength(1), reason: 'the corners at 0 and 10 have none');
     // Through its neighbours: (200, 150), 250 long — 150 / 3 ahead,
     // 200 / 3 behind.
+    expectNear(shown.single.at, c5, 'the key');
     expectNear(
-      shown.single.at,
+      shown.single.ahead!.at,
       CanvasPoint(x: c5.x + 40, y: c5.y + 30),
-      'at',
+      'ahead',
     );
     expectNear(
-      shown.single.behind,
+      shown.single.behind!.at,
       CanvasPoint(x: c5.x - 160 / 3, y: c5.y - 40),
       'behind',
     );
 
-    // Drawn as the mock draws it: the grey line through the key, the passive
-    // end behind (r 4, white, edged in the grey), the knob ahead (r 6.5,
-    // white, edged in the accent).
+    // Drawn as the mock draws a knob: the grey line out of the key to each,
+    // then each — behind, then ahead over it — r 6.5, white, edged in the
+    // accent. ↩️The end behind was a smaller grey-edged dot only the knob
+    // ahead pulled.
     const grey = Color(0xFF7C8184);
     final view = box(tester).viewport;
-    final knob = view.canvasToViewportOffset(shown.single.at);
-    final end = view.canvasToViewportOffset(shown.single.behind);
-    expect(
-      chrome(),
-      paints
-        ..line(p1: end, p2: knob, color: grey)
-        ..circle(x: end.dx, y: end.dy, radius: 4, color: Colors.white)
-        ..circle(x: end.dx, y: end.dy, radius: 4, color: grey)
-        ..circle(x: knob.dx, y: knob.dy, radius: 6.5, color: Colors.white)
+    final key = view.canvasToViewportOffset(c5);
+    final ahead = view.canvasToViewportOffset(shown.single.ahead!.at);
+    final behind = view.canvasToViewportOffset(shown.single.behind!.at);
+    var knobs = paints
+      ..line(p1: key, p2: behind, color: grey)
+      ..line(p1: key, p2: ahead, color: grey);
+    for (final end in [behind, ahead]) {
+      knobs = knobs
+        ..circle(x: end.dx, y: end.dy, radius: 6.5, color: Colors.white)
         ..circle(
-          x: knob.dx,
-          y: knob.dy,
+          x: end.dx,
+          y: end.dy,
           radius: 6.5,
           color: AppColors.accent,
           strokeWidth: 2,
-        ),
-    );
+        );
+    }
+    expect(chrome(), knobs);
 
     await drain(tester);
   });
 
-  testWidgets('its tangent carried bends the key — shown while it moves, '
-      'written where it is let go, its mirror behind, one undo', (
+  testWidgets('its knob ahead carried bends the key — shown while it moves, '
+      'written where it is let go, the one behind turned into its line as '
+      'long as it was, one undo', (
     tester,
   ) async {
     final (s, _) = turning();
     addTearDown(s.dispose);
-    // The first key smooth too: its handle, of no length, stands on it —
-    // and is the first of two.
+    // The first key smooth too: its handle ahead, of no length, stands on
+    // it — and is the first of two; it has none behind, where no segment
+    // leaves it.
     curve(s, {0});
     await pumpArea(tester, s);
     expect(tangents(tester), hasLength(2), reason: '⛔전제');
-    expectNear(tangents(tester).first.at, c0, 'the end key\'s, on it');
-    final from = tangents(tester).last.at;
+    expectNear(tangents(tester).first.ahead!.at, c0, 'the end key\'s, on it');
+    expect(tangents(tester).first.behind, isNull, reason: 'no segment back');
+    final from = tangents(tester).last.ahead!.at;
     final trailBefore = tester
         .widget<CameraPathOverlay>(find.byType(CameraPathOverlay))
         .path
@@ -245,7 +255,7 @@ void main() {
 
     final carried = onCanvas(tester, travel);
     final reached = CanvasPoint(x: from.x + carried.x, y: from.y + carried.y);
-    expectNear(tangents(tester).last.at, reached, 'the knob follows');
+    expectNear(tangents(tester).last.ahead!.at, reached, 'the knob follows');
     expect(
       box(tester).corners,
       cornersBefore,
@@ -270,17 +280,22 @@ void main() {
     await gesture.up();
     await tester.pump();
     final bent = pathAt5(s);
-    expect(bent, isA<HandledPath>());
-    final tangent = (bent as HandledPath).tangent;
-    expectNear(
-      tangent,
-      CanvasPoint(x: reached.x - c5.x, y: reached.y - c5.y),
-      'the tangent',
+    expect(bent, isA<JoinedPath>());
+    final handle = (x: reached.x - c5.x, y: reached.y - c5.y);
+    final reach = math.sqrt(handle.x * handle.x + handle.y * handle.y);
+    expect((bent as JoinedPath).ahead, closeTo(reach, 1e-6));
+    expect(
+      bent.behind,
+      closeTo(200 / 3, 1e-6),
+      reason: 'the one behind as long as it was',
     );
     expectNear(
-      tangents(tester).last.behind,
-      CanvasPoint(x: c5.x - tangent.x, y: c5.y - tangent.y),
-      'the mirror',
+      tangents(tester).last.behind!.at,
+      CanvasPoint(
+        x: c5.x - handle.x / reach * 200 / 3,
+        y: c5.y - handle.y / reach * 200 / 3,
+      ),
+      'turned into its line',
     );
     final key = s.requireActiveCut.camera.track.position.keyAt(5)!;
     expect(key.value, c5, reason: 'the key stays where it is');
@@ -293,13 +308,49 @@ void main() {
     await drain(tester);
   });
 
+  testWidgets('its knob behind is the hand\'s too — carried, the one ahead '
+      'turns into its line and keeps its length', (tester) async {
+    final (s, _) = turning();
+    addTearDown(s.dispose);
+    await pumpArea(tester, s);
+    final from = tangents(tester).single.behind!.at;
+
+    const travel = Offset(-20, 30);
+    await carry(tester, from, travel);
+    final carried = onCanvas(tester, travel);
+    final handle = (
+      x: from.x + carried.x - c5.x,
+      y: from.y + carried.y - c5.y,
+    );
+    final reach = math.sqrt(handle.x * handle.x + handle.y * handle.y);
+    final bent = pathAt5(s);
+    expect(bent, isA<JoinedPath>());
+    expect((bent as JoinedPath).behind, closeTo(reach, 1e-6));
+    expect(bent.ahead, closeTo(50, 1e-6), reason: '150 / 3, as it was');
+    expectNear(
+      tangents(tester).single.behind!.at,
+      CanvasPoint(x: c5.x + handle.x, y: c5.y + handle.y),
+      'the knob where it was let go',
+    );
+    expectNear(
+      tangents(tester).single.ahead!.at,
+      CanvasPoint(
+        x: c5.x - handle.x / reach * 50,
+        y: c5.y - handle.y / reach * 50,
+      ),
+      'the one ahead, turned into its line',
+    );
+
+    await drain(tester);
+  });
+
   testWidgets('beside its knob the press is the box\'s own — the knob is '
       'taken on the disc it is drawn as', (tester) async {
     final (s, _) = turning();
     addTearDown(s.dispose);
     await pumpArea(tester, s);
     final before = s.requireActiveCut.camera.track;
-    final knob = onScreen(tester, tangents(tester).single.at);
+    final knob = onScreen(tester, tangents(tester).single.ahead!.at);
 
     final gesture = await tester.startGesture(
       knob + const Offset(7, 7),
@@ -327,8 +378,12 @@ void main() {
     await pumpArea(tester, s, tool: CanvasTool.select);
     expect(tangents(tester), hasLength(1), reason: '⛔전제');
 
-    await carry(tester, tangents(tester).single.at, const Offset(30, -20));
-    expect(pathAt5(s), isA<HandledPath>());
+    await carry(
+      tester,
+      tangents(tester).single.ahead!.at,
+      const Offset(30, -20),
+    );
+    expect(pathAt5(s), isA<JoinedPath>());
 
     await drain(tester);
   });
