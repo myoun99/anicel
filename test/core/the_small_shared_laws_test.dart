@@ -467,17 +467,20 @@ void main() {
       expect(BrushPresetIdMint().next('ink').value, 'ink');
     });
 
-    test(
-      'a collision takes -2, -3, … in ORDER — a re-import has to land '
-      'on the same ids or it duplicates the pack instead of replacing it',
-      () {
-        final mint = BrushPresetIdMint();
-        expect(
-          [for (var i = 0; i < 4; i += 1) mint.next('ink').value],
-          ['ink', 'ink-2', 'ink-3', 'ink-4'],
-        );
-      },
-    );
+    test('a collision takes -2, -3, … — the first one free', () {
+      final mint = BrushPresetIdMint();
+      expect(
+        [for (var i = 0; i < 4; i += 1) mint.next('ink').value],
+        ['ink', 'ink-2', 'ink-3', 'ink-4'],
+      );
+    });
+
+    test('🚨an id it was told is taken is never handed out — an import '
+        'lands BESIDE the library\'s brush of that id (F-433)', () {
+      final mint = BrushPresetIdMint(taken: ['ink', 'ink-2']);
+      expect(mint.next('ink').value, 'ink-3');
+      expect(mint.next('pen').value, 'pen');
+    });
 
     test('a name that COLLIDES with a generated suffix skips past it', () {
       final mint = BrushPresetIdMint();

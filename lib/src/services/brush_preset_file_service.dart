@@ -4,10 +4,10 @@ import 'dart:io';
 import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
-import '../models/brush_preset_id.dart';
 import '../models/brush_settings.dart';
 import '../models/brush_tip_mask.dart';
 import 'brush_preset_defaults.dart';
+import 'brush_preset_id_mint.dart';
 import 'persistence/app_support_path.dart';
 import 'persistence/versioned_settings_file.dart';
 
@@ -127,32 +127,18 @@ class BrushPresetFileService {
     presets: namedDefaultBrushPresets(nameOf),
   );
 
-  /// Preset ids must be unique (they key preset rows and drive
-  /// replace-on-import), so duplicates in a saved library — e.g. written by
-  /// the pre-fix ABR importer when several brushes shared one tip — are
-  /// healed on load by suffixing later occurrences deterministically.
+  /// Preset ids must be unique (they key preset rows), so duplicates in a
+  /// saved library — e.g. written by the pre-fix ABR importer when several
+  /// brushes shared one tip — are healed on load by the one mint.
   static List<BrushPreset> _withUniquePresetIds(List<BrushPreset> presets) {
-    final seen = <String>{};
+    final mint = BrushPresetIdMint();
     return [
       for (final preset in presets)
-        if (seen.add(preset.id.value))
-          preset
-        else
-          preset.copyWith(
-            id: BrushPresetId(_nextFreeId(preset.id.value, seen)),
-          ),
+        switch (mint.next(preset.id.value)) {
+          final id when id == preset.id => preset,
+          final id => preset.copyWith(id: id),
+        },
     ];
-  }
-
-  static String _nextFreeId(String id, Set<String> seen) {
-    var suffix = 2;
-    while (true) {
-      final candidate = '$id-$suffix';
-      if (seen.add(candidate)) {
-        return candidate;
-      }
-      suffix += 1;
-    }
   }
 
   /// A repeated group id can only mean the same group written twice, and

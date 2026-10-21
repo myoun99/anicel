@@ -131,8 +131,9 @@ AbrImportResult decodeAbrBrushFile(
   final usedTipKeys = <String>{};
   // Multiple brushes may share one sampled tip (variants of the same
   // bitmap with different settings — common in artist packs), so preset
-  // ids must be de-collided; the suffixes are order-deterministic, keeping
-  // re-imports of the same file replacing instead of duplicating.
+  // ids must be de-collided — by the one mint. ↩️Its suffixes being
+  // order-deterministic used to make a re-import REPLACE the file's brushes;
+  // an import only adds now (F-433), so they just have to be free.
   final mint = BrushPresetIdMint();
 
   final brushList = _brushListOf(descriptor);

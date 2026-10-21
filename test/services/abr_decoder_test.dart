@@ -569,14 +569,6 @@ void main() {
         result.presets[1].settings.tipMask,
         result.presets[0].settings.tipMask,
       );
-
-      // Decoding the same file again yields the same ids (re-import
-      // replaces instead of duplicating).
-      final again = decodeAbrBrushFile(file.bytes, sourceName: 'fixture');
-      expect(
-        again.presets.map((p) => p.id.value),
-        result.presets.map((p) => p.id.value),
-      );
     });
 
     test('skips unsupported 16-bit tips with a warning', () {
