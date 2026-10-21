@@ -869,6 +869,33 @@ void main() {
       expect((await told(first: false)).first, isFalse);
     });
 
+    test('🚨a run that stands first reads ITSELF at the head: it takes what '
+        'stands free before a short run that waited longer', () async {
+      // The runs of this tool hold back for it; were it to read itself
+      // behind, the suites they leave it would stand free.
+      runningBefore(1, 5);
+      final anHourAgo = DateTime.now().subtract(const Duration(hours: 1));
+      final short = standing(
+        anHourAgo.microsecondsSinceEpoch,
+        {'state': 'waiting', 'files': 5, 'work': 30, 'takesWhatIsLeft': true},
+      );
+      final events = <String>[];
+      var looks = 0;
+      await standInLine(
+        'the wide check',
+        (turn) async => events.add(
+          'ran at ${await turn.take(files: 40, work: 44000)}',
+        ),
+        first: true,
+        line: line,
+        room: () async => true,
+        say: (_) => events.add('waits'),
+        lookAgain: Duration.zero,
+        ended: (file) => nameOf(file) == nameOf(short) && ++looks > 3,
+      );
+      expect(events, ['ran at 5']);
+    });
+
     test('a run that asked for fewer is handed fewer', () async {
       final ran = await inTurn(
         'a run',
