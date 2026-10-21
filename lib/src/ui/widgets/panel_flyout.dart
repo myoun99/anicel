@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../shortcuts/editor_shortcut_bindings.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/vertical_writing_text.dart';
+import '../timeline/axis_turn.dart' show alongBox;
 import '../theme/app_theme.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
@@ -1360,17 +1361,11 @@ class PanelFlyoutButton extends StatelessWidget {
               children: [
                 if (icon case final glyph?) ...[
                   Icon(glyph, size: 16, color: labelStyle.color),
-                  SizedBox(
-                    width: vertical ? null : 6,
-                    height: vertical ? 6 : null,
-                  ),
+                  alongBox(axis, 6),
                 ],
                 if (expand) Flexible(child: text) else text,
                 if (showCaret) ...[
-                  SizedBox(
-                    width: vertical ? null : 2,
-                    height: vertical ? 2 : null,
-                  ),
+                  alongBox(axis, 2),
                   Icon(
                     Icons.arrow_drop_down,
                     size: 16,

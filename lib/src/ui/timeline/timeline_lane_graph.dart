@@ -36,7 +36,8 @@ import 'axis_turn.dart'
         extentAlong,
         offsetAlong,
         partAcross,
-        partAlong;
+        partAlong,
+        stripAcross;
 import 'key_mark_glyph.dart' show paintKeyMark;
 import 'lane_graph.dart';
 import 'lane_graph_seats.dart'
@@ -381,11 +382,10 @@ class TimelineLaneGraph extends StatelessWidget {
 
   /// Its grip along its cross end: the timeline's bottom, the sheet's
   /// right.
-  Widget _grip(LaneGraphVerbs? verbs) => Positioned(
-    left: _axis == Axis.horizontal ? 0 : null,
-    top: _axis == Axis.horizontal ? null : 0,
-    right: 0,
-    bottom: 0,
+  Widget _grip(LaneGraphVerbs? verbs) => stripAcross(
+    _axis,
+    across: 0,
+    fromEnd: true,
     child: LaneGraphGrip(
       key: ValueKey<String>(
         '${grid.keyPrefix}-lane-graph-grip-${seat.groupKey}',

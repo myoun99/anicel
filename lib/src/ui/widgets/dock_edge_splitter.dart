@@ -6,7 +6,7 @@ import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior, kDoubleTapTimeout;
 
 import '../theme/app_theme.dart';
-import '../timeline/axis_turn.dart' show partAlong;
+import '../timeline/axis_turn.dart' show acrossBox, partAlong;
 import '../timeline/timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'owning_axis_grip.dart';
 
@@ -284,9 +284,9 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
           onPointerDown: _pressDown,
           onPointerUp: _pressUp,
           onPointerCancel: _pressCancel,
-          child: SizedBox(
-            width: vertical ? DockEdgeSplitter.thickness : null,
-            height: vertical ? null : DockEdgeSplitter.thickness,
+          child: acrossBox(
+            widget.axis,
+            DockEdgeSplitter.thickness,
             child: ColoredBox(color: _lineColor),
           ),
         ),

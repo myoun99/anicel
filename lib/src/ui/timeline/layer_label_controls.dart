@@ -520,9 +520,10 @@ class LayerBlendModeChip extends StatelessWidget {
       context,
       _blendWordStyle(context),
     ).lineGrowthOf(TextMeasure.everyScript);
-    return SizedBox(
-      width: vertical ? 20 + growth : slotExtent,
-      height: vertical ? slotExtent : 20 + growth,
+    return sizedAlong(
+      axis,
+      along: slotExtent,
+      across: 20 + growth,
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
@@ -1200,16 +1201,8 @@ class LayerMarkChip extends StatelessWidget {
     // axis, so the two have to agree.
     final horizontal = axis == Axis.horizontal;
     final plates = [
-      SizedBox(
-        width: horizontal ? layerMarkSlotWidth : null,
-        height: horizontal ? null : layerMarkSlotWidth,
-        child: _markTrigger(context),
-      ),
-      SizedBox(
-        width: horizontal ? layerTakeSlotWidth : null,
-        height: horizontal ? null : layerTakeSlotWidth,
-        child: _takeTrigger(context),
-      ),
+      alongBox(axis, layerMarkSlotWidth, child: _markTrigger(context)),
+      alongBox(axis, layerTakeSlotWidth, child: _takeTrigger(context)),
     ];
     // 🚨STRETCH ON THE CROSS AXIS. The plate is `SizedBox.expand` — it fills
     // the slot edge to edge (⑳, 「패딩 절대 금지」) — so it needs a BOUNDED

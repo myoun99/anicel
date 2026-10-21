@@ -53,26 +53,32 @@ Positioned placedAlong(
       );
 
 /// A stack child spanning the WHOLE main axis at [across] — a row's strip.
+/// [fromEnd] measures [across] from the far side instead (a lane laid along
+/// a panel's bottom, a caret after a row); with no [acrossExtent] the strip
+/// is as thick as its child. [alongStart] holds the strip's near end off the
+/// main axis's start: a drop's line on a rail row starts past the row's
+/// leading slot, which the section band is painted over (F-423②).
 Positioned stripAcross(
   Axis axis, {
   required double across,
-  required double acrossExtent,
+  double? acrossExtent,
+  double alongStart = 0,
   required Widget child,
-}) => axis == Axis.horizontal
-    ? Positioned(
-        left: 0,
-        right: 0,
-        top: across,
-        height: acrossExtent,
-        child: child,
-      )
-    : Positioned(
-        top: 0,
-        bottom: 0,
-        left: across,
-        width: acrossExtent,
-        child: child,
-      );
+  bool fromEnd = false,
+  Key? key,
+}) {
+  final horizontal = axis == Axis.horizontal;
+  return Positioned(
+    key: key,
+    left: horizontal ? alongStart : (fromEnd ? null : across),
+    right: horizontal ? 0 : (fromEnd ? across : null),
+    top: horizontal ? (fromEnd ? null : across) : alongStart,
+    bottom: horizontal ? (fromEnd ? across : null) : 0,
+    width: horizontal ? null : acrossExtent,
+    height: horizontal ? acrossExtent : null,
+    child: child,
+  );
+}
 
 /// A stack child spanning the WHOLE cross axis at [along] — a grip line at
 /// a frame. [fromEnd] measures [along] from the strip's far end instead
@@ -124,9 +130,10 @@ SizedBox sizedAlong(
   required double along,
   required double across,
   Widget? child,
+  Key? key,
 }) => axis == Axis.horizontal
-    ? SizedBox(width: along, height: across, child: child)
-    : SizedBox(width: across, height: along, child: child);
+    ? SizedBox(key: key, width: along, height: across, child: child)
+    : SizedBox(key: key, width: across, height: along, child: child);
 
 /// A painter's box measured ALONG [axis] — the strip's length. The painter
 /// twin of [alongBox]: every `paint(canvas, size)` that serves both

@@ -347,18 +347,16 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
   Offset get childPaintOffset => _childOffset;
 
   @override
-  double computeMinIntrinsicWidth(double height) => axis == Axis.horizontal
-      ? geometry.value.contentMainExtent
-      : crossAxisExtent;
+  double computeMinIntrinsicWidth(double height) =>
+      _sizeFor(geometry.value.contentMainExtent).width;
 
   @override
   double computeMaxIntrinsicWidth(double height) =>
       computeMinIntrinsicWidth(height);
 
   @override
-  double computeMinIntrinsicHeight(double width) => axis == Axis.horizontal
-      ? crossAxisExtent
-      : geometry.value.contentMainExtent;
+  double computeMinIntrinsicHeight(double width) =>
+      _sizeFor(geometry.value.contentMainExtent).height;
 
   @override
   double computeMaxIntrinsicHeight(double width) =>

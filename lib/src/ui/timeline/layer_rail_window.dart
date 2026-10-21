@@ -683,18 +683,18 @@ class LayerRailScrollbar extends KeptPiece {
 
   @override
   Widget buildKept(BuildContext context) {
-    final horizontal = axis == Axis.horizontal;
     final windowExtent = rail.windowExtent(
       naturalExtent,
       availableExtent: availableExtent,
     );
     final content = math.max(naturalExtent, windowExtent);
-    return SizedBox(
+    return sizedAlong(
+      axis,
       key: ValueKey<String>('$keyPrefix-rail-scrollbar'),
       // The bar is exactly as long as the window it drives, so it sits
       // under the rail and stops at the splitter.
-      width: horizontal ? windowExtent : laneExtent,
-      height: horizontal ? laneExtent : windowExtent,
+      along: windowExtent,
+      across: laneExtent,
       // No hairline anywhere on this lane, and no fill either since F-73 ②
       // (유저 2026-09-11: 「…그냥 투명하게 할수는없나?」). It used to be the
       // level BELOW the rail rows — "a lane is a groove, not a panel" — and

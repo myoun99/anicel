@@ -11,6 +11,7 @@ import 'package:flutter/services.dart' show HardwareKeyboard;
 import '../canvas/shown_cels.dart';
 import '../canvas/view_hand.dart';
 import '../timeline/memo_token.dart' show ByList;
+import '../timeline/axis_turn.dart' show sizedAlong;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
 import '../../services/input/modifier_keys.dart';
@@ -4177,14 +4178,15 @@ class _CanvasViewportPanbar extends StatelessWidget {
       canvasSize: canvasSize,
       limit: limit,
     );
-    return SizedBox(
+    return sizedAlong(
+      axis,
       key: ValueKey<String>(
         isHorizontal
             ? 'canvas-viewport-horizontal-scrollbar'
             : 'canvas-viewport-vertical-scrollbar',
       ),
-      height: isHorizontal ? 14 : double.infinity,
-      width: isHorizontal ? double.infinity : 14,
+      along: double.infinity,
+      across: 14,
       child: AppScrollbar(
         axis: axis,
         offset: metrics.scrollOffset,

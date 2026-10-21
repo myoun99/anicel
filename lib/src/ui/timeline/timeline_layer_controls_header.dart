@@ -11,6 +11,7 @@ import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'memo_token.dart' show BySet, KeptPiece;
+import 'axis_turn.dart' show sizeAlong;
 import 'timeline_grid_metrics.dart';
 import 'timeline_legend_menus.dart';
 import 'timeline_row_filter.dart';
@@ -465,9 +466,10 @@ class TimelineLayerControlsHeader extends KeptPiece {
         ? metrics.layerControlsWidth
         : metrics.layerRowHeight;
 
+    final box = sizeAlong(axis, along: railExtent, across: crossExtent);
     return Container(
-      width: isVertical ? crossExtent : railExtent,
-      height: isVertical ? railExtent : crossExtent,
+      width: box.width,
+      height: box.height,
       decoration: BoxDecoration(
         // A PLATE on the rail, not a chrome surface: the rows below carry the
         // same border ink, so with one chrome fill the legend became a layer

@@ -380,8 +380,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// The row's cross extent is the layer row height on both surfaces — a
   /// column is as wide as a row is tall (`xsheet_transposed_metrics_test`).
-  double get _width => _horizontal ? _mainExtent : metrics.layerRowHeight;
-  double get _height => _horizontal ? metrics.layerRowHeight : _mainExtent;
+  Size get _size =>
+      sizeAlong(axis, along: _mainExtent, across: metrics.layerRowHeight);
 
   @override
   Widget build(BuildContext context) {
@@ -474,8 +474,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     _rowName,
     child: ArenaTapHold(
       child: Container(
-        width: _width,
-        height: _height,
+        width: _size.width,
+        height: _size.height,
         padding: _padding,
         decoration: _plate(colorScheme),
         child: Named(
@@ -974,6 +974,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget? _muteButton() {
     final onOpenMixer = onOpenLayerMixer;
     if (layer.kind != LayerKind.se || onOpenMixer == null) return null;
+    final slot = sizeAlong(axis, along: layerMuteSlotWidth, across: 26);
     return acrossBox(
       axis,
       26,
@@ -981,8 +982,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
         name: '$keyPrefix-layer-mute-${layer.id}',
         muted: layer.muted,
         soloed: isLayerSoloed,
-        width: _horizontal ? layerMuteSlotWidth : 26,
-        height: _horizontal ? 26 : layerMuteSlotWidth,
+        width: slot.width,
+        height: slot.height,
         onOpenMixer: (anchorContext) =>
             onOpenMixer(anchorContext, layerIdNow(anchorContext, layer.id)),
       ),

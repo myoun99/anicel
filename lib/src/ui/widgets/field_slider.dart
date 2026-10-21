@@ -910,9 +910,9 @@ class _FieldSliderState extends State<FieldSlider> {
               originT: _originFraction,
               accent: _asDrawn(accent),
             ),
-            child: SizedBox(
-              width: _vertical ? widget.height : null,
-              height: _vertical ? null : widget.height,
+            child: acrossBox(
+              widget.axis,
+              widget.height,
               child: _vertical
                   ? RotatedBox(quarterTurns: 1, child: inner)
                   : inner,

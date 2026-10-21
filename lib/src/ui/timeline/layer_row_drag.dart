@@ -27,7 +27,8 @@ import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/drag_chip.dart';
 import '../widgets/drag_chip_overlay.dart';
-import 'axis_turn.dart' show centerEndAlong, centerStartAlong, partAcross;
+import 'axis_turn.dart'
+    show centerEndAlong, centerStartAlong, partAcross, sizeAlong, stripAcross;
 import 'layer_drop_policy.dart';
 import 'layer_label_controls.dart'
     show layerKindIcon, layerSectionLabelSlotWidth;
@@ -1126,9 +1127,14 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     String? label,
   }) {
     final horizontal = widget.axis == Axis.horizontal;
+    final barSize = sizeAlong(
+      widget.axis,
+      along: double.infinity,
+      across: layerRowCaretThickness,
+    );
     final bar = Container(
-      width: horizontal ? double.infinity : layerRowCaretThickness,
-      height: horizontal ? layerRowCaretThickness : double.infinity,
+      width: barSize.width,
+      height: barSize.height,
       color: colorScheme.primary,
     );
     final content = label == null
@@ -1185,17 +1191,15 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
               ),
             ],
           );
-    return Positioned(
+    return stripAcross(
+      widget.axis,
       key: ValueKey<String>(
         'timeline-row-caret-${atStart ? 'before' : 'after'}-'
         '${_keyOf(widget.subject)}',
       ),
-      left: horizontal
-          ? _layerAreaStart
-          : (atStart ? -layerRowCaretThickness / 2 : null),
-      right: horizontal ? 0 : (atStart ? null : -layerRowCaretThickness / 2),
-      top: horizontal ? (atStart ? -layerRowCaretThickness / 2 : null) : 0,
-      bottom: horizontal ? (atStart ? null : -layerRowCaretThickness / 2) : 0,
+      across: -layerRowCaretThickness / 2,
+      fromEnd: !atStart,
+      alongStart: _layerAreaStart,
       child: content,
     );
   }
