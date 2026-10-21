@@ -305,6 +305,16 @@ bool keepsEveryPixel(BitmapSurface surface, BitmapSurface behind) {
   return true;
 }
 
+/// [tiles] on a grid of [tileSize] with what lies past [wall] cut away, to
+/// the pixel — [surfaceBehindReach]'s cut, for tiles that were laid out
+/// behind another wall: a text copied in another project (I-101), whose
+/// pasteboard may reach further than this one's.
+Map<TileCoord, BitmapTile> tilesBehindWall(
+  Map<TileCoord, BitmapTile> tiles, {
+  required DirtyRegion wall,
+  required int tileSize,
+}) => _BehindWall(wall: wall, laid: null, tileSize: tileSize).tilesOf(tiles);
+
 /// What of a tile is kept behind a [wall] — inside it, or inside where a
 /// file was [laid].
 final class _BehindWall {

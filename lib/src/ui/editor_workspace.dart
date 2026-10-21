@@ -76,6 +76,7 @@ import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
 import 'session/session_row_button_presses.dart';
+import 'session/text_clipboard.dart' show TextCopy;
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_file_import.dart';
@@ -1301,6 +1302,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
     session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
+    // I-101: the text this window's canvas holds — what the pill's copy
+    // takes ahead of anything selected — and the faces a pasted text
+    // brings with it, as a text the hand lands does.
+    session.textClipboard.canvasText = (
+      heldByItsBox: _textHeldByItsBox,
+      landingWith: _landingWithItsFaces,
+    );
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
     // ⚠️Left on when the project goes behind: the clock saves a tab that is
@@ -1371,6 +1379,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     ));
   }
 
+  /// The text the canvas holds by its box, as it is shown — none while its
+  /// letters are typed into: the keys and their copy are the field's then.
+  TextCopy? _textHeldByItsBox() {
+    final hand = widget.canvasTextCommands;
+    final shown = hand?.shownInHand.value;
+    return hand == null || hand.typing || shown == null
+        ? null
+        : (content: shown.content, plate: shown.plate);
+  }
+
   /// [landing] — a text set on a cel — with the registering of the faces
   /// its letters are written in ([families]), as one step: the files each
   /// family is set with now, handed to the project on screen
@@ -1426,6 +1444,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // this window's to report or to clear.
     session.pixelVerbs.pixelVerbCanvas = null;
     session.pixelVerbs.cutToolHand = null;
+    session.textClipboard.canvasText = null;
     session.memoryPressureTicks.removeListener(
       _storyboardThumbnails.respondToMemoryPressure,
     );

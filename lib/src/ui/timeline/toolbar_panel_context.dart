@@ -244,11 +244,20 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         session.clipboard.canCopyAt(clipboardPlace),
   );
 
+  /// 🗣️I-101 (유저 2026-10-15): 「텍스트를 선택한 상태(변형박스로 변한
+  /// 상태)에서 복사 가능」. A text held by its box is the THING IN HAND, and
+  /// is copied ahead of every rung of the ladder — Delete's order (R9-rest:
+  /// 「the thing in hand first」), which the pill's copy and its key share.
   @override
-  bool get canCopyFrame => _copySubject != PillSubject.nothing;
+  bool get canCopyFrame =>
+      session.textClipboard.canCopy || _copySubject != PillSubject.nothing;
 
   @override
   void copyFrame() {
+    if (session.textClipboard.canCopy) {
+      session.textClipboard.copy();
+      return;
+    }
     switch (_copySubject) {
       case PillSubject.layers:
         session.layerClipboard.copySelectedRows();
@@ -273,11 +282,24 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// the lanes the press stands on, the frame paste's way.
   bool get _pastesKeys => session.keyClipboard.holdsKeys;
 
+  /// Whether a paste here puts down a TEXT: the hand holds one (I-101) — on
+  /// the cels a held picture lands on, the pixel paste's way.
+  ///
+  /// ⚠️A TEXT IN HAND LIGHTS NO LINK: a text is one cel's (유저 2026-10-06:
+  /// 「주인은 셀임」), so a link has nothing of it to keep — and with none,
+  /// the independent paste alone is lit (F-115). 유저 2026-10-15 guessed the
+  /// same: 「텍스트는 링크붙여넣기를 사용못할듯? 그래서 독립만?」 (I-101-Q2).
+  /// It needs no rung of its own: the link falls to the frame board, which
+  /// the text let go of when it was taken (one copy in hand).
+  bool get _pastesText => session.textClipboard.holdsText;
+
   @override
   bool get canPasteIndependentFrame => _pastesRows
       ? session.layerClipboard.canPasteRows
       : _pastesKeys
       ? session.keyClipboard.canPasteIndependent
+      : _pastesText
+      ? session.textClipboard.canPasteIndependent
       : session.clipboard.canPasteIndependentAt(clipboardPlace);
 
   /// The board an independent paste here puts down — the one whose media a
@@ -289,6 +311,10 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   void pasteIndependentFrame() {
     if (_pastesKeys) {
       session.keyClipboard.pasteIndependent();
+      return;
+    }
+    if (_pastesText) {
+      session.textClipboard.pasteIndependent();
       return;
     }
     final board = independentPasteBoard;
