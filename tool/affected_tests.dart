@@ -47,6 +47,7 @@
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -1088,6 +1089,109 @@ int? lastSkipCount(String text) {
   return found;
 }
 
+/// How many tests `flutter test` has finished by the last counter in
+/// [text] — passed, skipped and failed together — or null if it shows none.
+/// The same counter [lastSkipCount] reads its tilde from; this asks only
+/// whether it moved.
+int? finishedByCounter(String text) {
+  int? found;
+  for (final m in RegExp(
+    r'\+(\d+)(?: ~(\d+))?(?: -(\d+))?:',
+  ).allMatches(text)) {
+    found = [1, 2, 3].fold<int>(
+      0,
+      (sum, group) => sum + int.parse(m.group(group) ?? '0'),
+    );
+  }
+  return found;
+}
+
+/// How long a batch may finish no test before it is cut.
+///
+/// 🗣️유저 2026-10-21, tests-crowd-the-machine-Q17 「15분 동안 끝나는 테스트가
+/// 없으면 배치를 끊는다」: that night two lanes' batches stood on one test
+/// that never ended — the old `a_flip_reaches_past_the_end_test` walk, on a
+/// tree whose frame key stepped nothing — and one of them held nine of the
+/// line's eighteen suites for seven hours. A loop that never yields is past
+/// any limit of the test's own. ⚖️Fifteen minutes, as measured over 364
+/// reports and 120,679 tests: the longest test took 351 s, the longest a
+/// batch went between two tests finishing was 164 s, and the slowest first
+/// test of a batch finished 192 s after it began.
+const kSilentBatch = Duration(minutes: 15);
+
+/// How often a batch's silence is looked at.
+const kLookForSilence = Duration(seconds: 30);
+
+/// When one batch last finished a test, as its output says ([heard]) — so
+/// one that has finished none for [kSilentBatch] can be told ([isPast]).
+/// The batch's start counts as its first finish.
+class BatchSilence {
+  BatchSilence(this._since);
+
+  DateTime _since;
+  int _finished = -1;
+
+  /// [text] came from the batch at [now].
+  void heard(String text, DateTime now) {
+    final finished = finishedByCounter(text);
+    if (finished != null && finished > _finished) {
+      _finished = finished;
+      _since = now;
+    }
+  }
+
+  /// Whether no test has finished for [silence] by [now].
+  bool isPast(Duration silence, DateTime now) =>
+      now.difference(_since) >= silence;
+}
+
+/// The tests [report] — a `json` file report — says started and never
+/// finished, each as `<test file>: <test name>`; a suite still loading is
+/// not one.
+List<String> stillRunning(String report) {
+  final paths = <int, String>{};
+  final open = <int, ({int suite, String name})>{};
+  for (final line in const LineSplitter().convert(report)) {
+    final Object? event;
+    try {
+      event = jsonDecode(line);
+    } on FormatException {
+      continue;
+    }
+    if (event is! Map<String, dynamic>) continue;
+    switch (event['type']) {
+      case 'suite':
+        final suite = event['suite'] as Map<String, dynamic>;
+        paths[suite['id'] as int] = '${suite['path']}'.replaceAll('\\', '/');
+      case 'testStart':
+        final test = event['test'] as Map<String, dynamic>;
+        final name = test['name'] as String;
+        if (!name.startsWith('loading ')) {
+          open[test['id'] as int] = (suite: test['suiteID'] as int, name: name);
+        }
+      case 'testDone':
+        open.remove(event['testID']);
+    }
+  }
+  return [
+    for (final test in open.values)
+      '${paths[test.suite] ?? '?'}: ${test.name}',
+  ];
+}
+
+/// Ends the process [pid] and every process under it: `flutter test` runs
+/// its testers two and three processes down, and ending the shell alone
+/// leaves them holding the machine. ⚠️Off Windows only the shell's own
+/// children go with it.
+void _cutTree(int pid) {
+  if (Platform.isWindows) {
+    Process.runSync('taskkill', ['/PID', '$pid', '/T', '/F']);
+  } else {
+    Process.runSync('pkill', ['-KILL', '-P', '$pid']);
+    Process.killPid(pid, ProcessSignal.sigkill);
+  }
+}
+
 /// `flutter test` writes its counter and its verdict in English whatever
 /// the machine's locale is, because they come from Dart. Anything cmd.exe
 /// says does not — which is why this looks for the shape of a test result
@@ -1111,6 +1215,13 @@ Future<_BatchResult> _flutterTest(
   );
   var ranTests = false;
   var skipped = 0;
+  final silence = BatchSilence(DateTime.now());
+  var cut = false;
+  final look = Timer.periodic(kLookForSilence, (_) {
+    if (cut || !silence.isPast(kSilentBatch, DateTime.now())) return;
+    cut = true;
+    _cutTree(process.pid);
+  });
   final pumped = <Future<void>>[
     process.stdout.map((chunk) {
       // latin1 never throws on malformed bytes; a mojibake launch error
@@ -1121,11 +1232,24 @@ Future<_BatchResult> _flutterTest(
       }
       final skips = lastSkipCount(text);
       if (skips != null) skipped = skips;
+      silence.heard(text, DateTime.now());
       return chunk;
     }).forEach(stdout.add),
     process.stderr.forEach(stderr.add),
   ];
   final code = await process.exitCode;
+  look.cancel();
   await Future.wait(pumped);
-  return _BatchResult(code, ranTests, skipped);
+  if (cut) {
+    var open = const <String>[];
+    try {
+      open = stillRunning(File(report).readAsStringSync());
+    } on FileSystemException {
+      // No report to name them by; the cut is said all the same.
+    }
+    final named = open.isEmpty ? '(none named)' : open.join(' | ');
+    _report('🚨 no test finished for ${kSilentBatch.inMinutes} min — cut the '
+        'batch, red. Still running: $named');
+  }
+  return _BatchResult(cut && code == 0 ? 1 : code, ranTests, skipped);
 }
