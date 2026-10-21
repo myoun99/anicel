@@ -197,6 +197,34 @@ void main() {
       final order = tags(encodeTiff(picture(7, 5, alpha: true))).keys.toList();
       expect(order, [...order]..sort());
     });
+
+    test('every offset it names lands on a word boundary — the directory '
+        'and each value kept outside its entry, as TIFF 6.0 asks, and the '
+        'strips with them', () {
+      final file = encodeTiff(picture(400, 300, alpha: true));
+      final data = ByteData.sublistView(file);
+      final written = tags(file);
+      List<int> longsAt((int, int) entry) => [
+        for (var i = 0; i < entry.$1; i += 1)
+          data.getUint32(entry.$2 + i * 4, Endian.little),
+      ];
+      final stripOffsets = longsAt(written[273]!);
+      final stripBytes = longsAt(written[279]!);
+      expect(
+        stripBytes.take(stripBytes.length - 1).any((bytes) => bytes.isOdd),
+        isTrue,
+        reason: 'the premise: a strip of odd length with another after it',
+      );
+      expect([
+        data.getUint32(4, Endian.little),
+        ...stripOffsets,
+        written[273]!.$2,
+        written[279]!.$2,
+        written[258]!.$2,
+        written[282]!.$2,
+        written[283]!.$2,
+      ], everyElement(predicate<int>((offset) => offset.isEven, 'even')));
+    });
   });
 
   group('WebP', () {

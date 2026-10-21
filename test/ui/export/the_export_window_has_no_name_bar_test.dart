@@ -173,6 +173,22 @@ void main() {
       session.playbackRig.prerenderScheduler.cancel();
     });
 
+    testWidgets('an extension of any format the window writes is swapped, '
+        'not doubled — the four that joined in I-117 too', (tester) async {
+      final session = film();
+      addTearDown(session.dispose);
+      await pumpWindow(tester, session);
+      await press(tester, 'export-tab-image');
+      await pickExportStill(tester, ExportStillFormat.bmp);
+
+      for (final typed in ['shot.tiff', 'shot.tga', 'shot.webp', 'shot.png']) {
+        await tester.enterText(keyed('export-file-name-field'), typed);
+        await tester.pump();
+        expect(tester.exportFirstFileName, 'shot.bmp', reason: typed);
+      }
+      session.playbackRig.prerenderScheduler.cancel();
+    });
+
     testWidgets('a field of spaces is an empty one', (tester) async {
       final session = film();
       addTearDown(session.dispose);
