@@ -100,8 +100,9 @@ void main() {
 
   /// The cut's rows, bottom-up: 「A」; the folder 「F」 — 통과, at half —
   /// holding 「B」, multiplied at three quarters, and 「C」, hidden; 「FX」, an
-  /// adjustment brightening all of it; the folder 「G」 — multiplied and
-  /// brightened — holding 「D」; and the camera's row, which is no picture's.
+  /// adjustment brightening all of it; the folder 「G」 — multiplied,
+  /// brightened and hidden — holding 「D」; and the camera's row, which is no
+  /// picture's.
   /// [effects] false takes out what no row of a file holds: the
   /// adjustment's filter and 「G」's effect. [posed] brightens 「A」 by an
   /// effect of its own and moves 「F」 one pixel to the right.
@@ -132,6 +133,7 @@ void main() {
     createFolderLayer(id: const LayerId('g'), name: 'G').copyWith(
       blendMode: LayerBlendMode.multiply,
       effects: [if (effects) brighter()],
+      isVisible: false,
     ),
     createCameraLayer(cutId: cutId),
   ];
@@ -279,7 +281,7 @@ void main() {
         'FX 255 norm shown',
         '[',
         'D 255 norm shown',
-        '] G 255 mul shown',
+        '] G 255 mul hidden',
       ]);
       final hidden = rowNamed(read, 'C');
       expect((hidden.left, hidden.top, hidden.right, hidden.bottom), (
