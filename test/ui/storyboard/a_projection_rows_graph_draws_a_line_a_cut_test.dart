@@ -475,6 +475,171 @@ void main() {
     expect(b().camera.track.rotation.keyAt(2)!.outgoing, const EaseSide());
   });
 
+  /// [key]'s graph as it is drawn: its painter, and the box it paints.
+  ({TimelineLaneGraphPainter painter, RenderBox box}) pictureOf(
+    WidgetTester tester,
+    String key,
+  ) {
+    final paint = find.descendant(
+      of: find.descendant(
+        of: graphOf(key),
+        matching: find.byType(LaneGraphPicture),
+      ),
+      matching: find.byType(CustomPaint),
+    );
+    return (
+      painter:
+          tester.widget<CustomPaint>(paint).painter!
+              as TimelineLaneGraphPainter,
+      box: tester.renderObject<RenderBox>(paint),
+    );
+  }
+
+  /// A mouse's box on [key]'s graph from frame [from]'s cell at its top to
+  /// frame [to]'s at its foot (I-3 ⑤) — pressed on the graph's ground.
+  Future<void> drawBox(
+    WidgetTester tester,
+    String key,
+    int from,
+    int to,
+  ) async {
+    final (:painter, :box) = pictureOf(tester, key);
+    final frames = painter.frameAxis.geometry.value;
+    final press = Offset(frames.edgeAt(from) + 1, 1);
+    expect(
+      (painter.keyAt(press, box.size), painter.handleAt(press, box.size)),
+      (null, null),
+      reason: '⛔전제: the ground',
+    );
+    final gesture = await tester.startGesture(
+      box.localToGlobal(press),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveTo(
+      box.localToGlobal(Offset(frames.edgeAt(to) + 1, box.size.height - 1)),
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a box on its ground picks the keys of the cut it began in, in '
+      'that cut\'s own frames — as a sweep on the row\'s lanes does '
+      '(I-3 ⑤)', (tester) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    SessionRowButtonPresses(session).toggleLaneGraph(inHand);
+    await tester.pumpAndSettle();
+
+    // From a's own 10, over a's keys on 12 and b's on its own 2 and 6 (the
+    // track's 26 and 30), to the track's 32.
+    await drawBox(tester, cameraGraph, 10, 32);
+
+    final picked = session.laneRangeSelection.value!;
+    expect(
+      (picked.layerId, picked.startIndex, picked.endIndexExclusive),
+      (aCam, 10, 24),
+    );
+    expect(picked.spanLaneIds, [
+      for (final line in pictureOf(tester, cameraGraph).painter.own)
+        if (line.layer.id == aCam && line.lane.keyedFrames.contains(12))
+          line.lane.laneId,
+    ]);
+    expect(picked.spanLaneIds, contains('rotation'), reason: '⛔전제');
+  });
+
+  testWidgets('a box on its ground over an S row\'s pinned keys as well picks '
+      'the cut\'s keys alone — a sweep on a projection row\'s lanes stays '
+      'in them (I-3 ⑤)', (tester) async {
+    final project = cameras();
+    final s1Keyed = project.tracks.single.seLayers.single.copyWith(
+      transformTrack: TransformTrack.empty().copyWith(
+        rotation: PropertyTrack<double>().withKey(14, 0).withKey(20, 30),
+      ),
+    );
+    final session = await pumpHost(
+      tester,
+      project.copyWith(
+        tracks: [project.tracks.single.copyWith(seLayers: [s1Keyed])],
+      ),
+      twirl: 'a-cam',
+    );
+    SessionRowButtonPresses(session)
+      ..toggleLaneGraph(inHand)
+      ..toggleLanePin(laneGroupKey(s1, 'rotation'));
+    await tester.pumpAndSettle();
+    expect(
+      linesOf(tester, cameraGraph, 'rotation', guests: true),
+      [('s1', null)],
+      reason: '⛔전제',
+    );
+
+    await drawBox(tester, cameraGraph, 10, 22);
+
+    final picked = session.laneRangeSelection.value!;
+    expect(
+      (picked.layerId, picked.startIndex, picked.endIndexExclusive),
+      (aCam, 10, 23),
+    );
+    expect(picked.spanLaneIds, [
+      for (final line in pictureOf(tester, cameraGraph).painter.own)
+        if (line.layer.id == aCam && line.lane.keyedFrames.contains(12))
+          line.lane.laneId,
+    ]);
+    expect(session.trackFrameRangeSelection.value, isNull);
+  });
+
+  testWidgets('a box on an S row\'s graph over a pinned row\'s keys as well '
+      'picks the two rows on the track, as a sweep leaving the lanes does '
+      '(I-3 ⑤)', (tester) async {
+    const s2 = LayerId('s2');
+    Layer keyedSound(LayerId id, {required bool open}) => Layer(
+      id: id,
+      name: id.value,
+      kind: LayerKind.se,
+      frames: [
+        Frame(id: FrameId('${id.value}-f'), duration: 8, strokes: const []),
+      ],
+      timeline: {
+        0: TimelineExposure.drawing(FrameId('${id.value}-f'), length: 8),
+      },
+      expandedLaneGroups: {if (open) transform},
+      transformTrack: TransformTrack.empty().copyWith(
+        rotation: PropertyTrack<double>().withKey(4, 0).withKey(10, 30),
+      ),
+    );
+    final project = cameras();
+    final session = await pumpHost(
+      tester,
+      project.copyWith(
+        tracks: [
+          project.tracks.single.copyWith(
+            seLayers: [
+              keyedSound(s1, open: true),
+              keyedSound(s2, open: false),
+            ],
+          ),
+        ],
+      ),
+      twirl: 's1',
+    );
+    final key = laneGroupKey(s1, transform);
+    SessionRowButtonPresses(session)
+      ..toggleLaneGraph(key)
+      ..toggleLanePin(laneGroupKey(s2, 'rotation'));
+    await tester.pumpAndSettle();
+
+    await drawBox(tester, key, 3, 10);
+
+    final picked = session.trackFrameRangeSelection.value!;
+    expect(picked.rows, const [
+      LaneRowAddress(s1, 'rotation'),
+      LaneRowAddress(s2, 'rotation'),
+    ]);
+    expect((picked.startFrame, picked.endFrameExclusive), (3, 11));
+    expect(session.laneRangeSelection.value, isNull);
+  });
+
   group('the conte row', () {
     final conteRow = trackConteRowId(trackId);
     final conteGraph = laneGroupKey(conteRow, transform);

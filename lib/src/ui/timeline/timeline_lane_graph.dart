@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/gestures.dart'
     show DragDownDetails, DragGestureRecognizer, DragStartBehavior;
 import 'package:flutter/material.dart' show Icons;
@@ -21,7 +21,13 @@ import '../../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
 import '../../core/segment_share.dart' show shareAlongSegment;
 import '../../services/input/modifier_keys.dart' show ModifierKeys;
-import '../dashed_path.dart' show DashPattern, dashesAlong;
+import '../dashed_path.dart'
+    show
+        DashPattern,
+        antsColour,
+        antsDashes,
+        dashesAlong,
+        paintDashedOutline;
 import '../input/hit_gate.dart' show HitGate;
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
 import '../text/app_strings.dart' show AppStrings, AppText;
@@ -55,7 +61,8 @@ import 'timeline_frame_range_gesture.dart'
     show
         TimelineLaneRangeCallbacks,
         reportRangeDragFinished,
-        retireRangeDragOnUnmount;
+        retireRangeDragOnUnmount,
+        timelineEagerPanDetector;
 import 'timeline_frame_window.dart'
     show frameWindowContains, visibleFrameWindowFor;
 import 'timeline_grid_hooks.dart' show TimelineGridHooks;
@@ -438,6 +445,12 @@ class TimelineLaneGraph extends StatelessWidget {
 /// held (⌘ on a Mac), a press on a line puts a key there, the value it
 /// holds kept — through the ＋ its lanes' rows take, on the cell pressed.
 ///
+/// And its BOX (I-3 ⑤, AE's graph editor): a drag on its ground — where
+/// none of those takes the press — draws a box, and what it holds is
+/// picked as it is drawn: the frames it spans across the lanes of the
+/// keys inside it ([TimelineLaneRangeCallbacks.onSelectRows]). A tap there
+/// lets every key go, as a tap on a lane's band does.
+///
 /// While a handle or a key is in hand the picture is held to what its
 /// lines were fitted to when it was taken ([TimelineLaneGraphPainter.held]).
 class LaneGraphPicture extends StatefulWidget {
@@ -522,9 +535,24 @@ class _KeyInHand {
       LaneRowAddress(key.line.layer.id, key.line.lane.laneId);
 }
 
+/// A BOX in hand (I-3 ⑤): where the press that drew it went down, where
+/// the hand is now, and what it picked last — none until it picks.
+class _BoxInHand {
+  _BoxInHand(this.press) : now = press;
+
+  final Offset press;
+  Offset now;
+  List<LaneRowAddress>? rows;
+  int anchor = 0;
+  int head = 0;
+
+  Rect get rect => Rect.fromPoints(press, now);
+}
+
 class _LaneGraphPictureState extends State<LaneGraphPicture> {
   _HandleInHand? _inHand;
   _KeyInHand? _keyInHand;
+  _BoxInHand? _box;
 
   /// The painter the last build drew with — what a press is asked of.
   late TimelineLaneGraphPainter _painter;
@@ -540,8 +568,9 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       mode: widget.mode,
       selection: widget.lanes?.selection,
       held: _inHand?.fits ?? _keyInHand?.fits ?? const {},
+      box: _box?.rect,
     );
-    return HitGate(
+    final picture = HitGate(
       admits: _takesPressAt,
       child: OwningAxisGrip(
         axis: null,
@@ -549,7 +578,125 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
         child: CustomPaint(painter: painter, child: const SizedBox.expand()),
       ),
     );
+    final lanes = widget.lanes;
+    if (lanes == null || lanes.onSelectRows == null) {
+      return picture;
+    }
+    return Stack(fit: StackFit.expand, children: [_ground(lanes), picture]);
   }
+
+  /// Its GROUND, under the picture: wherever no handle, key or line takes
+  /// the press, a drag draws a box (I-3 ⑤) — with the devices a lane's
+  /// band selects with, a finger scrolling where they do not — and a tap
+  /// lets every key go, as a tap on the band does (H18).
+  Widget _ground(TimelineLaneRangeCallbacks lanes) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: lanes.onTapClear,
+    child: timelineEagerPanDetector(
+      context: context,
+      debugOwner: this,
+      firstStepAt: _boxSteppedAt,
+      draggedAStep: () => _box != null,
+      onStart: _openBox,
+      onUpdate: _drawBox,
+      onEnd: _closeBox,
+      onCancel: _closeBox,
+    ),
+  );
+
+  /// Whether a box pressed at [down] has taken its first step at [now]: the
+  /// hand has left the box it pressed — its frame's cell, and the row of a
+  /// lane's extent it is in across the graph — as every select's does
+  /// (F-138-Q1 「누른 상자 벗어나면 시작」).
+  bool _boxSteppedAt(Offset down, Offset now) {
+    final axis = widget.frameAxis.axis;
+    final frames = widget.frameAxis.geometry.value;
+    final lane = widget.frameAxis.laneExtent;
+    int rowAt(Offset at) => (partAcross(axis, at) / lane).floor();
+    return frames.cellAt(partAlong(axis, down)) !=
+            frames.cellAt(partAlong(axis, now)) ||
+        rowAt(down) != rowAt(now);
+  }
+
+  void _openBox(Offset at) => setState(() => _box = _BoxInHand(at));
+
+  /// The box drawn on to where the hand is — and the view panned where the
+  /// hand reaches its edge, as under a key carried.
+  void _drawBox(DragUpdateDetails details) {
+    final box = _box;
+    if (box == null) {
+      return;
+    }
+    edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: widget.frameAxis.axis,
+    );
+    setState(() => box.now = details.localPosition);
+    _pickBoxed(box);
+  }
+
+  /// Let go of: the box goes, and what it picked stays picked.
+  void _closeBox() => setState(() => _box = null);
+
+  /// What [box] holds, picked: the frames it spans, across the lanes of the
+  /// keys inside it — and the selection let go of where it holds none. Of
+  /// the lines a cut, the keys of the one cut it began in, in that cut's
+  /// own frames: a sweep on a projection row's lane picks so.
+  ///
+  /// 🗣️I-3-Q3 (유저 2026-10-21): 「레인 칸 선택으로 (상자가 걸친 프레임 ×
+  /// 안에 든 키의 레인)」. 🗣️I-3-Q4 (유저 2026-10-22): 「레인 행을 끌 때와
+  /// 똑같이」 — the lanes of two layers, or two cuts, picked as a lane drag
+  /// across them picks.
+  void _pickBoxed(_BoxInHand box) {
+    final lanes = widget.lanes!;
+    final axis = widget.frameAxis.axis;
+    final frames = widget.frameAxis.geometry.value;
+    final pressed = frames.frameIndexAt(partAlong(axis, box.press));
+    final rect = box.rect;
+    final held = [
+      for (final key in _painter.keysIn(context.size!))
+        if (rect.contains(key.at) &&
+            TimelineLaneGraphPainter._reaches(
+              key.line,
+              pressed - TimelineLaneGraphPainter._shiftOf(key.line),
+            ))
+          key.line,
+    ];
+    final rows = {
+      for (final line in held) LaneRowAddress(line.layer.id, line.lane.laneId),
+    }.toList();
+    final anchor = held.isEmpty ? 0 : _ownFrameOf(held.first, pressed);
+    final head = held.isEmpty
+        ? 0
+        : _ownFrameOf(
+            held.first,
+            frames.frameIndexAt(partAlong(axis, box.now)),
+          );
+    if (listEquals(rows, box.rows) &&
+        anchor == box.anchor &&
+        head == box.head) {
+      return;
+    }
+    box
+      ..rows = rows
+      ..anchor = anchor
+      ..head = head;
+    if (rows.isEmpty) {
+      lanes.onTapClear();
+      return;
+    }
+    lanes.onSelectRows!(rows, anchor, head);
+  }
+
+  /// The graph's frame [frame] as one of [line]'s own — held to them, as a
+  /// sweep on a cut's lane is held to the cut (`CameraRowReach.ownFrameAt`).
+  static int _ownFrameOf(LaneGraphLine line, int frame) =>
+      switch (line.reach) {
+        null => frame,
+        (:final start, :final end) =>
+          math.max(start, math.min(frame, end - 1)) - start,
+      };
 
   /// Whether a press at [position] is the picture's: on a handle, on a
   /// key where a key takes a press, or on a line where the pen puts a key.
@@ -1671,6 +1818,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
     this.mode = LaneGraphMode.value,
     this.selection,
     this.held = const {},
+    this.box,
   }) : super(
          repaint: Listenable.merge([
            frameAxis.geometry,
@@ -1695,6 +1843,10 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// ([fits]). Their keys are read as they stand — a key carried moves
   /// under the hand that carries it.
   final Map<String, LaneGraphFit> held;
+
+  /// The box a drag on the graph's ground is drawing (I-3 ⑤) — in the
+  /// ants, standing still ([antsColour]) — or null.
+  final Rect? box;
 
   Axis get axis => frameAxis.axis;
 
@@ -1847,6 +1999,14 @@ class TimelineLaneGraphPainter extends CustomPainter {
       canvas
         ..drawCircle(handle.at, _laneGraphHandleRadius, fill)
         ..drawCircle(handle.at, _laneGraphHandleRadius, ink);
+    }
+    if (box case final box?) {
+      paintDashedOutline(
+        canvas,
+        Path()..addRect(box),
+        color: antsColour,
+        dashes: antsDashes,
+      );
     }
   }
 
@@ -2240,5 +2400,6 @@ class TimelineLaneGraphPainter extends CustomPainter {
       oldDelegate.frameAxis != frameAxis ||
       oldDelegate.mode != mode ||
       oldDelegate.selection != selection ||
-      oldDelegate.held != held;
+      oldDelegate.held != held ||
+      oldDelegate.box != box;
 }

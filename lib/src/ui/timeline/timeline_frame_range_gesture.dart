@@ -601,7 +601,7 @@ class _TimelineFrameRangeGestureLayerState
               widget.callbacks.onTapClear(_rowNow);
             }
           },
-          child: _eagerPanDetector(
+          child: timelineEagerPanDetector(
             context: context,
             debugOwner: this,
             firstStepAt: _firstStepAt,
@@ -703,6 +703,7 @@ class TimelineLaneRangeCallbacks {
     this.onGripReleased,
     this.onActivateAt,
     this.onCreateKeys,
+    this.onSelectRows,
   });
 
   /// The same A5/D42 grip seam the cells layer carries: a lane drag holds
@@ -767,6 +768,19 @@ class TimelineLaneRangeCallbacks {
   /// is the one the button would have made there. Null leaves the pen
   /// without one.
   final VoidCallback? onCreateKeys;
+
+  /// A BOX drawn on a header graph (I-3 ⑤, AE's graph editor) picking the
+  /// frames from [anchorIndex] to [headIndex] across the lanes of [rows] —
+  /// the lanes holding the keys it holds, in the order the graph draws
+  /// them. One layer's are a lane selection of those lanes; where they
+  /// reach another layer's, the MOUNT answers as it answers a lane drag
+  /// leaving its group. Null leaves a graph's box picking nothing.
+  final void Function(
+    List<LaneRowAddress> rows,
+    int anchorIndex,
+    int headIndex,
+  )?
+  onSelectRows;
 
   final bool Function() onMoveBegin;
 
@@ -1048,7 +1062,7 @@ class _TimelineLaneRangeGestureLayerState
                       activate(widget.layer.id, widget.laneId, frame),
                 ),
           onDoubleTap: activate == null ? null : () {},
-          child: _eagerPanDetector(
+          child: timelineEagerPanDetector(
             context: context,
             debugOwner: this,
             firstStepAt: _firstStepAt,
@@ -1066,8 +1080,8 @@ class _TimelineLaneRangeGestureLayerState
 
 /// The eager pan that owns a range drag from its first pixel — one
 /// recogniser set-up for the cell layer and the lane layer (the audit's
-/// clone scan, 2026-09-03).
-Widget _eagerPanDetector({
+/// clone scan, 2026-09-03), and a header graph's box (I-3 ⑤).
+Widget timelineEagerPanDetector({
   required BuildContext context,
   required Object debugOwner,
   required bool Function(Offset down, Offset now) firstStepAt,

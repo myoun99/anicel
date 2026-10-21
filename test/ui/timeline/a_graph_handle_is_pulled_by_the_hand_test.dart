@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
@@ -134,7 +135,16 @@ void main() {
   });
 
   testWidgets('a press beside a handle is not the handle\'s: it falls to what '
-      'lies under — a finger there scrolls the rows', (tester) async {
+      'lies under — a finger that does not draw scrolls the rows there', (
+    tester,
+  ) async {
+    // Where one finger draws, it boxes there as a mouse does (I-3 ⑤).
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.flip,
+    );
+    addTearDown(
+      () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
+    );
     final s = await _pump(tester, under: 12);
     await _openTheGraph(tester, s);
     final rows = _rowsScroll(tester);

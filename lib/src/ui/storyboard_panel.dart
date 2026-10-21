@@ -99,6 +99,7 @@ import 'timeline/timeline_row_edges.dart';
 import 'timeline/timeline_row_selection_bands.dart';
 import 'timeline/timeline_row_span_resolver.dart'
     show
+        laneBoxLanesOf,
         laneSpanOverDrawnRows,
         resolveBlockMoveTargetLayer,
         resolveInGroupHeadLane,

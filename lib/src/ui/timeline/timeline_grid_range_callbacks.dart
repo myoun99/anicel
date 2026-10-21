@@ -164,6 +164,28 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
         spanRows: escalation.spanRows,
       );
     },
+    onSelectRows: (rows, anchorIndex, headIndex) {
+      final anchor = rows.first;
+      final lanes = laneBoxLanesOf(rows);
+      if (rangeHooks == null || lanes.length == rows.length) {
+        hostLaneRange.onSelectUpdate(
+          anchor.layerId,
+          anchor.laneId,
+          anchorIndex,
+          headIndex,
+          lanes,
+        );
+        return;
+      }
+      rangeHooks.onSelectUpdate(
+        anchor.layerId,
+        anchorIndex,
+        headIndex,
+        headLayerId: rows.last.layerId,
+        headLaneId: rows.last.laneId,
+        spanRows: rows,
+      );
+    },
     onTapAt: hostLaneRange.onTapAt,
     onActivateAt: hostLaneRange.onActivateAt,
     onTapClear: hostLaneRange.onTapClear,

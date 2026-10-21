@@ -1801,6 +1801,30 @@ class _StoryboardRailRows {
               spanRows: escalation.spanRows,
             );
           },
+      // A box on a header graph over these lanes picks as a sweep on them
+      // does: a projection row's in the one cut's layer it began in.
+      onSelectRows: (rows, anchorIndex, headIndex) {
+        final anchor = rows.first;
+        final lanes = laneBoxLanesOf(rows);
+        if (projection != null || lanes.length == rows.length) {
+          host.onSelectUpdate(
+            anchor.layerId,
+            anchor.laneId,
+            anchorIndex,
+            headIndex,
+            lanes,
+          );
+          return;
+        }
+        _state.widget.seSelect?.onDrag(
+          layerId: anchor.layerId,
+          anchorGlobalFrame: anchorIndex,
+          headGlobalFrame: headIndex,
+          headRow: rows.last,
+          anchorRow: anchor,
+          spanRows: rows,
+        );
+      },
       onTapAt: host.onTapAt,
       onActivateAt: host.onActivateAt,
       onTapClear: host.onTapClear,

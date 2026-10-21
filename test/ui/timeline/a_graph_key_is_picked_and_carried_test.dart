@@ -72,6 +72,82 @@ void main() {
     expect(s.currentFrameIndex, standing, reason: 'AE\'s click leaves it');
   });
 
+  testWidgets('a box drawn on the graph\'s ground picks the frames it spans '
+      'on the lanes of the keys inside it, and moves nothing (I-3 ⑤)', (
+    tester,
+  ) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    final (:painter, :box) = _graphOf(tester);
+    final frames = painter.frameAxis.geometry.value;
+    final key = painter.keysIn(box.size).singleWhere((key) => key.frame == 8);
+    final press = Offset(frames.edgeAt(6) + 1, key.at.dy + 60);
+    expect(
+      (painter.keyAt(press, box.size), painter.handleAt(press, box.size)),
+      (null, null),
+      reason: '⛔전제: the ground',
+    );
+
+    final gesture = await tester.startGesture(
+      box.localToGlobal(press),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveTo(
+      box.localToGlobal(Offset(frames.edgeAt(9) + 1, key.at.dy - 4)),
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final picked = s.laneRangeSelection.value!;
+    expect(
+      (picked.layerId, picked.startIndex, picked.endIndexExclusive),
+      (_drawId, 6, 10),
+    );
+    expect(picked.spanLaneIds, ['rotation']);
+    expect(_keyedFrames(s), [0, 8]);
+  });
+
+  testWidgets('a box drawn to the view\'s edge pans it on, as a band\'s '
+      'select does (D42, F-15)', (tester) async {
+    final s = await _pump(tester, duration: 600);
+    await _openTheGraph(tester, s);
+    final frames = tester
+        .stateList<ScrollableState>(
+          find.ancestor(
+            of: _paintFinder,
+            matching: find.byType(Scrollable),
+          ),
+        )
+        .firstWhere((scroll) => scroll.position.axis == Axis.horizontal)
+        .position;
+    expect(frames.maxScrollExtent, greaterThan(100), reason: '⛔전제');
+    final (:painter, :box) = _graphOf(tester);
+    final press = Offset(painter.frameAxis.geometry.value.edgeAt(2) + 1, 4);
+    expect(
+      (painter.keyAt(press, box.size), painter.handleAt(press, box.size)),
+      (null, null),
+      reason: '⛔전제: the ground',
+    );
+    final view = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-frame-scroll-viewport')),
+    );
+
+    final gesture = await tester.startGesture(
+      box.localToGlobal(press),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveTo(Offset(view.right - 2, box.localToGlobal(press).dy));
+    await tester.pump();
+    await gesture.moveBy(const Offset(1, 0));
+    await tester.pump();
+    expect(frames.pixels, greaterThan(0));
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('dragged along the frames, the key goes with the hand by '
       'whole frames — shown while the hand is on it, landed where it is let '
       'go in one undo, the selection on it', (tester) async {
@@ -686,18 +762,24 @@ Future<void> _tapNamed(WidgetTester tester, String name) async {
 }
 
 /// [under]: that many layers' rows under the drawing's. [transform]: the
-/// drawing's, where not its Rotation keyed 0 on frame 0 and 45 on 8.
+/// drawing's, where not its Rotation keyed 0 on frame 0 and 45 on 8. The
+/// cut [duration] frames long.
 Future<EditorSessionManager> _pump(
   WidgetTester tester, {
   int under = 0,
   TransformTrack? transform,
+  int duration = 48,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1400, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       home: HomePage(
-        initialProject: _project(under: under, transform: transform),
+        initialProject: _project(
+          under: under,
+          transform: transform,
+          duration: duration,
+        ),
       ),
     ),
   );
@@ -710,7 +792,11 @@ Future<EditorSessionManager> _pump(
   return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 }
 
-Project _project({required int under, TransformTrack? transform}) => Project(
+Project _project({
+  required int under,
+  TransformTrack? transform,
+  int duration = 48,
+}) => Project(
   id: const ProjectId('graph-key'),
   name: 'Graph Key',
   createdAt: DateTime.utc(2026, 10, 20),
@@ -722,7 +808,7 @@ Project _project({required int under, TransformTrack? transform}) => Project(
         Cut(
           id: const CutId('c'),
           name: 'C',
-          duration: 48,
+          duration: duration,
           canvasSize: const CanvasSize(width: 640, height: 360),
           camera: CutCamera.empty(),
           layers: [

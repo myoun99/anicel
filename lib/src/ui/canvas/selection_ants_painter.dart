@@ -149,29 +149,11 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// handles. ⛔Three separate constants lived here, and the box's was
   /// a fixed blue that never answered the question the other two did.
   ///
-  /// ⚠️The ANTS left this in F-65 (see [_antColour]); R16-①'s red/green
+  /// ⚠️The ANTS left this in F-65 (see [antsColour]); R16-①'s red/green
   /// grammar still reads, because the parts that carry it are exactly the
   /// parts a move session puts on screen.
   Color get _sessionColor =>
       AppColors.selectionSession(changed: sessionHasChanges);
-
-  /// 🚨★★★THE ANTS ARE BLACK — 유저 (F-65): 「선택툴의 개미행렬 색을 앱
-  /// 강조색이아니라 **검정색으로. 그러니 흰색바탕에 검정 개미가 지나가도록.
-  /// 앞으로 개미행렬은 이 공통 ui를 사용**」.
-  ///
-  /// ⚠️They read it as the app accent; it was actually
-  /// `AppColors.selectionSession`'s green (red while a move session holds
-  /// changes). Either way the instruction is the same, and the white
-  /// under-stroke this pairs with was already there — 「흰색바탕에 검정
-  /// 개미」 is that pair, now spelled the way they asked.
-  ///
-  /// ⛔A constant, not a theme token: it must not follow the accent, and
-  /// following a THEME colour would be the same mistake one level up. The
-  /// white beneath it is `Colors.white` for the same reason.
-  static const Color _antColour = Color(0xFF000000);
-
-  /// Five of line, four of none.
-  static const DashPattern _dashes = DashPattern(on: 5, off: 4);
 
   /// Screen pixels. The same number the layer hit-tests the close tap
   /// against, so what the ring says is aimable is what is aimable — and
@@ -209,7 +191,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.clipRect(Offset.zero & size);
-    final phase = _phase.value * _dashes.period;
+    final phase = _phase.value * antsDashes.period;
 
     // I-38: where this session started, UNDER everything else — it is what
     // the live outline is being compared against, so the live one is what
@@ -319,7 +301,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
     }
   }
 
-  /// White under-stroke + phase-offset dashes in [_antColour]. The white
+  /// White under-stroke + phase-offset dashes in [antsColour]. The white
   /// underneath is what keeps the black readable on dark artwork, and the
   /// black is what keeps the white readable on light — 「흰색바탕에 검정
   /// 개미가 지나가도록」 is the pair, not the dash alone.
@@ -335,8 +317,8 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
       paintDashedOutline(
         canvas,
         path,
-        color: _antColour,
-        dashes: _dashes.marchedBy(phase),
+        color: antsColour,
+        dashes: antsDashes.marchedBy(phase),
       );
 
   @override
