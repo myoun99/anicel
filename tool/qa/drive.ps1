@@ -14,6 +14,7 @@ Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System; using System.Runtime.InteropServices;
 public static class W {
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
@@ -33,6 +34,9 @@ public static class W {
   public static IntPtr KeyLP(uint vk, bool up) { uint sc = MapVirtualKey(vk, 0); long l = 1 | (sc << 16); if (up) l |= 0xC0000000; return (IntPtr)l; }
 }
 "@
+# Per-monitor DPI aware (-4), so window rects and client points are in real
+# pixels on a scaled screen (the Surface runs at 150%, measured 10-22).
+[W]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
 $pidFile = "$S\app.pid"
 function Top { $p = Get-Process -Id (Get-Content $pidFile) -ErrorAction Stop; [W]::Of([uint32]$p.Id) }
 function Post($h, $m, $w, $l) { [W]::PostMessage($h, [uint32]$m, [IntPtr]$w, $l) | Out-Null }
@@ -62,7 +66,7 @@ switch ($Cmd) {
         'rclick'{ MMove $v $a[0] $a[1] 0; Post $v 0x204 2 ([W]::LP([int]$a[0], [int]$a[1])); Start-Sleep -Milliseconds 60; Post $v 0x205 0 ([W]::LP([int]$a[0], [int]$a[1])) }
         'dbl'   { MMove $v $a[0] $a[1] 0; Down $v $a[0] $a[1]; Up $v $a[0] $a[1]; Start-Sleep -Milliseconds 80; Post $v 0x203 1 ([W]::LP([int]$a[0], [int]$a[1])); Up $v $a[0] $a[1] }
         'drag'  { MMove $v $a[0] $a[1] 0; Down $v $a[0] $a[1]; Start-Sleep -Milliseconds 150
-                  $n = 12; for ($i = 1; $i -le $n; $i++) { $x = [int]($a[0] + ([int]$a[2] - [int]$a[0]) * $i / $n); $y = [int]($a[1] + ([int]$a[3] - [int]$a[1]) * $i / $n); MMove $v $x $y 1; Start-Sleep -Milliseconds 25 }
+                  $n = 12; for ($i = 1; $i -le $n; $i++) { $x = [int]([int]$a[0] + ([int]$a[2] - [int]$a[0]) * $i / $n); $y = [int]([int]$a[1] + ([int]$a[3] - [int]$a[1]) * $i / $n); MMove $v $x $y 1; Start-Sleep -Milliseconds 25 }
                   Start-Sleep -Milliseconds 150; Up $v $a[2] $a[3] }
         'wheel' { $pt = New-Object W+POINT; $pt.X = [int]$a[0]; $pt.Y = [int]$a[1]; [W]::ClientToScreen($v, [ref]$pt) | Out-Null
                   Post $v 0x20A ([int]$a[2] -shl 16) ([W]::LP($pt.X, $pt.Y)) }
