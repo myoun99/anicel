@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kSecondaryMouseButton;
 import 'package:flutter/material.dart';
@@ -181,6 +183,41 @@ void main() {
   int alphaAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
       (surfacePixelRgba(celOf(coordinator), x, y) ?? 0) & 0xFF;
 
+  /// The alpha [overlay] SHOWS over each tile it pictures, off its pictures.
+  Future<Map<TileCoord, List<int>>> shownAlphas(
+    WidgetTester tester,
+    ActiveStrokeOverlayModel overlay,
+  ) async {
+    final shown = <TileCoord, List<int>>{};
+    for (final MapEntry(key: coord, value: picture)
+        in overlay.tileImages.entries) {
+      final data = await tester.runAsync(
+        () => picture.toByteData(format: ui.ImageByteFormat.rawRgba),
+      );
+      final bytes = data!.buffer.asUint8List();
+      shown[coord] = [for (var i = 3; i < bytes.length; i += 4) bytes[i]];
+    }
+    return shown;
+  }
+
+  /// Where the cel's alpha parts from [shown] — a tile and a pixel — or null.
+  String? whereTheCelParts(
+    BrushFrameEditingCoordinator coordinator,
+    Map<TileCoord, List<int>> shown,
+  ) {
+    final cel = celOf(coordinator);
+    for (final MapEntry(key: coord, value: alphas) in shown.entries) {
+      final pixels = cel.tileAt(coord)?.pixels;
+      for (var i = 0; i < alphas.length; i += 1) {
+        final landed = pixels == null ? 0 : pixels[i * 4 + 3];
+        if (landed != alphas[i]) {
+          return '$coord pixel $i: shown ${alphas[i]}, landed $landed';
+        }
+      }
+    }
+    return null;
+  }
+
   /// The first tile where [a] and [b] part, or null.
   TileCoord? firstDifference(BitmapSurface a, BitmapSurface b) {
     for (final coord in {...a.tiles.keys, ...b.tiles.keys}) {
@@ -242,9 +279,15 @@ void main() {
     await holdTheKey(tester, true);
     await hover(tester, mouse, hand);
     await untilShown(tester, env.overlay);
+    final shown = await shownAlphas(tester, env.overlay);
     await click(tester, mouse, hand);
 
     expect(env.overlay.hasStrokeContent, isFalse, reason: 'it has landed');
+    // The shape tool here lays its own plain line, and the show is still
+    // the stroke the click lands — not the tool's (I-69-Q4ⓒ: shown as it
+    // will land).
+    expect(shown, isNotEmpty, reason: '⛔premise: the line showed');
+    expect(whereTheCelParts(env.coordinator, shown), isNull);
     expect(env.history.undoCount, steps + 1, reason: 'one step back');
     expect(antsOf(tester), isEmpty, reason: 'the hand rests on its end');
     expect(alphaAt(env.coordinator, 210, 130), isNonZero, reason: 'midway');

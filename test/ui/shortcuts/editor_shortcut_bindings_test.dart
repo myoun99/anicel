@@ -55,8 +55,13 @@ void main() {
     final bindings = EditorShortcutBindings();
     expect(
       editorActionDefinitions.where((d) => d.hold).map((d) => d.id),
-      [EditorActionIds.canvasPanHold, EditorActionIds.canvasRotateHold],
-      reason: 'the view\'s two held actions — the pan, and the turn (I-88)',
+      [
+        EditorActionIds.canvasPanHold,
+        EditorActionIds.canvasRotateHold,
+        EditorActionIds.canvasLineHold,
+      ],
+      reason: 'the view\'s two held actions — the pan, and the turn (I-88) '
+          '— and the line from the last stroke (I-119)',
     );
     final pan = bindings.activatorsFor(EditorActionIds.canvasPanHold);
     expect(pan, hasLength(1));
