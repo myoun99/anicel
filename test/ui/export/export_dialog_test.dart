@@ -36,6 +36,8 @@ import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/export/export_settings_modules.dart'
+    show ExportAccordion;
 import 'package:anicel/src/ui/export/held_pictures.dart';
 import 'package:anicel/src/ui/export/png_sequence_export_service.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
@@ -1347,9 +1349,12 @@ void main() {
       }
     });
 
-    // 🗣️I-117 (유저 2026-10-21): 「시퀀스는 psd 지원안하도록?」.
-    testWidgets('the Image tab lists every still — PSD there but off, saying '
-        'why — and the Sequence tab lists every one but PSD', (tester) async {
+    // 🗣️I-117 (유저 2026-10-21): 「시퀀스는 psd 지원안하도록?」 — and 「셀은
+    // … 소재 하나당 해당 어태치레이어 구조 그대로」, which the Cels tab
+    // writes; the Image tab's waits on I-117-Q2.
+    testWidgets('the Cels tab lists every still with PSD on, the Image tab '
+        'every one — PSD there but off, saying why — and the Sequence tab '
+        'every one but PSD', (tester) async {
       await pumpDialog(tester, exportSession());
 
       /// The still list's rows, each as whether it takes a pick; the list
@@ -1398,6 +1403,27 @@ void main() {
         'png': true,
         'jpg': true,
         'psd': false,
+        'bmp': true,
+        'tga': true,
+        'tiff': true,
+        'webp': true,
+      });
+      await switchTab(tester, 'cels');
+      // On the Cels tab the cel format stands folded (the F-289 mock).
+      tester
+          .widget<ExportAccordion>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is ExportAccordion &&
+                  widget.title == AppText.strings.exCelFormat,
+            ),
+          )
+          .onToggle();
+      await tester.pump();
+      expect(await listed(), {
+        'png': true,
+        'jpg': true,
+        'psd': true,
         'bmp': true,
         'tga': true,
         'tiff': true,

@@ -2621,7 +2621,19 @@ class ExportDialogState extends State<ExportDialog> {
             spec.sizeMode,
             guideColor: guideInk,
           ),
-          encoder: stillEncoderFor(spec.format),
+          // A cel's PSD is a document of the rows its picture lays into
+          // one (I-117), drawn after that picture.
+          encoder: spec.format.stillFormat == ExportStillFormat.psd
+              ? (picture) => encodePsd(
+                  picture,
+                  spec.format,
+                  renderer.celGroupRows(
+                    task,
+                    spec.sizeMode,
+                    guideColor: guideInk,
+                  ),
+                )
+              : stillEncoderFor(spec.format),
         ),
       for (final sheet in plan.writtenDocuments)
         if (sheet.kind == ExportCelKind.envelope)
@@ -3430,7 +3442,10 @@ class ExportDialogState extends State<ExportDialog> {
       ),
       _formatAccordion(
         format: spec.format,
-        capabilities: _stillOnlyCapabilities,
+        // 🗣️I-117-Q2 is open: what the Image tab's PSD keeps of the rows a
+        // PSD cannot hold (adjustments, a folder's effects). Its rows wait
+        // for the answer, so PSD stays off here until then.
+        capabilities: _stillOnlyCapabilities(layered: false),
         onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
       ),
       _sizeAccordion(
@@ -3895,7 +3910,8 @@ class ExportDialogState extends State<ExportDialog> {
       // pops into existence.
       _formatAccordion(
         format: spec.format,
-        capabilities: _stillOnlyCapabilities,
+        // A cel's PSD keeps the rows it is made of ([_exportCels]).
+        capabilities: _stillOnlyCapabilities(layered: true),
         onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
       ),
       _sheetFormatAccordion(spec),
@@ -4181,11 +4197,14 @@ class ExportDialogState extends State<ExportDialog> {
   );
 
   /// The still-only format lineup the Image and Cels tabs share; the
-  /// Sequence tab's table carries video and is its own value.
-  ExportFormatCapabilities get _stillOnlyCapabilities =>
+  /// Sequence tab's table carries video and is its own value. PSD is live
+  /// where the tab lays its picture out as the file's rows ([layered]).
+  ExportFormatCapabilities _stillOnlyCapabilities({required bool layered}) =>
       ExportFormatCapabilities(
         stills: ExportStillFormat.values,
-        stillEnabled: _availability.stillAllowed,
+        stillEnabled: (format) =>
+            (layered || format != ExportStillFormat.psd) &&
+            _availability.stillAllowed(format),
       );
 
   /// The "this cut or the whole film" accordion every tab offers.

@@ -15,6 +15,7 @@ import '../../models/export_format_selection.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/movie_cel.dart';
@@ -57,6 +58,8 @@ import 'export_plan.dart';
 import 'held_pictures.dart';
 import 'held_rows.dart';
 import 'offscreen_raster.dart';
+import 'still_image_encoders.dart' show ExportLayerRow;
+import '../text/app_strings.dart';
 
 /// The ground a frame is rendered on unless a caller names another — what
 /// the storyboard's and the conte's pictures stand on, and so what a conte
@@ -65,6 +68,24 @@ const ui.Color exportFrameGround = ui.Color(0xFFFFFFFF);
 
 /// Where a cel stands in the project: its cut, its row, its drawing.
 typedef _CelAt = (CutId, LayerId, FrameId);
+
+/// A row of a label-group cel ([ExportFrameRenderer.renderCelGroup]): the
+/// row of the cut it is, its drawing there, and the effects it wears.
+typedef _CelRow = ({
+  Layer layer,
+  BitmapSurface surface,
+  List<ResolvedLayerEffect> effects,
+});
+
+/// A label-group cel's rows, bottom-up, the view they are seen through,
+/// and the guides and the camera's work laid over them — null where the
+/// hand laid none.
+typedef _CelGroup = ({
+  List<_CelRow> rows,
+  CameraView view,
+  CameraOverlayPass? guides,
+  CameraOverlayPass? camera,
+});
 
 /// Renders export output straight from the brush store, every cel at its
 /// own pixels, so exports never depend on the playback caches.
@@ -327,10 +348,12 @@ class ExportFrameRenderer {
     return [for (final contribution in contributions) contribution.opacity];
   }
 
-  /// The track stack's pictures: TRANSPARENT backing, so an upper track's
-  /// picture never blanks the tracks below — the paper belongs to the
-  /// bottom covered track, and its unit lays it ([_stackUnit]).
-  static const CameraFrameRenderService _stackRenderService =
+  /// The pictures that stand on nothing: TRANSPARENT backing. A track of
+  /// the stack's, so an upper track's picture never blanks the tracks below
+  /// — the paper belongs to the bottom covered track, and its unit lays it
+  /// ([_stackUnit]); and a row of a layered cel's, which the file lays over
+  /// the rows under it ([celGroupRows]).
+  static const CameraFrameRenderService _transparentRenderService =
       CameraFrameRenderService(background: ui.Color(0x00000000));
 
   /// The multi-track layout, built once per export run (the project is
@@ -421,7 +444,7 @@ class ExportFrameRenderer {
   /// caller that keys the picture ([_cutPicture]) keys it by the very chain
   /// and tags that are drawn — and its rows from [rows] when a held picture
   /// keeps them. On [service]'s ground, this renderer's own unless another
-  /// is named ([_stackRenderService]), with [paper] laid under the rows
+  /// is named ([_transparentRenderService]), with [paper] laid under the rows
   /// where a stage's picture carries its own.
   ///
   /// Cut at its canvas's edge: a film shows no pasteboard, and a picture of
@@ -1026,7 +1049,7 @@ class ExportFrameRenderer {
         trackEffects: trackEffects,
         paper: paper,
         rows: rows,
-        service: _stackRenderService,
+        service: _transparentRenderService,
       ),
     );
     final project = session.repository.requireProject();
@@ -1080,48 +1103,130 @@ class ExportFrameRenderer {
     required ui.Color guideColor,
   }) async {
     _startFrame();
+    final cel = _celGroupOf(task, mode, guideColor);
+    if (cel == null) {
+      return null;
+    }
+    return renderService.renderThroughCamera(
+      layers: [for (final row in cel.rows) _laidInTheCel(row)],
+      pose: cel.view.pose,
+      cameraFrameSize: cel.view.frameSize,
+      outputSize: outputSize,
+      overlayPass: _laidOver([cel.guides, cel.camera]),
+    );
+  }
+
+  /// [task]'s cel as the rows a layered file keeps apart, bottom-up — the
+  /// ones [renderCelGroup] lays into one picture: the ground it lays them
+  /// on, where it has one; each member, then each direction laid over
+  /// them; then the guides and the camera's work, where they are laid.
+  /// Each is drawn through the view [renderCelGroup] looks through, by
+  /// itself on nothing — whole, in no blend — and carries its strength and
+  /// blend for the file to lay it by. None where [renderCelGroup] draws
+  /// nothing.
+  ///
+  /// 🗣️I-117 (유저 2026-10-21): 「셀은 출력될 셀 등 소재 하나당 해당
+  /// 어태치레이어 구조 그대로 지켜서 출력」.
+  ///
+  /// ⚠️It starts no frame: drawn after [renderCelGroup]'s picture of the
+  /// same cel, its rows read no cel that picture did not.
+  List<ExportLayerRow> celGroupRows(
+    ExportCelGroupTask task,
+    ExportSizeMode mode, {
+    required ui.Color guideColor,
+  }) {
+    final cel = _celGroupOf(task, mode, guideColor);
+    if (cel == null) {
+      return const [];
+    }
+    Future<ui.Image> drawn(
+      CameraFrameRenderService service, {
+      List<CutFrameCompositeLayer> layers = const [],
+      CameraOverlayPass? overlayPass,
+    }) => service.renderThroughCamera(
+      layers: layers,
+      pose: cel.view.pose,
+      cameraFrameSize: cel.view.frameSize,
+      overlayPass: overlayPass,
+    );
+    ExportLayerRow laidOver(String name, CameraOverlayPass pass) => (
+      name: name,
+      opacity: 1,
+      blendMode: LayerBlendMode.normal,
+      draw: () => drawn(_transparentRenderService, overlayPass: pass),
+    );
+    final strings = AppText.strings;
+    return [
+      if (renderService.background.a > 0)
+        (
+          name: strings.exBackground,
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+          draw: () => drawn(renderService),
+        ),
+      for (final row in cel.rows)
+        (
+          name: row.layer.name,
+          opacity: row.layer.opacity,
+          blendMode: row.layer.blendMode,
+          draw: () => drawn(
+            _transparentRenderService,
+            layers: [_laidInTheCel(row, alone: true)],
+          ),
+        ),
+      if (cel.guides case final guides?) laidOver(strings.exLayGuides, guides),
+      if (cel.camera case final camera?) laidOver(strings.tlKindCamera, camera),
+    ];
+  }
+
+  /// What [renderCelGroup] lays and [celGroupRows] keeps apart: [task]'s
+  /// rows bottom-up — the members, then the directions laid over them —
+  /// the view they are seen through, and what the hand laid over all of
+  /// it. Null when no member has artwork: over a cel with none there is
+  /// nothing to lay anything on.
+  _CelGroup? _celGroupOf(
+    ExportCelGroupTask task,
+    ExportSizeMode mode,
+    ui.Color guideColor,
+  ) {
     // A cel has no time of its own, so the group's FX sample at the base
     // cel's FIRST exposure — the same honest frame the camera pose uses,
     // in the cut that shows the cel ([ExportCelGroupTask.cut], F-300).
     final firstExposure = celGroupFirstExposure(task);
-    final layers = <CutFrameCompositeLayer>[];
+    final rows = <_CelRow>[];
     // One picture of the stack: [layer]'s [frame] as [cut] holds it.
     void lay(Cut cut, Layer layer, Frame? frame) {
       final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
       if (surface == null) {
         return;
       }
-      layers.add(
-        CutFrameCompositeLayer(
-          surface: surface,
-          opacity: layer.opacity,
-          // R26 #30: the delivery cel is the stack as composited — the
-          // members' blends apply. R6: their EFFECTS ride the same fx
-          // gates every other route uses — the dialog's master toggle and
-          // the row's own fx switch.
-          //
-          // The cel tab's master toggle used to be a hardcoded false ("cels
-          // stay raw artwork"); 유저 2026-08-27 made it the tab's own switch,
-          // defaulting ON — see [CelsExportSpec.applyLayerFx]. An artist who
-          // wants raw line art back turns it off, which is what the other
-          // tabs always allowed. Blend and static opacity are display
-          // properties and stay either way.
-          blendMode: layer.blendMode,
-          effects: applyLayerFx
-              ? resolveLayerEffectsAt(
-                  // Each effect's own switch (R8) gates it from here.
-                  effects: layer.effects,
-                  frameIndex: firstExposure,
-                )
-              : const [],
-        ),
-      );
+      rows.add((
+        layer: layer,
+        surface: surface,
+        // R6: the members' EFFECTS ride the same fx gates every other
+        // route uses — the dialog's master toggle and the row's own fx
+        // switch.
+        //
+        // The cel tab's master toggle used to be a hardcoded false ("cels
+        // stay raw artwork"); 유저 2026-08-27 made it the tab's own switch,
+        // defaulting ON — see [CelsExportSpec.applyLayerFx]. An artist who
+        // wants raw line art back turns it off, which is what the other
+        // tabs always allowed. Blend and static opacity are display
+        // properties and stay either way.
+        effects: applyLayerFx
+            ? resolveLayerEffectsAt(
+                // Each effect's own switch (R8) gates it from here.
+                effects: layer.effects,
+                frameIndex: firstExposure,
+              )
+            : const [],
+      ));
     }
 
     for (var i = 0; i < task.members.length; i += 1) {
       lay(task.cut, task.members[i], task.memberFrames[i]);
     }
-    if (layers.isEmpty) {
+    if (rows.isEmpty) {
       return null;
     }
     // What is laid over the cel goes on top of all of it — and over a cel
@@ -1130,17 +1235,25 @@ class ExportFrameRenderer {
       lay(over.cut, over.layer, over.frame);
     }
     final view = _viewFor(task.cut, firstExposure, mode);
-    return renderService.renderThroughCamera(
-      layers: layers,
-      pose: view.pose,
-      cameraFrameSize: view.frameSize,
-      outputSize: outputSize,
-      overlayPass: _laidOver([
-        _guidesOver(task, view, guideColor),
-        _cameraWorkOver(task, view),
-      ]),
+    return (
+      rows: rows,
+      view: view,
+      guides: _guidesOver(task, view, guideColor),
+      camera: _cameraWorkOver(task, view),
     );
   }
+
+  /// [row] as the cel lays it — R26 #30: the delivery cel is the stack as
+  /// composited, the members' blends apply — or, [alone], whole and in no
+  /// blend: the picture a layered file keeps and lays by the row's own
+  /// strength and blend ([celGroupRows]).
+  CutFrameCompositeLayer _laidInTheCel(_CelRow row, {bool alone = false}) =>
+      CutFrameCompositeLayer(
+        surface: row.surface,
+        opacity: alone ? 1 : row.layer.opacity,
+        blendMode: alone ? LayerBlendMode.normal : row.layer.blendMode,
+        effects: row.effects,
+      );
 
   /// What the hand laid over a cel, one pass over another in [passes]'
   /// order — the guides under the camera's work. Null where nothing is.

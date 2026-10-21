@@ -4,9 +4,11 @@ import 'dart:ui' as ui;
 
 import '../../core/argb_channels.dart';
 import '../../models/export_format_selection.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../native/qa_image_encoder.dart';
 import '../../services/media/png_writing.dart';
 import '../../services/media/still_file_writing.dart';
+import '../../services/photoshop/psd_writer.dart';
 import 'png_sequence_export_service.dart';
 import 'png_srgb.dart';
 
@@ -71,6 +73,61 @@ Future<List<int>?> _encodeStill(
     _overGround(rgba, ground, rgb);
     return write((pixels: rgb, width: width, height: height, channels: 3));
   });
+}
+
+/// A row of a layered still file (PSD — I-117): its name, how the file lays
+/// it over the rows under it, and its picture — drawn when the file comes
+/// to it, whole and in no blend on nothing, and let go once it is packed:
+/// one row's pixels at a time ([PsdBuilder]).
+typedef ExportLayerRow = ({
+  String name,
+  double opacity,
+  LayerBlendMode blendMode,
+  Future<ui.Image> Function() draw,
+});
+
+/// [composite] as a Photoshop document of [rows], bottom-up. Each row is
+/// read back straight, as a layer keeps its colour, and packed in an
+/// isolate before the next is drawn ([packPsdLayer]); the composite is
+/// written as every other still in [format] is ([_encodeStill]).
+Future<List<int>?> encodePsd(
+  ui.Image composite,
+  ExportFormatSelection format,
+  List<ExportLayerRow> rows,
+) async {
+  final builder = PsdBuilder(width: composite.width, height: composite.height);
+  for (final row in rows) {
+    final picture = await row.draw();
+    final width = picture.width;
+    final height = picture.height;
+    final ByteData? data;
+    try {
+      data = await picture.toByteData(
+        format: ui.ImageByteFormat.rawStraightRgba,
+      );
+    } finally {
+      picture.dispose();
+    }
+    if (data == null) {
+      return null;
+    }
+    final rgba = Uint8List.sublistView(data);
+    builder.addLayer(
+      name: row.name,
+      pixels: await Isolate.run(
+        () => packPsdLayer(
+          (pixels: rgba, width: width, height: height, channels: 4),
+        ),
+      ),
+      opacity: row.opacity,
+      blendMode: row.blendMode,
+    );
+  }
+  return _encodeStill(
+    composite,
+    format,
+    (pixels) => builder.build(composite: pixels),
+  );
 }
 
 /// [image] over the format's background as RGB24 for the native stb

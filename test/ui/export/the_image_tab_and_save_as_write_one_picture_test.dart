@@ -281,9 +281,11 @@ void main() {
   group('what this machine writes', () {
     tearDown(() => QaImageEncoder.debugForceAbsent = false);
 
-    test('PNG always, PSD not yet, JPG where an encoder is', () {
+    // Which tab lays its picture out as a PSD's rows is the tab's to say
+    // (`export_dialog_test.dart`).
+    test('PNG and PSD always, JPG where an encoder is', () {
       expect(stillFormatWritable(ExportStillFormat.png), isTrue);
-      expect(stillFormatWritable(ExportStillFormat.psd), isFalse);
+      expect(stillFormatWritable(ExportStillFormat.psd), isTrue);
       expect(
         stillFormatWritable(ExportStillFormat.jpg, jpgSupported: false),
         isFalse,
@@ -305,7 +307,7 @@ void main() {
       addTearDown(none.dispose);
       expect(none.stillAllowed(ExportStillFormat.jpg), isFalse);
       expect(none.stillAllowed(ExportStillFormat.png), isTrue);
-      expect(none.stillAllowed(ExportStillFormat.psd), isFalse);
+      expect(none.stillAllowed(ExportStillFormat.psd), isTrue);
     });
   });
 }

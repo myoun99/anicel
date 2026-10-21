@@ -594,7 +594,20 @@ void main() {
   /// 407 above when the lane was rebased onto them (10-21). ⛔Not bundled to
   /// fit: a run that cut its clock's frame short itself would walk the lap
   /// the way walks, once in each of the two runs.
-  const wideSignatures = 408;
+  ///
+  /// ⚠️408 → 410 on 2026-10-22, two named as the rule above asks (I-117 —
+  /// 유저 2026-10-21: 「psd 내보내기 내용물」). `PsdBuilder.addLayer` (five)
+  /// and `PsdBuilder.openGroup` (five) write a Photoshop document's two
+  /// kinds of row as its records keep them: a name, what the row holds
+  /// (a picture's packed pixels, a folder shown shut or open), and how it
+  /// is laid over the rows under it — its strength, its eye and its blend,
+  /// the three every record carries and the app's own row keeps
+  /// (`Layer.opacity` · `isVisible` · `blendMode`). 🔬`clean_code_diff`
+  /// against master (`66c6c2063`, at 408) named those two added and
+  /// nothing gone. ⛔Not bundled to fit: a writer that took the three as
+  /// one value would have every caller build that value out of a row's
+  /// three fields first.
+  const wideSignatures = 410;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -857,7 +870,14 @@ void main() {
   /// side holds and the write — and master stood at 414, two under the
   /// ceiling. 🔬The lane's scan against master (`5cd21708d`, at 414) named
   /// `execute` gone and nothing added.
-  const longBodies = 413;
+  ///
+  /// ⚠️413 → 412 on 2026-10-22, lowered as the rule asks (I-117, a cel's
+  /// PSD): `ExportFrameRenderer.renderCelGroup` fell under the line when
+  /// the walk that finds a cel's rows became its own (`_celGroupOf`) — the
+  /// one the cel's picture and its PSD's rows are both laid from.
+  /// 🔬`clean_code_diff` against master (`66c6c2063`, at 413) named that one
+  /// gone and nothing added.
+  const longBodies = 412;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

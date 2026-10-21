@@ -115,13 +115,13 @@ class ExportFormatAvailability extends ChangeNotifier {
 bool stillFormatWritable(ExportStillFormat format, {bool? jpgSupported}) =>
     switch (format) {
       // Written wherever the app runs: the engine's PNG, the rest in Dart
-      // (`still_file_writing.dart`).
+      // (`still_file_writing.dart`, `psd_writer.dart`). Whether a tab lays
+      // its picture out as a PSD's rows is the tab's to say.
       ExportStillFormat.png ||
+      ExportStillFormat.psd ||
       ExportStillFormat.bmp ||
       ExportStillFormat.tga ||
       ExportStillFormat.tiff ||
       ExportStillFormat.webp => true,
       ExportStillFormat.jpg => jpgSupported ?? QaImageEncoder.instance != null,
-      // The PSD writer lands with the Cels/Image round that consumes it.
-      ExportStillFormat.psd => false,
     };

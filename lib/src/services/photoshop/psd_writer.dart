@@ -19,9 +19,9 @@ const int psdMaxSide = 30000;
 ///
 /// ⚠️ONE ROW'S PIXELS AT A TIME. A layered frame is tens of pictures the
 /// size of the canvas — held together, a 4K cut of thirty rows is a
-/// gigabyte. So each row is packed the moment it is added and only the
-/// packed planes are kept: the picture handed to [addLayer] can go as soon
-/// as it returns.
+/// gigabyte. So a row comes in packed ([packPsdLayer]) and only its packed
+/// planes are kept: its picture can go once it is packed — where it was
+/// read, so only the planes travel.
 class PsdBuilder {
   PsdBuilder({required this.width, required this.height}) {
     if (width < 1 || height < 1 || width > psdMaxSide || height > psdMaxSide) {
@@ -38,37 +38,29 @@ class PsdBuilder {
   final List<_Record> _records = [];
   final List<_Group> _open = [];
 
-  /// [picture] — straight RGBA at the document's size — as the row over
-  /// everything added before it. Only the part of it that holds anything
-  /// is stored, as Photoshop stores a layer.
+  /// [pixels] — a picture at the document's size, packed ([packPsdLayer])
+  /// — as the row over everything added before it.
   void addLayer({
     required String name,
-    required StillPixels picture,
+    required PsdLayerPixels pixels,
     double opacity = 1,
     bool visible = true,
     LayerBlendMode blendMode = LayerBlendMode.normal,
   }) {
-    if (picture.channels != 4 ||
-        picture.width != width ||
-        picture.height != height) {
+    if (pixels.width != width || pixels.height != height) {
       throw ArgumentError(
-        'A layer is RGBA at the document\'s ${width}x$height.',
+        'A layer is at the document\'s ${width}x$height, '
+        'not ${pixels.width}x${pixels.height}.',
       );
     }
-    final bounds = _drawnBounds(picture);
     _records.add(
       _Record(
         name: name,
-        bounds: bounds,
+        bounds: pixels._bounds,
         opacity: opacity,
         flags: visible ? 0 : _hidden,
         blendKey: psdBlendKeyOf(blendMode),
-        channels: bounds == null
-            ? _emptyChannels
-            : [
-                for (final (id, offset) in _layerChannels)
-                  (id, _packedChannel(picture, bounds, offset)),
-              ],
+        channels: pixels._channels,
       ),
     );
   }
@@ -193,11 +185,8 @@ class PsdBuilder {
       for (var channel = 0; channel < composite.channels; channel += 1)
         _packPlane(
           composite,
-          left: 0,
-          top: 0,
-          right: width,
-          bottom: height,
-          offset: channel,
+          (left: 0, top: 0, right: width, bottom: height),
+          channel,
         ),
     ];
     out.u16(_packBits);
@@ -325,20 +314,62 @@ class _Record {
     units.forEach(out.u16);
     final type = section;
     if (type != null) {
-      final folder = type != _boundingSection;
       out
         ..ascii('8BIM')
         ..ascii('lsct')
-        ..u32(folder ? 12 : 4)
-        ..u32(type);
-      if (folder) {
-        out
-          ..ascii('8BIM')
-          ..ascii(blendKey);
-      }
+        ..u32(12)
+        ..u32(type)
+        ..ascii('8BIM')
+        ..ascii(blendKey);
     }
     return out.take();
   }
+}
+
+/// A row's picture as a document keeps it ([packPsdLayer]): the box it
+/// draws in, and its four planes there, packed — small where the row draws
+/// little.
+final class PsdLayerPixels {
+  PsdLayerPixels._({
+    required this.width,
+    required this.height,
+    required _Bounds? bounds,
+    required List<(int, Uint8List)> channels,
+  }) : _bounds = bounds,
+       _channels = channels;
+
+  /// The size of the picture it was packed from — the document's, or
+  /// [PsdBuilder.addLayer] refuses it.
+  final int width;
+  final int height;
+
+  final _Bounds? _bounds;
+  final List<(int, Uint8List)> _channels;
+}
+
+/// [picture] — RGBA, its colour not premultiplied — packed as a document
+/// keeps a row: only the box it draws in, plane by plane.
+///
+/// Apart from [PsdBuilder] so it runs where the picture was read: an
+/// isolate packs it, and only the planes come back.
+PsdLayerPixels packPsdLayer(StillPixels picture) {
+  if (picture.channels != 4) {
+    throw ArgumentError(
+      'A layer is RGBA, not ${picture.channels} channels a pixel.',
+    );
+  }
+  final bounds = _drawnBounds(picture);
+  return PsdLayerPixels._(
+    width: picture.width,
+    height: picture.height,
+    bounds: bounds,
+    channels: bounds == null
+        ? _emptyChannels
+        : [
+            for (final (id, offset) in _layerChannels)
+              (id, _packedChannel(picture, bounds, offset)),
+          ],
+  );
 }
 
 /// Where [picture] holds anything — its alpha above zero — or null when it
@@ -369,35 +400,25 @@ _Bounds? _drawnBounds(StillPixels picture) {
 /// [picture]'s channel at [offset] over [bounds], as a layer's plane is
 /// stored: its compression tag, the row lengths, the rows.
 Uint8List _packedChannel(StillPixels picture, _Bounds bounds, int offset) {
-  final plane = _packPlane(
-    picture,
-    left: bounds.left,
-    top: bounds.top,
-    right: bounds.right,
-    bottom: bounds.bottom,
-    offset: offset,
-  );
+  final plane = _packPlane(picture, bounds, offset);
   final out = _BigEndian()..u16(_packBits);
   plane.rowLengths.forEach(out.u16);
   return (out..bytes(plane.rows)).take();
 }
 
 /// One channel of [picture] — the byte at [offset] of every pixel — over
-/// the box [left]..[right] × [top]..[bottom], PackBits row by row.
+/// [box], PackBits row by row.
 ({List<int> rowLengths, Uint8List rows}) _packPlane(
-  StillPixels picture, {
-  required int left,
-  required int top,
-  required int right,
-  required int bottom,
-  required int offset,
-}) {
+  StillPixels picture,
+  _Bounds box,
+  int offset,
+) {
   final stride = picture.channels;
-  final row = Uint8List(right - left);
+  final row = Uint8List(box.right - box.left);
   final rowLengths = <int>[];
   final rows = BytesBuilder(copy: false);
-  for (var y = top; y < bottom; y += 1) {
-    final start = (y * picture.width + left) * stride + offset;
+  for (var y = box.top; y < box.bottom; y += 1) {
+    final start = (y * picture.width + box.left) * stride + offset;
     for (var x = 0; x < row.length; x += 1) {
       row[x] = picture.pixels[start + x * stride];
     }

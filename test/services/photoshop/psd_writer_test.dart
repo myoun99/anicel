@@ -4,6 +4,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/services/media/still_file_writing.dart'
     show StillPixels;
 import 'package:anicel/src/services/photoshop/photoshop_byte_reader.dart';
+import 'package:anicel/src/services/photoshop/psd_blend_modes.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
 import 'package:anicel/src/services/photoshop/psd_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,36 +43,40 @@ void main() {
   const red = [200, 10, 10, 255];
   const blue = [10, 20, 220, 255];
   const green = [10, 200, 30, 128];
+  const yellow = [250, 210, 0, 255];
 
   /// Ground, then a pass-through folder of a hidden multiply row at half
   /// strength and an empty one, then a row over it all.
   Uint8List document() {
     final builder = PsdBuilder(width: width, height: height)
-      ..addLayer(name: 'Ground', picture: filled(red))
+      ..addLayer(name: 'Ground', pixels: packPsdLayer(filled(red)))
       ..openGroup(name: 'フォルダ 1')
       ..addLayer(
         name: '선화 A',
-        picture: picture({
-          (3, 2): blue,
-          (4, 2): blue,
-          (3, 3): blue,
-          (4, 3): blue,
-        }),
+        pixels: packPsdLayer(
+          picture({
+            (3, 2): blue,
+            (4, 2): blue,
+            (3, 3): blue,
+            (4, 3): blue,
+          }),
+        ),
         opacity: 0.5,
         visible: false,
         blendMode: LayerBlendMode.multiply,
       )
-      ..addLayer(name: 'Empty', picture: picture({}))
+      ..addLayer(name: 'Empty', pixels: packPsdLayer(picture({})))
       ..closeGroup()
-      ..addLayer(name: 'Top', picture: picture({(7, 5): green}));
+      ..addLayer(name: 'Top', pixels: packPsdLayer(picture({(7, 5): green})));
     return builder.build(composite: filled(red));
   }
 
   /// One row of [picture] in a document of its own, over [picture].
-  Uint8List oneRow(String name, StillPixels picture, {double opacity = 1}) =>
-      (PsdBuilder(width: width, height: height)
-            ..addLayer(name: name, picture: picture, opacity: opacity))
-          .build(composite: picture);
+  Uint8List oneRow(String name, StillPixels picture, {double opacity = 1}) {
+    final builder = PsdBuilder(width: width, height: height)
+      ..addLayer(name: name, pixels: packPsdLayer(picture), opacity: opacity);
+    return builder.build(composite: picture);
+  }
 
   test('reads back through the app\'s own reader, row for row: the folder '
       'brackets its members, and every name, mode, strength and eye is '
@@ -96,7 +101,9 @@ void main() {
       (line.blendKey, line.opacity, line.visible),
       ('mul ', 128, false),
     );
-    expect(read.layers[4].blendKey, 'pass', reason: 'Photoshop\'s 「통과」');
+    final folder = read.layers[4];
+    expect(folder.blendKey, 'pass', reason: 'Photoshop\'s 「통과」');
+    expect(folder.collapsed, isFalse, reason: 'shown open unless asked shut');
     expect(
       [for (final layer in read.layers) layer.clipping],
       everyElement(isFalse),
@@ -127,10 +134,10 @@ void main() {
     );
   });
 
-  test('a row\'s box is its drawn pixels\' box, wherever the scan meets the '
-      'last of them', () {
+  test('a row\'s box is its drawn pixels\' box — drawn by their alpha, '
+      'wherever the scan meets the last of them', () {
     final two = readPsdDocument(
-      oneRow('Two', picture({(5, 1): blue, (2, 3): blue})),
+      oneRow('Two', picture({(5, 1): yellow, (2, 3): blue})),
     ).layers.single;
 
     expect((two.left, two.top, two.right, two.bottom), (2, 1, 6, 4));
@@ -155,14 +162,43 @@ void main() {
     for (var i = 0; i < rgb.pixels.length; i += 3) {
       rgb.pixels.setAll(i, [1, 2, 3]);
     }
-    final bytes = (PsdBuilder(width: width, height: height)
-          ..addLayer(name: 'Only', picture: filled(red)))
-        .build(composite: rgb);
+    final builder = PsdBuilder(width: width, height: height)
+      ..addLayer(name: 'Only', pixels: packPsdLayer(filled(red)));
+    final bytes = builder.build(composite: rgb);
 
     expect(readPsdDocument(bytes).composite, [
       for (var i = 0; i < width * height; i += 1) ...[1, 2, 3, 255],
     ]);
     expect(img.PsdDecoder().decodePsd(bytes)!.hasAlpha, isFalse);
+  });
+
+  test('a layer section of odd length is padded to two, as the format '
+      'counts it', () {
+    // A line whose colour planes pack to five bytes a row and whose alpha
+    // to two: the section comes out odd.
+    final bytes = oneRow(
+      'Line',
+      picture({
+        (0, 0): [1, 5, 9, 255],
+        (1, 0): [2, 6, 10, 255],
+        (2, 0): [3, 7, 11, 255],
+        (3, 0): [4, 8, 12, 255],
+      }),
+    );
+
+    // Past the header (26), the palette's and the resources' lengths (8)
+    // and the layer and mask section's (4): the layer section's length.
+    expect(ByteData.sublistView(bytes).getUint32(38).isEven, isTrue);
+    final pixel = img.PsdDecoder()
+        .decodePsd(bytes)!
+        .layers
+        .single
+        .layerImage!
+        .getPixel(3, 0);
+    expect(
+      [pixel.r, pixel.g, pixel.b, pixel.a].map((c) => c.toInt()),
+      [4, 8, 12, 255],
+    );
   });
 
   test('a reader that is not ours takes it too — the same rows, at the same '
@@ -200,7 +236,7 @@ void main() {
               visible: false,
               blendMode: LayerBlendMode.normal,
             )
-            ..addLayer(name: 'Inside', picture: filled(blue))
+            ..addLayer(name: 'Inside', pixels: packPsdLayer(filled(blue)))
             ..closeGroup())
           .build(composite: filled(blue)),
     ).layers.last;
@@ -215,11 +251,18 @@ void main() {
     final bytes =
         (PsdBuilder(width: width, height: height)
               ..openGroup(name: 'Shut', collapsed: true)
-              ..addLayer(name: 'Inside', picture: filled(blue))
+              ..addLayer(name: 'Inside', pixels: packPsdLayer(filled(blue)))
               ..closeGroup())
             .build(composite: filled(blue));
 
     expect(readPsdDocument(bytes).layers.last.collapsed, isTrue);
+  });
+
+  test('every blend the app has is one Photoshop has, and reads back as '
+      'itself', () {
+    for (final mode in LayerBlendMode.values) {
+      expect(psdBlendModes[psdBlendKeyOf(mode)], mode);
+    }
   });
 
   test('a name is whole in the unicode name; in the short one — all a reader '
@@ -227,8 +270,8 @@ void main() {
       'and it stops at 255', () {
     final long = 'n' * 300;
     final bytes = (PsdBuilder(width: width, height: height)
-          ..addLayer(name: '선화 A', picture: filled(red))
-          ..addLayer(name: long, picture: filled(red)))
+          ..addLayer(name: '선화 A', pixels: packPsdLayer(filled(red)))
+          ..addLayer(name: long, pixels: packPsdLayer(filled(red))))
         .build(composite: filled(red));
 
     expect(
@@ -268,15 +311,21 @@ void main() {
       );
     });
 
-    test('a row that is not RGBA at the document\'s size', () {
+    test('a picture that is not RGBA — said so, not run off its end', () {
+      expect(
+        () => packPsdLayer(blank(width, height, 3)),
+        throwsA(allOf(isArgumentError, isNot(isRangeError))),
+      );
+    });
+
+    test('a row that is not at the document\'s size', () {
       final builder = PsdBuilder(width: width, height: height);
       for (final row in [
         blank(width + 1, height, 4),
         blank(width, height + 1, 4),
-        blank(width, height, 3),
       ]) {
         expect(
-          () => builder.addLayer(name: 'Wrong', picture: row),
+          () => builder.addLayer(name: 'Wrong', pixels: packPsdLayer(row)),
           throwsArgumentError,
         );
       }
@@ -288,11 +337,8 @@ void main() {
         blank(width, height + 1, 3),
         blank(width, height, 2),
       ]) {
-        expect(
-          () => PsdBuilder(width: width, height: height)
-              .build(composite: composite),
-          throwsArgumentError,
-        );
+        final builder = PsdBuilder(width: width, height: height);
+        expect(() => builder.build(composite: composite), throwsArgumentError);
       }
     });
 

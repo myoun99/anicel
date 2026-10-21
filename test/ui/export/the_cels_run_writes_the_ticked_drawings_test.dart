@@ -13,6 +13,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/export_cel_naming.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_overrides.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -31,6 +32,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/move_into_folder.dart';
+import 'package:anicel/src/services/photoshop/psd_reader.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart'
     show debugOperatingSystemOverride;
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -239,6 +241,41 @@ void main() {
     await tester.pump();
 
     expect(filesWrittenUnder(temp), ['A1.png', 'A2.png', 'B1.png']);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  // 🗣️I-117 (유저 2026-10-21): 「셀은 출력될 셀 등 소재 하나당 해당
+  // 어태치레이어 구조 그대로 지켜서 출력」.
+  testWidgets('a cel asked for as PSD is a Photoshop document of the rows it '
+      'is made of', (tester) async {
+    AppExport.settings.value = AppExportSettings(
+      lastSpecs: const ExportTabSpecs(
+        cels: CelsExportSpec(
+          kinds: celKindsAlone,
+          format: ExportFormatSelection(
+            kind: ExportMediaKind.still,
+            stillFormat: ExportStillFormat.psd,
+          ),
+        ),
+      ),
+    );
+    final temp = Directory.systemTemp.createTempSync('qa-cels-psd');
+    deleteAfterSessionEnds(temp);
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+
+    final state = await pumpCels(tester, session, temp);
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(filesWrittenUnder(temp), ['A1.psd', 'A2.psd', 'B1.psd']);
+    final read = readPsdDocument(File('${temp.path}/A1.psd').readAsBytesSync());
+    expect(
+      [for (final layer in read.layers) (layer.name, layer.left, layer.top)],
+      [('A', 1, 1)],
+    );
+    expect(read.layers.single.pixels, [0, 0, 0, 255]);
     session.playbackRig.prerenderScheduler.cancel();
   });
 

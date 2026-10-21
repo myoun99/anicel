@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// **I-105** — the cut's guides laid over a cel are written into its file
 /// as 래스터라이즈 bakes them: the perspective guides the canvas shows
@@ -126,6 +127,35 @@ void main() {
     return session;
   }
 
+  /// The cel of [session]'s cut, the guides laid over it or not — and the
+  /// camera's work, where [camera].
+  ExportCelGroupTask taskOf(
+    EditorSessionManager session, {
+    required bool laid,
+    bool camera = false,
+  }) {
+    final cut = session.requireActiveCut;
+    final layer = cut.layers.firstWhere((layer) => layer.id == layerId);
+    return ExportCelGroupTask(
+      cut: cut,
+      baseLayer: layer,
+      members: [layer],
+      memberFrames: [drawing],
+      baseFrame: drawing,
+      celName: '1',
+      fileName: 'A1.png',
+      cameraLaid: camera,
+      guidesLaid: laid,
+    );
+  }
+
+  /// The renderer of [session]'s cels, on a clear ground.
+  ExportFrameRenderer rendererOf(EditorSessionManager session) =>
+      ExportFrameRenderer(
+        session: session,
+        background: const ui.Color(0x00000000),
+      );
+
   /// The cel of [session]'s cut as [mode] writes it on a clear ground, the
   /// guides laid over it or not — and the camera's work, where [camera]:
   /// its straight RGBA, and how wide it is.
@@ -135,27 +165,11 @@ void main() {
     bool camera = false,
     ExportSizeMode mode = ExportSizeMode.canvas,
   }) async {
-    final cut = session.requireActiveCut;
-    final layer = cut.layers.firstWhere((layer) => layer.id == layerId);
-    final image =
-        await ExportFrameRenderer(
-          session: session,
-          background: const ui.Color(0x00000000),
-        ).renderCelGroup(
-          ExportCelGroupTask(
-            cut: cut,
-            baseLayer: layer,
-            members: [layer],
-            memberFrames: [drawing],
-            baseFrame: drawing,
-            celName: '1',
-            fileName: 'A1.png',
-            cameraLaid: camera,
-            guidesLaid: laid,
-          ),
-          mode,
-          guideColor: ink,
-        );
+    final image = await rendererOf(session).renderCelGroup(
+      taskOf(session, laid: laid, camera: camera),
+      mode,
+      guideColor: ink,
+    );
     final bytes = await image!.toByteData(
       format: ui.ImageByteFormat.rawStraightRgba,
     );
@@ -209,6 +223,38 @@ void main() {
       final bare = await celOf(session, laid: false);
       expect(bare.rgba.sublist(0, 4), [0, 0, 0, 255], reason: 'the artwork');
       expect(bare.rgba.skip(4), everyElement(0));
+    });
+    await tester.pumpAndSettle();
+  });
+
+  // 🗣️I-117: a cel's Photoshop file keeps the rows it is made of apart.
+  testWidgets('in a Photoshop file the guides are a row of their own over '
+      'the artwork\'s, named as the band names them: the bake alone', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final session = sessionOf([shown, hidden, symmetry]);
+      final baked = await guideLinesOnPaper(
+        shown,
+        canvasSize: canvas,
+        color: ink,
+      );
+      final rows = rendererOf(session).celGroupRows(
+        taskOf(session, laid: true),
+        ExportSizeMode.canvas,
+        guideColor: ink,
+      );
+
+      expect(
+        [for (final row in rows) row.name],
+        ['A', AppText.strings.exLayGuides],
+      );
+      final image = await rows.last.draw();
+      final guides = await image.toByteData(
+        format: ui.ImageByteFormat.rawStraightRgba,
+      );
+      image.dispose();
+      expect(guides!.buffer.asUint8List(), baked!.image.rgba);
     });
     await tester.pumpAndSettle();
   });
