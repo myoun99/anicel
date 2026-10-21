@@ -602,6 +602,32 @@ void main() {
     expectShownIsLanded(shown, before, env.coordinator.currentSurfaceOf(key));
   });
 
+  testWidgets('the aim gone — the hand emptied, or the pointer off the '
+      'canvas — the ghost goes with it', (tester) async {
+    final env = await pumpPanel(tester);
+    env.slot.hold(twoTonePiece());
+    await tester.pump();
+    final gesture = await restAt(tester, aim);
+    await pumpUntil(tester, () => env.overlay.hasStrokeContent);
+    expect(env.overlay.hasStrokeContent, isTrue, reason: '⛔premise: shown');
+
+    env.slot.clear();
+    await tester.pump();
+    expect(aimOf(tester), isNull, reason: '⛔premise: nothing held');
+    expect(env.overlay.hasStrokeContent, isFalse, reason: 'the hand emptied');
+
+    env.slot.hold(twoTonePiece());
+    await pumpUntil(tester, () => env.overlay.hasStrokeContent);
+    expect(env.overlay.hasStrokeContent, isTrue, reason: '⛔premise: again');
+    await gesture.moveTo(const Offset(-50, -50));
+    await tester.pump();
+    expect(
+      env.overlay.hasStrokeContent,
+      isFalse,
+      reason: 'the pointer off the canvas',
+    );
+  });
+
   testWidgets('a landing, then an undo, under a resting pointer: each lays '
       'the ghost again over the cel it leaves — the bytes a click there '
       'lands now', (tester) async {
