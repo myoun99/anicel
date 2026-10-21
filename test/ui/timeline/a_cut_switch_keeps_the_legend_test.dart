@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/canvas/view_hand.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -246,6 +247,28 @@ void main() {
 
     expect(built.grids, greaterThan(0), reason: 'LIVENESS: the board built');
     expect(built.inLegend, isEmpty);
+  });
+
+  testWidgets('the storyboard holds its legend up, and puts it down as it '
+      'goes', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+    final legends = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session
+        .railLegends;
+    expect(legends.rowsOf(WorkingPanel.storyboard), isNotEmpty);
+
+    await tester.pumpWidget(const SizedBox());
+    expect(legends.handOf(WorkingPanel.storyboard).now, isNull);
   });
 
 }
