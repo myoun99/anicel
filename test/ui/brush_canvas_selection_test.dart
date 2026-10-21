@@ -8073,37 +8073,46 @@ void main() {
         expect(env.coordinator, isASquare());
       });
 
-      testWidgets('the finger lifting gives the ratio back at the next move', (
-        tester,
-      ) async {
-        final env = await pumpSelectionPanel(
+      // The finger leaves the glass two ways, and either lets go. ↩️A cancel
+      // (a palm the OS rejects, the focus lost) used to leave it held for
+      // the life of the layer (card a-cancelled-modifier-finger-stays-held).
+      final leaves = <String, Future<void> Function(TestGesture finger)>{
+        'lifting': (finger) => finger.up(),
+        'cancelled': (finger) => finger.cancel(),
+      };
+      for (final MapEntry(key: way, value: leave) in leaves.entries) {
+        testWidgets('the finger $way gives the ratio back at the next move', (
           tester,
-          tool: CanvasTool.shape,
-          shapeOptions: free,
-        );
-        final origin = tester.getTopLeft(find.byKey(layerKey));
+        ) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: CanvasTool.shape,
+            shapeOptions: free,
+          );
+          final origin = tester.getTopLeft(find.byKey(layerKey));
 
-        final pen = await tester.startGesture(
-          origin + const Offset(100, 100),
-          kind: PointerDeviceKind.stylus,
-        );
-        await tester.pump();
-        final finger = await tester.startGesture(
-          origin + const Offset(500, 400),
-          kind: PointerDeviceKind.touch,
-        );
-        await tester.pump();
-        await pen.moveTo(origin + const Offset(190, 140));
-        await tester.pump();
-        await finger.up();
-        await tester.pump();
-        await pen.moveTo(origin + const Offset(200, 150));
-        await tester.pump();
-        await pen.up();
-        await tester.pump();
+          final pen = await tester.startGesture(
+            origin + const Offset(100, 100),
+            kind: PointerDeviceKind.stylus,
+          );
+          await tester.pump();
+          final finger = await tester.startGesture(
+            origin + const Offset(500, 400),
+            kind: PointerDeviceKind.touch,
+          );
+          await tester.pump();
+          await pen.moveTo(origin + const Offset(190, 140));
+          await tester.pump();
+          await leave(finger);
+          await tester.pump();
+          await pen.moveTo(origin + const Offset(200, 150));
+          await tester.pump();
+          await pen.up();
+          await tester.pump();
 
-        expect(env.coordinator, isAsDragged());
-      });
+          expect(env.coordinator, isAsDragged());
+        });
+      }
 
       // 유저 2026-08-27: 「손가락이 동시에 착지하는게 불가능하니까」 — a
       // finger's drag is a gesture of its own only once it has gone the

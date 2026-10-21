@@ -2950,10 +2950,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   CanvasPoint _turnCentreOf(SelectionAffine affine) => affine.anchorCanvas;
 
   void _handlePointerUp(PointerUpEvent event) {
-    // The modifier finger lifting is not the drag ending — it changes what
-    // the NEXT move solves, and nothing else.
-    if (event.pointer == _modifierTouch) {
-      _modifierTouch = null;
+    if (_letGoOfTheModifier(event)) {
       return;
     }
     final drag = _drag;
@@ -3058,11 +3055,32 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
+    if (_letGoOfTheModifier(event)) {
+      return;
+    }
     if (event.pointer != _drag?.pointer) {
       return;
     }
     setState(() => _endDrag(cancelled: true, notify: true));
     _syncAnts();
+  }
+
+  /// Whether [event] is the modifier finger ([_modifierTouch]) leaving the
+  /// glass — lifted or cancelled, one way off — and so lets go of it.
+  ///
+  /// The modifier finger leaving is not the drag ending — it changes what
+  /// the NEXT move solves, and nothing else.
+  ///
+  /// ↩️Only a lift used to let go: a modifier finger the OS cancelled (a
+  /// palm rejected, the window's focus lost) stayed held for the life of
+  /// this layer, and every shape after it was drawn as if Shift and Alt
+  /// were down (card a-cancelled-modifier-finger-stays-held, 10-21).
+  bool _letGoOfTheModifier(PointerEvent event) {
+    if (event.pointer != _modifierTouch) {
+      return false;
+    }
+    _modifierTouch = null;
+    return true;
   }
 
   /// [handle], for as long as this layer is in the tree.
