@@ -364,13 +364,27 @@ void main() {
       tester,
       transform: TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>()
-            .withKey(0, CanvasPoint(x: 100, y: 150))
+            .withKey(0, CanvasPoint(x: 100, y: 300))
             .withKey(8, CanvasPoint(x: 200, y: 50)),
       ),
     );
     await _openTheGraph(tester, s, lane: 'position');
 
-    await _carry(tester, _keyOnScreen(tester, 8, part: 1), _up30);
+    final press = _keyOnScreen(tester, 8, part: 1);
+    final gesture = await tester.startGesture(
+      press,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(_up30);
+    await tester.pump();
+    expect(
+      _keyOnScreen(tester, 8, part: 1),
+      offsetMoreOrLessEquals(press + _up30, epsilon: 0.01),
+      reason: 'each number by its own range: under the hand',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
     final down = _transformOf(s).position.keys[8]!.value;
     expect((down.x, down.y > 50), (200, true));
 

@@ -115,15 +115,14 @@ class LaneRangeMoveDrag {
       _selection.value = _selectionBefore;
       return;
     }
-    final moved = frameDelta == 0
+    // The keys written are the span's, so the shift holds every home they
+    // were written in: what it leaves the row at is the whole step.
+    final edit = frameDelta == 0
         ? written
         : _shiftedBy(
             written == null ? _subject : _subject.after(written),
             frameDelta,
           );
-    final edit = moved == null || written == null
-        ? moved
-        : written.then(moved);
     final shown = edit == null ? null : _subject.preview(edit);
     if (shown == null) {
       // Blocked landing — or one its home will not take, a camera key put
