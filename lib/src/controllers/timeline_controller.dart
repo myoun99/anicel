@@ -46,6 +46,18 @@ typedef SpliceRider = ({
   Map<FrameId, FrameId> bornBaseLinks,
 });
 
+/// One row of THE ONE SPLICE ([TimelineController.spliceRunsForLayers]):
+/// [liftCount] cells lifted at [index] and [clip] put in their place, with
+/// the cels and the sounds the paste mints ([bornFrames] · [bornSounds]).
+typedef SpliceRun = ({
+  LayerId layerId,
+  int index,
+  int liftCount,
+  TimelineClipRow? clip,
+  List<Frame> bornFrames,
+  List<AudioClip> bornSounds,
+});
+
 /// Timeline queries and editing commands over the unified timeline model
 /// (drawing blocks with explicit lengths + inbetween marks; emptiness is
 /// the absence of coverage).
@@ -393,17 +405,7 @@ class TimelineController {
   void retimeBlocksForLayers(Map<LayerId, Map<int, int>> newLengthsByLayer) =>
       _retime.retimeBlocksForLayers(newLengthsByLayer);
   void spliceRunsForLayers({
-    required List<
-      ({
-        LayerId layerId,
-        int index,
-        int liftCount,
-        TimelineClipRow? clip,
-        List<Frame> bornFrames,
-        List<AudioClip> bornSounds,
-      })
-    >
-    runs,
+    required List<SpliceRun> runs,
     required String description,
     List<SpliceRider> riders = const [],
   }) => _retime.spliceRunsForLayers(
@@ -411,6 +413,10 @@ class TimelineController {
     description: description,
     riders: riders,
   );
+  List<({Layer before, Layer after})> splicedLayers({
+    required List<SpliceRun> runs,
+    List<SpliceRider> riders = const [],
+  }) => _retime.splicedLayers(runs: runs, riders: riders);
   void commitLayerTimelineDragsWithCutDurations({
     required List<({Layer before, Layer after})> edits,
     required Map<CutId, int> beforeDurations,
@@ -428,14 +434,18 @@ class TimelineController {
   );
 
   /// Commits several layers' already-previewed drags as ONE undo step
-  /// (the cross-layer bulk edge drag's release).
-  void commitLayerTimelineDrags(List<({Layer before, Layer after})> edits) {
+  /// (the cross-layer bulk edge drag's release) — or a splice's rows
+  /// ([splicedLayers]) under its own [description].
+  void commitLayerTimelineDrags(
+    List<({Layer before, Layer after})> edits, {
+    String description = 'Adjust selected exposures',
+  }) {
     final commands = <Command>[
       for (final edit in edits)
         if (edit.before != edit.after)
           _layerEditCommand(before: edit.before, after: edit.after),
     ];
-    _executeCommands(commands, description: 'Adjust selected exposures');
+    _executeCommands(commands, description: description);
   }
 
   /// THE one-step cross-layer edit (UI-R17 #8): [edit] turns each layer

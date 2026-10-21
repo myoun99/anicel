@@ -18,6 +18,7 @@ import '../timeline/timeline_cell_exposure_state.dart';
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, cutShowingDragPreview;
 import 'active_cut_controllers.dart';
+import 'drags/exposure_edge_drag.dart' show commitSpliceKeepingTheCutOnItsRow;
 import 'independent_clip_mint.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
@@ -233,17 +234,22 @@ class FrameVerbs {
           : ClipLanding.ownDrawings,
       ids: _frameIds,
     );
-    _controllers.timelineController.spliceRunsForLayers(
-      runs: [
-        (
-          layerId: layer.id,
-          index: block.endIndexExclusive,
-          liftCount: 0,
-          clip: placed.clip,
-          bornFrames: placed.born,
-          bornSounds: placed.bornSounds,
-        ),
-      ],
+    final controller = _controllers.timelineController;
+    final cutMoved = commitSpliceKeepingTheCutOnItsRow(
+      project: _project,
+      controller: controller,
+      edits: controller.splicedLayers(
+        runs: [
+          (
+            layerId: layer.id,
+            index: block.endIndexExclusive,
+            liftCount: 0,
+            clip: placed.clip,
+            bornFrames: placed.born,
+            bornSounds: placed.bornSounds,
+          ),
+        ],
+      ),
       description: linked ? 'Link duplicate frames' : 'Duplicate frames',
     );
     final cut = _project.activeCutOrNull;
@@ -267,6 +273,9 @@ class FrameVerbs {
         handwritingOf: (inkId) =>
             ink.bakedSurfaceOrNull(conteInkRowKey(cut.id, inkId)),
       );
+    }
+    if (cutMoved) {
+      _changes.refreshAfterCutCommand();
     }
     _changes.notifyChanged();
   }

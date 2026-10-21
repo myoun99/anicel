@@ -1,4 +1,5 @@
-import '../../controllers/timeline_controller.dart' show SpliceRider;
+import '../../controllers/timeline_controller.dart'
+    show SpliceRider, SpliceRun;
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
@@ -17,6 +18,7 @@ import '../../services/project_lookup.dart' show attachedMirrorGroupOf;
 import '../../services/persistence/media_staging_store.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
+import 'drags/exposure_edge_drag.dart' show commitSpliceKeepingTheCutOnItsRow;
 import 'frame_verbs.dart' show rowTakesNewCels;
 import 'independent_clip_mint.dart';
 import 'session_roles.dart';
@@ -518,7 +520,7 @@ class FrameClipboard implements BringsMedia {
     // 아니다」.
     final band = place._band;
     final banked = bankedRowLayerIds;
-    _controllers.timelineController.spliceRunsForLayers(
+    final cutMoved = _splice(
       runs: [
         for (final bankedLayerId in banked)
           (
@@ -550,6 +552,9 @@ class FrameClipboard implements BringsMedia {
       description: 'Cut frames',
     );
     band?.clear();
+    if (cutMoved) {
+      _changes.refreshAfterCutCommand();
+    }
     _changes.notifyChanged();
   }
 
@@ -938,17 +943,7 @@ class FrameClipboard implements BringsMedia {
     // The clipboard still holds ONE row, so a band across three rows gets
     // that row three times. With no band the list is the active row alone,
     // which is why this is one path rather than a branch beside the old one.
-    final runs =
-        <
-          ({
-            LayerId layerId,
-            int index,
-            int liftCount,
-            TimelineClipRow? clip,
-            List<Frame> bornFrames,
-            List<AudioClip> bornSounds,
-          })
-        >[];
+    final runs = <SpliceRun>[];
     // Which minted cel came from which source, per row — the pictures move
     // across this after the splice (F-62). Empty for a LINKED paste, which
     // mints nothing.
@@ -995,12 +990,10 @@ class FrameClipboard implements BringsMedia {
     }
     final description = independent ? 'Paste frames' : 'Paste linked frames';
     // ONE undo for the paste and what it brought.
+    var cutMoved = false;
     _project.historyManager.runAsOneStep(description, () {
       landArrival(_project, arrival);
-      _controllers.timelineController.spliceRunsForLayers(
-        runs: runs,
-        description: description,
-      );
+      cutMoved = _splice(runs: runs, description: description);
     });
     final cut = _project.activeCutOrNull;
     for (final (targetId, minted, pictures) in mintedByLayer) {
@@ -1028,7 +1021,28 @@ class FrameClipboard implements BringsMedia {
       );
     }
     replaced?.clear();
+    if (cutMoved) {
+      _changes.refreshAfterCutCommand();
+    }
     _changes.notifyChanged();
+  }
+
+  /// THE ONE SPLICE ([TimelineController.splicedLayers]) committed by the
+  /// cut's law ([commitSpliceKeepingTheCutOnItsRow]): a conte row the splice
+  /// lengthens or shortens takes its cut's end line along (F-352). True
+  /// when the cut moved — the cut command's refresh is owed.
+  bool _splice({
+    required List<SpliceRun> runs,
+    required String description,
+    List<SpliceRider> riders = const [],
+  }) {
+    final controller = _controllers.timelineController;
+    return commitSpliceKeepingTheCutOnItsRow(
+      project: _project,
+      controller: controller,
+      edits: controller.splicedLayers(runs: runs, riders: riders),
+      description: description,
+    );
   }
 
   /// The first drawing [clip] shows, as ONE comma — what a row that holds a
@@ -1223,11 +1237,8 @@ class FrameClipboard implements BringsMedia {
         mintedByLayer.add((mirrors.layerId, mirrors.minted));
       }
     }
-    _controllers.timelineController.spliceRunsForLayers(
-      runs: splices,
-      description: 'Unlink frames',
-      riders: riders,
-    );
+    // Each run keeps its length, so the row's end — and its cut — stays.
+    _splice(runs: splices, description: 'Unlink frames', riders: riders);
     final cut = _project.activeCutOrNull;
     if (cut != null) {
       final store = _renderCaches.brushFrameStore;

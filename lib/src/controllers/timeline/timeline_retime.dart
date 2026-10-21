@@ -119,7 +119,9 @@ class _TimelineRetime {
   /// they pass, rather than three verbs that have to be kept agreeing.
   ///
   /// ⛔The cut's length is never consulted. 「컷 길이는 소재와 관계없다」 —
-  /// blocks pushed past the end line belong past the end line.
+  /// blocks pushed past the end line belong past the end line. A conte
+  /// row's cut moves with the row instead (F-352): the session commits
+  /// [splicedLayers] by the comma's law, the cut following its material.
   ///
   /// [bornFrames] are the independent paste's new cels, which join the layer
   /// in the same command that first points at them; [bornSounds] are the
@@ -133,76 +135,72 @@ class _TimelineRetime {
   /// the rider lets go of their mirrors, so the settle never finds a base
   /// cel unmirrored and mints an empty one in between.
   void spliceRunsForLayers({
-    required List<
-      ({
-        LayerId layerId,
-        int index,
-        int liftCount,
-        TimelineClipRow? clip,
-        List<Frame> bornFrames,
-        List<AudioClip> bornSounds,
-      })
-    >
-    runs,
+    required List<SpliceRun> runs,
     required String description,
     List<SpliceRider> riders = const [],
-  }) {
-    final commands = <Command>[
-      for (final rider in riders) _riderEdit(rider),
+  }) => _controller.commitLayerTimelineDrags(
+    splicedLayers(runs: runs, riders: riders),
+    description: description,
+  );
+
+  /// The rows THE ONE SPLICE leaves ([spliceRunsForLayers]), each before
+  /// and after, the [riders] first — what a caller that commits more in the
+  /// same step reads (a conte row's cut, F-352).
+  List<({Layer before, Layer after})> splicedLayers({
+    required List<SpliceRun> runs,
+    List<SpliceRider> riders = const [],
+  }) => [
+    for (final rider in riders) _riderEdit(rider),
+    for (final run in runs) _splicedLayer(run),
+  ];
+
+  ({Layer before, Layer after}) _splicedLayer(SpliceRun run) {
+    final before = _controller._requireLayer(run.layerId);
+    // 🚨F-134: the splice plans on the GHOST-FREE row, the base every
+    // other planner reads. A ghost split at the insertion point came back
+    // as a REAL block — 「D의 1을 복사하고 10쯤의 인덱스에서 붙혀넣기하면
+    // … 1 뒤에 2가 생김」 — because a split rebuilds its right half as a
+    // plain entry. Ghosts neither move nor obstruct; the command re-derives
+    // them after the splice.
+    final nextTimeline = spliceTimeline(
+      timeline: ghostFreeTimeline(before),
+      index: run.index,
+      liftCount: run.liftCount,
+      clip: run.clip,
+    );
+    // A cel nothing points at any more leaves with the exposure that was
+    // its last use — the same bookkeeping the retired relink branch did,
+    // now asked of the WHOLE row rather than of one replaced block.
+    //
+    // ⚠️Only cels THIS splice orphaned. A layer may legitimately hold a
+    // cel no exposure points at (drawn, then its block deleted), and
+    // "unreferenced after" alone would take those out with it — a splice
+    // three rows away silently emptying the bank.
+    //
+    // 🚨F-136: "points at" is asked of EVERY lane of the bank — a 겸용
+    // cut's row still showing the cel keeps it in the bank.
+    final bank = _controller.bankLanesOf(run.layerId);
+    final nextFrames = [
+      for (final frame in [...before.frames, ...run.bornFrames])
+        if (bank.exposes(frame.id, lane: nextTimeline) ||
+            !laneExposesFrame(before.timeline, frame.id))
+          frame,
     ];
-    for (final run in runs) {
-      final before = _controller._requireLayer(run.layerId);
-      // 🚨F-134: the splice plans on the GHOST-FREE row, the base every
-      // other planner reads. A ghost split at the insertion point came back
-      // as a REAL block — 「D의 1을 복사하고 10쯤의 인덱스에서 붙혀넣기하면
-      // … 1 뒤에 2가 생김」 — because a split rebuilds its right half as a
-      // plain entry. Ghosts neither move nor obstruct; the command re-derives
-      // them after the splice.
-      final nextTimeline = spliceTimeline(
-        timeline: ghostFreeTimeline(before),
-        index: run.index,
-        liftCount: run.liftCount,
-        clip: run.clip,
-      );
-      // A cel nothing points at any more leaves with the exposure that was
-      // its last use — the same bookkeeping the retired relink branch did,
-      // now asked of the WHOLE row rather than of one replaced block.
-      //
-      // ⚠️Only cels THIS splice orphaned. A layer may legitimately hold a
-      // cel no exposure points at (drawn, then its block deleted), and
-      // "unreferenced after" alone would take those out with it — a splice
-      // three rows away silently emptying the bank.
-      //
-      // 🚨F-136: "points at" is asked of EVERY lane of the bank — a 겸용
-      // cut's row still showing the cel keeps it in the bank.
-      final bank = _controller.bankLanesOf(run.layerId);
-      final nextFrames = [
-        for (final frame in [...before.frames, ...run.bornFrames])
-          if (bank.exposes(frame.id, lane: nextTimeline) ||
-              !laneExposesFrame(before.timeline, frame.id))
-            frame,
-      ];
-      final kept = _controller._audioClipsForFrames(before, nextFrames);
-      final after = before.copyWith(
-        frames: nextFrames,
-        timeline: nextTimeline,
-        audioClips: run.bornSounds.isEmpty
-            ? kept
-            : [...kept, ...run.bornSounds],
-      );
-      if (before != after) {
-        commands.add(
-          _controller._layerEditCommand(before: before, after: after),
-        );
-      }
-    }
-    _controller._executeCommands(commands, description: description);
+    final kept = _controller._audioClipsForFrames(before, nextFrames);
+    final after = before.copyWith(
+      frames: nextFrames,
+      timeline: nextTimeline,
+      audioClips: run.bornSounds.isEmpty
+          ? kept
+          : [...kept, ...run.bornSounds],
+    );
+    return (before: before, after: after);
   }
 
   /// [rider] gaining its born cels and the base links that name them.
-  Command _riderEdit(SpliceRider rider) {
+  ({Layer before, Layer after}) _riderEdit(SpliceRider rider) {
     final before = _controller._requireLayer(rider.layerId);
-    return _controller._layerEditCommand(
+    return (
       before: before,
       after: before.copyWith(
         frames: [...before.frames, ...rider.bornFrames],
