@@ -123,7 +123,7 @@ void main() {
   for (final withItsMirror in [false, true]) {
     test('selected ${withItsMirror ? 'with' : 'without'} its mirror, the '
         'block lands the same on a row with a block in the way: that block '
-        'makes room', () {
+        'goes back to the row it left', () {
       final (:s, :base, :mirror, :other) = baseWithAMirror(
         AttachedPlacement.above,
       );
@@ -152,9 +152,10 @@ void main() {
 
       expect(stored(s, other).timeline[3]?.frameId, cel);
       expect(
-        stored(s, other).timeline[4]?.frameId,
+        stored(s, base).timeline[3]?.frameId,
         inTheWay,
-        reason: 'the one row\'s law (R12-②), whichever faces were selected',
+        reason: 'a move\'s law (F-384: 「덮인 블록이 떠난 자리로」), '
+            'whichever faces were selected',
       );
     });
   }

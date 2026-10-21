@@ -43,21 +43,31 @@ void main() {
 
   /// 유저's rows: A holding 「1」「2」 at 0 and 1, B holding 「3」「1」 — and
   /// a band over A's two blocks, picked up and held over B.
-  ({LayerId a, LayerId b, FrameId a1, FrameId a2, FrameId b1}) heldOverB(
-    EditorSessionManager s,
-  ) {
+  ///
+  /// B's 「1」 stands past where A's land: a block they land on goes back
+  /// to A (F-384-Q1 「덮인 블록이 떠난 자리로」), and B would hold no 「1」
+  /// left to ask about — B's 「3」, landed on, is the one that does.
+  ({
+    LayerId a,
+    LayerId b,
+    FrameId a1,
+    FrameId a2,
+    FrameId b3,
+    FrameId b1,
+  })
+  heldOverB(EditorSessionManager s) {
     final a = s.activeLayer!.id;
     s.layerStack.addLayer();
     final b = s.activeLayer!.id;
     final a1 = drawNamed(s, a, 0, '1');
     final a2 = drawNamed(s, a, 1, '2');
-    drawNamed(s, b, 0, '3');
-    final b1 = drawNamed(s, b, 1, '1');
+    final b3 = drawNamed(s, b, 0, '3');
+    final b1 = drawNamed(s, b, 3, '1');
     s.selectLayer(a);
     s.updateFrameRangeSelectionDrag(layerId: a, anchorIndex: 0, headIndex: 1);
     expect(s.rangeMove.beginFrameRangeMoveDrag(a), isTrue, reason: '⛔전제');
     s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: b);
-    return (a: a, b: b, a1: a1, a2: a2, b1: b1);
+    return (a: a, b: b, a1: a1, a2: a2, b3: b3, b1: b1);
   }
 
   group('the session', () {
@@ -70,7 +80,7 @@ void main() {
 
     test('letting go writes nothing, keeps the drag, and names what it '
         'would join', () {
-      final (:a, :b, :a1, a2: _, :b1) = heldOverB(s);
+      final (:a, :b, :a1, a2: _, b3: _, :b1) = heldOverB(s);
       final steps = s.historyManager.undoCount;
 
       final joins = s.rangeMove.endFrameRangeMoveDrag();
@@ -85,7 +95,7 @@ void main() {
 
     test('Link lands it: B keeps ONE drawing of 「1」, shown where A\'s '
         'landed, and 「2」 comes along — one undo puts all of it back', () {
-      final (:a, :b, :a1, :a2, :b1) = heldOverB(s);
+      final (:a, :b, :a1, :a2, :b3, :b1) = heldOverB(s);
       final steps = s.historyManager.undoCount;
       s.rangeMove.endFrameRangeMoveDrag();
 
@@ -102,22 +112,30 @@ void main() {
         [b1],
         reason: '⛔「1이라는 이름의 그림이 두개존재함」',
       );
-      expect(rowIn(s, a).timeline, isEmpty, reason: 'the move happened');
+      expect(
+        {
+          for (final MapEntry(:key, :value) in rowIn(s, a).timeline.entries)
+            key: value.frameId,
+        },
+        {0: b3},
+        reason: 'the move happened — and B\'s 「3」 it landed on went back',
+      );
       expect(s.historyManager.undoCount, steps + 1, reason: 'one step');
 
       for (var press = 0; press < 2; press += 1) {
-        if (rowIn(s, a).timeline.isNotEmpty) {
+        if (rowIn(s, a).timeline[0]?.frameId == a1) {
           break;
         }
         s.undo();
       }
       expect(rowIn(s, a).timeline[0]?.frameId, a1);
       expect(rowIn(s, a).timeline[1]?.frameId, a2);
-      expect(rowIn(s, b).timeline[1]?.frameId, b1);
+      expect(rowIn(s, b).timeline[0]?.frameId, b3);
+      expect(rowIn(s, b).timeline[3]?.frameId, b1);
     });
 
     test('Cancel puts the blocks back and writes nothing', () {
-      final (:a, :b, :a1, :a2, b1: _) = heldOverB(s);
+      final (:a, :b, :a1, :a2, b3: _, b1: _) = heldOverB(s);
       final steps = s.historyManager.undoCount;
       s.rangeMove.endFrameRangeMoveDrag();
 
@@ -246,7 +264,7 @@ void main() {
       expect(find.byKey(window), findsNothing);
     }
 
-    final (:a, :b, :a1, a2: _, :b1) = heldOverB(s);
+    final (:a, :b, :a1, a2: _, b3: _, :b1) = heldOverB(s);
     await releaseAnswering('cancel');
     expect(rowIn(s, a).timeline[0]?.frameId, a1, reason: 'Cancel');
     expect(s.dragPreview.value, isNull, reason: 'the drag is let go of');

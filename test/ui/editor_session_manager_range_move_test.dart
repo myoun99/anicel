@@ -695,6 +695,7 @@ void main() {
     final (s, a, _) = fixture();
     s.layerStack.addLayerOfKind(LayerKind.storyboard);
     final storyboard = s.activeLayer!;
+    final panel = storyboard.timeline[0]!.frameId;
     s.selectLayer(a.id);
 
     s.updateFrameRangeSelectionDrag(
@@ -713,8 +714,10 @@ void main() {
       reason: 'the block landed on the storyboard-kind row',
     );
     expect(
-      s.layers.firstWhere((l) => l.id == a.id).timeline.containsKey(0),
-      isFalse,
+      s.layers.firstWhere((l) => l.id == a.id).timeline[0]?.frameId,
+      panel,
+      reason: 'the panel it landed on went back to the row it left — the '
+          'two rows trade places (F-384)',
     );
   });
 
@@ -804,8 +807,8 @@ void main() {
   });
 
   test('P3b-4 (#2): instruction→instruction row moves carry the events; '
-      'an overlapping landing pushes; cross-kind hovers clear the preview',
-      () {
+      'an overlapping landing sends what it lands on back; cross-kind '
+      'hovers clear the preview', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final first = s.layers.firstWhere((l) => l.kind == LayerKind.instruction);
@@ -834,10 +837,11 @@ void main() {
     expect(row(first.id).instructions.containsKey(1), isTrue);
     expect(row(second.id).instructions, isEmpty);
 
-    // ↩️An overlapping landing used to VOID the drop — the span law, which
-    // refused rather than moved anything. A direction row's spans are its
-    // blocks now (R27), so the drop is the drawing rows' own: it pushes the
-    // block it lands among out of the way (R12-②), and nothing is lost.
+    // A direction row's spans are its blocks (R27), so the drop is the
+    // drawing rows' own move: the span it lands on goes back to the row it
+    // left, on its own frames (🗣️F-384-Q1 「덮인 블록이 떠난 자리로 — 자리
+    // 바꾸기」), and nothing is lost. ↩️An overlapping landing VOIDED the
+    // drop (the span law), then pushed the span along (R12-②).
     _laySpans(s, second, const {
       2: InstructionEvent(instructionId: 'zoom', length: 2),
     });
@@ -850,15 +854,12 @@ void main() {
     rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: second.id);
     expect(s.dragPreview.value, isNotNull, reason: '[3,5) meets [2,4)');
     rangeMove(s).endFrameRangeMoveDrag();
-    expect(row(first.id).instructions, isEmpty);
-    expect(
-      {
-        for (final span in row(second.id).instructions.values)
-          span.instructionId: span.length,
-      },
-      {'pan': 2, 'zoom': 2},
-      reason: 'both spans kept, whole',
-    );
+    Map<int, String> spans(LayerId id) => {
+      for (final MapEntry(:key, :value) in row(id).instructions.entries)
+        key: '${value.instructionId}×${value.length}',
+    };
+    expect(spans(first.id), {2: 'zoom×2'});
+    expect(spans(second.id), {3: 'pan×2'});
     s.undo();
 
     // A cross-kind hover (instruction → drawing row) clears the preview.
@@ -1206,6 +1207,96 @@ void main() {
     expect(layer(aId).timeline[0]!.frameId, aFrameId);
     expect(seLayer(0).timeline.containsKey(0), isTrue);
     expect(seLayer(1).timeline, isEmpty);
+  });
+
+  // 🗣️F-384-Q1 (유저 2026-10-21): 「여러 행을 함께 옮기면 덮인 블록이 그
+  // 묶음을 건너 반대편 행으로 갑니다」. ↩️A landing on a block that stayed
+  // voided the whole move: the drag held where it was.
+  test('🚨a multi-row move onto a row\'s block sends that block across the '
+      'moved rows, to the row they left — one undo puts every row back', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame(); // block on A
+    final aId = s.activeLayer!.id;
+    s.layerStack.addLayer();
+    final bId = s.activeLayer!.id;
+    s.selectLayer(bId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame(); // block on B
+    s.layerStack.addLayer();
+    final cId = s.activeLayer!.id;
+    s.selectLayer(cId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame(); // block on C, where B's lands
+
+    Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
+    final aCel = layer(aId).frames.single.id;
+    final bCel = layer(bId).frames.single.id;
+    final cCel = layer(cId).frames.single.id;
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: bId,
+    );
+    expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
+    rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(s.dragPreview.value, isNotNull, reason: 'it lands');
+    rangeMove(s).endFrameRangeMoveDrag();
+
+    expect(layer(aId).timeline[0]!.frameId, cCel);
+    expect(layer(bId).timeline[0]!.frameId, aCel);
+    expect(layer(cId).timeline[0]!.frameId, bCel);
+    expect(layer(aId).frames.map((f) => f.id), [cCel]);
+
+    s.undo();
+    expect(layer(aId).timeline[0]!.frameId, aCel);
+    expect(layer(bId).timeline[0]!.frameId, bCel);
+    expect(layer(cId).timeline[0]!.frameId, cCel);
+  });
+
+  test('🚨an SE passenger trades places the same way: the sound it lands '
+      'on goes back to its row, with its take', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame(); // block on A at frame 0
+    final aId = s.activeLayer!.id;
+    s.layerStack.addLayer();
+    final bId = s.activeLayer!.id;
+
+    final seIds = [for (final l in s.activeTrack.seLayers) l.id];
+    Layer saying(Layer row, String cel, String file) => row.copyWith(
+      frames: [Frame(id: FrameId(cel), duration: 1, strokes: const [])],
+      timeline: {0: TimelineExposure.drawing(FrameId(cel), length: 1)},
+      audioClips: [AudioClip(filePath: file, frameId: FrameId(cel))],
+    );
+    final [first, second, ...] = s.activeTrack.seLayers;
+    s.repository.replaceLayer(layer: saying(first, 'se-1', 'one.wav'));
+    s.repository.replaceLayer(layer: saying(second, 'se-2', 'two.wav'));
+    Layer seLayer(int index) =>
+        s.activeTrack.seLayers.firstWhere((l) => l.id == seIds[index]);
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: seIds[0],
+    );
+    expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
+    rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    rangeMove(s).endFrameRangeMoveDrag();
+
+    expect(seLayer(0).timeline[0]!.frameId, const FrameId('se-2'));
+    expect(seLayer(0).audioClips.map((clip) => clip.filePath), ['two.wav']);
+    expect(seLayer(1).timeline[0]!.frameId, const FrameId('se-1'));
+    expect(seLayer(1).audioClips.map((clip) => clip.filePath), ['one.wav']);
+
+    s.undo();
+    expect(seLayer(0).audioClips.map((clip) => clip.filePath), ['one.wav']);
+    expect(seLayer(1).audioClips.map((clip) => clip.filePath), ['two.wav']);
   });
 
   test('a multi-row shift that would push a row off the lattice HOLDS the '

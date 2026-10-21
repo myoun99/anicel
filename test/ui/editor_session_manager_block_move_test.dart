@@ -128,31 +128,49 @@ void main() {
     expect(s.renderCaches.brushFrameStore.frameOrNull(toKey), isNull);
   });
 
-  test('an occupied landing PUSHES the block in the way (R12-②)', () {
+  // 🗣️F-384-Q1 (유저 2026-10-21): 「덮인 블록이 떠난 자리로 — 자리 바꾸기」.
+  // ↩️The block in the way was pushed along behind the landing (R12-②).
+  test('🚨an occupied landing sends the block in the way back to the row '
+      'the move left, on its own frame — its cel re-keyed with it', () {
     final (s, a, b) = twoLayerSession();
+    final aCel = a.timeline[0]!.frameId!;
+    final bCel = b.timeline[6]!.frameId!;
+    final cut = s.requireActiveCut;
+    final bCelOnB = s.brushFrameKeyForCut(cut, b.id, bCel);
+    final bCelOnA = s.brushFrameKeyForCut(cut, a.id, bCel);
+    s.renderCaches.brushFrameStore.getOrCreateFrame(bCelOnB);
 
     blockMoveVerbsOf(s).beginDrawingBlockMoveDrag(layerId: a.id, blockStartIndex: 0);
-    // Layer B's block sits at frame 6 — landing on it pushes it behind.
+    // Layer B's block sits at frame 6 — the landing is on it.
     blockMoveVerbsOf(s).updateDrawingBlockMoveDrag(frameDelta: 6, targetLayerId: b.id);
     final preview = s.dragPreview.value! as BlockMoveDragPreview;
-    final previewB = preview.previewLayers[b.id]!;
-    expect(previewB.timeline[6], isNotNull, reason: 'moved block lands at 6');
-    expect(
-      previewB.timeline[7],
-      isNotNull,
-      reason: 'the resident block pushed from 6 to 7',
-    );
+    Map<int, FrameId?> cels(LayerId row) => {
+      for (final MapEntry(:key, :value)
+          in preview.previewLayers[row]!.timeline.entries)
+        key: value.frameId,
+    };
+    expect(cels(b.id), {6: aCel}, reason: 'the moved block alone on B');
+    expect(cels(a.id), {6: bCel});
 
     blockMoveVerbsOf(s).endDrawingBlockMoveDrag();
+    final movedA = s.layers.firstWhere((l) => l.id == a.id);
     final movedB = s.layers.firstWhere((l) => l.id == b.id);
-    expect(movedB.timeline[6], isNotNull);
-    expect(movedB.timeline[7], isNotNull);
+    expect(movedB.timeline.keys, [6]);
+    expect(movedB.timeline[6]!.frameId, aCel);
+    expect(movedA.timeline.keys, [6]);
+    expect(movedA.timeline[6]!.frameId, bCel);
+    expect(movedA.frames.map((f) => f.id), [bCel]);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(bCelOnB), isNull);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(bCelOnA), isNotNull);
 
-    // ONE undo restores both blocks and the source layer.
+    // ONE undo puts both rows back.
     s.undo();
-    expect(s.layers.firstWhere((l) => l.id == a.id).timeline[0], isNotNull);
-    expect(s.layers.firstWhere((l) => l.id == b.id).timeline[6], isNotNull);
-    expect(s.layers.firstWhere((l) => l.id == b.id).timeline[7], isNull);
+    expect(s.layers.firstWhere((l) => l.id == a.id).timeline.keys, [0]);
+    expect(
+      s.layers.firstWhere((l) => l.id == b.id).timeline[6]!.frameId,
+      bCel,
+    );
+    expect(s.renderCaches.brushFrameStore.frameOrNull(bCelOnB), isNotNull);
   });
 
   test('dot toggle on an empty cell is a session no-op: dots are '
