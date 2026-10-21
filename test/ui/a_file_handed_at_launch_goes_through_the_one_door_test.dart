@@ -144,14 +144,19 @@ void main() {
       'the same door, and nothing once the window has gone', (tester) async {
     final path = '${spelled(folder.path)}/notes.txt';
     File(path).writeAsStringSync('not a picture');
-    Future<void> runnerSays() =>
-        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
-          HandedFiles.channel.name,
-          const StandardMethodCodec().encodeMethodCall(
-            MethodCall(HandedFiles.openMethod, [path]),
-          ),
-          (_) {},
-        );
+    // The reply is null only when nothing hears the channel.
+    Future<ByteData?> runnerSays([String method = HandedFiles.openMethod]) {
+      final reply = Completer<ByteData?>();
+      tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        HandedFiles.channel.name,
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall(method, [path]),
+        ),
+        reply.complete,
+      );
+      return reply.future;
+    }
+
     final notice = find.byKey(
       const ValueKey<String>('unsupported-file-notice'),
     );
@@ -159,12 +164,15 @@ void main() {
     await pumpApp(tester, HomePage(initialProject: createDefaultProject()));
     await tester.pumpAndSettle();
     expect(notice, findsNothing, reason: 'CONTROL: nothing said yet');
-    await runnerSays();
+    await runnerSays('somethingElse');
+    await tester.pumpAndSettle();
+    expect(notice, findsNothing, reason: 'only what it says to open opens');
+    expect(await runnerSays(), isNotNull, reason: 'the window hears');
     await tester.pumpAndSettle();
     expect(notice, findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
-    await runnerSays();
+    expect(await runnerSays(), isNull, reason: 'nothing hears once it is gone');
     await tester.pumpAndSettle();
     expect(notice, findsNothing);
   });
