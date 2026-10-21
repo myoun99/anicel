@@ -52,36 +52,24 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
     ConteSheetForm.digital => AppText.strings.conteFormDigital,
   };
 
-  /// One yes/no of the sheet, said in [words].
-  Widget _toggle({
-    required String label,
-    required String keyValue,
-    required bool on,
-    required ({String on, String off}) words,
-    required ValueChanged<bool> onChanged,
-  }) => AppWindowField(
+  /// One row of the window: [label], and what sets it.
+  static Widget _field(String label, Widget child) => AppWindowField(
     label: label,
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: TogglePill(
-        keyValue: keyValue,
-        on: on,
-        words: words,
-        onChanged: onChanged,
-      ),
-    ),
+    child: Align(alignment: Alignment.centerLeft, child: child),
+  );
+
+  /// The forms, the one picked lit.
+  List<PanelFlyoutEntry> _forms() => ConteSheetForm.values.asFlyoutChoices(
+    current: _form,
+    keyPrefix: 'conte-format-form-',
+    labelOf: _formName,
+    onPicked: (form) => setState(() => _form = form),
   );
 
   /// One page of the front, put in or left out.
-  Widget _page({
-    required String label,
-    required String keyValue,
-    required bool on,
-    required ValueChanged<bool> onChanged,
-  }) {
+  Widget _page(String keyValue, bool on, ValueChanged<bool> onChanged) {
     final strings = AppText.strings;
-    return _toggle(
-      label: label,
+    return TogglePill(
       keyValue: keyValue,
       on: on,
       words: (on: strings.conteFrontIn, off: strings.conteFrontOut),
@@ -105,40 +93,38 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           spacing: 12,
           children: [
-            AppWindowField(
-              label: strings.conteForm,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: PanelFlyoutButton(
-                  key: const ValueKey<String>('conte-format-form'),
-                  label: _formName(_form),
-                  entriesBuilder: () => ConteSheetForm.values.asFlyoutChoices(
-                    current: _form,
-                    keyPrefix: 'conte-format-form-',
-                    labelOf: _formName,
-                    onPicked: (form) => setState(() => _form = form),
-                  ),
-                ),
+            _field(
+              strings.conteForm,
+              PanelFlyoutButton(
+                key: const ValueKey<String>('conte-format-form'),
+                label: _formName(_form),
+                entriesBuilder: _forms,
               ),
             ),
-            _toggle(
-              label: strings.conteOutline,
-              keyValue: 'conte-format-outline',
-              on: _outlined,
-              words: (on: strings.conteOutlineOn, off: strings.conteOutlineOff),
-              onChanged: (on) => setState(() => _outlined = on),
+            _field(
+              strings.conteOutline,
+              TogglePill(
+                keyValue: 'conte-format-outline',
+                on: _outlined,
+                words: (on: strings.conteOutlineOn, off: strings.conteOutlineOff),
+                onChanged: (on) => setState(() => _outlined = on),
+              ),
             ),
-            _page(
-              label: strings.conteCoverPage,
-              keyValue: 'conte-format-cover',
-              on: _cover,
-              onChanged: (on) => setState(() => _cover = on),
+            _field(
+              strings.conteCoverPage,
+              _page(
+                'conte-format-cover',
+                _cover,
+                (on) => setState(() => _cover = on),
+              ),
             ),
-            _page(
-              label: strings.conteBlankPage,
-              keyValue: 'conte-format-blank-page',
-              on: _blankPage,
-              onChanged: (on) => setState(() => _blankPage = on),
+            _field(
+              strings.conteBlankPage,
+              _page(
+                'conte-format-blank-page',
+                _blankPage,
+                (on) => setState(() => _blankPage = on),
+              ),
             ),
           ],
         ),
@@ -146,13 +132,15 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
       actions: saveActions(
         context,
         prefix: 'conte-format',
-        onSave: () => Navigator.of(context).pop<ConteFormat>((
-          form: _form,
-          outlined: _outlined,
-          cover: _cover,
-          blankPage: _blankPage,
-        )),
+        onSave: () => Navigator.of(context).pop<ConteFormat>(_edited),
       ),
     );
   }
+
+  ConteFormat get _edited => (
+    form: _form,
+    outlined: _outlined,
+    cover: _cover,
+    blankPage: _blankPage,
+  );
 }
