@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderClipRect;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -16,6 +15,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show partAlong, sizeAlong;
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
@@ -176,9 +177,9 @@ void main() {
     expect([folded.frames, folded.shownFrom], [8, 4]);
   });
 
-  /// The boxes the dialogue under [span] paints its glyphs in, and the part
-  /// of the span its window shows — both where they stand on screen.
-  ({List<Rect> glyphs, Rect shown}) seen(WidgetTester tester, Finder span) {
+  /// The boxes the dialogue under [span] paints its glyphs in, where they
+  /// stand on screen.
+  List<Rect> painted(WidgetTester tester, Finder span) {
     final glyphs = find.descendant(
       of: find.descendant(of: span, matching: find.byType(DialogueFitText)),
       matching: find.byType(CustomPaint),
@@ -188,73 +189,51 @@ void main() {
         .widget<CustomPaint>(glyphs)
         .painter!
         .paint(canvas, tester.getSize(glyphs));
-    final clip = find.descendant(of: span, matching: find.byType(ClipRect));
-    final shown = tester.renderObject<RenderClipRect>(clip);
-    return (
-      glyphs: [
-        for (final box in canvas.boxes) box.shift(tester.getTopLeft(glyphs)),
-      ],
-      shown: shown.clipper!
-          .getClip(shown.size)
-          .shift(tester.getTopLeft(clip)),
-    );
+    return [
+      for (final box in canvas.boxes) box.shift(tester.getTopLeft(glyphs)),
+    ];
   }
 
   for (final axis in Axis.values) {
-    testWidgets('🚨a window shows the glyphs whose centre it holds, WHOLE, '
-        'and not the name chip at the block\'s head — ${axis.name}', (
-      tester,
-    ) async {
+    testWidgets('🚨a window paints the glyphs whose centre it holds, WHOLE '
+        'and where the whole line lays them, and not the name chip at the '
+        'block\'s head — ${axis.name}', (tester) async {
       // Eight frames of 24, seen from frame 4 on: the window opens at 96.
       const cellExtent = 24.0;
-      const across = 30.0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.topLeft,
-              child: SizedBox(
-                width: axis == Axis.horizontal ? 8 * cellExtent : across,
-                height: axis == Axis.horizontal ? across : 8 * cellExtent,
-                child: SeSpanVisual(
-                  axis: axis,
-                  frames: 8,
-                  dialogue: line,
-                  seName: 'X',
-                  shownFrom: 4,
+      Future<List<Rect>> seenFrom(int shownFrom) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox.fromSize(
+                  size: sizeAlong(axis, along: 8 * cellExtent, across: 30),
+                  child: SeSpanVisual(
+                    axis: axis,
+                    frames: 8,
+                    dialogue: line,
+                    seName: 'X',
+                    shownFrom: shownFrom,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-      double along(Offset point) =>
-          axis == Axis.horizontal ? point.dx : point.dy;
-      ({double start, double end}) extent(Rect box) =>
-          axis == Axis.horizontal
-          ? (start: box.left, end: box.right)
-          : (start: box.top, end: box.bottom);
-
-      final (:glyphs, :shown) = seen(tester, find.byType(SeSpanVisual));
-      const window = 4 * cellExtent;
-      final opens = extent(shown).start;
-      expect(glyphs, hasLength(line.length));
-      for (final (index, box) in glyphs.indexed) {
-        final inWindow = along(box.center) >= window;
-        expect(
-          inWindow
-              ? extent(box).start >= opens - 1e-6
-              : extent(box).end <= opens + 1e-6,
-          isTrue,
-          reason:
-              'glyph $index (centre ${along(box.center)}) is '
-              '${inWindow ? 'shown' : 'hidden'} whole — the window opens at '
-              '$opens',
         );
+        return painted(tester, find.byType(SeSpanVisual));
       }
+
+      final whole = await seenFrom(0);
+      expect(whole, hasLength(line.length), reason: '⛔전제: the whole line');
+      final shown = await seenFrom(4);
+      const window = 4 * cellExtent;
+      expect(shown, [
+        for (final box in whole)
+          if (partAlong(axis, box.center) >= window) box,
+      ]);
       expect(
-        [for (final box in glyphs) along(box.center) >= window],
-        containsAllInOrder([false, true]),
+        shown.length,
+        inExclusiveRange(0, whole.length),
         reason: '⛔전제: the window cuts the line',
       );
       expect(

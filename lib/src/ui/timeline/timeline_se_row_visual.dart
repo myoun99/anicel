@@ -14,8 +14,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
 import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../media/media_asset_drop_target.dart';
-import '../text/dialogue_fit_layout.dart'
-    show dialogueGlyphCellExtent, dialogueGlyphsShownIn;
+import '../text/dialogue_fit_layout.dart' show dialogueGlyphsShownIn;
 import '../text/dialogue_fit_paint.dart' show dialogueNaturalExtent;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
@@ -656,7 +655,7 @@ class SeSpanVisual extends StatelessWidget {
     // The chip is the head frame's, and a window opens on a whole frame: one
     // opening past the head never shows it.
     final chipShown = seName.isNotEmpty && shownFrom <= 0;
-    final span = CustomPaint(
+    return CustomPaint(
       painter: chipShown ? _SeNameGroundPainter(fit, paper: paper) : null,
       child: CustomMultiChildLayout(
         delegate: _SeSpanLayout(fit),
@@ -667,6 +666,9 @@ class SeSpanVisual extends StatelessWidget {
               text: dialogue,
               axis: axis,
               color: timelineDrawingInkColor,
+              shownFromPart: shownFrom <= 0 || frames <= 0
+                  ? 0
+                  : shownFrom / frames,
             ),
           ),
           // Over the words where it has no room before the block: the name
@@ -680,53 +682,7 @@ class SeSpanVisual extends StatelessWidget {
         ],
       ),
     );
-    if (shownFrom <= 0 || frames <= 0) {
-      return span;
-    }
-    return ClipRect(
-      clipper: _SeSpanShownPart(fit: fit, shownFrom: shownFrom),
-      child: span,
-    );
   }
-}
-
-/// The part of an SE span a window shows ([SeSpanVisual.shownFrom]): from
-/// the cell of the first glyph whose centre the window holds — the glyph
-/// before it is the earlier cut's, whole, and this one is this cut's,
-/// whole ([dialogueGlyphsShownIn]).
-///
-/// Asked at PAINT, of the box the span is laid out at: a zoom lays the
-/// span out again and does not build it again ([_SeSpanFit]).
-class _SeSpanShownPart extends CustomClipper<Rect> {
-  _SeSpanShownPart({required this.fit, required this.shownFrom});
-
-  final _SeSpanFit fit;
-  final int shownFrom;
-
-  @override
-  Rect getClip(Size size) {
-    final axis = fit.axis;
-    final along = extentAlong(axis, size);
-    final window = along * shownFrom / fit.frames;
-    final glyphs = fit.dialogue.characters.length;
-    final from = glyphs == 0
-        ? window
-        : dialogueGlyphsShownIn(
-                glyphCount: glyphs,
-                mainExtent: along,
-                from: window,
-              ).first *
-              dialogueGlyphCellExtent(glyphCount: glyphs, mainExtent: along);
-    return rectAlong(
-      axis,
-      along: (from: from, to: along),
-      across: (from: 0, to: extentAcross(axis, size)),
-    );
-  }
-
-  @override
-  bool shouldReclip(_SeSpanShownPart oldClipper) =>
-      !fit.answersAs(oldClipper.fit) || shownFrom != oldClipper.shownFrom;
 }
 
 /// Where an SE span's chip stands along the box the span lies in

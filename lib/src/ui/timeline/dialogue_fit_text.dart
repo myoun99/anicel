@@ -31,12 +31,21 @@ class DialogueFitText extends StatelessWidget {
     required this.axis,
     required this.color,
     this.fontSize = 12,
+    this.shownFromPart = 0,
   });
 
   final String text;
   final Axis axis;
   final Color color;
   final double fontSize;
+
+  /// Where along the text's length a window on it opens, as a part of the
+  /// whole: the text is laid out over all of it, and only the glyphs whose
+  /// centre the window holds are painted, each whole and where that layout
+  /// lays it — the sheet's column paints its part so too
+  /// ([paintDialogueFitColumn]). A part rather than pixels: a zoom repaints
+  /// it and does not build it again.
+  final double shownFromPart;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +58,7 @@ class DialogueFitText extends StatelessWidget {
           text: text,
           axis: axis,
           style: dialogueFitStyle(context, color: color, fontSize: fontSize),
+          shownFromPart: shownFromPart,
         ),
         child: const SizedBox.expand(),
       ),
@@ -74,11 +84,13 @@ class _DialogueFitPainter extends CustomPainter
     required this.text,
     required this.axis,
     required this.style,
+    required this.shownFromPart,
   });
 
   final String text;
   final Axis axis;
   final TextStyle style;
+  final double shownFromPart;
 
   @override
   void paintWords(Canvas canvas, Size size) {
@@ -91,6 +103,7 @@ class _DialogueFitPainter extends CustomPainter
         style: style,
         setWord: paintFittedText,
         maxCrossExtent: size.width,
+        shownFrom: size.height * shownFromPart,
       );
       return;
     }
@@ -104,7 +117,12 @@ class _DialogueFitPainter extends CustomPainter
       glyphCount: glyphs.length,
       mainExtent: mainExtent,
     );
-    for (var i = 0; i < glyphs.length; i += 1) {
+    final shown = dialogueGlyphsShownIn(
+      glyphCount: glyphs.length,
+      mainExtent: mainExtent,
+      from: mainExtent * shownFromPart,
+    );
+    for (var i = shown.first; i < shown.end; i += 1) {
       paintWordCentredIn(
         canvas,
         laidOutGlyph(glyphs[i], style),
@@ -114,5 +132,5 @@ class _DialogueFitPainter extends CustomPainter
   }
 
   @override
-  Object get props => (text, axis, style);
+  Object get props => (text, axis, style, shownFromPart);
 }
