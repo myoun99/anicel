@@ -29,7 +29,9 @@ void restoreCelSnapshot({
   required UndoSurfaceSnapshot? snapshot,
   CacheInvalidationSink? cacheInvalidationSink,
 }) {
-  final surface = snapshot?.surfaceOver(coordinator.currentSurfaceOf(frameKey));
+  final surface = snapshot?.surfaceOver(
+    () => coordinator.currentSurfaceOf(frameKey),
+  );
   if (surface == null) {
     return;
   }

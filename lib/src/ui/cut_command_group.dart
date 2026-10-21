@@ -144,10 +144,14 @@ Future<void> landCanvasAdjust(
 /// canvas host's adoption pass and the first recomposite land on
 /// the next frame, and no input may slip between the halves (an
 /// edit there would commit a stroke at the wrong canvas size).
+///
+/// [ahead] runs first, behind the same window — what the move can work
+/// out off the UI thread, its progress the window's.
 Future<void> resizeBehindTheWaitWindow(
   BuildContext context,
   VoidCallback resize, {
   required String title,
+  Future<void> Function(void Function(double done) report)? ahead,
 }) => runWithAppProgress<void>(
   context: context,
   title: title,
@@ -156,6 +160,7 @@ Future<void> resizeBehindTheWaitWindow(
   doneLabel: AppText.strings.resizeProgressDone,
   windowKey: const ValueKey<String>('resize-progress-dialog'),
   task: (report) async {
+    await ahead?.call(report);
     resize();
     await WidgetsBinding.instance.endOfFrame;
   },

@@ -131,7 +131,7 @@ void main() {
       expect(await snapshot.park(), isTrue);
       expect(snapshot.isParked, isTrue, reason: 'fixture: it let go');
 
-      expect(snapshot.surfaceOver(live), before);
+      expect(snapshot.surfaceOver(() => live), before);
     });
 
     test('a snapshot that owned no tile — a photo moved, which changes no '
@@ -147,7 +147,7 @@ void main() {
       );
 
       expect(await snapshot.park(), isTrue);
-      final back = snapshot.surfaceOver(live);
+      final back = snapshot.surfaceOver(() => live);
 
       expect(back, before);
       expect(

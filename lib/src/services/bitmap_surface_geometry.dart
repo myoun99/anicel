@@ -245,6 +245,32 @@ BitmapSurface surfaceBehindReach(
   );
 }
 
+/// [surface] behind the wall of [reach] when the wall cuts anything of it —
+/// null when it keeps every pixel ([keepsEveryPixel]). What a kept cel's
+/// rewrite asks, on the main isolate and on a worker alike
+/// (`cutCelInWorker`).
+BitmapSurface? cutBehindReach(BitmapSurface surface, PasteboardReach reach) {
+  final behind = surfaceBehindReach(surface, reach);
+  return keepsEveryPixel(surface, behind) ? null : behind;
+}
+
+/// Whether [behind] keeps every pixel [surface] had: the very tiles, its
+/// texts' too.
+bool keepsEveryPixel(BitmapSurface surface, BitmapSurface behind) {
+  bool same(Map<TileCoord, BitmapTile> a, Map<TileCoord, BitmapTile> b) =>
+      a.length == b.length &&
+      a.entries.every((entry) => identical(b[entry.key], entry.value));
+  if (!same(surface.tiles, behind.tiles)) {
+    return false;
+  }
+  for (final (index, text) in surface.texts.indexed) {
+    if (!same(text.plate, behind.texts[index].plate)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// What of a tile is kept behind a [wall] — inside it, or inside where a
 /// file was [laid].
 final class _BehindWall {
@@ -293,7 +319,11 @@ final class _BehindWall {
   }
 
   /// Clears [row] of [pixels] — a tile at [box] — but for the columns any
-  /// of [keeps] holds on that row.
+  /// of [keeps], each inside [box], holds on that row.
+  ///
+  /// A run of columns at a time, between the runs [keeps] hold: 🧪F-432,
+  /// S5_BA — asked of each pixel, a redo cutting 92 cels' tiles at the
+  /// paper's edge spent 0.68 s on the UI thread here.
   void _clearRowOutside(
     Uint8List pixels,
     int row,
@@ -301,16 +331,28 @@ final class _BehindWall {
     List<DirtyRegion> keeps,
   ) {
     final y = box.top + row;
+    final held = [
+      for (final keep in keeps)
+        if (keep.top <= y && y < keep.bottomExclusive)
+          (from: keep.left - box.left, to: keep.rightExclusive - box.left),
+    ]..sort((a, b) => a.from.compareTo(b.from));
     final rowStart = row * tileSize;
-    for (var column = 0; column < tileSize; column += 1) {
-      final x = box.left + column;
-      if (!keeps.any((keep) => keep.containsPixel(x: x, y: y))) {
-        pixels.fillRange(
-          (rowStart + column) * BitmapTile.bytesPerPixel,
-          (rowStart + column + 1) * BitmapTile.bytesPerPixel,
-          0,
-        );
+    void clear(int from, int to) => pixels.fillRange(
+      (rowStart + from) * BitmapTile.bytesPerPixel,
+      (rowStart + to) * BitmapTile.bytesPerPixel,
+      0,
+    );
+    var column = 0;
+    for (final (:from, :to) in held) {
+      if (from > column) {
+        clear(column, from);
       }
+      if (to > column) {
+        column = to;
+      }
+    }
+    if (column < tileSize) {
+      clear(column, tileSize);
     }
   }
 }

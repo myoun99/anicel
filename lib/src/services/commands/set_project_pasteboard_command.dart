@@ -83,7 +83,9 @@ class SetProjectPasteboardCommand
     for (final MapEntry(:key, value: snapshot) in layBack.entries) {
       // ⛔A cel whose parked picture will not read back keeps what it has
       // rather than taking a picture with holes in it (the resize's rule).
-      final picture = snapshot.surfaceOver(store.bakedSurfaceOrNull(key));
+      final picture = snapshot.surfaceOver(
+        () => store.bakedSurfaceOrNull(key),
+      );
       if (picture != null) {
         bakeCelSurface(store, key, picture);
       }

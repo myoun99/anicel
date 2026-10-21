@@ -113,7 +113,7 @@ void main() {
       expect(await snapshot.park(), isTrue);
       expect(snapshot.isParked, isTrue, reason: 'fixture: it let go');
 
-      expect(snapshot.surfaceOver(live), before);
+      expect(snapshot.surfaceOver(() => live), before);
     });
   });
 

@@ -247,7 +247,7 @@ class ResizeCutCanvasCommand
             // resize would answer null there and be silently left out of
             // its own undo.
             entry.key: ?entry.value.surfaceOver(
-              brushFrameStore?.bakedSurfaceOrNull(entry.key),
+              () => brushFrameStore?.bakedSurfaceOrNull(entry.key),
             ),
         });
       }

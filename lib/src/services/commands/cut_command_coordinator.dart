@@ -880,6 +880,15 @@ class CutCommandCoordinator {
       _projectSettings.setProjectPasteboardSize(size);
   void setProjectPasteboardInUse(bool inUse) =>
       _projectSettings.setProjectPasteboardInUse(inUse);
+  Future<void> cutProjectPasteboardAhead({
+    PasteboardSize? size,
+    bool? inUse,
+    void Function(double done)? report,
+  }) => _projectSettings.cutProjectPasteboardAhead(
+    size: size,
+    inUse: inUse,
+    report: report,
+  );
 
   /// Executes [command] only when [read] of [subject] does not already
   /// answer [value].

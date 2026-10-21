@@ -67,6 +67,19 @@ class ProjectSettings {
     _changes.notifyChanged();
   }
 
+  /// What [setPasteboardSize] to [size] or [setPasteboardInUse] to [inUse]
+  /// will cut of the pictures kept in files, worked out ahead on the
+  /// machine's workers — what a wait window holds up first (F-432).
+  Future<void> cutPasteboardAhead({
+    PasteboardSize? size,
+    bool? inUse,
+    void Function(double done)? report,
+  }) => _project.cutCommandCoordinator.cutProjectPasteboardAhead(
+    size: size,
+    inUse: inUse,
+    report: report,
+  );
+
   /// One undo step; no-op when unchanged. The BACKDROP (R3b): the stage's
   /// floor — what a translucent picture reveals (never a fade's screen,
   /// F-192) and what an opaque export bakes where nothing covers. Its alpha

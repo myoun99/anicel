@@ -108,6 +108,26 @@ class _ProjectSettingCommands {
         ),
       );
 
+  /// What the pasteboard at [size] or [inUse] — the setters' — will cut of
+  /// the pictures kept in files, worked out ahead
+  /// ([BrushFrameStore.cutKeptCelsAhead]): for a wait window to hold up
+  /// while it runs, hearing through [report] how much is done (F-432).
+  Future<void> cutProjectPasteboardAhead({
+    PasteboardSize? size,
+    bool? inUse,
+    void Function(double done)? report,
+  }) async {
+    final store = _coordinator.brushFrameStore;
+    if (store == null) {
+      return;
+    }
+    final next = _project.copyWith(
+      pasteboardSize: size,
+      pasteboardInUse: inUse,
+    );
+    await store.cutKeptCelsAhead(next.pasteboardReach, report: report);
+  }
+
   /// Whether the pasteboard is there at all (I-109) — off, nothing reaches
   /// past the paper; one undo step, no-op when unchanged.
   void setProjectPasteboardInUse(bool inUse) => _coordinator._executeIfChanged(

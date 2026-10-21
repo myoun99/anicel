@@ -104,7 +104,7 @@ void main() {
       final live = surfaceOf([shared]);
       final ahead = snapshot.readAhead(live)!;
 
-      final restored = snapshot.surfaceOver(live);
+      final restored = snapshot.surfaceOver(() => live);
 
       // ⛔Mutation: read the file again in the step → another object, and
       // the pictures made for this one go unused.
@@ -120,7 +120,7 @@ void main() {
       // tile now — what a lift's erase, or any edit, would leave there.
       final moved = tileOf(0, 33);
 
-      final restored = snapshot.surfaceOver(surfaceOf([moved]))!;
+      final restored = snapshot.surfaceOver(() => surfaceOf([moved]))!;
 
       // ⛔Mutation: adopt the read-ahead whatever the cel → the tile the
       // cel no longer has, painted back over it.
@@ -139,7 +139,7 @@ void main() {
       expect(snapshot.residentBytes, 0);
       expect(snapshot.isParked, isTrue);
       // ⛔Mutation: remove the file at the read-ahead → nothing to read here.
-      final restored = snapshot.surfaceOver(live)!;
+      final restored = snapshot.surfaceOver(() => live)!;
       expect(restored.tiles[mine.coord]!.pixels, mine.tile.pixels);
     });
 

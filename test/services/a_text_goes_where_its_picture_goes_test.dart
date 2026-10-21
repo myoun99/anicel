@@ -281,7 +281,7 @@ void main() {
 
       expect(await snapshot.park(), isTrue);
       expect(snapshot.isParked, isTrue, reason: 'fixture: it let go');
-      final back = snapshot.surfaceOver(live);
+      final back = snapshot.surfaceOver(() => live);
 
       expect(back, before);
       // The cel no longer holds that plate, so the entry alone did — and
@@ -305,7 +305,7 @@ void main() {
       );
 
       expect(await snapshot.park(), isTrue);
-      final back = snapshot.surfaceOver(live);
+      final back = snapshot.surfaceOver(() => live);
 
       expect(back, before);
       expect(back!.texts.single.content.text, 'before');

@@ -323,7 +323,13 @@ class UndoSurfaceSnapshot {
   ///
   /// ⚠️A read-ahead ([readAhead]) is ADOPTED here rather than read a second
   /// time — but only against the very surface it leaned on ([_ahead]).
-  BitmapSurface? surfaceOver(BitmapSurface? live) {
+  ///
+  /// ★[live] is ASKED, and only by a parked snapshot: a resident one is
+  /// its own answer. The cel as it stands can be a cel kept in a file, and
+  /// asking would thaw it — 🧪F-432, S5_BA: undoing a pasteboard turned
+  /// off thawed the 92 cels it had cut, 3.5 s on the UI thread, to read
+  /// pictures the undo already held.
+  BitmapSurface? surfaceOver(BitmapSurface? Function() live) {
     // ⛔THE DROP COMES FIRST, and [drop]'s own doc is why: it「stays a
     // valid snapshot afterwards — one that answers null」. Without this
     // the shared half would still assemble, and a snapshot whose owned
@@ -340,9 +346,10 @@ class UndoSurfaceSnapshot {
       return null;
     }
     final ahead = _ahead;
-    final read = ahead != null && _leanedOn(ahead, live)
+    final liveNow = live();
+    final read = ahead != null && _leanedOn(ahead, liveNow)
         ? (surface: ahead.surface, owned: ahead.owned)
-        : _readBack(live);
+        : _readBack(liveNow);
     _ahead = null;
     if (read == null) {
       return null;

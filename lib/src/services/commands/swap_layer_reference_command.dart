@@ -128,7 +128,9 @@ class SwapLayerReferenceCommand
   /// parked payload will not come back (`restoreCelSnapshot` says why a
   /// surface with holes must not be painted over a drawing).
   void _restore(UndoSurfaceSnapshot snapshot) {
-    final surface = snapshot.surfaceOver(store.bakedSurfaceOrNull(snapshot.key));
+    final surface = snapshot.surfaceOver(
+      () => store.bakedSurfaceOrNull(snapshot.key),
+    );
     if (surface != null) {
       _put(snapshot.key, surface);
     }

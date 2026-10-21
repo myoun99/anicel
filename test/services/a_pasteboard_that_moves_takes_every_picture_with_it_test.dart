@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -22,6 +24,7 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/commands/set_project_pasteboard_command.dart';
+import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -175,6 +178,63 @@ void main() {
         isTrue,
       );
     });
+
+    // A paper 18 wide does not end on a tile: at 1.5x the wall stands 5
+    // past it — x in [-5, 23) — so a tile can straddle it across, and a
+    // file laid on the same tile keeps columns of its own.
+    const narrow = CanvasSize(width: 18, height: 8);
+
+    /// [column]s of the tile at [coord] once [laid] and the 1.5x wall have
+    /// kept what they keep, row by row, as the byte each holds.
+    List<List<int>> columnsBehind(TileCoord coord, DirtyRegion laid) {
+      final surface = BitmapSurface(
+        canvasSize: narrow,
+        tileSize: tileSize,
+        laidBounds: laid,
+      ).putTiles([(coord: coord, tile: tile(70))]);
+      final pixels = surfaceBehindReach(
+        surface,
+        PasteboardReach.quarter,
+      ).tileAt(coord)!.pixels;
+      return [
+        for (var row = 0; row < tileSize; row += 1)
+          [
+            for (var column = 0; column < tileSize; column += 1)
+              pixels[(row * tileSize + column) * 4],
+          ],
+      ];
+    }
+
+    test('clears a straddling tile across, keeping each run a file holds', () {
+      // Tile (-2, 0) holds x -8..-5: the wall keeps -5 alone, a file laid
+      // on its first two rows keeps -8 — a run to the left of the wall's.
+      expect(
+        columnsBehind(
+          TileCoord(x: -2, y: 0),
+          DirtyRegion(left: -8, top: 0, rightExclusive: -7, bottomExclusive: 2),
+        ),
+        [
+          [70, 0, 0, 70],
+          [70, 0, 0, 70],
+          [0, 0, 0, 70],
+          [0, 0, 0, 70],
+        ],
+      );
+    });
+
+    test('a run inside the wall\'s takes nothing of what the wall keeps', () {
+      // Tile (5, 0) holds x 20..23: the wall keeps 20..22, a file laid on
+      // 21 alone keeps nothing more — and must not cut the wall's short.
+      expect(
+        columnsBehind(
+          TileCoord(x: 5, y: 0),
+          DirtyRegion(left: 21, top: 0, rightExclusive: 22, bottomExclusive: 2),
+        ),
+        [
+          for (var row = 0; row < tileSize; row += 1) [70, 70, 70, 0],
+        ],
+      );
+    });
   });
 
   group('the store moves its wall in every tier', () {
@@ -295,6 +355,164 @@ void main() {
             'unsaved work',
       );
       expectCut(store.bakedSurfaceOrNull(cut));
+    });
+
+    // 🗣️F-432 (유저 2026-10-21): 「페이스트 보드 배율 전환이 너무 느리고」 — on
+    // a project saved and opened again every kept cel was inflated, cut and
+    // compressed again on the UI thread. It is worked out ahead now, on the
+    // machine's workers, while the wait window is up.
+    group('worked out ahead (F-432)', () {
+      /// What the rounds worked out ahead have parked in the room.
+      Set<String> parkedAhead() {
+        final room = Directory(SessionScratch.stagedFolder());
+        return {
+          if (room.existsSync())
+            for (final file in room.listSync(recursive: true))
+              if (file is File && file.path.contains('-ahead')) file.path,
+        };
+      }
+
+      void expectSamePicture(BitmapSurface? actual, BitmapSurface expected) {
+        expect(actual!.tiles.keys.toSet(), expected.tiles.keys.toSet());
+        for (final MapEntry(key: coord, :value) in expected.tiles.entries) {
+          expect(actual.tileAt(coord)!.pixels, value.pixels, reason: '$coord');
+        }
+      }
+
+      /// Nothing left to read where [refs] point: a move that read a kept
+      /// byte now throws.
+      void unreadable(
+        BrushFrameStore store,
+        Map<BrushFrameKey, AnicelCelFileRef> refs,
+      ) {
+        store.releaseFilesReadFrom();
+        for (final ref in refs.values) {
+          File(ref.filePath).deleteSync();
+        }
+      }
+
+      test('the move takes what was worked out, and reads no kept byte', (
+      ) async {
+        final store = BrushFrameStore();
+        final refs = keepInAFile(store, {cut: drawn(), clean: inkInside()});
+        await store.cutKeptCelsAhead(PasteboardReach.quarter);
+        unreadable(store, refs);
+        final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
+        expect(taken.keys, [cut]);
+        expectSamePicture(taken[cut], drawn());
+        expect(store.isCelCold(cut), isTrue);
+        expect(store.isCelFileBacked(clean), isTrue);
+        expect(store.dirtyCelKeysSinceSave, {cut});
+        expectCut(store.bakedSurfaceOrNull(cut));
+      });
+
+      for (final (tier, keep) in <(String, _KeepAll)>[
+        ('parked cold', parkCold),
+        ('kept in a file', keepInAFile),
+      ]) {
+        test('$tier: what is worked out is what the move works out', () async {
+          final here = BrushFrameStore();
+          final ahead = BrushFrameStore();
+          for (final store in [here, ahead]) {
+            keep(store, {cut: drawn(), clean: inkInside()});
+          }
+          await ahead.cutKeptCelsAhead(PasteboardReach.none);
+          final takenHere = here.adoptPasteboardReach(PasteboardReach.none);
+          final taken = ahead.adoptPasteboardReach(PasteboardReach.none);
+          expect(taken.keys, [cut]);
+          expect(takenHere.keys, [cut]);
+          expectSamePicture(taken[cut], takenHere[cut]!);
+          for (final key in [cut, clean]) {
+            expectSamePicture(
+              ahead.bakedSurfaceOrNull(key),
+              here.bakedSurfaceOrNull(key)!,
+            );
+          }
+          expect(ahead.dirtyCelKeysSinceSave, here.dirtyCelKeysSinceSave);
+        });
+      }
+
+      test('on a worker of its own, the road production takes', () async {
+        debugWorkersRunHere = false;
+        addTearDown(() => debugWorkersRunHere = true);
+        final store = BrushFrameStore();
+        final refs = keepInAFile(store, {cut: drawn(), clean: inkInside()});
+        final reports = <double>[];
+        await store.cutKeptCelsAhead(
+          PasteboardReach.quarter,
+          report: reports.add,
+        );
+        expect(reports, [0.5, 1.0]);
+        unreadable(store, refs);
+        expect(store.adoptPasteboardReach(PasteboardReach.quarter).keys, [cut]);
+        expectCut(store.bakedSurfaceOrNull(cut));
+      });
+
+      test('worked out for another wall: not taken, and not left behind', (
+      ) async {
+        final store = BrushFrameStore();
+        keepInAFile(store, {cut: drawn()});
+        final before = parkedAhead();
+        await store.cutKeptCelsAhead(PasteboardReach.none);
+        expect(parkedAhead().difference(before), hasLength(1));
+        expect(store.adoptPasteboardReach(PasteboardReach.quarter).keys, [cut]);
+        expectCut(store.bakedSurfaceOrNull(cut));
+        expect(parkedAhead().difference(before), isEmpty);
+      });
+
+      test('worked out again, the last round goes', () async {
+        final store = BrushFrameStore();
+        keepInAFile(store, {cut: drawn()});
+        final before = parkedAhead();
+        await store.cutKeptCelsAhead(PasteboardReach.none);
+        final first = parkedAhead().difference(before);
+        await store.cutKeptCelsAhead(PasteboardReach.quarter);
+        final second = parkedAhead().difference(before);
+        expect(second, hasLength(1));
+        expect(second.intersection(first), isEmpty);
+      });
+
+      test('a store laid in anew lets what was worked out go', () async {
+        final store = BrushFrameStore();
+        keepInAFile(store, {cut: drawn()});
+        final before = parkedAhead();
+        await store.cutKeptCelsAhead(PasteboardReach.none);
+        parkCold(store, const {});
+        expect(parkedAhead().difference(before), isEmpty);
+      });
+
+      test('a move back and forth reads the kept bytes once', () {
+        final store = BrushFrameStore();
+        final refs = keepInAFile(store, {clean: inkInside()});
+        expect(store.adoptPasteboardReach(PasteboardReach.quarter), isEmpty);
+        store.adoptPasteboardReach(PasteboardReach.whole);
+        unreadable(store, refs);
+        expect(store.adoptPasteboardReach(PasteboardReach.quarter), isEmpty);
+        expect(store.isCelFileBacked(clean), isTrue);
+      });
+
+      test('a room that will not take the cut leaves the cel as it was', () {
+        final store = BrushFrameStore();
+        keepInAFile(store, {cut: drawn()});
+        // A FILE where the room's folder has to go — a revoked scope or a
+        // full disk (`a_cooled_cel_parks_on_disk_test`).
+        final room = Directory(SessionScratch.stagedFolder());
+        if (room.existsSync()) {
+          room.deleteSync(recursive: true);
+        }
+        File(SessionScratch.stagedFolder())
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(const [0]);
+        addTearDown(() => File(SessionScratch.stagedFolder()).deleteSync());
+        expect(store.adoptPasteboardReach(PasteboardReach.quarter), isEmpty);
+        expect(
+          store.isCelFileBacked(cut),
+          isTrue,
+          reason: '⛔its bytes stay where they were — not out of the file '
+              'and into a room that never took them',
+        );
+        expectCut(store.bakedSurfaceOrNull(cut));
+      });
     });
   });
 
@@ -445,3 +663,11 @@ void main() {
 /// How a test keeps [BitmapSurface] as a cel of [BrushFrameStore] — one
 /// tier of the three a cel can be kept in.
 typedef _Keep = void Function(BrushFrameStore store, BitmapSurface surface);
+
+/// How a test keeps every cel of [cels] in [BrushFrameStore] at once — in
+/// the room, or in a file.
+typedef _KeepAll =
+    Object Function(
+      BrushFrameStore store,
+      Map<BrushFrameKey, BitmapSurface> cels,
+    );

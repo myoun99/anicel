@@ -485,6 +485,10 @@ class _InteractiveCanvasBuild {
           context,
           () => session.projectSettings.setPasteboardSize(size),
           title: AppText.strings.pasteboardTitle,
+          ahead: (report) => session.projectSettings.cutPasteboardAhead(
+            size: size,
+            report: report,
+          ),
         ),
       ),
       onPasteboardInUseChanged: (inUse) => unawaited(
@@ -492,6 +496,10 @@ class _InteractiveCanvasBuild {
           context,
           () => session.projectSettings.setPasteboardInUse(inUse),
           title: AppText.strings.pasteboardTitle,
+          ahead: (report) => session.projectSettings.cutPasteboardAhead(
+            inUse: inUse,
+            report: report,
+          ),
         ),
       ),
       onBackdropColorChanged: session.projectSettings.setProjectBackdrop,

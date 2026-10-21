@@ -5,7 +5,11 @@ import '../../core/on_a_worker.dart';
 import '../../core/turns.dart';
 import '../../core/worker_count.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/brush_frame_key.dart';
+import '../../models/pasteboard_bounds.dart';
+import '../bitmap_surface_geometry.dart';
 import 'brush_drawing_binary_codec.dart';
+import 'scratch_file.dart';
 
 /// [blob] inflated, parsed and laid into tile blocks on a worker isolate,
 /// from the allocator [blocks] names — the main isolate's
@@ -41,3 +45,52 @@ Future<AnicelLaidCel> layCelInWorker(AnicelCelBlob blob, TileBlocks blocks) {
 final Turns celThawTurns = Turns(
   workersFor(Platform.numberOfProcessors, ceiling: 8),
 );
+
+/// [blob]'s picture behind [reach] ([cutBehindReach]), worked out on a
+/// worker: null when the wall cuts nothing of it, else the cut picture as
+/// [key]'s blob, parked at [parkAt] in the room, and the picture as it
+/// was, laid into the main isolate's tile blocks ([BitmapTile.blocks]) for
+/// it to adopt ([laidCelSurface]) — what the undo keeps.
+///
+/// ★The decode, the cut, the encode and the park a move of the wall makes
+/// of a kept cel on the main isolate (`BrushFrameStore._rewriteHere`),
+/// made here instead — the bytes cross as [layCelInWorker]'s do. [parkAt]
+/// is a path resolved there: the room's name means nothing on a worker
+/// (`SessionScratch.ensureThisRunsFolder`).
+///
+/// Throws when the room will not take the bytes: nothing was worked out.
+Future<({AnicelCelBlob blob, String path, AnicelLaidCel was})?>
+cutCelInWorker(
+  BrushFrameKey key,
+  AnicelCelBlob blob,
+  PasteboardReach reach, {
+  required String parkAt,
+}) async {
+  final sent = TransferableTypedData.fromList([blob.bytes]);
+  final blocks = BitmapTile.blocks;
+  final cut = await onAWorker(() {
+    final entry = AnicelCelBlob(sent.materialize().asUint8List()).decode();
+    final behind = cutBehindReach(entry.toSurface(), reach);
+    if (behind == null) {
+      return null;
+    }
+    final kept = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, behind));
+    final path = ScratchFile.write(parkAt, kept.bytes);
+    if (path == null) {
+      throw StateError('The room would not take $parkAt.');
+    }
+    return (
+      blob: TransferableTypedData.fromList([kept.bytes]),
+      path: path,
+      was: layCelEntry(entry, tileBlocksHere(blocks)),
+    );
+  });
+  if (cut == null) {
+    return null;
+  }
+  return (
+    blob: AnicelCelBlob(cut.blob.materialize().asUint8List()),
+    path: cut.path,
+    was: cut.was,
+  );
+}
