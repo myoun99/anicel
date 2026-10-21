@@ -359,10 +359,15 @@ void main() {
       );
       final snapshot = channel.snapshotFor(FlipHudAxis.row)!;
       expect(snapshot.rows.first.name, 'Camera b');
+      // ↩️It drew nothing, as the timeline's camera row did, until both drew
+      // their cut's keys, as both rails do (B4, 68b5d343b): each cut's key
+      // on its frame 0, where the track has it.
       expect(
-        snapshot.rows.first.runs,
-        isEmpty,
-        reason: 'the timeline\'s camera row\'s window draws no blocks either',
+        [
+          for (final run in snapshot.rows.first.runs)
+            (run.startIndex, run.keyMark != null),
+        ],
+        [(0, true), (24, true), (52, true)],
       );
       expect(snapshot.rowIndex, 0, reason: 'the row stood on');
     });
