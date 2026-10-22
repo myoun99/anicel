@@ -117,6 +117,12 @@ class BrushFrameStore {
   PasteboardReach get pasteboardReach => _pasteboardReach;
   PasteboardReach _pasteboardReach = PasteboardReach.whole;
 
+  /// Whether the wall moved to [reach] stands closer to the paper — the
+  /// only move with anything of a picture to cut ([adoptPasteboardReach]),
+  /// and so with anything to work out ahead of it ([cutCelsAhead]).
+  bool wallShrinksTo(PasteboardReach reach) =>
+      reach.quartersPerEdge < _pasteboardReach.quartersPerEdge;
+
   BitmapSurface _behind(BitmapSurface surface) =>
       surfaceBehindReach(surface, _pasteboardReach);
 
@@ -131,7 +137,7 @@ class BrushFrameStore {
   /// ([storeBakedSurface]), they restore every pixel.
   ///
   /// What the kept cels make of it may have been worked out AHEAD
-  /// ([cutKeptCelsAhead]); this takes those answers, and lets them go
+  /// ([cutCelsAhead]); this takes those answers, and lets them go
   /// whichever way it moves.
   Map<BrushFrameKey, BitmapSurface> adoptPasteboardReach(
     PasteboardReach reach,
@@ -142,14 +148,19 @@ class BrushFrameStore {
       _dropCutAhead(ahead);
       return const {};
     }
-    final shrinks = reach.quartersPerEdge < _pasteboardReach.quartersPerEdge;
+    final shrinks = wallShrinksTo(reach);
     _pasteboardReach = reach;
     clearDisplayCaches();
     final cut = <BrushFrameKey, BitmapSurface>{};
     var crossed = false;
+    final hotAhead = ahead?.reach == reach ? ahead?.hot : null;
     for (final key in _bakedSurfaces.keys.toList()) {
       final surface = _bakedSurfaces[key]!;
-      final behind = _behind(surface);
+      final worked = hotAhead?[key];
+      // Taken only for the very picture it was worked out from.
+      final behind =
+          (identical(worked?.from, surface) ? worked?.made : null) ??
+          _behind(surface);
       if (keepsEveryPixel(surface, behind)) {
         // The wall moved and not a byte: the cel stays as clean as it was.
         _storeHot(key, behind);
@@ -187,10 +198,11 @@ class BrushFrameStore {
     return cut;
   }
 
-  /// What [adoptPasteboardReach] to [reach] will make of the kept cels,
-  /// worked out AHEAD on the machine's workers ([cutCelInWorker], in
-  /// [celThawTurns]) and held for it — while a wait window is up, which
-  /// hears through [report] how much is done, from 0 to 1.
+  /// What [adoptPasteboardReach] to [reach] will make of the cels, worked
+  /// out AHEAD on the machine's workers ([cutCelInWorker] for a kept one,
+  /// [cutHotCelInWorker] for a hot one, in [celThawTurns]) and held for it —
+  /// while a wait window is up, which hears through [report] how much is
+  /// done, from 0 to 1.
   ///
   /// 🗣️F-432 (유저 2026-10-21: 「페이스트 보드 배율 전환이 너무 느리고」 — a
   /// project saved and opened again, S5_BA's 127 cels): 3x → 1.5x took
@@ -198,20 +210,25 @@ class BrushFrameStore {
   /// kept cel inflated on the UI thread to see whether the wall cut it,
   /// and every one it cut compressed again there.
   ///
-  /// ★Each answer is held by the REF it was worked out from, and the move
-  /// takes it only for those very bytes: a cel kept anew since, or made
-  /// hot, is worked out there as it always was. ⛔So an answer can go
-  /// stale, and never wrong. A read or a worker that fails leaves its cel
-  /// to the move the same way.
-  Future<void> cutKeptCelsAhead(
+  /// ★Each answer is held by the REF it was worked out from — a hot cel's by
+  /// its very picture — and the move takes it only for those very bytes: a
+  /// cel kept anew since, drawn on or made hot, is worked out there as it
+  /// always was. ⛔So an answer can go stale, and never wrong. A read or a
+  /// worker that fails leaves its cel to the move the same way.
+  ///
+  /// 🗣️[a-pasteboard-redo-cuts-hot-cels-on-the-ui-thread]: an undo lays
+  /// back hot every cel its step cut, and the redo cut them on the UI
+  /// thread — 0.68 s of S5_BA's 0.7 s redo, 1.5x → off, 92 cels.
+  Future<void> cutCelsAhead(
     PasteboardReach reach, {
     void Function(double done)? report,
   }) async {
     _dropCutAhead(_cutAhead);
     final answers = Map<AnicelCelFileRef, _KeptCelRewrite?>.identity();
-    final ahead = (reach: reach, answers: answers);
+    final hot = <BrushFrameKey, _RemadeCel>{};
+    final ahead = (reach: reach, answers: answers, hot: hot);
     _cutAhead = ahead;
-    if (reach.quartersPerEdge >= _pasteboardReach.quartersPerEdge) {
+    if (!wallShrinksTo(reach)) {
       return;
     }
     final jobs = [
@@ -219,12 +236,34 @@ class BrushFrameStore {
         for (final MapEntry(:key, value: ref) in from.entries)
           if (!_wallPasses(key, ref, reach)) (key: key, ref: ref, read: read),
     ];
+    final hotCels = {..._bakedSurfaces};
     // ⛔Never the name a cel is parked under: these bytes are not the
     // cel's until the move takes them, and the round keeps one round's
     // from another's — a cel the last move cut is parked under the last's.
     final round = ++_cutAheadRounds;
     var done = 0;
+    void counted() {
+      done += 1;
+      report?.call(done / (jobs.length + hotCels.length));
+    }
+
     await Future.wait([
+      for (final MapEntry(:key, value: surface) in hotCels.entries)
+        _remadeOnAWorker(
+              surface,
+              (at, standsBehind) => cutHotCelInWorker(
+                key,
+                at,
+                standsBehind: standsBehind,
+                reach: reach,
+              ),
+            )
+            .then((worked) {
+              if (worked != null) {
+                hot[key] = worked;
+              }
+            })
+            .whenComplete(counted),
       for (final (:key, :ref, :read) in jobs)
         celThawTurns.run(() async {
           try {
@@ -255,16 +294,20 @@ class BrushFrameStore {
             // park leaves its bytes to the room's own ending, as a removal
             // that fails does (`ScratchFile.remove`).
           } finally {
-            done += 1;
-            report?.call(done / jobs.length);
+            counted();
           }
         }),
     ]);
   }
 
-  /// What [cutKeptCelsAhead] last worked out — until the next
+  /// What [cutCelsAhead] last worked out — until the next
   /// [adoptPasteboardReach] takes it or lets it go.
   _CutAhead? _cutAhead;
+
+  /// HOT [key] as [cutCelsAhead] worked out its cut, while it is held.
+  @visibleForTesting
+  BitmapSurface? cutAheadOf(BrushFrameKey key) =>
+      _cutAhead?.hot[_canonicalize(key)]?.made;
 
   int _cutAheadRounds = 0;
 
@@ -277,6 +320,7 @@ class BrushFrameStore {
       }
     }
     ahead?.answers.clear();
+    ahead?.hot.clear();
   }
 
   /// Whether a move of the wall to [reach] leaves [key]'s kept [ref] as it
@@ -1734,12 +1778,7 @@ class BrushFrameStore {
       return answer.moved;
     }
     celsMovedHere += 1;
-    return translateBitmapSurface(
-      surface,
-      dx: move.dx,
-      dy: move.dy,
-      canvasSize: move.canvasSize,
-    );
+    return movedBy(surface, move);
   }
 
   /// How many cels [adoptCutCanvasSize] has moved here, on this isolate —
@@ -1817,9 +1856,9 @@ class BrushFrameStore {
   }
 
   /// [key]'s hot [surface] moved by [move] on a worker that reads its blocks
-  /// where they lie ([moveHotCelInWorker]), in [celThawTurns]; the move held
-  /// in [answers]. None for a move of whole tiles: [_moved] renames the very
-  /// tiles where it is taken.
+  /// where they lie ([moveHotCelInWorker]); the move held in [answers]. None
+  /// for a move of whole tiles: [_moved] renames the very tiles where it is
+  /// taken.
   Future<void> _moveHotOnAWorker(
     BrushFrameKey key,
     BitmapSurface surface,
@@ -1830,22 +1869,41 @@ class BrushFrameStore {
     if (movesWholeTiles(dx: move.dx, dy: move.dy, tileSize: tileSize)) {
       return;
     }
-    await celThawTurns.run(() async {
-      try {
-        final laid = await moveHotCelInWorker(
-          key,
-          celBlocksOf(surface),
-          move: move,
-        );
-        // [surface] is held to here, past the worker that read its blocks.
-        // Walled as the step will wall it ([_storeHot]): a laid cel carries
-        // no wall of its own.
-        answers[key] = (from: surface, moved: _behind(laidCelSurface(laid)));
-      } on Object {
-        // The move makes it where it is taken, as it always did.
-      }
-    });
+    final worked = await _remadeOnAWorker(
+      surface,
+      (at, standsBehind) =>
+          moveHotCelInWorker(key, at, standsBehind: standsBehind, move: move),
+    );
+    final moved = worked?.made;
+    if (worked != null && moved != null) {
+      answers[key] = (from: worked.from, moved: moved);
+    }
   }
+
+  /// [surface] — a hot cel's — made anew on a worker that reads its blocks
+  /// where they lie, behind the wall it stands behind ([remake]), in
+  /// [celThawTurns]: [made] behind the wall the worker made it at, or null
+  /// where the remake leaves the picture as it is. Null as a whole where the
+  /// worker failed: the step makes it as it always did.
+  Future<_RemadeCel?> _remadeOnAWorker(
+    BitmapSurface surface,
+    Future<BitmapSurface?> Function(
+      AnicelLaidCel at,
+      PasteboardReach standsBehind,
+    )
+    remake,
+  ) => celThawTurns.run(() async {
+    try {
+      final made = await remake(
+        celBlocksOf(surface),
+        surface.pasteboardReach,
+      );
+      // [surface] is held to here, past the worker that read its blocks.
+      return (from: surface, made: made);
+    } on Object {
+      return null;
+    }
+  });
 
   /// What [moveCutCelsAhead] last worked out — until the next one replaces
   /// it, a move it was not worked out for asks ([_moved]), or the store is
@@ -1963,7 +2021,7 @@ class BrushFrameStore {
   /// rewrite into nothing; the next pass finds it again.
   ///
   /// [ahead] holds what was worked out already, by the ref it was worked
-  /// out from ([cutKeptCelsAhead]) — null for a cel left as it is — and a
+  /// out from ([cutCelsAhead]) — null for a cel left as it is — and a
   /// ref it holds is not read again. [stands] hears each ref the pass
   /// leaves standing: one left as it is, and one kept anew.
   Map<BrushFrameKey, BitmapSurface> _rewriteKeptCels({
@@ -2036,7 +2094,7 @@ class BrushFrameStore {
   /// Where a cel that is not hot keeps its bytes, each with how they are
   /// read: parked in the run's room, or in the saved project — what a pass
   /// over the kept cels walks ([_rewriteKeptCels]), and what one worked
-  /// out ahead of it walks too ([cutKeptCelsAhead]).
+  /// out ahead of it walks too ([cutCelsAhead]).
   List<
     (
       Map<BrushFrameKey, AnicelCelFileRef>,
@@ -2224,13 +2282,19 @@ class AnicelCelFileRef {
 /// picture it [was] — what the move that rewrote it hands its undo.
 typedef _KeptCelRewrite = ({AnicelCelFileRef kept, BitmapSurface was});
 
-/// What a move of the wall to [reach] makes of the kept cels, worked out
-/// ahead of it ([BrushFrameStore.cutKeptCelsAhead]): by the ref each answer
-/// was worked out from — null for a cel the wall leaves as it is.
+/// What a move of the wall to [reach] makes of the cels, worked out
+/// ahead of it ([BrushFrameStore.cutCelsAhead]): the kept ones by the ref
+/// each answer was worked out from — null for a cel the wall leaves as it
+/// is — and the [hot] ones by cel.
 typedef _CutAhead = ({
   PasteboardReach reach,
   Map<AnicelCelFileRef, _KeptCelRewrite?> answers,
+  Map<BrushFrameKey, _RemadeCel> hot,
 });
+
+/// A hot cel made anew on a worker, with the picture it was made [from]:
+/// [made] null where the work left it as it is.
+typedef _RemadeCel = ({BitmapSurface from, BitmapSurface? made});
 
 /// A cel as a [CelMove] leaves it, with the picture it was worked out [from].
 typedef _MovedCel = ({BitmapSurface from, BitmapSurface moved});

@@ -101,32 +101,33 @@ class _ProjectSettingCommands {
         subject: _project,
         value: size,
         read: (project) => project.pasteboardSize,
-        command: (_) => SetProjectPasteboardCommand(
-          repository: _coordinator.repository,
-          brushFrameStore: _coordinator.brushFrameStore,
-          size: size,
-        ),
+        command: (_) => _pasteboard(size: size),
       );
 
   /// What the pasteboard at [size] or [inUse] — the setters' — will cut of
-  /// the pictures kept in files, worked out ahead
-  /// ([BrushFrameStore.cutKeptCelsAhead]): for a wait window to hold up
+  /// the pictures, worked out ahead as the step itself asks
+  /// ([SetProjectPasteboardCommand.workAhead]): for a wait window to hold up
   /// while it runs, hearing through [report] how much is done (F-432).
   Future<void> cutProjectPasteboardAhead({
     PasteboardSize? size,
     bool? inUse,
     void Function(double done)? report,
   }) async {
-    final store = _coordinator.brushFrameStore;
-    if (store == null) {
-      return;
-    }
-    final next = _project.copyWith(
-      pasteboardSize: size,
-      pasteboardInUse: inUse,
-    );
-    await store.cutKeptCelsAhead(next.pasteboardReach, report: report);
+    await _pasteboard(
+      size: size,
+      inUse: inUse,
+    ).workAhead(undo: false)?.run(report ?? (_) {});
   }
+
+  SetProjectPasteboardCommand _pasteboard({
+    PasteboardSize? size,
+    bool? inUse,
+  }) => SetProjectPasteboardCommand(
+    repository: _coordinator.repository,
+    brushFrameStore: _coordinator.brushFrameStore,
+    size: size,
+    inUse: inUse,
+  );
 
   /// Whether the pasteboard is there at all (I-109) — off, nothing reaches
   /// past the paper; one undo step, no-op when unchanged.
@@ -134,10 +135,6 @@ class _ProjectSettingCommands {
     subject: _project,
     value: inUse,
     read: (project) => project.pasteboardInUse,
-    command: (_) => SetProjectPasteboardCommand(
-      repository: _coordinator.repository,
-      brushFrameStore: _coordinator.brushFrameStore,
-      inUse: inUse,
-    ),
+    command: (_) => _pasteboard(inUse: inUse),
   );
 }

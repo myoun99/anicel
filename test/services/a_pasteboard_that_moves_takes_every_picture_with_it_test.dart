@@ -23,6 +23,7 @@ import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/commands/set_project_pasteboard_command.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/project_repository.dart';
@@ -396,7 +397,7 @@ void main() {
       ) async {
         final store = BrushFrameStore();
         final refs = keepInAFile(store, {cut: drawn(), clean: inkInside()});
-        await store.cutKeptCelsAhead(PasteboardReach.quarter);
+        await store.cutCelsAhead(PasteboardReach.quarter);
         unreadable(store, refs);
         final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
         expect(taken.keys, [cut]);
@@ -410,6 +411,9 @@ void main() {
       for (final (tier, keep) in <(String, _KeepAll)>[
         ('parked cold', parkCold),
         ('kept in a file', keepInAFile),
+        // 🗣️F-432: a step done again cuts the cels its undo laid back, every
+        // one hot.
+        ('hot', _keepHot),
       ]) {
         test('$tier: what is worked out is what the move works out', () async {
           final here = BrushFrameStore();
@@ -417,7 +421,7 @@ void main() {
           for (final store in [here, ahead]) {
             keep(store, {cut: drawn(), clean: inkInside()});
           }
-          await ahead.cutKeptCelsAhead(PasteboardReach.none);
+          await ahead.cutCelsAhead(PasteboardReach.none);
           final takenHere = here.adoptPasteboardReach(PasteboardReach.none);
           final taken = ahead.adoptPasteboardReach(PasteboardReach.none);
           expect(taken.keys, [cut]);
@@ -439,7 +443,7 @@ void main() {
         final store = BrushFrameStore();
         final refs = keepInAFile(store, {cut: drawn(), clean: inkInside()});
         final reports = <double>[];
-        await store.cutKeptCelsAhead(
+        await store.cutCelsAhead(
           PasteboardReach.quarter,
           report: reports.add,
         );
@@ -449,12 +453,59 @@ void main() {
         expectCut(store.bakedSurfaceOrNull(cut));
       });
 
+      test('hot: the move takes the very picture worked out, behind its '
+          'wall, and the undo keeps the one it was', () async {
+        final store = BrushFrameStore();
+        final before = drawn();
+        _keepHot(store, {cut: before, clean: inkInside()});
+        await store.cutCelsAhead(PasteboardReach.quarter);
+        final worked = store.cutAheadOf(cut);
+        expectCut(worked);
+        expect(store.cutAheadOf(clean), isNull, reason: 'nothing of it cut');
+        final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
+        expect(identical(taken[cut], before), isTrue);
+        expect(identical(store.hotBakedSurfaceOrNull(cut), worked), isTrue);
+        expect(store.cutAheadOf(cut), isNull, reason: 'let go once taken');
+      });
+
+      test('hot, on a worker of its own: its blocks read where they lie, and '
+          'held until it is done', () async {
+        debugWorkersRunHere = false;
+        addTearDown(() => debugWorkersRunHere = true);
+        final store = BrushFrameStore();
+        _keepHot(store, {cut: drawn(), clean: inkInside()});
+        final reports = <double>[];
+        await store.cutCelsAhead(
+          PasteboardReach.quarter,
+          report: reports.add,
+        );
+        expect(reports, [0.5, 1.0]);
+        final worked = store.cutAheadOf(cut);
+        expectCut(worked);
+        store.adoptPasteboardReach(PasteboardReach.quarter);
+        expect(identical(store.hotBakedSurfaceOrNull(cut), worked), isTrue);
+      });
+
+      test('hot: a cel drawn on since is cut where the move is taken', (
+      ) async {
+        final store = BrushFrameStore();
+        _keepHot(store, {cut: drawn()});
+        await store.cutCelsAhead(PasteboardReach.quarter);
+        final worked = store.cutAheadOf(cut);
+        final drawnSince = drawn();
+        store.storeBakedSurface(cut, drawnSince);
+        final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
+        expect(identical(taken[cut], drawnSince), isTrue);
+        expect(identical(store.hotBakedSurfaceOrNull(cut), worked), isFalse);
+        expectCut(store.bakedSurfaceOrNull(cut));
+      });
+
       test('worked out for another wall: not taken, and not left behind', (
       ) async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
         final before = parkedAhead();
-        await store.cutKeptCelsAhead(PasteboardReach.none);
+        await store.cutCelsAhead(PasteboardReach.none);
         expect(parkedAhead().difference(before), hasLength(1));
         expect(store.adoptPasteboardReach(PasteboardReach.quarter).keys, [cut]);
         expectCut(store.bakedSurfaceOrNull(cut));
@@ -465,9 +516,9 @@ void main() {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
         final before = parkedAhead();
-        await store.cutKeptCelsAhead(PasteboardReach.none);
+        await store.cutCelsAhead(PasteboardReach.none);
         final first = parkedAhead().difference(before);
-        await store.cutKeptCelsAhead(PasteboardReach.quarter);
+        await store.cutCelsAhead(PasteboardReach.quarter);
         final second = parkedAhead().difference(before);
         expect(second, hasLength(1));
         expect(second.intersection(first), isEmpty);
@@ -477,7 +528,7 @@ void main() {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
         final before = parkedAhead();
-        await store.cutKeptCelsAhead(PasteboardReach.none);
+        await store.cutCelsAhead(PasteboardReach.none);
         parkCold(store, const {});
         expect(parkedAhead().difference(before), isEmpty);
       });
@@ -486,7 +537,7 @@ void main() {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
         final reports = <double>[];
-        await store.cutKeptCelsAhead(
+        await store.cutCelsAhead(
           PasteboardReach.whole,
           report: reports.add,
         );
@@ -497,7 +548,7 @@ void main() {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
         final before = parkedAhead();
-        await store.cutKeptCelsAhead(PasteboardReach.quarter);
+        await store.cutCelsAhead(PasteboardReach.quarter);
         expect(store.adoptPasteboardReach(PasteboardReach.whole), isEmpty);
         expect(parkedAhead().difference(before), isEmpty);
       });
@@ -507,7 +558,7 @@ void main() {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
         final before = parkedAhead();
-        final working = store.cutKeptCelsAhead(PasteboardReach.none);
+        final working = store.cutCelsAhead(PasteboardReach.none);
         parkCold(store, const {});
         await working;
         expect(parkedAhead().difference(before), isEmpty);
@@ -517,7 +568,7 @@ void main() {
         final before = roomFiles();
         final store = BrushFrameStore();
         parkCold(store, {cut: drawn(), clean: inkInside()});
-        await store.cutKeptCelsAhead(PasteboardReach.quarter);
+        await store.cutCelsAhead(PasteboardReach.quarter);
         store.adoptPasteboardReach(PasteboardReach.quarter);
         expect(
           roomFiles().difference(before),
@@ -534,7 +585,7 @@ void main() {
         expect(store.adoptPasteboardReach(PasteboardReach.quarter).keys, [cut]);
         store.adoptPasteboardReach(PasteboardReach.whole);
         final reports = <double>[];
-        await store.cutKeptCelsAhead(
+        await store.cutCelsAhead(
           PasteboardReach.quarter,
           report: reports.add,
         );
@@ -571,7 +622,7 @@ void main() {
             }
           });
           if (ahead) {
-            await store.cutKeptCelsAhead(PasteboardReach.quarter);
+            await store.cutCelsAhead(PasteboardReach.quarter);
           }
           expect(store.adoptPasteboardReach(PasteboardReach.quarter), isEmpty);
           expect(
@@ -688,6 +739,63 @@ void main() {
       expectWhole(f.store.bakedSurfaceOrNull(cut), before);
     });
 
+    test('works out ahead what each way of it cuts — none where its wall '
+        'grows', () {
+      final f = fixture((store) => store.storeBakedSurface(cut, drawn()));
+      final shrink = SetProjectPasteboardCommand(
+        repository: f.repository,
+        brushFrameStore: f.store,
+        size: PasteboardSize.oneAndAHalf,
+      );
+      expect(shrink.workAhead(undo: false)?.wall, WallMove.pasteboard);
+      expect(shrink.workAhead(undo: true), isNull, reason: 'not taken yet');
+      shrink.execute();
+      expect(shrink.workAhead(undo: true), isNull, reason: 'its undo grows');
+      final grow = SetProjectPasteboardCommand(
+        repository: f.repository,
+        brushFrameStore: f.store,
+        size: PasteboardSize.three,
+      );
+      expect(grow.workAhead(undo: false), isNull);
+      grow.execute();
+      expect(grow.workAhead(undo: true)?.wall, WallMove.pasteboard);
+      grow.undo();
+      shrink.undo();
+      expect(shrink.workAhead(undo: false)?.wall, WallMove.pasteboard);
+    });
+
+    test('done again either way, it cuts what was worked out ahead of it, '
+        'and lays every pixel back', () async {
+      final before = drawn();
+      final f = fixture((store) => store.storeBakedSurface(cut, before));
+      final shrink = SetProjectPasteboardCommand(
+        repository: f.repository,
+        brushFrameStore: f.store,
+        size: PasteboardSize.oneAndAHalf,
+      )..execute()..undo();
+      await shrink.workAhead(undo: false)!.run((_) {});
+      final redone = f.store.cutAheadOf(cut);
+      expect(redone, isNotNull, reason: 'its undo laid the cel back hot');
+      shrink.execute();
+      expect(identical(f.store.hotBakedSurfaceOrNull(cut), redone), isTrue);
+
+      final grow = SetProjectPasteboardCommand(
+        repository: f.repository,
+        brushFrameStore: f.store,
+        size: PasteboardSize.three,
+      )..execute();
+      final drawnPast = drawn();
+      f.store.storeBakedSurface(cut, drawnPast);
+      await grow.workAhead(undo: true)!.run((_) {});
+      final undone = f.store.cutAheadOf(cut);
+      expect(undone, isNotNull);
+      grow.undo();
+      expect(identical(f.store.hotBakedSurfaceOrNull(cut), undone), isTrue);
+
+      shrink.undo();
+      expectWhole(f.store.bakedSurfaceOrNull(cut), before);
+    });
+
     test('a parked payload still lays every pixel back', () async {
       final before = drawn();
       final f = fixture((store) => store.storeBakedSurface(cut, before));
@@ -752,3 +860,14 @@ typedef _KeepAll =
       BrushFrameStore store,
       Map<BrushFrameKey, BitmapSurface> cels,
     );
+
+/// [cels] hot in [store] — drawn there, or laid back by an undo.
+Object _keepHot(
+  BrushFrameStore store,
+  Map<BrushFrameKey, BitmapSurface> cels,
+) {
+  for (final MapEntry(:key, value: surface) in cels.entries) {
+    store.storeBakedSurface(key, surface);
+  }
+  return cels;
+}

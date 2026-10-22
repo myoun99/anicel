@@ -27,7 +27,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// it has work ahead of it, and the work runs on the machine's workers.
 ///
 /// Here the window is a door that holds the step until the test lets it go;
-/// the real window is the app's (`a_resize_redo_waits_behind_the_canvas_size_
+/// the real window is the app's (`a_wall_moved_again_waits_behind_its_
 /// window_test`).
 void main() {
   late EditorSessionManager session;
@@ -107,7 +107,7 @@ void main() {
     expect(waited, hasLength(1));
     expect(sizeNow(), before, reason: 'nothing is taken before the work');
     final reports = <double>[];
-    await waited.single.ahead(reports.add);
+    await waited.single.ahead.run(reports.add);
     expect(reports, [1.0]);
     expect(store.movedAheadOf(drawn), isNotNull);
     final movedHere = store.celsMovedHere;
@@ -122,7 +122,7 @@ void main() {
     verbs.undo();
     verbs.redo();
     final (:ahead, :step) = waited.single;
-    await ahead((_) {});
+    await ahead.run((_) {});
     session.undo();
     expect(session.historyManager.redoCount, 2, reason: 'premise');
     step();
@@ -139,7 +139,7 @@ void main() {
     verbs.undo();
     verbs.redo();
     final (:ahead, :step) = waited.single;
-    await ahead((_) {});
+    await ahead.run((_) {});
     var pending = true;
     session.historyManager.pendingBeforeUndoRedo = () => pending;
     step();
@@ -183,7 +183,7 @@ void main() {
       final drawn = draw(target);
       final ahead = session.cutVerbs.convertActiveCutToLinkedAhead(target);
       expect(ahead, isNotNull);
-      await ahead!((_) {});
+      await ahead!.run((_) {});
       final store = session.renderCaches.brushFrameStore;
       expect(store.movedAheadOf(drawn), isNotNull);
       final movedHere = store.celsMovedHere;

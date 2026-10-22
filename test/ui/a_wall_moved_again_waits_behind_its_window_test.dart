@@ -11,6 +11,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -26,7 +27,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 /// 크기」 대기 창이 뜨고, 작업자가 옮깁니다」): a resize done again — by the
 /// rail's ↷, as by every door that opens the one redo — and a 겸용 변경 that
 /// takes the other cut's canvas stand behind the window a resize stands
-/// behind, and their pictures move ahead of the step.
+/// behind, and their pictures move ahead of the step. 🗣️F-432: a pasteboard
+/// moved in again stands behind the pasteboard's.
 void main() {
   final window = find.byKey(const ValueKey<String>('resize-progress-dialog'));
 
@@ -42,9 +44,13 @@ void main() {
         .session;
   }
 
-  /// A picture drawn on [cutId], in tiles of 8: a move about a centre two
-  /// pixels away is no whole tile.
-  BrushFrameKey draw(EditorSessionManager session, CutId cutId) {
+  /// A picture drawn on [cutId], in tiles of 8, [at] a tile inside the paper
+  /// unless asked: a move about a centre two pixels away is no whole tile.
+  BrushFrameKey draw(
+    EditorSessionManager session,
+    CutId cutId, {
+    TileCoord? at,
+  }) {
     final key = BrushFrameKey(
       projectId: const ProjectId('p'),
       trackId: const TrackId('t'),
@@ -57,7 +63,7 @@ void main() {
       key,
       BitmapSurface(canvasSize: cut.canvasSize, tileSize: 8).putTiles([
         (
-          coord: TileCoord(x: 1, y: 1),
+          coord: at ?? TileCoord(x: 1, y: 1),
           tile: BitmapTile(size: 8, pixels: Uint8List(256)..fillRange(0, 256, 9)),
         ),
       ]),
@@ -65,18 +71,20 @@ void main() {
     return key;
   }
 
-  /// The window up over the step, under the canvas size's name, the step
-  /// landed behind it — and the window gone once its done line has lingered.
+  /// The window up over the step, under the name of the wall it moves, the
+  /// step landed behind it — and the window gone once its done line has
+  /// lingered.
   Future<void> expectBehindTheWindow(
     WidgetTester tester,
-    bool Function() landed,
-  ) async {
+    bool Function() landed, {
+    String? title,
+  }) async {
     await tester.pump();
     expect(window, findsOneWidget);
     expect(
       find.descendant(
         of: window,
-        matching: find.text(AppText.strings.canvasSizeTitle),
+        matching: find.text(title ?? AppText.strings.canvasSizeTitle),
       ),
       findsOneWidget,
     );
@@ -116,6 +124,38 @@ void main() {
       () => session.requireActiveCut.canvasSize == resized,
     );
     expect(store.celsMovedHere, movedHere, reason: 'moved ahead, not here');
+  });
+
+  testWidgets('a pasteboard made smaller runs again behind its own window, '
+      'what it cuts cut; its undo, which grows it, does not wait', (
+    tester,
+  ) async {
+    final session = await openApp(tester);
+    final store = session.renderCaches.brushFrameStore;
+    // Half the paper past its left edge: past the 1.5x wall, inside the 3x.
+    final past = TileCoord(
+      x: -(session.requireActiveCut.canvasSize.width ~/ 16),
+      y: 1,
+    );
+    final key = draw(session, session.requireActiveCut.id, at: past);
+    session.projectSettings.setPasteboardSize(PasteboardSize.oneAndAHalf);
+    await tester.pumpAndSettle();
+    expect(store.bakedSurfaceOrNull(key)?.tileAt(past), isNull);
+
+    await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+    await tester.pump();
+    expect(window, findsNothing, reason: 'its undo cuts nothing');
+    expect(store.pasteboardReach, PasteboardReach.whole);
+    await tester.pumpAndSettle();
+    expect(store.hotBakedSurfaceOrNull(key)!.tileAt(past), isNotNull);
+
+    await tester.tap(find.byKey(const ValueKey<String>('redo-button')));
+    await expectBehindTheWindow(
+      tester,
+      () => store.pasteboardReach == PasteboardReach.quarter,
+      title: AppText.strings.pasteboardTitle,
+    );
+    expect(store.bakedSurfaceOrNull(key)?.tileAt(past), isNull);
   });
 
   testWidgets('a 겸용 변경 that takes the other cut\'s canvas stands behind '

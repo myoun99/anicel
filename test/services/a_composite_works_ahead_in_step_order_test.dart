@@ -20,7 +20,7 @@ void main() {
       _Ahead('second', log),
     ]).workAhead(undo: false);
     final reports = <double>[];
-    await ahead!(reports.add);
+    await ahead!.run(reports.add);
     expect(log, ['first', 'second']);
     expect(reports, [0.25, 0.5, 0.75, 1.0]);
   });
@@ -30,8 +30,17 @@ void main() {
       _Ahead('first', log, undoToo: true),
       _Ahead('second', log, undoToo: true),
     ]).workAhead(undo: true);
-    await ahead!((_) {});
+    await ahead!.run((_) {});
     expect(log, ['second', 'first']);
+  });
+
+  test('behind the window of the first child it runs', () {
+    WallMove? wallOf(bool undo) => step([
+      _Ahead('first', log, undoToo: true, wall: WallMove.pasteboard),
+      _Ahead('second', log, undoToo: true),
+    ]).workAhead(undo: undo)?.wall;
+    expect(wallOf(false), WallMove.pasteboard);
+    expect(wallOf(true), WallMove.canvasSize);
   });
 
   test('nothing ahead where no child has any', () {
@@ -54,21 +63,30 @@ class _Plain implements Command {
   void undo() {}
 }
 
-/// Works out ahead for its run — and, with [undoToo], for its undo — saying
-/// it has, half then all.
+/// Works out ahead for its run — and, with [undoToo], for its undo — behind
+/// the window of [wall], saying it has, half then all.
 class _Ahead extends _Plain implements WorksAheadCommand {
-  _Ahead(this.name, this.log, {this.undoToo = false});
+  _Ahead(
+    this.name,
+    this.log, {
+    this.undoToo = false,
+    this.wall = WallMove.canvasSize,
+  });
 
   final String name;
   final List<String> log;
   final bool undoToo;
+  final WallMove wall;
 
   @override
   WorkAhead? workAhead({required bool undo}) => undo && !undoToo
       ? null
-      : (report) async {
-          log.add(name);
-          report(0.5);
-          report(1);
-        };
+      : (
+          wall: wall,
+          run: (report) async {
+            log.add(name);
+            report(0.5);
+            report(1);
+          },
+        );
 }

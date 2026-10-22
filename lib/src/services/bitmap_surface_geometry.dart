@@ -499,6 +499,16 @@ Map<TileCoord, BitmapTile> celTextPlateMoved(
 /// whole pixels — what [translateBitmapSurface] makes of each.
 typedef CelMove = ({CanvasSize canvasSize, int dx, int dy});
 
+/// [surface] as [move] leaves it ([translateBitmapSurface]) — on the UI
+/// thread where a resize takes it, and on a worker ahead of it.
+BitmapSurface movedBy(BitmapSurface surface, CelMove move) =>
+    translateBitmapSurface(
+      surface,
+      dx: move.dx,
+      dy: move.dy,
+      canvasSize: move.canvasSize,
+    );
+
 /// Whether a move by ([dx], [dy]) carries whole tiles of [tileSize]: each
 /// tile renamed where it sits, the very tile kept and not a pixel copied
 /// ([translateBitmapSurface]).

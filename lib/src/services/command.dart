@@ -69,10 +69,17 @@ abstract interface class ParkableCommand {
   void dropPayload();
 }
 
-/// What a step works out off the UI thread before it is taken, hearing
-/// through [report] how much is done, from 0 to 1 — for a wait window to
-/// hold up while it runs.
-typedef WorkAhead = Future<void> Function(void Function(double done) report);
+/// The wall a step moves — the canvas's, or how far its pasteboard reaches
+/// — whose wait window it stands behind while its work runs ahead.
+enum WallMove { canvasSize, pasteboard }
+
+/// What a step works out off the UI thread before it is taken: [run], which
+/// hears through its `report` how much is done, from 0 to 1 — for the wait
+/// window of the [wall] it moves to hold up while it runs.
+typedef WorkAhead = ({
+  WallMove wall,
+  Future<void> Function(void Function(double done) report) run,
+});
 
 /// Commands whose step has work it can do AHEAD of it, off the UI thread.
 ///
@@ -177,9 +184,9 @@ class CompositeCommand
   void dropReadAhead() => dropReadAheadOf(commands);
 
   /// The children's, in the order the step runs them, as [readAhead] — each
-  /// a share of the report. ⚠️One worked out before an earlier child's step
-  /// is taken can go stale, never wrong: each is taken only for the very
-  /// picture it was worked out from.
+  /// a share of the report, behind the first one's window. ⚠️One worked out
+  /// before an earlier child's step is taken can go stale, never wrong: each
+  /// is taken only for the very picture it was worked out from.
   @override
   WorkAhead? workAhead({required bool undo}) {
     final ordered = undo ? commands.reversed : commands;
@@ -190,11 +197,14 @@ class CompositeCommand
     if (aheads.isEmpty) {
       return null;
     }
-    return (report) async {
-      for (final (index, ahead) in aheads.indexed) {
-        await ahead((done) => report((index + done) / aheads.length));
-      }
-    };
+    return (
+      wall: aheads.first.wall,
+      run: (report) async {
+        for (final (index, ahead) in aheads.indexed) {
+          await ahead.run((done) => report((index + done) / aheads.length));
+        }
+      },
+    );
   }
 
   @override

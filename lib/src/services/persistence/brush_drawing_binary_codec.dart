@@ -17,6 +17,7 @@ import '../../models/canvas_size.dart';
 import '../../models/cel_photo.dart';
 import '../../models/cel_text.dart';
 import '../../models/dirty_region.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
@@ -162,8 +163,12 @@ AnicelLaidCel celBlocksOf(BitmapSurface surface) => _partsOf(
 
 /// [laid]'s blocks — another isolate's, read where they lie
 /// ([celBlocksOf]) — copied into tiles of this one: a surface this isolate
-/// owns, whose tiles it frees as its own.
-BitmapSurface copiedCelSurface(AnicelLaidCel laid) {
+/// owns, whose tiles it frees as its own, behind the wall the picture
+/// [standsBehind] there — which its parts do not carry.
+BitmapSurface copiedCelSurface(
+  AnicelLaidCel laid, {
+  required PasteboardReach standsBehind,
+}) {
   final bytes = BitmapTile.bytesFor(laid.tileSize);
   return _surfaceOf(
     laid,
@@ -171,6 +176,7 @@ BitmapSurface copiedCelSurface(AnicelLaidCel laid) {
       size: laid.tileSize,
       pixels: Pointer<Uint8>.fromAddress(address).asTypedList(bytes),
     ),
+    standsBehind: standsBehind,
   );
 }
 
@@ -183,8 +189,9 @@ BitmapSurface copiedCelSurface(AnicelLaidCel laid) {
 /// yet is one nothing would ever free.
 BitmapSurface _surfaceOf<P>(
   CelParts<P> parts,
-  BitmapTile Function(P pixels) tileOf,
-) {
+  BitmapTile Function(P pixels) tileOf, {
+  PasteboardReach standsBehind = PasteboardReach.whole,
+}) {
   Map<TileCoord, BitmapTile> tilesOf(
     List<({int x, int y, P pixels})> records,
   ) => {
@@ -200,6 +207,7 @@ BitmapSurface _surfaceOf<P>(
   final plates = [for (final text in parts.texts) tilesOf(text.plate)];
   return BitmapSurface(
     canvasSize: parts.canvasSize,
+    pasteboardReach: standsBehind,
     tileSize: parts.tileSize,
     tiles: tiles,
     texts: [
@@ -283,13 +291,19 @@ void freeLaidCel(AnicelLaidCel laid, TileBlockHands blocks) {
 }
 
 /// [laid]'s blocks adopted as its tiles, on the isolate whose allocator they
-/// came from ([BitmapTile.blocks]) — no pixel is copied here.
-BitmapSurface laidCelSurface(AnicelLaidCel laid) => _surfaceOf(
+/// came from ([BitmapTile.blocks]) — no pixel is copied here — behind the
+/// wall the worker that laid them made the picture [standsBehind]: none,
+/// for one laid as its bytes were.
+BitmapSurface laidCelSurface(
+  AnicelLaidCel laid, {
+  PasteboardReach standsBehind = PasteboardReach.whole,
+}) => _surfaceOf(
   laid,
   (address) => BitmapTile.adoptNative(
     size: laid.tileSize,
     pixels: Pointer<Uint8>.fromAddress(address),
   ),
+  standsBehind: standsBehind,
 );
 
 /// v5 (2026-10-18, F-374-Q8 — 유저 「맞춘다 — 참조 그림은 벽 밖까지

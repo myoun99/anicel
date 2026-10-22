@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../services/command.dart' show WorkAhead;
+import '../../services/command.dart' show WallMove, WorkAhead;
 import '../text/app_strings.dart';
 import 'app_progress_dialog.dart';
 
@@ -41,14 +41,14 @@ Future<void> resizeBehindTheWaitWindow(
   },
 );
 
-
 /// A step that moves the canvas's walls taken behind their wait window —
 /// an undo, a redo, a 겸용 변경 — while what it works out [ahead] runs; or
 /// at once, where it works nothing out.
 ///
 /// 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1 (유저 2026-10-22:
-/// 「다시 하기도 대기 창 뒤에서 옮긴다」): the window a resize itself stands
-/// behind, 「캔버스 크기」 — the one wall a step works out ahead of today.
+/// 「다시 하기도 대기 창 뒤에서 옮긴다」): the window the move of that wall
+/// stands behind where it is first made — 「캔버스 크기」, or the
+/// pasteboard's.
 Future<void> stepBehindTheWaitWindow(
   BuildContext context,
   WorkAhead? ahead,
@@ -61,7 +61,10 @@ Future<void> stepBehindTheWaitWindow(
   await resizeBehindTheWaitWindow(
     context,
     step,
-    title: AppText.strings.canvasSizeTitle,
-    ahead: ahead,
+    title: switch (ahead.wall) {
+      WallMove.canvasSize => AppText.strings.canvasSizeTitle,
+      WallMove.pasteboard => AppText.strings.pasteboardTitle,
+    },
+    ahead: ahead.run,
   );
 }

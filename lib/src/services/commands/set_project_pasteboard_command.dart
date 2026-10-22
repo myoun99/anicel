@@ -1,5 +1,6 @@
 import '../../models/brush_frame_key.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/project.dart';
 import '../brush_frame_store.dart';
 import '../cels_ahead.dart';
 import '../command.dart';
@@ -21,7 +22,8 @@ class SetProjectPasteboardCommand
         Command,
         RetainedBytesCommand,
         ParkableCommand,
-        PictureRestoringCommand {
+        PictureRestoringCommand,
+        WorksAheadCommand {
   SetProjectPasteboardCommand({
     required this.repository,
     this.brushFrameStore,
@@ -48,13 +50,45 @@ class SetProjectPasteboardCommand
 
   @override
   void execute() {
-    final project = repository.requireProject();
-    final before = _before ??= (
-      size: project.pasteboardSize,
-      inUse: project.pasteboardInUse,
-    );
-    _move(size: size ?? before.size, inUse: inUse ?? before.inUse);
+    _before ??= _pasteboardOf(repository.requireProject());
+    final to = _forward;
+    _move(size: to.size, inUse: to.inUse);
   }
+
+  /// Every picture the wall the next step moves to cuts, cut AHEAD on the
+  /// machine's workers ([BrushFrameStore.cutCelsAhead]) — the first run's,
+  /// and a step taken again either way, for the undo of a wall grown moves
+  /// it in. None where the wall grows: it cuts nothing.
+  ///
+  /// 🗣️[F-432] (유저 2026-10-21: 「이런 시간 걸리는 로직은 규칙으로서 공용
+  /// 로딩창 표시해야함」): a step undone and done again cut every cel its undo
+  /// laid back on the UI thread.
+  @override
+  WorkAhead? workAhead({required bool undo}) {
+    final store = brushFrameStore;
+    final to = undo ? _before : _forward;
+    if (store == null || to == null) {
+      return null;
+    }
+    final reach = PasteboardReach.of(size: to.size, inUse: to.inUse);
+    if (!store.wallShrinksTo(reach)) {
+      return null;
+    }
+    return (
+      wall: WallMove.pasteboard,
+      run: (report) => store.cutCelsAhead(reach, report: report),
+    );
+  }
+
+  /// Where a run of the step moves the pasteboard: to [size] and [inUse],
+  /// each left where it was when null.
+  ({PasteboardSize size, bool inUse}) get _forward {
+    final from = _before ?? _pasteboardOf(repository.requireProject());
+    return (size: size ?? from.size, inUse: inUse ?? from.inUse);
+  }
+
+  static ({PasteboardSize size, bool inUse}) _pasteboardOf(Project project) =>
+      (size: project.pasteboardSize, inUse: project.pasteboardInUse);
 
   @override
   void undo() {

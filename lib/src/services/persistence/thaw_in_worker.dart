@@ -72,10 +72,11 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
     if (movesWholeTiles(dx: move.dx, dy: move.dy, tileSize: entry.tileSize)) {
       return (was: layCelEntry(entry, here), moved: null);
     }
-    final laidMoved = _layMoved(
-      key,
-      surfaceBehindReach(entry.toSurface(), reach),
-      move,
+    final laidMoved = layCelEntry(
+      AnicelCelEntry.fromSurface(
+        key,
+        movedBy(surfaceBehindReach(entry.toSurface(), reach), move),
+      ),
       here,
     );
     try {
@@ -89,10 +90,10 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
 }
 
 /// A HOT cel's picture — its blocks on the main isolate, named where they
-/// lie ([celBlocksOf]) — as [move] leaves it, worked out on a worker and
-/// laid into that isolate's tile blocks for it to adopt ([laidCelSurface]):
-/// the blit [moveCelInWorker] makes of a kept cel, for one already thawed —
-/// and so already behind its store's wall, with nothing past it to cut.
+/// lie ([celBlocksOf]), behind the wall it [standsBehind] there — as [move]
+/// leaves it, worked out on a worker: the blit [moveCelInWorker] makes of a
+/// kept cel, for one already thawed — and so already behind its store's
+/// wall, with nothing past it to cut.
 ///
 /// 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1 (유저 2026-10-22:
 /// 「다시 하기도 대기 창 뒤에서 옮긴다」): a redo's cels are the ones its undo
@@ -100,33 +101,70 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
 ///
 /// 🚨The caller holds the picture [at] names until this is done: its blocks
 /// go back to the pool with it.
-Future<AnicelLaidCel> moveHotCelInWorker(
+Future<BitmapSurface> moveHotCelInWorker(
   BrushFrameKey key,
   AnicelLaidCel at, {
+  required PasteboardReach standsBehind,
   required CelMove move,
-}) {
-  final blocks = BitmapTile.blocks;
-  return onAWorker(
-    () => _layMoved(key, copiedCelSurface(at), move, tileBlocksHere(blocks)),
-  );
-}
+}) async => (await _remakeHotCelInWorker(
+  key,
+  at,
+  standsBehind,
+  (surface) => movedBy(surface, move),
+))!;
 
-/// [surface] moved by [move] ([translateBitmapSurface]) and laid into
-/// [here]'s blocks — a kept cel's move and a hot one's.
-AnicelLaidCel _layMoved(
+/// A HOT cel's picture behind [reach] ([cutBehindReach]), worked out on a
+/// worker as [moveHotCelInWorker] works out a move: null where the wall
+/// cuts nothing of it. The cut [cutCelInWorker] makes of a kept cel, for
+/// one already thawed.
+///
+/// 🗣️[F-432] (유저 2026-10-21: 「이런 시간 걸리는 로직은 규칙으로서 공용
+/// 로딩창 표시해야함」): a pasteboard's step undone and done again lays back
+/// hot every cel its first run cut, and the redo cut them on the UI thread.
+Future<BitmapSurface?> cutHotCelInWorker(
   BrushFrameKey key,
-  BitmapSurface surface,
-  CelMove move,
-  TileBlockHands here,
-) {
-  final (:canvasSize, :dx, :dy) = move;
-  final moved = translateBitmapSurface(
-    surface,
-    dx: dx,
-    dy: dy,
-    canvasSize: canvasSize,
-  );
-  return layCelEntry(AnicelCelEntry.fromSurface(key, moved), here);
+  AnicelLaidCel at, {
+  required PasteboardReach standsBehind,
+  required PasteboardReach reach,
+}) => _remakeHotCelInWorker(
+  key,
+  at,
+  standsBehind,
+  (surface) => cutBehindReach(surface, reach),
+);
+
+/// [at] — a hot cel's blocks, behind the wall it [standsBehind] — copied
+/// into this worker's own tiles ([copiedCelSurface]), made anew by [remake],
+/// laid into the main isolate's tile blocks and adopted there behind the
+/// wall [remake] left it at; null where [remake] leaves the picture as it
+/// is.
+///
+/// ⚠️A laid cel carries no wall of its own, so the wall crosses beside it:
+/// adopted with none and walled on the main isolate, every tile the wall
+/// crosses would be copied a second time there ([surfaceBehindReach]) — and
+/// a move made against no wall clips where the main isolate's would not.
+Future<BitmapSurface?> _remakeHotCelInWorker(
+  BrushFrameKey key,
+  AnicelLaidCel at,
+  PasteboardReach standsBehind,
+  BitmapSurface? Function(BitmapSurface surface) remake,
+) async {
+  final blocks = BitmapTile.blocks;
+  final made = await onAWorker(() {
+    final made = remake(copiedCelSurface(at, standsBehind: standsBehind));
+    return made == null
+        ? null
+        : (
+            laid: layCelEntry(
+              AnicelCelEntry.fromSurface(key, made),
+              tileBlocksHere(blocks),
+            ),
+            standsBehind: made.pasteboardReach,
+          );
+  });
+  return made == null
+      ? null
+      : laidCelSurface(made.laid, standsBehind: made.standsBehind);
 }
 
 /// [blob]'s picture behind [reach] ([cutBehindReach]), worked out on a

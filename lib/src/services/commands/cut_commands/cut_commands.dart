@@ -261,7 +261,7 @@ class _CutCommands {
     final ahead = _resize(cutId, canvasSize, contentOffset).workAhead(
       undo: false,
     );
-    await ahead?.call(report ?? (_) {});
+    await ahead?.run(report ?? (_) {});
   }
 
   /// The step [placeCutCanvas] takes — and asks what it works out ahead.
