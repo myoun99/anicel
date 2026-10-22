@@ -36,6 +36,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -66,6 +67,9 @@ void main() {
   const view = Size(256, 256);
   const paper = ProjectBackground.color(0xFFF4EEE0);
   final screenKey = GlobalKey();
+
+  // A row blended over its backdrop is composed by this shader.
+  setUpAll(LayerBlendShader.load);
 
   BrushFrameKey key(String id) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -307,10 +311,16 @@ void main() {
     WidgetTester tester, {
     required CanvasViewport viewport,
     List<CompositeNode<CanvasStackRow>> below = const [],
+    List<CompositeNode<CanvasStackRow>>? nodes,
   }) async {
     debugDrawBufferPictures = false;
     try {
-      final made = await stroke(tester, viewport: viewport, below: below);
+      final made = await stroke(
+        tester,
+        viewport: viewport,
+        below: below,
+        nodes: nodes,
+      );
       expect(made.pictures, 0, reason: 'the head arm drew a picture');
       return made.screens;
     } finally {
@@ -396,6 +406,63 @@ void main() {
         await strokeByHeads(tester, viewport: viewport, below: below),
       );
     });
+
+    // ↩️Through an advanced blend these rastered their heads, every step,
+    // while a row composed over its backdrop never drew its picture — the
+    // stroke under one included, whose step composes the row again.
+    // The trees as the plan hands them over: each row in an advanced blend
+    // already composed over what lies below it in its scope.
+    CompositeNode<CanvasStackRow> folder(CompositeNode<CanvasStackRow> child) =>
+        CompositeGroup<CanvasStackRow>(
+          children: [child],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+        );
+    CompositeNode<CanvasStackRow> blended(
+      CompositeNode<CanvasStackRow> source,
+      LayerBlendMode blendMode, {
+      List<CompositeNode<CanvasStackRow>> over = const [],
+    }) => CompositeBackdropBlend<CanvasStackRow>(
+      backdrop: over,
+      source: source,
+      blendMode: blendMode,
+    );
+    final throughABlend = <String, List<CompositeNode<CanvasStackRow>>>{
+      'the live row through multiply': [
+        blended(activeRow, LayerBlendMode.multiply),
+      ],
+      'over a row through multiply': [
+        blended(row('below'), LayerBlendMode.multiply),
+        activeRow,
+      ],
+      'under a row through linear burn': [
+        blended(
+          row('aside'),
+          LayerBlendMode.linearBurn,
+          over: [row('below'), activeRow],
+        ),
+      ],
+      'over a folder through multiply': [
+        blended(folder(row('below')), LayerBlendMode.multiply),
+        activeRow,
+      ],
+      'over a folder holding a row through multiply': [
+        folder(blended(row('below'), LayerBlendMode.multiply)),
+        activeRow,
+      ],
+    };
+    for (final MapEntry(key: scene, value: nodes) in throughABlend.entries) {
+      testWidgets(scene, (tester) async {
+        useView(tester);
+        final viewport = CanvasViewport(zoom: 2, panX: -40, panY: -60);
+        final drawn = await stroke(tester, viewport: viewport, nodes: nodes);
+        expect(drawn.pictures, steps, reason: 'a step rastered its head');
+        expectSameScreens(
+          drawn.screens,
+          await strokeByHeads(tester, viewport: viewport, nodes: nodes),
+        );
+      });
+    }
   });
 
   group('where the picture would not be the same bytes, the head is '
@@ -466,29 +533,6 @@ void main() {
       });
     }
 
-    testWidgets('through a blend that is not in place', (tester) async {
-      await expectHeads(
-        tester,
-        nodes: const [
-          CompositeLeaf<CanvasStackRow>(
-            CanvasActiveLayerRow(
-              opacity: 1,
-              blendMode: LayerBlendMode.multiply,
-            ),
-          ),
-        ],
-      );
-    });
-
-    testWidgets('over a row through a blend that is not in place', (
-      tester,
-    ) async {
-      await expectHeads(
-        tester,
-        below: [row('below', blendMode: LayerBlendMode.multiply)],
-      );
-    });
-
     testWidgets('over a posed row', (tester) async {
       await expectHeads(
         tester,
@@ -496,35 +540,6 @@ void main() {
           row(
             'below',
             pose: TransformPose(center: CanvasPoint(x: 130, y: 128)),
-          ),
-        ],
-      );
-    });
-
-    testWidgets('over a folder through a blend that is not in place', (
-      tester,
-    ) async {
-      await expectHeads(
-        tester,
-        below: [
-          CompositeGroup<CanvasStackRow>(
-            children: [row('below')],
-            opacity: 1,
-            blendMode: LayerBlendMode.multiply,
-          ),
-        ],
-      );
-    });
-
-    testWidgets('over a folder holding a row through a blend that is not in '
-        'place', (tester) async {
-      await expectHeads(
-        tester,
-        below: [
-          CompositeGroup<CanvasStackRow>(
-            children: [row('below', blendMode: LayerBlendMode.multiply)],
-            opacity: 1,
-            blendMode: LayerBlendMode.normal,
           ),
         ],
       );

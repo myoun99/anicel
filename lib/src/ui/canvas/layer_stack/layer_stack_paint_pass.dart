@@ -1602,6 +1602,14 @@ class _LayerStackPaintPass {
   /// layer image that is not a texel copy, and an adjustment scope — its
   /// crossfade goes through `saveLayer`s nobody has measured this way yet.
   /// The paper is a fill on whole canvas pixels, and qualifies.
+  ///
+  /// A row blended over its backdrop qualifies when what it composes does:
+  /// its shader runs over two rasters made as the picture is recorded, and
+  /// what the picture draws is the result's blit — 1:1, as a group's is.
+  /// ↩️It never did ("nobody has measured"), and a blend row anywhere in the
+  /// tree, baked or not, cost every stroke step a head: 🔬on the Windows app
+  /// (10-22, r10 · r11) a stroke over a multiply row went from 19.2ms input
+  /// to screen to 14.0, the 14.4 of a normal one.
   bool _drawsTexelForTexel(List<CompositeNode<_PaintRow>> nodes) {
     for (final node in nodes) {
       final inPlace = switch (node) {
@@ -1627,9 +1635,9 @@ class _LayerStackPaintPass {
                 effects: effects,
               ) &&
               _drawsTexelForTexel(children),
-        // Nor a blend over its backdrop: a shader over two rasters, which
-        // nobody has measured this way yet either.
-        CompositeAdjustment() || CompositeBackdropBlend() => false,
+        CompositeBackdropBlend(:final backdrop, :final source) =>
+          _drawsTexelForTexel(backdrop) && _drawsTexelForTexel([source]),
+        CompositeAdjustment() => false,
       };
       if (!inPlace) {
         return false;
