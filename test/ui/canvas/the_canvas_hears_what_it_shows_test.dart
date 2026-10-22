@@ -131,6 +131,36 @@ void main() {
     });
   }
 
+  // Two cuts with no rows both stand on the track's transitions: the cut
+  // alone moves.
+  testWidgets('another cut stood on, neither with a row, is shown on the '
+      'canvas', (tester) async {
+    Cut bare(String id) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 6,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      layers: const [],
+    );
+    final session = sessionOf(
+      _project().copyWith(
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'Video',
+            cuts: [bare('e1'), bare('e2')],
+          ),
+        ],
+      ),
+    );
+    session.selectCut(const CutId('e1'));
+    final layer = session.activeLayerId;
+    final before = EditorCanvasArea.shownBy(session);
+    session.selectCut(const CutId('e2'));
+    expect(session.activeLayerId, layer, reason: '⛔premise: the same row');
+    expect(EditorCanvasArea.shownBy(session), isNot(before));
+  });
+
   final notShown = <String, void Function(EditorSessionManager session)>{
     'a guide picked': (session) =>
         session.cutVerbs.selectedGuideId = const GuideId('g1'),
