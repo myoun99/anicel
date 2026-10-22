@@ -933,6 +933,7 @@ class _LayerStackPaintPass {
       paintBackdrop: (into, scale) => paintChildren(into, backdrop, scale),
       paintSource: (into, scale) => paintChildren(into, [source], scale),
       blendMode: blendMode,
+      shownWithin: _shownWithin,
     );
   }
 
@@ -1189,6 +1190,23 @@ class _LayerStackPaintPass {
     double rasterScale,
   ) => _paintNodesWith(canvas, list, rasterScale, _paintNodes);
 
+  /// [_paintNodes] into a recording the bake keeps — replayed by later
+  /// paints under whatever clip each of them has, so no blend in it is read
+  /// in the frame ([_shownWithin]).
+  void _paintBaked(
+    Canvas canvas,
+    List<CompositeNode<_PaintRow>> list,
+    double rasterScale,
+  ) {
+    final shown = _shownWithin;
+    _shownWithin = null;
+    try {
+      _paintNodes(canvas, list, rasterScale);
+    } finally {
+      _shownWithin = shown;
+    }
+  }
+
   void _paintSplit(
     Canvas canvas,
     List<CompositeNode<_PaintRow>> list,
@@ -1205,7 +1223,7 @@ class _LayerStackPaintPass {
       _painter.bake!.draw(
         canvas,
         '$slot:all',
-        (into) => _paintNodes(into, list, rasterScale),
+        (into) => _paintBaked(into, list, rasterScale),
       );
       return;
     }
@@ -1213,7 +1231,7 @@ class _LayerStackPaintPass {
       _painter.bake!.draw(
         canvas,
         '$slot:before',
-        (into) => _paintNodes(into, list.sublist(0, at), rasterScale),
+        (into) => _paintBaked(into, list.sublist(0, at), rasterScale),
       );
     }
     _paintNodesWith(canvas, [list[at]], rasterScale, (into, children, scale) {
@@ -1223,7 +1241,7 @@ class _LayerStackPaintPass {
       _painter.bake!.draw(
         canvas,
         '$slot:after',
-        (into) => _paintNodes(into, list.sublist(at + 1), rasterScale),
+        (into) => _paintBaked(into, list.sublist(at + 1), rasterScale),
       );
     }
   }
@@ -1306,13 +1324,13 @@ class _LayerStackPaintPass {
     if (at < 0) {
       drawBackdrop(
         'd0:backdrop-all',
-        (c) => _paintNodes(c, _rootNodes, rasterScale),
+        (c) => _paintBaked(c, _rootNodes, rasterScale),
       );
       return;
     }
     drawBackdrop(
       'd0:backdrop',
-      (c) => _paintNodes(c, _rootNodes.sublist(0, at), rasterScale),
+      (c) => _paintBaked(c, _rootNodes.sublist(0, at), rasterScale),
     );
     _paintNodesWith(into, [_rootNodes[at]], rasterScale, (
       c,
@@ -1325,7 +1343,7 @@ class _LayerStackPaintPass {
       _painter.bake!.draw(
         into,
         'd0:after',
-        (c) => _paintNodes(c, _rootNodes.sublist(at + 1), rasterScale),
+        (c) => _paintBaked(c, _rootNodes.sublist(at + 1), rasterScale),
       );
     }
   }
@@ -1345,6 +1363,16 @@ class _LayerStackPaintPass {
   /// aligned to canvas space, where a level image lands texel for texel —
   /// rather than the walk's screen ([_paintImageNode]).
   bool _composingTheBuffer = false;
+
+  /// Where the recording being made is shown — whole, once, cut by nothing
+  /// else: the display buffer's rect on the visible canvas, while a miss
+  /// composes it; null otherwise. A blend is read in the frame only inside
+  /// it ([drawBlendOverBackdrop]): the engine cuts the layer a blend reads
+  /// to the clip it is DRAWN under, and the source would then be sampled
+  /// off the backdrop — under Impeller (`--enable-impeller`), a recording
+  /// the bake replayed into a stroke's patch laid a multiply row's ink over
+  /// paper it does not cover, 261 pixels a step.
+  Rect? _shownWithin;
 
   void _paintContent(
     Canvas into, {
@@ -1507,6 +1535,7 @@ class _LayerStackPaintPass {
     final dirty = miss.dirty;
     final scroll = miss.scroll;
     final canScroll = miss.canScroll;
+    _shownWithin = rect.intersect(_visibleCanvasRect);
     final recorder = ui.PictureRecorder();
     final into = _bufferCanvas(recorder, rect);
     // ⛔SET AT THE BRANCH THAT DECIDES IT. Two of these three draw a base
@@ -1536,6 +1565,7 @@ class _LayerStackPaintPass {
       );
       derived = false;
     }
+    _shownWithin = null;
     return _keepMiss(
       recorder,
       rect,
@@ -1635,8 +1665,14 @@ class _LayerStackPaintPass {
                 effects: effects,
               ) &&
               _drawsTexelForTexel(children),
+        // Not on a flipped view: read in the frame, a blend reads its
+        // backdrop in the space it is drawn in — the screen's, which a flip
+        // runs the other way from the picture's ([drawBlendOverBackdrop]).
         CompositeBackdropBlend(:final backdrop, :final source) =>
-          _drawsTexelForTexel(backdrop) && _drawsTexelForTexel([source]),
+          !_painter.viewport.flipHorizontal &&
+              !_painter.viewport.flipVertical &&
+              _drawsTexelForTexel(backdrop) &&
+              _drawsTexelForTexel([source]),
         CompositeAdjustment() => false,
       };
       if (!inPlace) {

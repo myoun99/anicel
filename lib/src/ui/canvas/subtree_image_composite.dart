@@ -342,6 +342,11 @@ void drawSubtreeAsImage({
 /// The arithmetic is [drawSubtreeAsImage]'s — the same plan, the same blit
 /// — so a blend at any depth sits on the grid a folder's buffer would.
 ///
+/// ★Where the engine can, the backdrop is not rasterised at all but read in
+/// the frame ([_composeInTheFrame]) — the same shader over the same two
+/// pictures, the backdrop handed to it by the engine instead of by a raster
+/// ([_readsInTheFrame] says where).
+///
 /// 🚨ONLY WHAT THE CANVAS STILL SHOWS IS RASTERISED: its clip, a stroke's
 /// patch while one is drawn. 🔬Measured on the Windows app (10-22, a 2560
 /// px window): with a shader-blended row over the layer being drawn on,
@@ -356,6 +361,7 @@ void drawBlendOverBackdrop({
   required void Function(Canvas into, double rasterScale) paintBackdrop,
   required void Function(Canvas into, double rasterScale) paintSource,
   required LayerBlendMode blendMode,
+  Rect? shownWithin,
 }) {
   final plan = _planSubtreeRaster(
     bounds: bounds,
@@ -378,6 +384,17 @@ void drawBlendOverBackdrop({
     return rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
   }
 
+  if (_readsInTheFrame(canvas, plan, shownWithin)) {
+    _composeInTheFrame(
+      canvas: canvas,
+      plan: plan,
+      rasterScale: rasterScale,
+      paintBackdrop: paintBackdrop,
+      source: rasterOf(paintSource),
+      blendMode: blendMode,
+    );
+    return;
+  }
   final backdrop = rasterOf(paintBackdrop);
   ui.Image? source;
   ui.Image? composed;
@@ -401,6 +418,103 @@ void drawBlendOverBackdrop({
     composed?.dispose();
     source?.dispose();
     backdrop.dispose();
+  }
+}
+
+/// Whether a blend is read in the frame where it can be
+/// ([_composeInTheFrame]). Off, every blend rasterises its backdrop — the
+/// route a test holds the frame's bytes against.
+@visibleForTesting
+bool debugBlendInTheFrame = true;
+
+/// How many blends were read in the frame since a test zeroed it.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+int debugBlendsReadInTheFrame = 0;
+
+/// Whether [canvas] can read [plan]'s backdrop in the frame: the engine has
+/// a shader filter — Impeller; Skia has none, and throws — and the layer
+/// the backdrop is drawn into lands whole on [plan]'s own grid.
+///
+/// 🚨The filter reads the layer as the engine CUTS it, to the clip it is
+/// drawn under, and in the space it is drawn in. So the layer must lie
+/// inside [shownWithin] — where the caller knows the recording is shown,
+/// once, cut by nothing else (null: it may be replayed under another clip,
+/// as a bake's recording is) — and under the canvas's clip, upright, on
+/// whole device pixels. Anywhere else the source would be sampled off the
+/// backdrop it is composed with.
+bool _readsInTheFrame(
+  Canvas canvas,
+  SubtreeRasterPlan plan,
+  Rect? shownWithin,
+) {
+  if (shownWithin == null ||
+      !debugBlendInTheFrame ||
+      !ui.ImageFilter.isShaderFilterSupported) {
+    return false;
+  }
+  final m = canvas.getTransform();
+  final upright =
+      m[1] == 0 && m[3] == 0 && m[4] == 0 && m[7] == 0 && m[0] > 0 && m[5] > 0;
+  if (!upright) {
+    return false;
+  }
+  bool whole(double v) => (v - v.roundToDouble()).abs() < 1e-3;
+  final d = plan.destination;
+  final clip = canvas.getLocalClipBounds().intersect(shownWithin);
+  return whole(d.left * m[0] + m[12]) &&
+      whole(d.right * m[0] + m[12]) &&
+      whole(d.top * m[5] + m[13]) &&
+      whole(d.bottom * m[5] + m[13]) &&
+      clip.left <= d.left + 1e-3 &&
+      clip.top <= d.top + 1e-3 &&
+      clip.right >= d.right - 1e-3 &&
+      clip.bottom >= d.bottom - 1e-3;
+}
+
+/// [paintBackdrop] drawn into a layer whose filter IS the blend: the engine
+/// hands that layer to [LayerBlendShader] as the backdrop, in the frame, and
+/// [source] — rasterised on [plan]'s grid, which the layer lands on — is the
+/// other picture. One raster where the backdrop's route makes three, and
+/// none of them waits on the frame.
+///
+/// 🗣️a-blurred-folder-cut-by-the-view-moves-on-vulkan (유저 2026-10-22
+/// 「골은 b」): the backdrop is read where the frame is drawn, the way the
+/// GPU's own blend reads its target. 🔬On the Windows app (10-22, r12) a
+/// stroke under a multiply row came to the screen 21.3ms after its input,
+/// against 30.0 with the backdrop rasterised and 22.5 with the GPU's own
+/// multiply; the whole canvas composed both ways was the same bytes. An
+/// off-screen raster cost about 6.5ms of the raster thread whatever its
+/// size (r10), which is what the backdrop's route paid three times a step.
+void _composeInTheFrame({
+  required Canvas canvas,
+  required SubtreeRasterPlan plan,
+  required double rasterScale,
+  required void Function(Canvas into, double rasterScale) paintBackdrop,
+  required ui.Image source,
+  required LayerBlendMode blendMode,
+}) {
+  assert(() {
+    debugBlendsReadInTheFrame += 1;
+    debugLastSubtreeRaster = plan;
+    return true;
+  }());
+  final shader = LayerBlendShader.filterFor(source: source, mode: blendMode);
+  try {
+    canvas
+      ..saveLayer(
+        plan.destination,
+        Paint()..imageFilter = ui.ImageFilter.shader(shader),
+      )
+      ..clipRect(plan.destination);
+    paintBackdrop(canvas, rasterScale);
+    canvas.restore();
+  } finally {
+    // ⚠️Safe once the layer is recorded: the display list holds its own
+    // claim on the filter and the image it samples.
+    shader.dispose();
+    source.dispose();
   }
 }
 

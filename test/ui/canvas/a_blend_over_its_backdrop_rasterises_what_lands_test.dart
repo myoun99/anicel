@@ -42,15 +42,26 @@ void main() {
   }
 
   /// The bytes the screen gets with the row drawn under [clip] at
-  /// [rasterScale].
+  /// [rasterScale], the canvas under [transform], [outSide] pixels a side —
+  /// the recording shown whole in that image, or within [shownWithin], or,
+  /// [shownNowhere], somewhere it may be cut again.
   Future<Uint8List> landed({
     required Rect clip,
     required double rasterScale,
+    Matrix4? transform,
+    int outSide = side,
+    Rect? shownWithin,
+    bool shownNowhere = false,
   }) async {
     final below = await imageOf(11);
     final row = await imageOf(97);
     final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder)..clipRect(clip);
+    final canvas = Canvas(recorder);
+    if (transform != null) {
+      canvas.transform(transform.storage);
+    }
+    canvas.clipRect(clip);
+    final output = Rect.fromLTWH(0, 0, outSide.toDouble(), outSide.toDouble());
     drawBlendOverBackdrop(
       canvas: canvas,
       bounds: whole,
@@ -58,9 +69,15 @@ void main() {
       paintBackdrop: (into, _) => into.drawImage(below, Offset.zero, Paint()),
       paintSource: (into, _) => into.drawImage(row, Offset.zero, Paint()),
       blendMode: LayerBlendMode.linearBurn,
+      shownWithin: shownNowhere
+          ? null
+          : shownWithin ??
+                (transform == null
+                    ? output
+                    : MatrixUtils.inverseTransformRect(transform, output)),
     );
     final picture = recorder.endRecording();
-    final image = picture.toImageSync(side, side);
+    final image = picture.toImageSync(outSide, outSide);
     picture.dispose();
     below.dispose();
     row.dispose();
@@ -98,6 +115,123 @@ void main() {
         inside(all, clip),
         reason: 'at ×$scale the part samples on the whole\'s grid',
       );
+    }
+  });
+
+  // ⚠️IMPELLER ONLY: Skia has no shader filter, so on the default runner
+  // every blend rasterises its backdrop and these skip.
+  // `flutter test --enable-impeller` runs them (Vulkan).
+  group('read in the frame', () {
+    final skip = ui.ImageFilter.isShaderFilterSupported
+        ? false
+        : 'the engine has no shader filter (Skia)';
+
+    /// [landed] read in the frame where it can be, then with the backdrop
+    /// rasterised.
+    Future<(Uint8List, Uint8List)> bothRoutes({
+      required Rect clip,
+      required double rasterScale,
+      required bool inTheFrame,
+      Matrix4? transform,
+      int outSide = side,
+    }) async {
+      debugBlendsReadInTheFrame = 0;
+      final frame = await landed(
+        clip: clip,
+        rasterScale: rasterScale,
+        transform: transform,
+        outSide: outSide,
+      );
+      expect(
+        debugBlendsReadInTheFrame,
+        inTheFrame ? 1 : 0,
+        reason: 'premise: ${inTheFrame ? 'in' : 'not in'} the frame',
+      );
+      debugBlendInTheFrame = false;
+      try {
+        final raster = await landed(
+          clip: clip,
+          rasterScale: rasterScale,
+          transform: transform,
+          outSide: outSide,
+        );
+        return (frame, raster);
+      } finally {
+        debugBlendInTheFrame = true;
+      }
+    }
+
+    // Each with whether a clip off the raster's grid — on the device's
+    // pixels, 10.5 at ×1 — is still read in the frame: not at ×2 drawn from
+    // ×1, where the layer snapped out to the raster pokes past the clip.
+    final upright = <String, (Matrix4?, double, int, bool)>{
+      'at the identity': (null, 1, side, true),
+      'a buffer\'s pixels at ×2': (
+        Matrix4.diagonal3Values(2, 2, 1)..setTranslationRaw(6, 4, 0),
+        2,
+        side * 2 + 8,
+        true,
+      ),
+      'a picture drawn on a screen at ×2': (
+        Matrix4.diagonal3Values(2, 2, 1)..setTranslationRaw(6, 4, 0),
+        1,
+        side * 2 + 8,
+        false,
+      ),
+    };
+    for (final MapEntry(key: name, value: (transform, scale, out, offGrid))
+        in upright.entries) {
+      test('it lands the bytes its rastered backdrop does: $name', () async {
+        final cuts = {
+          whole: true,
+          clip: true,
+          const Rect.fromLTWH(10.5, 20, 17, 13): offGrid,
+        };
+        for (final MapEntry(key: at, value: inTheFrame) in cuts.entries) {
+          final (frame, raster) = await bothRoutes(
+            clip: at,
+            rasterScale: scale,
+            inTheFrame: inTheFrame,
+            transform: transform,
+            outSide: out,
+          );
+          expect(frame, raster, reason: 'under $at');
+        }
+      }, skip: skip);
+    }
+
+    final elsewhere = <String, Future<void> Function()>{
+      'under a rotation': () => landed(
+        clip: whole,
+        rasterScale: 1,
+        transform: Matrix4.rotationZ(1.5707963267948966)
+          ..setTranslationRaw(64, 0, 0),
+      ),
+      'under a flip': () => landed(
+        clip: whole,
+        rasterScale: 1,
+        transform: Matrix4.diagonal3Values(-1, 1, 1)
+          ..setTranslationRaw(64, 0, 0),
+      ),
+      'off a whole pixel': () => landed(
+        clip: whole,
+        rasterScale: 1,
+        transform: Matrix4.translationValues(0.5, 0, 0),
+      ),
+      'where it is shown cut': () => landed(
+        clip: whole,
+        rasterScale: 1,
+        shownWithin: const Rect.fromLTWH(0, 0, 32, 32),
+      ),
+      'where it may be cut again': () =>
+          landed(clip: whole, rasterScale: 1, shownNowhere: true),
+    };
+    for (final MapEntry(key: name, value: draw) in elsewhere.entries) {
+      test('it is not read in the frame $name', () async {
+        debugBlendsReadInTheFrame = 0;
+        await draw();
+        expect(debugBlendsReadInTheFrame, 0);
+      }, skip: skip);
     }
   });
 }

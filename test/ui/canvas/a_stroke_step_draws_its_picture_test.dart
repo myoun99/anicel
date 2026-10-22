@@ -533,6 +533,21 @@ void main() {
       });
     }
 
+    testWidgets('through a blend on a flipped view', (tester) async {
+      await expectHeads(
+        tester,
+        viewport: CanvasViewport(flipHorizontal: true, panX: 256),
+        nodes: [
+          CompositeBackdropBlend<CanvasStackRow>(
+            backdrop: const [],
+            source: row('below'),
+            blendMode: LayerBlendMode.multiply,
+          ),
+          activeRow,
+        ],
+      );
+    });
+
     testWidgets('over a posed row', (tester) async {
       await expectHeads(
         tester,

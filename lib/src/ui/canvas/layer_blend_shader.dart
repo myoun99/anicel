@@ -86,6 +86,23 @@ class LayerBlendShader {
     return shader;
   }
 
+  /// [shaderFor] as an image filter's (`ui.ImageFilter.shader`): the ENGINE
+  /// binds the layer filtered — the backdrop, drawn into it — to the first
+  /// sampler and that layer's size to `uSize`; [source] is the second.
+  ///
+  /// ⚠️The first sampler is handed [source] only so that none is left unset;
+  /// the engine binds the layer over it.
+  static ui.FragmentShader filterFor({
+    required ui.Image source,
+    required LayerBlendMode mode,
+  }) => shaderFor(
+    backdrop: source,
+    source: source,
+    mode: mode,
+    width: source.width.toDouble(),
+    height: source.height.toDouble(),
+  );
+
   /// The kernel's own id for [mode] — the table the brush's C and Dart read.
   static int _nativeId(LayerBlendMode mode) => switch (mode.separable) {
     final separable? => separableBlendModeNativeId(separable),
