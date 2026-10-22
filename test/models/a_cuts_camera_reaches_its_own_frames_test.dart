@@ -81,6 +81,17 @@ void main() {
     expect(rb.lineAt(30), CameraRowLine.middle);
   });
 
+  test('a band over a cut lays a piece a line, each on the line its first '
+      'frame is drawn on', () {
+    final rb = reachOf(cameraRowReachesOf(entries, const [ol]), b);
+    // b's own frames 0..30 run on the track from 18 to 48: below to 30,
+    // where the O.L ends, and in the middle after.
+    expect(rb.stretchesOf(0, 30), [
+      (from: 18, to: 30, line: CameraRowLine.lower),
+      (from: 30, to: 48, line: CameraRowLine.middle),
+    ]);
+  });
+
   test('a cut\'s own frame is counted from its media start', () {
     final rb = reachOf(cameraRowReachesOf(entries, const [ol]), b);
     expect(rb.trackFrameOf(0), 18, reason: 'b\'s frame 0 plays at 18');
