@@ -6899,7 +6899,7 @@ enum AppStrings {
     'saveFailedDetailsHeading': 'Détails',
     'saveFailedCopyLineTemplate': "Copie d'échec : {path}",
     'saveFailedErrorLineTemplate': 'Erreur : {error}',
-    'shortcutAction.file-back-up-failed-copy': "Sauvegarder la copie d'échec…",
+    'shortcutAction.file-back-up-failed-copy': "Sauvegarder la copie d'échec",
     'failedCopyPickTitle': "Quelle copie d'échec ?",
     'failedCopyVanishOnClose':
         "Les copies d'échec disparaissent à la fermeture du programme.",
