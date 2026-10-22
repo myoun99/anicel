@@ -940,50 +940,10 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
 /// fork ②: C speaks the bytes, Dart compresses). An undo hands C the recipe
 /// the way [CelPixelRestore.streamFor] lays it out.
 _TileRewrite _nativeTileRewrite(QaNativeEngine engine, _Pass pass) {
-  final (
-    :channel,
-    :tileSize,
-    :value,
-    :restore,
-    :selector,
-    :threshold,
-    :builder,
-  ) = pass;
-  final byteCount = channel.byteCount;
-  final base = channel.byteOffset(0);
-  final stride = byteCount == 1 ? 0 : channel.byteOffset(1) - base;
-  assert(() {
-    for (var byte = 0; byte < byteCount; byte += 1) {
-      if (channel.byteOffset(byte) != base + byte * stride) {
-        return false;
-      }
-    }
-    return true;
-  }(), 'the C pass addresses channel byte i at base + i * stride');
-  final stream = restore?.streamFor(byteCount);
-  engine.stageCelPixelPass(
-    CelPixelStage(
-      byteCount: byteCount,
-      byteOffsetBase: base,
-      byteOffsetStride: stride,
-      takesEmptyPixels: channel.takesEmptyPixels,
-      tileSize: tileSize,
-      isUndo: restore != null,
-      incoming: value ?? stream!.bytes,
-      incomingCount: restore?.touchedPixelCount ?? 1,
-      incomingStep: stream?.step ?? 0,
-      selector: selector == null
-          ? null
-          : (
-              red: selector.red,
-              green: selector.green,
-              blue: selector.blue,
-              tolerance: selector.tolerance,
-              keepsMatches: selector.keepsMatches,
-            ),
-      threshold: threshold,
-    ),
-  );
+  final tileSize = pass.tileSize;
+  final builder = pass.builder;
+  final byteCount = pass.channel.byteCount;
+  engine.stageCelPixelPass(_stageOf(pass));
   var index = 0;
   return (tile, mask) {
     final result = tile.readPixels(
@@ -1007,6 +967,54 @@ _TileRewrite _nativeTileRewrite(QaNativeEngine engine, _Pass pass) {
         ? null
         : BitmapTile.adoptNative(size: tileSize, pixels: pixels);
   };
+}
+
+/// What the C pass is handed for [pass]: its channel's bytes as a base and
+/// a stride, the incoming bytes — the value forward, the recipe's stream on
+/// an undo — the selector and 2치화's cut.
+CelPixelStage _stageOf(_Pass pass) {
+  final (
+    :channel,
+    :tileSize,
+    :value,
+    :restore,
+    :selector,
+    :threshold,
+    builder: _,
+  ) = pass;
+  final byteCount = channel.byteCount;
+  final base = channel.byteOffset(0);
+  final stride = byteCount == 1 ? 0 : channel.byteOffset(1) - base;
+  assert(() {
+    for (var byte = 0; byte < byteCount; byte += 1) {
+      if (channel.byteOffset(byte) != base + byte * stride) {
+        return false;
+      }
+    }
+    return true;
+  }(), 'the C pass addresses channel byte i at base + i * stride');
+  final stream = restore?.streamFor(byteCount);
+  return CelPixelStage(
+    byteCount: byteCount,
+    byteOffsetBase: base,
+    byteOffsetStride: stride,
+    takesEmptyPixels: channel.takesEmptyPixels,
+    tileSize: tileSize,
+    isUndo: restore != null,
+    incoming: value ?? stream!.bytes,
+    incomingCount: restore?.touchedPixelCount ?? 1,
+    incomingStep: stream?.step ?? 0,
+    selector: selector == null
+        ? null
+        : (
+            red: selector.red,
+            green: selector.green,
+            blue: selector.blue,
+            tolerance: selector.tolerance,
+            keepsMatches: selector.keepsMatches,
+          ),
+    threshold: threshold,
+  );
 }
 
 /// `older + (incoming - older) * coverage / 255`, in the integer mul-div-255
