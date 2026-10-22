@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
+import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -451,6 +452,33 @@ void main() {
         activeRow,
       ],
     };
+    // ⚠️IMPELLER ONLY (`--enable-impeller`): Skia has no shader filter, so
+    // there every blend rasterises its backdrop.
+    testWidgets('a stroke under a blend reads it in the frame, and the '
+        'screens are the ones its rastered backdrop makes', (tester) async {
+      useView(tester);
+      final nodes = throughABlend['under a row through linear burn']!;
+      final viewport = CanvasViewport(zoom: 2, panX: -40, panY: -60);
+      debugBlendsReadInTheFrame = 0;
+      final inTheFrame = await stroke(tester, viewport: viewport, nodes: nodes);
+      expect(
+        debugBlendsReadInTheFrame,
+        greaterThanOrEqualTo(steps),
+        reason: 'a step rasterised the backdrop',
+      );
+      debugBlendInTheFrame = false;
+      try {
+        final rastered = await stroke(
+          tester,
+          viewport: viewport,
+          nodes: nodes,
+        );
+        expectSameScreens(inTheFrame.screens, rastered.screens);
+      } finally {
+        debugBlendInTheFrame = true;
+      }
+    }, skip: !ui.ImageFilter.isShaderFilterSupported);
+
     for (final MapEntry(key: scene, value: nodes) in throughABlend.entries) {
       testWidgets(scene, (tester) async {
         useView(tester);
