@@ -233,6 +233,17 @@ void main() {
     }
     final size = part('brush-pill-size-bar');
     expect(part('brush-pill-opacity-bar').height, size.height);
+    // Each bar's curve one step under it — where the pill lays them, not
+    // where it is shown smaller.
+    final drawn = tester.renderObject<RenderBox>(find.byKey(pill));
+    double top(String key) => tester
+        .renderObject<RenderBox>(inPill(key))
+        .localToGlobal(Offset.zero, ancestor: drawn)
+        .dy;
+    expect(
+      top('brush-tool-pressure-size') - top('brush-pill-size-bar'),
+      size.height + BrushValueBars.gap,
+    );
     for (final (bar, name) in [
       ('brush-pill-size-bar', AppText.strings.brSize),
       ('brush-pill-opacity-bar', AppText.strings.brOpacity),
@@ -315,6 +326,14 @@ void main() {
     final end = tester.getBottomRight(input);
     expect(start.dx, greaterThan(end.dx), reason: 'the row is turned');
     expect(end.dy - start.dy, greaterThan(start.dx - end.dx));
+    // Its frame is the bar's track, whole: as thick as the bar, and as long
+    // as it less the hands under it.
+    final typed = find.ancestor(of: input, matching: find.byType(RotatedBox));
+    final stood = tester.getSize(inPill('brush-pill-size-bar'));
+    expect(
+      tester.getSize(typed),
+      Size(stood.width, stood.height - FieldSlider.handsReach),
+    );
     await tester.enterText(input, '2000');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
