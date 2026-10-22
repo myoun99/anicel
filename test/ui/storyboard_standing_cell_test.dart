@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../helpers/named_finders.dart';
 import '../helpers/storyboard_host.dart';
@@ -301,11 +302,11 @@ void main() {
     expect(brightness().isEmpty, isTrue, reason: 'fixture: no key yet');
     await doubleTap();
     expect(brightness().isEmpty, isFalse, reason: 'the empty cell was keyed');
-    expect(find.text('Rename key'), findsNothing);
+    expect(find.text(_keyNameWindow), findsNothing);
 
     await doubleTap();
     expect(
-      find.text('Rename key'),
+      find.text(_keyNameWindow),
       findsOneWidget,
       reason: 'the key opens its window',
     );
@@ -357,3 +358,9 @@ void main() {
     ]);
   });
 }
+
+/// The key name window's title: what it does, to what (I-24-open-entry).
+String get _keyNameWindow => AppText.strings.windowTitleOn(
+  AppText.strings.editNameAction,
+  AppText.strings.tlKey,
+);

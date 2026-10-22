@@ -334,6 +334,9 @@ enum AppStrings {
   /// 레이어 이름이나 프레임 이름이란 텍스트 필요없음」.
   String get editNameAction => _s('editNameAction');
   String get renameLayerEmpty => _s('renameLayerEmpty');
+  /// The import window's cut name field — the rename window no longer
+  /// wears it.
+  String get renameCutField => _s('renameCutField');
   String get renameCutEmpty => _s('renameCutEmpty');
 
   /// A drawing guide's name — the label the overlay paints over its axis,
@@ -1992,6 +1995,7 @@ enum AppStrings {
     'editNameAction': 'Edit name',
     'editNoteAction': 'Edit note',
     'renameLayerEmpty': 'Layer name cannot be empty.',
+    'renameCutField': 'Cut name',
     'renameCutEmpty': 'Cut name cannot be empty.',
     'renameGuideTitle': 'Rename guide',
     'renameGuideField': 'Guide name',
@@ -3215,6 +3219,7 @@ enum AppStrings {
     'editNameAction': '名前の編集',
     'editNoteAction': 'メモの編集',
     'renameLayerEmpty': 'レイヤー名を空にはできません。',
+    'renameCutField': 'カット名',
     'renameCutEmpty': 'カット名を空にはできません。',
     'renameGuideTitle': 'ガイド名の変更',
     'renameGuideField': 'ガイド名',
@@ -4836,6 +4841,7 @@ enum AppStrings {
     'editNameAction': '이름 편집',
     'editNoteAction': '메모 편집',
     'renameLayerEmpty': '레이어 이름은 비울 수 없습니다.',
+    'renameCutField': '컷 이름',
     'renameCutEmpty': '컷 이름은 비울 수 없습니다.',
     'renameGuideTitle': '가이드 이름 변경',
     'renameGuideField': '가이드 이름',
@@ -6450,6 +6456,7 @@ enum AppStrings {
     'editNameAction': 'Modifier le nom',
     'editNoteAction': 'Modifier la note',
     'renameLayerEmpty': 'Le nom du calque ne peut pas être vide.',
+    'renameCutField': 'Nom du plan',
     'renameCutEmpty': 'Le nom du plan ne peut pas être vide.',
     'renameGuideTitle': 'Renommer le repère',
     'renameGuideField': 'Nom du repère',
@@ -8179,6 +8186,7 @@ enum AppStrings {
     'editNameAction': '编辑名称',
     'editNoteAction': '编辑备注',
     'renameLayerEmpty': '图层名称不能为空。',
+    'renameCutField': '镜头名称',
     'renameCutEmpty': '镜头名称不能为空。',
     'renameGuideTitle': '重命名参考线',
     'renameGuideField': '参考线名称',
