@@ -1878,6 +1878,12 @@ class _LayerStackPaintPass {
   /// draw the stack makes is `srcOver` or `plus` now: a row in an advanced
   /// blend paints normal, and its blend's node lays the composite `srcOver`
   /// (`drawBlendOverBackdrop`).
+  /// 🔬Measured with it gone, on the same app (10-22, r13): two rows in
+  /// multiply, screen or color burn, a normal row drawn on above both or
+  /// between them, with the bottom row's fill and without it — three
+  /// strokes, two notches of the wheel out, a stroke there, two notches
+  /// back in — and after every one the canvas was the cold composite's,
+  /// pixel for pixel, in all thirty.
   void _recomposeOverCarried(Canvas into, List<Rect> region) {
     // ⛔NO REGION, NO RECOMPOSE: a carry into a rect inside the one it had
     // — a zoom in on the same level — with nothing live changed has no
