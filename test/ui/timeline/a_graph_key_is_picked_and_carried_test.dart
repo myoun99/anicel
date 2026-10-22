@@ -693,12 +693,16 @@ void main() {
 
     testWidgets('of a line of two numbers, the number marked nearest the '
         'press goes — 「한 번에 숫자 하나」', (tester) async {
+      // Each number fitted to its own range: x high at 0 and 8, y low there
+      // — so the mark farthest from a press by 8's y is the OTHER number,
+      // 0's x at the box's top left, and the press takes the nearest.
       final s = await _pump(
         tester,
         transform: TransformTrack.empty().copyWith(
           position: PropertyTrack<CanvasPoint>()
-              .withKey(0, CanvasPoint(x: 100, y: 300))
-              .withKey(8, CanvasPoint(x: 200, y: 50)),
+              .withKey(0, CanvasPoint(x: 300, y: 50))
+              .withKey(4, CanvasPoint(x: 100, y: 100))
+              .withKey(8, CanvasPoint(x: 300, y: 50)),
         ),
       );
       await _openTheGraph(tester, s, lane: 'position');
@@ -713,7 +717,7 @@ void main() {
         _up30,
       );
       final moved = _transformOf(s).position.keys[8]!.value;
-      expect((moved.x, moved.y > 50), (200, true));
+      expect((moved.x, moved.y > 50), (300, true));
     });
 
     testWidgets('with the pen up, a press on the line inside the box puts a '
