@@ -173,10 +173,16 @@ int debugSubtreeRasterCount = 0;
 /// 📐The image grid is the LOCAL space at [rasterScale] snapped OUTWARD, and
 /// [SubtreeRasterPlan.destination] is exactly `pixels / scale`. A src/dst pair
 /// that disagreed by a fraction would resample the sub-tree a second time.
+///
+/// [within] cuts the image to the part of [bounds] that can land — what the
+/// canvas still shows — on the same grid: the scale is still the whole
+/// [bounds]' and the grid is counted from the origin, so a part samples
+/// where the whole would.
 SubtreeRasterPlan? _planSubtreeRaster({
   required Rect bounds,
   required double rasterScale,
   int maxPixelSide = maxSubtreeRasterSide,
+  Rect within = Rect.largest,
 }) {
   // 🚨THE SNAP IS PART OF THE CAP. Clamping the scale alone left the cap off
   // by one: `side * scale` landed exactly on the cap and then the OUTWARD
@@ -192,7 +198,7 @@ SubtreeRasterPlan? _planSubtreeRaster({
     bounds: bounds.size,
     maxSide: (maxPixelSide - 2).toDouble(),
   );
-  final destination = rectOutwardOnGrid(bounds, scale);
+  final destination = rectOutwardOnGrid(bounds.intersect(within), scale);
   final width = (destination.width * scale).round();
   final height = (destination.height * scale).round();
   if (width <= 0 || height <= 0) {
@@ -335,6 +341,13 @@ void drawSubtreeAsImage({
 ///
 /// The arithmetic is [drawSubtreeAsImage]'s — the same plan, the same blit
 /// — so a blend at any depth sits on the grid a folder's buffer would.
+///
+/// 🚨ONLY WHAT THE CANVAS STILL SHOWS IS RASTERISED: its clip, a stroke's
+/// patch while one is drawn. 🔬Measured on the Windows app (10-22, a 2560
+/// px window): with a shader-blended row over the layer being drawn on,
+/// every step rasterised the row's whole buffer three times over — a frame
+/// shown 49ms after its input against 12ms with the row normal, whatever
+/// the brush's size.
 void drawBlendOverBackdrop({
   required Canvas canvas,
   required Rect bounds,
@@ -348,6 +361,7 @@ void drawBlendOverBackdrop({
     bounds: bounds,
     rasterScale: rasterScale,
     maxPixelSide: maxPixelSide,
+    within: canvas.getLocalClipBounds(),
   );
   if (plan == null) {
     return;
