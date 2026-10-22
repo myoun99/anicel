@@ -585,8 +585,9 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     return Stack(fit: StackFit.expand, children: [_ground(lanes), picture]);
   }
 
-  /// Its GROUND, under the picture: wherever no handle, key or line takes
-  /// the press, a drag draws a box (I-3 ⑤) — with the devices a lane's
+  /// Its GROUND, under the picture: wherever no handle, key, line or the
+  /// box round the keys picked ([TimelineLaneGraphPainter.pickedBoxIn])
+  /// takes the press, a drag draws a box (I-3 ⑤) — with the devices a lane's
   /// band selects with, a finger scrolling where they do not — and a tap
   /// lets every key go, as a tap on the band does (H18).
   Widget _ground(TimelineLaneRangeCallbacks lanes) => GestureDetector(
@@ -706,8 +707,19 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   bool _takesPressAt(Offset position) {
     final size = context.size!;
     return _painter.handleAt(position, size) != null ||
-        (widget.lanes != null && _painter.keyAt(position, size) != null) ||
+        (widget.lanes != null && _keyTakenAt(position) != null) ||
         _penAt(position) != null;
+  }
+
+  /// The key a press at [position] takes in hand: the one it is on — or,
+  /// off every key and off a line the pen puts one on ([_penAt]), inside
+  /// the box round the keys picked, the picked key nearest it (I-3 ⑤b).
+  LaneGraphKey? _keyTakenAt(Offset position) {
+    final size = context.size!;
+    return _painter.keyAt(position, size) ??
+        (_penAt(position) == null
+            ? _painter.pickedKeyNearest(position, size)
+            : null);
   }
 
   /// Where a press at [position] puts a key (I-3 ④): the line it lands on
@@ -742,7 +754,9 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// A press on a key PICKS it (I-3, AE's graph editor: a click selects the
   /// key) — the key's cell, as the lane selection its row's band makes —
   /// unless the selection holds it already: then it stands, and the drag
-  /// carries all of it, as a drag begun inside a band's selection does.
+  /// carries all of it, as a drag begun inside a band's selection does. A
+  /// press inside the box round the keys picked takes one of them so
+  /// ([_keyTakenAt]).
   ///
   /// ⚠️Mine: the press does not stand the playhead on the key, as a press
   /// on a band does. AE's click on a key leaves the current time where it
@@ -755,7 +769,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     if (lanes == null || _painter.handleAt(position, size) != null) {
       return;
     }
-    final key = _painter.keyAt(position, size);
+    final key = _keyTakenAt(position);
     if (key == null) {
       _putKeyAt(position, lanes);
       return;
@@ -1973,24 +1987,25 @@ class TimelineLaneGraphPainter extends CustomPainter {
     for (final handle in handles) {
       canvas.drawLine(handle.key, handle.at, stem);
     }
-    final picked = selection?.value;
-    for (final (:line, :frame, part: _, :at, :mark) in keys) {
+    final ring = selectedLaneKeyRing;
+    if (_boxRound(pickedKeysIn(size)) case final round?) {
+      canvas.drawRect(
+        round,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = ring.width
+          ..color = ring.color,
+      );
+    }
+    for (final key in keys) {
       paintKeyMark(
         canvas,
-        mark,
-        center: at,
+        key.mark,
+        center: key.at,
         box: _keySize,
         standing: axis == Axis.vertical,
-        color: layerMarkColor(line.layer.mark),
-        ring:
-            laneSelectionPicksKey(
-              picked,
-              line.layer.id,
-              line.lane.laneId,
-              frame,
-            )
-            ? selectedLaneKeyRing
-            : null,
+        color: layerMarkColor(key.line.layer.mark),
+        ring: _picks(key) ? ring : null,
       );
     }
     final fill = Paint()..color = AppColors.surface;
@@ -2026,15 +2041,64 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// The key a press at [position] picks on a picture [size] big (I-3) —
   /// in the box its mark is drawn in, stood a quarter turn on the X-sheet
   /// as [paintKeyMark] stands it ([_drawnLastAt]).
-  LaneGraphKey? keyAt(Offset position, Size size) {
+  LaneGraphKey? keyAt(Offset position, Size size) =>
+      _drawnLastAt(keysIn(size), (key) => _markOf(key).contains(position));
+
+  /// The box [key]'s mark is drawn in.
+  Rect _markOf(LaneGraphKey key) {
     final box = axis == Axis.vertical ? _keySize.flipped : _keySize;
-    return _drawnLastAt(
-      keysIn(size),
-      (key) => Rect.fromCenter(
-        center: key.at,
-        width: box.width,
-        height: box.height,
-      ).contains(position),
+    return Rect.fromCenter(
+      center: key.at,
+      width: box.width,
+      height: box.height,
+    );
+  }
+
+  /// Whether [selection] picks [key] — the key wears its ring.
+  bool _picks(LaneGraphKey key) => laneSelectionPicksKey(
+    selection?.value,
+    key.line.layer.id,
+    key.line.lane.laneId,
+    key.frame,
+  );
+
+  /// The keys [selection] picks of those a picture [size] big marks, in the
+  /// order they are marked.
+  List<LaneGraphKey> pickedKeysIn(Size size) =>
+      keysIn(size).where(_picks).toList();
+
+  /// The BOX ROUND the keys [selection] picks on a picture [size] big
+  /// (I-3 ⑤b, AE's transform box) — their marks' bounds — where it picks
+  /// two or more: null where it picks fewer. A drag begun inside it carries
+  /// them ([pickedKeyNearest]).
+  ///
+  /// 🗣️I-3-Q5 (유저 2026-10-22): 「경계 상자를 둔다 (AE 변형 상자)」.
+  Rect? pickedBoxIn(Size size) => _boxRound(pickedKeysIn(size));
+
+  /// [picked]'s marks' bounds — null for fewer than two keys: a key of two
+  /// numbers is marked twice and is one key.
+  Rect? _boxRound(List<LaneGraphKey> picked) {
+    final keys = {
+      for (final key in picked)
+        (key.line.layer.id, key.line.lane.laneId, key.frame),
+    };
+    return keys.length < 2
+        ? null
+        : picked.map(_markOf).reduce((box, mark) => box.expandToInclude(mark));
+  }
+
+  /// The key picked nearest [position] where it is inside the box round
+  /// them on a picture [size] big ([pickedBoxIn]) — what a press there
+  /// takes in hand: of a line of two numbers, the number marked nearest it
+  /// (I-3-Q5). Null outside the box, and where there is none.
+  LaneGraphKey? pickedKeyNearest(Offset position, Size size) {
+    final picked = pickedKeysIn(size);
+    if (!(_boxRound(picked)?.contains(position) ?? false)) {
+      return null;
+    }
+    double away(LaneGraphKey key) => (key.at - position).distance;
+    return picked.reduce(
+      (nearest, key) => away(key) < away(nearest) ? key : nearest,
     );
   }
 

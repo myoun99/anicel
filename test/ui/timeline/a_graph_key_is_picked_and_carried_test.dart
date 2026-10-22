@@ -27,7 +27,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
-    show timelineLaneKeyMarkerSize;
+    show selectedLaneKeyRing, timelineLaneKeyMarkerSize;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart'
@@ -603,6 +603,155 @@ void main() {
     expect(s.historyManager.canUndo, undoable);
   });
 
+  // 🗣️I-3-Q5 (유저 2026-10-22): 「경계 상자를 둔다 (AE 변형 상자)」.
+  group('the box round the keys picked (I-3 ⑤b)', () {
+    /// The rotation keys on 0 and 8 picked — or the one on 8 alone.
+    Future<void> pick(
+      WidgetTester tester,
+      EditorSessionManager s, {
+      String lane = 'rotation',
+      int from = 0,
+    }) async {
+      s.updateLaneRangeSelectionDrag(
+        layerId: _drawId,
+        laneId: lane,
+        anchorIndex: from,
+        headIndex: 8,
+        spanLaneIds: [lane],
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Rect? boxed(WidgetTester tester) {
+      final (:painter, :box) = _graphOf(tester);
+      return painter.pickedBoxIn(box.size);
+    }
+
+    /// [at] on the screen, where nothing drawn takes a press.
+    Offset bare(WidgetTester tester, Offset at) {
+      final (:painter, :box) = _graphOf(tester);
+      final local = box.globalToLocal(at);
+      expect(
+        (
+          painter.keyAt(local, box.size),
+          painter.handleAt(local, box.size),
+        ),
+        (null, null),
+        reason: '⛔전제: no key and no handle there',
+      );
+      return at;
+    }
+
+    testWidgets('two keys picked are boxed round in the selection\'s ring; '
+        'one is not', (tester) async {
+      final s = await _pump(tester);
+      await _openTheGraph(tester, s);
+      expect(boxed(tester), isNull, reason: 'none picked');
+
+      await pick(tester, s, from: 8);
+      expect(boxed(tester), isNull, reason: 'one picked');
+
+      await pick(tester, s);
+      final round = boxed(tester)!;
+      final box = _graphOf(tester).box;
+      for (final frame in [0, 8]) {
+        expect(
+          round.contains(box.globalToLocal(_keyOnScreen(tester, frame))),
+          isTrue,
+        );
+      }
+      expect(
+        _paintOf(tester),
+        paints..rect(rect: round, color: selectedLaneKeyRing.color),
+      );
+    });
+
+    testWidgets('a drag begun on the box\'s ground carries the keys picked, '
+        'as one begun on a key does; outside it, a drag draws a new box', (
+      tester,
+    ) async {
+      final s = await _pump(tester);
+      await _openTheGraph(tester, s);
+      await pick(tester, s);
+      final cell = _cellExtent(tester);
+      final first = _keyOnScreen(tester, 0);
+      final last = _keyOnScreen(tester, 8);
+
+      await _carry(
+        tester,
+        bare(tester, Offset(last.dx - cell * 2, first.dy)),
+        Offset(cell * 2, 0),
+      );
+      expect(_keyedFrames(s), [2, 10]);
+
+      final top = _keyOnScreen(tester, 10);
+      final outside = bare(tester, top + Offset(cell * 2, 60));
+      final box = _graphOf(tester).box;
+      expect(
+        boxed(tester)!.contains(box.globalToLocal(outside)),
+        isFalse,
+        reason: '⛔전제',
+      );
+      final gesture = await tester.startGesture(
+        outside,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveTo(top + Offset(-cell, -4));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      final picked = s.laneRangeSelection.value!;
+      expect((picked.startIndex, picked.endIndexExclusive), (9, 13));
+      expect(_keyedFrames(s), [2, 10], reason: 'a box moves nothing');
+    });
+
+    testWidgets('of a line of two numbers, the number marked nearest the '
+        'press goes — 「한 번에 숫자 하나」', (tester) async {
+      final s = await _pump(
+        tester,
+        transform: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>()
+              .withKey(0, CanvasPoint(x: 100, y: 300))
+              .withKey(8, CanvasPoint(x: 200, y: 50)),
+        ),
+      );
+      await _openTheGraph(tester, s, lane: 'position');
+      await pick(tester, s, lane: 'position', from: 8);
+      expect(boxed(tester), isNull, reason: 'one key, marked twice');
+      await pick(tester, s, lane: 'position');
+      final cell = _cellExtent(tester);
+
+      await _carry(
+        tester,
+        bare(tester, _keyOnScreen(tester, 8, part: 1) - Offset(cell, 0)),
+        _up30,
+      );
+      final moved = _transformOf(s).position.keys[8]!.value;
+      expect((moved.x, moved.y > 50), (200, true));
+    });
+
+    testWidgets('with the pen up, a press on the line inside the box puts a '
+        'key there, as it does outside', (tester) async {
+      final s = await _pump(tester);
+      await _openTheGraph(tester, s);
+      await pick(tester, s);
+      await _tapThePen(tester);
+      final box = _graphOf(tester).box;
+      expect(
+        boxed(tester)!.contains(
+          box.globalToLocal(_lineOnScreen(tester, 4)),
+        ),
+        isTrue,
+        reason: '⛔전제',
+      );
+
+      await _tapTheLine(tester, 4, PointerDeviceKind.mouse);
+
+      expect(_keyedFrames(s), [0, 4, 8]);
+    });
+  });
 }
 
 Finder get _penButton =>
