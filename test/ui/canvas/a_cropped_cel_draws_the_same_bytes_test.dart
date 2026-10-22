@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
+import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/placement_reading.dart';
@@ -702,6 +703,46 @@ void main() {
       expect(debugWholesLaidBack, 0, reason: name);
     }
   });
+
+  // ④ of a-blurred-folder-cut-by-the-view-moves-on-vulkan: while the display
+  // buffer is composed, a row in an advanced blend that is its ink in one
+  // piece, at full strength with nothing on it, goes to the shader as that
+  // ink — no raster of it — and the screen is the one its raster made.
+  for (final viewport in viewports.entries) {
+    testWidgets('a row in an advanced blend goes to the shader as its ink, '
+        'the bytes its raster lands — ${viewport.key}', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      Future<(Uint8List, int)> shot() async {
+        debugSubtreeRasterCount = 0;
+        final shown = await screen(
+          tester,
+          whole: false,
+          nodes: scenes['rows through the advanced blends']!,
+          viewport: viewport.value,
+          walk: false,
+        );
+        addTearDown(shown.images.dispose);
+        return (shown.bytes, debugSubtreeRasterCount);
+      }
+
+      final (handed, handedRasters) = await shot();
+      debugSourceAsIs = false;
+      final (Uint8List, int) rastered;
+      try {
+        rastered = await shot();
+      } finally {
+        debugSourceAsIs = true;
+      }
+      final moved = compare(rastered.$1, handed);
+      expect(moved.count, 0, reason: 'at ${moved.where}');
+      expect(
+        handedRasters,
+        lessThan(rastered.$2),
+        reason: 'the rows at full strength were not rastered',
+      );
+    });
+  }
 
   // 🚨AT A WORKING SIZE, where the halving is not exact on every engine.
   // Impeller Vulkan samples each 2×2 block a little off its middle once an

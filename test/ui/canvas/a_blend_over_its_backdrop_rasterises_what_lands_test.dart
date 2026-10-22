@@ -21,10 +21,11 @@ void main() {
   const side = 64;
   final whole = Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble());
 
-  /// An opaque image whose every pixel differs from its neighbours.
-  Future<ui.Image> imageOf(int seed) {
-    final pixels = Uint8List(side * side * 4);
-    for (var i = 0; i < side * side; i += 1) {
+  /// An opaque image whose every pixel differs from its neighbours, [width]
+  /// × [height] texels.
+  Future<ui.Image> imageOf(int seed, {int width = side, int height = side}) {
+    final pixels = Uint8List(width * height * 4);
+    for (var i = 0; i < width * height; i += 1) {
       pixels[i * 4] = (i * 7 + seed) & 0xFF;
       pixels[i * 4 + 1] = (i * 13 + seed * 3) & 0xFF;
       pixels[i * 4 + 2] = (i * 29 + seed * 5) & 0xFF;
@@ -33,8 +34,8 @@ void main() {
     final done = Completer<ui.Image>();
     ui.decodeImageFromPixels(
       pixels,
-      side,
-      side,
+      width,
+      height,
       ui.PixelFormat.rgba8888,
       done.complete,
     );
@@ -44,7 +45,9 @@ void main() {
   /// The bytes the screen gets with the row drawn under [clip] at
   /// [rasterScale], the canvas under [transform], [outSide] pixels a side —
   /// the recording shown whole in that image, or within [shownWithin], or,
-  /// [shownNowhere], somewhere it may be cut again.
+  /// [shownNowhere], somewhere it may be cut again. The row's image is the
+  /// whole, [side] texels a side, or lies at [rowAt], [rasterScale] texels a
+  /// canvas pixel; it is handed over as it is where [handedAsIs].
   Future<Uint8List> landed({
     required Rect clip,
     required double rasterScale,
@@ -52,9 +55,18 @@ void main() {
     int outSide = side,
     Rect? shownWithin,
     bool shownNowhere = false,
+    Rect? rowAt,
+    bool handedAsIs = false,
   }) async {
+    final at = rowAt ?? whole;
     final below = await imageOf(11);
-    final row = await imageOf(97);
+    final row = rowAt == null
+        ? await imageOf(97)
+        : await imageOf(
+            97,
+            width: (rowAt.width * rasterScale).round(),
+            height: (rowAt.height * rasterScale).round(),
+          );
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     if (transform != null) {
@@ -67,7 +79,13 @@ void main() {
       bounds: whole,
       rasterScale: rasterScale,
       paintBackdrop: (into, _) => into.drawImage(below, Offset.zero, Paint()),
-      paintSource: (into, _) => into.drawImage(row, Offset.zero, Paint()),
+      paintSource: (into, _) => into.drawImageRect(
+        row,
+        Offset.zero & Size(row.width.toDouble(), row.height.toDouble()),
+        at,
+        Paint(),
+      ),
+      sourceAsIs: handedAsIs ? (image: row, worldRect: at) : null,
       blendMode: LayerBlendMode.linearBurn,
       shownWithin: shownNowhere
           ? null
@@ -235,5 +253,105 @@ void main() {
         expect(debugBlendsReadInTheFrame, 0);
       }, skip: skip);
     }
+  });
+
+  // ④ of a-blurred-folder-cut-by-the-view-moves-on-vulkan: a row that is one
+  // image, laid texel for texel on the grid the shader draws, goes to it as
+  // it is — the raster every step paid for it, whatever moved below it.
+  // On the default runner the backdrop is rastered; under
+  // `--enable-impeller` it is read in the frame, and the row's raster was
+  // then the only one left.
+  group('a row handed over as it is', () {
+    const ink = Rect.fromLTWH(8, 12, 20, 16);
+    final rows = <String, (Rect?, double, Matrix4?, int)>{
+      'the whole at the identity': (null, 1, null, side),
+      'an ink at the identity': (ink, 1, null, side),
+      'an ink on a buffer\'s pixels at ×2': (
+        ink,
+        2,
+        Matrix4.diagonal3Values(2, 2, 1)..setTranslationRaw(6, 4, 0),
+        side * 2 + 8,
+      ),
+    };
+
+    /// [landed] with the row handed over, then rastered: the bytes of each
+    /// and how many rasters each made.
+    Future<((Uint8List, int), (Uint8List, int))> bothRows({
+      required Rect clip,
+      required double rasterScale,
+      Matrix4? transform,
+      int outSide = side,
+      required Rect? rowAt,
+    }) async {
+      Future<(Uint8List, int)> counted() async {
+        debugSubtreeRasterCount = 0;
+        final bytes = await landed(
+          clip: clip,
+          rasterScale: rasterScale,
+          transform: transform,
+          outSide: outSide,
+          rowAt: rowAt,
+          handedAsIs: true,
+        );
+        return (bytes, debugSubtreeRasterCount);
+      }
+
+      final handed = await counted();
+      debugSourceAsIs = false;
+      try {
+        return (handed, await counted());
+      } finally {
+        debugSourceAsIs = true;
+      }
+    }
+
+    for (final MapEntry(key: name, value: (rowAt, scale, transform, out))
+        in rows.entries) {
+      test('it lands the bytes its raster does, one raster fewer: $name',
+          () async {
+        for (final at in [whole, clip]) {
+          final ((handed, handedRasters), (rastered, rasters)) =
+              await bothRows(
+                clip: at,
+                rasterScale: scale,
+                transform: transform,
+                outSide: out,
+                rowAt: rowAt,
+              );
+          expect(handed, rastered, reason: 'under $at');
+          expect(handedRasters, rasters - 1, reason: 'under $at');
+        }
+      });
+    }
+
+    test('a row off the grid is rastered', () async {
+      final ((handed, handedRasters), (rastered, rasters)) = await bothRows(
+        clip: whole,
+        rasterScale: 1,
+        rowAt: const Rect.fromLTWH(8.5, 12, 20, 16),
+      );
+      expect(handedRasters, rasters, reason: 'half a pixel off its grid');
+      expect(handed, rastered);
+    });
+
+    test('a row is rastered where the frame is read on a screen past the '
+        'raster\'s scale', () async {
+      final ((_, handedRasters), (_, rasters)) = await bothRows(
+        clip: whole,
+        rasterScale: 1,
+        transform: Matrix4.diagonal3Values(2, 2, 1)
+          ..setTranslationRaw(6, 4, 0),
+        outSide: side * 2 + 8,
+        rowAt: ink,
+      );
+      expect(
+        handedRasters,
+        rasters,
+        reason: 'the layer is the screen\'s, two of its pixels a texel',
+      );
+    },
+        skip: ui.ImageFilter.isShaderFilterSupported
+            ? false
+            : 'the engine has no shader filter (Skia)');
   });
 }

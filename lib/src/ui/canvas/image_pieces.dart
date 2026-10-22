@@ -6,6 +6,21 @@ import '../../models/rgba_image_bytes.dart';
 /// One GPU image of a picture, and the canvas-space rect it covers.
 typedef ImagePiece = ({ui.Image image, ui.Rect worldRect});
 
+/// Whether [image] drawn into [worldRect] lands texel for texel on a canvas
+/// whose pixels are [texelScale] canvas units apart: one texel per target
+/// pixel, starting on a whole pixel — the draw that resamples nothing.
+bool landsTexelForTexel(
+  ui.Image image,
+  ui.Rect worldRect,
+  double texelScale,
+) {
+  bool whole(double value) => value == value.roundToDouble();
+  return image.width == worldRect.width * texelScale &&
+      image.height == worldRect.height * texelScale &&
+      whole(worldRect.left * texelScale) &&
+      whole(worldRect.top * texelScale);
+}
+
 /// 🚨★★★A PICTURE LONGER ON A SIDE THAN THE ENGINE HOLDS IS HELD IN PIECES
 /// (🗣️유저 2026-10-21, board a-cel-past-the-device-side-composes-smaller-Q1:
 /// 「나눠 든다」 — playback and export show the file's pixels as they are).

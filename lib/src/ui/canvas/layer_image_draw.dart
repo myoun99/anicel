@@ -573,19 +573,10 @@ int debugInksCutOut = 0;
 bool drawsAsTexelCopy(ui.Image image, ui.Rect worldRect) =>
     _isTexelCopy(image, worldRect, 1);
 
-/// Whether [image] drawn into [worldRect] lands texel for texel on a canvas
-/// whose pixels are [texelScale] canvas units apart: one texel per target
-/// pixel, starting on a whole pixel.
-bool _isTexelCopy(ui.Image image, ui.Rect worldRect, double? texelScale) {
-  if (texelScale == null) {
-    return false;
-  }
-  bool whole(double value) => value == value.roundToDouble();
-  return image.width == worldRect.width * texelScale &&
-      image.height == worldRect.height * texelScale &&
-      whole(worldRect.left * texelScale) &&
-      whole(worldRect.top * texelScale);
-}
+/// [landsTexelForTexel] on a canvas that is a pixel raster [texelScale]
+/// apart, and never on one that is not (null).
+bool _isTexelCopy(ui.Image image, ui.Rect worldRect, double? texelScale) =>
+    texelScale != null && landsTexelForTexel(image, worldRect, texelScale);
 
 /// How many layer draws were texel copies — so a pin can say WHICH routes
 /// copy: the test runner draws a bilinear 1:1 exactly as it draws a copy, so

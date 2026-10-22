@@ -47,8 +47,11 @@ class LayerBlendShader {
   }
 
   /// A shader that composes [source] over [backdrop] through [mode] for
-  /// every pixel of a [width] x [height] draw — both pictures on that grid,
-  /// premultiplied, as a raster is.
+  /// every pixel of a [width] x [height] draw — both pictures premultiplied,
+  /// the backdrop on that grid, the source where [sourceRect] lays it in the
+  /// draw's own 0..1: the whole of it ([wholeDraw]) for a raster on that
+  /// grid, a part for a row's own image laid texel for texel on it, which
+  /// shows nothing past its edge.
   ///
   /// ⚠️The caller owns the returned shader and must `dispose()` it after the
   /// draw that used it is recorded.
@@ -58,6 +61,7 @@ class LayerBlendShader {
     required LayerBlendMode mode,
     required double width,
     required double height,
+    ui.Rect sourceRect = wholeDraw,
   }) {
     if (!mode.needsItsBackdrop) {
       throw ArgumentError.value(
@@ -81,6 +85,10 @@ class LayerBlendShader {
     shader.setFloat(0, width);
     shader.setFloat(1, height);
     shader.setFloat(2, _nativeId(mode).toDouble());
+    shader.setFloat(3, sourceRect.left);
+    shader.setFloat(4, sourceRect.top);
+    shader.setFloat(5, sourceRect.width);
+    shader.setFloat(6, sourceRect.height);
     shader.setImageSampler(0, backdrop);
     shader.setImageSampler(1, source);
     return shader;
@@ -95,13 +103,19 @@ class LayerBlendShader {
   static ui.FragmentShader filterFor({
     required ui.Image source,
     required LayerBlendMode mode,
+    ui.Rect sourceRect = wholeDraw,
   }) => shaderFor(
     backdrop: source,
     source: source,
     mode: mode,
     width: source.width.toDouble(),
     height: source.height.toDouble(),
+    sourceRect: sourceRect,
   );
+
+  /// The whole draw, in its own 0..1 — where a source rastered on the
+  /// draw's grid lies ([shaderFor]).
+  static const ui.Rect wholeDraw = ui.Rect.fromLTWH(0, 0, 1, 1);
 
   /// The kernel's own id for [mode] — the table the brush's C and Dart read.
   static int _nativeId(LayerBlendMode mode) => switch (mode.separable) {

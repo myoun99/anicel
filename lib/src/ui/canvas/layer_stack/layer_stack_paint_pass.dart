@@ -932,10 +932,33 @@ class _LayerStackPaintPass {
       rasterScale: rasterScale,
       paintBackdrop: (into, scale) => paintChildren(into, backdrop, scale),
       paintSource: (into, scale) => paintChildren(into, [source], scale),
+      sourceAsIs: _rowAsItIs(source),
       blendMode: blendMode,
       shownWithin: _shownWithin,
     );
   }
+
+  /// The row a blend composes as the row's own image, where it is one
+  /// ([drawBlendOverBackdrop]'s `sourceAsIs`): a cel or a cached image in
+  /// one piece, painting normal at full strength with nothing on it — and
+  /// only while the display buffer is composed, where its draw would lay it
+  /// texel for texel too ([_paintImageNode]'s `texelScale`). The walk on the
+  /// screen samples it as the zoom says, which a texel is not.
+  ImagePiece? _rowAsItIs(CompositeNode<_PaintRow> source) => switch (source) {
+    CompositeLeaf(
+      payload: _PaintImage(
+        pieces: [final piece],
+        placement: null,
+        opacity: 1.0,
+        blendMode: LayerBlendMode.normal,
+        tint: null,
+        effects: [],
+      ),
+    )
+        when _composingTheBuffer =>
+      piece,
+    _ => null,
+  };
 
   /// A surface layer — the live one, or one a lift holds beside it (I-37 ·
   /// F-329): drawn straight onto the canvas when its paint can ride the
