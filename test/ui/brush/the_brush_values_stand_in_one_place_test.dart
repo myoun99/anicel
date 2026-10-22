@@ -12,6 +12,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/brush_value_group.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
@@ -269,6 +271,28 @@ void main() {
     );
   });
 
+  testWidgets('stood, the blend is as thick as it is told in any room — not '
+      'only where the pill holds it to that', (tester) async {
+    final brushTool = ValueNotifier(BrushToolState.defaults);
+    addTearDown(brushTool.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: BrushBlendModeControl(
+            brushTool: brushTool,
+            axis: Axis.vertical,
+            length: 300,
+            thickness: 20,
+          ),
+        ),
+      ),
+    );
+    expect(
+      tester.getSize(find.byType(BrushBlendModeControl)),
+      const Size(20, 300),
+    );
+  });
+
   testWidgets('the pill\'s bars write their widest numbers whole — at twice '
       'the OS text too: the two one length, the longer one\'s', (tester) async {
     tester.platformDispatcher.textScaleFactorTestValue = 2;
@@ -284,10 +308,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('field-slider-type-input')),
-      '2000',
-    );
+    // Typed as it writes: the field's row turned a quarter clockwise, its
+    // start at the bar's right and its length down the bar.
+    final input = find.byKey(const ValueKey<String>('field-slider-type-input'));
+    final start = tester.getTopLeft(input);
+    final end = tester.getBottomRight(input);
+    expect(start.dx, greaterThan(end.dx), reason: 'the row is turned');
+    expect(end.dy - start.dy, greaterThan(start.dx - end.dx));
+    await tester.enterText(input, '2000');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
