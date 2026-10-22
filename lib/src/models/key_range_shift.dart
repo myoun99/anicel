@@ -25,7 +25,7 @@ Set<int> keysStartingIn(
 /// the audit's clone scan, 2026-09-03), entered by a frame range
 /// (`shiftKeysInRange`). A camera's keys are not the entries of one map:
 /// each lane holds its own, and since F-309 they shift by the lanes' law
-/// ([PropertyTrack.withRangedKeysShifted]) — moved as whole poses, they
+/// ([PropertyTrack.withRangedKeysMoved]) — moved as whole poses, they
 /// came back keyed on lanes that had held no key. The range entry went
 /// with its last caller.
 Map<int, T>? shiftKeysAt<T>({

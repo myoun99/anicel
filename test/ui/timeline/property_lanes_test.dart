@@ -999,43 +999,39 @@ void main() {
         scale: PropertyTrack<CanvasPoint>().withKey(2, uniformScale(1.5)),
       );
 
-      final shifted = transformLaneLens('position')!.keysShifted(
-        track,
+      final shifted = transformLaneLens('position')!.keysMoved(track, (
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 4,
-        frameDelta: 3,
-      )!;
+        to: (frame) => frame + 3,
+      ))!;
       expect(shifted.position.keys.keys.toSet(), {5, 8});
       expect(shifted.scale.keys.keys.toSet(), {2}, reason: 'other lanes stay');
 
       // Landing on the UNSHIFTED key at 8 voids (nothing merges silently).
       expect(
-        transformLaneLens('position')!.keysShifted(
-          track,
+        transformLaneLens('position')!.keysMoved(track, (
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,
-          frameDelta: 6,
-        ),
+          to: (frame) => frame + 6,
+        )),
         isNull,
       );
       // Below frame 0 voids.
       expect(
-        transformLaneLens('position')!.keysShifted(
-          track,
+        transformLaneLens('position')!.keysMoved(track, (
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,
-          frameDelta: -3,
-        ),
+          to: (frame) => frame - 3,
+        )),
         isNull,
       );
       // No keys in range = nothing to move.
       expect(
-        transformLaneLens('rotation')!.keysShifted(
-          track,
+        transformLaneLens('rotation')!.keysMoved(track, (
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,
-          frameDelta: 1,
-        ),
+          to: (frame) => frame + 1,
+        )),
         isNull,
       );
     });

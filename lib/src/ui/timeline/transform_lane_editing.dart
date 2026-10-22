@@ -368,7 +368,7 @@ TransformTrack? transformTrackWithGroupReset(
 }
 
 /// The transform family's lane table: where each lane id lives on the
-/// track. The single-lane range move is [LaneKeysShift.keysShifted] on
+/// track. The single-lane range move is [LaneKeysShift.keysMoved] on
 /// this table; null for an id that is not a transform lane.
 PropertyLaneLens<TransformTrack, Object?>? transformLaneLens(String laneId) =>
     switch (laneId) {

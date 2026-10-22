@@ -239,7 +239,7 @@ void main() {
       expect(none, isNull);
     });
 
-    test('matches the single-lane shifter on a one-lane span', () {
+    test('matches the single-lane move on a one-lane span', () {
       final span = transformTrackWithLaneSpanKeysShifted(
         track(),
         laneIds: const ['scale'],
@@ -247,12 +247,11 @@ void main() {
         rangeEndIndexExclusive: 10,
         frameDelta: 3,
       );
-      final single = transformLaneLens('scale')!.keysShifted(
-        track(),
+      final single = transformLaneLens('scale')!.keysMoved(track(), (
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 10,
-        frameDelta: 3,
-      );
+        to: (frame) => frame + 3,
+      ));
       expect(span!.scale.keys.keys.toSet(), single!.scale.keys.keys.toSet());
     });
   });

@@ -14,13 +14,13 @@ PropertyTrack<double> _track(Map<int, PropertyKey<double>> keys) =>
     PropertyTrack(keys: keys);
 
 void main() {
-  group('withRangedKeysShifted', () {
+  group('withRangedKeysMoved', () {
     test('a key may land on frame 0', () {
       final track = _track({2: const PropertyKey(1.0)});
-      final shifted = track.withRangedKeysShifted(
+      final shifted = track.withRangedKeysMoved(
         rangeStartIndex: 2,
         rangeEndIndexExclusive: 3,
-        frameDelta: -2,
+        to: (frame) => frame - 2,
       );
       expect(shifted, isNotNull);
       expect(shifted!.keys.keys, [0]);
@@ -32,18 +32,18 @@ void main() {
         3: const PropertyKey(3.0),
       });
       expect(
-        track.withRangedKeysShifted(
+        track.withRangedKeysMoved(
           rangeStartIndex: 1,
           rangeEndIndexExclusive: 2,
-          frameDelta: -2,
+          to: (frame) => frame - 2,
         ),
         isNull,
       );
       expect(
-        track.withRangedKeysShifted(
+        track.withRangedKeysMoved(
           rangeStartIndex: 1,
           rangeEndIndexExclusive: 2,
-          frameDelta: 2,
+          to: (frame) => frame + 2,
         ),
         isNull,
       );
@@ -54,10 +54,10 @@ void main() {
         2: const PropertyKey(1.0),
         3: const PropertyKey(2.0),
       });
-      final shifted = track.withRangedKeysShifted(
+      final shifted = track.withRangedKeysMoved(
         rangeStartIndex: 2,
         rangeEndIndexExclusive: 4,
-        frameDelta: 1,
+        to: (frame) => frame + 1,
       )!;
       expect(shifted.keys.keys.toSet(), {3, 4}, reason: '3 vacates first');
       expect(shifted.keyAt(3)!.value, 1.0);
@@ -72,10 +72,10 @@ void main() {
         name: 'in',
       );
       final track = _track({2: held, 9: const PropertyKey(3.0)});
-      final shifted = track.withRangedKeysShifted(
+      final shifted = track.withRangedKeysMoved(
         rangeStartIndex: 2,
         rangeEndIndexExclusive: 3,
-        frameDelta: 4,
+        to: (frame) => frame + 4,
       )!;
       expect(shifted.keys.keys.toSet(), {6, 9});
       expect(shifted.keyAt(6)!.value, 1.0);
