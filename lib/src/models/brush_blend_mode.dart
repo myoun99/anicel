@@ -1,3 +1,4 @@
+import 'non_separable_blend_mode.dart';
 import 'separable_blend_mode.dart';
 
 /// The BRUSH's own composite against the cel it paints on (R26 #9, BB-1).
@@ -6,8 +7,10 @@ import 'separable_blend_mode.dart';
 /// active cel's pixels — [color] is plain srcOver (the default), [behind]
 /// paints only where the cel is still empty (PS 'Behind'), [erase] uses
 /// the brush as an eraser (rides the existing dab erase flag), the
-/// separable modes share the layer vocabulary, and the six from
-/// [darkerColor] on mix the three channels — the brush's own. Applied ONCE
+/// separable modes share the layer vocabulary, and so do the six from
+/// [darkerColor] on that mix the three channels ([NonSeparableBlendMode] —
+/// ↩️the brush's own until brush-fidelity-Q4 gave the layer list every
+/// mode the brush has). Applied ONCE
 /// per stroke at pen-up (never dab-by-dab — overlapping dabs must not
 /// double-apply), with the live overlay pre-blended by the same kernel
 /// (R27 #4).
@@ -68,6 +71,11 @@ enum BrushBlendMode {
   /// once on [SeparableBlendMode].
   SeparableBlendMode? get separable => SeparableBlendMode.forName(name);
 
+  /// The shared data of the six that mix the channels, or `null` for every
+  /// other mode — the layer list reads the same six ([NonSeparableBlendMode]).
+  NonSeparableBlendMode? get nonSeparable =>
+      NonSeparableBlendMode.forName(name);
+
   /// Whether this mode lands through the STROKE BLEND KERNEL — the whole
   /// stroke blended once against the cel (BB-1) — rather than the ordinary
   /// stamp kernels: everything but [color]'s srcOver and [erase]'s dstOut.
@@ -94,13 +102,7 @@ enum BrushBlendMode {
     color => 'Normal',
     behind => 'Behind',
     erase => 'Erase',
-    darkerColor => 'Darker Color',
-    lighterColor => 'Lighter Color',
-    hue => 'Hue',
-    saturation => 'Saturation',
-    chroma => 'Color',
-    luminosity => 'Luminosity',
-    _ => separable!.label,
+    _ => separable?.label ?? nonSeparable!.label,
   };
 
   String toJson() => name;

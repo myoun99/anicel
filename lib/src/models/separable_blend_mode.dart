@@ -17,11 +17,12 @@ import 'dart:ui' show BlendMode;
 /// 🚨★NOT EVERY ONE HAS A GPU BLEND (brush-fidelity, 유저 2026-10-17 Q3:
 /// 「13개 + 클튜의 발광 둘」). The twelve the layer list has always offered
 /// map onto Impeller's [BlendMode]; the seven Photoshop and Clip Studio add
-/// to them (linear burn … divide) have no GPU counterpart, and only the
-/// BRUSH composites them — on the CPU, through the commit's own kernel.
-/// [blendMode] is null for those, and `separable_blend_mode_test` pins that
-/// [LayerBlendMode] — composited on the GPU on every route — lists none of
-/// them.
+/// to them (linear burn … divide) have no GPU counterpart: the BRUSH
+/// composites them on the CPU, through the commit's own kernel, and a LAYER
+/// in one is composed over its backdrop by the blend shader
+/// ([LayerBlendMode.needsItsBackdrop]). [blendMode] is null for those.
+/// ↩️The layer list held none of them until brush-fidelity-Q4 (유저
+/// 2026-10-17 「레이어까지 같이」), and a test pinned that it did not.
 enum SeparableBlendMode {
   darken(BlendMode.darken, 'Darken'),
   multiply(BlendMode.multiply, 'Multiply'),
@@ -63,7 +64,7 @@ enum SeparableBlendMode {
 
   /// The separable mode whose `name` equals [name], or `null` when none does
   /// — the non-separable heads (`color`/`behind`/`erase`, `passThrough`/
-  /// `normal`) and the brush's six that mix the three channels have no
-  /// counterpart here.
+  /// `normal`) and the six that mix the three channels
+  /// ([NonSeparableBlendMode]) have no counterpart here.
   static SeparableBlendMode? forName(String name) => values.asNameMap()[name];
 }

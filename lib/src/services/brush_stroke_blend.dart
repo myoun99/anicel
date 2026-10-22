@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_blend_mode.dart';
+import '../models/non_separable_blend_mode.dart';
 import '../models/separable_blend_mode.dart';
 import '../models/dirty_region.dart';
 import 'brush_stamp_span_kernel.dart';
@@ -171,15 +172,10 @@ int strokeBlendModeNativeId(BrushBlendMode mode) {
       'mode',
       'color/erase land through the ordinary stamp kernels',
     ),
-    // The six that mix the three channels have no separable row either;
-    // their ids follow the separable table's (brush-fidelity).
-    BrushBlendMode.darkerColor => 20,
-    BrushBlendMode.lighterColor => 21,
-    BrushBlendMode.hue => 22,
-    BrushBlendMode.saturation => 23,
-    BrushBlendMode.chroma => 24,
-    BrushBlendMode.luminosity => 25,
-    _ => separableBlendModeNativeId(mode.separable!),
+    _ => switch (mode.separable) {
+      final separable? => separableBlendModeNativeId(separable),
+      null => nonSeparableBlendModeNativeId(mode.nonSeparable!),
+    },
   };
 }
 
@@ -189,8 +185,8 @@ int strokeBlendModeNativeId(BrushBlendMode mode) {
 /// coverages through the very same `qa_stroke_blend_channel` the stroke
 /// kernel reads, so it needs the very same ids — and a second switch
 /// spelling them out would be a copy the moment either one gained a mode.
-/// [strokeBlendModeNativeId] is now this plus the two porter-duff answers
-/// its own callers need.
+/// [strokeBlendModeNativeId] is now this and [nonSeparableBlendModeNativeId]
+/// plus the two porter-duff answers its own callers need.
 int separableBlendModeNativeId(SeparableBlendMode mode) {
   return switch (mode) {
     SeparableBlendMode.add => 1,
@@ -212,6 +208,25 @@ int separableBlendModeNativeId(SeparableBlendMode mode) {
     SeparableBlendMode.pinLight => 17,
     SeparableBlendMode.hardMix => 18,
     SeparableBlendMode.divide => 19,
+  };
+}
+
+/// The same fixed ids for the six that mix the three channels, which have
+/// no separable row; they follow the separable table's (brush-fidelity).
+///
+/// ↩️Spelled inside [strokeBlendModeNativeId] while only the brush had
+/// them. brush-fidelity-Q4 gave the layer list two of the six, composed by
+/// `shaders/layer_blend.frag` reading these very ids — so this is the
+/// third door onto the one table, for the same reason the separable door
+/// is the second.
+int nonSeparableBlendModeNativeId(NonSeparableBlendMode mode) {
+  return switch (mode) {
+    NonSeparableBlendMode.darkerColor => 20,
+    NonSeparableBlendMode.lighterColor => 21,
+    NonSeparableBlendMode.hue => 22,
+    NonSeparableBlendMode.saturation => 23,
+    NonSeparableBlendMode.chroma => 24,
+    NonSeparableBlendMode.luminosity => 25,
   };
 }
 

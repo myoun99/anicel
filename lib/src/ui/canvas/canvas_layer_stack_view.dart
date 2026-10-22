@@ -356,6 +356,7 @@ class CanvasLayerStackView extends StatefulWidget {
         case CompositeLeaf(payload: CanvasActiveLayerRow()):
         case CompositeGroup():
         case CompositeAdjustment():
+        case CompositeBackdropBlend():
           break;
       }
     }
@@ -1550,9 +1551,30 @@ int _replayOpsOf(List<CompositeNode<_PaintRow>> list) {
       CompositeGroup<_PaintRow>(:final children) => 1 + _replayOpsOf(children),
       CompositeAdjustment<_PaintRow>(:final children) =>
         1 + _replayOpsOf(children),
+      CompositeBackdropBlend<_PaintRow>(:final children) =>
+        1 + _replayOpsOf(children),
     };
   }
   return ops;
+}
+
+/// The PAPER the rows are laid on, as the bottom row of the root scope
+/// ([onUnderlay]): where a blend the GPU lacks composes over its backdrop,
+/// the paper is in that backdrop, as a GPU blend reads it off the target
+/// (brush-fidelity-Q4).
+///
+/// The pass paints it ([_LayerStackPaintPass._paintPaperInto]) — it knows
+/// the level and the edge — from the painter's own fields, which the bake's
+/// key and the repaint gate already carry (`paintPaper`, `paperBackground`);
+/// so there is nothing of its own to compare.
+final class _PaintPaper extends _PaintRow {
+  const _PaintPaper();
+
+  @override
+  bool matches(_PaintRow other) => other is _PaintPaper;
+
+  @override
+  int get signature => (_PaintPaper).hashCode;
 }
 
 final class _PaintImage extends _PaintRow {
@@ -1790,6 +1812,15 @@ bool _nodesMatch(CompositeNode<_PaintRow> a, CompositeNode<_PaintRow> b) =>
             mix == b.mix &&
             listEquals(effects, b.effects) &&
             _treesMatch(children, b.children),
+      CompositeBackdropBlend<_PaintRow>(
+        :final backdrop,
+        :final source,
+        :final blendMode,
+      ) =>
+        b is CompositeBackdropBlend<_PaintRow> &&
+            blendMode == b.blendMode &&
+            _nodesMatch(source, b.source) &&
+            _treesMatch(backdrop, b.backdrop),
     };
 
 /// 🚨(v) — [_nodesMatch] as a VALUE, for the bake's key.
@@ -1818,6 +1849,12 @@ int _nodeSignature(CompositeNode<_PaintRow> node) => switch (node) {
     :final mix,
   ) =>
     Object.hash(mix, Object.hashAll(effects), _treeSignature(children)),
+  CompositeBackdropBlend<_PaintRow>(
+    :final backdrop,
+    :final source,
+    :final blendMode,
+  ) =>
+    Object.hash(blendMode, _nodeSignature(source), _treeSignature(backdrop)),
 };
 
 /// Whether the live layer's last paint handed its opacity/blend to the
@@ -2289,6 +2326,12 @@ class _LayerStackPainter extends CustomPainter {
         return !resolvedEffectsSpreadPixels(node.effects) &&
             _liveSurfaceIsSpatiallyStable(node.children);
       }
+      // A blend composes pixel by pixel: a dab moves the composite where it
+      // lands and nowhere else, so only what the row passes through decides.
+      if (node is CompositeBackdropBlend<_PaintRow> &&
+          node.children.any(_enclosesActiveSurface)) {
+        return _liveSurfaceIsSpatiallyStable(node.children);
+      }
     }
     return false;
   }
@@ -2301,9 +2344,12 @@ class _LayerStackPainter extends CustomPainter {
           children.any(_enclosesActiveSurface),
         CompositeAdjustment(:final children) =>
           children.any(_enclosesActiveSurface),
+        CompositeBackdropBlend(:final children) =>
+          children.any(_enclosesActiveSurface),
         CompositeLeaf(payload: _PaintImage()) => false,
         // A lifted row only shows; nothing draws into it.
         CompositeLeaf(payload: _PaintLiftedSurface()) => false,
+        CompositeLeaf(payload: _PaintPaper()) => false,
       };
 
   @override

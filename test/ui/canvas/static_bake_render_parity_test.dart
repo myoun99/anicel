@@ -319,6 +319,52 @@ void main() {
     );
   });
 
+  // brush-fidelity-Q4: a row whose blend the GPU lacks is composed over a
+  // picture of what lies below it — the paper too, at the root — so the
+  // split has a third structure to walk, and two places the live layer can
+  // stand in it.
+  testWidgets('the live layer as the row composed over its backdrop', (
+    tester,
+  ) async {
+    await expectSamePixels(
+      tester,
+      [
+        CompositeBackdropBlend<CanvasStackRow>(
+          backdrop: [drawnRow('under')],
+          source: const CompositeLeaf<CanvasStackRow>(
+            CanvasActiveLayerRow(opacity: 1),
+          ),
+          blendMode: LayerBlendMode.subtract,
+        ),
+        drawnRow('over'),
+      ],
+      drawn: const ['under', 'over'],
+      reason: 'the backdrop is recorded and the row over it drawn live',
+    );
+  });
+
+  testWidgets('the live layer in the backdrop a row is composed over', (
+    tester,
+  ) async {
+    await expectSamePixels(
+      tester,
+      [
+        CompositeBackdropBlend<CanvasStackRow>(
+          backdrop: [
+            drawnRow('under'),
+            const CompositeLeaf<CanvasStackRow>(
+              CanvasActiveLayerRow(opacity: 1),
+            ),
+          ],
+          source: drawnRow('blended', opacity: 0.6),
+          blendMode: LayerBlendMode.divide,
+        ),
+      ],
+      drawn: const ['under', 'blended'],
+      reason: 'the row is recorded and the backdrop it reads drawn live',
+    );
+  });
+
   /// 🚨🚨★★★ THE CONTRACT THE PIXEL COMPARISONS ABOVE CANNOT MAKE.
   ///
   /// Baking the active layer along with everything else produces an

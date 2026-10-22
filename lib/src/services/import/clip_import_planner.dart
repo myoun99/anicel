@@ -102,9 +102,15 @@ import 'media_import_planner.dart' show ImportIdMint;
 
 /// What a CLIP STUDIO composite number blends as here — the program's own
 /// menu order (memory `csp-clip-format-notes` §4; 0 · 2 · 30 measured on
-/// the samples, the rest from the table MoArt reads by). A number with no
-/// formula here is absent, and arrives as normal and said — the .tvpp and
-/// PSD law.
+/// the samples, the rest from the table MoArt reads by). A number absent
+/// here arrives as normal and said — the .tvpp and PSD law.
+///
+/// ⚠️Absent now means NOBODY HAS READ WHICH MODE IT IS, not that we lack the
+/// mode: since brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」) a
+/// layer takes every mode the brush does, but MoArt's table stops at the
+/// ones below, and the numbers of linear burn, subtract, the lights, hard
+/// mix, darker / lighter colour and divide are not in it. The brush menu's
+/// numbers (`sut_decoder.dart`) are a different list and do not line up.
 const Map<int, LayerBlendMode> clipBlendModes = {
   0: LayerBlendMode.normal,
   1: LayerBlendMode.darken,
@@ -119,6 +125,10 @@ const Map<int, LayerBlendMode> clipBlendModes = {
   16: LayerBlendMode.hardLight,
   21: LayerBlendMode.difference,
   22: LayerBlendMode.exclusion,
+  23: LayerBlendMode.hue,
+  24: LayerBlendMode.saturation,
+  25: LayerBlendMode.chroma,
+  26: LayerBlendMode.luminosity,
   30: LayerBlendMode.passThrough,
 };
 

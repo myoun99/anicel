@@ -3,6 +3,7 @@ import 'dart:ui' show BlendMode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/non_separable_blend_mode.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 
 /// The single source of truth this test pins: each separable mode's GPU blend
@@ -20,7 +21,7 @@ import 'package:anicel/src/models/separable_blend_mode.dart';
 /// words that stood here, unchanged.
 ///
 /// A null blend is a mode the GPU has none for — the brush composites it on
-/// the CPU (brush-fidelity).
+/// the CPU, and a layer composes it over its backdrop (brush-fidelity).
 const _expected = <SeparableBlendMode, (BlendMode?, String)>{
   SeparableBlendMode.darken: (BlendMode.darken, 'Darken'),
   SeparableBlendMode.multiply: (BlendMode.multiply, 'Multiply'),
@@ -41,6 +42,17 @@ const _expected = <SeparableBlendMode, (BlendMode?, String)>{
   SeparableBlendMode.hardMix: (null, 'Hard Mix'),
   SeparableBlendMode.exclusion: (BlendMode.exclusion, 'Exclusion'),
   SeparableBlendMode.divide: (null, 'Divide'),
+};
+
+/// The same for the six that mix the three channels — shared the same way
+/// since brush-fidelity-Q4 gave the layer list the six the brush had.
+const _expectedMixers = <NonSeparableBlendMode, (BlendMode?, String)>{
+  NonSeparableBlendMode.darkerColor: (null, 'Darker Color'),
+  NonSeparableBlendMode.lighterColor: (null, 'Lighter Color'),
+  NonSeparableBlendMode.hue: (BlendMode.hue, 'Hue'),
+  NonSeparableBlendMode.saturation: (BlendMode.saturation, 'Saturation'),
+  NonSeparableBlendMode.chroma: (BlendMode.color, 'Color'),
+  NonSeparableBlendMode.luminosity: (BlendMode.luminosity, 'Luminosity'),
 };
 
 void main() {
@@ -66,7 +78,30 @@ void main() {
     });
   });
 
-  group('BrushBlendMode delegates separable data', () {
+  group('NonSeparableBlendMode', () {
+    test('carries the expected blend and English label', () {
+      expect(
+        _expectedMixers.keys.toSet(),
+        NonSeparableBlendMode.values.toSet(),
+      );
+      _expectedMixers.forEach((mode, want) {
+        final (blend, en) = want;
+        expect(mode.blendMode, blend, reason: '${mode.name} blend');
+        expect(mode.label, en, reason: '${mode.name} en');
+      });
+    });
+
+    test('forName resolves each value and is null for anything else', () {
+      for (final mode in NonSeparableBlendMode.values) {
+        expect(NonSeparableBlendMode.forName(mode.name), mode);
+      }
+      expect(NonSeparableBlendMode.forName('color'), isNull);
+      expect(NonSeparableBlendMode.forName('darken'), isNull);
+      expect(NonSeparableBlendMode.forName('nonsense'), isNull);
+    });
+  });
+
+  group('BrushBlendMode delegates the shared data', () {
     // ↩️Each also pinned its GPU preview blend (`previewBlendMode`), until
     // brush-fidelity-Q9 left no brush blend drawn on the GPU.
     const heads = {
@@ -74,43 +109,36 @@ void main() {
       BrushBlendMode.behind: 'Behind',
       BrushBlendMode.erase: 'Erase',
     };
-    // The six that mix the three channels — the brush's own.
-    const mixers = {
-      BrushBlendMode.darkerColor: 'Darker Color',
-      BrushBlendMode.lighterColor: 'Lighter Color',
-      BrushBlendMode.hue: 'Hue',
-      BrushBlendMode.saturation: 'Saturation',
-      BrushBlendMode.chroma: 'Color',
-      BrushBlendMode.luminosity: 'Luminosity',
-    };
 
-    test('heads keep their own labels and are not separable', () {
+    test('heads keep their own labels and are in neither table', () {
       heads.forEach((mode, en) {
         expect(mode.separable, isNull, reason: '${mode.name} head');
+        expect(mode.nonSeparable, isNull, reason: '${mode.name} head');
         expect(mode.label, en);
       });
     });
 
-    test('the six that mix the channels keep their own labels', () {
-      mixers.forEach((mode, en) {
-        expect(mode.separable, isNull, reason: '${mode.name} mixes');
-        expect(mode.label, en, reason: '${mode.name} en');
-      });
-    });
-
-    test('every other value resolves through SeparableBlendMode', () {
+    test('every other value resolves through exactly one table', () {
       for (final mode in BrushBlendMode.values) {
-        if (heads.containsKey(mode) || mixers.containsKey(mode)) continue;
+        if (heads.containsKey(mode)) continue;
         final separable = mode.separable;
-        expect(separable, isNotNull, reason: '${mode.name} must be separable');
-        expect(mode.label, separable!.label);
-      }
-      // ...and every separable mode is the brush's.
-      for (final separable in SeparableBlendMode.values) {
+        final mixer = mode.nonSeparable;
         expect(
-          BrushBlendMode.named(separable.name),
+          (separable == null) != (mixer == null),
+          isTrue,
+          reason: '${mode.name} is in one table',
+        );
+        expect(mode.label, separable?.label ?? mixer!.label);
+      }
+      // ...and every mode of both tables is the brush's.
+      for (final name in [
+        for (final mode in SeparableBlendMode.values) mode.name,
+        for (final mode in NonSeparableBlendMode.values) mode.name,
+      ]) {
+        expect(
+          BrushBlendMode.named(name),
           isNotNull,
-          reason: '${separable.name} is in the brush list',
+          reason: '$name is in the brush list',
         );
       }
     });
@@ -127,42 +155,68 @@ void main() {
     });
   });
 
-  group('LayerBlendMode delegates separable data', () {
+  group('LayerBlendMode delegates the shared data', () {
     const heads = {
       LayerBlendMode.passThrough: 'Pass Through',
       LayerBlendMode.normal: 'Normal',
     };
 
-    test('heads keep their own labels and are not separable', () {
+    test('heads keep their own labels and are in neither table', () {
       heads.forEach((mode, en) {
         expect(mode.separable, isNull, reason: '${mode.name} head');
+        expect(mode.nonSeparable, isNull, reason: '${mode.name} head');
         expect(mode.paintBlendMode, BlendMode.srcOver);
         expect(mode.label, en);
       });
     });
 
-    test('every non-head value resolves through SeparableBlendMode', () {
+    test('every other value resolves through exactly one table, and the '
+        'GPU blend is the table\'s', () {
       for (final mode in LayerBlendMode.values) {
         if (heads.containsKey(mode)) continue;
         final separable = mode.separable;
-        expect(separable, isNotNull, reason: '${mode.name} must be separable');
-        expect(mode.paintBlendMode, separable!.blendMode);
-        expect(mode.label, separable.label);
+        final mixer = mode.nonSeparable;
+        expect(
+          (separable == null) != (mixer == null),
+          isTrue,
+          reason: '${mode.name} is in one table',
+        );
+        expect(mode.gpuBlendMode, separable?.blendMode ?? mixer!.blendMode);
+        expect(mode.label, separable?.label ?? mixer!.label);
       }
     });
 
-    // 🚨A layer composites on the GPU on every route (playback, canvas,
-    // export), so a mode the GPU has no blend for cannot be a layer's —
-    // the seven are the brush's alone (brush-fidelity-Q4).
-    test('lists exactly the separable modes the GPU has a blend for', () {
-      final layerSeparables = {
-        for (final mode in LayerBlendMode.values)
-          if (mode.separable != null) mode.separable!,
-      };
-      expect(layerSeparables, {
-        for (final mode in SeparableBlendMode.values)
-          if (mode.blendMode != null) mode,
-      });
+    // 🗣️brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): a layer takes
+    // every mode the brush does — in the brush list's order, Clip Studio's
+    // (brush-fidelity-Q5: 「일반 · 배경 · 지우기는 맨 앞 그대로, 나머지는
+    // 클튜 순서로」). ↩️Until then this pinned the opposite: that the layer
+    // list held only the modes with a GPU blend.
+    test('takes every mode the brush does, in the brush list\'s order', () {
+      expect(
+        [
+          for (final mode in LayerBlendMode.values)
+            if (!heads.containsKey(mode)) mode.name,
+        ],
+        [
+          for (final mode in BrushBlendMode.values)
+            if (mode.separable != null || mode.nonSeparable != null)
+              mode.name,
+        ],
+      );
+    });
+
+    test('a mode the GPU lacks is never painted in a blend', () {
+      for (final mode in LayerBlendMode.values) {
+        if (mode.needsItsBackdrop) {
+          expect(
+            () => mode.paintBlendMode,
+            throwsStateError,
+            reason: '${mode.name} is composed over its backdrop',
+          );
+        } else {
+          expect(mode.paintBlendMode, mode.gpuBlendMode, reason: mode.name);
+        }
+      }
     });
   });
 }

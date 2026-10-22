@@ -196,6 +196,43 @@ final class CompositeAdjustmentSignature extends CompositeNodeSignature {
       'children: $children)';
 }
 
+/// A row composed over its BACKDROP's identity (brush-fidelity-Q4): the
+/// blend, the backdrop it reads and the row itself. The row's own leaf
+/// paints normal inside the node, so the blend lives here or nowhere — and
+/// the cache is content-addressed: a subtract row and the same row in
+/// divide must not be one picture.
+final class CompositeBackdropBlendSignature extends CompositeNodeSignature {
+  CompositeBackdropBlendSignature({
+    required List<CompositeNodeSignature> backdrop,
+    required this.source,
+    required this.blendMode,
+  }) : backdrop = List.unmodifiable(backdrop);
+
+  final List<CompositeNodeSignature> backdrop;
+  final CompositeNodeSignature source;
+  final LayerBlendMode blendMode;
+
+  @override
+  List<CompositeNodeSignature> get children => [...backdrop, source];
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeBackdropBlendSignature &&
+          other.blendMode == blendMode &&
+          other.source == source &&
+          listEquals(other.backdrop, backdrop);
+
+  @override
+  int get hashCode =>
+      Object.hash(blendMode, source, Object.hashAll(backdrop));
+
+  @override
+  String toString() =>
+      'CompositeBackdropBlendSignature(blendMode: $blendMode, '
+      'backdrop: $backdrop, source: $source)';
+}
+
 /// Identity of a composited cut frame's pixels.
 ///
 /// A cached composite is valid iff its stored signature equals the freshly
@@ -228,6 +265,7 @@ class CutFrameCompositeSignature {
           yield layer;
         case CompositeGroupSignature():
         case CompositeAdjustmentSignature():
+        case CompositeBackdropBlendSignature():
           break;
       }
     }
@@ -310,6 +348,16 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
             children: mapNodes(children),
             effects: effects,
             mix: mix,
+          ),
+        CompositeBackdropBlend(
+          :final backdrop,
+          :final source,
+          :final blendMode,
+        ) =>
+          CompositeBackdropBlendSignature(
+            backdrop: mapNodes(backdrop),
+            source: mapNodes([source]).single,
+            blendMode: blendMode,
           ),
       },
   ];

@@ -20,6 +20,7 @@ import 'src/services/persistence/app_language_settings_store.dart';
 import 'src/native/window_full_screen.dart';
 import 'src/native/window_place.dart';
 import 'src/ui/canvas/colour_key_shader.dart';
+import 'src/ui/canvas/layer_blend_shader.dart';
 import 'src/ui/canvas/level_image.dart' show measuredHalving;
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
@@ -93,6 +94,10 @@ Future<void> main(List<String> handedAtLaunch) async {
   // the file. Loading it here is what lets the paint-time guard stay a
   // guard rather than a case.
   await ColourKeyShader.load();
+  // 🚨The same, for a layer whose blend the GPU lacks (brush-fidelity-Q4):
+  // it is composed over its backdrop by a shader, and drawing it in any
+  // other blend because the program was late would be the same lie.
+  await LayerBlendShader.load();
   // 🚨AWAITED, BEFORE THE FIRST FRAME, too (I-103-Q1): the top strip keeps
   // a place for the battery on a device that has one and never on one that
   // has not — a place that came a frame later would be UI popping into

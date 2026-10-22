@@ -3,8 +3,8 @@ import 'layer_blend_mode.dart';
 import 'layer_effect.dart';
 
 /// One node of a composite TREE, bottom → top: something that PAINTS
-/// (whatever [L] is on this route), a FOLDER's group buffer, or an
-/// ADJUSTMENT row's scope.
+/// (whatever [L] is on this route), a FOLDER's group buffer, an
+/// ADJUSTMENT row's scope, or a row composed over its BACKDROP.
 ///
 /// ⛔THE STRUCTURE IS THE SAME ON EVERY ROUTE; ONLY THE PAINTED THING
 /// DIFFERS. The plan resolves entries, then surfaces; the editing canvas
@@ -96,6 +96,162 @@ final class CompositeAdjustment<L> extends CompositeNode<L> {
   final double mix;
 }
 
+/// A row whose blend the GPU has none for — linear burn, subtract, divide …
+/// ([LayerBlendMode.needsItsBackdrop]) — with its [backdrop]: everything
+/// composited below it in its scope, as one picture, which [source] is
+/// composed over by the blend's own formula.
+///
+/// 🗣️brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): a layer takes
+/// every mode the brush does, and the eleven the GPU lacks get a road of
+/// their own. A GPU blend reads whatever its render target holds below it
+/// as it draws; nothing can hand a blend the GPU does not have that, so the
+/// tree hands it the backdrop as a picture instead
+/// ([composeOverTheirBackdrops]).
+///
+/// [source] is the row itself — a leaf or a buffering folder — painting
+/// NORMAL: its opacity and effects stay on it, and [blendMode] applies
+/// once, between the two pictures.
+final class CompositeBackdropBlend<L> extends CompositeNode<L> {
+  const CompositeBackdropBlend({
+    required this.backdrop,
+    required this.source,
+    required this.blendMode,
+  });
+
+  /// Everything below the row in its scope, bottom → top — empty when the
+  /// row is the lowest thing there.
+  final List<CompositeNode<L>> backdrop;
+
+  /// The row itself, painting normal.
+  final CompositeNode<L> source;
+
+  /// The row's blend — one the GPU has none for.
+  final LayerBlendMode blendMode;
+
+  /// Bottom → top: the backdrop, then the row over it.
+  @override
+  List<CompositeNode<L>> get children => [...backdrop, source];
+}
+
+/// THE BACKDROP LAW: [nodes] with every row whose blend the GPU lacks
+/// ([LayerBlendMode.needsItsBackdrop]) composed over everything below it in
+/// its scope ([CompositeBackdropBlend]), at every depth.
+///
+/// ★A LIST IS A SCOPE — the one an adjustment row reads
+/// ([CompositeAdjustment]): a pass-through folder leaves no node, so its
+/// members already stand among what lies below the folder, and a
+/// buffering folder's members are a list of their own that nothing inside
+/// reaches past. So "below it in its scope" is "before it in its list".
+///
+/// [blendOf] and [paintedNormal] ask a route's own row its blend and for
+/// the same row painting normal — what a [CompositeBackdropBlend]'s source
+/// is.
+List<CompositeNode<L>> composeOverTheirBackdrops<L>(
+  List<CompositeNode<L>> nodes, {
+  required LayerBlendMode Function(L payload) blendOf,
+  required L Function(L payload) paintedNormal,
+}) {
+  List<CompositeNode<L>> scope(List<CompositeNode<L>> list) =>
+      composeOverTheirBackdrops(
+        list,
+        blendOf: blendOf,
+        paintedNormal: paintedNormal,
+      );
+  final out = <CompositeNode<L>>[];
+  for (final node in nodes) {
+    final (CompositeNode<L> composed, LayerBlendMode? blend) = switch (node) {
+      CompositeLeaf<L>(:final payload) => (node, blendOf(payload)),
+      CompositeGroup<L>(
+        :final children,
+        :final opacity,
+        :final blendMode,
+        :final effects,
+      ) =>
+        (
+          CompositeGroup<L>(
+            children: List.unmodifiable(scope(children)),
+            opacity: opacity,
+            blendMode: blendMode,
+            effects: effects,
+          ),
+          blendMode,
+        ),
+      CompositeAdjustment<L>(:final children, :final effects, :final mix) => (
+        CompositeAdjustment<L>(
+          children: List.unmodifiable(scope(children)),
+          effects: effects,
+          mix: mix,
+        ),
+        null,
+      ),
+      CompositeBackdropBlend<L>() => (node, null),
+    };
+    if (blend == null || !blend.needsItsBackdrop) {
+      out.add(composed);
+      continue;
+    }
+    final source = switch (composed) {
+      CompositeLeaf<L>(:final payload) => CompositeLeaf<L>(
+        paintedNormal(payload),
+      ),
+      CompositeGroup<L>(:final children, :final opacity, :final effects) =>
+        CompositeGroup<L>(
+          children: children,
+          opacity: opacity,
+          blendMode: LayerBlendMode.normal,
+          effects: effects,
+        ),
+      _ => composed,
+    };
+    final below = List<CompositeNode<L>>.unmodifiable(out);
+    out
+      ..clear()
+      ..add(
+        CompositeBackdropBlend<L>(
+          backdrop: below,
+          source: source,
+          blendMode: blend,
+        ),
+      );
+  }
+  return out;
+}
+
+/// THE UNDERLAY LAW: [nodes] laid on [underlay] — what a route lays under
+/// its rows at the root: the editing canvas's paper, the camera's ground and
+/// paper — as the bottom row of their scope.
+///
+/// 🚨IT GOES IN ONCE, WHERE THE ROWS READ IT. A GPU blend at the root reads
+/// the underlay off the target it draws on; a [CompositeBackdropBlend] at
+/// the bottom of the list reads its backdrop instead, so the underlay goes
+/// to the bottom of that backdrop, at every depth a blend sits at the
+/// bottom, and nowhere else. Laid under the list too, it would lie twice:
+/// the blend's picture already holds it, and that picture over a second
+/// copy doubles every pixel of its edge that is not opaque.
+///
+/// A blend only ever sits at the bottom of its list
+/// ([composeOverTheirBackdrops] gathers everything below it into it), so
+/// the bottom is the only place this looks.
+List<CompositeNode<L>> onUnderlay<L>(
+  List<CompositeNode<L>> nodes,
+  L underlay,
+) => switch (nodes.firstOrNull) {
+  CompositeBackdropBlend<L>(
+    :final backdrop,
+    :final source,
+    :final blendMode,
+  ) =>
+    [
+      CompositeBackdropBlend<L>(
+        backdrop: List.unmodifiable(onUnderlay(backdrop, underlay)),
+        source: source,
+        blendMode: blendMode,
+      ),
+      ...nodes.skip(1),
+    ],
+  _ => [CompositeLeaf<L>(underlay), ...nodes],
+};
+
 /// THE FOLD: [nodes] with every leaf run through [map], keeping the
 /// structure around them.
 ///
@@ -152,6 +308,25 @@ List<CompositeNode<M>> mapCompositeLeaves<L, M>(
             children: List.unmodifiable(mapped),
             effects: effects,
             mix: mix,
+          ),
+        );
+      case CompositeBackdropBlend<L>(
+        :final backdrop,
+        :final source,
+        :final blendMode,
+      ):
+        final below = mapCompositeLeaves(backdrop, map);
+        final row = mapCompositeLeaves([source], map);
+        if (row.isEmpty) {
+          // Nothing to compose: what lay below stays where it was.
+          out.addAll(below);
+          continue;
+        }
+        out.add(
+          CompositeBackdropBlend<M>(
+            backdrop: List.unmodifiable(below),
+            source: row.single,
+            blendMode: blendMode,
           ),
         );
     }

@@ -86,6 +86,7 @@ void main() {
         return [layer.id.value];
       case CompositeGroup<CutFrameCompositeRow>(:final children):
       case CompositeAdjustment<CutFrameCompositeRow>(:final children):
+      case CompositeBackdropBlend<CutFrameCompositeRow>(:final children):
         return [for (final child in children) ...idsUnder(child)];
     }
   }

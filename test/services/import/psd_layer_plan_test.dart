@@ -266,14 +266,27 @@ void main() {
     });
 
     test('a blend we do not have becomes normal AND says so', () {
-      final result = plan(document([raster('burnt', blend: 'lbrn')]));
+      final result = plan(document([raster('grainy', blend: 'diss')]));
       expect(result.layers.first.blendMode, LayerBlendMode.normal);
       expect(
         result.warnings.any(
-          (w) => w.english.contains('burnt') && w.english.contains('lbrn'),
+          (w) => w.english.contains('grainy') && w.english.contains('diss'),
         ),
         isTrue,
       );
+    });
+
+    // ↩️brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): linear burn
+    // was the example of a blend we did not have.
+    test('every mode a layer can take comes in as itself', () {
+      expect(
+        psdBlendModes.values.toSet(),
+        LayerBlendMode.values.toSet(),
+        reason: 'Photoshop has every one',
+      );
+      final result = plan(document([raster('burnt', blend: 'lbrn')]));
+      expect(result.layers.first.blendMode, LayerBlendMode.linearBurn);
+      expect(result.warnings, isEmpty);
     });
 
     test('the cel is held across the whole cut', () {

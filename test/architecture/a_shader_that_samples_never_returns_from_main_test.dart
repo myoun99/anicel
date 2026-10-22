@@ -39,7 +39,7 @@ void main() {
       }
     }
     // A scan that found nothing to read passes on an empty folder too.
-    expect(sampling, contains('colour_key.frag'));
+    expect(sampling, containsAll(['colour_key.frag', 'layer_blend.frag']));
     expect(
       offenders,
       isEmpty,

@@ -4,9 +4,11 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/draw_space.dart';
 import '../../models/composite_tree.dart';
+import '../../models/layer_blend_mode.dart';
 import 'blends_in_place.dart';
 import 'colour_key_shader.dart';
 import 'display_resample.dart';
+import 'layer_blend_shader.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, placementMatrix;
@@ -90,6 +92,7 @@ Rect _subtreeExtent<T>(
           : MatrixUtils.transformRect(placementMatrix(placement), extent);
     case CompositeGroup(:final children):
     case CompositeAdjustment(:final children):
+    case CompositeBackdropBlend(:final children):
       var union = Rect.zero;
       for (final child in children) {
         final rect = _subtreeExtent(child, extentOf, placementOf);
@@ -317,6 +320,105 @@ void drawSubtreeAsImage({
     compose: compose,
     steps: steps,
   );
+}
+
+/// 🚨★★★A ROW WHOSE BLEND THE GPU LACKS IS COMPOSED OVER A PICTURE OF ITS
+/// BACKDROP ([CompositeBackdropBlend], brush-fidelity-Q4).
+///
+/// A GPU blend reads what its target holds below it as it draws; for linear
+/// burn, divide, darker colour … there is no GPU blend to do that. So both
+/// pictures are rasterised on ONE grid — [paintBackdrop] (everything below
+/// the row in its scope) and [paintSource] (the row itself, painting
+/// normal) — composed by [LayerBlendShader] at the identity, and the result
+/// blitted the way a group's raster is: it IS the backdrop and the row,
+/// composed, so it lands plain.
+///
+/// The arithmetic is [drawSubtreeAsImage]'s — the same plan, the same blit
+/// — so a blend at any depth sits on the grid a folder's buffer would.
+void drawBlendOverBackdrop({
+  required Canvas canvas,
+  required Rect bounds,
+  required double rasterScale,
+  int maxPixelSide = maxSubtreeRasterSide,
+  required void Function(Canvas into, double rasterScale) paintBackdrop,
+  required void Function(Canvas into, double rasterScale) paintSource,
+  required LayerBlendMode blendMode,
+}) {
+  final plan = _planSubtreeRaster(
+    bounds: bounds,
+    rasterScale: rasterScale,
+    maxPixelSide: maxPixelSide,
+  );
+  if (plan == null) {
+    return;
+  }
+  ui.Image rasterOf(void Function(Canvas into, double rasterScale) paint) {
+    final recorder = ui.PictureRecorder();
+    final into = Canvas(recorder);
+    plan.applyTo(into);
+    paint(into, plan.scale);
+    assert(() {
+      debugSubtreeRasterCount += 1;
+      return true;
+    }());
+    return rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
+  }
+
+  final backdrop = rasterOf(paintBackdrop);
+  ui.Image? source;
+  ui.Image? composed;
+  try {
+    source = rasterOf(paintSource);
+    composed = _composedOverBackdrop(
+      backdrop: backdrop,
+      source: source,
+      blendMode: blendMode,
+      plan: plan,
+    );
+    _blitSubtreeRaster(
+      canvas: canvas,
+      image: composed,
+      plan: plan,
+      paint: Paint(),
+    );
+  } finally {
+    // ⚠️Safe here, as in [_finishSubtreeRaster]: the blit put the image into
+    // this frame's display list, which holds its own claim from then on.
+    composed?.dispose();
+    source?.dispose();
+    backdrop.dispose();
+  }
+}
+
+/// [source] composed over [backdrop] through [blendMode], as one raster of
+/// [plan]'s size — a step AT THE IDENTITY, as a colour key's is
+/// ([applyEffectSteps]): the shader reads `FlutterFragCoord()`, so it draws
+/// 1:1 into a rect at the origin, where its coordinates are the images'.
+ui.Image _composedOverBackdrop({
+  required ui.Image backdrop,
+  required ui.Image source,
+  required LayerBlendMode blendMode,
+  required SubtreeRasterPlan plan,
+}) {
+  final width = plan.pixelWidth.toDouble();
+  final height = plan.pixelHeight.toDouble();
+  final shader = LayerBlendShader.shaderFor(
+    backdrop: backdrop,
+    source: source,
+    mode: blendMode,
+    width: width,
+    height: height,
+  );
+  try {
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawRect(
+      Rect.fromLTWH(0, 0, width, height),
+      Paint()..shader = shader,
+    );
+    return rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
+  } finally {
+    shader.dispose();
+  }
 }
 
 /// Turns a finished recording into the image, hands [compose] a blit for it,

@@ -169,6 +169,7 @@ void main() {
           break;
         case CompositeGroup(:final children):
         case CompositeAdjustment(:final children):
+        case CompositeBackdropBlend(:final children):
           yield* requestsIn(children);
       }
     }

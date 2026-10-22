@@ -429,6 +429,33 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 mix: mix,
               ),
             );
+          case CompositeBackdropBlend(
+            :final backdrop,
+            :final source,
+            :final blendMode,
+          ):
+            // Under the active row wherever it stands: in what the blend
+            // reads below it — at its top when the row IS the blended one,
+            // directly under it, which it then composes over as it would
+            // over a ghost in a GPU blend.
+            final below = walk(backdrop);
+            final CompositeNode<CanvasStackRow> row;
+            if (!placed &&
+                source is CompositeLeaf<CanvasStackRow> &&
+                source.payload is CanvasActiveLayerRow) {
+              below.addAll(ghostNodes);
+              placed = true;
+              row = source;
+            } else {
+              row = walk([source]).single;
+            }
+            out.add(
+              CompositeBackdropBlend<CanvasStackRow>(
+                backdrop: below,
+                source: row,
+                blendMode: blendMode,
+              ),
+            );
           case CompositeLeaf(payload: CanvasLayerImageRequest()):
             out.add(node);
         }

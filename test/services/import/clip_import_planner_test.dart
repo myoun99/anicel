@@ -1139,6 +1139,15 @@ void main() {
     expect(result.bakes.single.source.name, 'odd');
   });
 
+  // brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): the four MoArt's
+  // table names past the first fourteen came in as normal until a layer took
+  // every mode the brush does.
+  test('a layer in a mode the table names comes in as itself, unsaid', () {
+    final result = plan(root([layer('tint', composite: 23)]), const []);
+    expect(row(result.cuts.single, 'tint').blendMode, LayerBlendMode.hue);
+    expect(result.warnings, isEmpty);
+  });
+
   group('F-370: the paper with no row under it is the PROJECT\'s paper', () {
     const colour = 0xFF204060;
     ClipLayer paper(String name, {bool shown = true, int opacity = 256}) =>

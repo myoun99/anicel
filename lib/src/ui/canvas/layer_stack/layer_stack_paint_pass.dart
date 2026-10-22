@@ -644,6 +644,7 @@ class _LayerStackPaintPass {
         CompositeLeaf() => null,
         CompositeGroup(:final children) => _activeRowIn(children),
         CompositeAdjustment(:final children) => _activeRowIn(children),
+        CompositeBackdropBlend(:final children) => _activeRowIn(children),
       };
       if (found != null) {
         return found;
@@ -746,10 +747,12 @@ class _LayerStackPaintPass {
       _PaintImage(:final extent) => extent,
       _PaintActiveSurface() => activeSurfaceExtent(),
       final _PaintLiftedSurface lifted => _liftedExtent(lifted),
+      _PaintPaper() => _canvasRect,
     },
     placementOf: (row) => switch (row) {
       _PaintImage(:final placement) => placement,
       final _SurfaceRow surface => surface.placement,
+      _PaintPaper() => null,
     },
   );
 
@@ -770,7 +773,10 @@ class _LayerStackPaintPass {
           placement,
         CompositeLeaf(payload: _PaintLiftedSurface(:final placement)) =>
           placement,
-        CompositeGroup() || CompositeAdjustment() => null,
+        CompositeLeaf(payload: _PaintPaper()) ||
+        CompositeGroup() ||
+        CompositeAdjustment() ||
+        CompositeBackdropBlend() => null,
       };
       // The wrap straddles the live-surface node too, which HAS a placement
       // and no image — that is why the wrap and the draw are separate
@@ -789,6 +795,15 @@ class _LayerStackPaintPass {
                 rasterScale,
                 paintChildren,
               );
+            case final CompositeBackdropBlend<_PaintRow> blend:
+              _paintBackdropBlendNode(
+                canvas,
+                blend,
+                rasterScale,
+                paintChildren,
+              );
+            case CompositeLeaf(payload: _PaintPaper()):
+              _paintPaperInto(canvas, intoTheBuffer: _composingTheBuffer);
             case CompositeLeaf(payload: final _PaintActiveSurface active):
               _paintSurfaceRow(canvas, _activeSlot!, active.paint, rasterScale);
             case CompositeLeaf(payload: final _PaintLiftedSurface lifted):
@@ -897,6 +912,27 @@ class _LayerStackPaintPass {
       paintSubtree: (into, scale) => paintChildren(into, children, scale),
       compose: composeAdjustmentScope(canvas, pass),
       steps: pass.preSteps,
+    );
+  }
+
+  /// A row in a blend the GPU lacks, composed over a picture of what lies
+  /// below it in its scope ([drawBlendOverBackdrop], brush-fidelity-Q4) —
+  /// the camera's walk calls the same function.
+  void _paintBackdropBlendNode(
+    Canvas canvas,
+    CompositeBackdropBlend<_PaintRow> node,
+    double rasterScale,
+    _ChildPainter paintChildren,
+  ) {
+    final CompositeBackdropBlend<_PaintRow>(:backdrop, :source, :blendMode) =
+        node;
+    drawBlendOverBackdrop(
+      canvas: canvas,
+      bounds: _bufferBoundsFor(node, _activeSurfaceExtent),
+      rasterScale: rasterScale,
+      paintBackdrop: (into, scale) => paintChildren(into, backdrop, scale),
+      paintSource: (into, scale) => paintChildren(into, [source], scale),
+      blendMode: blendMode,
     );
   }
 
@@ -1221,13 +1257,12 @@ class _LayerStackPaintPass {
   /// whether the backdrop below it pays for a raster, and the rect that
   /// raster is made over.
   ({int at, bool rasterPays, Rect rasterRect}) _backdropPlan() {
-    final at = _painter.nodes.indexWhere(
+    final at = _rootNodes.indexWhere(
       _LayerStackPainter._enclosesActiveSurface,
     );
-    final below = at < 0 ? _painter.nodes : _painter.nodes.sublist(0, at);
+    final below = at < 0 ? _rootNodes : _rootNodes.sublist(0, at);
     final rasterPays =
-        (_painter.paintPaper ? 1 : 0) + _replayOpsOf(below) >=
-        _LayerStackPainter._backdropRasterMinReplayOps;
+        _replayOpsOf(below) >= _LayerStackPainter._backdropRasterMinReplayOps;
     // 🚨THE BAKE'S RECT, NOT THE BUFFER'S (review 2026-09-15). `drawRaster`
     // keeps one image per slot and does not key it by the rect, which is why
     // the extent it is declared under has to move whenever that rect does.
@@ -1269,31 +1304,42 @@ class _LayerStackPaintPass {
     }
 
     if (at < 0) {
-      drawBackdrop('d0:backdrop-all', (c) {
-        _paintPaperInto(c, intoTheBuffer: true);
-        _paintNodes(c, _painter.nodes, rasterScale);
-      });
+      drawBackdrop(
+        'd0:backdrop-all',
+        (c) => _paintNodes(c, _rootNodes, rasterScale),
+      );
       return;
     }
-    drawBackdrop('d0:backdrop', (c) {
-      _paintPaperInto(c, intoTheBuffer: true);
-      _paintNodes(c, _painter.nodes.sublist(0, at), rasterScale);
-    });
-    _paintNodesWith(into, [_painter.nodes[at]], rasterScale, (
+    drawBackdrop(
+      'd0:backdrop',
+      (c) => _paintNodes(c, _rootNodes.sublist(0, at), rasterScale),
+    );
+    _paintNodesWith(into, [_rootNodes[at]], rasterScale, (
       c,
       children,
       scale,
     ) {
       _paintSplit(c, children, 1, scale);
     });
-    if (at < _painter.nodes.length - 1) {
+    if (at < _rootNodes.length - 1) {
       _painter.bake!.draw(
         into,
         'd0:after',
-        (c) => _paintNodes(c, _painter.nodes.sublist(at + 1), rasterScale),
+        (c) => _paintNodes(c, _rootNodes.sublist(at + 1), rasterScale),
       );
     }
   }
+
+  /// What the root target holds, bottom → top: the paper, as the bottom row
+  /// of the root scope ([onUnderlay]) — inside the backdrop of a blend that
+  /// composes over what lies below it, which reads the paper there as a GPU
+  /// blend reads it off the target — and the rows over it.
+  ///
+  /// ↩️Each walk laid the paper itself and the rows after it, until
+  /// brush-fidelity-Q4 gave the stack rows that read their backdrop.
+  late final List<CompositeNode<_PaintRow>> _rootNodes = _painter.paintPaper
+      ? onUnderlay(_painter.nodes, const _PaintPaper())
+      : _painter.nodes;
 
   /// Whether the content being painted is the display buffer's — a raster
   /// aligned to canvas space, where a level image lands texel for texel —
@@ -1319,16 +1365,14 @@ class _LayerStackPaintPass {
     if (_painter.bake == null ||
         _painter.activeSurfacePainter == null ||
         _painter.liftedRows.isNotEmpty) {
-      _paintPaperInto(into, intoTheBuffer: intoTheBuffer);
-      _paintNodes(into, _painter.nodes, rasterScale);
+      _paintNodes(into, _rootNodes, rasterScale);
       return;
     }
     if (intoTheBuffer) {
       _paintBackdropSplit(into, rasterScale);
       return;
     }
-    _paintPaperInto(into, intoTheBuffer: false);
-    _paintSplit(into, _painter.nodes, 0, rasterScale);
+    _paintSplit(into, _rootNodes, 0, rasterScale);
   }
 
   /// Rasterises [_paintContent] over [bounds] at CANVAS resolution — at the
@@ -1557,6 +1601,7 @@ class _LayerStackPaintPass {
   /// has the measurements — an advanced blend rounds by the area drawn), a
   /// layer image that is not a texel copy, and an adjustment scope — its
   /// crossfade goes through `saveLayer`s nobody has measured this way yet.
+  /// The paper is a fill on whole canvas pixels, and qualifies.
   bool _drawsTexelForTexel(List<CompositeNode<_PaintRow>> nodes) {
     for (final node in nodes) {
       final inPlace = switch (node) {
@@ -1574,6 +1619,7 @@ class _LayerStackPaintPass {
           blendMode: row.blendMode,
           effects: row.effects,
         ),
+        CompositeLeaf(payload: _PaintPaper()) => true,
         CompositeGroup(:final blendMode, :final effects, :final children) =>
           inkCropDrawsTheSame(
                 placement: null,
@@ -1581,7 +1627,9 @@ class _LayerStackPaintPass {
                 effects: effects,
               ) &&
               _drawsTexelForTexel(children),
-        CompositeAdjustment() => false,
+        // Nor a blend over its backdrop: a shader over two rasters, which
+        // nobody has measured this way yet either.
+        CompositeAdjustment() || CompositeBackdropBlend() => false,
       };
       if (!inPlace) {
         return false;

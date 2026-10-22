@@ -789,6 +789,8 @@ void main() {
               walk(children);
             case CompositeAdjustment(:final children):
               walk(children);
+            case CompositeBackdropBlend(:final children):
+              walk(children);
             case CompositeLeaf():
               break;
           }
