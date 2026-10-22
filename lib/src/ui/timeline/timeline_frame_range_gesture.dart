@@ -8,6 +8,7 @@ import '../debug/input_inspector.dart' show InputInspector;
 import '../widgets/instant_tap_region.dart' show InstantTapRegion;
 import '../widgets/named.dart';
 
+import '../../models/key_range_shift.dart' show FrameStretch;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
@@ -678,9 +679,16 @@ class TimelineLaneRangeHooks {
 
   final bool Function() onMoveBegin;
 
-  /// A move step: the selection [frameDelta] frames along — and, carried
-  /// by a header graph's key, its keys' [values] (I-3 ②).
-  final void Function(int frameDelta, {LaneKeyValues? values}) onMoveUpdate;
+  /// A move step: the selection [frameDelta] frames along — after
+  /// [stretch], where a header graph's box stretches its keys (I-3 ⑥) —
+  /// and, carried by a header graph's key or box, its keys' [values]
+  /// (I-3 ②).
+  final void Function(
+    int frameDelta, {
+    FrameStretch? stretch,
+    LaneKeyValues? values,
+  })
+  onMoveUpdate;
   final VoidCallback onMoveEnd;
   final VoidCallback onMoveCancel;
 }
@@ -784,9 +792,16 @@ class TimelineLaneRangeCallbacks {
 
   final bool Function() onMoveBegin;
 
-  /// A move step: the selection [frameDelta] frames along — and, carried
-  /// by a header graph's key, its keys' [values] (I-3 ②).
-  final void Function(int frameDelta, {LaneKeyValues? values}) onMoveUpdate;
+  /// A move step: the selection [frameDelta] frames along — after
+  /// [stretch], where a header graph's box stretches its keys (I-3 ⑥) —
+  /// and, carried by a header graph's key or box, its keys' [values]
+  /// (I-3 ②).
+  final void Function(
+    int frameDelta, {
+    FrameStretch? stretch,
+    LaneKeyValues? values,
+  })
+  onMoveUpdate;
   final VoidCallback onMoveEnd;
   final VoidCallback onMoveCancel;
 }

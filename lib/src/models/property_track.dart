@@ -508,16 +508,31 @@ class PropertyTrack<T> {
   }
 
   /// Every key inside [rangeStartIndex, [rangeEndIndexExclusive]) shifted
-  /// by [frameDelta] — the ONE loop of the lane-scoped range move
-  /// (UI-R23 #3 part 2), shared by the transform, effect and name-tag
-  /// families so the rigid all-or-nothing discipline cannot fork. Null
-  /// when nothing moves, a landing dips below 0, or a landing collides
-  /// with an UNSHIFTED key on this lane (the block discipline: nothing
-  /// merges silently).
+  /// by [frameDelta] — the lane-scoped range move (UI-R23 #3 part 2),
+  /// shared by the transform, effect and name-tag families so the rigid
+  /// all-or-nothing discipline cannot fork: [withRangedKeysMoved]'s ONE
+  /// loop, every key the same frames on.
   PropertyTrack<T>? withRangedKeysShifted({
     required int rangeStartIndex,
     required int rangeEndIndexExclusive,
     required int frameDelta,
+  }) => withRangedKeysMoved(
+    rangeStartIndex: rangeStartIndex,
+    rangeEndIndexExclusive: rangeEndIndexExclusive,
+    to: (frame) => frame + frameDelta,
+  );
+
+  /// Every key inside [rangeStartIndex, [rangeEndIndexExclusive]) moved to
+  /// the frame [to] gives it — a shift's ([withRangedKeysShifted]), or a
+  /// header graph's box stretching the keys it holds (I-3 ⑥, AE's transform
+  /// box). The keys left where they are as they were. Null when nothing is
+  /// in the range, a landing dips below 0, or a landing collides with a key
+  /// not moved or one already landed (the block discipline: nothing merges
+  /// silently).
+  PropertyTrack<T>? withRangedKeysMoved({
+    required int rangeStartIndex,
+    required int rangeEndIndexExclusive,
+    required int Function(int frame) to,
   }) {
     final moved = <int>{
       for (final frame in keys.keys)
@@ -531,7 +546,7 @@ class PropertyTrack<T> {
         if (!moved.contains(entry.key)) entry.key: entry.value,
     };
     for (final frame in moved) {
-      final landing = frame + frameDelta;
+      final landing = to(frame);
       if (landing < 0 || next.containsKey(landing)) {
         return null;
       }

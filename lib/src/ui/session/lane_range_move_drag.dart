@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'drags/lane_range_move_drag.dart';
+import '../../models/key_range_shift.dart' show FrameStretch;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../timeline/property_lane_model.dart' show LaneKeyValues;
@@ -75,15 +76,21 @@ class LaneRangeMoveDragVerbs {
     return true;
   }
 
-  /// A lane-move drag step: shifts EVERY spanned lane's ranged keys by
-  /// [frameDelta] (R26 #3 — one rigid group, all-or-nothing across lanes),
+  /// A lane-move drag step: moves EVERY spanned lane's ranged keys
+  /// [frameDelta] frames on, after [stretch] where a graph's box stretches
+  /// them (R26 #3 — one rigid group, all-or-nothing across lanes),
   /// their [values] written first where a graph's key carries them (I-3 ②),
   /// and previews via [_dragPreview]. A blocked landing HOLDS the last valid
   /// preview (UI-R23 #10 — no snap-back).
   void updateLaneRangeMoveDrag({
     required int frameDelta,
+    FrameStretch? stretch,
     LaneKeyValues? values,
-  }) => _laneMoveDrag?.update(frameDelta: frameDelta, values: values);
+  }) => _laneMoveDrag?.update(
+    frameDelta: frameDelta,
+    stretch: stretch,
+    values: values,
+  );
 
   /// Commits the lane move as ONE undo step; the selection stays on the
   /// landed span.

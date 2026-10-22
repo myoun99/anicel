@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
+import 'package:anicel/src/ui/timeline/lane_graph_box_stretch.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
@@ -605,23 +606,6 @@ void main() {
 
   // 🗣️I-3-Q5 (유저 2026-10-22): 「경계 상자를 둔다 (AE 변형 상자)」.
   group('the box round the keys picked (I-3 ⑤b)', () {
-    /// The rotation keys on 0 and 8 picked — or the one on 8 alone.
-    Future<void> pick(
-      WidgetTester tester,
-      EditorSessionManager s, {
-      String lane = 'rotation',
-      int from = 0,
-    }) async {
-      s.updateLaneRangeSelectionDrag(
-        layerId: _drawId,
-        laneId: lane,
-        anchorIndex: from,
-        headIndex: 8,
-        spanLaneIds: [lane],
-      );
-      await tester.pumpAndSettle();
-    }
-
     Rect? boxed(WidgetTester tester) {
       final (:painter, :box) = _graphOf(tester);
       return painter.pickedBoxIn(box.size);
@@ -648,10 +632,10 @@ void main() {
       await _openTheGraph(tester, s);
       expect(boxed(tester), isNull, reason: 'none picked');
 
-      await pick(tester, s, from: 8);
+      await _pick(tester, s, from: 8);
       expect(boxed(tester), isNull, reason: 'one picked');
 
-      await pick(tester, s);
+      await _pick(tester, s);
       final round = boxed(tester)!;
       final box = _graphOf(tester).box;
       for (final frame in [0, 8]) {
@@ -672,7 +656,7 @@ void main() {
     ) async {
       final s = await _pump(tester);
       await _openTheGraph(tester, s);
-      await pick(tester, s);
+      await _pick(tester, s);
       final cell = _cellExtent(tester);
       final first = _keyOnScreen(tester, 0);
       final last = _keyOnScreen(tester, 8);
@@ -718,9 +702,9 @@ void main() {
         ),
       );
       await _openTheGraph(tester, s, lane: 'position');
-      await pick(tester, s, lane: 'position', from: 8);
+      await _pick(tester, s, lane: 'position', from: 8);
       expect(boxed(tester), isNull, reason: 'one key, marked twice');
-      await pick(tester, s, lane: 'position');
+      await _pick(tester, s, lane: 'position');
       final cell = _cellExtent(tester);
 
       await _carry(
@@ -736,7 +720,7 @@ void main() {
         'key there, as it does outside', (tester) async {
       final s = await _pump(tester);
       await _openTheGraph(tester, s);
-      await pick(tester, s);
+      await _pick(tester, s);
       await _tapThePen(tester);
       final box = _graphOf(tester).box;
       expect(
@@ -752,6 +736,182 @@ void main() {
       expect(_keyedFrames(s), [0, 4, 8]);
     });
   });
+
+  group('the box\'s handles stretch the keys it holds (I-3 ⑥)', () {
+    /// Where [handle] stands on the box round the keys picked, on the
+    /// screen.
+    Offset handleOnScreen(WidgetTester tester, LaneGraphBoxHandle handle) {
+      final (:painter, :box) = _graphOf(tester);
+      final round = painter.pickedBoxIn(box.size)!;
+      return box.localToGlobal(
+        laneGraphBoxHandleAt(handle, round, Axis.horizontal),
+      );
+    }
+
+    /// The Rotation keyed 0 on [first] and 45 on [last].
+    TransformTrack rotating(int first, int last) =>
+        TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>()
+              .withKey(first, 0)
+              .withKey(last, 45),
+        );
+
+    Map<int, double> rotations(EditorSessionManager s) => {
+      for (final MapEntry(key: frame, value: key)
+          in _transformOf(s).rotation.keys.entries)
+        frame: key.value,
+    };
+
+    testWidgets('two keys picked wear eight handles on their box in the '
+        'ring\'s ink; a press on one takes the handle, not the key it '
+        'stands over, and pulled along it stretches the keys about the '
+        'box\'s other end', (tester) async {
+      final s = await _pump(tester);
+      await _openTheGraph(tester, s);
+      await _pick(tester, s);
+      final (:painter, :box) = _graphOf(tester);
+      final round = painter.pickedBoxIn(box.size)!;
+      final corner = laneGraphBoxHandleAt(
+        (along: 1, across: -1),
+        round,
+        Axis.horizontal,
+      );
+      expect(
+        _paintOf(tester),
+        paints
+          ..rect(rect: round, color: selectedLaneKeyRing.color)
+          ..rect(
+            rect: Rect.fromCenter(
+              center: round.topLeft,
+              width: 9,
+              height: 9,
+            ),
+            color: selectedLaneKeyRing.color,
+          ),
+      );
+      expect(
+        painter.keyAt(corner, box.size)?.frame,
+        8,
+        reason: '⛔전제: the key on 8 is under the corner',
+      );
+      expect(painter.boxHandleAt(corner, box.size), (along: 1, across: -1));
+
+      await _carry(
+        tester,
+        box.localToGlobal(corner),
+        Offset(_cellExtent(tester) * 8, 0),
+      );
+
+      expect(rotations(s), {0: 0, 16: 45});
+      final picked = s.laneRangeSelection.value!;
+      expect((picked.startIndex, picked.endIndexExclusive), (0, 17));
+    });
+
+    testWidgets('a finger on the start\'s handle stretches them too: the '
+        'press is the handle\'s', (tester) async {
+      final s = await _pump(tester, transform: rotating(8, 16));
+      await _openTheGraph(tester, s);
+      await _pick(tester, s, from: 8, to: 16);
+      final gesture = await tester.startGesture(
+        handleOnScreen(tester, (along: -1, across: 0)),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await gesture.moveBy(Offset(-_cellExtent(tester) * 8, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(rotations(s), {0: 0, 16: 45});
+    });
+
+    testWidgets('with Ctrl held, about the box\'s middle', (tester) async {
+      final s = await _pump(tester, transform: rotating(4, 8));
+      await _openTheGraph(tester, s);
+      await _pick(tester, s, from: 4);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+
+      await _carry(
+        tester,
+        handleOnScreen(tester, (along: 1, across: 0)),
+        Offset(_cellExtent(tester) * 2, 0),
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+
+      expect(rotations(s), {2: 0, 10: 45});
+    });
+
+    testWidgets('the top\'s handle pulled up stretches the values about the '
+        'bottom: the key there stays, the other goes up, and none moves '
+        'along the frames', (tester) async {
+      final s = await _pump(tester);
+      await _openTheGraph(tester, s);
+      await _pick(tester, s);
+
+      await _carry(
+        tester,
+        handleOnScreen(tester, (along: 0, across: -1)),
+        _up30,
+      );
+
+      expect(_keyedFrames(s), [0, 8]);
+      expect(_rotationAt(s, 0), 0);
+      expect(_rotationAt(s, 8), greaterThan(45));
+    });
+
+    testWidgets('with Shift held, a corner pulled along keeps the box\'s '
+        'shape: the values stretch as far as the frames', (tester) async {
+      final s = await _pump(tester);
+      await _openTheGraph(tester, s);
+      await _pick(tester, s);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+
+      await _carry(
+        tester,
+        handleOnScreen(tester, (along: 1, across: -1)),
+        Offset(_cellExtent(tester) * 8, 0),
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+      expect(_keyedFrames(s), [0, 16]);
+      expect(_rotationAt(s, 0), 0);
+      expect(_rotationAt(s, 16), greaterThan(45));
+    });
+
+    testWidgets('pulled past the box\'s other end, the keys turn about it '
+        'and run the other way in time — AE\'s', (tester) async {
+      final s = await _pump(tester, transform: rotating(8, 16));
+      await _openTheGraph(tester, s);
+      await _pick(tester, s, from: 8, to: 16);
+
+      await _carry(
+        tester,
+        handleOnScreen(tester, (along: 1, across: 0)),
+        Offset(-_cellExtent(tester) * 16, 0),
+      );
+
+      expect(rotations(s), {0: 45, 8: 0});
+    });
+  });
+}
+
+/// The [lane]'s keys from [from] to [to] picked — the Rotation's on 0
+/// and 8, where not told.
+Future<void> _pick(
+  WidgetTester tester,
+  EditorSessionManager s, {
+  String lane = 'rotation',
+  int from = 0,
+  int to = 8,
+}) async {
+  s.updateLaneRangeSelectionDrag(
+    layerId: _drawId,
+    laneId: lane,
+    anchorIndex: from,
+    headIndex: to,
+    spanLaneIds: [lane],
+  );
+  await tester.pumpAndSettle();
 }
 
 Finder get _penButton =>

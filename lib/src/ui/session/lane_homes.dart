@@ -5,7 +5,7 @@ import '../../models/timeline_frame_range.dart';
 import '../../models/transform_track.dart';
 import '../timeline/effect_lane_editing.dart' show effectLaneLens;
 import '../timeline/effect_lane_policy.dart' show parseEffectLaneId;
-import '../timeline/lane_span_keys_shift.dart' show laneSpanKeysShifted;
+import '../timeline/lane_span_keys_shift.dart' show laneSpanKeysMoved;
 import '../timeline/property_lane_lens.dart';
 import '../timeline/reference_lane_policy.dart' show transformLanesByHome;
 import '../timeline/se_name_tag_lane_policy.dart'
@@ -96,17 +96,19 @@ class LaneHome<T> {
     return made.isEmpty ? null : lens.update(value, _keysPut(made));
   });
 
-  /// The keys of every lane here that [span] covers, shifted by
-  /// [frameDelta] — ONE rigid group ([laneSpanKeysShifted]): null when a
-  /// landing is blocked, and when no key here moves.
-  T? shifted(TimelineLaneSelection span, int frameDelta) =>
-      laneSpanKeysShifted(
+  /// The keys of every lane here that [span] covers, each moved to the
+  /// frame [to] gives it — ONE rigid group ([laneSpanKeysMoved]): null when
+  /// a landing is blocked, and when no key here moves.
+  T? moved(TimelineLaneSelection span, int Function(int frame) to) =>
+      laneSpanKeysMoved(
         keys,
         laneIds: laneIds,
         lensOf: lensOf,
-        rangeStartIndex: span.startIndex,
-        rangeEndIndexExclusive: span.endIndexExclusive,
-        frameDelta: frameDelta,
+        move: (
+          rangeStartIndex: span.startIndex,
+          rangeEndIndexExclusive: span.endIndexExclusive,
+          to: to,
+        ),
       );
 }
 
