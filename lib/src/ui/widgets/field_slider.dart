@@ -1122,9 +1122,9 @@ class _FieldSliderTypedFace extends StatelessWidget {
     final stood = bar.axis == Axis.vertical;
     return DecoratedBox(
       decoration: FieldSlider.frameOf(bar.height, enabled: true, typed: true),
-      child: SizedBox(
-        width: stood ? bar.height : null,
-        height: stood ? null : bar.height,
+      child: acrossBox(
+        bar.axis,
+        bar.height,
         child: stood ? RotatedBox(quarterTurns: 1, child: field) : field,
       ),
     );

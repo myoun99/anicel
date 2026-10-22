@@ -13,6 +13,7 @@ import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
+import '../timeline/axis_turn.dart' show alongBox, sizedAlong;
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
@@ -40,6 +41,9 @@ enum BrushValuesLayout {
 
   /// Whether the bars stand.
   bool get stood => this == pill;
+
+  /// The way the bars run.
+  Axis get axis => stood ? Axis.vertical : Axis.horizontal;
 
   /// What the bars' keys begin with — the strip's own for the two places
   /// that are the strip's.
@@ -140,7 +144,7 @@ class BrushValueBars extends StatelessWidget {
     stops: ToolSizePresetPanel.presets,
     unit: ' px',
     height: thickness,
-    axis: layout.stood ? Axis.vertical : Axis.horizontal,
+    axis: layout.axis,
     // 🗣️I-34 (유저 2026-10-18): 「숫자만으로 하자」 — the pill's bars.
     nameInside: !layout.stood,
     onChanged: onChanged,
@@ -157,7 +161,7 @@ class BrushValueBars extends StatelessWidget {
     label: AppText.strings.brOpacity,
     value: value,
     height: thickness,
-    axis: layout.stood ? Axis.vertical : Axis.horizontal,
+    axis: layout.axis,
     nameInside: !layout.stood,
     onChanged: onChanged,
   );
@@ -299,17 +303,15 @@ class BrushValueBars extends StatelessWidget {
 
         final stood = layout.stood;
         final thickness = stood ? stoodThicknessIn(context) : barHeight;
-        Widget placed(double length, FieldSlider bar) => SizedBox(
-          width: stood ? thickness : length,
-          height: stood ? length : thickness,
+        Widget placed(double length, FieldSlider bar) => sizedAlong(
+          layout.axis,
+          along: length,
+          across: thickness,
           child: bar,
         );
         // Along the line: a bar, then its curve — after it lying, under it
         // stood.
-        final step = SizedBox(
-          width: stood ? null : gap,
-          height: stood ? gap : null,
-        );
+        final step = alongBox(layout.axis, gap);
         final sizeLine = [
           placed(
             widths.size,
