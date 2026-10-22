@@ -63,6 +63,17 @@ void main() {
 
   String spelled(String path) => path.replaceAll(r'\', '/');
 
+  // A file NO door takes. This was `notes.txt` until a program's shortcut
+  // files became something the door opens (I-107-Q2, 유저 2026-10-22:
+  // 「다섯 다」 — TVPaint's list is a .txt): from then on it was read as
+  // shortcuts, the notice never came, and the read still held the file when
+  // the folder went. An extension no group names cannot drift that way.
+  String nothingOpens() {
+    final path = '${spelled(folder.path)}/notes.xyz';
+    File(path).writeAsStringSync('not a picture');
+    return path;
+  }
+
   /// The app on [home], its first frame drawn — the frame after which the
   /// launch knocks.
   Future<void> pumpApp(WidgetTester tester, HomePage home) async {
@@ -105,8 +116,7 @@ void main() {
   testWidgets('a file nothing opens is said, as a drop says it', (
     tester,
   ) async {
-    final path = '${spelled(folder.path)}/notes.txt';
-    File(path).writeAsStringSync('not a picture');
+    final path = nothingOpens();
 
     await pumpApp(
       tester,
@@ -123,8 +133,7 @@ void main() {
   testWidgets('the app hands its shell what it was opened with', (
     tester,
   ) async {
-    final path = '${spelled(folder.path)}/notes.txt';
-    File(path).writeAsStringSync('not a picture');
+    final path = nothingOpens();
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -142,8 +151,7 @@ void main() {
   // says them on [HandedFiles.channel] — heard while the window is here.
   testWidgets('what a second Anicel hands the running window goes through '
       'the same door, and nothing once the window has gone', (tester) async {
-    final path = '${spelled(folder.path)}/notes.txt';
-    File(path).writeAsStringSync('not a picture');
+    final path = nothingOpens();
     // The reply is null only when nothing hears the channel.
     Future<ByteData?> runnerSays([String method = HandedFiles.openMethod]) {
       final reply = Completer<ByteData?>();
