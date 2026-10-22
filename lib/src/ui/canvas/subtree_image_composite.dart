@@ -322,16 +322,19 @@ void drawSubtreeAsImage({
   );
 }
 
-/// 🚨★★★A ROW WHOSE BLEND THE GPU LACKS IS COMPOSED OVER A PICTURE OF ITS
+/// 🚨★★★A ROW IN AN ADVANCED BLEND IS COMPOSED OVER A PICTURE OF ITS
 /// BACKDROP ([CompositeBackdropBlend], brush-fidelity-Q4).
 ///
 /// A GPU blend reads what its target holds below it as it draws; for linear
-/// burn, divide, darker colour … there is no GPU blend to do that. So both
-/// pictures are rasterised on ONE grid — [paintBackdrop] (everything below
-/// the row in its scope) and [paintSource] (the row itself, painting
-/// normal) — composed by [LayerBlendShader] at the identity, and the result
-/// blitted the way a group's raster is: it IS the backdrop and the row,
-/// composed, so it lands plain.
+/// burn, divide, darker colour … there is no GPU blend to do that, and the
+/// GPU's own multiply, screen … each came with a defect of its own
+/// (↩️they kept it until a-blurred-folder-cut-by-the-view-moves-on-vulkan,
+/// [LayerBlendMode.needsItsBackdrop]). So both pictures are rasterised on
+/// ONE grid — [paintBackdrop] (everything below the row in its scope) and
+/// [paintSource] (the row itself, painting normal) — composed by
+/// [LayerBlendShader] at the identity, and the result blitted the way a
+/// group's raster is: it IS the backdrop and the row, composed, so it lands
+/// plain.
 ///
 /// The arithmetic is [drawSubtreeAsImage]'s — the same plan, the same blit
 /// — so a blend at any depth sits on the grid a folder's buffer would.

@@ -49,6 +49,11 @@ import 'package:anicel/src/models/composite_tree.dart';
 ///
 /// ⛔A COUNT, not a comparison. A cache that worked and one that did not draw
 /// the same picture, so pixels cannot tell them apart.
+///
+/// ↩️The folders here were in multiply, until every advanced blend went
+/// over its backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-
+/// on-vulkan) and a folder in one became a blend of its own. Add still
+/// buffers as a group that lays its own blend.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const projectId = ProjectId('p');
@@ -118,7 +123,7 @@ void main() {
       ),
     ],
     opacity: 0.5,
-    blendMode: LayerBlendMode.multiply,
+    blendMode: LayerBlendMode.add,
   );
 
   /// 🚨A STROKE STEP, as the stack sees one: the live surface's pixels move
@@ -217,7 +222,7 @@ void main() {
       const CompositeGroup<CanvasStackRow>(
         children: [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
         opacity: 0.5,
-        blendMode: LayerBlendMode.multiply,
+        blendMode: LayerBlendMode.add,
       ),
     ];
     debugSubtreeRasterCount = 0;

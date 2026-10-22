@@ -18,11 +18,13 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
 import '../../helpers/source_body.dart';
+import '../../helpers/stack_as_the_plan_hands_it.dart';
 
 /// BEING THE ROW YOU ARE DRAWING ON IS NOT A REASON TO COMPOSITE DIFFERENTLY.
 ///
@@ -112,6 +114,10 @@ void main() {
   group('L2 — the painter puts the property on the pixels', () {
     const canvasSize = CanvasSize(width: 4, height: 4);
 
+    // The row is handed over as the plan hands it: in an advanced blend,
+    // the source of one over its backdrop.
+    setUpAll(LayerBlendShader.load);
+
     BitmapSurfacePainter redSurfacePainter() {
       var tile = BitmapTile.blank(size: 4);
       tile = writeRgbaColorToBitmapTile(
@@ -145,9 +151,9 @@ void main() {
                 width: 4,
                 height: 4,
                 child: CanvasLayerStackView(
-                  nodes: [
+                  nodes: stackAsThePlanHandsIt([
                     CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1, blendMode: blend)),
-                  ],
+                  ]),
                   imageCache: LayerFrameImageCache(
                     frameStore: BrushFrameStore(),
                   ),
@@ -215,9 +221,14 @@ void main() {
     testWidgets('a blend change ALONE must repaint', (tester) async {
       final surfacePainter = redSurfacePainter();
 
-      final plain = await pumpStack(
+      // ↩️Normal against multiply, until every advanced blend went over its
+      // backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-on-
+      // vulkan): the two are trees of different shapes now, so the blend
+      // is not all that moved. Two advanced blends are one tree apart from
+      // the blend.
+      final screened = await pumpStack(
         tester,
-        blend: LayerBlendMode.normal,
+        blend: LayerBlendMode.screen,
         surfacePainter: surfacePainter,
       );
       final multiplied = await pumpStack(
@@ -227,7 +238,7 @@ void main() {
       );
 
       expect(
-        multiplied.shouldRepaint(plain),
+        multiplied.shouldRepaint(screened),
         isTrue,
         reason:
             'Picking a blend from the row menu changes NOTHING else about '
@@ -266,11 +277,9 @@ void main() {
         if (node case CompositeLeaf(payload: final CanvasActiveLayerRow row)) {
           return row;
         }
-        if (node is CompositeGroup<CanvasStackRow>) {
-          final found = activeNodeIn(node.children);
-          if (found != null) {
-            return found;
-          }
+        final found = activeNodeIn(node.children);
+        if (found != null) {
+          return found;
         }
       }
       return null;
@@ -282,29 +291,61 @@ void main() {
       for (final node in nodes) {
         if (node case CompositeLeaf(payload: final CanvasLayerImageRequest r)) {
           yield r;
-        } else if (node is CompositeGroup<CanvasStackRow>) {
-          yield* imageRequestsIn(node.children);
         }
+        yield* imageRequestsIn(node.children);
       }
     }
 
+    /// The blend the row [isTheRow] picks out composes with, where it is the
+    /// source of one over its backdrop.
+    LayerBlendMode? blendItComposesIn(
+      List<CompositeNode<CanvasStackRow>> nodes,
+      bool Function(CanvasStackRow row) isTheRow,
+    ) {
+      for (final node in nodes) {
+        if (node case CompositeBackdropBlend(
+          source: CompositeLeaf(:final payload),
+          :final blendMode,
+        ) when isTheRow(payload)) {
+          return blendMode;
+        }
+        final found = blendItComposesIn(node.children, isTheRow);
+        if (found != null) {
+          return found;
+        }
+      }
+      return null;
+    }
+
+    // ↩️The row carried its blend itself, until every advanced blend went
+    // over its backdrop in the shader (a-blurred-folder-cut-by-the-view-
+    // moves-on-vulkan): a row in one is the source of a blend node now,
+    // and the node carries it.
     test('the blend a row composites with does not depend on whether you are '
         'standing on it', () {
       final (s, target, other) = sessionWithTwoRows(LayerBlendMode.multiply);
 
       s.selectLayer(other);
-      final asImage = imageRequestsIn(s.editingCanvas.stack.nodes).toList();
       expect(
-        asImage.map((r) => r.blendMode),
-        contains(LayerBlendMode.multiply),
+        blendItComposesIn(
+          s.editingCanvas.stack.nodes,
+          (row) => row is CanvasLayerImageRequest,
+        ),
+        LayerBlendMode.multiply,
         reason: 'the CONTROL: a non-active row already carried its blend',
       );
 
       s.selectLayer(target);
-      final asActive = activeNodeIn(s.editingCanvas.stack.nodes);
-      expect(asActive, isNotNull, reason: 'the active row stands in the tree');
       expect(
-        asActive!.blendMode,
+        activeNodeIn(s.editingCanvas.stack.nodes),
+        isNotNull,
+        reason: 'the active row stands in the tree',
+      );
+      expect(
+        blendItComposesIn(
+          s.editingCanvas.stack.nodes,
+          (row) => row is CanvasActiveLayerRow,
+        ),
         LayerBlendMode.multiply,
         reason:
             'Same row, same frame, same project — only the cursor moved. The '

@@ -22,16 +22,23 @@ import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 /// 🗣️brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): a layer in a
-/// blend the GPU lacks is composed over a picture of what lies below it —
-/// and what lies below it is what a GPU blend would have read off its
-/// target: at the root, the PAPER; inside a folder's buffer, only what the
-/// folder holds.
+/// blend the GPU lacks — ↩️and since a-blurred-folder-cut-by-the-view-moves-
+/// on-vulkan, in any advanced blend — is composed over a picture of what
+/// lies below it, and what lies below it is what a GPU blend would have
+/// read off its target: at the root, the PAPER; inside a folder's buffer,
+/// only what the folder holds.
 ///
-/// 📐THE CONTROL IS DIFFERENCE, which has a GPU blend and so already reads
-/// the paper. Over a grey paper, ink brighter than it in red and darker in
-/// green: subtract floors red at nothing and keeps green's distance, where
-/// difference turns red round — so the two say apart which one read the
-/// paper, and agree where both must.
+/// 📐THE CONTROL IS DIFFERENCE. Over a grey paper, ink brighter than it in
+/// red and darker in green: subtract floors red at nothing and keeps
+/// green's distance, where difference turns red round — so the two say
+/// apart which one read the paper, and agree where both must. Both bytes
+/// are worked out by hand ([subtractedFromThePaper],
+/// [differenceWithThePaper]); over nothing either would be the ink itself.
+/// ↩️Difference had a GPU blend, which read the paper off its target, and
+/// so stood in as the route known to read it — until every advanced blend
+/// went over its backdrop in the shader
+/// (a-blurred-folder-cut-by-the-view-moves-on-vulkan). The paper laid once
+/// is held against a normal row, which lays it under itself.
 ///
 /// Both walks, the editing stack (playback's too) and the camera (the
 /// export's), each against its own control.
@@ -103,9 +110,9 @@ void main() {
     );
 
     test('at the root a blend reads the paper', () async {
-      final control = await render([
-        CompositeLeaf(row(LayerBlendMode.difference)),
-      ]);
+      final control = await render(
+        planned([CompositeLeaf(row(LayerBlendMode.difference))]),
+      );
       expect(at(control, 0, 0), differenceWithThePaper, reason: 'control');
 
       final bytes = await render(
@@ -137,7 +144,7 @@ void main() {
     test('the paper is laid once: a thin one stays as thin', () async {
       const thin = ProjectBackground.color(0x80808080);
       final control = await render([
-        CompositeLeaf(row(LayerBlendMode.difference)),
+        CompositeLeaf(row(LayerBlendMode.normal)),
       ], paper: thin);
       final bytes = await render(
         planned([CompositeLeaf(row(LayerBlendMode.subtract))]),
@@ -225,7 +232,9 @@ void main() {
         );
 
     testWidgets('at the root a blend reads the paper', (tester) async {
-      final control = await render(tester, [live(LayerBlendMode.difference)]);
+      final control = await render(tester, [
+        blended(LayerBlendMode.difference),
+      ]);
       expect(at(control, 0, 0), differenceWithThePaper, reason: 'control');
 
       final bytes = await render(tester, [blended(LayerBlendMode.subtract)]);
@@ -250,7 +259,7 @@ void main() {
     ) async {
       const thin = ProjectBackground.color(0x80808080);
       final control = await render(tester, [
-        live(LayerBlendMode.difference),
+        live(LayerBlendMode.normal),
       ], paper: thin);
       final bytes = await render(tester, [
         blended(LayerBlendMode.subtract),

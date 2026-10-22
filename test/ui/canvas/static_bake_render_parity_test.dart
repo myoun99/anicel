@@ -27,8 +27,11 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+
+import '../../helpers/stack_as_the_plan_hands_it.dart';
 
 /// 🚨★★★ (v) 1단계의 진짜 계약 — **더 빨라도 되고, 다르게 그리면 안 된다.**
 ///
@@ -46,6 +49,10 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// 「below / above」.
 void main() {
   const canvasSize = CanvasSize(width: 4, height: 4);
+
+  // The stacks are handed over as the plan hands them: a row or a folder
+  // in an advanced blend is the source of one over its backdrop.
+  setUpAll(LayerBlendShader.load);
 
   BrushFrameKey key(String id) => BrushFrameKey(
     projectId: const ProjectId('project'),
@@ -134,7 +141,7 @@ void main() {
               width: 4,
               height: 4,
               child: CanvasLayerStackView(
-                nodes: nodes,
+                nodes: stackAsThePlanHandsIt(nodes),
                 imageCache: cache,
                 canvasSize: canvasSize,
                 viewport: CanvasViewport(),

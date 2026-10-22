@@ -43,7 +43,13 @@ void main() {
       );
 
   /// A session standing on an animation row that has one cel at frame 0,
-  /// a MULTIPLY blend, and a colour key (a CPU/source-pixel effect).
+  /// an ADD blend, and a colour key (a CPU/source-pixel effect).
+  ///
+  /// ↩️The blend was multiply — the one that went missing — until every
+  /// advanced blend went over its backdrop in the shader (a-blurred-folder-
+  /// cut-by-the-view-moves-on-vulkan): a row in one paints normal as the
+  /// source of a blend node, and the node carries the blend. Add is a
+  /// blend the row still carries itself.
   EditorSessionManager sessionOnADressedRow() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
@@ -51,7 +57,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     s.layerSwitches.setLayerBlendMode(
       s.activeLayer!.id,
-      LayerBlendMode.multiply,
+      LayerBlendMode.add,
     );
     s.effectsAndFx.updateLayerEffects(s.activeLayer!.id, [
       effect(EffectKind.deleteColor, 'amount', 100),
@@ -81,12 +87,12 @@ void main() {
     );
   }
 
-  /// Every row the stack draws, folders walked through.
+  /// Every row the stack draws, every node walked through.
   List<CanvasStackRow> rowsIn(List<CompositeNode<CanvasStackRow>> nodes) => [
     for (final node in nodes)
       if (node is CompositeLeaf<CanvasStackRow>)
         node.payload
-      else if (node is CompositeGroup<CanvasStackRow>)
+      else
         ...rowsIn(node.children),
   ];
 
@@ -100,7 +106,7 @@ void main() {
 
     expect(
       activeRowIn(nodes).blendMode,
-      LayerBlendMode.multiply,
+      LayerBlendMode.add,
       reason:
           'being the row you are drawing on is not a reason to '
           'composite differently — this arm dropped the field once and a '

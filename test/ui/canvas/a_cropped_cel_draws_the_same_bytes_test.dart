@@ -30,11 +30,13 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/placement_reading.dart';
 import '../../helpers/one_piece.dart';
+import '../../helpers/stack_as_the_plan_hands_it.dart';
 
 /// 🚨★★★A CEL STORED AS ITS INK PUTS THE SAME BYTES ON SCREEN AS THE WHOLE
 /// IMAGE DID (유저 2026-09-23: 「1/4해상도같은 결과바뀌는건 절대로
@@ -49,10 +51,16 @@ import '../../helpers/one_piece.dart';
 /// canvas, on its left and top edge (where the ink and the whole image share
 /// an edge), by the right and bottom edges of a canvas off the halving grid
 /// (150×101), on the pasteboard, scattered to both ends; through `srcOver`
-/// and `plus` (stored as ink) and through the advanced blends, poses and a
+/// and `plus` and the advanced blends (stored as ink), through poses and a
 /// blur (kept whole), keyed, tinted, inside folders, around the active
 /// layer; at every level of the display, and on the direct walk, which lays
 /// the whole image back.
+///
+/// ↩️A row in an advanced blend was kept whole, until every one went over
+/// its backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-on-
+/// vulkan): it paints normal over that backdrop, so its ink is exact too.
+/// The stacks are handed over as the plan hands them
+/// ([stackAsThePlanHandsIt]).
 ///
 /// ⚠️CAPTURED THROUGH `toImageSync`, and that is not a convenience. The walk
 /// lays a whole image back as a deferred image, which the test runner (Skia)
@@ -74,6 +82,7 @@ void main() {
   final screenKey = GlobalKey();
 
   setUpAll(ColourKeyShader.load);
+  setUpAll(LayerBlendShader.load);
 
   BrushFrameKey key(String id) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -162,14 +171,14 @@ void main() {
       row('pasteboard'),
       row('sparse', opacity: 0.5),
     ],
-    'whole rows through the advanced blends': [
+    'rows through the advanced blends': [
       row('interior', blendMode: LayerBlendMode.multiply),
       row('leftTop', opacity: 0.8, blendMode: LayerBlendMode.screen),
       row('rightBottom', blendMode: LayerBlendMode.overlay),
       row('pasteboard', opacity: 0.5, blendMode: LayerBlendMode.difference),
       row('sparse', blendMode: LayerBlendMode.darken),
     ],
-    'ink and whole rows over each other': [
+    'rows in a blend and out of one, over each other': [
       row('pasteboard'),
       row('interior', blendMode: LayerBlendMode.multiply),
       row('leftTop', opacity: 0.8),
@@ -279,9 +288,9 @@ void main() {
         node.payload is CanvasActiveLayerRow,
   );
 
-  /// The stack's screen for [nodes], the cache keeping whole images or the
-  /// ink — every row warmed first, the way the view will ask for it, so the
-  /// first build adopts them all.
+  /// The stack's screen for [nodes] as the plan hands them over, the cache
+  /// keeping whole images or the ink — every row warmed first, the way the
+  /// view will ask for it, so the first build adopts them all.
   Future<({Uint8List bytes, LayerFrameImageCache images})> screen(
     WidgetTester tester, {
     required bool whole,
@@ -295,7 +304,8 @@ void main() {
     final quality = PlaybackQuality.forLevel(
       displayLevelOf(displayScaleOf(viewport.zoom, 1)),
     );
-    for (final request in requestsIn(nodes)) {
+    final planned = stackAsThePlanHandsIt(nodes);
+    for (final request in requestsIn(planned)) {
       final warmed = await tester.runAsync(
         () => images.prepare(
           key: request.frameKey,
@@ -329,7 +339,7 @@ void main() {
                   width: view.width,
                   height: view.height,
                   child: CanvasLayerStackView(
-                    nodes: nodes,
+                    nodes: planned,
                     imageCache: images,
                     canvasSize: canvasSize,
                     viewport: viewport,
@@ -440,7 +450,7 @@ void main() {
   // right edge through the ink at (141, 93), every pixel of the canvas on
   // screen is the pixel the whole view shows there.
   //
-  // ⚠️RED ON IMPELLER VULKAN (`--enable-impeller`, Android's default), and
+  // ↩️RED ON IMPELLER VULKAN (`--enable-impeller`, Android's default), and
   // not for the blur. The folder blends in multiply, and Vulkan mixes an
   // advanced blend twice along the diagonal of the quad it draws
   // (flutter#179547 — every advanced-blend draw does it, from an image, a
@@ -448,6 +458,8 @@ void main() {
   // the diagonal moves with the pan: two pixels, up to 3/255 at this one.
   // Skia and the Windows app (Impeller GLES) keep every byte — measured
   // 2026-09-30, board `a-blurred-folder-cut-by-the-view-moves-on-vulkan`.
+  // 🔬Green on all three since that card sent every advanced blend to our
+  // shader over its backdrop (10-22): no engine blend draws the diagonal.
   for (final walk in [false, true]) {
     final route = walk ? 'the direct walk' : 'the display buffer';
     testWidgets('a blurred folder cut by the view\'s edge blurs as it does '
@@ -601,8 +613,8 @@ void main() {
   }
 
   testWidgets('both arms ran: the buffer draws ink rows from their ink, the '
-      'walk lays them back whole, and the advanced blends and poses keep '
-      'their images whole', (tester) async {
+      'walk lays them back whole, a row in an advanced blend keeps its ink '
+      'and a posed one its whole image', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     final at50 = CanvasViewport(zoom: 0.5, panX: 30, panY: 20);
@@ -663,9 +675,12 @@ void main() {
     expect(debugWholesLaidBack, greaterThan(0));
     expect(debugCropsLaidDown, 0);
 
-    for (final name in [
-      'whole rows through the advanced blends',
-      'posed rows',
+    // ↩️The advanced blends kept their images whole beside the poses, until
+    // every one went over its backdrop in the shader (a-blurred-folder-cut-
+    // by-the-view-moves-on-vulkan): a row in one paints normal, from its ink.
+    for (final (name, ink) in [
+      ('rows through the advanced blends', true),
+      ('posed rows', false),
     ]) {
       debugCropsLaidDown = 0;
       debugWholesLaidBack = 0;
@@ -683,7 +698,7 @@ void main() {
         canvasSize: canvasSize,
         sourceEffects: const [],
       );
-      expect(kept?.isInk, isFalse, reason: '$name keep the whole image');
+      expect(kept?.isInk, ink, reason: name);
       expect(debugWholesLaidBack, 0, reason: name);
     }
   });

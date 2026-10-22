@@ -16,7 +16,9 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 
 /// 🗣️brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): a row whose
-/// blend the GPU lacks is composed over everything below it in its SCOPE
+/// blend the GPU lacks — ↩️and since a-blurred-folder-cut-by-the-view-
+/// moves-on-vulkan (10-22, 「골은 b」) a row in ANY advanced blend, the
+/// GPU's own too — is composed over everything below it in its SCOPE
 /// ([composeOverTheirBackdrops]) — the scope an adjustment row reads: out
 /// through pass-through folders, never into a buffering one. And the paper
 /// goes in once, under the lowest backdrop a blend reads ([onUnderlay]).
@@ -72,15 +74,30 @@ void main() {
         : null,
   );
 
-  test('a row the GPU has a blend for stays a row', () {
+  // ↩️'a row the GPU has a blend for stays a row' — multiply did, until
+  // every advanced blend went over its backdrop in the shader
+  // (a-blurred-folder-cut-by-the-view-moves-on-vulkan Q3 · Q4). What the
+  // GPU lays in place is all that stays a row.
+  test('a row in normal or add stays a row', () {
     final nodes = planOf([
       drawing('a'),
-      drawing('b', blend: LayerBlendMode.multiply),
+      drawing('b', blend: LayerBlendMode.add),
+      drawing('c'),
     ]);
     expect(nodes, everyElement(isA<_Leaf>()));
   });
 
-  test('a row it has none for gathers everything below it, and paints '
+  test('a row in a blend the GPU has gathers as the rest do', () {
+    final nodes = planOf([
+      drawing('a'),
+      drawing('b', blend: LayerBlendMode.multiply),
+    ]);
+    final blend = nodes.single as _Blend;
+    expect(blend.blendMode, LayerBlendMode.multiply);
+    expect(blend.backdrop, hasLength(1));
+  });
+
+  test('a row in an advanced blend gathers everything below it, and paints '
       'normal inside', () {
     final nodes = planOf([
       drawing('a'),
@@ -134,7 +151,9 @@ void main() {
       drawing('a'),
       drawing('b', folder: 'f'),
       drawing('c', folder: 'f', blend: LayerBlendMode.linearBurn),
-      folderRow('f', LayerBlendMode.multiply),
+      // ↩️A multiply folder stood here; it is a blend of its own now, which
+      // gathers the row below it too. Normal buffers and gathers nothing.
+      folderRow('f', LayerBlendMode.normal),
     ]);
     expect(nodes, hasLength(2));
     final group = nodes.last as _Group;

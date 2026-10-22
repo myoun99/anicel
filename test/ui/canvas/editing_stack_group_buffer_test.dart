@@ -16,6 +16,11 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// The one exception is stated in the split's own contract and pinned
 /// here: the folder that CONTAINS the active layer cannot buffer while the
 /// canvas paints in three sibling widgets, so it alone folds per member.
+///
+/// ↩️The buffering folders here were in multiply, until every advanced
+/// blend went over its backdrop in the shader (a-blurred-folder-cut-by-the-
+/// view-moves-on-vulkan) and a folder in one became a blend of its own.
+/// Add still buffers as a group that lays its own blend.
 void main() {
   EditorSessionManager sessionWithFolder({
     LayerBlendMode blend = LayerBlendMode.passThrough,
@@ -69,12 +74,12 @@ void main() {
 
   test('the folder CONTAINING the active layer buffers too — the merged '
       'painter closes the saveLayer it opened', () {
-    final s = sessionWithFolder(blend: LayerBlendMode.multiply);
+    final s = sessionWithFolder(blend: LayerBlendMode.add);
     final nodes = s.editingCanvas.stack.nodes;
 
     expect(countGroups(nodes), 1);
     final group = nodes.whereType<CompositeGroup<CanvasStackRow>>().single;
-    expect(group.blendMode, LayerBlendMode.multiply);
+    expect(group.blendMode, LayerBlendMode.add);
     expect(
       holdsActive(group.children),
       isTrue,
@@ -86,12 +91,12 @@ void main() {
 
   test('inside a buffering folder the member carries no folder state — it '
       'is on the buffer, so nothing double-applies', () {
-    final s = sessionWithFolder(blend: LayerBlendMode.multiply, opacity: 0.5);
+    final s = sessionWithFolder(blend: LayerBlendMode.add, opacity: 0.5);
     final group = s.editingCanvas.stack.nodes
         .whereType<CompositeGroup<CanvasStackRow>>()
         .single;
     expect(group.opacity, closeTo(0.5, 1e-9));
-    expect(group.blendMode, LayerBlendMode.multiply);
+    expect(group.blendMode, LayerBlendMode.add);
 
     final active = group.children
         .whereType<CompositeLeaf<CanvasStackRow>>()
@@ -112,7 +117,7 @@ void main() {
       (layer) => layer.folderId == null && layer.id != s.activeLayerId,
     );
     final folderId = cut.layers.folderLayers.single.id;
-    s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.multiply);
+    s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.add);
     s.selectLayer(outside.id);
 
     expect(countGroups(s.editingCanvas.stack.nodes), 1);
@@ -120,7 +125,7 @@ void main() {
 
   test('🚨a folder whose every member was SKIPPED produces no node at all — '
       'a group buffer around nothing is a saveLayer for nothing', () {
-    final s = sessionWithFolder(blend: LayerBlendMode.multiply);
+    final s = sessionWithFolder(blend: LayerBlendMode.add);
     final cut = s.activeCutOrNull!;
     final folderId = cut.layers.folderLayers.single.id;
     // Hide every drawing inside the folder: the tree skips them, and the

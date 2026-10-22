@@ -70,8 +70,8 @@ class LayerBlendShader {
     final program = _program;
     if (program == null) {
       throw StateError(
-        'LayerBlendShader.load() has not completed. A layer whose blend the '
-        'GPU lacks cannot be drawn without it, so the load is a prerequisite '
+        'LayerBlendShader.load() has not completed. A layer in an advanced '
+        'blend cannot be drawn without it, so the load is a prerequisite '
         'of offering those blends at all.',
       );
     }

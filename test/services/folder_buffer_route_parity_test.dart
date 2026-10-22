@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 
 /// R27 #29 — the PIXELS, not just the plan.
@@ -15,6 +14,12 @@ import 'package:anicel/src/models/tile_coord.dart';
 /// members OVERLAP. This renders the group both ways and shows they differ,
 /// then shows the buffered one matches the reference: composite the members
 /// first, blend the result once.
+///
+/// ↩️The engine's multiply stood in for the folder's through
+/// `LayerBlendMode.paintBlendMode`, until every advanced blend went over
+/// its backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-on-
+/// vulkan) and none had a paint blend. The arithmetic this shows is the
+/// same either way, so the engine's is named outright.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -99,14 +104,14 @@ void main() {
     if (buffered) {
       canvas.saveLayer(
         bounds,
-        Paint()..blendMode = LayerBlendMode.multiply.paintBlendMode,
+        Paint()..blendMode = BlendMode.multiply,
       );
       canvas.drawImage(memberA, Offset.zero, Paint());
       canvas.drawImage(memberB, Offset.zero, Paint());
       canvas.restore();
     } else {
       final fold = Paint()
-        ..blendMode = LayerBlendMode.multiply.paintBlendMode;
+        ..blendMode = BlendMode.multiply;
       canvas.drawImage(memberA, Offset.zero, fold);
       canvas.drawImage(memberB, Offset.zero, fold);
     }

@@ -22,6 +22,12 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// through pass-through folders (Photoshop's 통과) and stopping at the
 /// first buffering one. These build the stack shapes that distinguish
 /// those answers and read the tree back.
+///
+/// ↩️The buffering folders here were in multiply, until every advanced
+/// blend went over its backdrop in the shader
+/// (a-blurred-folder-cut-by-the-view-moves-on-vulkan): a folder in one
+/// gathers the rows below it as its backdrop now. Add buffers as a group
+/// that lays its own blend, which is the edge these pin.
 void main() {
   const canvasSize = CanvasSize(width: 4, height: 4);
 
@@ -184,7 +190,7 @@ void main() {
           drawing('m1', folder: 'f'),
           adjustment('fx', folder: 'f'),
           drawing('m2', folder: 'f'),
-          folderRow('f', blendMode: LayerBlendMode.multiply),
+          folderRow('f', blendMode: LayerBlendMode.add),
         ]),
       );
       // [A, group(F)] — the adjustment lives INSIDE the group.
@@ -239,7 +245,7 @@ void main() {
           drawing('c', folder: 'f1'),
           adjustment('fx', folder: 'f1'),
           folderRow('f1', parent: 'f2'),
-          folderRow('f2', blendMode: LayerBlendMode.multiply),
+          folderRow('f2', blendMode: LayerBlendMode.add),
         ]),
       );
       expect(tree, hasLength(2));

@@ -126,7 +126,7 @@ final class CompositeBackdropBlend<L> extends CompositeNode<L> {
   /// The row itself, painting normal.
   final CompositeNode<L> source;
 
-  /// The row's blend — one the GPU has none for.
+  /// The row's blend — an advanced one ([LayerBlendMode.needsItsBackdrop]).
   final LayerBlendMode blendMode;
 
   /// Bottom → top: the backdrop, then the row over it.

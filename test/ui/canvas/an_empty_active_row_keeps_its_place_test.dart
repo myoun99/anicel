@@ -46,17 +46,9 @@ void main() {
       if (node case CompositeLeaf(payload: final CanvasActiveLayerRow row)) {
         return row;
       }
-      if (node is CompositeGroup<CanvasStackRow>) {
-        final found = activeIn(node.children);
-        if (found != null) {
-          return found;
-        }
-      }
-      if (node is CompositeAdjustment<CanvasStackRow>) {
-        final found = activeIn(node.children);
-        if (found != null) {
-          return found;
-        }
+      final found = activeIn(node.children);
+      if (found != null) {
+        return found;
       }
     }
     return null;
@@ -124,7 +116,13 @@ void main() {
     s.selectFrameIndex(40);
 
     final nodes = s.editingCanvas.stack.nodes;
-    final group = nodes.whereType<CompositeGroup<CanvasStackRow>>().single;
+    // ↩️The group stood at the top, until every advanced blend went over
+    // its backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-
+    // on-vulkan): a folder in multiply is the source of a blend now.
+    final group = [
+      for (final node in nodes)
+        if (node case CompositeBackdropBlend(:final source)) source else node,
+    ].whereType<CompositeGroup<CanvasStackRow>>().single;
     expect(
       group.opacity,
       closeTo(0.2, 1e-9),
