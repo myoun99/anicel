@@ -11,7 +11,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
-import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizeAlong;
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show sizeAlong, sizedAlong;
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/se_crossing_mark_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
@@ -338,9 +339,10 @@ void main() {
     ) async {
       await tester.pumpWidget(
         MaterialApp(
-          home: SizedBox(
-            width: axis == Axis.horizontal ? mainExtent : crossExtent,
-            height: axis == Axis.horizontal ? crossExtent : mainExtent,
+          home: sizedAlong(
+            axis,
+            along: mainExtent,
+            across: crossExtent,
             child: TimelineFixedFrameSpanLayer(
               geometry: const TimelineFrameGeometry(
                 frameCellExtent: cellExtent,
