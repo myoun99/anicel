@@ -96,16 +96,17 @@ final class CompositeAdjustment<L> extends CompositeNode<L> {
   final double mix;
 }
 
-/// A row whose blend the GPU has none for — linear burn, subtract, divide …
-/// ([LayerBlendMode.needsItsBackdrop]) — with its [backdrop]: everything
-/// composited below it in its scope, as one picture, which [source] is
-/// composed over by the blend's own formula.
+/// A row in an advanced blend — multiply, linear burn, hue … every mode but
+/// normal and add ([LayerBlendMode.needsItsBackdrop]) — with its [backdrop]:
+/// everything composited below it in its scope, as one picture, which
+/// [source] is composed over by the blend's own formula.
 ///
 /// 🗣️brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): a layer takes
-/// every mode the brush does, and the eleven the GPU lacks get a road of
-/// their own. A GPU blend reads whatever its render target holds below it
-/// as it draws; nothing can hand a blend the GPU does not have that, so the
-/// tree hands it the backdrop as a picture instead
+/// every mode the brush does, and the ones the GPU had no blend for got a
+/// road of their own; Q4 of a-blurred-folder-cut-by-the-view-moves-on-vulkan
+/// (유저 2026-10-22) sent the GPU's own down it too. A GPU blend reads
+/// whatever its render target holds below it as it draws; a shader cannot
+/// read its target, so the tree hands it the backdrop as a picture instead
 /// ([composeOverTheirBackdrops]).
 ///
 /// [source] is the row itself — a leaf or a buffering folder — painting
@@ -133,7 +134,7 @@ final class CompositeBackdropBlend<L> extends CompositeNode<L> {
   List<CompositeNode<L>> get children => [...backdrop, source];
 }
 
-/// THE BACKDROP LAW: [nodes] with every row whose blend the GPU lacks
+/// THE BACKDROP LAW: [nodes] with every row in an advanced blend
 /// ([LayerBlendMode.needsItsBackdrop]) composed over everything below it in
 /// its scope ([CompositeBackdropBlend]), at every depth.
 ///

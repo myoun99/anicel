@@ -1559,7 +1559,7 @@ int _replayOpsOf(List<CompositeNode<_PaintRow>> list) {
 }
 
 /// The PAPER the rows are laid on, as the bottom row of the root scope
-/// ([onUnderlay]): where a blend the GPU lacks composes over its backdrop,
+/// ([onUnderlay]): where an advanced blend composes over its backdrop,
 /// the paper is in that backdrop, as a GPU blend reads it off the target
 /// (brush-fidelity-Q4).
 ///

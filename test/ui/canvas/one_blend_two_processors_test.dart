@@ -13,13 +13,13 @@ import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 
 /// 🚨★★★ONE BLEND, TWO PROCESSORS (brush-fidelity-Q4) — and they agree.
 ///
-/// A brush in linear burn, divide, darker colour … lands on a cel's bytes
-/// on the CPU ([blendStrokeRegionPixels]); a layer in one is composed over
-/// its backdrop on the GPU ([drawBlendOverBackdrop], `layer_blend.frag`),
-/// where a composite's pixels are. Two implementations of one blend is a
-/// licence to drift, so this does not sample the domain — it SWEEPS it:
-/// every source byte over every backdrop byte, for every layer mode the GPU
-/// has no blend for, through the very function both walks call.
+/// A brush in multiply, linear burn, hue … lands on a cel's bytes on the
+/// CPU ([blendStrokeRegionPixels]); a layer in one is composed over its
+/// backdrop on the GPU ([drawBlendOverBackdrop], `layer_blend.frag`), where
+/// a composite's pixels are. Two implementations of one blend is a licence
+/// to drift, so this does not sample the domain — it SWEEPS it: every source
+/// byte over every backdrop byte, for every advanced layer blend, through
+/// the very function both walks call.
 ///
 /// 📐WHERE THE TWO MAY PART, AND ONLY THERE. A formula that divides
 /// (divide, vivid light) and the composite over partial alpha round a
@@ -106,11 +106,26 @@ void main() {
       if (mode.needsItsBackdrop) mode,
   ];
 
-  test('every mode the GPU lacks is swept here', () {
+  test('every advanced blend is swept here', () {
     // Liveness: a list that came back empty would sweep nothing and pass.
     expect(
       needsItsBackdrop.map((mode) => mode.name),
       containsAll(<String>[
+        'darken',
+        'multiply',
+        'colorBurn',
+        'lighten',
+        'screen',
+        'colorDodge',
+        'overlay',
+        'softLight',
+        'hardLight',
+        'difference',
+        'exclusion',
+        'hue',
+        'saturation',
+        'chroma',
+        'luminosity',
         'linearBurn',
         'subtract',
         'vividLight',
@@ -146,7 +161,7 @@ void main() {
       final twin = brushTwinOf(mode);
       final separable = twin.separable;
       if (separable == null) {
-        continue; // The two that mix the channels have their own sweep.
+        continue; // The six that mix the channels have their own sweeps.
       }
       test('${mode.name}: the GPU lands what the brush lands', () async {
         final backdrop = sweep(source: false);
@@ -232,6 +247,61 @@ void main() {
       }
       expect(tookTheRow, greaterThan(0));
       expect(keptTheBackdrop, greaterThan(0));
+    }
+  });
+
+  test('hue, saturation, colour and luminosity: the GPU lands what the brush '
+      'lands', () async {
+    // 65,536 pairs of colours, every channel moving at its own rate so hue,
+    // saturation and luminosity all sweep — greys, primaries and the pairs
+    // whose SetLum leaves the cube and is clipped back on either side.
+    final source = Uint8List(side * side * 4);
+    final backdrop = Uint8List(side * side * 4);
+    for (var y = 0; y < side; y += 1) {
+      for (var x = 0; x < side; x += 1) {
+        final at = (y * side + x) * 4;
+        source
+          ..[at] = x
+          ..[at + 1] = (x * 7) % 256
+          ..[at + 2] = (x * 13 + 50) % 256
+          ..[at + 3] = 255;
+        backdrop
+          ..[at] = (y * 11 + 90) % 256
+          ..[at + 1] = y
+          ..[at + 2] = (y * 5) % 256
+          ..[at + 3] = 255;
+      }
+    }
+    for (final mode in [
+      LayerBlendMode.hue,
+      LayerBlendMode.saturation,
+      LayerBlendMode.chroma,
+      LayerBlendMode.luminosity,
+    ]) {
+      final gpu = await composed(backdrop, source, mode);
+      final cpu = blendStrokeRegionPixels(
+        dst: backdrop,
+        src: source,
+        mode: brushTwinOf(mode),
+        pixelCount: side * side,
+      );
+      var aByteApart = 0;
+      final apart = <String>[];
+      for (var i = 0; i < cpu.length; i += 1) {
+        final off = (gpu[i] - cpu[i]).abs();
+        if (off == 0) {
+          continue;
+        }
+        if (off == 1 && i % 4 != 3) {
+          aByteApart += 1;
+          continue;
+        }
+        apart.add(
+          'pixel ${i ~/ 4} channel ${i % 4}: GPU ${gpu[i]}, CPU ${cpu[i]}',
+        );
+      }
+      expect(apart, isEmpty, reason: '${mode.name}: never more than a byte');
+      printOnFailure('${mode.name}: $aByteApart channels a byte apart');
     }
   });
 
@@ -335,7 +405,7 @@ void main() {
     }
   });
 
-  test('a mode with a GPU blend of its own is refused', () {
+  test('a mode the GPU lays where it draws is refused', () {
     final recorder = ui.PictureRecorder();
     Canvas(recorder);
     final picture = recorder.endRecording();
@@ -346,7 +416,7 @@ void main() {
       () => LayerBlendShader.shaderFor(
         backdrop: blank,
         source: blank,
-        mode: LayerBlendMode.multiply,
+        mode: LayerBlendMode.add,
         width: 1,
         height: 1,
       ),

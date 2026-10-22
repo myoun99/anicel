@@ -6,14 +6,14 @@ import '../../services/brush_stroke_blend.dart';
 /// 🚨★★★ONE BLEND, TWO PROCESSORS (brush-fidelity-Q4, 유저 2026-10-17
 /// 「레이어까지 같이」).
 ///
-/// A BRUSH in linear burn, divide, darker colour … lands on a cel's bytes,
-/// where the pixels are Dart's: [blendStrokeRegionPixels], on the CPU. A
-/// LAYER in one is composed over everything below it — a composite, whose
-/// pixels only ever exist on the GPU, and the GPU has no blend for these
-/// modes. So the layer's road draws a picture of the backdrop and hands both
-/// pictures to `shaders/layer_blend.frag`, which takes the CPU's formulas of
-/// the same bytes; `test/ui/canvas/one_blend_two_processors_test.dart`
-/// sweeps the pair.
+/// A BRUSH in multiply, linear burn, hue … lands on a cel's bytes, where the
+/// pixels are Dart's: [blendStrokeRegionPixels], on the CPU. A LAYER in one
+/// is composed over everything below it — a composite, whose pixels only
+/// ever exist on the GPU. So the layer's road draws a picture of the
+/// backdrop and hands both pictures to `shaders/layer_blend.frag`, which
+/// takes the CPU's formulas of the same bytes;
+/// `test/ui/canvas/one_blend_two_processors_test.dart` sweeps the pair. Why
+/// none of them is left to the GPU's own blend is the shader's header.
 ///
 /// ⛔NOT a fallback pair, as the colour key's two are not: each runs where
 /// its pixels are, and neither is the other's stand-in.
@@ -63,8 +63,8 @@ class LayerBlendShader {
       throw ArgumentError.value(
         mode,
         'mode',
-        'has a GPU blend of its own — composing it here would draw it in the '
-            'shader\'s default, the backdrop',
+        'is laid by the GPU where it draws — composing it here would draw '
+            'it in the shader\'s default, the backdrop',
       );
     }
     final program = _program;

@@ -915,7 +915,7 @@ class _LayerStackPaintPass {
     );
   }
 
-  /// A row in a blend the GPU lacks, composed over a picture of what lies
+  /// A row in an advanced blend, composed over a picture of what lies
   /// below it in its scope ([drawBlendOverBackdrop], brush-fidelity-Q4) —
   /// the camera's walk calls the same function.
   void _paintBackdropBlendNode(

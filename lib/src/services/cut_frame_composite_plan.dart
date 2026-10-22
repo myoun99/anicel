@@ -55,7 +55,7 @@ class CutFrameCompositeLayer {
       placement = row.placement,
       effects = row.effects;
 
-  /// The same row painting normal — what a row whose blend the GPU lacks
+  /// The same row painting normal — what a row in an advanced blend
   /// is, composed over its backdrop ([CompositeBackdropBlend]).
   ///
   /// ⛔Not through the constructor: [surface] and [effects] are the ones its
@@ -163,7 +163,7 @@ sealed class CutFrameCompositeRow {
   /// The blend the row composites with against everything below it.
   LayerBlendMode get blendMode;
 
-  /// The same row painting normal — what a row whose blend the GPU lacks
+  /// The same row painting normal — what a row in an advanced blend
   /// is, composed over its backdrop ([CompositeBackdropBlend]).
   CutFrameCompositeRow paintedNormal();
 }
@@ -948,8 +948,8 @@ _adjustmentScopeNode({
 /// visible entry, with each BUFFERING folder's members wrapped in a
 /// [CompositeGroup] so the folder's opacity and blend apply
 /// ONCE to their composed buffer (R27 #29), each ADJUSTMENT row's
-/// scope wrapped in a [CompositeAdjustment] (R6b), and each row whose blend
-/// the GPU lacks composed over its scope ([CompositeBackdropBlend],
+/// scope wrapped in a [CompositeAdjustment] (R6b), and each row in an
+/// advanced blend composed over its scope ([CompositeBackdropBlend],
 /// brush-fidelity-Q4).
 ///
 /// The stack list IS the structure: a folder's members occupy a
@@ -1040,7 +1040,7 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       addTo(layer.folderId, CompositeLeaf(row));
     }
   }
-  // A row whose blend the GPU lacks goes over a picture of its scope — once
+  // A row in an advanced blend goes over a picture of its scope — once
   // the tree is whole, because a scope is then simply a list (the law's own
   // doc says why).
   return List.unmodifiable(

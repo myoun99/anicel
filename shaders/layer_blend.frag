@@ -1,6 +1,6 @@
 #version 460 core
 
-// 🚨★★★A LAYER'S BLEND THE GPU LACKS, ON THE PROCESSOR THAT HAS THE PIXELS
+// 🚨★★★A LAYER'S ADVANCED BLEND, ON THE PROCESSOR THAT HAS THE PIXELS
 // (brush-fidelity-Q4, 유저 2026-10-17 「레이어까지 같이」).
 //
 // One blend, two processors. The BRUSH lays these modes on the CPU, where a
@@ -8,9 +8,19 @@
 // lib/src/services/brush_stroke_blend.dart, mirrored in C by
 // `qa_stroke_blend_channel` / `qa_stroke_blend_triple`); a LAYER in one is
 // composed here, over a picture of its backdrop, because a composite's
-// pixels only exist on the GPU and the GPU has no blend for them. Every
-// formula and the composite below are that file's, and
-// `test/ui/canvas/one_blend_two_processors_test.dart` sweeps the pair.
+// pixels only exist on the GPU. Every formula and the composite below are
+// that file's, and `test/ui/canvas/one_blend_two_processors_test.dart`
+// sweeps the pair.
+//
+// 🗣️EVERY ADVANCED BLEND, the GPU's own fifteen too (a-blurred-folder-cut-
+// by-the-view-moves-on-vulkan Q3 · Q4, 유저 2026-10-16 · 10-22: 「제일
+// 미래지향적인 근본적인 해결」, 「골은 b(레이어 합성 전체를 한 패스 셰이더로)」).
+// ↩️Multiply, screen, overlay … went to the engine's blend, and every
+// defect it had came with them, each answered by a detour of its own: past
+// the drawn rect (F-243), doubled under a saveLayer (F-172), leaking out of
+// a patch (F-287), a diagonal on Android Vulkan (flutter#179547), 1/255
+// rounding on Windows GLES. Here a mode is one formula on every device —
+// the brush's.
 //
 // 📐WHY THE BYTES. The CPU reads straight 8-bit bytes. A sample here is a
 // premultiplied byte as a float; at full alpha that IS the byte over 255, so
@@ -40,18 +50,122 @@ uniform sampler2D uSource;
 
 out vec4 fragColor;
 
+// Hard light of the source byte [s] over the backdrop byte [d]: multiply(2cs,
+// cd) below the pivot, screen(2cs - 1, cd) above it — on bytes, with
+// x = 2s - 255, (255(x + d) - x·d) / 65025.
+float hardLight(float s, float d) {
+  float x = 2.0 * s - 255.0;
+  return s <= 127.0
+      ? 2.0 * s * d / 65025.0
+      : (255.0 * (x + d) - x * d) / 65025.0;
+}
+
+// W3C's Lum, ClipColor, SetLum, Sat and SetSat, the way the CPU writes them
+// (`_ChannelMix` in brush_stroke_blend.dart): SetSat as Skia's, every
+// channel (c - min)·s / (max - min), ties included.
+float lum(vec3 c) {
+  return 0.3 * c.r + 0.59 * c.g + 0.11 * c.b;
+}
+
+vec3 clipColour(vec3 c) {
+  float l = lum(c);
+  float low = min(min(c.r, c.g), c.b);
+  float high = max(max(c.r, c.g), c.b);
+  // ⚠️The two `!= 0` guards are the CPU's: a grey whose luminosity landed
+  // a rounding under 0 (or over 1) would otherwise divide 0 by 0.
+  vec3 out1 = (low < 0.0 && l - low != 0.0)
+      ? l + (c - l) * l / (l - low)
+      : c;
+  return (high > 1.0 && high - l != 0.0)
+      ? l + (out1 - l) * (1.0 - l) / (high - l)
+      : out1;
+}
+
+vec3 setLum(vec3 c, float l) {
+  return clipColour(c + (l - lum(c)));
+}
+
+float sat(vec3 c) {
+  return max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
+}
+
+vec3 setSat(vec3 c, float s) {
+  float low = min(min(c.r, c.g), c.b);
+  float range = max(max(c.r, c.g), c.b) - low;
+  return range > 0.0 ? (c - low) * s / range : vec3(0.0);
+}
+
 // B(Cs, Cd) for one channel, of the source byte [s] and the backdrop byte
 // [d]. ⚠️A guarded denominator is never the answer chosen: it only keeps
 // the branch not taken from dividing by zero.
 float channel(float mode, float s, float d) {
   float b = d / 255.0;
+  // 📐A product of two channels is a whole number over 65025 (= 255²): the
+  // numerator is carried exact and divided once.
+  if (mode == 2.0) {
+    // darken
+    b = min(s, d) / 255.0;
+  }
+  if (mode == 3.0) {
+    // multiply: cs·cd.
+    b = s * d / 65025.0;
+  }
+  if (mode == 4.0) {
+    // color burn: 1 - (1 - cd) / cs — on bytes, (255 - d) / s.
+    b = d >= 255.0
+        ? 1.0
+        : (s <= 0.0 ? 0.0 : 1.0 - min(1.0, (255.0 - d) / max(s, 1.0)));
+  }
+  if (mode == 5.0) {
+    // lighten
+    b = max(s, d) / 255.0;
+  }
+  if (mode == 6.0) {
+    // screen: cs + cd - cs·cd.
+    b = (255.0 * (s + d) - s * d) / 65025.0;
+  }
+  if (mode == 7.0) {
+    // color dodge: cd / (1 - cs) — on bytes, d / (255 - s).
+    b = d <= 0.0
+        ? 0.0
+        : (s >= 255.0 ? 1.0 : min(1.0, d / max(255.0 - s, 1.0)));
+  }
+  if (mode == 8.0) {
+    // overlay: hard light with the two the other way round.
+    b = hardLight(d, s);
+  }
+  if (mode == 9.0) {
+    // soft light, W3C's: below the pivot cd - (1 - 2cs)·cd·(1 - cd), above
+    // it cd + (2cs - 1)·(D(cd) - cd). cs <= 0.5 is s <= 127, cd <= 0.25 is
+    // d <= 63.
+    float cs = s / 255.0;
+    float cd = d / 255.0;
+    float lifted = d <= 63.0 ? ((16.0 * cd - 12.0) * cd + 4.0) * cd : sqrt(cd);
+    b = s <= 127.0
+        ? cd - (1.0 - 2.0 * cs) * cd * (1.0 - cd)
+        : cd + (2.0 * cs - 1.0) * (lifted - cd);
+  }
+  if (mode == 10.0) {
+    // hard light
+    b = hardLight(s, d);
+  }
+  if (mode == 11.0) {
+    // difference
+    b = abs(s - d) / 255.0;
+  }
+  if (mode == 12.0) {
+    // exclusion: cs + cd - 2·cs·cd.
+    b = (255.0 * (s + d) - 2.0 * s * d) / 65025.0;
+  }
   if (mode == 13.0) {
     // linear burn: cs + cd - 1, floored at 0.
     b = max(s + d - 255.0, 0.0) / 255.0;
-  } else if (mode == 14.0) {
+  }
+  if (mode == 14.0) {
     // subtract: cd - cs, floored at 0.
     b = max(d - s, 0.0) / 255.0;
-  } else if (mode == 15.0) {
+  }
+  if (mode == 15.0) {
     // vivid light: colorBurn(2cs, cd) below the pivot, colorDodge(2cs-1, cd)
     // above — on bytes, (255 - d) / 2s and d / (510 - 2s). The pivot
     // cs <= 0.5 is s <= 127.
@@ -62,19 +176,23 @@ float channel(float mode, float s, float d) {
         ? 0.0
         : (s >= 255.0 ? 1.0 : min(1.0, d / max(510.0 - 2.0 * s, 1.0)));
     b = s <= 127.0 ? burnt : dodged;
-  } else if (mode == 16.0) {
+  }
+  if (mode == 16.0) {
     // linear light: cd + 2cs - 1, held to 0..1.
     b = clamp(d + 2.0 * s - 255.0, 0.0, 255.0) / 255.0;
-  } else if (mode == 17.0) {
+  }
+  if (mode == 17.0) {
     // pin light: min(cd, 2cs) below the pivot, max(cd, 2cs-1) above.
     b = s <= 127.0
         ? min(d, 2.0 * s) / 255.0
         : max(d, 2.0 * s - 255.0) / 255.0;
-  } else if (mode == 18.0) {
+  }
+  if (mode == 18.0) {
     // hard mix: white where the two reach a whole, black where they fall
     // short — on bytes, s + d >= 255.
     b = s + d >= 255.0 ? 1.0 : 0.0;
-  } else if (mode == 19.0) {
+  }
+  if (mode == 19.0) {
     // divide: the backdrop over the source. Nothing divided is nothing;
     // anything divided by nothing is as bright as a channel goes.
     b = d <= 0.0 ? 0.0 : (s <= 0.0 ? 1.0 : min(d / max(s, 1.0), 1.0));
@@ -98,7 +216,16 @@ void main() {
   vec3 cs = s / 255.0;
   vec3 cd = d / 255.0;
 
-  vec3 b;
+  // ⚠️ONE `if` PER MODE, NONE NESTED IN ANOTHER'S `else` — here and in
+  // [channel]. An else-if chain of this length compiles to SkSL nested past
+  // its parser's depth ("exceeded max parse depth"), and the asset then
+  // carries no stage for the backends that read SkSL. Exactly one mode
+  // matches, so the separate ifs answer what the chain did.
+  vec3 b = vec3(
+    channel(uMode, s.r, d.r),
+    channel(uMode, s.g, d.g),
+    channel(uMode, s.b, d.b)
+  );
   if (uMode == 20.0 || uMode == 21.0) {
     // darker / lighter colour: the colour whose channel total is lower /
     // higher, whole. A tie keeps what is there.
@@ -108,12 +235,22 @@ void main() {
         ? sourceTotal < backdropTotal
         : sourceTotal > backdropTotal;
     b = takesSource ? cs : cd;
-  } else {
-    b = vec3(
-      channel(uMode, s.r, d.r),
-      channel(uMode, s.g, d.g),
-      channel(uMode, s.b, d.b)
-    );
+  }
+  if (uMode == 22.0) {
+    // hue: the source's hue at the backdrop's saturation and luminosity.
+    b = setLum(setSat(cs, sat(cd)), lum(cd));
+  }
+  if (uMode == 23.0) {
+    // saturation: the backdrop with the source's saturation.
+    b = setLum(setSat(cd, sat(cs)), lum(cd));
+  }
+  if (uMode == 24.0) {
+    // colour: the source's hue and saturation at the backdrop's luminosity.
+    b = setLum(cs, lum(cd));
+  }
+  if (uMode == 25.0) {
+    // luminosity: the backdrop at the source's luminosity.
+    b = setLum(cd, lum(cs));
   }
 
   // The W3C composite on straight alpha, as the CPU writes it:

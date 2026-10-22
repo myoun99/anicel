@@ -211,7 +211,7 @@ class CameraFrameRenderService {
       paper == null || cutTo != null,
       'a paper is laid on the canvas its picture is cut to',
     );
-    // A row in a blend the GPU lacks is composed over what lies below it
+    // A row in an advanced blend is composed over what lies below it
     // (brush-fidelity-Q4) — the plan's tree is already; a flat list is here.
     final rowNodes =
         nodes ??
