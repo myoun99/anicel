@@ -608,7 +608,7 @@ void main() {
   group('the box round the keys picked (I-3 ⑤b)', () {
     Rect? boxed(WidgetTester tester) {
       final (:painter, :box) = _graphOf(tester);
-      return painter.pickedBoxIn(box.size);
+      return painter.pickedIn(box.size).box;
     }
 
     /// [at] on the screen, where nothing drawn takes a press.
@@ -742,7 +742,7 @@ void main() {
     /// screen.
     Offset handleOnScreen(WidgetTester tester, LaneGraphBoxHandle handle) {
       final (:painter, :box) = _graphOf(tester);
-      final round = painter.pickedBoxIn(box.size)!;
+      final round = painter.pickedIn(box.size).box!;
       return box.localToGlobal(
         laneGraphBoxHandleAt(handle, round, Axis.horizontal),
       );
@@ -770,7 +770,7 @@ void main() {
       await _openTheGraph(tester, s);
       await _pick(tester, s);
       final (:painter, :box) = _graphOf(tester);
-      final round = painter.pickedBoxIn(box.size)!;
+      final round = painter.pickedIn(box.size).box!;
       final corner = laneGraphBoxHandleAt(
         (along: 1, across: -1),
         round,
@@ -789,16 +789,21 @@ void main() {
             color: selectedLaneKeyRing.color,
           ),
       );
+      // Inside the corner's square, and inside the key's mark as well.
+      final press = corner + const Offset(-2, 2);
       expect(
-        painter.keyAt(corner, box.size)?.frame,
+        painter.keyAt(press, box.size)?.frame,
         8,
         reason: '⛔전제: the key on 8 is under the corner',
       );
-      expect(painter.boxHandleAt(corner, box.size), (along: 1, across: -1));
+      expect(
+        painter.pickedIn(box.size).handleAt(press),
+        (along: 1, across: -1),
+      );
 
       await _carry(
         tester,
-        box.localToGlobal(corner),
+        box.localToGlobal(press),
         Offset(_cellExtent(tester) * 8, 0),
       );
 
@@ -880,17 +885,17 @@ void main() {
 
     testWidgets('pulled past the box\'s other end, the keys turn about it '
         'and run the other way in time — AE\'s', (tester) async {
-      final s = await _pump(tester, transform: rotating(8, 16));
+      final s = await _pump(tester, transform: rotating(4, 8));
       await _openTheGraph(tester, s);
-      await _pick(tester, s, from: 8, to: 16);
+      await _pick(tester, s, from: 4);
 
       await _carry(
         tester,
         handleOnScreen(tester, (along: 1, across: 0)),
-        Offset(-_cellExtent(tester) * 16, 0),
+        Offset(-_cellExtent(tester) * 8, 0),
       );
 
-      expect(rotations(s), {0: 45, 8: 0});
+      expect(rotations(s), {0: 45, 4: 0});
     });
   });
 }

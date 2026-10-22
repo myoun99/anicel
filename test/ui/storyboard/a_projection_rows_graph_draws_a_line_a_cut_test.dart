@@ -565,7 +565,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     final (:painter, :box) = pictureOf(tester, cameraGraph);
-    final round = painter.pickedBoxIn(box.size)!;
+    final round = painter.pickedIn(box.size).box!;
     final cell = painter.frameAxis.geometry.value.frameCellExtent;
 
     // b's keys on its own 2 and 6 — the track's 26 and 30 — and the

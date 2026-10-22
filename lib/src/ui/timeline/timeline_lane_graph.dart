@@ -607,7 +607,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   }
 
   /// Its GROUND, under the picture: wherever no handle, key, line or the
-  /// box round the keys picked ([TimelineLaneGraphPainter.pickedBoxIn])
+  /// box round the keys picked ([LaneGraphPicked.box])
   /// takes the press, a drag draws a box (I-3 ⑤) — with the devices a lane's
   /// band selects with, a finger scrolling where they do not — and a tap
   /// lets every key go, as a tap on the band does (H18).
@@ -729,7 +729,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final size = context.size!;
     return _painter.handleAt(position, size) != null ||
         (widget.lanes != null &&
-            (_painter.boxHandleAt(position, size) != null ||
+            (_painter.pickedIn(size).handleAt(position) != null ||
                 _keyTakenAt(position) != null)) ||
         _penAt(position) != null;
   }
@@ -741,7 +741,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final size = context.size!;
     return _painter.keyAt(position, size) ??
         (_penAt(position) == null
-            ? _painter.pickedKeyNearest(position, size)
+            ? _painter.pickedIn(size).nearest(position)
             : null);
   }
 
@@ -792,7 +792,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     if (lanes == null || _painter.handleAt(position, size) != null) {
       return;
     }
-    if (_painter.boxHandleAt(position, size) case final handle?) {
+    if (_painter.pickedIn(size).handleAt(position) case final handle?) {
       setState(() => _keyInHand = _boxTaken(handle, position, size));
       return;
     }
@@ -842,7 +842,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// far its line's own frames stand from the graph's.
   _KeyInHand _boxTaken(LaneGraphBoxHandle handle, Offset position, Size size) {
     final axis = widget.frameAxis.axis;
-    final picked = _painter.pickedKeysIn(size);
+    final picked = _painter.pickedIn(size).keys;
     LaneGraphSpan spanOf(double Function(LaneGraphKey key) of) {
       final all = picked.map(of);
       return (low: all.reduce(math.min), high: all.reduce(math.max));
@@ -1909,6 +1909,28 @@ typedef _LaneGraphStroke = ({
   bool dashed,
 });
 
+/// Whether [position] is on [stroke] as it is drawn: within half its
+/// width of the line through its points — and, a guest's, on one of its
+/// dashes ([DashPattern.dashesAt]).
+bool _laneGraphStrokeHolds(_LaneGraphStroke stroke, Offset position) {
+  final (line: _, :points, color: _, :dashed) = stroke;
+  var along = 0.0;
+  for (var index = 0; index + 1 < points.length; index += 1) {
+    final from = points[index];
+    final to = points[index + 1];
+    final share = shareAlongSegment(position, from, to).clamp(0.0, 1.0);
+    final length = (to - from).distance;
+    final nearest = from + (to - from) * share;
+    if ((nearest - position).distance <= _laneGraphStroke / 2 &&
+        (!dashed ||
+            _laneGraphGuestDashes.dashesAt(along + share * length))) {
+      return true;
+    }
+    along += length;
+  }
+  return false;
+}
+
 /// A KEY a value graph marks (I-89 ③), and a press picks (I-3): [line]'s
 /// key on [frame] — the line's own — marked [at] on the line of its
 /// [part]-th number, as [mark] says it is.
@@ -2160,9 +2182,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
       canvas.drawLine(handle.key, handle.at, stem);
     }
     final ring = selectedLaneKeyRing;
-    if (_boxRound(pickedKeysIn(size)) case final round?) {
-      _paintBoxRound(canvas, round);
-    }
+    pickedIn(size).paint(canvas);
     for (final key in keys) {
       paintKeyMark(
         canvas,
@@ -2228,94 +2248,23 @@ class TimelineLaneGraphPainter extends CustomPainter {
     key.frame,
   );
 
-  /// The keys [selection] picks of those a picture [size] big marks, in the
-  /// order they are marked.
-  List<LaneGraphKey> pickedKeysIn(Size size) =>
-      keysIn(size).where(_picks).toList();
-
-  /// The BOX ROUND the keys [selection] picks on a picture [size] big
-  /// (I-3 ⑤b, AE's transform box) — their marks' bounds — where it picks
-  /// two or more: null where it picks fewer. A drag begun inside it carries
-  /// them ([pickedKeyNearest]).
-  ///
-  /// 🗣️I-3-Q5 (유저 2026-10-22): 「경계 상자를 둔다 (AE 변형 상자)」.
-  Rect? pickedBoxIn(Size size) => _boxRound(pickedKeysIn(size));
-
-  /// The box [round] the keys picked, in their rings' ink, and its eight
-  /// handles on it (I-3 ⑥, AE's transform box) — filled in the same ink.
-  void _paintBoxRound(Canvas canvas, Rect round) {
-    final ring = selectedLaneKeyRing;
-    canvas.drawRect(
-      round,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = ring.width
-        ..color = ring.color,
-    );
-    final ink = Paint()..color = ring.color;
-    for (final handle in laneGraphBoxHandles) {
-      canvas.drawRect(_boxHandleRect(handle, round), ink);
-    }
-  }
-
-  /// The handle of the box round the keys picked on a picture [size] big
-  /// that a press at [position] takes (I-3 ⑥) — on the square drawn of it
-  /// ([_drawnLastAt]); null off them, and where there is no box.
-  LaneGraphBoxHandle? boxHandleAt(Offset position, Size size) {
-    final round = pickedBoxIn(size);
-    if (round == null) {
-      return null;
-    }
-    return _drawnLastAt(
-      laneGraphBoxHandles,
-      (handle) => _boxHandleRect(handle, round).contains(position),
-    );
-  }
-
-  /// The square [handle] is drawn in on the box [round].
-  Rect _boxHandleRect(LaneGraphBoxHandle handle, Rect round) =>
-      Rect.fromCenter(
-        center: laneGraphBoxHandleAt(handle, round, axis),
-        width: _laneGraphBoxHandleSide,
-        height: _laneGraphBoxHandleSide,
-      );
-
-  /// [picked]'s marks' bounds — null for fewer than two keys: a key of two
-  /// numbers is marked twice and is one key.
-  Rect? _boxRound(List<LaneGraphKey> picked) {
-    final keys = {
-      for (final key in picked)
-        (key.line.layer.id, key.line.lane.laneId, key.frame),
-    };
-    return keys.length < 2
-        ? null
-        : picked.map(_markOf).reduce((box, mark) => box.expandToInclude(mark));
-  }
-
-  /// The key picked nearest [position] where it is inside the box round
-  /// them on a picture [size] big ([pickedBoxIn]) — what a press there
-  /// takes in hand: of a line of two numbers, the number marked nearest it
-  /// (I-3-Q5). Null outside the box, and where there is none.
-  LaneGraphKey? pickedKeyNearest(Offset position, Size size) {
-    final picked = pickedKeysIn(size);
-    if (!(_boxRound(picked)?.contains(position) ?? false)) {
-      return null;
-    }
-    double away(LaneGraphKey key) => (key.at - position).distance;
-    return picked.reduce(
-      (nearest, key) => away(key) < away(nearest) ? key : nearest,
-    );
-  }
+  /// The keys [selection] picks of those a picture [size] big marks, and
+  /// the box round them.
+  LaneGraphPicked pickedIn(Size size) => LaneGraphPicked._(
+    keysIn(size).where(_picks).toList(),
+    markOf: _markOf,
+    axis: axis,
+  );
 
   /// Where a pen press at [position] puts a key on a picture [size] big
   /// (I-3 ④, AE's pen): the line it lands on — on its stroke as drawn and
-  /// nowhere round it ([_drawnLastAt], [_strokeHolds]) — and the frame of
-  /// the line's own whose cell it is in. Null off every line, and off the
-  /// frames the line has.
+  /// nowhere round it ([_drawnLastAt], [_laneGraphStrokeHolds]) — and the
+  /// frame of the line's own whose cell it is in. Null off every line, and
+  /// off the frames the line has.
   ({LaneGraphLine line, int frame})? curveAt(Offset position, Size size) {
     final stroke = _drawnLastAt(
       _readIn(size).strokes,
-      (stroke) => _strokeHolds(stroke, position),
+      (stroke) => _laneGraphStrokeHolds(stroke, position),
     );
     if (stroke == null) {
       return null;
@@ -2327,28 +2276,6 @@ class TimelineLaneGraphPainter extends CustomPainter {
     return frames.contains(cell) && _reaches(line, frame)
         ? (line: line, frame: frame)
         : null;
-  }
-
-  /// Whether [position] is on [stroke] as it is drawn: within half its
-  /// width of the line through its points — and, a guest's, on one of its
-  /// dashes ([DashPattern.dashesAt]).
-  static bool _strokeHolds(_LaneGraphStroke stroke, Offset position) {
-    final (line: _, :points, color: _, :dashed) = stroke;
-    var along = 0.0;
-    for (var index = 0; index + 1 < points.length; index += 1) {
-      final from = points[index];
-      final to = points[index + 1];
-      final share = shareAlongSegment(position, from, to).clamp(0.0, 1.0);
-      final length = (to - from).distance;
-      final nearest = from + (to - from) * share;
-      if ((nearest - position).distance <= _laneGraphStroke / 2 &&
-          (!dashed ||
-              _laneGraphGuestDashes.dashesAt(along + share * length))) {
-        return true;
-      }
-      along += length;
-    }
-    return false;
   }
 
   /// Of [marks], in the order they are drawn, the one drawn last that a
@@ -2674,4 +2601,98 @@ class TimelineLaneGraphPainter extends CustomPainter {
       oldDelegate.selection != selection ||
       oldDelegate.held != held ||
       oldDelegate.box != box;
+}
+
+/// The keys a lane selection picks on a header graph's picture, in the
+/// order they are marked, and the BOX ROUND them (I-3 ⑤b, AE's transform
+/// box) — their marks' bounds, where it picks two or more — with its eight
+/// handles on it (I-3 ⑥). A drag begun inside the box carries the keys
+/// ([nearest]); one begun on a handle stretches them.
+///
+/// 🗣️I-3-Q5 (유저 2026-10-22): 「경계 상자를 둔다 (AE 변형 상자)」.
+class LaneGraphPicked {
+  LaneGraphPicked._(
+    this.keys, {
+    required Rect Function(LaneGraphKey key) markOf,
+    required Axis axis,
+  }) : _markOf = markOf,
+       _axis = axis;
+
+  final List<LaneGraphKey> keys;
+
+  /// The box each key's mark is drawn in.
+  final Rect Function(LaneGraphKey key) _markOf;
+  final Axis _axis;
+
+  /// The box round [keys] — null for fewer than two keys: a key of two
+  /// numbers is marked twice and is one key.
+  late final Rect? box = _boxRound();
+
+  Rect? _boxRound() {
+    final distinct = {
+      for (final key in keys)
+        (key.line.layer.id, key.line.lane.laneId, key.frame),
+    };
+    return distinct.length < 2
+        ? null
+        : keys
+              .map(_markOf)
+              .reduce((round, mark) => round.expandToInclude(mark));
+  }
+
+  /// The [box] in the rings' ink, and its eight handles on it — filled in
+  /// the same ink (I-3 ⑥, AE's transform box).
+  void paint(Canvas canvas) {
+    final round = box;
+    if (round == null) {
+      return;
+    }
+    final ring = selectedLaneKeyRing;
+    canvas.drawRect(
+      round,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = ring.width
+        ..color = ring.color,
+    );
+    final ink = Paint()..color = ring.color;
+    for (final handle in laneGraphBoxHandles) {
+      canvas.drawRect(_handleRect(handle, round), ink);
+    }
+  }
+
+  /// The handle of the [box] a press at [position] takes (I-3 ⑥) — on the
+  /// square drawn of it ([TimelineLaneGraphPainter._drawnLastAt]); null off
+  /// them, and where there is no box.
+  LaneGraphBoxHandle? handleAt(Offset position) {
+    final round = box;
+    if (round == null) {
+      return null;
+    }
+    return TimelineLaneGraphPainter._drawnLastAt(
+      laneGraphBoxHandles,
+      (handle) => _handleRect(handle, round).contains(position),
+    );
+  }
+
+  /// The square [handle] is drawn in on the box [round].
+  Rect _handleRect(LaneGraphBoxHandle handle, Rect round) => Rect.fromCenter(
+    center: laneGraphBoxHandleAt(handle, round, _axis),
+    width: _laneGraphBoxHandleSide,
+    height: _laneGraphBoxHandleSide,
+  );
+
+  /// The key picked nearest [position] where it is inside the [box] — what
+  /// a press there takes in hand: of a line of two numbers, the number
+  /// marked nearest it (I-3-Q5). Null outside the box, and where there is
+  /// none.
+  LaneGraphKey? nearest(Offset position) {
+    if (!(box?.contains(position) ?? false)) {
+      return null;
+    }
+    double away(LaneGraphKey key) => (key.at - position).distance;
+    return keys.reduce(
+      (nearest, key) => away(key) < away(nearest) ? key : nearest,
+    );
+  }
 }
