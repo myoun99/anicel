@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
+import 'package:anicel/src/ui/timeline/lane_graph_box_stretch.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show LaneGraphReach;
 import 'package:anicel/src/ui/timeline/lane_graph_toggle.dart'
@@ -546,6 +547,43 @@ void main() {
           line.lane.laneId,
     ]);
     expect(picked.spanLaneIds, contains('rotation'), reason: '⛔전제');
+  });
+
+  testWidgets('a handle of the box round a cut\'s keys stretches them in '
+      'that cut\'s own frames, about the box\'s other end (I-3 ⑥)', (
+    tester,
+  ) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    SessionRowButtonPresses(session).toggleLaneGraph(inHand);
+    session.selectCut(const CutId('b'));
+    session.updateLaneRangeSelectionDrag(
+      layerId: const LayerId('b-cam'),
+      laneId: 'rotation',
+      anchorIndex: 2,
+      headIndex: 6,
+      spanLaneIds: const ['rotation'],
+    );
+    await tester.pumpAndSettle();
+    final (:painter, :box) = pictureOf(tester, cameraGraph);
+    final round = painter.pickedBoxIn(box.size)!;
+    final cell = painter.frameAxis.geometry.value.frameCellExtent;
+
+    // b's keys on its own 2 and 6 — the track's 26 and 30 — and the
+    // box's end pulled four frames on: twice as long about b's own 2.
+    final gesture = await tester.startGesture(
+      box.localToGlobal(
+        laneGraphBoxHandleAt((along: 1, across: 0), round, Axis.horizontal),
+      ),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(Offset(cell * 4, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final b = session.repository.requireProject().tracks.single.cuts[1];
+    expect(b.camera.track.rotation.keys.keys.toList()..sort(), [2, 10]);
   });
 
   testWidgets('a box on its ground over an S row\'s pinned keys as well picks '

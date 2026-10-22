@@ -838,7 +838,8 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// A press on a handle of the box round the keys picked TAKES IT (I-3 ⑥,
   /// AE's transform box): the times of the keys picked and their marks
   /// across the graph held for the stretch — the selection standing as it
-  /// is — with the key picked nearest it in hand.
+  /// is — with the first of them in hand: what holds its row, and says how
+  /// far its line's own frames stand from the graph's.
   _KeyInHand _boxTaken(LaneGraphBoxHandle handle, Offset position, Size size) {
     final axis = widget.frameAxis.axis;
     final picked = _painter.pickedKeysIn(size);
@@ -847,12 +848,9 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       return (low: all.reduce(math.min), high: all.reduce(math.max));
     }
 
-    double away(LaneGraphKey key) => (key.at - position).distance;
     final fits = _painter.fits;
     return _KeyInHand(
-      picked.reduce(
-        (nearest, key) => away(key) < away(nearest) ? key : nearest,
-      ),
+      picked.first,
       position,
       fits,
       box: (
@@ -952,12 +950,10 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final shift = TimelineLaneGraphPainter._shiftOf(inHand.key.line);
     widget.lanes!.onMoveUpdate(
       0,
-      stretch: factor == 1 ? null : (anchor: anchor - shift, factor: factor),
+      stretch: (anchor: anchor - shift, factor: factor),
       values: _lift.valuesOf([
         for (final (:lifted, across: at) in inHand.marks)
-          if ((at - crossed.anchor) * (crossed.factor - 1) case final rise
-              when rise != 0)
-            (lifted: lifted, rise: rise),
+          (lifted: lifted, rise: (at - crossed.anchor) * (crossed.factor - 1)),
       ]),
     );
   }
