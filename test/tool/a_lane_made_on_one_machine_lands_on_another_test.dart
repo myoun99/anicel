@@ -473,9 +473,9 @@ void main() {
   });
 
   group('one lane, wherever it was cut', () {
-    test('🚨`open` and `receive` furnish a worktree through one function — '
-        'neither has an engine copy or a pub get of its own', () {
-      for (final function in ['cmd_open', 'cmd_receive']) {
+    test('🚨`open`, `receive` and `furnish` ready a worktree through one '
+        'function — none has an engine copy or a pub get of its own', () {
+      for (final function in ['cmd_open', 'cmd_receive', 'cmd_furnish']) {
         final code = lane.codeOf(function).join('\n');
         expect(code, contains(r'furnish "$p"'), reason: function);
         expect(code, isNot(contains('pub get')), reason: function);
