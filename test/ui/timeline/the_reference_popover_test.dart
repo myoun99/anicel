@@ -10,26 +10,39 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_cel.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
+import 'package:anicel/src/services/reference_move_carried.dart'
+    show ReferenceWait;
+import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart'
+    show DetailsDisclosure;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/media/media_asset_pool_state.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/model_vocabulary.dart'
+    show ReferenceWaitWords;
 import 'package:anicel/src/ui/timeline/layer_reference_popover.dart';
 import 'package:anicel/src/ui/timeline/rasterize_reference_rows.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 void main() {
   late Directory tempDir;
@@ -200,14 +213,8 @@ void main() {
 
   /// The decode runs in `runAsync`; its answers land on the pumps after —
   /// which carry the clock too, so the window's own timers run out.
-  Future<void> settle(WidgetTester tester, bool Function() done) async {
-    for (var tries = 0; tries < 300 && !done(); tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump(const Duration(milliseconds: 20));
-    }
-  }
+  Future<void> settle(WidgetTester tester, bool Function() done) =>
+      settleAsync(tester, done, step: const Duration(milliseconds: 20));
 
   testWidgets('one row: its file beside its POOL state, and the one cel it '
       'bakes (「bg_street.png · 참조」 · 「래스터라이즈 · 1장」)', (tester) async {
@@ -321,9 +328,6 @@ void main() {
     );
     await openOn(tester, s, movie);
 
-    final waitWindow = find.byKey(
-      const ValueKey<String>('movie-rasterize-progress'),
-    );
     await tester.tap(rasterize);
     await tester.pump();
     expect(
@@ -342,27 +346,30 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('the layer menu takes the same road — its rasterize is this '
-      'verb, so a movie goes behind the window there too', (tester) async {
-    final (s, movie) = await movieSession(tester, frameCount: 6, inFrame: 0);
-    expect(s.activeLayer?.id, movie, reason: 'fixture: the placed row');
-    late BuildContext menuContext;
+  /// A context under an app, for a verb that puts a window up.
+  Future<BuildContext> hostedContext(WidgetTester tester) async {
+    late BuildContext hosted;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Builder(
             builder: (context) {
-              menuContext = context;
+              hosted = context;
               return const SizedBox.shrink();
             },
           ),
         ),
       ),
     );
+    return hosted;
+  }
 
-    final waitWindow = find.byKey(
-      const ValueKey<String>('movie-rasterize-progress'),
-    );
+  testWidgets('the layer menu takes the same road — its rasterize is this '
+      'verb, so a movie goes behind the window there too', (tester) async {
+    final (s, movie) = await movieSession(tester, frameCount: 6, inFrame: 0);
+    expect(s.activeLayer?.id, movie, reason: 'fixture: the placed row');
+    final menuContext = await hostedContext(tester);
+
     // ⛔Not awaited HERE: the decode needs the pumps below to run, and a
     // test body waiting on it is a test body not pumping.
     unawaited(rasterizeActiveRow(menuContext, s));
@@ -377,6 +384,176 @@ void main() {
     );
     expect(current(s, movie).frames, hasLength(6));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('two rows baked in one press fill ONE bar — each its own half, '
+      'the second from where the first ends', (tester) async {
+    final (s, _) = await movieSession(tester, frameCount: 6, inFrame: 0);
+    await tester.runAsync(() async {
+      final path = '${tempDir.path}${Platform.pathSeparator}second.mov';
+      await File(path).writeAsBytes(const [0, 0, 0, 24]);
+      await s.importDoors.importVideoFile(
+        path: path,
+        settings: const ImportFileSettings(
+          mode: ImportFileMode.reference,
+          movieParts: MovieParts.picture,
+        ),
+      );
+    });
+    final rows = [
+      for (final layer in s.requireActiveCut.layers)
+        if (isMovieReference(layer)) layer.id,
+    ];
+    expect(rows, hasLength(2), reason: 'the premise: two takes placed');
+    final menuContext = await hostedContext(tester);
+
+    final told = watchTheBar(tester);
+    unawaited(
+      rasterizeReferenceRows(menuContext, s, [
+        for (final row in rows) current(s, row),
+      ]),
+    );
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          rows.every((row) => current(s, row).mediaReference == null),
+    );
+
+    // Six cels a row: the first row's third is a quarter of the bar.
+    expectOneBar(told, [0.25, 0.5, 0.75, 1]);
+    await tester.pumpAndSettle();
+  });
+
+  /// [rowId]'s paper squashed by its own transform under a [turn] of its
+  /// fx's — a move the row's transform cannot carry (F-374-Q7 ③).
+  void sheared(
+    EditorSessionManager s,
+    LayerId rowId,
+    PropertyTrack<double> turn,
+  ) => s.cutCommandCoordinator
+    ..updateLayerTransformTrack(
+      cutId: s.requireActiveCut.id,
+      layerId: rowId,
+      transformTrack: TransformTrack.empty().copyWith(
+        scale: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 1, y: 0.5),
+        ),
+      ),
+    )
+    ..updateLayerReferenceFx(
+      layerId: rowId,
+      fx: TransformTrack.empty().copyWith(rotation: turn),
+    );
+
+  testWidgets('a still its transform cannot carry the move of goes behind '
+      'the window too, and comes back baked in its own cel (F-374-Q7)', (
+    tester,
+  ) async {
+    final (s, rows) = await sessionWith(tester, ['bg_street.png']);
+    final street = rows['bg_street.png']!;
+    sheared(s, street, PropertyTrack<double>().withKey(0, 30));
+    final cel = current(s, street).frames.single.id;
+    final menuContext = await hostedContext(tester);
+
+    unawaited(rasterizeReferenceRows(menuContext, s, [current(s, street)]));
+    await tester.pump();
+    expect(waitWindow, findsOneWidget);
+
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          current(s, street).mediaReference == null,
+    );
+    expect(current(s, street).mediaReference, isNull);
+    expect(current(s, street).frames.single.id, cel, reason: 'in place');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a row that waits stays the reference it is — no wait window '
+      'comes up for it, the notice that says why does (F-374-Q9 · Q11 '
+      '「막고 경고」)', (tester) async {
+    final (s, rows) = await sessionWith(tester, ['bg_street.png']);
+    final street = rows['bg_street.png']!;
+    sheared(
+      s,
+      street,
+      PropertyTrack<double>().withKey(0, 30).withKey(12, 60),
+    );
+    final before = current(s, street);
+    final menuContext = await hostedContext(tester);
+
+    unawaited(rasterizeReferenceRows(menuContext, s, [before]));
+    await tester.pumpAndSettle();
+
+    expect(waitWindow, findsNothing);
+    expect(current(s, street), before);
+    expect(foldsOf(tester), {
+      ReferenceWait.sheared.labelFor(AppText.language): [before.name],
+    });
+  });
+
+  testWidgets('🎯the notice says each reason once, in its own words, over '
+      'every row it was said of — under the one line that says the rows '
+      'stayed references (F-374-Q11)', (tester) async {
+    final menuContext = await hostedContext(tester);
+    Layer row(String name) =>
+        Layer(id: LayerId(name), name: name, frames: const []);
+    String words(ReferenceWait why) => why.labelFor(AppText.language);
+
+    unawaited(
+      showReferenceWaits(menuContext, [
+        (row: row('a'), why: ReferenceWait.attached),
+        (row: row('b'), why: ReferenceWait.laidAsFitted),
+        (row: row('c'), why: ReferenceWait.sheared),
+        (row: row('d'), why: ReferenceWait.othersKeepKeys),
+        (row: row('e'), why: ReferenceWait.usesApart),
+        (row: row('f'), why: ReferenceWait.sheared),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(AppText.strings.rasterizeLeftReferences),
+      findsOneWidget,
+    );
+    expect(foldsOf(tester), {
+      words(ReferenceWait.attached): ['a'],
+      words(ReferenceWait.laidAsFitted): ['b'],
+      words(ReferenceWait.sheared): ['c', 'f'],
+      words(ReferenceWait.othersKeepKeys): ['d'],
+      words(ReferenceWait.usesApart): ['e'],
+    });
+  });
+
+  testWidgets('the notice says why in the program\'s language — a reason '
+      'reads its words from the tables, not its English (F-374-Q11)', (
+    tester,
+  ) async {
+    AppText.settings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ko,
+      notationLanguage: AppLanguage.ko,
+    );
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    final menuContext = await hostedContext(tester);
+    final words = ReferenceWait.attached.labelFor(AppLanguage.ko);
+    expect(words, isNot(ReferenceWait.attached.label), reason: 'the premise');
+
+    unawaited(
+      showReferenceWaits(menuContext, [
+        (
+          row: Layer(id: const LayerId('a'), name: 'a', frames: const []),
+          why: ReferenceWait.attached,
+        ),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(foldsOf(tester), {
+      words: ['a'],
+    });
   });
 
   test('the pool state is where the file\'s bytes live — carried or linked',
@@ -397,3 +574,20 @@ void main() {
 }
 
 final popover = find.byKey(const ValueKey<String>('layer-reference-popover'));
+
+/// The one window heavy work waits behind, as a rasterize puts it up.
+final waitWindow = find.byKey(
+  const ValueKey<String>('reference-rasterize-progress'),
+);
+
+/// The folds of the notice a rasterize that left rows waiting puts up: what
+/// each says, over the rows it says it of.
+Map<String, List<String>> foldsOf(WidgetTester tester) => {
+  for (final fold in tester.widgetList<DetailsDisclosure>(
+    find.descendant(
+      of: find.byKey(const ValueKey<String>('reference-rasterize-waits')),
+      matching: find.byType(DetailsDisclosure),
+    ),
+  ))
+    fold.heading: fold.lines,
+};

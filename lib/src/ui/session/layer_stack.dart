@@ -10,7 +10,9 @@
 // ⛔It does not implement "insert a row above the active one": that verb
 // is [LayerVerbs.addRowAboveActive] and this calls it. What lives here is
 // the kind-by-kind decision of WHAT to insert and whether it is allowed
-// at all — a different question, and the reason the two are not merged.
+// at all — a different question, and the reason the two are not merged —
+// and the one kind born elsewhere: a cut's conte row, at the bottom of
+// ACTION (F-369, [LayerVerbs.addRow]).
 
 import 'package:flutter/foundation.dart';
 
@@ -21,6 +23,7 @@ import '../../models/layer_folder.dart' show createFolderLayer;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_section_defaults.dart';
+import '../../models/new_row_placement.dart' show conteRowPlacement;
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
 import '../../services/commands/cut_command_input_planner.dart'
@@ -138,13 +141,18 @@ class LayerStack {
         // so they never start empty and then have to be filled. (An image
         // row can be EMPTIED afterwards, F-98 — its birth is unchanged:
         // 「생성하면 기본적으로 프레임 생성되는건 그대로」.)
-        _layerVerbs.addRowAboveActive(
+        _layerVerbs.addRow(
           (cut) => bornRowOfKind(
             kind,
             layerId: layerId,
             coveringFrameId: () => _frameIds.mintFrameId(layerId),
             cut: cut,
           ),
+          // A cut's conte row is born at the bottom of ACTION, from this
+          // door as from the conte's own (F-369, [conteRowPlacement]).
+          kind == LayerKind.storyboard
+              ? conteRowPlacement
+              : _layerVerbs.placementAboveActive,
         );
       case LayerKind.adjustment:
         // R6b: a real row you ADD (unlike a folder), joining the stack
@@ -255,19 +263,40 @@ class LayerStack {
       // bare cells turned the folder white. Grey is where no member holds a
       // PICTURE ([_blockIsDrawnAt]) — each member read where a drag in
       // flight has it, as the band itself is (`folderBandsFollowing`).
-      final preview = _dragPreview.value;
-      return _folderBands
-          .folderBandMembersOf(layer.id)
-          .any(
-            (member) =>
-                _blockIsDrawnAt(
-                  timelineDragPreviewLayerFor(preview, member.id) ?? member,
-                  frameIndex,
-                ) ??
-                false,
-          );
+      return _anyMemberOf(
+        layer,
+        (member) => _blockIsDrawnAt(member, frameIndex) ?? false,
+      );
     }
     return _blockIsDrawnAt(layer, frameIndex) ?? true;
+  }
+
+  /// Whether the drawing block covering [frameIndex] shows a cel whose
+  /// picture data could not be read ([LayerFrameImageCache.unreadable]) —
+  /// the block goes red (유저 2026-10-16, frame-picture-indicator-Q1 b: 「a +
+  /// 그 셀이 있는 타임라인 칸에도 빨간 표시」). A folder's frame where any
+  /// member's does: the band shows what its rows hold, as its grey does
+  /// ([celHasContentForLayer]).
+  bool celCannotBeReadForLayer(Layer layer, int frameIndex) {
+    if (layer.kind.groupsLayers) {
+      return _anyMemberOf(
+        layer,
+        (member) => _blockCannotBeReadAt(member, frameIndex),
+      );
+    }
+    return _blockCannotBeReadAt(layer, frameIndex);
+  }
+
+  /// Whether any member of the folder [folder] answers [asks] — each read
+  /// where a drag in flight has it, as the band itself is.
+  bool _anyMemberOf(Layer folder, bool Function(Layer member) asks) {
+    final preview = _dragPreview.value;
+    return _folderBands
+        .folderBandMembersOf(folder.id)
+        .any(
+          (member) =>
+              asks(timelineDragPreviewLayerFor(preview, member.id) ?? member),
+        );
   }
 
   /// Whether the block [layer] stands at [frameIndex] holds a picture —
@@ -275,6 +304,22 @@ class LayerStack {
   /// a bare cell. The row's own tint reads null as 「nothing to tint」, and a
   /// folder's union as 「nothing drawn」.
   bool? _blockIsDrawnAt(Layer layer, int frameIndex) {
+    final cel = _celAt(layer, frameIndex);
+    return cel == null
+        ? null
+        : celHoldsAPicture(cel.cut, layer.id, cel.frameId);
+  }
+
+  /// Whether the block [layer] stands at [frameIndex] shows a cel that could
+  /// not be read — false where it stands no block that could hold one.
+  bool _blockCannotBeReadAt(Layer layer, int frameIndex) {
+    final cel = _celAt(layer, frameIndex);
+    return cel != null && celCannotBeRead(cel.cut, layer.id, cel.frameId);
+  }
+
+  /// The cel the block [layer] stands at [frameIndex] shows: its cut and its
+  /// frame — null where it stands no block that could hold a picture.
+  ({Cut cut, FrameId frameId})? _celAt(Layer layer, int frameIndex) {
     // 🚨THE QUESTION IS 「CAN THIS ROW HOLD A PICTURE」, not 「is it in the
     // drawing SECTION」 (유저 2026-08-27, R27 #16: 「추가로 **없으면 블록을
     // 회색으로**. 로직은 통일」). The direction row is a camera-section row
@@ -302,25 +347,45 @@ class LayerStack {
       // a block with no cel behind it yet, tinted here because 유저 asked
       // to see exactly that state (「추가로 **없으면 블록을 회색으로**」).
       // Since R27 every span is a block on a cel of its own, so that grey
-      // comes from the unworked-cel rule below, like any empty cel's.
+      // comes from the unworked-cel rule ([_blockIsDrawnAt]), like any empty
+      // cel's.
       return null;
     }
+    return (cut: cut, frameId: frame.id);
+  }
+
+  /// Whether [row]'s cel [cel] in [cut] holds a picture — the fact of the
+  /// unworked-block tint (R26 #44), for one cel of any cut: the active
+  /// cut's rows ask it through [celHasContentForLayer], and the conte row
+  /// the storyboard lays over the whole film asks it of each cut it
+  /// crosses (F-357).
+  bool celHoldsAPicture(Cut cut, LayerId row, FrameId cel) {
     // A LIVE stroke already counts. The store only learns about pixels at
     // commit (`markCelEdited` on pen-up), so waiting for it left the block
     // grey for the whole stroke — the user asked for it to go white the
     // moment the line starts, which is also when the cel stops being
     // "unworked" in any sense that matters.
-    if (_brushInputActive.value && _liveStrokeCel == (layer.id, frame.id)) {
+    if (_brushInputActive.value &&
+        cut.id == _project.activeCutOrNull?.id &&
+        _liveStrokeCel == (row, cel)) {
       return true;
     }
-    // A cel a drag carries onto [layer] is drawn where its pixels still are:
-    // under the row it came from ([celPixelsRowOf]).
-    return _storeHoldsAPicture(
-      cut,
-      celPixelsRowOf(_dragPreview.value, layer.id, frame.id),
-      frame.id,
-    );
+    return _storeHoldsAPicture(cut, _pixelsRowOf(row, cel), cel);
   }
+
+  /// Whether [row]'s cel [cel] in [cut] could not be read
+  /// ([LayerFrameImageCache.unreadable]) — the fact of the red block, for
+  /// one cel of any cut, as [celHoldsAPicture] is the grey's.
+  bool celCannotBeRead(Cut cut, LayerId row, FrameId cel) =>
+      _renderCaches.layerFrameImageCache.unreadable.has(
+        _project.brushFrameKeyForCut(cut, _pixelsRowOf(row, cel), cel),
+      );
+
+  /// The row [row]'s cel [cel] has its pixels under: a cel a drag carries
+  /// onto [row] is drawn where its pixels still are — under the row it came
+  /// from ([celPixelsRowOf]).
+  LayerId _pixelsRowOf(LayerId row, FrameId cel) =>
+      celPixelsRowOf(_dragPreview.value, row, cel);
 
   /// The cel a live stroke counts as drawn: the active row's selected
   /// frame. Null when there is none, and then no block can be it.
@@ -337,7 +402,8 @@ class LayerStack {
 
   /// Bumps whenever [celHasContentForLayer] can have changed anywhere: the
   /// store crosses empty↔drawn, or the pen goes down or up on a cel whose
-  /// answer the live stroke decides.
+  /// answer the live stroke decides — and whenever [celCannotBeReadForLayer]
+  /// can: a cel noted unreadable, or its note taken back.
   ///
   /// The store's own crossing signal (R27 #13) already existed and NOTHING
   /// SUBSCRIBED TO IT — which is the whole bug: the tint is derived state
@@ -372,7 +438,8 @@ class LayerStack {
     _bumpCelTintRevision();
   }
 
-  /// The two events that can flip [celHasContentForLayer]'s answer.
+  /// The two events that can flip [celHasContentForLayer]'s answer, and the
+  /// one that can flip [celCannotBeReadForLayer]'s.
   ///
   /// ⛔NOT EVERY PIXEL EDIT. A third listener stood here, on the store's
   /// `celPixelRevision`, for 픽셀 비우기: the crossing detector used to ask
@@ -389,6 +456,9 @@ class LayerStack {
       _bumpCelTintRevision,
     );
     _brushInputActive.addListener(_bumpWhereTheLiveStrokeDecides);
+    _renderCaches.layerFrameImageCache.unreadable.revision.addListener(
+      _bumpCelTintRevision,
+    );
   }
 
   void dispose() {
@@ -396,6 +466,9 @@ class LayerStack {
       _bumpCelTintRevision,
     );
     _brushInputActive.removeListener(_bumpWhereTheLiveStrokeDecides);
+    _renderCaches.layerFrameImageCache.unreadable.revision.removeListener(
+      _bumpCelTintRevision,
+    );
     celTintRevision.dispose();
   }
 }

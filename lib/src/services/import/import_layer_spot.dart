@@ -1,5 +1,5 @@
+import '../../models/import/import_destination.dart';
 import '../../models/layer_id.dart';
-import 'media_import_planner.dart' show ImportDestination;
 
 /// Where a placement lands, when a DROP decided it: a place in the ACTIVE
 /// cut, or a NEW cut's place on the track — or, on a reference row, the

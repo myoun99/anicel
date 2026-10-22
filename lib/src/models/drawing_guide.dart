@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../core/collection_equality.dart';
 import '../core/unit_direction.dart';
 import 'canvas_point.dart';
@@ -253,8 +255,33 @@ final class VanishingPointTowards extends VanishingPoint {
     }
   }
 
+  /// The family running at [degrees] — clockwise-positive from the canvas's
+  /// +x, as [GuideAxis.angleDegrees] reads, so 90 is straight down the
+  /// paper.
+  ///
+  /// 🗣️vanishing-point-types-Q3 (유저 2026-10-16): the row's angle cell is
+  /// where 「세로 퍼스는 항상 수직」 is typed — 90. ⚠️A whole quarter turn
+  /// is stated EXACTLY: `cos(90°)` is 6e-17, not 0, and a vertical family
+  /// is `(0, 1)` exactly (the class doc).
+  factory VanishingPointTowards.atDegrees(double degrees) {
+    final quarter = degrees / 90;
+    if (quarter == quarter.roundToDouble()) {
+      return switch (quarter.round() % 4) {
+        0 => VanishingPointTowards(dx: 1, dy: 0),
+        1 => VanishingPointTowards(dx: 0, dy: 1),
+        2 => VanishingPointTowards(dx: -1, dy: 0),
+        _ => VanishingPointTowards(dx: 0, dy: -1),
+      };
+    }
+    final radians = degrees * math.pi / 180;
+    return VanishingPointTowards(dx: math.cos(radians), dy: math.sin(radians));
+  }
+
   final double dx;
   final double dy;
+
+  /// Which way the family runs, in [atDegrees]'s terms: −180…180.
+  double get degrees => math.atan2(dy, dx) * 180 / math.pi;
 
   @override
   HomogeneousPoint resolve() => HomogeneousPoint.towards(dx, dy);
@@ -447,12 +474,23 @@ final class PerspectiveShape extends GuideShape {
     this.snapEnabled = true,
     this.eyeLevelVisible = true,
     this.constrainToEyeLevel = true,
+    this.lineDensity = defaultGuideLineDensity,
   }) : vanishingPoints = List.unmodifiable(vanishingPoints) {
-    if (vanishingPoints.isEmpty || vanishingPoints.length > 3) {
+    // 🗣️유저 2026-09-17 (vanishing-point-types): 「소실점 몇개든
+    // 추가할수있게」. ↩️A guide held one to three until 2026-10-16.
+    if (vanishingPoints.isEmpty) {
       throw ArgumentError.value(
         vanishingPoints.length,
         'vanishingPoints',
-        'A perspective guide carries one to three vanishing points.',
+        'A perspective guide carries at least one vanishing point.',
+      );
+    }
+    if (lineDensity < minGuideLineDensity ||
+        lineDensity > maxGuideLineDensity) {
+      throw ArgumentError.value(
+        lineDensity,
+        'lineDensity',
+        'Line density must be $minGuideLineDensity…$maxGuideLineDensity.',
       );
     }
   }
@@ -463,6 +501,16 @@ final class PerspectiveShape extends GuideShape {
   final bool eyeLevelVisible;
   final bool constrainToEyeLevel;
 
+  /// How many lines each vanishing point draws: the rays round a point on
+  /// the plane, and for a family at infinity the lanes on either side of
+  /// the one through the middle of the view, a 1/[lineDensity] of the view
+  /// apart.
+  ///
+  /// 🗣️유저 07-19: 「포인트에서 뻗어나오는 가이드 선의 밀도 조절 가능」 —
+  /// and vanishing-point-types-Q4 (2026-10-16): ONE bar for the guide, every
+  /// point of it drawing the same count, the parallels' spacing with them.
+  final int lineDensity;
+
   @override
   GuideKind get kind => GuideKind.perspective;
 
@@ -472,13 +520,20 @@ final class PerspectiveShape extends GuideShape {
     bool? snapEnabled,
     bool? eyeLevelVisible,
     bool? constrainToEyeLevel,
+    int? lineDensity,
   }) => PerspectiveShape(
     vanishingPoints: vanishingPoints ?? this.vanishingPoints,
     eyeLevel: eyeLevel ?? this.eyeLevel,
     snapEnabled: snapEnabled ?? this.snapEnabled,
     eyeLevelVisible: eyeLevelVisible ?? this.eyeLevelVisible,
     constrainToEyeLevel: constrainToEyeLevel ?? this.constrainToEyeLevel,
+    lineDensity: lineDensity ?? this.lineDensity,
   );
+
+  /// This guide with its point at [index] standing as [point] — what the
+  /// canvas's handles and the panel's row both write.
+  PerspectiveShape withVanishingPoint(int index, VanishingPoint point) =>
+      copyWith(vanishingPoints: [...vanishingPoints]..[index] = point);
 
   @override
   Map<String, dynamic> toJson() => {
@@ -490,6 +545,9 @@ final class PerspectiveShape extends GuideShape {
     'snapEnabled': snapEnabled,
     'eyeLevelVisible': eyeLevelVisible,
     'constrainToEyeLevel': constrainToEyeLevel,
+    // Written only where it is not the default — a guide that does not
+    // say draws twelve at this version too (`anicelFormatVersion`, v20).
+    if (lineDensity != defaultGuideLineDensity) 'lineDensity': lineDensity,
   };
 
   factory PerspectiveShape.fromJson(Map<String, dynamic> json) =>
@@ -502,6 +560,7 @@ final class PerspectiveShape extends GuideShape {
         snapEnabled: json['snapEnabled'] as bool? ?? true,
         eyeLevelVisible: json['eyeLevelVisible'] as bool? ?? true,
         constrainToEyeLevel: json['constrainToEyeLevel'] as bool? ?? true,
+        lineDensity: json['lineDensity'] as int? ?? defaultGuideLineDensity,
       );
 
   @override
@@ -512,7 +571,8 @@ final class PerspectiveShape extends GuideShape {
           other.eyeLevel == eyeLevel &&
           other.snapEnabled == snapEnabled &&
           other.eyeLevelVisible == eyeLevelVisible &&
-          other.constrainToEyeLevel == constrainToEyeLevel;
+          other.constrainToEyeLevel == constrainToEyeLevel &&
+          other.lineDensity == lineDensity;
 
   @override
   int get hashCode => Object.hash(
@@ -521,12 +581,25 @@ final class PerspectiveShape extends GuideShape {
     snapEnabled,
     eyeLevelVisible,
     constrainToEyeLevel,
+    lineDensity,
   );
 
   @override
   String toString() =>
-      'PerspectiveShape(${vanishingPoints.length} VP, snap: $snapEnabled)';
+      'PerspectiveShape(${vanishingPoints.length} VP, snap: $snapEnabled, '
+      '$lineDensity lines)';
 }
+
+/// The fewest lines a vanishing point draws ([PerspectiveShape.lineDensity])
+/// — vanishing-point-types-Q4's bar, 4…48.
+const int minGuideLineDensity = 4;
+
+/// The most lines a vanishing point draws ([PerspectiveShape.lineDensity]).
+const int maxGuideLineDensity = 48;
+
+/// What a perspective draws until its bar is moved: twelve rays, one every
+/// 30° — the count the guide drew from 08-12, when it was a constant.
+const int defaultGuideLineDensity = 12;
 
 /// One guide a cut owns.
 ///

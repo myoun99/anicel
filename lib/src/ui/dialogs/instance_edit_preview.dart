@@ -8,6 +8,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_exposure.dart';
 import '../timeline/timeline_beat_lines.dart' show TimelineGridLaw;
+import '../timeline/axis_turn.dart' show sizedAlong;
 import '../timeline/timeline_cell_exposure_state.dart';
 import '../timeline/timeline_frame_geometry.dart';
 import '../timeline/timeline_frame_span_layout.dart';
@@ -168,10 +169,11 @@ class _InstanceEditPreviewState extends State<InstanceEditPreview> {
         return Align(
           alignment: Alignment.centerLeft,
           child: IgnorePointer(
-            child: SizedBox(
+            child: sizedAlong(
+              axis,
               key: const ValueKey<String>('instance-edit-preview'),
-              width: axis == Axis.horizontal ? mainExtent : crossExtent,
-              height: axis == Axis.horizontal ? crossExtent : mainExtent,
+              along: mainExtent,
+              across: crossExtent,
               // A host of its own: no known ground under a dialog, and the
               // koma strip counts from frame 0 with no fps to weight by.
               child: TimelineGridLaw(

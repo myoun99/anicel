@@ -244,9 +244,14 @@ class _CanvasPanelSelection {
           holed: holed,
         ),
       );
+      final showsOn = ownSlot ?? _state._activeRowFloatSlot;
       floats.add((
         stampDab: stampOnCanvas(lift.stampDab, under.placement),
-        showsOn: ownSlot ?? _state._activeRowFloatSlot,
+        showsOn: showsOn,
+        // Landed in a row only where a row shows it.
+        landsOn: showsOn == null
+            ? null
+            : _CelUnderFloat(_state._lift, under.key),
       ));
     }
     if (cels.isEmpty) {

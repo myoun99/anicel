@@ -12,7 +12,6 @@ import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
-import '../models/canvas_size.dart';
 import '../models/tile_coord.dart';
 import 'canvas_selection_region.dart';
 import 'canvas_selection_shape.dart';
@@ -1079,8 +1078,8 @@ typedef SelectionMaskReading = ({
 
 /// A selection READ the way every pixel reader reads one: [region]
 /// rasterized at [options] ([buildSelectionMask]) over its own box —
-/// coverage, padded for the post-passes, inside the pasteboard wall of
-/// [canvasSize] ([CanvasSelectionRegion.pixelBoxWithin]). Null when that
+/// coverage, padded for the post-passes, inside the pasteboard [wall]
+/// ([CanvasSelectionRegion.pixelBoxWithin]). Null when that
 /// box is empty.
 ///
 /// ⛔ONE READING. The move's lift, the pixel verbs' walk, the copy and the
@@ -1088,11 +1087,11 @@ typedef SelectionMaskReading = ({
 /// two steps is how a selection comes to mean two things.
 SelectionMaskReading? selectionMaskOnPasteboard(
   CanvasSelectionRegion region, {
-  required CanvasSize canvasSize,
+  required PasteboardWall wall,
   SelectionMaskOptions options = SelectionMaskOptions.none,
 }) {
   final box = region.pixelBoxWithin(
-    canvasSize.pasteboardRegion,
+    wall.region,
     pad: options.bboxPad,
   );
   if (box == null) {
@@ -1138,7 +1137,7 @@ SelectionPixels? liftSelectionPixels({
   // R26: grow/feather/AA may write beyond the polygon's bbox, hence the pad.
   final read = selectionMaskOnPasteboard(
     region,
-    canvasSize: surface.canvasSize,
+    wall: surface.pasteboard,
     options: options,
   );
   if (read == null) {

@@ -1339,6 +1339,57 @@ QA_EXPORT void qa_premultiply_rgba_rows(
   }
 }
 
+// A row's colour keys over straight pixels, IN PLACE (ABI 49): every alpha
+// what the keys leave it, every colour as it was - and 1 when any alpha
+// changed, 0 when none did.
+//
+// ⛔NO KEY IS DEFINED HERE. Which keys name a pixel, and what each leaves of
+// an alpha it erases, are TABLES the Dart side makes from the one definition
+// (`CelColorKey`, lib/src/services/cel_source_effect_pass.dart): bit k of
+// red[r], green[g] and blue[b] says key k is within its tolerance of the
+// pixel in that channel, bit k of [keeps] that key k keeps what it names
+// instead, and alpha_maps[k * 256 + a] is what key k leaves of an alpha a.
+// So the float32 mix the shader shares (`shaders/colour_key.frag`) stays
+// computed in one place, and this walks as the Dart walk does, byte for byte
+// (`the_keys_walk_the_same_in_c_test`). Thirty-two keys at most a call; a
+// longer chain is walked thirty-two at a time, in its order.
+//
+// 🔬Why it is in C: asking each key of each pixel in Dart took 1.1-3.4 ms
+// over one 256 px tile of a keyed sheet and this takes 0.13 ms (10-16), and
+// a live stroke on a keyed row keys every tile it changes on every flush
+// (board a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed).
+QA_EXPORT int32_t qa_key_rgba(
+    uint8_t* pixels,
+    int32_t pixel_count,
+    const uint32_t* red,
+    const uint32_t* green,
+    const uint32_t* blue,
+    uint32_t keeps,
+    const uint8_t* alpha_maps) {
+  int32_t changed = 0;
+  for (int32_t i = 0; i < pixel_count; i += 1) {
+    uint8_t* pixel = pixels + (ptrdiff_t)i * 4;
+    const int32_t alpha = pixel[3];
+    if (alpha == 0) {
+      continue;
+    }
+    uint32_t erasing =
+        (red[pixel[0]] & green[pixel[1]] & blue[pixel[2]]) ^ keeps;
+    int32_t next = alpha;
+    for (const uint8_t* map = alpha_maps; erasing != 0 && next != 0;
+         erasing >>= 1, map += 256) {
+      if (erasing & 1u) {
+        next = map[next];
+      }
+    }
+    if (next != alpha) {
+      pixel[3] = (uint8_t)next;
+      changed = 1;
+    }
+  }
+  return changed;
+}
+
 // Plain memcpy exposed to Dart (R19-Z): native-to-native tile staging at
 // true memcpy speed - the VM's typed-data setRange was several times
 // slower in debug builds, and staging copies 256KB per touched tile.
@@ -6153,4 +6204,9 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v48: qa_audio_buffer_new / _retain / _release / _holds, and a set_schedule
 // that names buffers - the device's PCM is made once in C memory, and a
 // schedule copies none of it.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 48; }
+// v49: qa_key_rgba - a row's colour keys over straight pixels in place,
+// from tables the Dart definition makes, so a keyed cel is shown at C speed.
+// v50: qa_audio_device_play gains lead_samples - a run started that much
+// silence ahead of its first sample, so that sample is heard as its first
+// picture is shown.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 50; }

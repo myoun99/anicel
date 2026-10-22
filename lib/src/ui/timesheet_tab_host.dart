@@ -7,7 +7,9 @@ import '../models/cut.dart';
 import '../models/sheet_paper.dart';
 import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
-import 'brush/brush_canvas_panel.dart' show BrushCanvasPanel;
+import '../models/timesheet_info.dart';
+import 'brush/brush_canvas_panel.dart'
+    show BrushCanvasPanel, CanvasTransportBand;
 import 'brush/sheet_canvas_panel.dart';
 import 'text/app_strings.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
@@ -17,9 +19,10 @@ import 'dialogs/dialog_verb.dart';
 import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
-import 'widgets/page_turn_strip.dart';
 import 'shortcuts/editor_action_registry.dart' show EditorActionIds;
 import 'shortcuts/panel_keys.dart';
+import 'sliced_value_listenable_builder.dart' show SlicedListenable;
+import 'timeline/memo_token.dart' show ByIdentity;
 import 'timesheet/cut_sheet_document.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
@@ -28,6 +31,8 @@ import 'timesheet/timesheet_words_in.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet/timesheet_ink_layer.dart';
 import 'timesheet/timesheet_strata.dart';
+import 'sheet/sheet_image_cache.dart' show SheetImageLookup;
+import 'sheet/sheet_photo_drop.dart';
 
 /// The Timesheet tab's content: the active cut rendered as a paper
 /// timesheet DOCUMENT (not an editing grid) inside the canvas panel shell,
@@ -49,6 +54,8 @@ class TimesheetTabHost extends StatefulWidget {
     this.onBrushAllowedChanged,
     this.dataSheet = false,
     this.onDataSheetChanged,
+    this.imageFor,
+    this.imageRepaint,
   });
 
   final EditorSessionManager session;
@@ -56,8 +63,8 @@ class TimesheetTabHost extends StatefulWidget {
   /// The page the reader is on, the sheets lying one under another
   /// (F-201) — owned above the tab group with the viewport, so a tab
   /// switch doesn't lose the reader's place. The panel keeps it true to the
-  /// view ([CanvasBook]); a write to it is a turn — the strip's ▲▼, and
-  /// playback crossing into a page. Null keeps one of the host's own.
+  /// view ([CanvasBook]); a write to it is a turn — the page turner's ◀ ▶,
+  /// and playback crossing into a page. Null keeps one of the host's own.
   final ValueNotifier<int>? reading;
 
   /// Owned above the tab group so zoom/pan survive tab switches.
@@ -93,9 +100,29 @@ class TimesheetTabHost extends StatefulWidget {
   final bool dataSheet;
   final ValueChanged<bool>? onDataSheetChanged;
 
+  /// The pool files the ink's photos are drawn from (I-97), from the decode
+  /// cache the conte and the envelope print from — and what says one has
+  /// landed.
+  final SheetImageLookup? imageFor;
+  final Listenable? imageRepaint;
+
   @override
   State<TimesheetTabHost> createState() => _TimesheetTabHostState();
 }
+
+/// What a sheet prints of the session ([_TimesheetTabHostState._printedBy]),
+/// each model object by IDENTITY — they are immutable, so a new one is the
+/// only way any of them changes.
+typedef _Printed = ({
+  ByIdentity<Cut> cut,
+  int cutStartFrame,
+  ByIdentity<Object> info,
+  String projectName,
+  ByIdentity<Object> instructionSet,
+  ByIdentity<Object> trackSe,
+  ByIdentity<Object> transition,
+  int fps,
+});
 
 class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// Commit sink required by the panel API; sheet ink invalidations stay
@@ -109,76 +136,88 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   // model objects are immutable, so identity is the staleness check.
   TimesheetDocument? _document;
   TimesheetDocumentLayout? _layout;
-  Cut? _documentCut;
-  Object? _documentInfo;
-  Object? _documentInstructionSet;
-  Object? _documentTrackSe;
-  Object? _documentTransition;
-  int? _documentCutStartFrame;
-  String? _documentProjectName;
-  int? _documentFps;
+  _Printed? _documentPrinted;
   bool? _documentDataSheet;
+
+  Cut? get _documentCut => _documentPrinted?.cut.value;
 
   bool get _dataSheet => widget.dataSheet;
 
-  /// Null in the GAP state (no active cut, UI-R9 #3): the host renders the
-  /// bare sheet background instead of a document.
+  /// What the sheet prints of the session: the cut under the playhead and
+  /// everything else its document is made of — null in the GAP state (no
+  /// active cut, UI-R9 #3), where the host renders the bare sheet
+  /// background instead of a document.
   ///
   /// F-90: the cut it prints is the cut UNDER THE PLAYHEAD — the one being
   /// played or dragged over, which a scrub keeps apart from the cut open for
   /// editing — so a drag over a gap prints that bare background too.
-  TimesheetDocumentLayout? _resolveLayouts(EditorSessionManager session) {
+  ///
+  /// ONE answer to whether the document is made again ([_resolveLayouts])
+  /// and to whether the session's news reaches this host at all
+  /// ([_printedNews]): the sheet shows nothing else of the session, so a
+  /// notify that leaves this alone has nothing to show.
+  static _Printed? _printedBy(EditorSessionManager session) {
     final at = session.cutUnderPlayhead.resolve();
     if (at == null) {
       return null;
     }
-    final cut = at.cut;
-    final info = session.timesheetInfo;
-    final projectName = session.repository.requireProject().name;
-    final instructionSet = session.camera.cameraInstructionSet;
-    // Track-owned SE rows join the memo key: their edits change the track
-    // list identity, not the cut's.
-    final trackSeLayers = session.activeTrack.seLayers;
-    // Same story for the transition row: track-owned, so an edit there
-    // changes the track's identity rather than the cut's. It is keyed as it
-    // PRINTS (F-229): an O.L writes the cuts it joins and the word of the
-    // sheet's language, so a rename next door or a language switch
-    // reprints.
-    final transitionLayer = session.transitions.names.rowNamed(
-      session.activeTrack,
-      session.activeTrack.transitionLayer,
-      olWord: sheetOlWord(session),
+    return (
+      cut: ByIdentity(at.cut),
+      cutStartFrame: at.startFrame,
+      info: ByIdentity(session.timesheetInfo),
+      projectName: session.repository.requireProject().name,
+      instructionSet: ByIdentity(session.camera.cameraInstructionSet),
+      // Track-owned SE rows join the memo key: their edits change the track
+      // list identity, not the cut's.
+      trackSe: ByIdentity(session.activeTrack.seLayers),
+      // Same story for the transition row: track-owned, so an edit there
+      // changes the track's identity rather than the cut's. It is keyed as
+      // it PRINTS (F-229): an O.L writes the cuts it joins and the word of
+      // the sheet's language, so a rename next door or a language switch
+      // reprints.
+      transition: ByIdentity(
+        session.transitions.names.rowNamed(
+          session.activeTrack,
+          session.activeTrack.transitionLayer,
+          olWord: sheetOlWord(session),
+        ),
+      ),
+      fps: session.projectSettings.projectFps,
     );
-    final cutStartFrame = at.startFrame;
+  }
+
+  TimesheetDocumentLayout? _resolveLayouts(EditorSessionManager session) {
+    final printed = _printedBy(session);
+    if (printed == null) {
+      return null;
+    }
     if (_document == null ||
-        !identical(_documentCut, cut) ||
-        !identical(_documentInfo, info) ||
-        !identical(_documentInstructionSet, instructionSet) ||
-        !identical(_documentTrackSe, trackSeLayers) ||
-        !identical(_documentTransition, transitionLayer) ||
-        _documentCutStartFrame != cutStartFrame ||
-        _documentProjectName != projectName ||
-        _documentFps != session.projectSettings.projectFps ||
+        _documentPrinted != printed ||
         _documentDataSheet != _dataSheet) {
-      _documentCut = cut;
-      _documentInfo = info;
-      _documentInstructionSet = instructionSet;
-      _documentTrackSe = trackSeLayers;
-      _documentTransition = transitionLayer;
-      _documentCutStartFrame = cutStartFrame;
-      _documentProjectName = projectName;
-      _documentFps = session.projectSettings.projectFps;
+      _documentPrinted = printed;
       _documentDataSheet = _dataSheet;
       _document = cutSheetDocument(
         session,
-        cut: cut,
-        cutStartFrame: cutStartFrame,
+        cut: printed.cut.value,
+        cutStartFrame: printed.cutStartFrame,
         dataSheet: _dataSheet,
       );
       _layout = null;
     }
     return _layout ??= TimesheetDocumentLayout(document: _document!);
   }
+
+  /// The session's news as this sheet hears it: only a change to what it
+  /// prints ([_printedBy]).
+  ///
+  /// 🔬Every notify used to rebuild the sheet's shell — 50 elements, the
+  /// panel's pill and layers round a document the memo then handed back
+  /// unchanged — for a guide picked on the canvas or the onion switched on
+  /// (session-news-rebuilds-unsliced, 2026-10-20).
+  late final SlicedListenable<_Printed?> _printedNews = SlicedListenable(
+    widget.session,
+    () => _printedBy(widget.session),
+  );
 
   late final ValueNotifier<int> _ownReading = ValueNotifier(0);
 
@@ -196,6 +235,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
 
   @override
   void dispose() {
+    _printedNews.dispose();
     _strokeHold.dispose();
     _ownReading.dispose();
     super.dispose();
@@ -241,7 +281,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             ? null
             : (
                 kind: cut.metadata.sheetKind,
-                celColumns: SheetSources.of(cut: cut).celLayers.length,
+                celColumns: SheetSources.of(cut: cut).celColumnsAcross,
               ),
       ),
       commit: (format) => session.updateTimesheetFormat(
@@ -250,6 +290,30 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         kind: format.kind,
       ),
     );
+  }
+
+  /// Where each header box edited in place lands (I-112): the work's
+  /// episode and title — the values its settings show — the cut's name,
+  /// and its sheet worker ([TimesheetHeaderEditLayer]).
+  Map<TimesheetHeaderField, ValueChanged<String>> _headerCommits() {
+    final session = widget.session;
+    void work(TimesheetInfo Function(TimesheetInfo info) edit) =>
+        session.updateTimesheetInfo(edit(session.timesheetInfo));
+    return {
+      TimesheetHeaderField.episode: (episode) =>
+          work((info) => info.copyWith(episode: episode)),
+      TimesheetHeaderField.title: (title) =>
+          work((info) => info.copyWith(title: title)),
+      // ⛔An empty name is no cut's name — the rename window refuses one
+      // inline ([RenameCutDialog]); a box has no line to say so, so it
+      // keeps the name it prints.
+      TimesheetHeaderField.cut: (name) {
+        if (name.isNotEmpty) {
+          session.cutVerbs.renameActiveCut(name);
+        }
+      },
+      TimesheetHeaderField.name: session.cutVerbs.setActiveCutSheetArtist,
+    };
   }
 
   /// The sheet's own commands, at the head of the panel's pill — after the
@@ -280,10 +344,11 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// deleted (F-252-Q1, 2026-10-08).
   ///
   /// ⛔The page cluster used to follow them here. It moved to the panel's
-  /// left edge (유저 확정 ⑥ 2026-08-13, [_pageStrip]) because three controls
-  /// at 44px of budget each were most of what the pill had to spend, and a
-  /// rail-width sheet was shedding the lot — turning pages and reading the
-  /// page competing for the same row.
+  /// left edge (유저 확정 ⑥ 2026-08-13) because three controls at 44px of
+  /// budget each were most of what the pill had to spend, and a rail-width
+  /// sheet was shedding the lot — turning pages and reading the page
+  /// competing for the same row. It stands under the sheet now
+  /// ([_pageTurner], F-383).
   List<Widget> _bottomBarLeading() {
     return [
       // Notation ↔ DATA sheet (UI-R24 #1): data prints the export-source
@@ -305,17 +370,21 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// Notation ⇄ data — the switch's press, and its key's (I-40).
   void _toggleDataSheet() => widget.onDataSheetChanged?.call(!_dataSheet);
 
-  /// Turning the sheet's pages, on the panel's LEFT edge (유저 확정 ⑥
-  /// 2026-08-13) rather than in the pill.
-  List<Widget> _pageStrip(TimesheetDocumentLayout layout) {
+  /// Turning the sheet's pages, in the band under it (F-383) rather than in
+  /// the pill.
+  CanvasTransportBand? _pageTurner(
+    BuildContext context,
+    TimesheetDocumentLayout layout,
+  ) {
     final book = _bookOf(layout);
-    return pageTurnStrip(
+    return CanvasTransportBand.ofPages(
+      context,
       keyPrefix: 'timesheet',
       page: (
         index: book.page,
         count: layout.document.pages.length,
         // '1/2' — the spelling shared with the printed ページ header (R26 #41).
-        readout: layout.pageLabel(book.page),
+        spell: layout.pageLabel,
       ),
       onTurnTo: book.turnTo,
     );
@@ -327,16 +396,21 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     final inkController = widget.inkController;
     final ink = _inkMount();
 
-    // Session changes (incl. undo/redo of sheet strokes) rebuild the sheet
-    // data and hand the windows fresh ink session surfaces; ink commits
-    // notify through the controller. The playhead deliberately does NOT
+    // A change to what the sheet prints ([_printedNews]) rebuilds the sheet
+    // data and hands the windows fresh ink session surfaces; the ink — a
+    // stroke, an undo, a redo — notifies through the controller (F-80 ②).
+    // The playhead deliberately does NOT
     // live here (R13-2): cursor moves, committed seeks and playback ticks
     // repaint the thin playhead overlay only — repainting the whole B4
     // sheet per playhead move was the timesheet's share of the frame-flip
     // hitch. Page-granular playhead facts (auto page turn, Fit target,
     // the frame label) rebuild through the token-gated scope below.
     // And the page read, which the panel moves as the view scrolls.
-    final listenable = Listenable.merge([session, ?inkController, _reading]);
+    final listenable = Listenable.merge([
+      _printedNews,
+      ?inkController,
+      _reading,
+    ]);
 
     final sheet = ListenableBuilder(
       listenable: listenable,
@@ -421,7 +495,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       ..._panelActions(),
                       ..._bottomBarLeading(),
                     ],
-                    pageStrip: _pageStrip(layout),
+                    transport: _pageTurner(context, layout),
                     bottomBarHostToken: (
                       _dataSheet,
                       visiblePage,
@@ -430,6 +504,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     viewLimit: layout.paper,
                     book: book,
                     drawingOn: ink != null,
+                    brushToolState: widget.brushToolState,
                     strokeHold: _strokeHold,
                     content: (context, viewport) {
                       return Stack(
@@ -464,6 +539,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                       controller: inkController,
                                       live: ink != null,
                                     ),
+                              imageFor: widget.imageFor,
+                              imageRepaint: widget.imageRepaint,
                             ),
                           ),
                           // Under the ink windows: reachable exactly when the
@@ -478,6 +555,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                               viewport: viewport,
                               onMemoCommitted: (page, memo) => session.cutVerbs
                                   .updateActiveCutNote(page: page, note: memo),
+                              headerCommits: _headerCommits(),
                             ),
                           ),
                           if (ink != null)
@@ -499,6 +577,24 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 historyManager: session.historyManager,
                                 viewport: viewport,
                                 strokeActive: _strokeHold,
+                                cacheInvalidationSink: _cacheInvalidationSink,
+                                imageFor: widget.imageFor,
+                                imageRepaint: widget.imageRepaint,
+                                photoHold: session.sheetPhotoHold,
+                              ),
+                            ),
+                          // A pool picture dropped on a page is its photo
+                          // (I-97).
+                          if (inkController != null)
+                            Positioned.fill(
+                              child: SheetPhotoDrop(
+                                session: session,
+                                ink: inkController,
+                                windows: () => timesheetInkWindows(
+                                  layout: layout,
+                                  cutId: _documentCut!.id,
+                                ),
+                                viewport: viewport,
                                 cacheInvalidationSink: _cacheInvalidationSink,
                               ),
                             ),

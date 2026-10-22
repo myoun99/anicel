@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'dart:ui' show AppExitResponse;
 
@@ -8,9 +9,12 @@ import 'package:flutter/gestures.dart' show GestureBinding, PointerEvent;
 import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
+import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../models/working_panel.dart';
+import '../native/device_battery.dart';
+import '../native/handed_files.dart';
 import '../native/qa_native_engine.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
@@ -51,6 +55,7 @@ import 'input/contact_census.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/canvas_traces.dart';
 import 'brush/cel_text_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'cut_command_group.dart' show landCanvasAdjust;
@@ -76,7 +81,7 @@ import 'timeline/instance_editor_commands.dart'
     show autoNameWithWindow, editOnPanel;
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
 import 'timeline/timeline_action_toolbar.dart'
-    show showTimelineCommaCountDialog;
+    show showMarkEveryDialog, showTimelineCommaCountDialog;
 import 'timeline/timeline_bar_menus.dart';
 import 'timeline/toolbar_panel_context.dart';
 import 'text/app_strings.dart';
@@ -117,6 +122,8 @@ class HomePage extends StatefulWidget {
     this.tipLibraryService,
     this.fontLibraryService,
     this.languageSettingsStore,
+    this.battery,
+    this.handedAtLaunch = const [],
   });
 
   final Project? initialProject;
@@ -147,6 +154,16 @@ class HomePage extends StatefulWidget {
   /// Where the program language is restored from, beside the two services
   /// above. Null reads the saved file outside tests and nothing inside them.
   final AppLanguageSettingsStore? languageSettingsStore;
+
+  /// The device's battery for the top strip's end ([DeviceBattery.shown],
+  /// which the app hands in) — null on a device without one, and in a test
+  /// that does not hand one in.
+  final ValueListenable<BatteryReading>? battery;
+
+  /// The files the OS opened the app with — its launch arguments, which is
+  /// how Windows' 「연결 프로그램」 and a double-click in the Explorer hand a
+  /// file over (`open-door-windows-open-with`), and Linux's file managers.
+  final List<String> handedAtLaunch;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -293,6 +310,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final CanvasSelectionCommands _canvasSelectionCommands =
       CanvasSelectionCommands();
 
+  /// Each viewer's selection channel, by its tab: where the cut's polygon
+  /// trace is tapped out on a page, as the canvas's is on the window's.
+  ///
+  /// 🗣️F-380 (유저 2026-10-17): 「뷰어패널에서 잘라내기쓸때 개미행렬 라이브가
+  /// 안보임. 법 통일해서 보이도록」 — a viewer handed its canvas panel no
+  /// channel, so a polygon's taps landed nowhere: no vertex, no band, no
+  /// ring, no cut. ⚠️Each its own, not the canvas's: that one shows the
+  /// project's selection, and a trace on a page is not the canvas's. Up
+  /// here because the window's verbs ask after it ([_traces]).
+  final Map<String, CanvasSelectionCommands> _viewerSelections = {
+    EditorWorkspace.mediaViewerTabId: CanvasSelectionCommands(),
+    EditorWorkspace.mediaViewerSubTabId: CanvasSelectionCommands(),
+  };
+
+  /// Every canvas's polygon trace, as 확정, ↶ ↷ and Escape ask after the
+  /// one the user is in the middle of.
+  late final CanvasTraces _traces = CanvasTraces([
+    _canvasSelectionCommands,
+    ..._viewerSelections.values,
+  ]);
+
   /// The text tool's channel (R9-rest): the keys, a step of history about
   /// to be taken and a project going off screen reach the text the canvas
   /// is holding through here. The WINDOW's, as the selection's is.
@@ -305,6 +343,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// 확정 — Enter here, and the rail's ↵ and 적용 in the workspace.
   late final ConfirmVerb _confirm = ConfirmVerb(
     selection: _canvasSelectionCommands,
+    traces: _traces,
     text: _canvasTextCommands,
     lastStroke: _lastStroke,
     tool: _brushTool,
@@ -374,6 +413,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     colorBackground: _colorWheelBackground,
     colorPalette: _colorPalette,
     onColorPaletteChanged: _setColorPalette,
+    battery: widget.battery,
   );
 
   /// The keys that are HELD (I-15) — 「이동」 on Space and the eyedropper's
@@ -497,6 +537,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // I-7: both are for every open project, and the workspace that used to
     // hear them is the window's, not a project's.
     WidgetsBinding.instance.addObserver(this);
+    // What the OS opened the app with goes through the one door, as a drop
+    // on the window does — after the first frame, once the workspace that
+    // holds the door has bound it.
+    final handed = widget.handedAtLaunch;
+    if (handed.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _workspaceDoor.openPaths(handed),
+      );
+    }
+    // And what a second Anicel hands the running one, while this window is
+    // here ([HandedFiles]).
+    HandedFiles.listen(_workspaceDoor.openPaths);
     // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with
@@ -641,9 +693,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _canvasSelectionCommands.document = session.canvasSelection;
     _history = HistoryVerbs(
       selection: _canvasSelectionCommands,
+      traces: _traces,
       text: _canvasTextCommands,
       session: session,
       contactIsDown: () => _contacts.anyDown,
+      behindTheWaitWindow: (ahead, step) =>
+          stepBehindTheWaitWindow(context, ahead, step),
     );
     _keyHolds.strokeLive = session.brushInputActive;
     return true;
@@ -835,6 +890,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // The pan flag is app-wide: a shell that goes away must not keep it.
     _keyHolds.dispose();
     PencilInteractionService.instance.onPencilTap = null;
+    HandedFiles.listen(null);
     AppSave.settings.removeListener(_syncAutosaveClock);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
     _autosaveClock.dispose();
@@ -1039,7 +1095,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.onionSkinToggle:
         _session.onionSkin.toggleOnionSkin();
       case EditorActionIds.cameraViewToggle:
-        _workspaceBar.toggleCameraView();
+        _session.cameraViewMode.toggle();
       case EditorActionIds.regionFold:
         _panelsMenu.toggleRegionFolded();
       // The film verbs, pressed by key — each through the button it names on
@@ -1065,6 +1121,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final panel = _workingPanel;
         if (panel.canToggleMark) {
           panel.toggleMark();
+        }
+      // I-58: the ● every n koma — its button's window, on the panel being
+      // worked in.
+      case EditorActionIds.frameMarkEvery:
+        final panel = _workingPanel;
+        if (panel.canMarkEvery) {
+          unawaited(showMarkEveryDialog(context, _session, panel: panel));
         }
       // I-40: the frame pill's standing switch, by key — its button's press.
       case EditorActionIds.frameAutoCreate:
@@ -1106,8 +1169,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // button's five kinds — the button was wrong, not the key.
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
+      case EditorActionIds.selectionInvertInCanvas:
+        _invertSelection(InvertReach.canvas);
       case EditorActionIds.selectionInvert:
-        _invertSelection();
+        _invertSelection(InvertReach.pasteboard);
       case EditorActionIds.layerUp:
         _timelineLayerNav.step(-1);
         _session.revealSelection();
@@ -1176,8 +1241,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.editDelete:
         // R9-rest: the thing in hand first — Delete takes a text held by
         // its box off its cel, and only with none in hand is it the
-        // panel's delete (the frames and rows selected there).
-        if (_canvasTextCommands.holdsText) {
+        // panel's delete (the frames and rows selected there). A photo
+        // held on a sheet (I-97-Q3) is taken off its cel as its pill's
+        // delete takes it — ahead of the text: any press of a tool past
+        // the photo lets go of it, so one still held is the last thing
+        // the hand took.
+        final photo = _session.sheetPhotoHold;
+        if (photo.held != null) {
+          photo.delete();
+        } else if (_canvasTextCommands.holdsText) {
           _canvasTextCommands.deleteText();
         } else {
           _workingPanel
@@ -1223,24 +1295,32 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// 선택 반전 by key, whatever tool is in hand (I-40-Q8) — out to the
-  /// pasteboard wall of the cut on screen, as its button in the Select
+  /// 선택 반전 by key, whatever tool is in hand (I-40-Q8) — out to
+  /// [reach]'s wall of the cut on screen, as its button in the Select
   /// tool's settings does; nothing without a cut to take the wall from.
-  void _invertSelection() {
-    final canvas = _session.activeCutOrNull?.canvasSize;
-    if (canvas != null) {
-      _canvasSelectionCommands.invertSelection(canvasSize: canvas);
+  void _invertSelection(InvertReach reach) {
+    final wall = _session.activePasteboardOrNull;
+    if (wall != null) {
+      _canvasSelectionCommands.invertSelection(pasteboard: wall, reach: reach);
     }
   }
 
   void _abandonPolygonOrCancelTransform() {
+    // I-97-Q4: Escape lets go of a photo held on a sheet, as a press past
+    // its cell does — first: any press of a tool past the photo lets go of
+    // it, so one still held is the last thing the hand took.
+    final photo = _session.sheetPhotoHold;
+    if (photo.held != null) {
+      photo.letGo();
+      return;
+    }
     // I-79: Escape closes a canvas being adjusted on the canvas — its ✕.
     if (_session.canvasAdjust.isOpen) {
       _session.canvasAdjust.end();
       return;
     }
-    if (_canvasSelectionCommands.hasOpenPolygon) {
-      _canvasSelectionCommands.abandonPolygon();
+    if (_traces.open case final trace?) {
+      trace.abandonPolygon();
       return;
     }
     // R9-rest: Esc lets go of a text held by its box — what a click away
@@ -1442,6 +1522,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                           _canvasNavigationRegionKey,
                                       canvasSelectionCommands:
                                           _canvasSelectionCommands,
+                                      viewerSelections: _viewerSelections,
+                                      canvasTraces: _traces,
                                       canvasTextCommands: _canvasTextCommands,
                                       lastStroke: _lastStroke,
                                       toolHold: _toolHold,
@@ -1684,12 +1766,18 @@ final class _ProjectHooks {
     //
     // R9-rest: and a text in hand lands the same way — as it is shown, at
     // once — so the step taken is the one the user is looking at.
+    //
+    // F-377: and a photo held on a sheet is let go of, its grabs folded
+    // into their one step — the undo got here because none of them was
+    // left to take back (`HistoryVerbs`), and a document stepped under a
+    // hold would leave its fold nothing whole to fold.
     history.onBeforeUndoRedo = () {
       shell._canvasSelectionCommands.confirmPendingMove();
       shell._canvasTextCommands.landNow();
+      session.sheetPhotoHold.letGo();
     };
-    // ...and a step that WAITED for its pictures asks first whether there
-    // is anything to adopt: work begun after the press is the user's.
+    // ...and a step that WAITED behind the wait window asks first whether
+    // there is anything to adopt: work begun after the press is the user's.
     history.pendingBeforeUndoRedo = () =>
         shell._canvasSelectionCommands.movePending ||
         shell._canvasSelectionCommands.transformActive ||

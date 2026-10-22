@@ -177,7 +177,7 @@ BerthWorld timelineCellsRowWorld(
     // #29: the substrate generation — linked cuts can share Layer
     // instances, so layer identity alone cannot say "same world".
     substrateGeneration: hooks.substrateGeneration,
-    playbackFrameCount: hooks.playbackFrameCount,
+    drawnFrameCount: hooks.runFrames,
     // F-113: the waveform's start moves with it.
     spillInLeadFrames: hooks.spillInLeadFrames[row.layer.id],
     // The sparse rows' EXTERNAL inputs (UI-R20 #4): the camera track / the
@@ -234,7 +234,7 @@ Widget timelineCellsRowFrom(TimelineDisplayRow row, TimelineCellsRowGrid grid) {
     axis: grid.axis,
     keyPrefix: grid.keyPrefix,
     layer: row.layer,
-    playbackFrameCount: world.playbackFrameCount,
+    drawnFrameCount: world.drawnFrameCount,
     geometry: grid.geometry,
     crossAxisExtent: grid.metrics.layerRowHeight,
     exposureStateForLayer: hooks.exposureStateForLayer,
@@ -378,8 +378,7 @@ Widget timelineLaneRowFrom(
           lane: previewedLaneRow(
             row: row,
             previewLayer: layer,
-            lanesForLayer: (layer) =>
-                hooks.lanesForLayer?.call(layer) ?? const [],
+            lanesForLayer: hooks.lanesOf,
           ),
           frameStartIndex: span.startIndex,
           frameEndIndexExclusive: span.endIndexExclusive,

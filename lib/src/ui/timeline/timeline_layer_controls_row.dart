@@ -187,7 +187,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.opacityDragPreview,
     this.linkPartners = const [],
     this.onLayerBlendModeSelected,
-    this.opacityOverride,
     this.chromeless = false,
     this.laneGraphVerbs,
     this.headsGraph = false,
@@ -363,12 +362,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// re-listing the same twelve slots.
   final bool chromeless;
 
-  /// R27 #9: a live opacity source that OUTRANKS `layer.opacity` for this
-  /// row's slider. The camera row's opacity is a view notifier, not model
-  /// state — reading it here lets the drag repaint just this slider
-  /// instead of rebuilding the whole timeline host per move.
-  final ValueListenable<double>? opacityOverride;
-
   /// The header graphs' verbs (I-89 ③) — the HOST's, the same on every
   /// row: null mounts no graph button.
   final LaneGraphVerbs? laneGraphVerbs;
@@ -387,8 +380,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// The row's cross extent is the layer row height on both surfaces — a
   /// column is as wide as a row is tall (`xsheet_transposed_metrics_test`).
-  double get _width => _horizontal ? _mainExtent : metrics.layerRowHeight;
-  double get _height => _horizontal ? metrics.layerRowHeight : _mainExtent;
+  Size get _size =>
+      sizeAlong(axis, along: _mainExtent, across: metrics.layerRowHeight);
 
   @override
   Widget build(BuildContext context) {
@@ -481,8 +474,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     _rowName,
     child: ArenaTapHold(
       child: Container(
-        width: _width,
-        height: _height,
+        width: _size.width,
+        height: _size.height,
         padding: _padding,
         decoration: _plate(colorScheme),
         child: Named(
@@ -898,7 +891,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// Attach rows and their 공정 organizer folder hide the fx switch — the
   /// BASE's switch governs what they show, in BOTH orientations: a flip here
-  /// would burn an undo step writing a flag nothing reads.
+  /// would burn an undo step writing a flag nothing reads
+  /// ([layerRowWearsFxSwitch], which the sweep and the spread read too).
   ///
   /// I-1: the three toggle COLUMNS own drags that start on them, so a
   /// press-and-drag paints the column down the rows instead of moving the
@@ -907,8 +901,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget? _fxSwitch(BuildContext context) {
     final onToggle = onToggleLayerFx;
     if (onToggle == null ||
-        !layerKindShowsFxToggle(layer.kind) ||
-        wearsBaseComposite) {
+        !layerRowWearsFxSwitch(
+          layer.kind,
+          wearsBaseComposite: wearsBaseComposite,
+        )) {
       return null;
     }
     return RailSwipeColumnPointer(
@@ -978,6 +974,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget? _muteButton() {
     final onOpenMixer = onOpenLayerMixer;
     if (layer.kind != LayerKind.se || onOpenMixer == null) return null;
+    final slot = sizeAlong(axis, along: layerMuteSlotWidth, across: 26);
     return acrossBox(
       axis,
       26,
@@ -985,8 +982,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
         name: '$keyPrefix-layer-mute-${layer.id}',
         muted: layer.muted,
         soloed: isLayerSoloed,
-        width: _horizontal ? layerMuteSlotWidth : 26,
-        height: _horizontal ? 26 : layerMuteSlotWidth,
+        width: slot.width,
+        height: slot.height,
         onOpenMixer: (anchorContext) =>
             onOpenMixer(anchorContext, layerIdNow(anchorContext, layer.id)),
       ),
@@ -1035,7 +1032,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     layer: layer,
     keyPrefix: keyPrefix,
     axis: axis,
-    override: opacityOverride,
     dragPreview: opacityDragPreview,
     onChanged: onLayerOpacityChanged,
     onChangeEnd: onLayerOpacityChangeEnd,

@@ -105,9 +105,9 @@ void main() {
     });
 
     test('the last row on screen is the last one a caret can follow', () {
-      expect(LayerRowCaret.of(rows, z.id)!.isLastRow, isTrue);
+      expect(LayerRowCaret.of(rows, z.id)!.drawsTheGapAfter, isTrue);
       expect(
-        LayerRowCaret.of(rows, folder.id)!.isLastRow,
+        LayerRowCaret.of(rows, folder.id)!.drawsTheGapAfter,
         isFalse,
         reason: 'z has a row; the members between them do not',
       );
@@ -163,6 +163,34 @@ void main() {
       expect(caret.onRowLayer(3)?.id, b.id);
       expect(caret.onRowLayer(null), isNull);
     });
+
+    test('but the pointer over a lane stands in that lane\'s LAYER — the '
+        'half a boundary is read off (F-31②)', () {
+      final fromB = LayerRowCaret.of(rows, b.id)!;
+
+      expect(
+        [for (final inRow in [-3, -2, -1, 0, 1]) fromB.layerUnder(inRow)?.id],
+        [a.id, a.id, a.id, b.id, c.id],
+        reason:
+            'a lane holds no drop, but it is still its layer\'s: read as no '
+            'row at all, a row over its own lanes was let out of its '
+            'folder, and over a neighbour\'s it stayed in a group it had '
+            'left',
+      );
+      expect(fromB.layerUnder(-4), isNull, reason: 'above the rail');
+      expect(fromB.layerUnder(2), isNull, reason: 'below the rail');
+    });
+
+    test('the row\'s own place has two gaps, and the pointer past its OWN '
+        'rows — its lanes too — names the one below them', () {
+      final caret = LayerRowCaret.of(rows, a.id)!;
+
+      // F-312: letting go where the row stands is a landing, so which of
+      // its two gaps the line is on is no longer moot.
+      expect(caret.slotFor(2, inRow: 2), 0, reason: 'still in its lanes');
+      expect(caret.slotFor(2, inRow: 3), 1, reason: 'into b, past them');
+      expect(caret.slotFor(0, inRow: -1), 0, reason: 'above it');
+    });
   });
 
   group('with nothing hidden it is the plain list it always was', () {
@@ -177,6 +205,7 @@ void main() {
       expect(caret.slot, 1);
       expect(caret.layers.map((layer) => layer.id.value), ['a', 'b', 'c']);
       expect(caret.slotFor(0), 1);
+      expect(caret.slotFor(0, inRow: 1), 2, reason: 'its own gap below');
       expect(caret.slotFor(1), 3);
       expect(caret.slotFor(-1), 0);
       expect(caret.onRowLayer(1)?.id, c.id);

@@ -10,9 +10,11 @@ import 'qa_engine_abi.dart';
 /// Which decoder read a file — reported so a log can say what happened
 /// instead of just "it worked". [os] is the platform's own codec stack
 /// (Media Foundation / AudioToolbox / MediaCodec), reached only for
-/// containers the bundled decoders do not read — AAC/m4a per the decided
-/// format table. [vorbis] is the vendored stb_vorbis (ogg).
-enum QaAudioFormat { unknown, wav, flac, mp3, os, vorbis }
+/// containers the engine does not read itself — AAC/m4a per the decided
+/// format table. [vorbis] is the vendored stb_vorbis (ogg). [moviePcm] is a
+/// movie's uncompressed sound, which the engine reads itself on every
+/// platform (`qa_movie_pcm_open`).
+enum QaAudioFormat { unknown, wav, flac, mp3, os, vorbis, moviePcm }
 
 /// A decoded audio file, at the file's OWN sample rate.
 ///
@@ -297,7 +299,8 @@ final class QaAudioDecoder {
   }
 }
 
-QaAudioFormat _formatOf(int format) => format >= 1 && format <= 5
+QaAudioFormat _formatOf(int format) =>
+    format >= 1 && format < QaAudioFormat.values.length
     ? QaAudioFormat.values[format]
     : QaAudioFormat.unknown;
 

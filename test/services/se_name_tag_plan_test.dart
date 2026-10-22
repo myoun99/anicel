@@ -4,6 +4,8 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -13,6 +15,8 @@ import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/services/camera_projection_matrix.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart'
+    show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 
 /// The on-canvas SE name tag resolution (R5b, §6-z15): which rows show
@@ -157,6 +161,11 @@ void main() {
     expect(resolve(rows, globalFrame: -1), isEmpty);
   });
 
+  /// Where [tag]'s own point — its name box's centre — lies in its shot.
+  CanvasPoint inTheShot(ResolvedSeNameTag tag) => tag.inShot.apply(
+    CanvasPoint(x: tag.content.position!.dx, y: tag.content.position!.dy),
+  );
+
   // R5 #7 (user, 2026-08-09): the tag has no position of its own, and rows
   // get no per-row default. Every tag starts at the centre and the SE
   // row's TRANSFORM moves it — one rule, no exception per row. I-67-Q1
@@ -192,7 +201,99 @@ void main() {
         ),
       ),
     );
-    expect(resolve([moved]).single.content.position, const Offset(400, 900));
+    expect(inTheShot(resolve([moved]).single), CanvasPoint(x: 400, y: 900));
+  });
+
+  test('🎯its scale, turn and anchor lay the tag as a layer\'s lay its '
+      'picture, and its opacity is the tag\'s (F-387)', () {
+    final centre = CanvasPoint(x: camera.width / 2, y: camera.height / 2);
+    final posed = seRow(id: 's1', name: 'S1', seName: 'タモツ').copyWith(
+      transformTrack: TransformTrack.empty().copyWith(
+        // The anchor 10 to the right of the tag: the tag hangs off it.
+        anchorPoint: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: centre.x + 10, y: centre.y),
+        ),
+        scale: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 2, y: 2),
+        ),
+        rotation: PropertyTrack<double>().withKey(0, 90),
+        opacity: PropertyTrack<double>().withKey(0, 0.5),
+      ),
+    );
+    final tag = resolve([posed]).single;
+
+    final landed = inTheShot(tag);
+    const why =
+        '10 to the left of the anchor, doubled and turned a quarter '
+        'clockwise about it: 20 above the position';
+    expect(landed.x, closeTo(centre.x, 1e-9), reason: why);
+    expect(landed.y, closeTo(centre.y - 20, 1e-9), reason: why);
+    expect(tag.opacity, 0.5);
+    expect(
+      tag.placement,
+      tag.shot.compose(tag.inShot),
+      reason: 'laid in the shot, the shot on the canvas',
+    );
+  });
+
+  test('🎯its fx switch bypasses its transform as a layer\'s does — the '
+      'pose and the animated opacity, never the row\'s own (F-387)', () {
+    final bypassed = seRow(id: 's1', name: 'S1', seName: 'タモツ').copyWith(
+      opacity: 0.8,
+      transformEnabled: false,
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 400, y: 900),
+        ),
+        opacity: PropertyTrack<double>().withKey(0, 0.5),
+      ),
+    );
+    final tag = resolve([bypassed]).single;
+
+    expect(tag.inShot, const LayerPlacement.identity());
+    expect(tag.opacity, closeTo(0.8, 1e-9));
+    final on = resolve([bypassed.copyWith(transformEnabled: true)]).single;
+    expect(inTheShot(on), CanvasPoint(x: 400, y: 900), reason: 'on, it is');
+    expect(on.opacity, closeTo(0.4, 1e-9));
+  });
+
+  test('🎯its blend and its effect chain are the row\'s, each effect by '
+      'its own switch (F-387)', () {
+    final dressed = seRow(id: 's1', name: 'S1', seName: 'タモツ').copyWith(
+      blendMode: LayerBlendMode.multiply,
+      effects: [
+        LayerEffect(
+          id: const EffectId('blur'),
+          kind: EffectKind.blur,
+          parameters: {'blurX': EffectParameter(value: 4)},
+        ),
+        LayerEffect(
+          id: const EffectId('off'),
+          kind: EffectKind.blur,
+          enabled: false,
+          parameters: {'blurY': EffectParameter(value: 9)},
+        ),
+      ],
+    );
+    final tag = resolve([dressed]).single;
+    final plain = resolve([seRow(id: 's1', name: 'S1', seName: 'タモツ')]);
+
+    expect(tag.blendMode, LayerBlendMode.multiply);
+    expect(tag.effects, hasLength(1), reason: 'the switched-off one drops');
+    expect(tag.effects.single.parameter('blurX'), 4);
+    // What is drawn changed either way, so the repaint has to know.
+    for (final one in [
+      dressed.copyWith(blendMode: LayerBlendMode.normal),
+      dressed.copyWith(effects: const []),
+    ]) {
+      expect(
+        seNameTagSignature(resolve([one])),
+        isNot(seNameTagSignature(plain)),
+      );
+    }
   });
 
   test('a style-only tag round-trips and never places', () {

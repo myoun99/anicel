@@ -278,6 +278,18 @@ typedef struct {
   volatile ma_uint64 stop_position;  // exclusive; <= start means "no end"
   volatile ma_uint32 looping;
 
+  // THE LEAD (a-start-is-heard-ahead-of-its-first-picture, 2026-10-17). A
+  // run's first sample must be HEARD as its first picture is SHOWN, and a
+  // picture is shown refreshes after the look that starts the run — longer
+  // than the device takes to play what it is handed. So a run is started
+  // that much AHEAD of its first sample, and what it hands before
+  // `audible_from` is silence: counted on the clock like any sample, so the
+  // picture reads the run's first frame at the look that starts it.
+  // ⛔Not the run's sound from before its start: that would be heard over
+  // the first picture, a frame or two of the frames before it. Written by
+  // the control thread alone (play, seek); the callback only reads it.
+  volatile ma_uint64 audible_from;
+
   // THE CLOCK'S LINE (2026-10-08). `position` is a STAIR: it climbs one
   // callback at a time, so read between two callbacks it says what was
   // handed at the last one — and the device has gone on playing since. A
@@ -353,6 +365,29 @@ static void qa_audio_begin_arm(void) {
                      ma_atomic_load_32(&g_audio.arm_serial) + 1);
 }
 
+// 🚨A DEVICE IS MADE, UNMADE AND LISTED ONE CALL AT A TIME
+// (play-press-first-frame-stall, 10-15). The output opens on a worker now,
+// off the thread that draws, while that thread may list the outputs, open
+// the microphone or hand over a schedule — and miniaudio is plain about
+// what that costs: ma_device_init is unsafe against any other device's init
+// or uninit on the context, and each ma_context_get_devices frees the list
+// the one before returned, which an open by index is reading. So every door
+// that makes, unmakes or lists a device takes this lock, and so does the
+// schedule's, whose slots a close frees.
+// ⛔Never a callback and never a transport field: those are atomics, read
+// on the realtime thread, which must never wait. (The same shim as the tile
+// pool's lock in qa_engine.c.)
+#if defined(_WIN32)
+static SRWLOCK g_lifecycle_lock = SRWLOCK_INIT;
+#define QA_LIFECYCLE_LOCK() AcquireSRWLockExclusive(&g_lifecycle_lock)
+#define QA_LIFECYCLE_UNLOCK() ReleaseSRWLockExclusive(&g_lifecycle_lock)
+#else
+#include <pthread.h>
+static pthread_mutex_t g_lifecycle_lock = PTHREAD_MUTEX_INITIALIZER;
+#define QA_LIFECYCLE_LOCK() pthread_mutex_lock(&g_lifecycle_lock)
+#define QA_LIFECYCLE_UNLOCK() pthread_mutex_unlock(&g_lifecycle_lock)
+#endif
+
 // The context outlives devices (AUDIO-PRO R4): enumeration and open-by-
 // index both need one, and re-creating it per open would re-probe the
 // whole OS audio stack. 0 = none, 1 = default backends, 2 = null backend.
@@ -418,7 +453,7 @@ static int qa_audio_refresh_devices(void) {
 // Enumerates and returns how many devices [kind] has (0 = playback,
 // 1 = capture), or -1 when the context cannot come up. Refreshes the
 // cached list — call before qa_audio_device_describe.
-QA_EXPORT int32_t qa_audio_device_count(int32_t kind, int32_t backend) {
+static int32_t qa_audio_device_count_locked(int32_t kind, int32_t backend) {
   if (!qa_audio_ensure_context(backend)) {
     return -1;
   }
@@ -428,15 +463,22 @@ QA_EXPORT int32_t qa_audio_device_count(int32_t kind, int32_t backend) {
   return (int32_t)(kind == 1 ? g_capture_count : g_playback_count);
 }
 
+QA_EXPORT int32_t qa_audio_device_count(int32_t kind, int32_t backend) {
+  QA_LIFECYCLE_LOCK();
+  const int32_t count = qa_audio_device_count_locked(kind, backend);
+  QA_LIFECYCLE_UNLOCK();
+  return count;
+}
+
 // Copies device [index]'s UTF-8 name into [out_name] (NUL-terminated)
 // and reports whether it is the system default. Returns the name's byte
 // length, or -1 for a bad index/capacity. Reads the list the last
 // qa_audio_device_count call cached.
-QA_EXPORT int32_t qa_audio_device_describe(int32_t kind,
-                                           int32_t index,
-                                           char* out_name,
-                                           int32_t capacity,
-                                           int32_t* out_is_default) {
+static int32_t qa_audio_device_describe_locked(int32_t kind,
+                                               int32_t index,
+                                               char* out_name,
+                                               int32_t capacity,
+                                               int32_t* out_is_default) {
   const ma_device_info* infos = kind == 1 ? g_capture_infos : g_playback_infos;
   const ma_uint32 count = kind == 1 ? g_capture_count : g_playback_count;
   if (infos == NULL || index < 0 || (ma_uint32)index >= count ||
@@ -453,6 +495,18 @@ QA_EXPORT int32_t qa_audio_device_describe(int32_t kind,
   if (out_is_default != NULL) {
     *out_is_default = infos[index].isDefault ? 1 : 0;
   }
+  return length;
+}
+
+QA_EXPORT int32_t qa_audio_device_describe(int32_t kind,
+                                           int32_t index,
+                                           char* out_name,
+                                           int32_t capacity,
+                                           int32_t* out_is_default) {
+  QA_LIFECYCLE_LOCK();
+  const int32_t length = qa_audio_device_describe_locked(
+      kind, index, out_name, capacity, out_is_default);
+  QA_LIFECYCLE_UNLOCK();
   return length;
 }
 
@@ -520,6 +574,21 @@ static void qa_audio_data_callback(ma_device* device,
         (ma_uint32)qa_transport_load_32(&g_audio.active_slot) & 1u;
     qa_transport_store_32(&g_audio.callback_slot, (int32_t)slot_index);
     const qa_audio_schedule* schedule = &g_audio.slots[slot_index];
+
+    // The lead: handed, and silent (`out` is zeroed above). Never past the
+    // first audible sample in one block — the sound has to begin on it.
+    const int64_t audible_from = qa_transport_load_64(&g_audio.audible_from);
+    if (position < audible_from) {
+      const int64_t silent = audible_from - position;
+      if ((int64_t)block > silent) {
+        block = (ma_uint32)silent;
+      }
+      qa_transport_store_32(&g_audio.peak_left_bits, 0);
+      qa_transport_store_32(&g_audio.peak_right_bits, 0);
+      qa_transport_store_64(&g_audio.position, position + (int64_t)block);
+      done += block;
+      continue;
+    }
 
     qa_audio_mix(schedule->clips, schedule->clip_count, schedule->sources,
                  schedule->source_count, schedule->envelope_keys,
@@ -602,10 +671,10 @@ static void qa_audio_free_schedule(void) {
 // returned rather than assumed because a device may refuse the one asked
 // for, and conforming to the wrong rate would put every sound at the wrong
 // speed.
-QA_EXPORT int32_t qa_audio_device_open(int32_t sample_rate,
-                                       int32_t channels,
-                                       int32_t backend,
-                                       int32_t device_index) {
+static int32_t qa_audio_device_open_locked(int32_t sample_rate,
+                                           int32_t channels,
+                                           int32_t backend,
+                                           int32_t device_index) {
   if (g_audio.device_open) {
     return g_audio.sample_rate;
   }
@@ -669,16 +738,28 @@ QA_EXPORT int32_t qa_audio_device_open(int32_t sample_rate,
   return g_audio.sample_rate;
 }
 
+QA_EXPORT int32_t qa_audio_device_open(int32_t sample_rate,
+                                       int32_t channels,
+                                       int32_t backend,
+                                       int32_t device_index) {
+  QA_LIFECYCLE_LOCK();
+  const int32_t rate =
+      qa_audio_device_open_locked(sample_rate, channels, backend, device_index);
+  QA_LIFECYCLE_UNLOCK();
+  return rate;
+}
+
 QA_EXPORT void qa_audio_device_close(void) {
-  if (!g_audio.device_open) {
-    return;
+  QA_LIFECYCLE_LOCK();
+  if (g_audio.device_open) {
+    qa_transport_store_32(&g_audio.playing, 0);
+    ma_device_uninit(&g_audio.device);
+    free(g_audio.scratch);
+    g_audio.scratch = NULL;
+    qa_audio_free_schedule();
+    g_audio.device_open = 0;
   }
-  qa_transport_store_32(&g_audio.playing, 0);
-  ma_device_uninit(&g_audio.device);
-  free(g_audio.scratch);
-  g_audio.scratch = NULL;
-  qa_audio_free_schedule();
-  g_audio.device_open = 0;
+  QA_LIFECYCLE_UNLOCK();
 }
 
 QA_EXPORT int32_t qa_audio_device_is_open(void) { return g_audio.device_open; }
@@ -708,7 +789,7 @@ QA_EXPORT int64_t qa_audio_device_latency_samples(void) {
 // copies no samples. A source naming anything else, or reading past its
 // buffer, refuses the schedule: the callback must never chase a pointer
 // whose life nobody holds.
-QA_EXPORT int32_t qa_audio_device_set_schedule(
+static int32_t qa_audio_device_set_schedule_locked(
     const qa_audio_clip* clips,
     int32_t clip_count,
     const qa_audio_source* sources,
@@ -798,11 +879,30 @@ QA_EXPORT int32_t qa_audio_device_set_schedule(
   return 1;
 }
 
-// Starts playback at [start_sample]. [stop_sample] is exclusive; pass a
-// value at or below the start for "no end".
+QA_EXPORT int32_t qa_audio_device_set_schedule(
+    const qa_audio_clip* clips,
+    int32_t clip_count,
+    const qa_audio_source* sources,
+    int32_t source_count,
+    const qa_audio_envelope_key* envelope_keys,
+    int32_t envelope_key_count) {
+  QA_LIFECYCLE_LOCK();
+  const int32_t set = qa_audio_device_set_schedule_locked(
+      clips, clip_count, sources, source_count, envelope_keys,
+      envelope_key_count);
+  QA_LIFECYCLE_UNLOCK();
+  return set;
+}
+
+// Starts playback at [start_sample], [lead_samples] of silence ahead of it
+// (the lead — `audible_from`). [stop_sample] is exclusive; pass a value at
+// or below the start for "no end". A loop wraps to [start_sample]: the
+// lead is the run's first lap's alone. ⛔No floor here: a lead is never
+// below none by `HeardOnTheDevice.leadFor`, the one place that says so.
 QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
                                        int64_t stop_sample,
-                                       int32_t looping) {
+                                       int32_t looping,
+                                       int64_t lead_samples) {
   if (!g_audio.device_open) {
     return 0;
   }
@@ -811,7 +911,8 @@ QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
   // seq-cst stores double as the release fence playing needs on ARM.
   qa_transport_store_32(&g_audio.playing, 0);
   qa_audio_begin_arm();
-  qa_transport_store_64(&g_audio.position, start_sample);
+  qa_transport_store_64(&g_audio.position, start_sample - lead_samples);
+  qa_transport_store_64(&g_audio.audible_from, start_sample);
   qa_transport_store_64(&g_audio.start_position, start_sample);
   qa_transport_store_64(&g_audio.stop_position, stop_sample);
   qa_transport_store_32(&g_audio.looping, looping ? 1 : 0);
@@ -862,6 +963,8 @@ QA_EXPORT int64_t qa_audio_device_position(void) {
 // out torn values.
 QA_EXPORT void qa_audio_device_seek(int64_t sample) {
   qa_audio_begin_arm();
+  // A seek starts no run: where it lands is heard, and so is all after it.
+  qa_transport_store_64(&g_audio.audible_from, INT64_MIN);
   qa_transport_store_64(&g_audio.position, sample);
 }
 
@@ -1010,9 +1113,9 @@ static void qa_audio_capture_callback(ma_device* device,
 //
 // Returns the delivered sample rate (== sample_rate) or 0 on failure —
 // which on macOS/iOS/Android includes "no microphone permission".
-QA_EXPORT int32_t qa_audio_capture_start(int32_t sample_rate,
-                                         int32_t backend,
-                                         int32_t device_index) {
+static int32_t qa_audio_capture_start_locked(int32_t sample_rate,
+                                             int32_t backend,
+                                             int32_t device_index) {
   if (g_capture.open || sample_rate <= 0) {
     return 0;
   }
@@ -1065,6 +1168,16 @@ QA_EXPORT int32_t qa_audio_capture_start(int32_t sample_rate,
   return g_capture.sample_rate;
 }
 
+QA_EXPORT int32_t qa_audio_capture_start(int32_t sample_rate,
+                                         int32_t backend,
+                                         int32_t device_index) {
+  QA_LIFECYCLE_LOCK();
+  const int32_t rate =
+      qa_audio_capture_start_locked(sample_rate, backend, device_index);
+  QA_LIFECYCLE_UNLOCK();
+  return rate;
+}
+
 // Drains up to [max_floats] from the ring into [out]; returns how many
 // floats were copied. Control thread only — this is the far end of the
 // SPSC ring, never the callback's.
@@ -1099,13 +1212,14 @@ QA_EXPORT int32_t qa_audio_capture_read(float* out, int32_t max_floats) {
 // returns the callback cannot be running — freeing the ring is safe.
 // Call qa_audio_capture_read for the tail BEFORE stopping.
 QA_EXPORT void qa_audio_capture_stop(void) {
-  if (!g_capture.open) {
-    return;
+  QA_LIFECYCLE_LOCK();
+  if (g_capture.open) {
+    ma_device_uninit(&g_capture.device);
+    free(g_capture.ring);
+    g_capture.ring = NULL;
+    g_capture.open = 0;
   }
-  ma_device_uninit(&g_capture.device);
-  free(g_capture.ring);
-  g_capture.ring = NULL;
-  g_capture.open = 0;
+  QA_LIFECYCLE_UNLOCK();
 }
 
 QA_EXPORT int32_t qa_audio_capture_is_open(void) { return g_capture.open; }

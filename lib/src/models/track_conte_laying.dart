@@ -53,10 +53,7 @@ Set<LayerId> conteFillsGiven(Project? before, Project? after) {
   if (after == null || identical(before, after)) {
     return const {};
   }
-  final was = {
-    for (final track in before?.tracks ?? const <Track>[])
-      for (final cut in track.cuts) cut.id: cut,
-  };
+  final was = _cutsById(before);
   final given = <LayerId>{};
   for (final track in after.tracks) {
     for (final cut in track.cuts) {
@@ -76,6 +73,76 @@ Set<LayerId> conteFillsGiven(Project? before, Project? after) {
     }
   }
   return given;
+}
+
+/// A head the structure PUT ON a row that joined its cut's conte in a
+/// write ([conteHeadsPut]): the row as laid, and the head it wore of its
+/// own.
+typedef ConteHeadPut = ({CutId cutId, Layer laid, ConteHead own});
+
+/// The heads laying [written] into [laid] put on rows [before] held in no
+/// conte — a row made a cut's conte wears its track's head
+/// (I-73), and the undo of the write that made it takes that head off
+/// again (`ConteStepScope`).
+///
+/// 🗣️F-424 (유저 2026-10-21): 「기존 레이어 콘티레이어 변경하고 언두하면
+/// 색라벨도 돌아오도록」 — the undo gave the kind back, and the row went on
+/// wearing the conte's label and name: no laying takes a head off a row
+/// that has left the conte.
+List<ConteHeadPut> conteHeadsPut(
+  Project? before,
+  Project written,
+  Project laid,
+) {
+  if (identical(written, laid)) {
+    return const [];
+  }
+  final was = _cutsById(before);
+  final wrote = _cutsById(written);
+  final put = <ConteHeadPut>[];
+  for (final cut in _cutsById(laid).values) {
+    final own = wrote[cut.id];
+    final old = was[cut.id];
+    if (own == null || old == null || identical(own, cut)) {
+      continue;
+    }
+    final rode = {for (final row in _conteRowsOf(old)) row.id};
+    for (final row in _conteRowsOf(cut)) {
+      final mine = own.layers.byId(row.id);
+      // A row the write made goes with its undo, head and all.
+      if (mine == null ||
+          rode.contains(row.id) ||
+          old.layers.byId(row.id) == null) {
+        continue;
+      }
+      final head = ConteHead.of(mine);
+      if (!head.isWornBy(row)) {
+        put.add((cutId: cut.id, laid: row, own: head));
+      }
+    }
+  }
+  return put;
+}
+
+/// Every cut of [project] by its id — none for no project.
+Map<CutId, Cut> _cutsById(Project? project) => {
+  for (final track in project?.tracks ?? const <Track>[])
+    for (final cut in track.cuts) cut.id: cut,
+};
+
+/// [row] with the head [put] laid on it taken off: each field it still
+/// wears as laid goes back to its own, and one changed since stays.
+Layer withConteHeadTakenOff(Layer row, ConteHeadPut put) =>
+    put.own.editedBy(put.laid, row).wornBy(row);
+
+/// The rows of [cut]'s conte as the laying reads them — its base and the
+/// rows of the base's group — or none when it has no conte.
+List<Layer> _conteRowsOf(Cut? cut) {
+  if (cut == null) {
+    return const [];
+  }
+  final base = conteBaseOf(cut);
+  return base == null ? const [] : attachedGroupMembers(base.id, cut.layers);
 }
 
 /// [groups] without their members that are rows the structure gave a cut

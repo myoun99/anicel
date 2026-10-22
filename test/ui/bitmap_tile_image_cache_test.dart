@@ -28,19 +28,6 @@ BitmapTile _gradientTile({required TileCoord coord, int size = 4}) {
   return BitmapTile(size: size, pixels: pixels);
 }
 
-Future<ui.Image> _awaitDecode(
-  BitmapTileImageCache cache,
-  BitmapTile tile,
-) async {
-  cache.pictureFor(tile);
-  for (var attempt = 0; attempt < 100; attempt += 1) {
-    final image = cache.imageFor(tile);
-    if (image != null) return image;
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-  }
-  fail('Tile image decode did not complete.');
-}
-
 Future<Uint8List> _paintPixels(
   BitmapSurfacePainter painter, {
   required int width,
@@ -60,7 +47,7 @@ void main() {
       final cache = BitmapTileImageCache();
       final tile = _gradientTile(coord: TileCoord(x: 0, y: 0));
 
-      final first = await _awaitDecode(cache, tile);
+      final first = cache.pictureFor(tile);
       cache.pictureFor(tile);
       final second = cache.imageFor(tile);
 
@@ -92,7 +79,7 @@ void main() {
 
         // Image path: decode first, then paint through the same cache.
         final cache = BitmapTileImageCache();
-        await _awaitDecode(cache, tile);
+        cache.pictureFor(tile);
         final imagePixels = await _paintPixels(
           BitmapSurfacePainter(
             surface: surface,

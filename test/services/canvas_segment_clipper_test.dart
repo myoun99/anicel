@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/canvas_segment_clipper.dart';
 
 /// The stroke segment clipper clips to the PASTEBOARD, not the stage:
@@ -10,6 +11,7 @@ import 'package:anicel/src/services/canvas_segment_clipper.dart';
 void main() {
   const clipper = CanvasSegmentClipper();
   const size = CanvasSize(width: 100, height: 80);
+  final wall = size.pasteboardAt(PasteboardReach.whole);
   // Pasteboard (3×3, H2 유저 확정 2026-08-22): x ∈ [-100, 200),
   // y ∈ [-80, 160). It was 5×5 — the wall moved in, so every figure
   // below moved with it.
@@ -19,7 +21,7 @@ void main() {
     final segment = clipper.clip(
       previous: CanvasPoint(x: 50, y: 40),
       current: CanvasPoint(x: 150, y: 40),
-      canvasSize: size,
+      wall: wall,
     );
 
     expect(segment, isNotNull);
@@ -33,7 +35,7 @@ void main() {
     final segment = clipper.clip(
       previous: CanvasPoint(x: -50, y: -40),
       current: CanvasPoint(x: -10, y: -20),
-      canvasSize: size,
+      wall: wall,
     );
 
     expect(segment, isNotNull);
@@ -46,7 +48,7 @@ void main() {
     final segment = clipper.clip(
       previous: CanvasPoint(x: 50, y: 40),
       current: CanvasPoint(x: 450, y: 40),
-      canvasSize: size,
+      wall: wall,
     );
 
     expect(segment, isNotNull);
@@ -60,7 +62,7 @@ void main() {
     final segment = clipper.clip(
       previous: CanvasPoint(x: -350, y: 40),
       current: CanvasPoint(x: 0, y: 40),
-      canvasSize: size,
+      wall: wall,
     );
 
     expect(segment, isNotNull);
@@ -73,7 +75,7 @@ void main() {
     final segment = clipper.clip(
       previous: CanvasPoint(x: -500, y: -300),
       current: CanvasPoint(x: -410, y: -270),
-      canvasSize: size,
+      wall: wall,
     );
 
     expect(segment, isNull);

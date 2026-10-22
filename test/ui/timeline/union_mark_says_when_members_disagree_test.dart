@@ -9,6 +9,7 @@ import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
+import 'package:anicel/src/ui/timeline/key_mark_glyph.dart' show keyMarkPath;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
@@ -19,7 +20,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 /// 타입이 서로 다르면 헤더에 동그라미**」), and since I-89 ② every mark is
 /// After Effects' (유저 2026-10-10: 「ae식 반반등은 검증된 업계기준이라 아주
 /// 마음에들어」): its left half the side arriving at the key, its right half
-/// the side leaving it, the disagreement a hollow ring.
+/// the side leaving it, the disagreement a ◉ (F-367-Q2; ↩️a hollow ring).
 ///
 /// ↩️The union was a set of the keyed frames beside a set of the holding
 /// ones and a set of the disagreeing ones, and a test walked every way the
@@ -215,13 +216,15 @@ void main() {
   group('what it draws', () {
     const labelColor = Color(0xFF123456);
 
-    /// The marker's painting, at a 12px box — the mark's own 12-unit grid,
-    /// so a point below is a point of the drawing.
+    /// The marker's painting, at a 12px box unless [box] says otherwise —
+    /// the mark's own 12-unit grid, so a point below is a point of the
+    /// drawing.
     Future<RenderObject> pumpMarker(
       WidgetTester tester,
       KeyMark mark, {
       bool selected = false,
       Axis axis = Axis.horizontal,
+      Size box = const Size.square(12),
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -233,7 +236,7 @@ void main() {
                 child: TimelineLaneKeyMarker(
                   mark: mark,
                   axis: axis,
-                  markerSize: 12,
+                  markerSize: box,
                   color: labelColor,
                   selected: selected,
                 ),
@@ -385,6 +388,67 @@ void main() {
       );
     });
 
+    // 🗣️F-367-Q4 (유저 2026-10-18 「세로 유지 · 가로만 줄임(프레임 블록처럼)」):
+    // a box narrows along the frames and keeps its height across them.
+    testWidgets('a box narrowed along the frames stands narrowed DOWN the '
+        'sheet, its height across it kept', (tester) async {
+      Size painted() => tester.getSize(
+        find.descendant(
+          of: find.byType(TimelineLaneKeyMarker),
+          matching: find.byType(CustomPaint),
+        ),
+      );
+      const box = Size(8, 12);
+      final lying = await pumpMarker(tester, _heldOut, box: box);
+      expect(painted(), box);
+      expect(
+        lying,
+        paints
+          ..path(
+            includes: const [Offset(7, 1), Offset(7, 11), Offset(1, 6)],
+            excludes: const [Offset(1, 1), Offset(1, 11)],
+          ),
+        reason: 'a diamond\'s half narrowed, its point on the box\'s edge',
+      );
+      final standing = await pumpMarker(
+        tester,
+        _heldOut,
+        box: box,
+        axis: Axis.vertical,
+      );
+      expect(painted(), box.flipped);
+      expect(
+        standing,
+        paints
+          ..path(
+            includes: const [Offset(1, 7), Offset(11, 7), Offset(6, 1)],
+            excludes: const [Offset(1, 1), Offset(11, 1)],
+          ),
+        reason: 'the same mark turned a quarter, in the box turned with it',
+      );
+    });
+
+    test('🚨and EVERY mark fills its narrowed box, edge to edge — no shape '
+        'keeps a square of its own inside it', () {
+      const box = Size(8, 12);
+      for (final mark in [
+        for (final incoming in [
+          KeySideKind.linear,
+          KeySideKind.ease,
+          KeySideKind.fast,
+          KeySideKind.auto,
+        ])
+          for (final outgoing in KeySideKind.values) sides(incoming, outgoing),
+        KeyMark.mixed,
+      ]) {
+        expect(
+          keyMarkPath(mark, box).getBounds(),
+          rectMoreOrLessEquals(Offset.zero & box, epsilon: 1e-5),
+          reason: '$mark',
+        );
+      }
+    });
+
     testWidgets('a straight key is a DIAMOND — two halves meeting', (
       tester,
     ) async {
@@ -488,28 +552,26 @@ void main() {
       );
     });
 
-    testWidgets('mixed is a HOLLOW circle — a disc is a smooth pass now '
-        '(유저 10-10 「추천대로」)', (tester) async {
-      final drawn = await pumpMarker(tester, KeyMark.mixed);
-      expect(
-        drawn,
-        paints
-          ..path(
-            includes: const [Offset(1, 6), Offset(5.5, 11)],
-            excludes: const [Offset(6, 6), Offset(0.5, 0.5)],
-          ),
-      );
-    });
-
-    testWidgets('the hollow ring weighs what the drawing the user picked did '
-        '— its hole about two thirds of the box across', (tester) async {
-      // The 12px box's middle is (6, 6); the ring's outside is 6 from it.
+    // 🗣️F-367-Q2 (유저 2026-10-16): 「혼합 ○도 고친다 — 구멍을 메우고 가는
+    // 틈만 남긴다」 — 「로빙키로 착각했네. 혼합마크였네」: a name in the hole
+    // sat on the band, black on dark. ↩️It was a HOLLOW circle (유저 10-10
+    // 「추천대로」 — a disc is a smooth pass); the cut ring keeps it apart
+    // from that disc still.
+    testWidgets('mixed is a ring with a thin gap where its hole was, and a '
+        'disc in it a name reads on', (tester) async {
+      // The 12px box's middle is (6, 6); the ring's outside is 6 from it,
+      // the gap from 4.8 in to 3.84, and the disc inside that.
       expect(
         await pumpMarker(tester, KeyMark.mixed),
         paints
           ..path(
-            includes: const [Offset(6 - 4.4, 6), Offset(6, 6 + 4.4)],
-            excludes: const [Offset(6 - 3.2, 6), Offset(6, 6 + 3.2)],
+            includes: const [
+              Offset(6 - 5.4, 6),
+              Offset(6, 6 + 5.4),
+              Offset(6, 6),
+              Offset(6 - 3.2, 6),
+            ],
+            excludes: const [Offset(6 - 4.3, 6), Offset(6, 6 + 4.3)],
           ),
       );
     });

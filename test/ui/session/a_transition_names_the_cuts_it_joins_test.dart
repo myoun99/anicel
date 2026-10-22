@@ -150,7 +150,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final cells = olCells(printed(tester), s);
-      expect(cells.start.label, 'カットO.L');
+      expect(cells.start.label, 'カット O.L');
       expect(cells.start.valueA, 'c301');
       expect(cells.end.valueB, 'c302');
 
@@ -175,7 +175,7 @@ void main() {
       );
       s.notifyChanged();
       await tester.pumpAndSettle();
-      expect(olCells(printed(tester), s).start.label, '컷O.L.');
+      expect(olCells(printed(tester), s).start.label, '컷 O.L');
     });
   });
 

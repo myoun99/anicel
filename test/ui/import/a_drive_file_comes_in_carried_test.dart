@@ -7,10 +7,13 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/menu/opened_files_door.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/import_warnings.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
@@ -126,21 +129,25 @@ void main() {
   }
 
   /// Presses Import and waits for the window to close — it closes once
-  /// every file has landed.
-  Future<void> runImport(WidgetTester tester) async {
+  /// every file has landed. It waits out the wait window, so it ends by
+  /// stopping [s]'s playback warmer (`pumpPastTheWaitWindow`) — for every
+  /// test that imports through it.
+  Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     final window = find.byKey(const ValueKey<String>('import-dialog'));
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (window.evaluate().isEmpty) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
+    // The fake clock too: the window leaves on its route's way out, which
+    // only that clock plays. ↩️It lent the real loop alone, so the window
+    // never left, and the whole patience ran out — sixty seconds a test
+    // (10-19).
+    final closed = await settleAsync(
+      tester,
+      () => window.evaluate().isEmpty,
+      step: const Duration(milliseconds: 50),
+    );
+    expect(closed, isTrue, reason: 'the window closes once the files landed');
     await tester.pumpAndSettle();
+    s.playbackRig.prerenderScheduler.cancel();
   }
 
   Finder fileCell(String path) =>
@@ -189,7 +196,7 @@ void main() {
           'next time — the answer is locked, not offered',
     );
 
-    await runImport(tester);
+    await runImport(tester, s);
 
     final asset = s.mediaPool.mediaAssets.single;
     expect(asset.carried, isTrue);
@@ -207,7 +214,6 @@ void main() {
           '(「사본 남으면 진짜 용서안할게」)',
     );
     expect(ProviderDocuments.workingCopyOf(uri), isNull);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a file picked BESIDE a Drive file is still the person\'s to '
@@ -259,18 +265,18 @@ void main() {
       reason: 'the answer the document cannot give does not stick to it',
     );
 
-    await runImport(tester);
+    await runImport(tester, s);
 
     final carried = {
       for (final asset in s.mediaPool.mediaAssets)
         fileNameOfPath(asset.path): asset.carried,
     };
     expect(carried, {'A1.png': true, 'local.png': false});
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨Stop while the copy comes: nothing is listed, the file is '
-      'named on the status line, and no folder is left in the room', (
+      'named in the warnings the status line opens, and no folder is left in '
+      'the room', (
     tester,
   ) async {
     holdCopy = Completer<bool>();
@@ -286,6 +292,16 @@ void main() {
       isNull,
       reason: 'nothing runs while the first file is still coming',
     );
+    // The wait after a pick is said on the window's own status line — no
+    // wait window stands over a pick.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey<String>('import-status')))
+          .data,
+      startsWith(AppText.strings.openWaitingCloudTemplate.split('{sec}').first),
+      reason: 'the status line says whose work the wait is',
+    );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-cancel-button')));
     for (var tries = 0; tries < 10; tries += 1) {
@@ -297,10 +313,14 @@ void main() {
       findsOneWidget,
       reason: 'Cancel stopped the WAIT, not the window',
     );
-    expect(find.textContaining('A1.png'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('import-file-table')),
-      findsNothing,
+      tester.widget<ImportFileTable>(find.byType(ImportFileTable)).rows,
+      isEmpty,
+    );
+    final notice = await openImportWarnings(tester);
+    expect(
+      find.descendant(of: notice, matching: find.text('A1.png')),
+      findsOneWidget,
     );
     expect(Directory(File(copiedTo.single).parent.path).existsSync(), isFalse);
     expect(ProviderDocuments.workingCopyOf(uri), isNull);
@@ -360,5 +380,59 @@ void main() {
       );
       expect(ProviderDocuments.workingCopyOf(uri), isNull);
     });
+  });
+
+  testWidgets('a Drive file handed in beside a cut folder is named on the '
+      'folder\'s left-out row — its copy come after the folder was read too', (
+    tester,
+  ) async {
+    const notes = ProviderDocument(uri: uri, name: 'notes.png');
+    final sep = Platform.pathSeparator;
+    final (cel, bytes) = (await tester.runAsync(
+      () async => (
+        await writeSolidPng(temp, 'csm_13_069_lo${sep}A1.png'),
+        await writeSolidPng(temp, 'doc.png'),
+      ),
+    ))!;
+    documents[uri] = bytes;
+    holdCopy = Completer<bool>();
+    // What the door's pick keeps for the steps that have only the URI.
+    ProviderDocuments.remember(notes);
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(
+            session: s,
+            picked: [
+              FolderGrant.granted(
+                path: File(cel).parent.path,
+                kind: GrantKind.folder,
+              ),
+              const FolderGrant.providerDocument(notes),
+            ],
+          ),
+        ),
+      ),
+    );
+    List<ImportFileRow> rows() =>
+        tester.widget<ImportFileTable>(find.byType(ImportFileTable)).rows;
+
+    expect(
+      await settleAsync(tester, () => rows().any((r) => r.path == 'folder:A')),
+      isTrue,
+      reason: 'premise: the folder is read while the copy is held',
+    );
+    expect(copiedTo, hasLength(1), reason: 'premise: the copy is under way');
+    holdCopy!.complete(true);
+
+    expect(
+      await settleAsync(
+        tester,
+        () => rows().last.name.split(' · ').contains('notes.png'),
+      ),
+      isTrue,
+    );
   });
 }

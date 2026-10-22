@@ -33,8 +33,8 @@ void main() {
   test('🎯it moves once the stream is past halfway to its leading edge — '
       '~15 s before the mix could read past it', () {
     final window = streaming(centre: rate * 10);
-    const halfway =
-        rate * 10 + (AudioStreamingWindow.aheadSeconds * rate) ~/ 2;
+    final halfway =
+        rate * 10 + (AudioStreamingWindow.playing.aheadSeconds * rate) ~/ 2;
 
     expect(window.wantsRecentreAt(halfway, rate), isFalse);
     expect(window.wantsRecentreAt(halfway + 1, rate), isTrue);
@@ -42,7 +42,8 @@ void main() {
 
   test('and once it is behind the trailing edge', () {
     final window = streaming(centre: rate * 10);
-    const trailing = rate * 10 - AudioStreamingWindow.backSeconds * rate;
+    final trailing =
+        rate * 10 - AudioStreamingWindow.playing.backSeconds * rate;
 
     expect(window.wantsRecentreAt(trailing, rate), isFalse);
     expect(window.wantsRecentreAt(trailing - 1, rate), isTrue);

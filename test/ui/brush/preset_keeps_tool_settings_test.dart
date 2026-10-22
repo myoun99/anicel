@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_settings.dart';
@@ -34,12 +35,14 @@ void main() {
   /// A state with a non-default value in EVERY field outside the shape, so a
   /// list that silently drops one cannot pass by luck.
   BrushToolState armed() => BrushToolState.fromShape(
-    const BrushShape(size: 12),
+    const BrushShape(
+      size: 12,
+      correction: BrushCorrection(stabilization: 70),
+    ),
     tool: CanvasTool.select,
     selectShape: CanvasShapeKind.lasso,
     cutShape: CanvasShapeKind.ellipse,
     fillShape: CanvasShapeKind.lasso,
-    stabilizerStrength: 0.7,
     fillBlendMode: BrushBlendMode.screen,
     cutStampBlendMode: BrushBlendMode.add,
   );
@@ -68,7 +71,6 @@ void main() {
     );
     expect(after.cutShape, before.cutShape);
     expect(after.fillShape, before.fillShape);
-    expect(after.stabilizerStrength, before.stabilizerStrength);
     expect(
       after.fillBlendMode,
       before.fillBlendMode,
@@ -90,14 +92,23 @@ void main() {
     );
   });
 
-  test('the HAND values that still win over the preset', () {
-    // The stabilizer (P7) and the colour (R9 #2) — they live outside `shape`,
-    // so the preset never reaches them, and that structural reason is why
-    // they need no list of their own.
+  test('the HAND value that still wins over the preset', () {
+    // The colour (R9 #2). ↩️The stabilizer (P7) was the other, living
+    // outside `shape` so the preset never reached it; it is the brush's own
+    // now — the next test.
     final before = armed();
     final after = before.withPreset(preset(), tool: CanvasTool.brush);
     expect(after.color, before.color);
-    expect(after.stabilizerStrength, before.stabilizerStrength);
+  });
+
+  test("the STABILIZER is not one of them any more — it is the brush's "
+      'own (F-418-Q6)', () {
+    final after = armed().withPreset(preset(), tool: CanvasTool.brush);
+    expect(
+      after.correction,
+      const BrushCorrection(),
+      reason: "the preset's own, not the 70 the brush before it had",
+    );
   });
 
   test('the BLEND is not one of them either — it rides in the shape now', () {

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'app_tooltip.dart';
 import 'app_icon_button.dart';
+import 'settings_rows.dart' show settingsHelpTooltip;
 import 'package:flutter/material.dart';
 
 import '../theme/app_scroll_behavior.dart';
@@ -351,13 +352,13 @@ class AppWindow extends StatelessWidget {
             if (actions.isNotEmpty) const SizedBox(height: 8),
           ],
           if (leadingActions.isNotEmpty)
-            _spreadActions(theme)
+            _spreadActions()
           else if (actions.isNotEmpty)
             Row(
               children: [
                 for (var i = 0; i < actions.length; i++) ...[
                   if (i > 0) const SizedBox(width: 8),
-                  Expanded(child: _actionButton(theme, actions[i])),
+                  Expanded(child: AppWindowActionButton(actions[i])),
                 ],
               ],
             ),
@@ -368,28 +369,37 @@ class AppWindow extends StatelessWidget {
 
   /// The spread footer ([leadingActions]): the left end, what lies between,
   /// the right end.
-  Widget _spreadActions(ThemeData theme) => Row(
+  Widget _spreadActions() => Row(
     children: [
       for (final action in leadingActions) ...[
-        _actionButton(theme, action),
+        AppWindowActionButton(action),
         const SizedBox(width: 8),
       ],
       Expanded(child: footerBetween ?? const SizedBox.shrink()),
       for (final action in actions) ...[
         const SizedBox(width: 8),
-        _actionButton(theme, action),
+        AppWindowActionButton(action),
       ],
     ],
   );
+}
 
-  Widget _actionButton(ThemeData theme, AppWindowAction action) {
+/// One [AppWindowAction] as a window's footer draws it — public for the
+/// one status line that is itself an action, the import window's 「경고
+/// N가지」 (F-370-Q1): the same button, not one drawn to look like it.
+class AppWindowActionButton extends StatelessWidget {
+  const AppWindowActionButton(this.action, {super.key});
+
+  final AppWindowAction action;
+
+  @override
+  Widget build(BuildContext context) {
     final hint = action.tooltip;
-    final button = _actionButtonBody(theme, action);
+    final button = _body(Theme.of(context).colorScheme);
     return hint == null ? button : AppTooltip(message: hint, child: button);
   }
 
-  Widget _actionButtonBody(ThemeData theme, AppWindowAction action) {
-    final colorScheme = theme.colorScheme;
+  Widget _body(ColorScheme colorScheme) {
     final label = Text(action.label);
     return switch (action.emphasis) {
       AppWindowActionEmphasis.primary => FilledButton(
@@ -430,11 +440,20 @@ class AppWindowField extends StatelessWidget {
     super.key,
     required this.label,
     required this.child,
+    this.help,
     this.emphasized = false,
   });
 
   final String label;
   final Widget child;
+
+  /// What the field means, as a tooltip on its cap — the settings rows' law
+  /// ([settingsHelpTooltip], F-2: the explanation is a tooltip, never a
+  /// line of the window). Null where the cap says it on its own.
+  ///
+  /// 🗣️F-366 (유저 2026-10-16): 「로빙이 애초에 뭐지? 이런거 설명은 항목
+  /// 헤더에 툴팁 띄워줬으면. 도착 출발 경로 이런거에도」.
+  final String? help;
 
   /// The field the window is really about (the name being typed) — its cap
   /// takes the accent.
@@ -449,12 +468,18 @@ class AppWindowField extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 5),
-          child: Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: emphasized
-                  ? AppColors.accent
-                  : theme.colorScheme.onSurfaceVariant,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: settingsHelpTooltip(
+              help,
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: emphasized
+                      ? AppColors.accent
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ),
         ),

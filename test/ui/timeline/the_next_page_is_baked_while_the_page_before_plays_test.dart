@@ -27,6 +27,8 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
+import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨A RUN'S NEXT PAGE IS BAKED WHILE IT PLAYS THE PAGE BEFORE (유저
@@ -120,12 +122,6 @@ void main() {
     final recorder = ui.PictureRecorder();
     Canvas(recorder).drawRect(Rect.zero, Paint());
     return recorder.endRecording().toImageSync(1, 1);
-  }
-
-  Future<void> idle() async {
-    while (store.debugBusy) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
   }
 
   /// Every span [painter] asks for on the page its axis turns to next.
@@ -224,10 +220,10 @@ void main() {
       show(painter);
       paintRow(painter);
     }
-    await idle();
+    await tileStoreIdle(store);
 
     store.warmTheNextPage(tiles: 64);
-    await idle();
+    await tileStoreIdle(store);
 
     expect(asked, 1);
     for (final painter in rows) {
@@ -269,11 +265,11 @@ void main() {
     final painter = painterFor('row', bucket);
     final repaints = show(painter);
     paintRow(painter);
-    await idle();
+    await tileStoreIdle(store);
     final shownRepaints = repaints();
 
     store.warmTheNextPage(tiles: 16);
-    await idle();
+    await tileStoreIdle(store);
 
     expect(nextPageIsWarm(painter), isTrue);
     expect(
@@ -294,7 +290,7 @@ void main() {
     final painter = painterFor('asked', bucket);
     final repaints = show(painter);
     paintRow(painter);
-    await idle();
+    await tileStoreIdle(store);
     final before = repaints();
 
     store.warmTheNextPage(tiles: 1);
@@ -306,7 +302,7 @@ void main() {
       spanEndIndexExclusive: end,
       devicePixelRatio: 1,
     );
-    await idle();
+    await tileStoreIdle(store);
 
     expect(repaints(), before + 1);
   });
@@ -371,7 +367,7 @@ void main() {
     final painter = painterFor('ahead', bucket);
     final repaints = show(painter);
     paintRow(painter);
-    await idle();
+    await tileStoreIdle(store);
 
     final (:shown, :ahead) = painter.tileSpans;
     expect(ahead, isNotEmpty, reason: '⛔premise: a span past the window');
@@ -410,7 +406,7 @@ void main() {
       show(painter);
       paintRow(painter);
     }
-    await idle();
+    await tileStoreIdle(store);
 
     final ahead = [
       for (final painter in painters)
@@ -441,7 +437,7 @@ void main() {
     final painter = painterFor('once', bucket);
     show(painter);
     paintRow(painter);
-    await idle();
+    await tileStoreIdle(store);
     var uploads = 0;
     debugRawRgbaUploader =
         (rgba, {required width, required height, targetWidth, targetHeight}) {
@@ -461,10 +457,10 @@ void main() {
       spanEndIndexExclusive: end,
       devicePixelRatio: 1,
     );
-    await idle();
+    await tileStoreIdle(store);
     expect(uploads, 1, reason: 'the shown one, and the next page waits');
     store.warmTheNextPage(tiles: 64);
-    await idle();
+    await tileStoreIdle(store);
 
     expect(
       uploads,
@@ -485,7 +481,7 @@ void main() {
     final painter = painterFor('moved-up', bucket);
     show(painter);
     paintRow(painter);
-    await idle();
+    await tileStoreIdle(store);
     var uploads = 0;
     debugRawRgbaUploader =
         (rgba, {required width, required height, targetWidth, targetHeight}) {
@@ -501,11 +497,11 @@ void main() {
     bucket.value = 1;
     expect(painter.tileSpans.ahead, contains(queued.first), reason: '⛔premise');
     paintRow(painter);
-    await idle();
+    await tileStoreIdle(store);
     expect(uploads, 1, reason: 'the span past the window, at rest');
     final rest = {...queued.skip(1), ...coldOfTheNextPage(painter)};
     store.warmTheNextPage(tiles: 64);
-    await idle();
+    await tileStoreIdle(store);
 
     expect(uploads, 1 + rest.length, reason: 'and not again with the rest');
   });
@@ -550,7 +546,7 @@ void main() {
       final painter = painterFor(id, bucket);
       show(painter);
       paintRow(painter);
-      await idle();
+      await tileStoreIdle(store);
       debugRawRgbaUploader =
           (rgba, {required width, required height, targetWidth, targetHeight}) {
             uploads += 1;
@@ -576,7 +572,7 @@ void main() {
       expect(waits.single.$1, const Duration(microseconds: 5000));
       clock = 5000;
       waits.single.$2.complete();
-      await idle();
+      await tileStoreIdle(store);
       expect(nextPageIsWarm(painter), isTrue);
     });
 
@@ -598,16 +594,14 @@ void main() {
       quiet = (fromMicros: 5000, untilMicros: 1000000);
 
       paintRow(painter);
-      for (var turn = 0; turn < 200 && waits.isEmpty; turn += 1) {
-        await pumpEventQueue();
-      }
+      await pollUntil(() => waits.isNotEmpty);
 
       final (:shown, :ahead) = painter.tileSpans;
       expect(uploads, shown.length, reason: 'the shown spans, at once');
       expect(waits.single.$1, const Duration(microseconds: 5000));
       clock = 5000;
       waits.single.$2.complete();
-      await idle();
+      await tileStoreIdle(store);
       expect(uploads, shown.length + ahead.length);
     });
 
@@ -628,9 +622,7 @@ void main() {
       show(painter);
       quiet = (fromMicros: 5000, untilMicros: 1000000);
       paintRow(painter);
-      for (var turn = 0; turn < 200 && waits.isEmpty; turn += 1) {
-        await pumpEventQueue();
-      }
+      await pollUntil(() => waits.isNotEmpty);
       final shownBefore = painter.tileSpans.shown.length;
       final waiting = painter.tileSpans.ahead.single;
       expect(uploads, shownBefore, reason: '⛔premise: it waits for the quiet');
@@ -639,13 +631,11 @@ void main() {
       bucket.value = 1;
       expect(painter.tileSpans.shown, contains(waiting), reason: '⛔premise');
       paintRow(painter);
-      for (var turn = 0; turn < 200 && uploads == shownBefore; turn += 1) {
-        await pumpEventQueue();
-      }
+      await pollUntil(() => uploads != shownBefore);
       expect(uploads, shownBefore + 1, reason: 'shown now: at once');
       clock = 5000;
       waits.single.$2.complete();
-      await idle();
+      await tileStoreIdle(store);
 
       expect(
         uploads,
@@ -669,12 +659,12 @@ void main() {
       quiet = (fromMicros: 0, untilMicros: 50000);
 
       store.warmTheNextPage(tiles: 4);
-      await idle();
+      await tileStoreIdle(store);
       expect(uploads, 1, reason: 'a second 30ms span would end at 60ms');
 
       quiet = (fromMicros: clock, untilMicros: clock + 1000000);
       store.warmTheNextPage(tiles: 4);
-      await idle();
+      await tileStoreIdle(store);
       expect(uploads, greaterThan(1), reason: 'the next quiet takes it on');
     });
 
@@ -687,12 +677,12 @@ void main() {
       await shownRow('decays', taking: 30000);
       quiet = (fromMicros: 0, untilMicros: 50000);
       store.warmTheNextPage(tiles: 4);
-      await idle();
+      await tileStoreIdle(store);
       expect(uploads, 1, reason: '⛔premise: a 30ms span learned');
 
       quiet = (fromMicros: clock, untilMicros: clock + 25000);
       store.warmTheNextPage(tiles: 4);
-      await idle();
+      await tileStoreIdle(store);
 
       expect(uploads, 2, reason: 'a quiet of 25ms still takes one');
     });
@@ -707,17 +697,17 @@ void main() {
       await shownRow('over', taking: 30000);
       quiet = (fromMicros: 0, untilMicros: 1000000);
       store.warmTheNextPage(tiles: 1);
-      await idle();
+      await tileStoreIdle(store);
       expect(uploads, 1, reason: '⛔premise: a 30ms span learned');
 
       quiet = (fromMicros: 0, untilMicros: clock - 1);
       store.warmTheNextPage(tiles: 4);
-      await idle();
+      await tileStoreIdle(store);
       expect(uploads, 1, reason: 'it is over');
 
       quiet = (fromMicros: clock, untilMicros: clock + 25000);
       store.warmTheNextPage(tiles: 4);
-      await idle();
+      await tileStoreIdle(store);
       expect(uploads, 1, reason: 'a 30ms span does not fit 25ms');
     });
 
@@ -731,7 +721,7 @@ void main() {
       quiet = (fromMicros: 9000, untilMicros: 4000);
 
       store.warmTheNextPage(tiles: 4);
-      await idle();
+      await tileStoreIdle(store);
 
       expect(uploads, 0);
       expect(waits, isEmpty, reason: 'nothing to wait for in it either');
@@ -745,7 +735,7 @@ void main() {
       await shownRow('free');
 
       store.warmTheNextPage(tiles: 2);
-      await idle();
+      await tileStoreIdle(store);
 
       expect(uploads, 2);
       expect(waits, isEmpty);
@@ -775,14 +765,12 @@ void main() {
       );
 
       store.warmTheNextPage(tiles: 2);
-      for (var i = 0; i < 200 && uploads == 0; i += 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await pollUntil(() => uploads > 0);
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(uploads, 1, reason: 'the GPU is not done with the first');
 
       gpu.complete();
-      await idle();
+      await tileStoreIdle(store);
       expect(uploads, 2);
     });
 
@@ -812,9 +800,7 @@ void main() {
       store.quietTurns = turns;
 
       store.warmTheNextPage(tiles: 2);
-      for (var i = 0; i < 200 && uploads == 0; i += 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await pollUntil(() => uploads > 0);
       await Future<void>.delayed(const Duration(milliseconds: 50));
       final other = turns.inThisQuiet(QuietSpan(), gone: () => false);
       gpu.complete();
@@ -822,7 +808,7 @@ void main() {
       expect(uploads, 1, reason: 'the job that asked first goes first');
 
       await turn!.landed();
-      await idle();
+      await tileStoreIdle(store);
       expect(uploads, 2);
     });
   });
@@ -839,7 +825,7 @@ void main() {
     show(painter);
     await tester.runAsync(() async {
       paintRow(painter);
-      await idle();
+      await tileStoreIdle(store);
     });
     final controller = ScrollController();
     addTearDown(controller.dispose);

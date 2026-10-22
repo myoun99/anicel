@@ -258,4 +258,27 @@ void main() {
       reason: 'the evicted mask re-renders (deterministic bytes regardless)',
     );
   });
+
+  test('a resolve is a use: a mask asked for again outlives one asked for '
+      'once since', () {
+    final cache = BrushTipStampCache(byteBudget: 1 << 30);
+    final small = cache.resolveDab(dab(size: 10)).tipMask!;
+    final large = cache.resolveDab(dab(size: 20)).tipMask!;
+    // Room for these two and no more.
+    cache.byteBudget = cache.residentBytes;
+
+    expect(identical(cache.resolveDab(dab(size: 10)).tipMask, small), isTrue);
+    cache.resolveDab(dab(size: 15));
+
+    expect(
+      identical(cache.resolveDab(dab(size: 10)).tipMask, small),
+      isTrue,
+      reason: 'asked for again, so not the least recently used',
+    );
+    expect(
+      identical(cache.resolveDab(dab(size: 20)).tipMask, large),
+      isFalse,
+      reason: 'the least recently used went',
+    );
+  });
 }

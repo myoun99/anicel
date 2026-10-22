@@ -18,6 +18,7 @@ import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer_kind.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
+import 'dialogs/behind_the_wait_window.dart';
 import 'dialogs/convert_to_linked_cut_dialog.dart';
 import 'dialogs/dialog_verb.dart';
 import 'editor_session_manager.dart';
@@ -74,7 +75,8 @@ bool canConvertActiveCutToLinked(EditorSessionManager session) =>
     session.cutVerbs.convertToLinkedCutCandidates.isNotEmpty;
 
 /// Turns the active cut into a 겸용컷 of a chosen other cut — same
-/// pictures, its own timing.
+/// pictures, its own timing. Where it takes the other cut's canvas, it moves
+/// every picture as a resize does, behind the same wait window.
 Future<void> showConvertActiveCutToLinked(
   BuildContext context,
   EditorSessionManager session,
@@ -86,7 +88,11 @@ Future<void> showConvertActiveCutToLinked(
     candidates: session.cutVerbs.convertToLinkedCutCandidates,
     previewOf: session.cutVerbs.convertToLinkedCutPreviewData,
   ),
-  commit: session.cutVerbs.convertActiveCutToLinked,
+  commit: (targetCutId) => stepBehindTheWaitWindow(
+    context,
+    session.cutVerbs.convertActiveCutToLinkedAhead(targetCutId),
+    () => session.cutVerbs.convertActiveCutToLinked(targetCutId),
+  ),
 );
 
 /// Bakes the active cut's camera work as After Effects keyframe data on the

@@ -1,3 +1,4 @@
+import 'dart:convert' show utf8;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -5,6 +6,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import 'clip_cmt.dart';
 import 'clip_container.dart';
+import 'clip_layer_effects.dart';
 import 'clip_placement.dart';
 import 'clip_track_clip.dart';
 
@@ -55,6 +57,11 @@ final class ClipPictureSource {
   final String blocksId;
 }
 
+/// A layer's mask as CLIP STUDIO applies it ([ClipLayer.mask]): where its
+/// picture is stored — null when the file does not hold it — and where its
+/// top-left stands on the canvas.
+typedef ClipLayerMask = ({ClipPictureSource? source, int left, int top});
+
 /// One sound a sound layer holds — the file CLIP STUDIO took in, whole, in
 /// the external chunk [binaryId] (an mp3 of the samples began 「ID3」 —
 /// memory `csp-clip-format-notes` §3): what a sound track's clip names to
@@ -66,6 +73,11 @@ typedef ClipSound = ({
   String name,
   String extension,
 });
+
+/// One text of a text layer as the file keeps it: what it says and the
+/// attribute parameters it is set by (`clip_lettering.dart` reads them —
+/// memory `csp-clip-format-notes` 6-1 §13).
+typedef ClipLettering = ({String text, Uint8List attributes});
 
 /// One layer of a CLIP STUDIO PAINT document's tree.
 final class ClipLayer {
@@ -88,7 +100,14 @@ final class ClipLayer {
     required this.originalTransform,
     this.vectorData = const [],
     this.sounds = const [],
+    this.texts = const [],
+    this.textPictures = const [],
     this.camera,
+    this.mainColour,
+    this.effectsOn = false,
+    this.clipped = false,
+    this.mask,
+    this.locked = false,
     required this.children,
   });
 
@@ -147,11 +166,55 @@ final class ClipLayer {
   /// bytes the file holds the address of.
   final List<ClipSound> sounds;
 
+  /// A text layer's texts, in the file's order: `TextLayerString` with
+  /// `TextLayerAttributes`, then each of their `…Array`s.
+  final List<ClipLettering> texts;
+
+  /// The pictures CLIP STUDIO drew of a text layer's texts — offscreens the
+  /// layer names through `Offscreen.LayerId` alone, no mipmap level and no
+  /// thumbnail (all 16 texts of the samples have one, 10-17), in `MainId`
+  /// order. ⛔Not its [render]: a text layer's is declared and never stored,
+  /// as an image material's is.
+  final List<ClipPictureSource> textPictures;
+
   /// The 2D camera this folder is (`Camera2DResizableImageInfo` — memory
   /// `csp-clip-format-notes` §3), as it stands where no clip of its track
   /// moves it: its picture is the shooting frame, placed by this. Null on
   /// every other layer.
   final ClipPlacement? camera;
+
+  /// `DrawColorMainRed` · `Green` · `Blue` as one opaque ARGB — a paper
+  /// layer's colour; null where the file names none.
+  ///
+  /// ⚠️Each channel is 32 bits, read by its top byte: every sample's paper
+  /// is white, every bit set (F-370, 10-17), so no sample tells a byte
+  /// copied four times from a value scaled to 32 bits — and the top byte is
+  /// the 8-bit value either way.
+  final int? mainColour;
+
+  /// Whether CLIP STUDIO draws an effect of the layer's properties over
+  /// its own pixels: one its `LayerEffectInfo` turns on ([clipEffectsOn]),
+  /// or its layer colour — `DrawColorEnable`, the main colour shown in
+  /// place of black and the sub in place of white (the manual's 「Layer
+  /// color」). Two samples' cels wear it on hundreds of layers, in red,
+  /// blue and green (10-17).
+  ///
+  /// ⛔Never a paper's: a paper keeps its own colour in those columns
+  /// ([mainColour]), its `DrawColorEnable` 1 on every sample's.
+  final bool effectsOn;
+
+  /// `LayerClip` — clipped to the layer under it.
+  final bool clipped;
+
+  /// The layer mask CLIP STUDIO applies: a `LayerLayerMaskMipmap` with
+  /// [visibility]'s bit 2 on, standing at `LayerOffset + LayerMaskOffset +
+  /// LayerMaskOffscrOffset` (MoArt's reading — memory `csp-clip-format-notes`
+  /// §2; no sample holds a mask). Null for a layer with none, and for one
+  /// whose mask is off: CLIP STUDIO does not apply that either.
+  final ClipLayerMask? mask;
+
+  /// `LayerLock` not 0 — some lock is on (the samples' are 1 and 16).
+  final bool locked;
 
   /// Bottom to top, the way the sibling chain runs.
   final List<ClipLayer> children;
@@ -160,10 +223,13 @@ final class ClipLayer {
   bool get isFolder => folderFlags != 0 || kind == ClipLayerKind.root;
   bool get isCollapsed => folderFlags & 16 != 0;
 
-  /// Whether it has a picture: a render, a dropped picture's original, or
-  /// a vector layer's strokes.
+  /// Whether it has a picture: a render, a dropped picture's original, a
+  /// vector layer's strokes, or a text layer's texts.
   bool get hasPicture =>
-      render != null || original != null || vectorData.isNotEmpty;
+      render != null ||
+      original != null ||
+      vectorData.isNotEmpty ||
+      texts.isNotEmpty;
 
   /// This layer and every layer under it, this one first.
   Iterable<ClipLayer> get everyLayer sync* {
@@ -239,11 +305,17 @@ final class ClipDocument {
     required this.currentTimeline,
     required this.warnings,
     this.frame,
+    this.resolution = 72,
   });
 
   final int width;
   final int height;
   final ClipLayer root;
+
+  /// `CanvasResolution`, dots per inch — what a text's point size is on
+  /// this canvas (`clip_lettering.dart`). 72 — a point a pixel — where the
+  /// file names none.
+  final double resolution;
 
   /// The shooting frame — null when the file has none (the whole canvas).
   final ClipFrame? frame;
@@ -359,6 +431,7 @@ final class _DocumentReader {
     final canvas = _rows('Canvas', [
       'CanvasWidth',
       'CanvasHeight',
+      'CanvasResolution',
       'CanvasRootFolder',
       ..._frameColumns,
     ]).values.firstOrNull;
@@ -375,6 +448,7 @@ final class _DocumentReader {
     ]).values.firstOrNull;
     final width = _num(canvas['CanvasWidth']);
     final height = _num(canvas['CanvasHeight']);
+    final resolution = _num(canvas['CanvasResolution']);
     return ClipDocument(
       width: width.round(),
       height: height.round(),
@@ -383,6 +457,7 @@ final class _DocumentReader {
       currentTimeline: bank == null ? 0 : _int(bank['CurrentIndex']),
       warnings: warnings,
       frame: _frameOf(canvas, width, height),
+      resolution: resolution > 0 ? resolution : 72,
     );
   }
 
@@ -445,8 +520,28 @@ final class _DocumentReader {
     'AudioLayer',
     'GradationFillInfo',
     'TextLayerType',
+    'TextLayerString',
+    'TextLayerAttributes',
+    'TextLayerStringArray',
+    'TextLayerAttributesArray',
     'FirstLayerObject',
     'Camera2DResizableImageInfo',
+    'LayerEffectInfo',
+    'DrawColorEnable',
+    'LayerClip',
+    'LayerLayerMaskMipmap',
+    'LayerMaskOffsetX',
+    'LayerMaskOffsetY',
+    'LayerMaskOffscrOffsetX',
+    'LayerMaskOffscrOffsetY',
+    'LayerLock',
+    ..._mainColourColumns,
+  ];
+
+  static const _mainColourColumns = [
+    'DrawColorMainRed',
+    'DrawColorMainGreen',
+    'DrawColorMainBlue',
   ];
 
   /// A mipmap's 100% picture, by the mipmap's id.
@@ -534,6 +629,64 @@ final class _DocumentReader {
   };
   late final _soundBinaries = _rows('CanvasItemBinary', ['ItemBinaryData']);
 
+  /// [layer]'s texts ([ClipLayer.texts]): the one its own columns hold, then
+  /// each of the `…Array` columns' — `u32 LE length + bytes`, again and
+  /// again (one sample layer holds two). A text with no setting to go with
+  /// it is said.
+  List<ClipLettering> _textsOf(Map<String, Object?> layer) {
+    final texts = [
+      if (layer['TextLayerString'] case final Object one) _utf8(one),
+      for (final part in _parts(layer['TextLayerStringArray'])) _utf8(part),
+    ];
+    final settings = [
+      if (layer['TextLayerAttributes'] case final Uint8List one) one,
+      ..._parts(layer['TextLayerAttributesArray']),
+    ];
+    if (texts.length != settings.length) {
+      warnings.add(
+        'text layer ${layer['MainId']} holds ${texts.length} texts and '
+        '${settings.length} settings for them',
+      );
+    }
+    return [
+      for (var i = 0; i < texts.length && i < settings.length; i += 1)
+        (text: texts[i], attributes: settings[i]),
+    ];
+  }
+
+  /// [layer]'s pictures of its texts ([ClipLayer.textPictures]).
+  List<ClipPictureSource> _textPicturesOf(int layer) {
+    const wanted = ['LayerId', 'Attribute', 'BlockData'];
+    if (!_columnsOf('Offscreen').containsAll(wanted)) {
+      return const [];
+    }
+    return [
+      for (final row in database.select(
+        'SELECT MainId, Attribute, BlockData FROM Offscreen '
+        'WHERE LayerId = ? ORDER BY MainId',
+        [layer],
+      ))
+        if (row['Attribute'] case final Uint8List attribute
+            when !_offscreensNamed.contains(row['MainId']))
+          ClipPictureSource(
+            attribute: attribute,
+            blocksId: _text(row['BlockData']),
+          ),
+    ];
+  }
+
+  /// The offscreens a mipmap level or a thumbnail names — any other
+  /// offscreen of a layer is a picture of one of its objects (wamsoft
+  /// `clipparse` · `docs/CLIP_FORMAT.md`, measured on the samples 10-17).
+  late final _offscreensNamed = {
+    for (final info in _rows('MipmapInfo', ['Offscreen']).values)
+      _int(info['Offscreen']),
+    for (final thumbnail in _rows('LayerThumbnail', [
+      'ThumbnailOffscreen',
+    ]).values)
+      _int(thumbnail['ThumbnailOffscreen']),
+  };
+
   /// What every step of the tree walk asks: the layer table, the 100%
   /// pictures, and the layers' vector data.
   late final _layerRows = _rows('Layer', _layerColumns);
@@ -568,6 +721,7 @@ final class _DocumentReader {
     final transform = row['ResizableImageInfo'];
     final camera = row['Camera2DResizableImageInfo'];
     final kind = _kindOf(row, _vectorData.containsKey(id));
+    final lettering = kind == ClipLayerKind.lettering;
     return ClipLayer(
       id: id,
       name: _text(row['LayerName']),
@@ -587,9 +741,51 @@ final class _DocumentReader {
       originalTransform: transform is Uint8List ? transform : null,
       vectorData: _vectorData[id] ?? const [],
       sounds: kind == ClipLayerKind.sound ? _soundsOf(row) : const [],
+      texts: lettering ? _textsOf(row) : const [],
+      textPictures: lettering ? _textPicturesOf(id) : const [],
       camera: camera is Uint8List ? clipPlacementOf(camera) : null,
+      mainColour: _mainColourOf(row),
+      effectsOn: _effectsOn(row, kind),
+      clipped: _int(row['LayerClip']) != 0,
+      mask: _maskOf(row, pictures),
+      locked: _int(row['LayerLock']) != 0,
       children: children,
     );
+  }
+
+  /// [row]'s [ClipLayer.mask].
+  static ClipLayerMask? _maskOf(
+    Map<String, Object?> row,
+    Map<int, ClipPictureSource> pictures,
+  ) {
+    final mipmap = _int(row['LayerLayerMaskMipmap']);
+    if (mipmap == 0 || _int(row['LayerVisibility']) & 2 == 0) {
+      return null;
+    }
+    int at(String axis) =>
+        _int(row['LayerOffset$axis']) +
+        _int(row['LayerMaskOffset$axis']) +
+        _int(row['LayerMaskOffscrOffset$axis']);
+    return (source: pictures[mipmap], left: at('X'), top: at('Y'));
+  }
+
+  /// [row]'s [ClipLayer.effectsOn].
+  static bool _effectsOn(Map<String, Object?> row, ClipLayerKind kind) {
+    final info = row['LayerEffectInfo'];
+    return (info is Uint8List && clipEffectsOn(info)) ||
+        (kind != ClipLayerKind.paper && _int(row['DrawColorEnable']) != 0);
+  }
+
+  /// [row]'s [ClipLayer.mainColour].
+  static int? _mainColourOf(Map<String, Object?> row) {
+    final [red, green, blue] = [
+      for (final column in _mainColourColumns) row[column],
+    ];
+    if (red is! int || green is! int || blue is! int) {
+      return null;
+    }
+    int top(int channel) => (channel >> 24) & 0xFF;
+    return 0xFF000000 | (top(red) << 16) | (top(green) << 8) | top(blue);
   }
 
   static ClipLayerKind _kindOf(Map<String, Object?> row, bool hasVectors) {
@@ -739,4 +935,31 @@ final class _DocumentReader {
     final Uint8List v => String.fromCharCodes(v),
     _ => '',
   };
+
+  /// A text column the program writes as UTF-8 bytes (`TextLayerString`).
+  static String _utf8(Object value) => switch (value) {
+    final Uint8List v => utf8.decode(v, allowMalformed: true),
+    _ => '$value',
+  };
+
+  /// An `…Array` column's parts: `u32 LE length + bytes`, again and again —
+  /// up to a length that runs past the end.
+  static List<Uint8List> _parts(Object? value) {
+    if (value is! Uint8List) {
+      return const [];
+    }
+    final data = ByteData.sublistView(value);
+    final parts = <Uint8List>[];
+    var at = 0;
+    while (at + 4 <= value.length) {
+      final length = data.getUint32(at, Endian.little);
+      at += 4;
+      if (at + length > value.length) {
+        break;
+      }
+      parts.add(Uint8List.sublistView(value, at, at + length));
+      at += length;
+    }
+    return parts;
+  }
 }

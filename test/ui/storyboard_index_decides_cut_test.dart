@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+
+import '../helpers/storyboard_host.dart';
 
 /// ⑭: the INDEX decides the active cut, whichever row was pressed.
 ///
@@ -16,18 +17,12 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 ///
 /// The half that SURVIVES is the gap: a frame no cut covers still parks, and
 /// that is what keeps ⑭ from swallowing UI-R9 #3.
-Future<void> _openStoryboard(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 800));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: createDefaultProject())),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
-}
+/// The conte as its tab hosts it ([pumpStoryboardHost]).
+Future<void> _openStoryboard(WidgetTester tester) => pumpStoryboardHost(
+  tester,
+  createDefaultProject(),
+  surface: const Size(1400, 800),
+);
 
 StoryboardPanel _panel(WidgetTester tester) =>
     tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));

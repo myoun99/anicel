@@ -163,8 +163,8 @@ void main() {
       windows.map((window) => window.id),
       ['outer', 'inner'],
       reason:
-          'bottom-of-stack first — the last one keeps a spot, matching '
-          'inkBoxAt\'s reverse search',
+          'bottom-of-stack first — the last one keeps a spot '
+          '(sheetInkOwnerAt)',
     );
     final regions = sheetInkRegions(windows);
     CanvasPoint under(SheetInkWindow window, Offset paper) {

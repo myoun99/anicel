@@ -15,14 +15,16 @@ class _BrushEditStroke {
   /// A stroke begins under [event]: the pointer is ours, the settings are
   /// the tool's (or the eraser's on a mapped tail), the stabiliser, the
   /// snap session, the symmetry, the dynamics and the ground mixer are
-  /// armed, the overlay opens, and the first dabs go out.
+  /// armed, the overlay opens, and the first dabs go out — from
+  /// [_onTheShiftLine] of [pressed].
   void beginStroke(
     PointerDownEvent event,
-    CanvasPoint canvasPosition, {
-    required bool startsInsidePasteboard,
+    CanvasPoint pressed, {
     required bool mappedErase,
   }) {
     _state._activeDrawingPointer = event.pointer;
+    final canvasPosition = _onTheShiftLine(pressed);
+    final startsInsidePasteboard = _state._isInsidePasteboard(canvasPosition);
     // PEN-12 #4: a TOUCH stroke starts UNCOMMITTED — until it crosses the
     // touch slop a simultaneous second finger may still turn the pair
     // into navigation (cancelling only an invisible dot); once committed
@@ -31,18 +33,7 @@ class _BrushEditStroke {
         ? event.localPosition
         : null;
     _state._touchStrokeCommitted = false;
-    // The stroke's settings snapshot — every downstream dab reads it, so
-    // the mapped-eraser substitution here flips the WHOLE stroke. The
-    // substitution forces the BLEND to erase too (R27 #4 in passing): the
-    // eraser tool locks its mode, but this path kept the brush's — a
-    // mapped-erase press with a separable brush blend would have taken
-    // the commit's blend branch and PAINTED instead of erasing.
-    final strokeSettings = mappedErase
-        ? _state.widget.inputSettings().copyWith(
-            erase: true,
-            blendMode: BrushBlendMode.erase,
-          )
-        : _state.widget.inputSettings();
+    final strokeSettings = _settingsOfAPress(mappedErase: mappedErase);
     _state._activeStrokeInputSettings = strokeSettings;
     _state._opening.startContact(
       _state._pressure.noteSample(event, opening: true),
@@ -60,12 +51,48 @@ class _BrushEditStroke {
       dice: Object.hash(event.pointer, event.timeStamp),
     );
     // A press off the pasteboard lays nothing down; the stroke's first dab
-    // comes where a move crosses in.
+    // comes where a move crosses in. The line starts steadying either way,
+    // when the press is painted: with the readings it is painted with, the
+    // first a held press waited for and not the stand-in it was taken with
+    // — and the line the pen draws starts there with them.
     _state._opening.press(
-      startsInsidePasteboard ? () => _paintPress(canvasPosition) : () {},
+      () {
+        _startSteadying(
+          strokeSettings,
+          at: canvasPosition,
+          startedAt: event.timeStamp,
+        );
+        _state._drawn = [(position: canvasPosition, readings: _readings)];
+        if (startsInsidePasteboard) {
+          _paintPress(canvasPosition);
+        }
+      },
       at: event.timeStamp,
       position: canvasPosition,
     );
+  }
+
+  /// The stroke's settings snapshot — every downstream dab reads it, so
+  /// the mapped-eraser substitution here flips the WHOLE stroke. The
+  /// substitution forces the BLEND to erase too (R27 #4 in passing): the
+  /// eraser tool locks its mode, but this path kept the brush's — a
+  /// mapped-erase press with a separable brush blend would have taken
+  /// the commit's blend branch and PAINTED instead of erasing.
+  BrushEditCanvasInputSettings _settingsOfAPress({required bool mappedErase}) {
+    final settings = _state.widget.inputSettings();
+    return mappedErase
+        ? settings.copyWith(erase: true, blendMode: BrushBlendMode.erase)
+        : settings;
+  }
+
+  /// [pressed] on the line the hold kept, where the pen's press falls across
+  /// it ([ShiftLine], I-121) — or as it is, with Shift let go or no line
+  /// kept. Asked once the pen is the stroke's, so the finger drawing it is
+  /// no Shift.
+  CanvasPoint _onTheShiftLine(CanvasPoint pressed) {
+    final line = _state.widget.shiftLine?..heldNow(_state._press.shiftHeld);
+    return line?.onTheLine(pressed, space: _state.widget.guideSpace) ??
+        pressed;
   }
 
   /// The pointer a stroke the TOOL lays wears: none of a real pointer's
@@ -128,9 +155,10 @@ class _BrushEditStroke {
   }
 
   /// THE PEN'S STROKE IS ARMED — everything it stands on before its first
-  /// dab: the host hears that one is in flight, the stabiliser, the snap,
-  /// the symmetry, the dynamics and the ground mixer are made for it from
-  /// [strokeSettings], and the overlay opens in its blend.
+  /// dab: the host hears that one is in flight, the snap, the symmetry, the
+  /// dynamics and the ground mixer are made for it from [strokeSettings],
+  /// and the overlay opens in its blend. The stabiliser starts on the press
+  /// ([_startSteadying]).
   void _arm(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
@@ -138,6 +166,25 @@ class _BrushEditStroke {
     required int dice,
   }) {
     _state.widget.onActiveStrokeChanged?.call(true);
+    _armAfresh(
+      strokeSettings,
+      at: at,
+      startsInsidePasteboard: startsInsidePasteboard,
+      dice: dice,
+    );
+  }
+
+  /// The pen's stroke stands on nothing yet at [at]: what is its own is made
+  /// afresh, the overlay opens on the cel as it stands, and the live tiles
+  /// and the dabs queued for them go — at the press, and again for a line
+  /// laid anew along its 後補正 ([postCorrect]), which the host still sees
+  /// as the one stroke it heard of.
+  void _armAfresh(
+    BrushEditCanvasInputSettings strokeSettings, {
+    required CanvasPoint at,
+    required bool startsInsidePasteboard,
+    required int dice,
+  }) {
     _armItsOwn(
       strokeSettings,
       at: at,
@@ -145,6 +192,7 @@ class _BrushEditStroke {
       dice: dice,
     );
     _openOverlay(strokeSettings);
+    _state._pendingOverlayDabs.clear();
     _state._prepareLiveRasterizer();
   }
 
@@ -172,9 +220,10 @@ class _BrushEditStroke {
     _state._overlay._overlayModel.preBlendBase = strokeSurface;
   }
 
-  /// What a stroke stands on that is its OWN — the stabiliser, the snap,
-  /// the symmetry, the dice, the dynamics, the ground mixer, the dabs laid
-  /// so far — made afresh from [strokeSettings].
+  /// What a stroke stands on that is its OWN — the snap, the symmetry, the
+  /// dice, the dynamics, the ground mixer, the dabs laid so far — made
+  /// afresh from [strokeSettings]. The stabiliser is the pen's
+  /// ([_startSteadying]).
   void _armItsOwn(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
@@ -182,16 +231,10 @@ class _BrushEditStroke {
     required int dice,
   }) {
     final canvasPosition = at;
+    _state._strokeDice = dice;
     _state._nextSequence = 0;
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
     _state._previousRawCanvasPosition = canvasPosition;
-    final stabilizerStrength = strokeSettings.stabilizerStrength;
-    _state._stabilizer = stabilizerStrength > 0
-        ? StrokeStabilizer(
-            ropeLength: stabilizerStrength / _state.widget.viewport.zoom,
-            start: canvasPosition,
-          )
-        : null;
     // Guides are read ONCE per stroke. Both are frozen here rather than
     // consulted per sample so an edit landing mid-stroke cannot bend the
     // line that is already down.
@@ -200,6 +243,7 @@ class _BrushEditStroke {
       start: canvasPosition,
       zoom: _state.widget.viewport.zoom,
       space: _state.widget.guideSpace,
+      line: _state.widget.shiftLine,
     );
     final symmetry = _state.widget.guides.actingSymmetry;
     _state._symmetryTransforms = symmetry == null
@@ -207,9 +251,11 @@ class _BrushEditStroke {
         : symmetryCopiesIn(_state.widget.guideSpace, symmetry);
     _state._spacingRandom = math.Random(dice);
     _state._dualPhaseRandom = math.Random(dice + 1);
+    _state._inputRandom = math.Random(dice + 3);
     _state._strokeDynamics = BrushStrokeDynamics(
       settings: strokeSettings,
       random: math.Random(dice + 2),
+      tipRandom: math.Random(dice + 4),
     );
     _state._lastDirectionDegrees = null;
     _state._previousBaseDab = null;
@@ -234,10 +280,17 @@ class _BrushEditStroke {
     // The stabilizer smooths BEFORE clipping/interpolation, so every
     // downstream consumer (overlay, commit, replay) sees one chain — the
     // three-route parity holds by construction (P7). A held sample reaches
-    // it when it is painted, in the order it came.
-    void paint() => advanceStrokeThroughGuides(
-      _state._stabilizer?.follow(penPosition) ?? penPosition,
-    );
+    // it when it is painted, in the order it came, at the time it came,
+    // with the readings it is painted with.
+    void paint() {
+      final stabilizer = _state._stabilizer;
+      if (stabilizer == null) {
+        advanceStrokeThroughGuides(penPosition);
+        return;
+      }
+      _paintSteadied(stabilizer.follow(penPosition, _readings, at: at));
+      _keepSteadying();
+    }
     if (_state._opening.holds(
       paint,
       penPosition: penPosition,
@@ -249,17 +302,150 @@ class _BrushEditStroke {
     paint();
   }
 
+  /// The pen's line starts steadying at [at], on the press — or steadies
+  /// nothing, for a brush that corrects nothing (F-418).
+  void _startSteadying(
+    BrushEditCanvasInputSettings strokeSettings, {
+    required CanvasPoint at,
+    required Duration startedAt,
+  }) {
+    final correction = strokeSettings.shape.correction;
+    _state._stabilizer = correction.steadies
+        ? StrokeStabilizer(
+            lagAt: correction.lagAt,
+            start: (position: at, readings: _readings),
+            at: startedAt,
+            keepsCorners: correction.sharpenCorners,
+          )
+        : null;
+  }
+
+  /// What the pen reads now.
+  PenReadings get _readings => (
+    pressure: _state._currentPressure,
+    lean: _state._currentTilt,
+    speed: _state._currentSpeed,
+  );
+
+  /// Runs [paint] with [readings] standing for the pen's, and puts the
+  /// pen's own back after — THE way a stroke lays what was read elsewhere
+  /// than where the pen is now: a sample that waited for its first readings
+  /// ([_BrushEditOpening._paintWaiting]), the steadied line behind the pen
+  /// ([_paintSteadied]), the line its 後補正 lays anew ([postCorrect]).
+  void paintReading(PenReadings readings, void Function() paint) {
+    final pen = _readings;
+    _read(readings);
+    paint();
+    _read(pen);
+  }
+
+  void _read(PenReadings readings) {
+    _state._currentPressure = readings.pressure;
+    _state._currentTilt = readings.lean;
+    _state._currentSpeed = readings.speed;
+  }
+
+  /// Lays the line the [way] it went, with what it reads along it.
+  void _paintSteadied(List<PenPoint> way) {
+    for (final point in way) {
+      paintReading(
+        point.readings,
+        () => advanceStrokeThroughGuides(point.position),
+      );
+    }
+  }
+
+  /// While the line has not reached the pen, frames move it on — Clip
+  /// Studio's line keeps going while the pen rests (F-418).
+  void _keepSteadying() {
+    if (_state._steadyingFrameAsked || (_state._stabilizer?.settled ?? true)) {
+      return;
+    }
+    _state._steadyingFrameAsked = true;
+    SchedulerBinding.instance.scheduleFrameCallback(_steadyOneFrame);
+  }
+
+  void _steadyOneFrame(Duration frameAt) {
+    _state._steadyingFrameAsked = false;
+    final stabilizer = _state._stabilizer;
+    if (!_state.mounted || stabilizer == null) {
+      return;
+    }
+    final moved = stabilizer.lookAtFrame(frameAt);
+    if (moved.isNotEmpty) {
+      _paintSteadied(moved);
+      // On screen THIS frame: the queue's own flush may have run already.
+      _state._overlay.flushPendingOverlayDabs();
+    }
+    _keepSteadying();
+  }
+
+  /// The pen lifted: the line goes straight to where it was (F-418-Q2).
+  void finishSteadying() {
+    _paintSteadied(_state._stabilizer?.finish() ?? const []);
+  }
+
+  /// 後補正: the line the pen drew, its wobble taken out, laid again as this
+  /// same stroke — from nothing, on its own dice, so its scatter and jitter
+  /// roll as they did — before it lands.
+  ///
+  /// 🗣️유저 2026-10-20 (F-418-Q7 「뗄 때 다듬은 선으로 바뀐다」): the line
+  /// on screen while it is drawn is the steadied one, and the pen-up puts
+  /// the smoothed one in its place. ⚠️The one stroke that lands other than
+  /// it was shown, by that answer — and still in one turn: what is shown
+  /// next is what landed.
+  ///
+  /// Nothing happens for a brush that takes nothing out, nor for a stroke
+  /// the tool lays — it draws no line of the pen's ([_state._drawn]).
+  void postCorrect() {
+    final drawn = _state._drawn;
+    _state._drawn = null;
+    final settings = _state._activeStrokeInputSettings;
+    if (drawn == null || settings == null) {
+      return;
+    }
+    final correction = settings.shape.correction;
+    final within = correction.postWithin(
+      zoom: _state.widget.viewport.zoom,
+      speed:
+          drawn.fold(0.0, (sum, point) => sum + point.readings.speed) /
+          drawn.length,
+    );
+    if (within == null) {
+      return;
+    }
+    final line = postCorrected(
+      drawn,
+      within: within,
+      bezier: correction.postBezier,
+      keepCorners: correction.sharpenCorners,
+    );
+    if (identical(line, drawn)) {
+      return;
+    }
+    final start = line.first;
+    final startsInsidePasteboard = _state._isInsidePasteboard(start.position);
+    _armAfresh(
+      settings,
+      at: start.position,
+      startsInsidePasteboard: startsInsidePasteboard,
+      dice: _state._strokeDice,
+    );
+    if (startsInsidePasteboard) {
+      paintReading(start.readings, () => _paintPress(start.position));
+    }
+    for (final point in line.skip(1)) {
+      paintReading(point.readings, () => advanceStrokeTo(point.position));
+    }
+  }
+
   /// The stroke's FIRST dab, under the press.
   void _paintPress(CanvasPoint canvasPosition) {
     final initialDabs = _state._pressure.withPressureDynamics(
-      const BrushDabInterpolator().interpolate(
-        previous: null,
-        nextRaw: _state._dabFromPosition(
-          canvasPosition,
-          sequence: _state._nextSequence,
-        ),
-        firstSequence: _state._nextSequence,
-        spacingRatio: activeStrokeSpacing,
+      _interpolateTo(
+        null,
+        canvasPosition,
+        sequence: _state._nextSequence,
       ),
     );
     if (initialDabs.isNotEmpty) {
@@ -310,9 +496,15 @@ class _BrushEditStroke {
   /// inside it and arrive together the moment it locks.
   ///
   /// 🗣️I-61: Shift held is the stroke's 45° lock (I-61-Q1 · Q2) — asked
-  /// HERE, and nowhere else on the stroke's way: of the keyboard, and of a
-  /// finger resting on the glass where the switch says so (I-61-Q3,
-  /// [_BrushEditPress.aFingerHoldsShift]).
+  /// HERE as the stroke goes, and at its press only for the line a hold
+  /// kept ([beginStroke], I-121): of the keyboard, and of a finger resting
+  /// on the glass where the switch says so (I-61-Q3,
+  /// [_BrushEditPress.shiftHeld]).
+  ///
+  /// 🚨The keyboard through [ModifierKeys], whatever draws: a pen's stroke
+  /// on Windows never locked while the engine's own record said Shift was
+  /// let go at its first move (유저 2026-10-16: 「마우스로는 작동하는거
+  /// 확인했는데 왜 펜으로는 작동안하는지?」).
   void advanceStrokeThroughGuides(CanvasPoint canvasPosition) {
     final lock = _state._strokeLock;
     if (lock == null) {
@@ -321,26 +513,24 @@ class _BrushEditStroke {
     }
     for (final locked in lock.follow(
       canvasPosition,
-      shift:
-          HardwareKeyboard.instance.isShiftPressed ||
-          _state._press.aFingerHoldsShift,
+      shift: _state._press.shiftHeld,
     )) {
       advanceStrokeTo(locked);
     }
   }
 
   void advanceStrokeTo(CanvasPoint canvasPosition) {
+    _state._drawn?.add((position: canvasPosition, readings: _readings));
     final previousRaw = _state._previousRawCanvasPosition;
     _state._previousRawCanvasPosition = canvasPosition;
     if (previousRaw == null) {
       return;
     }
 
-    final canvasSize = _state.widget.celNow().canvasSize;
     final clippedSegment = const CanvasSegmentClipper().clip(
       previous: previousRaw,
       current: canvasPosition,
-      canvasSize: canvasSize,
+      wall: _state.widget.celNow().pasteboard,
     );
     if (clippedSegment == null) {
       _state._breakCurrentVisibleSegment = true;
@@ -358,14 +548,10 @@ class _BrushEditStroke {
             _state._breakCurrentVisibleSegment ||
             _state._previousBaseDab == null
         ? _state._pressure.withPressureDynamics(
-            const BrushDabInterpolator().interpolate(
-              previous: null,
-              nextRaw: _state._dabFromPosition(
-                clippedSegment.start,
-                sequence: _state._nextSequence,
-              ),
-              firstSequence: _state._nextSequence,
-              spacingRatio: activeStrokeSpacing,
+            _interpolateTo(
+              null,
+              clippedSegment.start,
+              sequence: _state._nextSequence,
             ),
           )
         : const <BrushDab>[];
@@ -374,14 +560,10 @@ class _BrushEditStroke {
         ? segmentStartDabs.last
         : previousDab;
     final segmentEndDabs = _state._pressure.withPressureDynamics(
-      const BrushDabInterpolator().interpolate(
-        previous: endPrevious,
-        nextRaw: _state._dabFromPosition(
-          clippedSegment.end,
-          sequence: firstEndSequence,
-        ),
-        firstSequence: firstEndSequence,
-        spacingRatio: activeStrokeSpacing,
+      _interpolateTo(
+        endPrevious,
+        clippedSegment.end,
+        sequence: firstEndSequence,
       ),
     );
     final baseDabs = <BrushDab>[...segmentStartDabs, ...segmentEndDabs];
@@ -458,6 +640,10 @@ class _BrushEditStroke {
     }
     final promotable = base != null && base.tileSize == rasterizer.tileSize;
     final sourceDabs = List.of(_state._collectedDabs);
+    // Where the line went last — through the lock, the stabiliser's catch-up
+    // and the tool's waypoints alike — and so where the next line from the
+    // last stroke starts (I-119).
+    final end = _state._previousRawCanvasPosition;
     if (!promotable) {
       // Without promotion (a host whose overlay grid differs from its
       // surface's) the classic payload still commits correctly: a
@@ -471,6 +657,7 @@ class _BrushEditStroke {
           // F-12: the ceiling the live overlay has been drawing THROUGH —
           // the buffer route is exactly where it has not been applied yet.
           strokeOpacity: rasterizer.strokeOpacity,
+          end: end,
         ),
       );
       rasterizer.clear();
@@ -504,6 +691,7 @@ class _BrushEditStroke {
         // down on another cel (confirm-button) — and a stroke re-derived
         // without its ceiling lands at full strength.
         strokeOpacity: rasterizer.strokeOpacity,
+        end: end,
       ),
     );
   }
@@ -552,23 +740,36 @@ class _BrushEditStroke {
     _state._overlay.resetOverlay();
   }
 
-  /// Spacing for the segment about to be interpolated.
+  /// The base dabs from [previous] to a reading at [at], stepped by the
+  /// spacing that reading asks for ([spacingAt]).
+  List<BrushDab> _interpolateTo(
+    BrushDab? previous,
+    CanvasPoint at, {
+    required int sequence,
+  }) {
+    final reading = _state._dabFromPosition(at, sequence: sequence);
+    return const BrushDabInterpolator().interpolate(
+      previous: previous,
+      nextRaw: reading,
+      firstSequence: sequence,
+      spacingRatio: spacingAt(reading),
+    );
+  }
+
+  /// Spacing for the segment that ends at [reading] ([brushSpacingFor]),
+  /// thrown with the stroke's spacing dice.
   ///
   /// Clip Studio rolls its interval randomness per dab. The interpolator is
   /// pure and shared, and a segment between two pointer samples almost
   /// always yields one or two dabs (it returns nothing at all when the move
   /// is shorter than one step), so rolling once per segment lands in the
   /// same place without threading a random source through it.
-  double get activeStrokeSpacing {
-    final settings =
-        _state._activeStrokeInputSettings ?? _state.widget.inputSettings();
-    final jitter = settings.spacingJitter;
-    if (jitter <= 0.0) {
-      return settings.spacing;
-    }
-    return settings.spacing *
-        (1.0 - jitter * _state._spacingRandom.nextDouble());
-  }
+  double spacingAt(BrushDab reading) => brushSpacingFor(
+    reading,
+    (_state._activeStrokeInputSettings ?? _state.widget.inputSettings())
+        .shape,
+    random: _state._spacingRandom,
+  );
 
   void endStrokeInput() {
     _state.widget.onActiveStrokeChanged?.call(false);
@@ -600,6 +801,7 @@ class _BrushEditStroke {
     _state._groundMixer = null;
     _state._groundSampler = null;
     _state._stabilizer = null;
+    _state._drawn = null;
     _state._collectedDabs.clear();
     _state._pendingOverlayDabs.clear();
   }

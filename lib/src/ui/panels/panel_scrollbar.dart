@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../timeline/axis_turn.dart' show stripAcross;
 import '../widgets/app_scrollbar.dart';
 
 /// The shared panel scrollbar: the app-wide [AppScrollbar] laid over the
@@ -97,7 +98,6 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
   @override
   Widget build(BuildContext context) {
     final axis = widget.axis;
-    final vertical = axis == Axis.vertical;
     _built = _shapeOf(_position);
     return NotificationListener<ScrollMetricsNotification>(
       onNotification: (notification) {
@@ -157,15 +157,13 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
           // this by hand any more — the behaviour is the only caller.
           widget.child,
           if (_overflows)
-            Positioned(
-              left: vertical ? null : 0,
-              right: 0,
-              top: vertical ? 0 : null,
-              bottom: 0,
+            stripAcross(
+              axis,
+              across: 0,
+              fromEnd: true,
               // The lane is laid OVER the content, so this width costs the
               // panel nothing — it is reach for the pointer, not layout.
-              width: vertical ? AppScrollbarLane.narrow : null,
-              height: vertical ? null : AppScrollbarLane.narrow,
+              acrossExtent: AppScrollbarLane.narrow,
               child: AppControllerScrollbar(
                 controller: widget.controller,
                 axis: axis,

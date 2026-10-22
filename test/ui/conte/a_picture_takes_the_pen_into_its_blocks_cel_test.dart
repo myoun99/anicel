@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -23,6 +24,7 @@ import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -49,8 +51,12 @@ import 'package:anicel/src/ui/export/export_frame_renderer.dart'
     show exportFrameGround;
 import 'package:anicel/src/ui/media/viewer_render_tier.dart'
     show pictureRenderWidthFor;
+import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
+    show SheetImageLookup;
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/sheet_painting.dart' show sheetPictureQuality;
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, partAcross;
 
 /// 🚨A CONTE PICTURE TAKES THE PEN INTO ITS BLOCK'S CEL (유저 2026-09-25,
 /// conte-drawing-target: 「그림 칸 안의 부분은 그 블록의 콘티 레이어
@@ -71,8 +77,11 @@ void main() {
   const frameId = FrameId('sb-0');
 
   /// [rowPose]: where the conte row lies on the canvas — as it is drawn,
-  /// when null.
-  Cut cut({TransformPose? rowPose}) => Cut(
+  /// when null. [effects]: the row's chain.
+  Cut cut({
+    TransformPose? rowPose,
+    List<LayerEffect> effects = const [],
+  }) => Cut(
     id: cutId,
     name: '39',
     duration: 10,
@@ -89,11 +98,15 @@ void main() {
         transformTrack: rowPose == null
             ? null
             : TransformTrack(keyframes: {0: rowPose}),
+        effects: effects,
       ),
     ],
   );
 
-  Project project({TransformPose? rowPose}) => Project(
+  Project project({
+    TransformPose? rowPose,
+    List<LayerEffect> effects = const [],
+  }) => Project(
     id: const ProjectId('conte-project'),
     name: 'Conte',
     createdAt: DateTime.utc(2026, 9, 26),
@@ -101,7 +114,7 @@ void main() {
       Track(
         id: const TrackId('track'),
         name: 'Video',
-        cuts: [cut(rowPose: rowPose)],
+        cuts: [cut(rowPose: rowPose, effects: effects)],
       ),
     ],
   );
@@ -462,11 +475,12 @@ void main() {
 
   });
 
-  testWidgets('the panel composites the picture live: the stroke shows in it '
-      'while it is drawn, from the pen\'s own overlay, and stays at the '
-      'pen-up', (tester) async {
-    final session = EditorSessionManager(initialProject: project());
-    addTearDown(session.dispose);
+  /// The conte tab over [session], rebuilt as the workspace rebuilds it —
+  /// and the cells' ink it was pumped with.
+  Future<ConteInkController> pumpTheTab(
+    WidgetTester tester,
+    EditorSessionManager session,
+  ) async {
     final ink = ConteInkController();
     addTearDown(ink.dispose);
     final cels = ContePictureInkController(
@@ -501,6 +515,24 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    return ink;
+  }
+
+  /// The pen's window over the picture of cut 39's first frame — the page's
+  /// free row has the next cut's too.
+  SheetPictureWindow penOverThePicture(WidgetTester tester) => tester
+      .widgetList<SheetInkLayer>(find.byType(SheetInkLayer))
+      .single
+      .windows
+      .whereType<SheetPictureWindow>()
+      .singleWhere((window) => window.id == 'picture-39-0');
+
+  testWidgets('the panel composites the picture live: the stroke shows in it '
+      'while it is drawn, from the pen\'s own overlay, and stays at the '
+      'pen-up', (tester) async {
+    final session = EditorSessionManager(initialProject: project());
+    addTearDown(session.dispose);
+    final ink = await pumpTheTab(tester, session);
 
     final cell = layoutConteSheet(
       buildConteSheetSource(session.repository.requireProject()),
@@ -557,13 +589,7 @@ void main() {
       reason: 'the composite paints the pen\'s live stroke in the cel\'s place',
     );
     final stack = tester.widget<CanvasLayerStackView>(live);
-    // This picture's window — the page's free row has the next cut's too.
-    final pen = tester
-        .widgetList<SheetInkLayer>(find.byType(SheetInkLayer))
-        .single
-        .windows
-        .whereType<SheetPictureWindow>()
-        .singleWhere((window) => window.id == 'picture-39-0');
+    final pen = penOverThePicture(tester);
     expect(
       identical(stack.activeSurfacePainter!.overlayModel, pen.overlay),
       isTrue,
@@ -590,6 +616,35 @@ void main() {
       isFalse,
       reason: 'drawn on the picture only: the cell\'s ink got nothing',
     );
+  });
+
+  testWidgets('🚨a picture of a row that keys its colours tells the pen\'s '
+      'overlay the keys: the live stroke shows through them, as on the canvas '
+      '(a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed)', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: project(
+        effects: [
+          LayerEffect(
+            id: const EffectId('paper-key'),
+            kind: EffectKind.deleteColor,
+            parameters: {
+              'keyRed': EffectParameter(value: 64),
+              'keyGreen': EffectParameter(value: 192),
+              'keyBlue': EffectParameter(value: 96),
+              'tolerance': EffectParameter(value: 10),
+              'amount': EffectParameter(value: 100),
+            },
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+    await pumpTheTab(tester, session);
+
+    final keys = penOverThePicture(tester).overlay.sourceEffects;
+
+    expect(keys.map((key) => key.kind), [EffectKind.deleteColor]);
+    expect(keys.single.values, [64, 192, 96, 10, 100]);
   });
 
   // 🚨The shown is the result: while the brush is on, the picture on screen
@@ -749,6 +804,9 @@ void main() {
       BitmapSurface? cel,
       CanvasViewport? view,
       BitmapSurface Function(CanvasSize size)? band,
+
+      /// The pool files the band's photos are drawn from (I-97).
+      SheetImageLookup? imageFor,
     }) async {
       session = EditorSessionManager(initialProject: project);
       addTearDown(session.dispose);
@@ -819,6 +877,7 @@ void main() {
                   pictures: cels,
                   brushToolState: brush,
                   brushAllowed: brushOn.value,
+                  imageFor: imageFor,
                 ),
               ),
             ),
@@ -964,6 +1023,24 @@ void main() {
       bool hatch(Color color) =>
           color.r < 0.1 && color.g < 0.1 && color.b < 0.1 && color.a > 0.9;
       bool isBlue(Color color) => color == blue;
+      bool isMagenta(Color color) =>
+          color.r > 0.9 && color.b > 0.9 && color.g < 0.1 && color.a > 0.9;
+      // A photo under the handwriting, over the whole band (I-97): the
+      // brush switch moves it no more than the ink over it.
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawColor(const Color(0xFFFF00FF), BlendMode.src);
+      final photo = recorder.endRecording().toImageSync(64, 36);
+      addTearDown(photo.dispose);
+      const photoPath = 'C:/pool/band-photo.png';
+      BitmapSurface hatchedOverAPhoto(CanvasSize size) =>
+          hatched(size).withPhotos([
+            photoOf(
+              1,
+              path: photoPath,
+              center: CanvasPoint(x: size.width / 2, y: size.height / 2),
+              size: size,
+            ),
+          ]);
       // Swept, not sampled: a shift under a pixel moves a nearest sample
       // only where it carries one across a boundary, and one view can sit
       // where neither print does.
@@ -974,8 +1051,9 @@ void main() {
             tester,
             framed(zoom: 4, inkId: 'band'),
             printedAt: printedAt,
-            band: hatched,
+            band: hatchedOverAPhoto,
             view: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
+            imageFor: (path, {width}) => path == photoPath ? photo : null,
           );
           final off = await shoot(tester);
           // The band beside the picture: no silhouette there to stand in
@@ -990,6 +1068,11 @@ void main() {
             off.countIn(band, hatch),
             greaterThan(200),
             reason: 'LIVENESS — the band\'s handwriting prints at $zoom',
+          );
+          expect(
+            off.countIn(band, isMagenta),
+            greaterThan(200),
+            reason: 'LIVENESS — the photo under it prints at $zoom',
           );
           expect(
             off.countIn(slot, isBlue),
@@ -1240,17 +1323,19 @@ void main() {
         );
         final middle = onScreen(slot.center);
         // Across each side: three device pixels either way of the edge.
-        for (final (side, edge, across) in [
-          ('left', onScreen(slot.centerLeft).dx, true),
-          ('right', onScreen(slot.centerRight).dx, true),
-          ('top', onScreen(slot.topCenter).dy, false),
-          ('bottom', onScreen(slot.bottomCenter).dy, false),
+        for (final (side, edge, axis) in [
+          ('left', onScreen(slot.centerLeft).dx, Axis.horizontal),
+          ('right', onScreen(slot.centerRight).dx, Axis.horizontal),
+          ('top', onScreen(slot.topCenter).dy, Axis.vertical),
+          ('bottom', onScreen(slot.bottomCenter).dy, Axis.vertical),
         ]) {
           final device = edge * on.ratio;
           for (var d = device.floor() - 3; d <= device.ceil() + 3; d += 1) {
-            final point = across
-                ? Offset((d + 0.5) / on.ratio, middle.dy)
-                : Offset(middle.dx, (d + 0.5) / on.ratio);
+            final point = offsetAlong(
+              axis,
+              along: (d + 0.5) / on.ratio,
+              across: partAcross(axis, middle),
+            );
             final red = (on.colorAt(point).r * 255).round();
             scans += 1;
             if (red > 64) {

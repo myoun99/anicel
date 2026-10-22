@@ -12,11 +12,11 @@ import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 /// **ONE LEGEND FLYOUT TEMPLATE.**
 ///
-/// "Legend absent → no flyout; the bulk entries; then, ONLY when
-/// [TimelineLayerControlsHeader.showRowSolos], a divider and the solo
-/// entries" is one rule spelled at four cells (timesheet, mark, fill-ref,
-/// fx). These pin the rule at all four so it cannot be shared into a
-/// shape that answers differently at one of them.
+/// "Legend absent → no flyout; the bulk entries; then a divider and the
+/// solo entries, the divider only over a solo half that holds any"
+/// is one rule spelled at four cells (timesheet, mark, fill-ref, fx).
+/// These pin the rule at all four so it cannot be shared into a shape
+/// that answers differently at one of them.
 void main() {
   LayerLegendCallbacks callbacks() => LayerLegendCallbacks(
     onShowAllLayers: () {},
@@ -42,7 +42,6 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     required bool withLegend,
-    required bool showRowSolos,
     Set<LayerMark> marksInUse = const {},
     TimelineRowFilter rowFilter = TimelineRowFilter.none,
     bool visibilitySoloEnabled = false,
@@ -56,7 +55,6 @@ void main() {
               metrics: TimelineGridMetrics.defaults,
               optionalColumns: noOptionalRailColumns,
               legend: withLegend ? callbacks() : null,
-              showRowSolos: showRowSolos,
               marksInUse: () => marksInUse,
               rowFilter: rowFilter,
               visibilitySoloEnabled: visibilitySoloEnabled,
@@ -87,7 +85,7 @@ void main() {
   }
 
   /// The four cells the template covers, with the bulk item each must
-  /// always offer and the solo item each offers only under showRowSolos.
+  /// always offer and the solo item each offers under it.
   const cells = <(String cell, String bulk, String solo)>[
     ('legend-sheet', 'legend-sheet-all-on', 'legend-filter-sheet'),
     ('legend-fill-ref', 'legend-fill-ref-clear', 'legend-filter-fill-ref'),
@@ -97,7 +95,7 @@ void main() {
   testWidgets('no legend, no flyout — the cell still keeps its key', (
     tester,
   ) async {
-    await pump(tester, withLegend: false, showRowSolos: true);
+    await pump(tester, withLegend: false);
     for (final (cell, _, _) in [
       ...cells,
       ('legend-mark', 'legend-mark-filter-clear', 'legend-filter-mark-layout'),
@@ -115,10 +113,10 @@ void main() {
     }
   });
 
-  testWidgets('with row solos: bulk entries, a divider, then the solos', (
+  testWidgets('bulk entries, a divider, then the solos', (
     tester,
   ) async {
-    await pump(tester, withLegend: true, showRowSolos: true);
+    await pump(tester, withLegend: true);
     for (final (cell, bulk, solo) in cells) {
       final flyout = await openFlyout(tester, cell);
       expect(flyout.items, contains(bulk), reason: cell);
@@ -141,7 +139,6 @@ void main() {
       await pump(
         tester,
         withLegend: true,
-        showRowSolos: true,
         rowFilter: held
             ? const TimelineRowFilter(
                 onTimesheetOnly: true,
@@ -167,29 +164,10 @@ void main() {
     }
   });
 
-  testWidgets('⛔without row solos: the bulk half alone, and NO divider', (
-    tester,
-  ) async {
-    await pump(tester, withLegend: true, showRowSolos: false);
-    for (final (cell, bulk, solo) in cells) {
-      final flyout = await openFlyout(tester, cell);
-      expect(flyout.items, contains(bulk), reason: cell);
-      expect(flyout.items, isNot(contains(solo)), reason: cell);
-      expect(
-        flyout.dividers,
-        0,
-        reason: '$cell: a divider with nothing under it is a stray line',
-      );
-      await tester.tapAt(const Offset(5, 5));
-      await tester.pumpAndSettle();
-    }
-  });
-
   // 🚨THE MARKS IN USE: the mark cell's solo half is a product of what is
-  // actually on the rows, so an empty set means no solos AND no divider,
-  // even with row solos on.
+  // actually on the rows, so an empty set means no solos AND no divider.
   testWidgets('the MARK cell shows only the marks in use', (tester) async {
-    await pump(tester, withLegend: true, showRowSolos: true);
+    await pump(tester, withLegend: true);
     var flyout = await openFlyout(tester, 'legend-mark');
     expect(flyout.items, contains('legend-mark-filter-clear'));
     expect(
@@ -203,7 +181,6 @@ void main() {
     await pump(
       tester,
       withLegend: true,
-      showRowSolos: true,
       marksInUse: {
         const LayerMark(process: LayerProcess.layout),
         LayerMark.none,
@@ -213,20 +190,5 @@ void main() {
     expect(flyout.items, contains('legend-mark-filter-clear'));
     expect(flyout.items, contains('legend-filter-mark-layout'));
     expect(flyout.dividers, 1);
-  });
-
-  testWidgets('and the mark solos stand down with row solos off', (
-    tester,
-  ) async {
-    await pump(
-      tester,
-      withLegend: true,
-      showRowSolos: false,
-      marksInUse: {const LayerMark(process: LayerProcess.layout)},
-    );
-    final flyout = await openFlyout(tester, 'legend-mark');
-    expect(flyout.items, contains('legend-mark-filter-clear'));
-    expect(flyout.items, isNot(contains('legend-filter-mark-layout')));
-    expect(flyout.dividers, 0);
   });
 }

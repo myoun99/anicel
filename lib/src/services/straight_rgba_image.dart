@@ -279,3 +279,19 @@ Future<ui.Image> Function(
   int? targetHeight,
 })?
 _debugUploader;
+
+/// [image]'s pixels as straight RGBA, row after row. Throws when the engine
+/// gives none.
+///
+/// ONE spelling: a picture an import holds (`EnginePicture`), the raster a
+/// lay is cut from (`layCelPicture`) and a viewer's crop (`cropImageRgba`)
+/// each wrote this read out (the clone scan, 2026-10-20).
+Future<Uint8List> straightRgbaOf(ui.Image image) async {
+  final data = await image.toByteData(
+    format: ui.ImageByteFormat.rawStraightRgba,
+  );
+  if (data == null) {
+    throw StateError('The picture gave no bytes.');
+  }
+  return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+}

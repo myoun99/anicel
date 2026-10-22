@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/settle_async.dart';
+
 /// 🚨The PIXELS this time, not the wiring. Three earlier tests measured the
 /// session (`past_cut_end_is_ordinary_test`) and the widget's inputs
 /// (`past_cut_end_paints_test`, `paper_past_cut_end_test`) and all three were
@@ -148,18 +150,15 @@ void main() {
     return (paper, ink);
   }
 
-  /// [countColors], giving asynchronous tile decodes a bounded number of
-  /// real-async rounds to land — the committed ink reaches the screen when
-  /// its tile images decode, and that is engine work a fake clock cannot run.
+  /// [countColors], once asynchronous tile decodes have landed some ink
+  /// ([settleAsync]) — the committed ink reaches the screen when its tile
+  /// images decode, and that is engine work a fake clock cannot run.
   Future<(int, int)> settledColors(WidgetTester tester) async {
-    var counts = await countColors(tester);
-    for (var round = 0; round < 20 && counts.$2 == 0; round += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
+    late (int, int) counts;
+    await settleAsync(tester, () async {
       counts = await countColors(tester);
-    }
+      return counts.$2 != 0;
+    });
     return counts;
   }
 

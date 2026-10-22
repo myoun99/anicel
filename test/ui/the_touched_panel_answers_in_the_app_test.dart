@@ -202,9 +202,7 @@ void main() {
     await pumpHome(tester, project: conteTrackProject());
     final session = sessionOf(tester);
     await showStoryboardPanel(tester);
-    final twirl = find.named(
-      'storyboard-se-lane-toggle-${conteTrackId.value}-1',
-    );
+    final twirl = find.named('storyboard-lane-toggle-${conteSeId.value}');
     await tester.ensureVisible(twirl);
     await tester.pumpAndSettle();
     await tester.tap(twirl);

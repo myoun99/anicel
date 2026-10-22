@@ -252,6 +252,43 @@ void main() {
     );
   });
 
+  // F-382 (format 26 — F-382-Q1 「법 그대로 — 바닥을 26 으로 올린다」): a
+  // v25 file's viewer bookmarks each say the page the viewer was at, which
+  // this build no longer reads — refused by its number rather than opened
+  // with every viewer at its first page, which the next save would write as
+  // the truth.
+  test('🚨a v25 file is refused by its number — its viewers would open at '
+      'their first pages', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(25)),
+      refusesNaming('format 25,'),
+    );
+  });
+
+  // anchor-walks-a-path (format 27): an anchor's key may rove now, and a
+  // v26 build turns the whole file away at one — 「A key roves on a lane
+  // walking no path」 — in words nobody could act on. A file this build
+  // writes says a number a v26 build refuses as a newer Anicel's.
+  test('🚨a file that may hold a roving anchor key says a format a v26 '
+      'build refuses as newer', () {
+    expect(anicelFormatVersion, greaterThan(26));
+  });
+
+  // anchor-walks-a-path ② (format 28 — anchor-walks-a-path-Q5 「이 레인에서
+  // 같이 올린다」): a key on a path holds a handle on each side, `joined` or
+  // `split`. A v27 file's keys say one handle and its mirror (`tangent`),
+  // which this build no longer reads — refused by its number rather than
+  // turned away at the key in words nobody could act on; and a file this
+  // build writes says a number a v27 build refuses as a newer Anicel's.
+  test('🚨a v27 file is refused by its number — its keys would say one '
+      'handle and its mirror', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(27)),
+      refusesNaming('format 27,'),
+    );
+    expect(anicelFormatVersion, greaterThan(27));
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),

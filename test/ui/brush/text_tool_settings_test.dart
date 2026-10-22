@@ -32,8 +32,9 @@ const double _asTallAsTheRows = 900;
 
 /// R9-rest (the text tool): THE ROWS OF ITS SETTINGS — the layout 유저 took
 /// on 2026-10-06, top to bottom: the text in hand and its delete · 글자 —
-/// face, size, tracking, bold, colour, outline, outline width, the
-/// smoothing of the letters' edges · 상자 — its place (I-95),
+/// face, size, tracking, bold (and beside it the lean and the two lines,
+/// 유저 10-17), colour, outline, outline width, the smoothing of the
+/// letters' edges · 상자 — its place (I-95),
 /// alignment, box width, line spacing, background · and at the foot
 /// 「래스터라이즈」.
 ///
@@ -151,6 +152,10 @@ void main() {
       'size',
       'tracking',
       'bold',
+      // 유저 10-17: beside bold.
+      'italic',
+      'underline',
+      'strikethrough',
       'color',
       'outline',
       'outline-width',
@@ -164,6 +169,11 @@ void main() {
       'align',
       'box-width',
       'line-height',
+      'letter-width',
+      // ⑦: the box's frame, under its letters' width.
+      'rotation',
+      'skew',
+      'flip-horizontal',
       'background',
       // 유저 2026-10-06: at the foot of the settings.
       'into-drawing',
@@ -202,6 +212,9 @@ void main() {
           ),
           align: TextCelAlign.center,
           lineHeight: 1.5,
+          letterWidth: 0.8,
+          rotationDegrees: 12.5,
+          skewDegrees: -8,
         ),
       );
 
@@ -224,6 +237,9 @@ void main() {
       expect(pill(tester, 'align-center').selected, isTrue);
       expect(pill(tester, 'align-left').selected, isFalse);
       expect(written('line-height', '150%'), findsOneWidget);
+      expect(written('letter-width', '80%'), findsOneWidget);
+      expect(written('rotation', '12.50°'), findsOneWidget);
+      expect(written('skew', '-8.00°'), findsOneWidget);
       expect(swatch(tester, 'background').color, isNull);
     });
 
@@ -275,12 +291,15 @@ void main() {
       await tester.pump();
       await tester.tap(row('align-right'));
       await tester.pump();
+      await tester.tap(row('flip-horizontal'));
+      await tester.pump();
       await tester.tap(row('writing-columns'));
       await tester.pump();
 
       expect(hand.options.value.letters(brushColour: null).bold, isTrue);
       expect(hand.options.value.align, TextCelAlign.right);
       expect(hand.options.value.vertical, isTrue);
+      expect(hand.options.value.flipped, isTrue);
       expect(hand.host.ran, isEmpty);
       expect(pill(tester, 'align-right').selected, isTrue);
     });
@@ -386,6 +405,37 @@ void main() {
       expect(hand.options.value.letters(brushColour: null).fontSize, shown);
     });
 
+    for (final (name, of) in <(String, double Function(CelTextContent))>[
+      ('line-height', (text) => text.paragraphs.single.lineHeight),
+      ('letter-width', (text) => text.letterWidth),
+    ]) {
+      testWidgets('🚨a bar of the BOX dragged shows as it goes and lands '
+          'once, where the hand lets go ($name)', (tester) async {
+        final hand = await pumpSettings(tester, text: said([run('ab')]));
+        final before = of(landedOn(hand.cel));
+
+        final drag = await tester.startGesture(
+          tester.getRect(row(name)).center,
+        );
+        await tester.pump();
+        await drag.moveBy(const Offset(30, 0));
+        await tester.pump();
+        await drag.moveBy(const Offset(30, 0));
+        await tester.pump();
+
+        final shown = of(hand.tool.session!.shown.content);
+        expect(shown, isNot(before), reason: 'the text on screen follows');
+        expect(hand.host.ran, isEmpty, reason: 'nothing lands mid-drag');
+        expect(of(landedOn(hand.cel)), before);
+
+        await drag.up();
+        await tester.pump();
+
+        expect(hand.host.ran, hasLength(1));
+        expect(of(landedOn(hand.cel)), shown);
+      });
+    }
+
     testWidgets('🚨each bar reads and sets its OWN number of the letters: '
         'the tracking theirs, the outline\'s width its', (tester) async {
       const outlined = TextLetterStyle(
@@ -471,6 +521,94 @@ void main() {
       expect(hand.options.value.letters(brushColour: null).antialias, isFalse);
     });
 
+    // 🗣️유저 2026-10-17 (card text-letters-lean-and-underline): 「기울임/밑줄
+    // 같은것도 어차피 넣어야할 기능이니까 넣도록」 — beside bold, their kind.
+    for (final (name, label, wears) in [
+      (
+        'italic',
+        () => AppText.strings.textToolItalic,
+        (TextLetterStyle style) => style.italic,
+      ),
+      (
+        'underline',
+        () => AppText.strings.textToolUnderline,
+        (TextLetterStyle style) => style.underline,
+      ),
+      (
+        'strikethrough',
+        () => AppText.strings.textToolStrikethrough,
+        (TextLetterStyle style) => style.strikethrough,
+      ),
+    ]) {
+      BooleanDot ring(WidgetTester tester) => tester.widget<BooleanDot>(
+        find.descendant(of: row(name), matching: find.byType(BooleanDot)),
+      );
+
+      testWidgets('🚨the $name switch is OFF for letters as they have always '
+          'been — turned on, every letter of the text in hand wears it, as '
+          'one step, and so will the next text\'s', (tester) async {
+        final hand = await pumpSettings(
+          tester,
+          text: said([run('ab'), run('cd', red)]),
+        );
+        expect(ring(tester).value, isFalse);
+        expect(ring(tester).mixed, isFalse);
+        expect(
+          find.descendant(of: row(name), matching: find.text(label())),
+          findsOneWidget,
+        );
+
+        await tester.ensureVisible(row(name));
+        await tester.pump();
+        await tester.tap(row(name));
+        await tester.pump();
+
+        final spans = landedOn(hand.cel).spans;
+        expect([for (final span in spans) wears(span.style)], [true, true]);
+        expect(
+          [for (final span in spans) span.style.color],
+          [plain.color, red.color],
+          reason: 'and nothing else of them is another',
+        );
+        expect(hand.host.ran, hasLength(1));
+        expect(ring(tester).value, isTrue);
+        expect(wears(hand.options.value.letters(brushColour: null)), isTrue);
+      });
+
+      testWidgets('letters that do not agree on $name show its ring MIXED, '
+          'and a press turns it on for them all', (tester) async {
+        final hand = await pumpSettings(
+          tester,
+          text: said([run('ab'), run('cd', red)]),
+        );
+        await tester.ensureVisible(row(name));
+        await tester.pump();
+        await tester.tap(row(name));
+        await tester.pump();
+        final worn = landedOn(hand.cel);
+        // One run of them bare again, by hand: the two disagree.
+        final bare = await pumpSettings(
+          tester,
+          text: said([
+            worn.spans.first,
+            run('cd', red),
+          ]),
+        );
+        expect(ring(tester).mixed, isTrue);
+        expect(ring(tester).value, isFalse);
+
+        await tester.ensureVisible(row(name));
+        await tester.pump();
+        await tester.tap(row(name));
+        await tester.pump();
+
+        expect(
+          [for (final span in landedOn(bare.cel).spans) wears(span.style)],
+          [true, true],
+        );
+      });
+    }
+
     testWidgets('letters that do not agree on it show its ring MIXED, and a '
         'press smooths them all', (tester) async {
       final hand = await pumpSettings(
@@ -548,7 +686,7 @@ void main() {
       await tester.tap(row('align-right'));
       await tester.pump();
 
-      expect(landedOn(hand.cel).align, TextCelAlign.right);
+      expect(landedOn(hand.cel).paragraphs.single.align, TextCelAlign.right);
     });
 
     testWidgets('a mixed ring pressed turns every letter on', (tester) async {
@@ -756,9 +894,70 @@ void main() {
       await tester.pump();
 
       // From 50% to 300%: four fifths of the way is 250%.
-      expect(landedOn(hand.cel).lineHeight, closeTo(2.5, 1e-9));
+      expect(
+        landedOn(hand.cel).paragraphs.single.lineHeight,
+        closeTo(2.5, 1e-9),
+      );
       expect(hand.host.ran, hasLength(1));
       expect(written('line-height', '250%'), findsOneWidget);
+    });
+
+    // text-letters-lean-and-underline ④⑤: each paragraph is set its own,
+    // and read as the letters are — 「—」 where they disagree.
+    testWidgets('🚨paragraphs aligned unlike light no answer, and pitched '
+        'unlike read 「—」 — an answer pressed sets every one of them', (
+      tester,
+    ) async {
+      const apart = CelTextParagraph(align: TextCelAlign.right, lineHeight: 2);
+      final hand = await pumpSettings(
+        tester,
+        text: CelTextContent(
+          spans: [run('ab\ncd')],
+          anchor: CanvasPoint(x: 8, y: 8),
+          paragraphs: const [CelTextParagraph(), apart],
+        ),
+      );
+
+      for (final answer in TextCelAlign.values) {
+        expect(
+          pill(tester, 'align-${answer.name}').selected,
+          isFalse,
+          reason: answer.name,
+        );
+      }
+      expect(written('line-height', '—'), findsOneWidget);
+
+      await tester.tap(row('align-center'));
+      await tester.pump();
+
+      expect(landedOn(hand.cel).paragraphs, const [
+        CelTextParagraph(align: TextCelAlign.center),
+        CelTextParagraph(align: TextCelAlign.center, lineHeight: 2),
+      ]);
+      expect(pill(tester, 'align-center').selected, isTrue);
+      expect(written('line-height', '—'), findsOneWidget);
+    });
+
+    testWidgets('🗣️the letters\' width (장평, text-letters-lean-and-underline '
+        '⑥) reads as a share of their own, and a press on its bar sets it', (
+      tester,
+    ) async {
+      final hand = await pumpSettings(tester, text: said([run('ab')]));
+
+      expect(written('letter-width', '100%'), findsOneWidget);
+
+      // Half the way along its track — the bar less the hands at its end.
+      final width = tester.getRect(row('letter-width'));
+      await tester.tapAt(
+        width.centerLeft +
+            Offset((width.width - FieldSlider.handsReach) * 0.5, 0),
+      );
+      await tester.pump();
+
+      // From 10% to 400%: halfway is 205%.
+      expect(landedOn(hand.cel).letterWidth, closeTo(2.05, 1e-9));
+      expect(hand.host.ran, hasLength(1));
+      expect(written('letter-width', '205%'), findsOneWidget);
     });
 
     testWidgets('🚨the delete beside its name takes the text off its cel', (
@@ -1095,6 +1294,11 @@ void main() {
       (line.min, line.max, line.divisions, line.displayScale, line.unit),
       (0.5, 3.0, 50, 100.0, '%'),
     );
+    final width = bar(tester, 'letter-width');
+    expect(
+      (width.min, width.max, width.divisions, width.displayScale, width.unit),
+      (0.1, 4.0, 390, 100.0, '%'),
+    );
   });
 
   testWidgets('🚨in the tool settings PANEL the colour window\'s 「현재 색 '
@@ -1154,6 +1358,7 @@ void main() {
     expect(written('size', '48.0 px'), findsOneWidget);
     expect(bar(tester, 'size').onChanged, isNull);
     expect(bar(tester, 'line-height').onChanged, isNull);
+    expect(bar(tester, 'letter-width').onChanged, isNull);
     expect(pill(tester, 'align-left').onTap, isNull);
     expect(pill(tester, 'writing-columns').onTap, isNull);
     expect(tester.widget<PanelFlyoutButton>(row('font')).enabled, isFalse);

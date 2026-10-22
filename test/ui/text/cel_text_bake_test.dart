@@ -69,7 +69,7 @@ void main() {
     try {
       return await bakeCelTextPlate(
         layout,
-        canvasSize: celTextTestCanvas,
+        pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
         tileSize: celTextTestTileSize,
         previous: previous,
       );
@@ -83,7 +83,7 @@ void main() {
   Future<Map<TileCoord, Uint8List>> engineTilesOf(
     CelTextContent content,
   ) async {
-    final wall = celTextTestCanvas.pasteboardRect;
+    final wall = celTextTestCanvas.pasteboardAt(PasteboardReach.whole).rect;
     final layout = layoutCelText(content);
     final recorder = ui.PictureRecorder();
     layout.paint(ui.Canvas(recorder)..translate(-wall.left, -wall.top));
@@ -301,15 +301,13 @@ void main() {
       );
       addTearDown(huge.dispose);
       expect(huge.inkBounds.width, greaterThan(4000), reason: '⛔fixture');
+      final wall = celTextTestCanvas.pasteboardAt(PasteboardReach.whole);
 
-      expect(
-        celTextBakeWindow(huge, celTextTestCanvas),
-        celTextTestCanvas.pasteboardRect,
-      );
+      expect(celTextBakeWindow(huge, wall), wall.rect);
 
       final small = layoutCelText(said([run('ab')]));
       addTearDown(small.dispose);
-      expect(celTextBakeWindow(small, celTextTestCanvas), small.inkBounds);
+      expect(celTextBakeWindow(small, wall), small.inkBounds);
     });
 
     test('a text set wholly beyond it has no plate', () async {

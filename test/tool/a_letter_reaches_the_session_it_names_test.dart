@@ -144,7 +144,7 @@ void main() {
       expect(signedBy(null, [unsigned]), [unsigned]);
       expect(
         recordRefusal(jsonDecode(unsigned) as Map<String, dynamic>, 1),
-        contains('board_me.dart'),
+        contains('bash tool/run.sh board_me'),
       );
     });
   });

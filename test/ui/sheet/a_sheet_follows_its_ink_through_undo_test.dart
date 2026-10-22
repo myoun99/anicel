@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart'
-    show ChangeNotifier, FlutterError, FlutterErrorDetails;
+import 'package:flutter/foundation.dart' show FlutterError, FlutterErrorDetails;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -17,8 +17,11 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
+
+import '../../helpers/cel_photo_fixture.dart';
 
 /// 🚨F-80 ② — A SHEET HEARS ITS INK COME BACK THROUGH UNDO.
 ///
@@ -56,18 +59,12 @@ void main() {
     ],
   );
 
-  /// Each sheet's controller with its geometry synced, and how to draw on
-  /// and read one of its windows — held by its own type, since the three
-  /// are separate controllers to the hosts that listen to them.
+  /// Each sheet's controller with its geometry synced, and one of its
+  /// windows.
   final sheets =
       <
         String,
-        ({
-          ChangeNotifier Function() make,
-          void Function(ChangeNotifier controller, HistoryManager history)
-          commit,
-          bool Function(ChangeNotifier controller) hasInk,
-        })
+        ({SheetInkController<Null> Function() make, BrushFrameKey key})
       >{
         'timesheet': (
           make: () => TimesheetInkController()
@@ -86,82 +83,88 @@ void main() {
                 ),
               ),
             ),
-          commit: (controller, history) =>
-              (controller as TimesheetInkController).commitStroke(
-                plane: null,
-                key: timesheetInkPageKey(cutId, 0),
-                strokeData: oneDab(),
-                historyManager: history,
-              ),
-          hasInk: (controller) => (controller as TimesheetInkController)
-              .hasInkFor(null, timesheetInkPageKey(cutId, 0)),
+          key: timesheetInkPageKey(cutId, 0),
         ),
         'conte': (
           make: () => ConteInkController()
             ..syncGeometry(
               const ConteSheetMetrics(pageWidth: 200, pageHeight: 280),
             ),
-          commit: (controller, history) =>
-              (controller as ConteInkController).commitStroke(
-                plane: null,
-                key: conteInkRowKey(const CutId('conte-cut'), 'ink-0'),
-                strokeData: oneDab(),
-                historyManager: history,
-              ),
-          hasInk: (controller) => (controller as ConteInkController).hasInkFor(
-            null,
-            conteInkRowKey(const CutId('conte-cut'), 'ink-0'),
-          ),
+          key: conteInkRowKey(const CutId('conte-cut'), 'ink-0'),
         ),
         'envelope': (
           make: () => CutEnvelopeInkController()..syncGeometry(aspectRatio: 1),
-          commit: (controller, history) =>
-              (controller as CutEnvelopeInkController).commitStroke(
-                plane: null,
-                key: envelopeInkBoxKey(cutId, 'box'),
-                strokeData: oneDab(),
-                historyManager: history,
-              ),
-          hasInk: (controller) => (controller as CutEnvelopeInkController)
-              .hasInkFor(null, envelopeInkBoxKey(cutId, 'box')),
+          key: envelopeInkBoxKey(cutId, 'box'),
+        ),
+      };
+
+  /// What a window is written with: a stroke — and a pool photo (I-97),
+  /// which the panel hears the same way.
+  final writes =
+      <
+        String,
+        void Function(
+          SheetInkController<Null> controller,
+          BrushFrameKey key,
+          HistoryManager history,
+        )
+      >{
+        'a stroke': (controller, key, history) => controller.commitStroke(
+          plane: null,
+          key: key,
+          strokeData: oneDab(),
+          historyManager: history,
+        ),
+        'a photo put': (controller, key, history) => controller.putPhoto(
+          plane: null,
+          key: key,
+          reference: photoOf(1).reference,
+          historyManager: history,
         ),
       };
 
   for (final MapEntry(key: name, value: sheet) in sheets.entries) {
-    test('$name: an undo and a redo of a stroke each tell the panel', () {
-      final controller = sheet.make();
-      addTearDown(controller.dispose);
-      final history = HistoryManager();
-      sheet.commit(controller, history);
-      expect(
-        sheet.hasInk(controller),
-        isTrue,
-        reason: 'the CONTROL — the stroke landed',
-      );
-      var told = 0;
-      controller.addListener(() => told += 1);
+    for (final MapEntry(key: what, value: write) in writes.entries) {
+      test('$name: $what, its undo and its redo each tell the panel', () {
+        final controller = sheet.make();
+        addTearDown(controller.dispose);
+        final history = HistoryManager();
+        var told = 0;
+        controller.addListener(() => told += 1);
 
-      history.undo();
+        write(controller, sheet.key, history);
 
-      expect(
-        sheet.hasInk(controller),
-        isFalse,
-        reason: 'the CONTROL — the undo put the surface back',
-      );
-      expect(
-        told,
-        greaterThan(0),
-        reason:
-            'the surface came back and the panel was not told, so the stroke '
-            'stayed on screen and the next press undid something else',
-      );
+        expect(
+          controller.hasInkFor(null, sheet.key),
+          isTrue,
+          reason: 'the CONTROL — it landed',
+        );
+        expect(told, greaterThan(0));
 
-      told = 0;
-      history.redo();
+        told = 0;
+        history.undo();
 
-      expect(sheet.hasInk(controller), isTrue);
-      expect(told, greaterThan(0));
-    });
+        expect(
+          controller.hasInkFor(null, sheet.key),
+          isFalse,
+          reason: 'the CONTROL — the undo put the surface back',
+        );
+        expect(
+          told,
+          greaterThan(0),
+          reason:
+              'the surface came back and the panel was not told, so the '
+              'stroke stayed on screen and the next press undid something '
+              'else',
+        );
+
+        told = 0;
+        history.redo();
+
+        expect(controller.hasInkFor(null, sheet.key), isTrue);
+        expect(told, greaterThan(0));
+      });
+    }
   }
 
   test('a store that outlives its panel stops calling the closed '

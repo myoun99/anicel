@@ -27,17 +27,16 @@ class _BrushEditPress {
   final Set<int> _activeTouchPointers = <int>{};
   bool _multiTouchNavigation = false;
 
-  /// Fingers resting on the glass, each the stroke's Shift for as long as
-  /// it rests (I-61-Q3, [aFingerHoldsShift]) — counted only while
-  /// [AppInputSettings.strokeFingerModifier] is on, so that with it off
-  /// nothing of this runs at all (유저: 「off하면 확실하게 제거」).
-  final Set<int> _shiftFingers = <int>{};
-
   /// Whether a finger holds the stroke's Shift now: one resting on the
-  /// glass that is not the one drawing.
-  bool get aFingerHoldsShift =>
-      AppInput.settings.value.strokeFingerModifier &&
-      _shiftFingers.any((finger) => finger != _state._activeDrawingPointer);
+  /// glass that is not the one drawing, for as long as it rests (I-61-Q3) —
+  /// asked only while [AppInputSettings.strokeFingerModifier] is on, so that
+  /// with it off nothing of this runs at all (유저: 「off하면 확실하게 제거」).
+  bool get aFingerHoldsShift => CanvasTouchContacts.aFingerHoldsAStrokesShift(
+    _state._activeDrawingPointer,
+  );
+
+  /// Whether the stroke's Shift is held now — the key, or a finger.
+  bool get shiftHeld => ModifierKeys.isShiftPressed || aFingerHoldsShift;
 
   /// R26 #5: a second finger landed SOMEWHERE on the ink surfaces — maybe
   /// on a sibling view, whose pointer this view will never see. A live
@@ -132,10 +131,6 @@ class _BrushEditPress {
 
   void pointerDown(PointerDownEvent event) {
     _state._toolHolds.heardByTheView.add(event.pointer);
-    if (event.kind == PointerDeviceKind.touch &&
-        AppInput.settings.value.strokeFingerModifier) {
-      _shiftFingers.add(event.pointer);
-    }
     // (No deferred stroke commit to land first: pen-up commits inside its
     // own event now — R25-④'s one-frame deferral existed to hide a
     // synchronous re-materialize that the promotion round deleted.)
@@ -143,8 +138,12 @@ class _BrushEditPress {
       return;
     }
 
-    if (!_state.widget.editable) {
-      _state._celPress.pressAsksForACel(event);
+    // A press parked for the cel it made goes on when that cel is here; one
+    // that made none goes on now where a cel stands (a press the pan takes,
+    // a tool that marks nothing), and nowhere where none does.
+    if (_state.widget.marksMakeTheirCel &&
+        (_state._celPress.pressAsksForACel(event) ||
+            !_state.widget.editable)) {
       return;
     }
 
@@ -219,11 +218,10 @@ class _BrushEditPress {
       return;
     }
 
-    final canvasPosition = _state._canvasPositionFromLocal(event.localPosition);
     // The pasteboard is EVERY tool's input boundary (user feedback +
     // Flash parity): strokes, the eyedropper and fill taps all work on
     // off-canvas artwork; only the pasteboard wall stops them.
-    final startsInsidePasteboard = _state._isInsidePasteboard(canvasPosition);
+    final canvasPosition = _state._canvasPositionFromLocal(event.localPosition);
 
     // FILL tap (R22-A / R23, a stroke of one dab since 2026-09-17): the
     // flood's result tiles become the overlay's pictures on the tap frame,
@@ -239,7 +237,6 @@ class _BrushEditPress {
     _state._stroke.beginStroke(
       event,
       canvasPosition,
-      startsInsidePasteboard: startsInsidePasteboard,
       mappedErase: mappedErase,
     );
   }
@@ -384,22 +381,24 @@ class _BrushEditPress {
   /// touches nothing, so a caller never has to ask first (and cannot ask
   /// wrongly).
   ///
-  /// 🗣️**A STABILISED LINE ENDS WHERE THE BRUSH IS** (유저 2026-09-28, H45
-  /// 「펜업시 마지막 진행방향에 선이 하나 생겨. 정밀하게 멈추고 뗀건데도」 →
-  /// H45-Q1 「따라잡지 않는다 — 선은 붓이 있던 자리에서 끝난다」). The brush
-  /// trails the pen by up to a rope length, and a pen held still leaves it
-  /// there. ↩️P7 (2026-07-11, mine, not the user's) closed that gap at
-  /// pen-up with one straight segment to the pen — the tail drawn in the
-  /// last direction of travel however precisely the pen had stopped.
-  /// Without it a quick stroke ends a rope short of the lift: the cost the
-  /// user took with the answer.
+  /// 🗣️**A STABILISED LINE ENDS WHERE THE PEN LIFTED** (유저 2026-10-20,
+  /// F-418-Q2 「과거 결정 무시해도됨. 클튜는 100으로 하면 선을 떼면 바로 뗀
+  /// 자리까지 선이 감」): the line still behind the pen goes straight to it.
+  /// ↩️H45 (2026-09-28) had it end where the brush was — H45-Q1 「따라잡지
+  /// 않는다 — 선은 붓이 있던 자리에서 끝난다」, against 「펜업시 마지막
+  /// 진행방향에 선이 하나 생겨. 정밀하게 멈추고 뗀건데도」 — while the brush
+  /// hung a rope behind a pen held still. The line that replaced the rope
+  /// keeps closing on a resting pen, so a pen stopped precisely has been
+  /// reached before it lifts.
   bool landActiveStroke() {
     if (_state._activeDrawingPointer == null) {
       return false;
     }
     // Whatever still waits for the contact's first readings lands first
-    // (H43).
+    // (H43), and the line then goes to where the pen lifted — both before
+    // the lock settles, which sees the whole travel.
     _state._opening.stopWaiting();
+    _state._stroke.finishSteadying();
     // A stroke can lift before it travelled far enough to name a ray; the
     // lock settles on the best guess it has rather than swallowing a short
     // flick.
@@ -409,6 +408,9 @@ class _BrushEditPress {
         _state._stroke.advanceStrokeTo(locked);
       }
     }
+    // The whole line is down now, and its 後補正 lays it again smoothed
+    // (F-418-Q7) — before the commit reads the tiles.
+    _state._stroke.postCorrect();
 
     final hadDabs = _state._collectedDabs.isNotEmpty;
     var landed = false;
@@ -485,7 +487,6 @@ class _BrushEditPress {
   }
 
   void _forgetTouchPointer(int pointer) {
-    _shiftFingers.remove(pointer);
     _activeTouchPointers.remove(pointer);
     CanvasTouchContacts.remove(pointer);
     if (_activeTouchPointers.isEmpty) {

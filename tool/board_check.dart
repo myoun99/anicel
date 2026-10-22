@@ -11,7 +11,6 @@
 // gate with its own copy of the rules is a second reader of the one question
 // this redesign existed to unify, sitting inside the thing that is supposed
 // to catch second readers.
-import 'dart:convert';
 import 'dart:io';
 
 import 'board_door.dart';
@@ -21,6 +20,13 @@ import 'board_model.dart';
 /// cannot file by. Four digits only: three-digit issue numbers and 「#1」
 /// style round tags are not PRs.
 final _prInProse = RegExp(r'#\d{4}\b');
+
+// What the gate reads off a card's whole story, kept on the card. A card no
+// write reached is the same object from one reading to the next
+// ([BoardRecords]), so the gate, asked at the end of every session's turn,
+// reads only the stories that moved (10-19: these two were 24 of its 40ms).
+final _prInItsProse = Expando<bool>();
+final _refsToNothing = Expando<List<String>>();
 
 /// Words that describe a CHECK rather than work. Used on `rest` only.
 final _checkWords = RegExp('실기|재확인|확인한다|확인해|검증|눌러 ?본|봐야');
@@ -58,15 +64,16 @@ String boardCheckComplaints(
   String linesSince = kLinesSince,
   DateTime? now,
 }) {
-  final cards = readBoard(file, now: now);
+  final records = BoardRecords.of(file);
+  final cards = records.cards(now: now);
   final acks = _acks(file);
   final complaints = <String>[
     ..._brokenLines(),
     ..._wordsNobodyReads(acks),
     ..._pointersToNothing(cards, acks),
-    ..._stampsTheFileContradicts(file, cards, acks),
+    ..._stampsTheFileContradicts(records.lines, cards, acks),
     ..._cardsOffTheBoard(cards, acks, since),
-    ..._sectionsTheStoryCannotName(file, acks, since, now, linesSince),
+    ..._sectionsTheStoryCannotName(records.lines, cards, acks, now, linesSince),
     ..._workThatShipped(cards, acks, since),
     ..._questionsNobodyCanAnswer(cards, acks, since),
     ..._answersNobodyRead(cards, acks, since, now),
@@ -259,11 +266,14 @@ Iterable<String> _pointersToNothing(
   final dangling = <String>[];
   for (final c in cards) {
     if (acks.contains(c.id)) continue;
-    final stamps = {for (final l in c.log) l.ts};
-    for (final l in c.log) {
-      if (l.ref.isEmpty || stamps.contains(l.ref)) continue;
-      dangling.add('${c.id}: ref→${l.ref}');
-    }
+    dangling.addAll(_refsToNothing[c] ??= () {
+      final stamps = {for (final l in c.log) l.ts};
+      return [
+        for (final l in c.log)
+          if (l.ref.isNotEmpty && !stamps.contains(l.ref))
+            '${c.id}: ref→${l.ref}',
+      ];
+    }());
     if (cardAsks(c)) {
       final (of, _) = asksOf(c);
       if (of.isNotEmpty && !byId.containsKey(of)) {
@@ -310,27 +320,19 @@ Iterable<String> _pointersToNothing(
 /// whichever way it is read, and complaining about history is how a gate
 /// stops being read.
 Iterable<String> _stampsTheFileContradicts(
-  File file,
+  List<BoardLine> lines,
   List<BoardCard> cards,
   Set<String> acks,
 ) sync* {
   final byId = {for (final c in cards) c.id: c};
   final byFile = <String, String>{};
   final stamped = <String, List<List<String>>>{};
-  for (final line in file.readAsLinesSync()) {
-    final t = line.trim();
-    if (t.isEmpty) continue;
-    Map<String, dynamic> json;
-    try {
-      json = jsonDecode(t) as Map<String, dynamic>;
-    } on Object catch (_) {
-      continue;
-    }
-    final id = '${json['id'] ?? ''}';
-    final at = '${json['at'] ?? ''}'.trim();
+  for (final line in lines) {
+    final id = line.id;
+    final at = line.at;
     if (id.isEmpty || at.isEmpty || !kSection.containsKey(at)) continue;
     byFile[id] = at;
-    (stamped[id] ??= []).add(['${json['ts'] ?? ''}', at]);
+    (stamped[id] ??= []).add([line.ts, at]);
   }
   final wrong = <String>[];
   for (final e in stamped.entries) {
@@ -349,7 +351,7 @@ Iterable<String> _stampsTheFileContradicts(
       '🧪C-t11·C-t12 가 그랬습니다: 제가 14:10 을 지어냈고 유저는 01:34 에 '
       '완료를 눌렀는데, 완료가 앞으로 정렬돼 **카드가 안 사라졌습니다.**\n'
       '⇒ 그 줄의 `ts` 를 이웃 줄 사이의 값으로 고치세요. '
-      '⛔그리고 앞으로는 `dart run tool/board_say.dart` 로 적으세요 — '
+      '⛔그리고 앞으로는 `bash tool/run.sh board_say` 로 적으세요 — '
       '`ts` 를 직접 쓰지 않으면 이 일이 아예 안 생깁니다.';
 }
 
@@ -404,30 +406,23 @@ Iterable<String> _cardsOffTheBoard(
 /// so the offending word is in a line, and naming the line is what lets it be
 /// found. ⛔But only lines written since this rule existed — a gate that
 /// complains about corrected history forever is a gate nobody reads.
+/// ⛔Nor a line the card's story has already moved past ([_refiledAfter]).
 Iterable<String> _sectionsTheStoryCannotName(
-  File file,
+  List<BoardLine> lines,
+  List<BoardCard> cards,
   Set<String> acks,
-  String since,
   DateTime? now,
   String linesSince,
 ) sync* {
   const knownEndings = {'archived', 'deleted'};
+  final byId = {for (final c in cards) c.id: c};
   final unknownStage = <String>[];
   final future = <String>[];
   final handWrittenState = <String>[];
-  var n = 0;
-  for (final line in file.readAsLinesSync()) {
-    n++;
-    final t = line.trim();
-    if (t.isEmpty) continue;
-    Map<String, dynamic> json;
-    try {
-      json = jsonDecode(t) as Map<String, dynamic>;
-    } on Object catch (_) {
-      continue;
-    }
-    if (json['kind'] == 'law' || json['kind'] == 'meta') continue;
-    final id = '${json['id'] ?? ''}';
+  for (final line in lines) {
+    final n = line.no;
+    if (line.kind == 'law' || line.kind == 'meta') continue;
+    final id = line.id;
     if (acks.contains(id)) continue;
     // ⚠️ASKED BEFORE the history cutoff below: a stamp in the future is
     // wrong whenever it was written, and gating it would have hidden every
@@ -442,19 +437,22 @@ Iterable<String> _sectionsTheStoryCannotName(
     //
     // `ts` is the story's ORDER now, not just a date on a panel. A stamp in
     // the future reorders somebody else's work around a time that never was.
-    final when = DateTime.tryParse('${json['ts'] ?? ''}');
+    final when = line.time;
     final clock = now ?? DateTime.now();
     if (when != null &&
         when.isAfter(clock) &&
-        '${json['ts']}'.compareTo(linesSince) >= 0) {
-      future.add('$n:$id(${json['ts']})');
+        line.ts.compareTo(linesSince) >= 0) {
+      future.add('$n:$id(${line.ts})');
     }
-    if ('${json['ts'] ?? ''}'.compareTo(linesSince) < 0) continue;
-    final at = '${json['at'] ?? ''}'.trim();
-    if (at.isNotEmpty && !kSection.containsKey(at) && !_kSubStage.contains(at)) {
+    if (line.ts.compareTo(linesSince) < 0) continue;
+    final at = line.at;
+    if (at.isNotEmpty &&
+        !kSection.containsKey(at) &&
+        !_kSubStage.contains(at) &&
+        !_refiledAfter(byId[id], when)) {
       unknownStage.add('$n:$id($at)');
     }
-    final state = '${json['state'] ?? ''}'.trim();
+    final state = line.state;
     if (state.isNotEmpty && !knownEndings.contains(state)) {
       handWrittenState.add('$n:$id($state)');
     }
@@ -463,6 +461,7 @@ Iterable<String> _sectionsTheStoryCannotName(
     yield '모르는 항목 이름: ${unknownStage.join(', ')}\n'
         '보드는 아는 이름만 칸으로 읽습니다 — 모르는 이름은 칸을 바꾸지 '
         '못하고, 그 카드는 **조용히 「바로 가능」에 남습니다.**\n'
+        '⇒ 그 카드에 바른 대분류로 한 줄 더 적으면 풀립니다.\n'
         '⇒ 대분류: ${kSection.keys.join(' · ')}\n'
         '⇒ 소분류: ${_kSubStage.join(' · ')}';
   }
@@ -480,6 +479,24 @@ Iterable<String> _sectionsTheStoryCannotName(
         '⇒ 카드를 옮기려면 `at` 에 대분류를 적으세요. '
         '⚠️예외는 끝을 뜻하는 archived · deleted 둘뿐입니다.';
   }
+}
+
+/// Whether [card]'s story names a 대분류 after [when] — asked of the model's
+/// own story, in its own order.
+///
+/// 🧪2026-10-14, F-343: a session wrote `"at":"결정 필요"` and, seconds
+/// later, `"at":"하는 중"` on the same card. The card sat where the second
+/// line put it, and the gate went on naming the first for ever. The file
+/// cannot be edited, so the only way out was to ack the whole card id — which
+/// silenced every other check on that card too.
+bool _refiledAfter(BoardCard? card, DateTime? when) {
+  if (card == null || when == null) return false;
+  for (var i = 0; i < card.log.length; i++) {
+    if (!kSection.containsKey(stageName(card, i))) continue;
+    final t = card.log[i].time;
+    if (t != null && t.isAfter(when)) return true;
+  }
+  return false;
 }
 
 /// Stage names that are entries but NOT sections. ⚠️Kept here rather than in
@@ -585,8 +602,8 @@ Iterable<String> _workThatShipped(
       }
       if (!_saysSomething(c)) bare.add(c.id);
     } else if (_recent(c, since) &&
-        c.log.any((l) =>
-            !l.byUser && l.pr == null && _prInProse.hasMatch(l.text))) {
+        (_prInItsProse[c] ??= c.log.any((l) =>
+            !l.byUser && l.pr == null && _prInProse.hasMatch(l.text)))) {
       // 🚨★★★THE STORY, NOT THE HEAD — the last piece of `board-one-stream`
       // (「note·said·title 은 아직 마지막값이 이기는 필드다 — 항목으로 접는
       // 것이 이 개편의 마지막 조각이다」).
@@ -939,7 +956,7 @@ String? _ackKeyOf(String raw) {
 // (`tool/board_ack.dart`) runs here and the server runs for everybody else.
 
 /// The command a complaint names as its exit — the same on every machine.
-const kAckCommand = r'dart run tool/board_ack.dart "$ANICEL_BOARD"';
+const kAckCommand = r'bash tool/run.sh board_ack "$ANICEL_BOARD"';
 
 /// Why [key] cannot be left alone for [why], or null if it can.
 String? ackRefusal(String key, String why) {

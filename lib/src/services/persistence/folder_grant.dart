@@ -419,6 +419,11 @@ abstract final class FolderPicker {
       operatingSystem == 'linux' ||
       operatingSystem == 'macos';
 
+  /// [aSaveWindowAnswersAPathOn] on the machine the app runs on — what
+  /// [pickSaveDestination] checks before it opens one.
+  static bool get aSaveWindowAnswersAPath =>
+      aSaveWindowAnswersAPathOn(_operatingSystem);
+
   /// Asks the user for a folder.
   ///
   /// [initialDirectory] is a hint only; every platform is free to ignore it,
@@ -608,7 +613,7 @@ abstract final class FolderPicker {
         initialDirectory: initialDirectory,
       );
     }
-    if (!aSaveWindowAnswersAPathOn(_operatingSystem)) {
+    if (!aSaveWindowAnswersAPath) {
       throw StateError(
         '$_operatingSystem has no save window that answers with a path; a '
         'file is made first and placed there (exportFile).',

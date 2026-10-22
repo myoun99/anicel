@@ -19,8 +19,9 @@ import '../../tool/session_hooks/install.dart';
 /// (tests_do_not_race_the_code_test): what they DO was run by hand from
 /// their new place that day — `autorun_test.sh` 35/35 and
 /// `guard_git_add_test.sh` 22/22, the conflicted-copy guard on names in
-/// three languages. What is pinned here is what a machine is GIVEN, and
-/// that the scripts can be given it.
+/// three languages; `guard_bare_cd_test.sh` the day it came in (54/54,
+/// 2026-10-17). What is pinned here is what a machine is GIVEN, and that
+/// the scripts can be given it.
 void main() {
   const MachineSetup holder = (
     repo: 'C:/code/anicel',
@@ -83,6 +84,7 @@ void main() {
           'autorun_test.sh',
           'board_gate_test.sh',
           'board_up_test.sh',
+          'guard_bare_cd_test.sh',
           'guard_git_add_test.sh',
           'hook_says_test.sh',
           'session_letters_test.sh',
@@ -289,6 +291,21 @@ void main() {
           reason: address,
         );
       }
+    });
+
+    // Board a-bare-cd-into-a-lane-is-refused (2026-10-14~16, twenty-one
+    // times): a `cd` that would move the session is refused before it runs.
+    test('🚨a Bash call with a cd in it goes past the bare-cd guard first', () {
+      final guards = {
+        for (final group in hooksFor(holder)['PreToolUse'] as List)
+          if ((group as Map)['matcher'] == 'Bash')
+            for (final hook in group['hooks'] as List)
+              '${(hook as Map)['if']}': '${hook['command']}',
+      };
+      expect(
+        guards['Bash(cd *)'],
+        endsWith('/tool/session_hooks/guard_bare_cd.sh"'),
+      );
     });
 
     test('🚨the size guard is handed the very index its `if` watches', () {

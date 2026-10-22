@@ -4,12 +4,17 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show sizeAlong, sizedAlong;
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
+import 'package:anicel/src/ui/timeline/se_crossing_mark_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
@@ -36,6 +41,7 @@ class _CanvasSpy implements Canvas {
   final rects = <Rect>[];
   final rrects = <Rect>[];
   final paths = <Path>[];
+  final pathInks = <int>[];
 
   @override
   void drawLine(Offset p1, Offset p2, Paint paint) =>
@@ -48,7 +54,10 @@ class _CanvasSpy implements Canvas {
   void drawRRect(RRect rrect, Paint paint) => rrects.add(rrect.outerRect);
 
   @override
-  void drawPath(Path path, Paint paint) => paths.add(path);
+  void drawPath(Path path, Paint paint) {
+    paths.add(path);
+    pathInks.add(paint.color.toARGB32());
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
@@ -194,9 +203,8 @@ void main() {
           },
         );
 
-    Size sizeFor(Axis axis) => axis == Axis.horizontal
-        ? const Size(mainExtent, crossExtent)
-        : const Size(crossExtent, mainExtent);
+    Size sizeFor(Axis axis) =>
+        sizeAlong(axis, along: mainExtent, across: crossExtent);
 
     /// The pixel at [along] the axis and [across] it.
     bool inkAt(Uint32List pixels, Axis axis, int along, int across) =>
@@ -312,6 +320,103 @@ void main() {
         expect(inkAt(ol, axis, 60, 2), isFalse);
         expect(inkAt(ol, axis, 60, midCross), isTrue);
         expect(inkAt(ol, axis, mainExtent.toInt() - 60, 2), isFalse);
+      });
+    }
+  });
+
+  // 🗣️F-358 (유저 2026-10-14): 「~ 제대로 보이게 … 빨간색으로 … 세로적으로
+  // 중앙도아니고 중앙 살짝 위인것도 이상하고 … 방향을 세로로 해야지 지금
+  // 가로로되있음. 이는 x시트도 마찬가지」.
+  group('the SE crossing ~', () {
+    const cellExtent = 48.0;
+    const crossExtent = 30.0;
+    const frames = 6;
+    const mainExtent = cellExtent * frames;
+
+    Future<({Rect wave, Offset hump, Size strip, List<int> inks})> painted(
+      WidgetTester tester,
+      Axis axis,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: sizedAlong(
+            axis,
+            along: mainExtent,
+            across: crossExtent,
+            child: TimelineFixedFrameSpanLayer(
+              geometry: const TimelineFrameGeometry(
+                frameCellExtent: cellExtent,
+                frameStartIndex: 0,
+                frameEndIndexExclusive: frames,
+              ),
+              crossAxisExtent: crossExtent,
+              axis: axis,
+              children: timelineRowSeContinuationMarks(
+                layer: Layer(
+                  id: const LayerId('se-1'),
+                  name: 'S1',
+                  kind: LayerKind.se,
+                  frames: const [],
+                  timeline: {
+                    1: const TimelineExposure.drawing(
+                      FrameId('f1'),
+                      length: 8,
+                    ),
+                  },
+                ),
+                drawnFrameCount: 4,
+                spillsInAtStart: false,
+                frameStartIndex: 0,
+                frameEndIndexExclusive: frames,
+                axis: axis,
+              ),
+            ),
+          ),
+        ),
+      );
+      final mark = find.byKey(
+        const ValueKey<String>('timeline-se-crossing-se-1-end'),
+      );
+      final paint = tester.widget<CustomPaint>(
+        find.descendant(of: mark, matching: find.byType(CustomPaint)),
+      );
+      final strip = tester.getSize(mark);
+      final spy = _CanvasSpy();
+      paint.painter!.paint(spy, strip);
+      final wave = spy.paths.single;
+      // A quarter of the way along: the top of the first hump.
+      final metric = wave.computeMetrics().single;
+      return (
+        wave: wave.getBounds(),
+        hump: metric.getTangentForOffset(metric.length / 4)!.position,
+        strip: strip,
+        inks: spy.pathInks,
+      );
+    }
+
+    for (final axis in Axis.values) {
+      testWidgets('$axis: a red wave running ALONG the flow, in the middle '
+          'of its strip across the row', (tester) async {
+        final (:wave, :strip, :inks, hump: _) = await painted(tester, axis);
+        expect(inks, [AppColors.danger.toARGB32()]);
+        expect(wave.center.dx, closeTo(strip.width / 2, 0.01));
+        expect(wave.center.dy, closeTo(strip.height / 2, 0.01));
+        final (along, across) = axis == Axis.horizontal
+            ? (wave.width, wave.height)
+            : (wave.height, wave.width);
+        expect(along, closeTo(seCrossingMarkLength, 0.01));
+        expect(across, closeTo(2 * seCrossingMarkSwing, 0.01));
+      });
+
+      testWidgets('$axis: its first hump stands up out of a row, as the '
+          'glyph\'s does — turned a quarter, to the right of a column', (
+        tester,
+      ) async {
+        final (:wave, :hump, strip: _, inks: _) = await painted(tester, axis);
+        final out = axis == Axis.horizontal
+            ? wave.center.dy - hump.dy
+            : hump.dx - wave.center.dx;
+        expect(out, closeTo(seCrossingMarkSwing, 0.01));
       });
     }
   });

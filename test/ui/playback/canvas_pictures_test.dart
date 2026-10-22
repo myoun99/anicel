@@ -21,7 +21,9 @@ import 'package:anicel/src/ui/playback/canvas_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
 
+import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/poll_until.dart';
 
 /// playback-plays-the-screen-material ② (10-09): where the canvas shows a
 /// cut, a frame's picture is the canvas's own — each row an image of its
@@ -53,9 +55,9 @@ void main() {
       CanvasLayerImageRequest(frameKey: keyOf(cel), opacity: 1);
 
   /// A store whose [cels] are inked in two opposite corners — every tile —
-  /// so each image is the whole canvas.
-  BrushFrameStore storeOf(List<String> cels) {
-    final store = BrushFrameStore();
+  /// so each image is the whole canvas. [store] holds what it held besides.
+  BrushFrameStore storeOf(List<String> cels, {BrushFrameStore? store}) {
+    store ??= BrushFrameStore();
     for (final cel in cels) {
       for (final corner in [CanvasPoint(x: 1, y: 1), CanvasPoint(x: 6, y: 6)]) {
         inkCelIn(
@@ -69,6 +71,16 @@ void main() {
         );
       }
     }
+    return store;
+  }
+
+  /// A store keeping [cel] as an opened project keeps one — a stretch of a
+  /// file — and that file since gone: its bytes cannot be read.
+  BrushFrameStore storeWithGone(String cel) {
+    final store = BrushFrameStore();
+    keepInAFileThatIsGone(store, {
+      keyOf(cel): storeOf([cel]).bakedSurfaceOrNull(keyOf(cel))!,
+    });
     return store;
   }
 
@@ -165,8 +177,8 @@ void main() {
     expect(pictures.bytesToMake(at(0)), 0);
   });
 
-  testWidgets('what making a frame would add counts the rows not there — the '
-      'canvas at the level each — and a walk weighs a held cel once', (
+  testWidgets('what making a frame would add counts the rows not there, each '
+      'by the image it is made as — and a walk weighs a held cel once', (
     tester,
   ) async {
     await tester.runAsync(() async {
@@ -191,14 +203,15 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      final store = storeOf(['a', 'b']);
-      final images = _ThrowsFor(keyOf('a'), frameStore: store);
+      // a's file gone; b drawn.
+      final store = storeOf(['b'], store: storeWithGone('a'));
+      final images = _CountsMakings(keyOf('a'), frameStore: store);
       addTearDown(images.dispose);
       final pictures = picturesOf(images, both: true);
 
       await expectLater(
         pictures.make(at(3), shouldAbort: () => false),
-        throwsA(isA<StateError>()),
+        throwsA(anything),
       );
       expect(held(images, 'b', PlaybackQuality.full), isTrue);
       expect(pictures.gaveUpOn(row('a')), isTrue);
@@ -211,7 +224,25 @@ void main() {
 
       // ⛔Not made again at the same content.
       await pictures.make(at(3), shouldAbort: () => false);
-      expect(images.thrown, 1);
+      expect(images.asked, 1);
+    });
+  });
+
+  testWidgets('a row given up on is neither named nor weighed — what will not '
+      'be made adds nothing to the room asked for', (tester) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeWithGone('a'));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      expect(pictures.bytesToMake(at(0)), imageBytes, reason: '⛔premise');
+
+      await expectLater(
+        pictures.make(at(0), shouldAbort: () => false),
+        throwsA(anything),
+      );
+
+      expect(pictures.partsToMake(at(0)), isEmpty);
+      expect(pictures.bytesToMake(at(0)), 0);
     });
   });
 
@@ -227,6 +258,44 @@ void main() {
     expect(pictures.gaveUpOn(row('a')), isTrue);
     expect(pictures.gaveUpOn(row('b')), isTrue);
     expect(pictures.failed(at(0)), isTrue, reason: 'frame 0 is a alone');
+  });
+
+  testWidgets('a row given up on is looked at afresh once the store\'s content '
+      'moves — for a cel recorded at another canvas size, which a resize '
+      'heals with no revision of its own', (tester) async {
+    final store = storeOf(['a']);
+    final images = LayerFrameImageCache(frameStore: store);
+    addTearDown(images.dispose);
+    final pictures = picturesOf(images);
+    pictures.noteFailure(at(0));
+    expect(pictures.gaveUpOn(row('a')), isTrue, reason: '⛔CONTROL');
+    final generation = store.celContentRevision.value;
+
+    storeOf(['c'], store: store);
+    expect(
+      store.celContentRevision.value,
+      greaterThan(generation),
+      reason: '⛔CONTROL: a cel crossed empty → drawn, which moves the '
+          'store\'s content as a resize\'s heal does',
+    );
+
+    expect(pictures.gaveUpOn(row('a')), isFalse);
+  });
+
+  testWidgets('🚨but a cel that could not be read stays given up on — '
+      '「영영실패」: a drawing made elsewhere does not read it again', (
+    tester,
+  ) async {
+    final store = storeOf(['a']);
+    final images = LayerFrameImageCache(frameStore: store);
+    addTearDown(images.dispose);
+    final pictures = picturesOf(images);
+    // How the cache keeps a cel whose reading threw.
+    images.unreadable.note(keyOf('a'));
+
+    storeOf(['c'], store: store);
+
+    expect(pictures.gaveUpOn(row('a')), isTrue);
   });
 
   testWidgets('🚨a frame\'s failure gives up only its rows still to come — a '
@@ -522,12 +591,7 @@ void main() {
         final making = pictures
             .make(at(0), shouldAbort: () => false)
             .then((landed) => made = landed);
-        for (var i = 0; i < 200; i += 1) {
-          if (held(images, 'a', PlaybackQuality.full)) {
-            break;
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 5));
-        }
+        await pollUntil(() => held(images, 'a', PlaybackQuality.full));
         await pumpEventQueue();
         expect(held(images, 'a', PlaybackQuality.full), isTrue);
         expect(made, isFalse, reason: 'banked, but the GPU is not done with it');
@@ -539,12 +603,17 @@ void main() {
   });
 }
 
-/// A layer image cache that cannot read [key]'s cel.
-class _ThrowsFor extends LayerFrameImageCache {
-  _ThrowsFor(this.key, {required super.frameStore});
+/// A layer image cache that counts the makings asked of [key]'s cel.
+///
+/// ⚠️IT MAKES THEM AS ANY CACHE DOES: what a cel that could not be read is
+/// remembered by is the cache's record ([LayerFrameImageCache.unreadable]),
+/// kept by its making — a stand-in for the making would stand in for the
+/// record as well.
+class _CountsMakings extends LayerFrameImageCache {
+  _CountsMakings(this.key, {required super.frameStore});
 
   final BrushFrameKey key;
-  int thrown = 0;
+  int asked = 0;
 
   @override
   Future<LayerFrameImage?> prepare({
@@ -557,8 +626,7 @@ class _ThrowsFor extends LayerFrameImageCache {
     Future<QuietTurn?> Function()? turn,
   }) {
     if (key == this.key) {
-      thrown += 1;
-      throw StateError('the cel ${key.frameId.value} cannot be read');
+      asked += 1;
     }
     return super.prepare(
       key: key,

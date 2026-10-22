@@ -14,6 +14,7 @@ import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
 import '../../helpers/decode_audio_file.dart';
+import '../../helpers/native_call_watch.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 import '../../ui/export/fake_ffmpeg_process.dart';
@@ -32,8 +33,14 @@ void main() {
   final osHasEncoder = Platform.isWindows || Platform.isMacOS;
 
   late Directory directory;
+  late NativeCallWatch watch;
 
+  // Watched from before each test's first call into the engine to after
+  // the last one, the abort below: every test here calls it, and this
+  // file's first movie stood twelve minutes unwatched on 10-21 (the board
+  // card's ninth sighting), its clock stopped inside the call.
   setUp(() async {
+    watch = await NativeCallWatch.start('the OS video encoder');
     QaVideoEncoder.debugResetForTests();
     QaAudioDecoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = libraryPath;
@@ -41,7 +48,9 @@ void main() {
   });
 
   tearDown(() async {
+    watch.step('letting the encoder go');
     QaVideoEncoder.instance?.abort();
+    watch.stop();
     QaVideoEncoder.debugResetForTests();
     QaAudioDecoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = null;
@@ -83,6 +92,7 @@ void main() {
   }
 
   test('the capability answer matches the OS', () {
+    watch.step('the capability: asking for the encoder');
     final encoder = QaVideoEncoder.instance;
     expect(encoder, isNotNull, reason: 'the binary did not bind');
     expect(
@@ -99,8 +109,10 @@ void main() {
     if (!osHasEncoder) {
       return;
     }
+    watch.step('a real MP4: asking for the encoder');
     final encoder = QaVideoEncoder.instance!;
     final path = '${directory.path}/out.mp4';
+    watch.step('a real MP4: opening the writer');
     expect(
       encoder.open(
         path: path,
@@ -116,6 +128,7 @@ void main() {
     );
     const samplesPerFrame = 48000 ~/ 24;
     for (var frame = 0; frame < 24; frame += 1) {
+      watch.step('a real MP4: writing frame $frame');
       expect(
         encoder.writeFrame(rgbaFrame(64, 48, frame)),
         isTrue,
@@ -127,12 +140,14 @@ void main() {
         pcm[index * 2] = value;
         pcm[index * 2 + 1] = -value;
       }
+      watch.step('a real MP4: writing the sound of frame $frame');
       expect(
         encoder.writeAudio(pcm, samplesPerFrame),
         isTrue,
         reason: 'audio $frame: ${encoder.lastError}',
       );
     }
+    watch.step('a real MP4: finishing the movie');
     expect(encoder.finish(), isTrue, reason: encoder.lastError);
     expect(
       looksLikeMp4(path),
@@ -146,8 +161,10 @@ void main() {
     if (!osHasEncoder) {
       return;
     }
+    watch.step('an odd canvas: asking for the encoder');
     final encoder = QaVideoEncoder.instance!;
     final path = '${directory.path}/odd.mp4';
+    watch.step('an odd canvas: opening the writer');
     expect(
       encoder.open(
         path: path,
@@ -160,8 +177,10 @@ void main() {
       reason: encoder.lastError,
     );
     for (var frame = 0; frame < 6; frame += 1) {
+      watch.step('an odd canvas: writing frame $frame');
       expect(encoder.writeFrame(rgbaFrame(63, 47, frame)), isTrue);
     }
+    watch.step('an odd canvas: finishing the movie');
     expect(encoder.finish(), isTrue, reason: encoder.lastError);
     expect(looksLikeMp4(path), isTrue);
   }, skip: skip);
@@ -170,10 +189,12 @@ void main() {
     if (!osHasEncoder) {
       return;
     }
+    watch.step('a second open: asking for the encoder');
     final encoder = QaVideoEncoder.instance!;
     // 64x48, not smaller: the Microsoft H.264 encoder refuses tiny
     // resolutions (32x32 fails on a real machine) and that is the OS's
     // call, not this test's subject.
+    watch.step('a second open: opening the first writer');
     expect(
       encoder.open(
         path: '${directory.path}/one.mp4',
@@ -185,6 +206,7 @@ void main() {
       isTrue,
       reason: encoder.lastError,
     );
+    watch.step('a second open: opening a second while it runs');
     expect(
       encoder.open(
         path: '${directory.path}/two.mp4',
@@ -196,8 +218,10 @@ void main() {
       isFalse,
       reason: 'one export at a time, like the capture device',
     );
+    watch.step('a second open: aborting the first');
     encoder.abort();
     // After the abort a fresh export opens again.
+    watch.step('a second open: opening again after the abort');
     expect(
       encoder.open(
         path: '${directory.path}/three.mp4',
@@ -209,6 +233,7 @@ void main() {
       isTrue,
       reason: encoder.lastError,
     );
+    watch.step('a second open: aborting the third');
     encoder.abort();
   }, skip: skip);
 
@@ -248,6 +273,7 @@ void main() {
       encoderResolver: () => QaVideoEncoder.instance,
     );
     final outputPath = '${directory.path}/service.mp4';
+    watch.step('the service: exporting the movie');
     final summary = await service.exportVideo(
       count: 12,
       renderImage: render,
@@ -258,6 +284,7 @@ void main() {
     expect(summary.written, 12);
     expect(summary.processed, 12);
     expect(looksLikeMp4(outputPath), isTrue);
+    watch.step('the service: reading its sound back');
     final sound = decodeAudioFile(outputPath);
     expect(sound, isNotNull, reason: 'the movie went out without its sound');
     expect(
@@ -289,6 +316,7 @@ void main() {
       encoderResolver: () => QaVideoEncoder.instance,
       processStarter: (executable, arguments) async => ffmpeg,
     );
+    watch.step('a refused job: exporting the movie');
     final summary = await service.exportVideo(
       count: 3,
       renderImage: render,
@@ -319,6 +347,7 @@ void main() {
     final readBefore = VideoExportService.debugReadbacks;
     final handed = <ui.Image>[];
 
+    watch.step('a held frame: exporting the movie');
     final summary = await service.exportVideo(
       count: 12,
       renderImage: (_) async {

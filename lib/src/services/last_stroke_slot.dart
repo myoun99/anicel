@@ -55,6 +55,7 @@ class LastStrokeSlot extends ChangeNotifier {
       strokeBounds: stroke.strokeBounds,
       blendMode: stroke.blendMode,
       strokeOpacity: stroke.strokeOpacity,
+      end: stroke.end,
     );
     notifyListeners();
   }

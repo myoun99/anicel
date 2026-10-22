@@ -1,13 +1,16 @@
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_correction.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/brush_settings.dart';
+import '../../models/brush_settings_group.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
+import '../../models/brush_tip_order.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
@@ -307,10 +310,11 @@ List<CanvasShapeKind> canvasToolShapes(CanvasTool tool) => switch (tool) {
 /// What survives is the LAYOUT — size and opacity on the strip, the rest in
 /// the panel — not two kinds of value.
 ///
-/// What is genuinely the tool state's own is [tool], [stabilizerStrength]
-/// (hand feel, not a brush parameter), and the NON-BRUSH tools' settings
-/// ([fillBlendMode], [cutStampBlendMode], [fillOpacity], [cutStampOpacity]):
-/// those tools have no preset for a value to belong to.
+/// What is genuinely the tool state's own is [tool] and the NON-BRUSH tools'
+/// settings ([fillBlendMode], [cutStampBlendMode], [fillOpacity],
+/// [cutStampOpacity]): those tools have no preset for a value to belong to.
+/// ↩️The stabilizer was here too, as hand feel (P7); it is the brush's own
+/// now, as in Clip Studio ([correction], 유저 2026-10-20 F-418-Q6).
 class BrushToolState {
   factory BrushToolState({
     double size = defaultSize,
@@ -325,13 +329,10 @@ class BrushToolState {
     BrushPressureCurve? hardnessPressureCurve,
     double roundness = defaultRoundness,
     double angleDegrees = defaultAngleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask> tips = const [],
+    BrushTipOrder tipOrder = BrushTipOrder.repeat,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
-    double sizeJitter = 0.0,
-    double opacityJitter = 0.0,
     double angleJitter = 0.0,
-    double roundnessJitter = 0.0,
-    double spacingJitter = 0.0,
     double scatterRadiusRatio = 0.0,
     int scatterCount = 1,
     bool scatterBothAxes = true,
@@ -350,7 +351,7 @@ class BrushToolState {
     CanvasShapeKind cutShape = CanvasShapeKind.rect,
     CanvasShapeKind fillShape = CanvasShapeKind.rect,
     CanvasShapeKind drawShape = CanvasShapeKind.rect,
-    double stabilizerStrength = 0.0,
+    BrushCorrection correction = const BrushCorrection(),
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
@@ -374,13 +375,10 @@ class BrushToolState {
       hardnessPressureCurve: hardnessPressureCurve,
       roundness: roundness,
       angleDegrees: angleDegrees,
-      tipMask: tipMask,
+      tips: tips,
+      tipOrder: tipOrder,
       rotationMode: rotationMode,
-      sizeJitter: sizeJitter,
-      opacityJitter: opacityJitter,
       angleJitter: angleJitter,
-      roundnessJitter: roundnessJitter,
-      spacingJitter: spacingJitter,
       scatterRadiusRatio: scatterRadiusRatio,
       scatterCount: scatterCount,
       scatterBothAxes: scatterBothAxes,
@@ -399,7 +397,7 @@ class BrushToolState {
       cutShape: cutShape,
       fillShape: fillShape,
       drawShape: drawShape,
-      stabilizerStrength: stabilizerStrength,
+      correction: correction,
       blendMode: blendMode,
       antiAlias: antiAlias,
       fillBlendMode: fillBlendMode,
@@ -419,7 +417,6 @@ class BrushToolState {
     this.cutShape = CanvasShapeKind.rect,
     this.fillShape = CanvasShapeKind.rect,
     this.drawShape = CanvasShapeKind.rect,
-    this.stabilizerStrength = 0.0,
     this.fillBlendMode = BrushBlendMode.color,
     this.cutStampBlendMode = BrushBlendMode.color,
     this.shapeBlendMode = BrushBlendMode.color,
@@ -428,10 +425,11 @@ class BrushToolState {
     this.cutStampOpacity = 1.0,
     this.cutDeletesSource = false,
     this.presetId,
+    this.folded = const {},
   });
 
   /// Builds tool state from a loose [BrushShape] and the values that still
-  /// live outside it (tool, stabilizer, the non-brush tools' own blends and
+  /// live outside it (tool, the non-brush tools' own blends and
   /// opacities — see the class doc), clamping every shared parameter into the
   /// panel's ranges (see [_clampShape]). This is the wholesale hop the
   /// preset-load path takes — [fromBrushSettings] routes through it — so no
@@ -446,7 +444,6 @@ class BrushToolState {
     CanvasShapeKind cutShape = CanvasShapeKind.rect,
     CanvasShapeKind fillShape = CanvasShapeKind.rect,
     CanvasShapeKind drawShape = CanvasShapeKind.rect,
-    double stabilizerStrength = 0.0,
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
     BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
     BrushBlendMode shapeBlendMode = BrushBlendMode.color,
@@ -454,6 +451,7 @@ class BrushToolState {
     double fillOpacity = 1.0,
     bool cutDeletesSource = false,
     double cutStampOpacity = 1.0,
+    Set<BrushSettingsGroup> folded = const {},
   }) {
     return BrushToolState._raw(
       shape: _clampShape(shape),
@@ -462,7 +460,6 @@ class BrushToolState {
       cutShape: cutShape,
       fillShape: fillShape,
       drawShape: drawShape,
-      stabilizerStrength: clampStabilizerStrength(stabilizerStrength),
       fillBlendMode: fillBlendMode,
       cutStampBlendMode: cutStampBlendMode,
       shapeBlendMode: shapeBlendMode,
@@ -470,6 +467,7 @@ class BrushToolState {
       fillOpacity: clampOpacity(fillOpacity),
       cutDeletesSource: cutDeletesSource,
       cutStampOpacity: clampOpacity(cutStampOpacity),
+      folded: folded,
     );
   }
 
@@ -486,13 +484,10 @@ class BrushToolState {
     BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask>? tips,
+    BrushTipOrder? tipOrder,
     BrushTipRotationMode? rotationMode,
-    double? sizeJitter,
-    double? opacityJitter,
     double? angleJitter,
-    double? roundnessJitter,
-    double? spacingJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
@@ -515,7 +510,7 @@ class BrushToolState {
     CanvasShapeKind? cutShape,
     CanvasShapeKind? fillShape,
     CanvasShapeKind? drawShape,
-    double? stabilizerStrength,
+    BrushCorrection? correction,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     BrushBlendMode? fillBlendMode,
@@ -542,13 +537,10 @@ class BrushToolState {
         ),
         roundness: roundness ?? defaultRoundness,
         angleDegrees: angleDegrees ?? defaultAngleDegrees,
-        tipMask: tipMask,
+        tips: tips ?? const [],
+        tipOrder: tipOrder ?? BrushTipOrder.repeat,
         rotationMode: rotationMode ?? BrushTipRotationMode.fixed,
-        sizeJitter: sizeJitter ?? 0.0,
-        opacityJitter: opacityJitter ?? 0.0,
         angleJitter: angleJitter ?? 0.0,
-        roundnessJitter: roundnessJitter ?? 0.0,
-        spacingJitter: spacingJitter ?? 0.0,
         scatterRadiusRatio: scatterRadiusRatio ?? 0.0,
         scatterCount: scatterCount ?? 1,
         scatterBothAxes: scatterBothAxes ?? true,
@@ -569,13 +561,13 @@ class BrushToolState {
         colorStretch: colorStretch ?? 0.0,
         blendMode: blendMode ?? BrushBlendMode.color,
         antiAlias: antiAlias ?? BrushAntiAlias.high,
+        correction: correction ?? const BrushCorrection(),
       ),
       tool: tool ?? CanvasTool.brush,
       selectShape: selectShape ?? CanvasShapeKind.rect,
       cutShape: cutShape ?? CanvasShapeKind.rect,
       fillShape: fillShape ?? CanvasShapeKind.rect,
       drawShape: drawShape ?? CanvasShapeKind.rect,
-      stabilizerStrength: stabilizerStrength ?? 0.0,
       fillBlendMode: fillBlendMode ?? BrushBlendMode.color,
       cutStampBlendMode: cutStampBlendMode ?? BrushBlendMode.color,
       shapeBlendMode: shapeBlendMode ?? BrushBlendMode.color,
@@ -598,11 +590,7 @@ class BrushToolState {
     flow: clampUnit(s.flow),
     roundness: clampRoundness(s.roundness),
     angleDegrees: clampAngleDegrees(s.angleDegrees),
-    sizeJitter: clampZeroToOne(s.sizeJitter),
-    opacityJitter: clampZeroToOne(s.opacityJitter),
     angleJitter: clampZeroToOne(s.angleJitter),
-    roundnessJitter: clampZeroToOne(s.roundnessJitter),
-    spacingJitter: clampZeroToOne(s.spacingJitter),
     paintAmount: clampZeroToOne(s.paintAmount),
     paintDensity: clampZeroToOne(s.paintDensity),
     colorStretch: clampZeroToOne(s.colorStretch),
@@ -615,6 +603,16 @@ class BrushToolState {
     textureDensity: clampZeroToOne(s.textureDensity),
     textureBrightness: clampSignedUnit(s.textureBrightness),
     textureContrast: clampSignedUnit(s.textureContrast),
+    correction: s.correction.copyWith(
+      stabilization: clampCorrection(
+        s.correction.stabilization,
+        BrushCorrection.maxStabilization,
+      ),
+      postStrength: clampCorrection(
+        s.correction.postStrength,
+        BrushCorrection.maxPostStrength,
+      ),
+    ),
   );
 
   /// −1..1, the range both texture LEVEL knobs live in. Neutral is 0 in the
@@ -623,7 +621,13 @@ class BrushToolState {
   static double clampSignedUnit(double value) =>
       !value.isFinite ? 0.0 : value.clamp(-1.0, 1.0).toDouble();
 
-  static const double minSize = 1.0;
+  /// 🗣️유저 2026-10-12 (size-rack-0-7-under-the-brush-floor-Q1): 「브러시
+  /// 사이즈 최소치만 0.1까지 내림. 프리셋은 지금이랑 그대로」 — and again
+  /// 10-17 「1px밑으로 안내려가는데」. ↩️1.0 came in with the first
+  /// implementation (Phase 302) with no reason given, and kept the size
+  /// panel's own 0.7 out of reach. A mark under a pixel — a dab, the
+  /// shape tool's plain line — lands by `markUnderAPixel`.
+  static const double minSize = 0.1;
   // CSP-parity ceiling; the settings slider maps this range exponentially so
   // the small sizes keep their precision.
   static const double maxSize = 2000.0;
@@ -664,7 +668,7 @@ class BrushToolState {
   /// BB-3 (R26 #11): per-setting pen-pressure response curves; `null` =
   /// the setting ignores pressure. Part of brush presets (they travel
   /// through [toBrushSettings]/[fromBrushSettings] like the sliders).
-  /// [copyWith] PRESERVES them (same contract as [tipMask]); clearing one
+  /// [copyWith] PRESERVES them (same contract as [tips]); clearing one
   /// goes through [withPressureCurve].
   BrushPressureCurve? get sizePressureCurve => shape.sizePressureCurve;
   BrushPressureCurve? get opacityPressureCurve => shape.opacityPressureCurve;
@@ -679,28 +683,33 @@ class BrushToolState {
   /// horizontal, in degrees (0-180; an ellipse repeats every 180).
   double get angleDegrees => shape.angleDegrees;
 
-  /// Sampled (bitmap) tip applied by a preset; `null` uses the analytic
-  /// ROUND tip — the two shapes a brush has, Photoshop's and Clip Studio's
-  /// pair. Masks arrive via presets and imports. Cleared only by applying a
-  /// preset without one ([BrushToolState.fromBrushSettings]); [copyWith] keeps
-  /// it so slider tweaks keep the textured tip.
+  /// Sampled (bitmap) tips, in the order the dabs take them; none uses the
+  /// analytic ROUND tip — the two shapes a brush has, Photoshop's and Clip
+  /// Studio's pair. Masks arrive via presets, imports and the tip list in
+  /// the panel. [copyWith] keeps them when not given, so slider tweaks keep
+  /// the textured tip. See `BrushShape.tips`.
+  List<BrushTipMask> get tips => shape.tips;
+
+  /// Which tip each dab takes — see `BrushTipOrder`.
+  BrushTipOrder get tipOrder => shape.tipOrder;
+
+  /// The first of [tips], or `null` for the round tip.
   BrushTipMask? get tipMask => shape.tipMask;
 
-  /// Placement dynamics carried from presets/imports (no panel controls
-  /// yet, pending the unified UI pass): see the same-named fields on
+  /// The tip's 向き — the base it turns from and its random turn, the
+  /// rows under the panel's angle (F-176-Q1): see the same-named fields on
   /// `BrushShape`.
   BrushTipRotationMode get rotationMode => shape.rotationMode;
-  double get sizeJitter => shape.sizeJitter;
-  double get opacityJitter => shape.opacityJitter;
   double get angleJitter => shape.angleJitter;
-  double get roundnessJitter => shape.roundnessJitter;
-  double get spacingJitter => shape.spacingJitter;
 
   /// How this brush composites — see [BrushShape.blendMode].
   BrushBlendMode get blendMode => shape.blendMode;
 
   /// How hard this brush's edge lands — see [BrushShape.antiAlias].
   BrushAntiAlias get antiAlias => shape.antiAlias;
+
+  /// How this brush corrects its line — see [BrushShape.correction].
+  BrushCorrection get correction => shape.correction;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
   bool get scatterBothAxes => shape.scatterBothAxes;
@@ -747,6 +756,11 @@ class BrushToolState {
   /// without the other. [withPreset] sets it, [carryingBrushOf] moves it with
   /// the shape when a paint tool is restored, everything else carries it.
   final BrushPresetId? presetId;
+
+  /// The groups of the brush's settings folded in the panel — the brush's
+  /// own, moving with it as [presetId] does, and remembered with what the
+  /// hand changed on it ([BrushSettings.folded], F-418-Q10).
+  final Set<BrushSettingsGroup> folded;
 
   /// The outline SELECT drags out, remembered separately from the one CUT
   /// drags (유저 확정: 도형은 동사별로 기억). "The shape vocabulary is
@@ -814,11 +828,6 @@ class BrushToolState {
       _ => this,
     };
   }
-
-  /// Pull-string stabilization strength (P7), 0..100 screen px of rope.
-  /// A HAND-FEEL setting, deliberately outside brush presets — preset
-  /// application carries it over unchanged.
-  final double stabilizerStrength;
 
   /// The FILL's composite mode, kept apart from the brush's (유저 확정:
   /// 블렌드모드 선택은 툴에 산다).
@@ -1010,7 +1019,7 @@ class BrushToolState {
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
   factory BrushToolState.fromBrushSettings(BrushSettings settings) =>
-      BrushToolState.fromShape(settings.shape);
+      BrushToolState.fromShape(settings.shape, folded: settings.folded);
 
   /// This state after [preset] is applied, on [tool] — its shape, and the
   /// preset itself as the brush the state now holds ([presetId]).
@@ -1030,9 +1039,10 @@ class BrushToolState {
   ///
   /// ⇒ A preset owns **the shape**, and everything outside the shape survives
   /// because it is never touched rather than because it was listed. The
-  /// remembered shape kinds, the stabilizer and the per-tool blends are all
-  /// out there, so a field added tomorrow is safe without anyone knowing this
-  /// method exists.
+  /// remembered shape kinds and the per-tool blends are all out there, so a
+  /// field added tomorrow is safe without anyone knowing this method exists.
+  /// (The stabilizer was out there too until it became the brush's own —
+  /// F-418-Q6 — and a preset now carries it.)
   ///
   /// ⚠️Two exceptions stay, and they are named because they are DECISIONS,
   /// not omissions.
@@ -1059,22 +1069,23 @@ class BrushToolState {
   /// come back with it, not three values laid on top of the file.
   ///
   /// The list went from eleven entries to one, and the one that remains is
-  /// the only one a reader has to be able to justify. (The stabilizer and
-  /// the remembered shape kinds were on the old list and no longer need to
-  /// be — they are outside the shape, so they are already safe.)
+  /// the only one a reader has to be able to justify. (The remembered shape
+  /// kinds were on the old list and no longer need to be — they are outside
+  /// the shape, so they are already safe.)
   BrushToolState withPreset(
     BrushPreset preset, {
     required CanvasTool tool,
     BrushSettings? held,
   }) {
-    final applied = copyWith(
-      shape: (held ?? preset.settings).shape,
-      tool: tool,
-      color: color,
-    );
+    final brush = held ?? preset.settings;
+    final applied = copyWith(shape: brush.shape, tool: tool, color: color);
     // ONE assignment carries the values and the brush they belong to — see
     // [presetId] for what two of them did.
-    return applied._rebuilt(shape: applied.shape, presetId: preset.id);
+    return applied._rebuilt(
+      shape: applied.shape,
+      presetId: preset.id,
+      folded: brush.folded,
+    );
   }
 
   /// This state holding [stored]'s BRUSH — its shape and the preset it came
@@ -1087,12 +1098,17 @@ class BrushToolState {
   /// brush tool's name — two facts about one brush, disagreeing.
   BrushToolState carryingBrushOf(BrushToolState stored) {
     final carried = copyWith(shape: stored.shape, color: color);
-    return carried._rebuilt(shape: carried.shape, presetId: stored.presetId);
+    return carried._rebuilt(
+      shape: carried.shape,
+      presetId: stored.presetId,
+      folded: stored.folded,
+    );
   }
 
   /// Snapshot of this tool state as the model-layer [BrushSettings] — the
   /// payload brush presets store.
-  BrushSettings toBrushSettings() => BrushSettings.fromShape(shape);
+  BrushSettings toBrushSettings() =>
+      BrushSettings.fromShape(shape, folded: folded);
 
   BrushEditCanvasInputSettings toInputSettings() {
     return BrushEditCanvasInputSettings.fromShape(
@@ -1110,7 +1126,6 @@ class BrushToolState {
       // stages, one loading the brush and one laying the stroke down — so
       // suppressing the blend was a deviation, not a safeguard.
       blendMode: activeBlendMode,
-      stabilizerStrength: stabilizerStrength,
     );
   }
 
@@ -1139,13 +1154,10 @@ class BrushToolState {
     BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask>? tips,
+    BrushTipOrder? tipOrder,
     BrushTipRotationMode? rotationMode,
-    double? sizeJitter,
-    double? opacityJitter,
     double? angleJitter,
-    double? roundnessJitter,
-    double? spacingJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
@@ -1170,7 +1182,7 @@ class BrushToolState {
     CanvasShapeKind? cutShape,
     CanvasShapeKind? fillShape,
     CanvasShapeKind? drawShape,
-    double? stabilizerStrength,
+    BrushCorrection? correction,
     BrushBlendMode? fillBlendMode,
     BrushBlendMode? cutStampBlendMode,
     BrushBlendMode? shapeBlendMode,
@@ -1178,6 +1190,7 @@ class BrushToolState {
     double? fillOpacity,
     bool? cutDeletesSource,
     double? cutStampOpacity,
+    Set<BrushSettingsGroup>? folded,
   }) {
     // The base is the caller's shape when it gave one; the named arguments
     // then land on TOP of it, so "this brush, but at my size" is one call.
@@ -1200,13 +1213,10 @@ class BrushToolState {
           ),
           roundness: roundness,
           angleDegrees: angleDegrees,
-          tipMask: tipMask,
+          tips: tips,
+          tipOrder: tipOrder,
           rotationMode: rotationMode,
-          sizeJitter: sizeJitter,
-          opacityJitter: opacityJitter,
           angleJitter: angleJitter,
-          roundnessJitter: roundnessJitter,
-          spacingJitter: spacingJitter,
           scatterRadiusRatio: scatterRadiusRatio,
           scatterCount: scatterCount,
           scatterBothAxes: scatterBothAxes,
@@ -1234,6 +1244,7 @@ class BrushToolState {
           colorStretch: colorStretch,
           blendMode: blendMode,
           antiAlias: antiAlias,
+          correction: correction,
         ),
       ),
       tool: tool ?? this.tool,
@@ -1241,9 +1252,6 @@ class BrushToolState {
       cutShape: cutShape ?? this.cutShape,
       fillShape: fillShape ?? this.fillShape,
       drawShape: drawShape ?? this.drawShape,
-      stabilizerStrength: clampStabilizerStrength(
-        stabilizerStrength ?? this.stabilizerStrength,
-      ),
       fillBlendMode: fillBlendMode ?? this.fillBlendMode,
       cutStampBlendMode: cutStampBlendMode ?? this.cutStampBlendMode,
       shapeBlendMode: shapeBlendMode ?? this.shapeBlendMode,
@@ -1252,6 +1260,7 @@ class BrushToolState {
       cutDeletesSource: cutDeletesSource ?? this.cutDeletesSource,
       cutStampOpacity: clampOpacity(cutStampOpacity ?? this.cutStampOpacity),
       presetId: presetId,
+      folded: folded ?? this.folded,
     );
   }
 
@@ -1272,7 +1281,7 @@ class BrushToolState {
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
       shape.pressureCurveFor(target);
 
-  /// Replaces (or CLEARS, with null) one of the three sampled masks.
+  /// Replaces (or CLEARS, with null) the dual or the texture mask.
   /// [copyWith] preserves them so a slider tweak keeps a textured tip, which
   /// leaves no way to take one off; this is that way.
   ///
@@ -1287,13 +1296,15 @@ class BrushToolState {
 
   /// [shape] replaced, every hand setting carried through untouched.
   BrushToolState _withShape(BrushShape next) =>
-      _rebuilt(shape: next, presetId: presetId);
+      _rebuilt(shape: next, presetId: presetId, folded: folded);
 
-  /// [shape] and [presetId] as given, every other field exactly as it is —
-  /// the one list of the fields outside the shape besides [copyWith]'s.
+  /// [shape], [presetId] and [folded] — the brush — as given, every other
+  /// field exactly as it is: the one list of the fields outside the shape
+  /// besides [copyWith]'s.
   BrushToolState _rebuilt({
     required BrushShape shape,
     required BrushPresetId? presetId,
+    required Set<BrushSettingsGroup> folded,
   }) => BrushToolState._raw(
     shape: _clampShape(shape),
     tool: tool,
@@ -1301,7 +1312,6 @@ class BrushToolState {
     cutShape: cutShape,
     fillShape: fillShape,
     drawShape: drawShape,
-    stabilizerStrength: stabilizerStrength,
     fillBlendMode: fillBlendMode,
     cutStampBlendMode: cutStampBlendMode,
     shapeBlendMode: shapeBlendMode,
@@ -1310,6 +1320,7 @@ class BrushToolState {
     cutDeletesSource: cutDeletesSource,
     cutStampOpacity: cutStampOpacity,
     presetId: presetId,
+    folded: folded,
   );
 
   /// Replaces (or CLEARS, with null) one setting's pressure curve —
@@ -1412,12 +1423,12 @@ class BrushToolState {
     return value.clamp(0.05, 10.0).toDouble();
   }
 
-  /// Clamps the stabilizer rope to [0, 100] screen pixels.
-  static double clampStabilizerStrength(double value) {
+  /// Clamps a correction value — the 손떨림 보정, the 후보정 — into 0..[max].
+  static double clampCorrection(double value, double max) {
     if (!value.isFinite) {
       return 0.0;
     }
-    return value.clamp(0.0, 100.0).toDouble();
+    return value.clamp(0.0, max).toDouble();
   }
 
   @override
@@ -1434,7 +1445,6 @@ class BrushToolState {
           other.cutShape == cutShape &&
           other.fillShape == fillShape &&
           other.drawShape == drawShape &&
-          other.stabilizerStrength == stabilizerStrength &&
           // BB-3 audit fix: the brush's blend was MISSING from ==/hashCode
           // since BB-1 — two states differing only in blend compared equal,
           // so listeners could skip rebuilding on a blend change. It now
@@ -1449,7 +1459,9 @@ class BrushToolState {
           other.cutDeletesSource == cutDeletesSource &&
           // H25-again: which brush a state holds is part of the state — two
           // states wearing one shape under two names are not the same state.
-          other.presetId == presetId;
+          other.presetId == presetId &&
+          other.folded.length == folded.length &&
+          other.folded.containsAll(folded);
 
   @override
   int get hashCode => Object.hash(
@@ -1459,7 +1471,6 @@ class BrushToolState {
     cutShape,
     fillShape,
     drawShape,
-    stabilizerStrength,
     fillBlendMode,
     cutStampBlendMode,
     shapeBlendMode,
@@ -1468,5 +1479,6 @@ class BrushToolState {
     cutDeletesSource,
     cutStampOpacity,
     presetId,
+    Object.hashAllUnordered(folded),
   );
 }

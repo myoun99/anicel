@@ -1,9 +1,11 @@
 import 'camera_instruction.dart';
 import 'camera_moves.dart';
+import 'camera_work_marks.dart' show cameraKeyLabel;
 import 'cut.dart';
 import 'frame.dart'
     show DrawingHead, InbetweenMark, breakdownMark, drawingHeadOf;
 import 'frame_id.dart';
+import 'key_range_move.dart' show transformKeyAgreedNames;
 import 'layer.dart';
 import 'layer_id.dart';
 import 'layer_mark.dart';
@@ -67,6 +69,12 @@ enum TimesheetCellKind {
   /// "X" cell (same rule as the timeline grids: marks continue a run).
   emptyRunStart,
 
+  /// The rest of that run, past its ×: [TimesheetCell.spanOffset] counts
+  /// from the ×, so the block's stretch line runs down it as down a held
+  /// drawing (유저 2026-10-21, F-430: 「이 늘림 선은 x부분 이후도 늘림선
+  /// 긋는것임. 진짜 어디던 긋는느낌」). ↩️These rows were [empty].
+  emptyRunSpan,
+
   /// A drawing exposure starts here; [TimesheetCell.label] carries the cel
   /// number ([Frame.celNumber] — the cel export files by the same rule) or
   /// the in-between mark for an unnamed drawing.
@@ -122,6 +130,7 @@ class TimesheetCell {
     this.valueB,
     this.seName,
     this.seType,
+    this.keyLabel,
   });
 
   static const TimesheetCell blank = TimesheetCell(TimesheetCellKind.empty);
@@ -139,6 +148,7 @@ class TimesheetCell {
     valueB: valueB,
     seName: seName,
     seType: seType,
+    keyLabel: keyLabel,
   );
 
   final TimesheetCellKind kind;
@@ -183,6 +193,15 @@ class TimesheetCell {
   /// prints it over the name when [SeLineType.printsOnSheets] says so.
   final SeLineType? seType;
 
+  /// What a [TimesheetCellKind.cameraKey] row writes for its key: the key's
+  /// name, else the frame it stands on — as every surface labels a camera
+  /// key ([cameraKeyLabel]; I-89 ⑤, 유저 2026-10-10: 「헤더이름따라서 이름
+  /// 적고, 없거나 하면 아까 정한대로 12f 이런식으로 프레임 번호」).
+  /// ↩️The row was a dot (유저 2026-10-13: 「아직도 타임시트 용지패널에
+  /// 카메라 키가 동그란 점을 찍거든?」). ⛔Not [label]: on a key row that is
+  /// the move the stretch from it makes.
+  final String? keyLabel;
+
   /// Equal cells print the same — what lets the sheet tell a drag that
   /// re-prints a column from one that only moves a value it does not print
   /// (sheet-prints-only-its-drags).
@@ -198,7 +217,8 @@ class TimesheetCell {
       other.valueA == valueA &&
       other.valueB == valueB &&
       other.seName == seName &&
-      other.seType == seType;
+      other.seType == seType &&
+      other.keyLabel == keyLabel;
 
   @override
   int get hashCode => Object.hash(
@@ -212,6 +232,7 @@ class TimesheetCell {
     valueB,
     seName,
     seType,
+    keyLabel,
   );
 }
 
@@ -227,7 +248,7 @@ class TimesheetColumn {
     this.layerId,
     this.previewCellsBuilder,
     this.crossesCutEnd = false,
-    this.spillsInAtStart = false,
+    this.spillInLeadFrames,
   });
 
   final TimesheetColumnKind kind;
@@ -254,14 +275,21 @@ class TimesheetColumn {
   /// for unbacked slots.
   final List<TimesheetCell> Function(Layer layer)? previewCellsBuilder;
 
-  /// SE columns: whether a sound starting inside this cut runs past its
-  /// end — the timeline's `~` continuation mark, printed on the sheet at
-  /// the cut-end line (SE globalization round). Pure display.
+  /// SE columns: whether a sound starting inside this cut runs past the
+  /// line it is drawn to — its 尺 plus the のりしろ — the timeline's `~`
+  /// continuation mark, printed on the sheet at that end line (SE
+  /// globalization round; F-358). Pure display.
   final bool crossesCutEnd;
+
+  /// SE columns: how far into a sound from an earlier cut row 0 already is
+  /// — the block there began that many frames before the cut — or null
+  /// when none spills in ([TrackSeWindow.spillInLeadFrames]). The sheet
+  /// lays its words out from that head and shows its own part (F-358).
+  final int? spillInLeadFrames;
 
   /// SE columns: whether a sound from an earlier cut spills into row 0 —
   /// the timeline's start-side `~`, printed at the column's first row.
-  final bool spillsInAtStart;
+  bool get spillsInAtStart => spillInLeadFrames != null;
 }
 
 /// One paper page: [frameCount] rows starting at [startFrame], laid out in
@@ -285,9 +313,10 @@ class TimesheetPage {
 ///
 /// The column set follows the Japanese paper form: the ACTION block carries
 /// the onTimesheet animation layers (headed by their real names, leftover
-/// slots blank), then the frame rail, S1/S2 dialogue-SE slots, a blank CELL
-/// block and the camera columns — fixed slots that stay blank when
-/// unbacked, with no placeholder letters anywhere.
+/// slots blank), then the frame rail, S1/S2 dialogue-SE slots, the CELL
+/// block — the 動画 layers, which the ACTION block does not carry (F-406)
+/// — and the camera columns: fixed slots that stay blank when unbacked,
+/// with no placeholder letters anywhere.
 class TimesheetDocument {
   TimesheetDocument._({
     required this.title,
@@ -296,6 +325,7 @@ class TimesheetDocument {
     required this.pageMemos,
     required this.visibleHeaderFields,
     required this.exposureBarThreshold,
+    required this.cellExposureBarThreshold,
     required this.seEmptyFill,
     required this.cutName,
     required this.fps,
@@ -357,27 +387,16 @@ class TimesheetDocument {
       cut: cut,
       trackSeLayers: trackSeLayers,
       cutStartFrame: cutStartFrame,
+      transitionSpans: transitionSpans,
     );
     final playbackFrameCount = sources.playbackFrameCount;
-    // のりしろ. The conte 尺 (and so the cut block, and so the total) never
-    // moves — the sheet just has more rows to fill than the cut is long,
-    // which is exactly what 「シートは必ずここまで記入する」 asks for.
-    //
-    // Both sides show it at the TAIL (user's rule): the blue line answers
-    // "how much do I draw", not "where does the extra sit", and the mark on
-    // the transition row answers where.
-    final handles = cutTransitionHandles(
-      cutStart: cutStartFrame,
-      cutEnd: cutStartFrame + playbackFrameCount,
-      spans: transitionSpans,
-    );
-    final drawnFrameCount = handles.drawnFrames(playbackFrameCount);
-    final animationLayers = sources.celLayers;
+    final drawnFrameCount = sources.drawnFrameCount;
+    final actionLayers = sources.actionLayers;
+    final cellLayers = sources.cellLayers;
     final sheetKind = sheetKindFor(
       cut.metadata.sheetKind,
-      celColumns: animationLayers.length,
+      celColumns: sources.celColumnsAcross,
     );
-    final actionColumnCount = sheetKind.celColumns;
     final celColumnCount = sheetKind.celColumns;
     final pageFrameCount = (pageSeconds ?? sheetKind.pageSeconds) * fps;
     final pageCount = timesheetPageCount(drawnFrameCount, pageFrameCount);
@@ -385,10 +404,6 @@ class TimesheetDocument {
 
     final seSlots = sources.seLayers;
     final instructionLayers = sources.instructionLayers;
-    // The one clip, again, for the LIVE preview clone a drag publishes —
-    // it arrives outside [SheetSources] and still owes the same rule.
-    Layer clipToSheet(Layer displayClone) =>
-        clipLayerStartsBefore(displayClone, playbackFrameCount);
     // The CAM keyframe column obeys the camera layer's timesheet toggle
     // (unified layer controls); toggled off it stays printed blank form
     // space, like an unbacked slot.
@@ -424,22 +439,27 @@ class TimesheetDocument {
       rowCount: rowCount,
       instructionDefById: instructionDefById,
     );
+    final actionSlots = _slotCount(celColumnCount, actionLayers);
+    final seColumnSlots = _slotCount(seColumnCount, seSlots);
     final columns = <TimesheetColumn>[
-      // Animation layers fill the ACTION block in order, headed by their
-      // real names; unbacked slots stay blank handwriting space.
-      for (
-        var slot = 0;
-        slot < _slotCount(actionColumnCount, animationLayers);
-        slot += 1
-      )
-        _actionColumn(slot, animationLayers, rowCount, playbackFrameCount, dataSheet),
-      for (var slot = 0; slot < _slotCount(seColumnCount, seSlots); slot += 1)
-        _seColumn(slot, seSlots, rowCount, playbackFrameCount, dataSheet, clipToSheet),
-      // The CELL block mirrors the ACTION layers' NAMES as its headers
-      // (UI-R10 #10) — the cel re-assignment content stays blank
+      // The cel rows fill the ACTION block in order, headed by their real
+      // names — but the 動画 and 仕上げ ones, which fill the CELL block by
+      // the same law (F-406 · F-431); unbacked slots stay blank
       // handwriting space.
-      for (var slot = 0; slot < celColumnCount; slot += 1)
-        _celColumn(slot, animationLayers, rowCount),
+      for (var slot = 0; slot < actionSlots; slot += 1)
+        _celRowColumn(TimesheetColumnKind.action, slot, actionLayers, rowCount, playbackFrameCount, dataSheet),
+      for (var slot = 0; slot < seColumnSlots; slot += 1)
+        _seColumn(
+          slot,
+          seSlots,
+          rowCount,
+          playbackFrameCount,
+          dataSheet,
+          sources.clipToSheet,
+          drawnFrameCount: drawnFrameCount,
+        ),
+      for (var slot = 0; slot < _slotCount(celColumnCount, cellLayers); slot += 1)
+        _celRowColumn(TimesheetColumnKind.cel, slot, cellLayers, rowCount, playbackFrameCount, dataSheet),
       // CAM block: slot 0 keeps the camera transform keyframes; the
       // instruction rows (CAM 2 …) follow in layer order, growing the block
       // past the fixed count when a cut carries more.
@@ -448,21 +468,22 @@ class TimesheetDocument {
     ];
 
     return TimesheetDocument._(
-      title: info.title.isEmpty ? projectName : info.title,
+      title: info.titleOr(projectName),
       episode: info.episode,
       artist: cut.metadata.staffNameFor(sheetArtistMark),
       pageMemos: cut.metadata.pageNotes,
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,
+      cellExposureBarThreshold: info.cellExposureBarThreshold,
       seEmptyFill: info.seEmptyFill,
       cutName: cut.name,
       fps: fps,
       playbackFrameCount: playbackFrameCount,
-      transitionHandles: handles,
+      transitionHandles: sources.handles,
       sheetKind: sheetKind,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
-      books: List.unmodifiable(sources.books),
+      books: List.unmodifiable(sources.actionBooks),
       pages: List.unmodifiable([
         for (var page = 0; page < pageCount; page += 1)
           TimesheetPage(
@@ -474,17 +495,15 @@ class TimesheetDocument {
     );
   }
 
-  static TimesheetColumn _celColumn(int slot, List<Layer> animationLayers, int rowCount) {
-    return TimesheetColumn(
-      kind: TimesheetColumnKind.cel,
-      label: slot < animationLayers.length
-          ? animationLayers[slot].name
-          : '',
-      cells: _blankCells(rowCount),
-    );
-  }
-
-  static TimesheetColumn _seColumn(int slot, List<({bool crosses, Layer layer, bool spills})> seSlots, int rowCount, int playbackFrameCount, bool dataSheet, Layer Function(Layer displayClone) clipToSheet) {
+  static TimesheetColumn _seColumn(
+    int slot,
+    List<({Layer layer, int? spillInLeadFrames})> seSlots,
+    int rowCount,
+    int playbackFrameCount,
+    bool dataSheet,
+    Layer Function(Layer displayClone) clipToSheet, {
+    required int drawnFrameCount,
+  }) {
     return TimesheetColumn(
       kind: TimesheetColumnKind.se,
       // The layer's stored name — the same label the timeline and
@@ -494,8 +513,14 @@ class TimesheetDocument {
           : 'S${slot + 1}',
       layerName: slot < seSlots.length ? seSlots[slot].layer.name : null,
       layerId: slot < seSlots.length ? seSlots[slot].layer.id : null,
-      crossesCutEnd: slot < seSlots.length && seSlots[slot].crosses,
-      spillsInAtStart: slot < seSlots.length && seSlots[slot].spills,
+      // The `~` at the line the cut is DRAWN to, as the timeline's rows
+      // mark it (F-358, [seSoundRunsPast]).
+      crossesCutEnd:
+          slot < seSlots.length &&
+          seSoundRunsPast(seSlots[slot].layer, drawnFrameCount),
+      spillInLeadFrames: slot < seSlots.length
+          ? seSlots[slot].spillInLeadFrames
+          : null,
       cells: slot < seSlots.length
           ? timesheetLayerCells(
               layer: seSlots[slot].layer,
@@ -524,9 +549,9 @@ class TimesheetDocument {
     );
   }
 
-  static TimesheetColumn _actionColumn(int slot, List<Layer> animationLayers, int rowCount, int playbackFrameCount, bool dataSheet) {
+  static TimesheetColumn _celRowColumn(TimesheetColumnKind kind, int slot, List<Layer> animationLayers, int rowCount, int playbackFrameCount, bool dataSheet) {
     return TimesheetColumn(
-      kind: TimesheetColumnKind.action,
+      kind: kind,
       label: slot < animationLayers.length
           ? animationLayers[slot].name
           : '',
@@ -572,9 +597,21 @@ class TimesheetDocument {
   String memoTextOf(int page) =>
       page >= 0 && page < pageMemos.length ? pageMemos[page] : '';
 
-  /// The ACTION hold-bar setting mirrored from [TimesheetInfo]
-  /// (null = bars off, N = bars from the (N+1)th comma of N+ holds).
+  /// The ACTION and CELL blocks' stretch lines, mirrored from
+  /// [TimesheetInfo] (null = off, N = from the (N+1)th comma of a run of
+  /// N+) — each block its own ([stretchLineFrom]).
   final int? exposureBarThreshold;
+  final int? cellExposureBarThreshold;
+
+  /// Where a run in a column of [kind] starts its stretch line — the
+  /// (N+1)th comma for N — or null for none: the ACTION block's and the
+  /// CELL block's each their own (유저 2026-10-21, F-430: 「액션란이랑 셀란
+  /// 늘림선 따로따로」), and no other column draws one.
+  int? stretchLineFrom(TimesheetColumnKind kind) => switch (kind) {
+    TimesheetColumnKind.action => exposureBarThreshold,
+    TimesheetColumnKind.cel => cellExposureBarThreshold,
+    TimesheetColumnKind.se || TimesheetColumnKind.camera => null,
+  };
 
   /// Whether SE columns wash their empty stretches light gray (mirrored
   /// from [TimesheetInfo.seEmptyFill]).
@@ -615,7 +652,8 @@ class TimesheetDocument {
   final List<TimesheetColumn> columns;
 
   /// The books tagged over the ACTION block, left to right — each at a
-  /// boundary of its cel columns ([SheetBook]).
+  /// boundary of its columns, as a column index ([SheetBook]). The CELL
+  /// block marks none (F-430, [SheetSources.actionBooks]).
   final List<SheetBook> books;
 
   final List<TimesheetPage> pages;
@@ -741,7 +779,8 @@ class TimesheetDocument {
   /// their place in it, as an instruction column carries a span's name, to
   /// be written once on its middle row (「타임시트 CAM 첫 칸에도 같은
   /// 이름」). The key that ends a stretch begins the next, so it carries the
-  /// next one.
+  /// next one. A key's row writes the key as every surface does
+  /// ([TimesheetCell.keyLabel]).
   static List<TimesheetCell> _cameraCells({
     required Cut cut,
     required int rowCount,
@@ -752,9 +791,13 @@ class TimesheetDocument {
       for (final frame in cut.camera.keyframes.keys)
         if (frame < rowCount) frame,
     ];
+    final names = transformKeyAgreedNames(cut.camera.track);
     for (var index = 0; index < keyframeRows.length; index += 1) {
       final row = keyframeRows[index];
-      cells[row] = const TimesheetCell(TimesheetCellKind.cameraKey);
+      cells[row] = TimesheetCell(
+        TimesheetCellKind.cameraKey,
+        keyLabel: cameraKeyLabel(names[row], row),
+      );
       if (index + 1 < keyframeRows.length) {
         final nextRow = keyframeRows[index + 1];
         for (var span = row + 1; span < nextRow; span += 1) {
@@ -773,6 +816,7 @@ class TimesheetDocument {
           label: word,
           spanLength: move.to - move.from + 1,
           spanOffset: row - move.from,
+          keyLabel: cells[row].keyLabel,
         );
       }
     }
@@ -1124,16 +1168,23 @@ class _LayerCellsPass {
   /// lead-in ghosts — [se] is the only value the two sites differ on,
   /// and `covered[…]` is idempotent on the ghost path (the chain walk sets
   /// it before dispatching).
+  ///
+  /// The span is the run's TRUE length even where the sheet's rows end
+  /// first: a sound running on past them lays its words over all of it, as
+  /// the track does, and closes nowhere on this sheet (F-358). ↩️It was cut
+  /// to the rows, so the words spread over what was left and the last row
+  /// drew the closing bar.
   void _writeDrawingRun(
     int start,
     TimelineExposure exposure, {
     required SeEntryFields? se,
   }) {
-    final endExclusive = (start + exposure.length!).clamp(0, rowCount);
+    final spanLength = exposure.length!;
+    final endExclusive = (start + spanLength).clamp(0, rowCount);
     cells[start] = _headCell(
       TimesheetCellKind.drawing,
       exposure.frameId,
-      spanLength: endExclusive - start,
+      spanLength: spanLength,
       se: se,
     );
     covered[start] = true;
@@ -1143,7 +1194,7 @@ class _LayerCellsPass {
       // (N+1)th comma of N+ holds only).
       cells[row] = _coveredRow(
         breakdown: exposure.hasBreakdownAt(row - start),
-        spanLength: endExclusive - start,
+        spanLength: spanLength,
         spanOffset: row - start,
       );
       covered[row] = true;
@@ -1151,18 +1202,24 @@ class _LayerCellsPass {
   }
 
   /// X only at the first uncovered row of each run, only inside the
-  /// playback range.
+  /// playback range — and the run's rest counted from it
+  /// ([TimesheetCellKind.emptyRunSpan]).
   void markEmptyRuns(int playbackFrameCount) {
-    var inEmptyRun = false;
+    int? runStart;
     for (var row = 0; row < playbackFrameCount && row < rowCount; row += 1) {
       if (covered[row]) {
-        inEmptyRun = false;
+        runStart = null;
         continue;
       }
-      if (!inEmptyRun) {
+      if (runStart == null) {
         cells[row] = const TimesheetCell(TimesheetCellKind.emptyRunStart);
-        inEmptyRun = true;
+        runStart = row;
+        continue;
       }
+      cells[row] = TimesheetCell(
+        TimesheetCellKind.emptyRunSpan,
+        spanOffset: row - runStart,
+      );
     }
   }
 }

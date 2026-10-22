@@ -91,44 +91,13 @@ void main() {
   // A painter turns the SAME way: `horizontal ? size.width : size.height`
   // at the top of `paint`, and `horizontal ? Offset(a, b) : Offset(b, a)`
   // for every point. Fifteen sites in eight files spelled it; the home says
-  // it once as [extentAlong], [extentAcross] and [offsetAlong].
+  // it once as [extentAlong], [extentAcross] and [offsetAlong]. The size's
+  // half is read with the other parts now, below — its scan named only a
+  // `size`, and a rect's or a layout's room went past it. The point's half
+  // is built with the other values, at the end — its scan saw a point only
+  // when its arms swapped two bare names, and `Offset(at, rect.top)` went
+  // past it.
   const painterTurns = ['extentAlong(', 'extentAcross(', 'offsetAlong('];
-
-  /// `? size.width : size.height` (or the reverse) — gone from lib, a ban.
-  final projectedSize = RegExp(
-    r'\?\s*size\.(width|height)\s*:\s*size\.(height|width)',
-  );
-
-  /// `? Offset(a, b) … : Offset(b, a)` — the point turned by hand, the
-  /// `:` arm on the same line or the next.
-  final turnedOffset = RegExp(
-    r'\?\s*\(?Offset\((\w+), (\w+)\)\s*(?:\r?\n\s*)?:\s*\(?Offset\(\2, \1\)',
-  );
-
-  /// Files that still turn a point by hand. Only shrinks.
-  const pointsStillByHand = <String>{
-    // Drags whose VERTICAL scrolled offset has no pin yet
-    // (every_frame_drag_follows_the_edge_test scans the wiring, not the
-    // direction), and a law moves only behind a test that pins it.
-    'lib/src/ui/timeline/timeline_frame_range_gesture.dart',
-    'lib/src/ui/timeline/timeline_row_edit_chrome.dart',
-    // Turned by an AxisDirection, not an Axis: `down` is the vertical arm
-    // and every other direction — `up` included — the horizontal one.
-    // Reading it through `axisDirectionToAxis` would move `up`, which is a
-    // behaviour question for the scroll lane, not a spelling.
-    'lib/src/ui/layout/device_grid_scroll_controller.dart',
-  };
-
-  /// Lines where a painter turns by hand.
-  List<int> handPainterTurnsIn(File file) {
-    final text = file.readAsStringSync();
-    int lineOf(int index) =>
-        '\n'.allMatches(text.substring(0, index)).length + 1;
-    return [
-      for (final m in projectedSize.allMatches(text)) lineOf(m.start),
-      for (final m in turnedOffset.allMatches(text)) lineOf(m.start),
-    ]..sort();
-  }
 
   test('premise: the home has the three painter twins', () {
     final text = File(home).readAsStringSync();
@@ -137,36 +106,505 @@ void main() {
     }
   });
 
-  test('premise: the painter scan sees a hand turn', () {
-    // The ledger's own files are the proof the regex matches something.
-    for (final path in pointsStillByHand) {
-      expect(handPainterTurnsIn(File(path)), isNotEmpty, reason: path);
+  // ── The parts (card one-axis-part-of-an-offset-is-one-function) ────────
+  //
+  // READING one part of a pair by the axis — `horizontal ? delta.dx :
+  // delta.dy` of a movement or a point, `horizontal ? rect.width :
+  // rect.height` of a box — was written by hand on thirty-eight lines in
+  // twenty files (2026-10-17): thirty of an offset, which nothing in the
+  // home said, and eight of an extent that [extentAlong] already did. An
+  // EDGE of a rect — `horizontal ? rect.left : rect.top` — on twenty-four
+  // more in nine (card values-built-by-the-axis-are-one-function, the same
+  // day). The home says each once — [partAlong], [partAcross],
+  // [extentAlong], [extentAcross], [startAlong], [endAlong], [startAcross],
+  // [endAcross] — and this is a ban, with no ledger.
+
+  /// The axis asked by name just before the `?`: `horizontal`, `_vertical`,
+  /// `axis == Axis.horizontal`, `across`, `along`. ⚠️By name, because a pick
+  /// of a pair's part need not be by the axis — `a.width > a.height ?
+  /// a.width : a.height` is the longer side, and it stays.
+  const axisAsked =
+      r'(?:\w*(?:[Hh]orizontal|[Vv]ertical)|across|along)\s*\?\s*';
+  RegExp byTheAxis(String part) => RegExp('$axisAsked$part');
+  final readByHand = [
+    // A part of an offset: `? p.dx : p.dy`, or the reverse.
+    byTheAxis(r'([\w.()!]+?)\.d(?:x\s*:\s*\1\.dy|y\s*:\s*\1\.dx)\b'),
+    // Both parts at once: `? (p.dx, p.dy) : (p.dy, p.dx)`.
+    byTheAxis(
+      r'\(\s*([\w.()!]+?)\.d[xy]\s*,\s*\1\.d[xy]\s*\)\s*:\s*\(\s*\1\.d[xy]',
+    ),
+    // An extent of a size, a rect, or the room a layout is given.
+    byTheAxis(
+      r'([\w.()!]+?)\.(?:width\s*:\s*\1\.height|height\s*:\s*\1\.width'
+      r'|maxWidth\s*:\s*\1\.maxHeight|maxHeight\s*:\s*\1\.maxWidth)\b',
+    ),
+    // An edge of a rect: `? r.left : r.top`, and the other three.
+    byTheAxis(
+      r'([\w.()!]+?)\.(?:left\s*:\s*\1\.top|top\s*:\s*\1\.left'
+      r'|right\s*:\s*\1\.bottom|bottom\s*:\s*\1\.right)\b',
+    ),
+  ];
+
+  /// What every scan handed to [linesMatching] holds: the axis asked by
+  /// name, then the `?` — so a source without one anywhere holds nothing
+  /// for them, and they are not run on it.
+  ///
+  /// ↩️Run on every file, the four bans that read all of `lib` and `test`
+  /// took 67s of this file's 71: the `\w*` [axisAsked] opens with is tried
+  /// at every letter of every file. With this first, 4s — and the same
+  /// lines in all 4214 files, 31 of them (measured 2026-10-21,
+  /// heavy-tests-common).
+  final asksTheAxis = RegExp(
+    r'(?:[Hh]orizontal|[Vv]ertical|across|along)\s*\?',
+  );
+
+  /// Lines of [source] that [scans] match — its comments aside, so a
+  /// decision that quotes the old spelling is not one.
+  List<int> linesMatching(List<RegExp> scans, String source) {
+    if (!asksTheAxis.hasMatch(source)) {
+      return const [];
     }
+    final code = source.replaceAll(RegExp(r'//[^\n]*'), '');
+    int lineOf(int index) =>
+        '\n'.allMatches(code.substring(0, index)).length + 1;
+    return [
+      for (final scan in scans)
+        for (final m in scan.allMatches(code)) lineOf(m.start),
+    ]..sort();
+  }
+
+  List<int> handReadsIn(String source) => linesMatching(readByHand, source);
+
+  test('premise: the scan sees the home read each part once', () {
+    // partAlong, partAcross, extentAlong, extentAcross and the four edges —
+    // and nothing else.
+    expect(handReadsIn(File(home).readAsStringSync()), hasLength(8));
   });
 
-  test('no file outside the ledger projects a size or turns a point by '
-      'hand', () {
-    final offenders = <String>[];
-    for (final file in dartFilesUnder('lib')) {
-      final path = libPath(file);
-      if (path == home || pointsStillByHand.contains(path)) continue;
-      for (final line in handPainterTurnsIn(file)) {
-        offenders.add('$path:$line');
-      }
+  test('premise: the scan sees every spelling the card took out', () {
+    // Lines as they stood on 2026-10-17, one of each shape.
+    const spelled = [
+      '_moved += across == Axis.horizontal ? event.delta.dx : event.delta.dy;',
+      'final main = widget.axis == Axis.horizontal\n'
+          '    ? localPosition.dy\n'
+          '    : localPosition.dx;',
+      'rowAxis == Axis.vertical ? local.dy : local.dx,',
+      ': columnValueText(across ? centre.dx : centre.dy);',
+      'final (along, across) = axis == Axis.horizontal\n'
+          '    ? (position.dx, position.dy)\n'
+          '    : (position.dy, position.dx);',
+      'final extent = horizontal ? rect.width : rect.height;',
+      'onExtent(_vertical ? constraints.maxHeight : constraints.maxWidth);',
+      'final a0 = horizontal ? box.left : box.top;',
+      'final a1 = horizontal ? box.right : box.bottom;',
+      'final c0 = horizontal ? box.top : box.left;',
+      'final c1 = horizontal ? box.bottom : box.right;',
+      // A test's, by a flag named for the axis it runs along.
+      'final across = (along ? end.dy : end.dx).floor();',
+    ];
+    for (final line in spelled) {
+      expect(handReadsIn(line), hasLength(1), reason: line);
     }
     expect(
-      offenders,
+      handReadsIn('bounds.width > bounds.height ? bounds.width : '
+          'bounds.height'),
       isEmpty,
-      reason: 'reach for extentAlong / extentAcross / offsetAlong',
+      reason: 'the longer side is not read by the axis',
     );
   });
 
-  test('the point ledger holds no file that has stopped', () {
-    final paid = <String>[
-      for (final path in pointsStillByHand)
-        if (handPainterTurnsIn(File(path)).isEmpty) path,
+  test('no file but the home reads a part by hand', () {
+    final offenders = <String>[
+      for (final file in dartFilesUnder('lib'))
+        if (libPath(file) != home)
+          for (final line in handReadsIn(file.readAsStringSync()))
+            '${libPath(file)}:$line',
     ];
-    expect(paid, isEmpty, reason: 'delete these lines from pointsStillByHand');
-    expect(pointsStillByHand, hasLength(3));
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'reach for partAlong / partAcross / extentAlong / extentAcross / '
+          'startAlong / endAlong / startAcross / endAcross',
+    );
+  });
+
+  /// ⛔**NOR A TEST** (card axis-offset-read-inline-copies): a test that
+  /// reads a part by hand is the same turn spelled once more, and it reads
+  /// the old way the day the home learns a new one. 🔬On master `4520fe717`
+  /// the tests read twenty-seven by hand, in eleven files — two of them by
+  /// a flag named `along`, which the scan learned to hear with them.
+  test('no test reads a part by hand either', () {
+    final offenders = <String>[
+      for (final file in dartFilesUnder('test'))
+        // It spells the old reads out, to show the scan sees them.
+        if (!file.path.endsWith('one_axis_turn_test.dart'))
+          for (final line in handReadsIn(file.readAsStringSync()))
+            '${file.path}:$line',
+    ];
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'reach for partAlong / partAcross / extentAlong / extentAcross / '
+          'startAlong / endAlong / startAcross / endAcross',
+    );
+  });
+
+  // ── The builds (card values-built-by-the-axis-are-one-function) ────────
+  //
+  // BUILDING a value by the axis — `horizontal ? Offset(a, b) : Offset(b,
+  // a)`, a size, a rect, a box moved each way, the alignment a strip's run
+  // sets off from — was written by hand on thirty-nine lines in sixteen
+  // files (2026-10-17). The home builds each once: [offsetAlong],
+  // [sizeAlong], [rectAlong], [centerStartAlong], [centerEndAlong] — and
+  // this is a ban, with no ledger.
+  //
+  // The three drags that fold the edge pan into the hand's travel came
+  // last, the same day: a law moves only behind a test that pins it, and
+  // nothing pinned the sheet's half of their pan until the edge-pan tests
+  // ran on both surfaces.
+  //
+  // The tests' forty followed the same day (card
+  // tests-build-values-by-the-axis-by-hand) — the ban holds them too.
+  //
+  // ⛔A margin (`EdgeInsets`) and a `BoxConstraints` are not here: two
+  // each, in shapes that differ, and a third has to show they are one
+  // algorithm before they are made one (the card's own ⛔).
+
+  /// One build in each arm of a pick by the axis, the `:` arm's on the same
+  /// line or a later one — its arguments as deep as one call.
+  const arguments = r'\((?:[^()]|\([^()]*\))*\)';
+  RegExp builtEachWay(String build) => byTheAxis(
+    '(?:const\\s+)?$build$arguments\\s*:\\s*(?:const\\s+)?$build\\(',
+  );
+  final builtByHand = [
+    builtEachWay(r'\bOffset'),
+    builtEachWay(r'\bSize'),
+    builtEachWay(r'\bRect\.fromLT(?:RB|WH)'),
+    // One point or box moved each way: `? p.translate(a, 0) :
+    // p.translate(0, a)`, `? r.shift(Offset(…)) : r.shift(…)`.
+    byTheAxis(
+      '([\\w.()!]+?)\\.(translate|shift)$arguments\\s*:\\s*\\1\\.\\2\\(',
+    ),
+    // Where a run sets off, or ends: `? Alignment.centerLeft :
+    // Alignment.topCenter`, and back.
+    byTheAxis(
+      r'Alignment\.(?:centerLeft\s*:\s*Alignment\.topCenter'
+      r'|topCenter\s*:\s*Alignment\.centerLeft'
+      r'|centerRight\s*:\s*Alignment\.bottomCenter'
+      r'|bottomCenter\s*:\s*Alignment\.centerRight)\b',
+    ),
+  ];
+
+  List<int> handBuildsIn(String source) => linesMatching(builtByHand, source);
+
+  test('premise: the scan sees the home build each value once', () {
+    // offsetAlong, sizeAlong, rectAlong, centerStartAlong, centerEndAlong.
+    expect(handBuildsIn(File(home).readAsStringSync()), hasLength(5));
+  });
+
+  test('premise: the scan sees every build the card took out', () {
+    // Lines as they stood on 2026-10-17, one of each shape.
+    const built = [
+      'horizontal ? Offset(at, rect.top) : Offset(rect.left, at),',
+      'return cells.axis == Axis.horizontal\n'
+          '    ? Offset(localPosition.dx.floorToDouble() + 0.5, '
+          'localPosition.dy)\n'
+          '    : Offset(localPosition.dx, '
+          'localPosition.dy.floorToDouble() + 0.5);',
+      '_horizontal ? Size(_windowExtent, 0) : Size(0, _windowExtent),',
+      'horizontal\n'
+          '    ? Rect.fromLTWH(\n'
+          '        start,\n'
+          '        size.height - readyBarThickness,\n'
+          '        extent,\n'
+          '        readyBarThickness,\n'
+          '      )\n'
+          '    : Rect.fromLTWH(',
+      'horizontal\n'
+          '    ? Rect.fromLTRB(start, 0, end, size.height)\n'
+          '    : Rect.fromLTRB(0, start, size.width, end),',
+      'final center = horizontal\n'
+          '    ? place.center.translate(-originMain, 0)\n'
+          '    : place.center.translate(0, -originMain);',
+      'final box = horizontal\n'
+          '    ? line.box.shift(Offset(-originMain, 0))\n'
+          '    : line.box.shift(Offset(0, -originMain));',
+      'begin: horizontal ? Alignment.centerLeft : Alignment.topCenter,',
+      'alignment: widget.axis == Axis.horizontal\n'
+          '    ? Alignment.centerRight\n'
+          '    : Alignment.bottomCenter,',
+    ];
+    for (final line in built) {
+      expect(handBuildsIn(line), hasLength(1), reason: line);
+    }
+    expect(
+      handBuildsIn('pressed ? Offset(0, step) : Offset(0, -step)'),
+      isEmpty,
+      reason: 'a pick that is not by the axis builds two values, not one',
+    );
+  });
+
+  test('no file but the home builds a value by hand', () {
+    final offenders = <String>[
+      for (final file in dartFilesUnder('lib'))
+        if (libPath(file) != home)
+          for (final line in handBuildsIn(file.readAsStringSync()))
+            '${libPath(file)}:$line',
+    ];
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'reach for offsetAlong / sizeAlong / rectAlong / centerStartAlong '
+          '/ centerEndAlong',
+    );
+  });
+
+  test('premise: the scan sees the builds the tests took out', () {
+    // Lines as they stood on 2026-10-17, of the shapes lib had not.
+    const built = [
+      'orientation == TimelineOrientation.horizontal\n'
+          '    ? const Offset(0, -40)\n'
+          '    : const Offset(-40, 0),',
+      'final point = across\n'
+          '    ? Offset((d + 0.5) / on.ratio, middle.dy)\n'
+          '    : Offset(middle.dx, (d + 0.5) / on.ratio);',
+      'along == Axis.horizontal ? Offset(dx, 0) : Offset(0, dx),',
+    ];
+    for (final line in built) {
+      expect(handBuildsIn(line), hasLength(1), reason: line);
+    }
+  });
+
+  /// ⛔**NOR A TEST** (card tests-build-values-by-the-axis-by-hand): a test
+  /// that builds a value by hand is the same turn spelled once more. 🔬On
+  /// master `9638abf52` the tests built forty by hand, in twenty files.
+  ///
+  /// ⚠️Two ANSWERS are not one value turned: a fader that fills up the
+  /// sheet's column is dragged DOWN toward empty, and a tap's aim snaps
+  /// only along the frame axis. Those stand as a table by the axis, each
+  /// answer written out — what this scan hears is a pick.
+  test('no test builds a value by hand either', () {
+    final files = dartFilesUnder('test').toList();
+    expect(files, isNotEmpty, reason: 'the scan read nothing');
+    final offenders = <String>[
+      for (final file in files)
+        // It spells the old builds out, to show the scan sees them.
+        if (!file.path.endsWith('one_axis_turn_test.dart'))
+          for (final line in handBuildsIn(file.readAsStringSync()))
+            '${file.path}:$line',
+    ];
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'reach for offsetAlong / sizeAlong / rectAlong / centerStartAlong '
+          '/ centerEndAlong',
+    );
+  });
+
+  // ── The axis itself (card values-built-by-the-axis-are-one-function) ───
+  //
+  // The axis ACROSS a strip — `horizontal ? Axis.vertical :
+  // Axis.horizontal` — was picked by hand on five lines in four files, and
+  // one more picked the very axis it asked of (2026-10-17). Flutter says
+  // the first once ([flipAxis]); the second is the axis. A ban.
+  final pickedByHand = [
+    // Asked of an axis, answered with one: the other, or the same.
+    RegExp(
+      r'Axis\.(?:horizontal|vertical)\s*\?\s*'
+      r'Axis\.(?:horizontal|vertical)\s*:\s*Axis\.(?:horizontal|vertical)\b',
+    ),
+    // Asked of a flag named for the axis, answered with the OTHER one. The
+    // same one is a flag turned into an axis, which is not a turn.
+    RegExp(
+      r'(?<![\w.])(?:\w*[Hh]orizontal\s*\?\s*Axis\.vertical\s*:\s*'
+      r'Axis\.horizontal|\w*[Vv]ertical\s*\?\s*Axis\.horizontal\s*:\s*'
+      r'Axis\.vertical)\b',
+    ),
+  ];
+
+  List<int> axesPickedIn(String source) => linesMatching(pickedByHand, source);
+
+  test('premise: the scan sees every axis the card took out', () {
+    // Lines as they stood on 2026-10-17, one of each shape.
+    const picked = [
+      'axis: axis == Axis.horizontal ? Axis.vertical : Axis.horizontal,',
+      'widget.axis == Axis.vertical ? Axis.horizontal : Axis.vertical;',
+      'direction: axis == Axis.horizontal ? Axis.horizontal : Axis.vertical,',
+      'axis: horizontal ? Axis.vertical : Axis.horizontal,',
+    ];
+    for (final line in picked) {
+      expect(axesPickedIn(line), hasLength(1), reason: line);
+    }
+    const turnedInto = [
+      // A flag, or an orientation, made the axis it names — not a turn.
+      'vertical ? Axis.vertical : Axis.horizontal;',
+      'widget.orientation == TimelineOrientation.horizontal\n'
+          '    ? Axis.horizontal\n'
+          '    : Axis.vertical;',
+    ];
+    for (final line in turnedInto) {
+      expect(axesPickedIn(line), isEmpty, reason: line);
+    }
+  });
+
+  test('no file picks an axis by hand', () {
+    final offenders = <String>[
+      for (final file in dartFilesUnder('lib'))
+        for (final line in axesPickedIn(file.readAsStringSync()))
+          '${libPath(file)}:$line',
+    ];
+    expect(
+      offenders,
+      isEmpty,
+      reason: 'reach for flipAxis, or for the axis itself',
+    );
+  });
+
+  // ── Two picks, their arms swapped (card box-sized-by-two-picks) ────────
+  //
+  // A value turned as TWO picks of one axis question, the second's arms the
+  // first's swapped — `width: horizontal ? a : b, height: horizontal ? b :
+  // a` — is the same turn with no `Size(` in either arm, and the builds
+  // above never heard it. On 2026-10-17 it sized a box in nineteen places in
+  // lib and fourteen in the tests, and set the sides of four Positioneds, a
+  // getter pair and a render box's intrinsic sizes. The home says each —
+  // [sizedAlong], [alongBox], [acrossBox], [sizeAlong], [stripAlong],
+  // [stripAcross] — and this is a ban, with the ledger below.
+
+  /// An arm of a pick: no `,` `;` `?` `:` of its own, a call as deep as two.
+  const pickArm = r'(?:[^,;()?:{}\[\]]|\((?:[^()]|\([^()]*\))*\))+?';
+
+  /// One pick by the axis asked by name — the whole question, so a pick of
+  /// `axis` and one of `_axis` are two questions.
+  final pick = RegExp(
+    r'((?:[\w.]+\s*==\s*)?[\w.]*?(?:\w*(?:[Hh]orizontal|[Vv]ertical)'
+    '|across|along))\\s*\\?\\s*($pickArm)\\s*:\\s*($pickArm)'
+    r'(?=\s*[,;)\]}])',
+  );
+
+  /// Two swapped picks with no home to say them, each with why — counted,
+  /// and the counts only fall.
+  const swappedByHand = <String, int>{
+    // The caret's badge, pinned at one end along the rail and left to the
+    // stack's alignment across it — one of its kind.
+    'lib/src/ui/timeline/layer_row_drag.dart': 1,
+    // A tile's pixel counts, ints and not a box — and the test that reads
+    // them back.
+    'lib/src/ui/timeline/timeline_grid_tile_store.dart': 1,
+    'test/ui/timeline/timeline_grid_tile_store_test.dart': 1,
+    // A calibration strip's texel counts, laid one way or the other for the
+    // engine's halving (0e4e87ea5) — ints, and no widget's axis.
+    'lib/src/ui/canvas/level_image.dart': 1,
+    // A line on a raster, by its pixel index — no widget's axis.
+    'test/services/fill_gap_close_test.dart': 1,
+  };
+
+  /// Lines where a pick's arms come back swapped in the next pick of the
+  /// same question, within a statement's reach.
+  List<int> swappedPicksIn(String source) {
+    final code = source.replaceAll(RegExp(r'//[^\n]*'), '');
+    final picks = pick.allMatches(code).toList();
+    String question(RegExpMatch m) => m[1]!.replaceAll(RegExp(r'\s+'), '');
+    final lines = <int>[];
+    final paired = <int>{};
+    for (var i = 0; i < picks.length; i += 1) {
+      final a = picks[i];
+      if (paired.contains(i) || a[2]!.trim() == a[3]!.trim()) continue;
+      for (var j = i + 1; j < picks.length; j += 1) {
+        final b = picks[j];
+        if (b.start - a.end > 240) break;
+        if (paired.contains(j) || question(a) != question(b)) continue;
+        if (a[2]!.trim() != b[3]!.trim() || a[3]!.trim() != b[2]!.trim()) {
+          continue;
+        }
+        paired.addAll([i, j]);
+        lines.add('\n'.allMatches(code.substring(0, a.start)).length + 1);
+        break;
+      }
+    }
+    return lines;
+  }
+
+  test('premise: the scan sees the home turn by two picks', () {
+    // alongBox · acrossBox, the strips' sides and extents, and the reads.
+    expect(swappedPicksIn(File(home).readAsStringSync()), hasLength(11));
+  });
+
+  test('premise: the scan sees every pair the card took out', () {
+    // Lines as they stood on 2026-10-17, one of each shape.
+    const pairs = [
+      'width: horizontal ? layerMarkSlotWidth : null,\n'
+          'height: horizontal ? null : layerMarkSlotWidth,',
+      'height: isHorizontal ? 14 : double.infinity,\n'
+          'width: isHorizontal ? double.infinity : 14,',
+      'width: axis == Axis.horizontal ? slot : across,\n'
+          'height: axis == Axis.horizontal ? across : slot,',
+      'double get _width =>\n'
+          '    _horizontal ? _mainExtent : metrics.layerRowHeight;\n'
+          'double get _height =>\n'
+          '    _horizontal ? metrics.layerRowHeight : _mainExtent;',
+      'left: vertical ? null : 0,\nright: 0,\ntop: vertical ? 0 : null,',
+    ];
+    for (final pair in pairs) {
+      expect(swappedPicksIn(pair), hasLength(1), reason: pair);
+    }
+    const notOne = [
+      // Two answers by the axis, not one value turned.
+      'width: horizontal ? 20 : 28,\nheight: horizontal ? 16 : 20,',
+      // Two questions.
+      'width: axis == Axis.horizontal ? a : b,\n'
+          'height: _axis == Axis.horizontal ? b : a,',
+      // A pick not by the axis.
+      'width: wide ? a : b,\nheight: wide ? b : a,',
+      // A decision that quotes the old spelling.
+      '// width: horizontal ? a : b,\n// height: horizontal ? b : a,',
+      // One answer picked twice — nothing turns.
+      'width: horizontal ? 0 : 0,\nheight: horizontal ? 0 : 0,',
+    ];
+    for (final line in notOne) {
+      expect(swappedPicksIn(line), isEmpty, reason: line);
+    }
+  });
+
+  test('no file swaps two picks by hand but the ledger', () {
+    final files = [...dartFilesUnder('lib'), ...dartFilesUnder('test')];
+    final over = <String>[];
+    final heard = <String>{};
+    for (final file in files) {
+      final path = file.path.replaceAll(r'\', '/');
+      // The home says each once; this file spells the old pairs out.
+      if (path == home || path.endsWith('one_axis_turn_test.dart')) continue;
+      final found = swappedPicksIn(file.readAsStringSync());
+      if (found.isNotEmpty) heard.add(path);
+      if (found.length > (swappedByHand[path] ?? 0)) {
+        over.add('$path:${found.join(',')}');
+      }
+    }
+    expect(
+      heard,
+      containsAll(swappedByHand.keys),
+      reason: '⛔premise: the ban reads both trees — it hears the ledger\'s '
+          'pairs where they stand',
+    );
+    expect(
+      over,
+      isEmpty,
+      reason:
+          'reach for sizedAlong / alongBox / acrossBox / sizeAlong / '
+          'stripAlong / stripAcross',
+    );
+  });
+
+  test('the ledger holds no pair that has gone', () {
+    final paid = <String>[
+      for (final MapEntry(key: path, value: count) in swappedByHand.entries)
+        if (swappedPicksIn(File(path).readAsStringSync()).length < count)
+          path,
+    ];
+    expect(paid, isEmpty, reason: 'lower or delete these in swappedByHand');
   });
 }

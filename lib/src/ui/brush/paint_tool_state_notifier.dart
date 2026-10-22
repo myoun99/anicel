@@ -6,9 +6,9 @@ import 'brush_tool_state.dart';
 /// The app's active-tool notifier with PER-PAINT-TOOL memory (R11-④):
 /// the brush and the eraser each keep their own stroke settings (size,
 /// tip, preset payload…) — switching tools stashes the outgoing paint
-/// tool's state and restores the incoming one's, CSP-style. COLOR and the
-/// stabilizer stay shared across tools (the color panel and the hand-feel
-/// setting are global).
+/// tool's state and restores the incoming one's, CSP-style. COLOR stays
+/// shared across tools (the color panel is global). ↩️The stabilizer was
+/// shared as a hand-feel setting; it is each brush's own now (F-418-Q6).
 ///
 /// Non-paint tools (eyedropper, fill, selections) carry the current
 /// settings through unchanged — they never stroke, and the shared color
@@ -171,8 +171,9 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
         // — swapping the brush swaps its colour with it, and the colour is
         // shared across tools. That is the order `copyWith` documents: the
         // individual arguments win over the shape laid down beneath them.
-        // `stabilizerStrength` needs no such line; it is its own field, so
-        // building from `next` already keeps the live one.
+        // (`stabilizerStrength` was the other shared value, kept by building
+        // from `next`; it rides in the shape now, the brush's own —
+        // F-418-Q6.)
         //
         // ⛔The blend needed a line of its own until 2026-09-08. It does not
         // any more: it rides in the shape now (see [BrushBlendMode]), so

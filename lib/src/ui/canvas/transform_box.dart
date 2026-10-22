@@ -16,7 +16,7 @@ typedef TransformStep = ({
 
 /// THE OPEN TRANSFORM BOX — every value that means something only while a
 /// Ctrl+T (or Move-tool) box is up: the affine it applies, the base box it
-/// manipulates, whether it opened the lift, its step history and its warp.
+/// manipulates, its step history and its warp.
 ///
 /// ⛔**ITS PRESENCE IS 「A BOX IS OPEN」.** The layer holds one or none, and
 /// closing the box drops it — so no value of a closed box can outlive it
@@ -33,7 +33,6 @@ class TransformBox {
     required this.affine,
     required this.baseWidth,
     required this.baseHeight,
-    this.openedLift = false,
   });
 
   /// The composite affine (P9b); its pivot is the base box's centre.
@@ -44,12 +43,6 @@ class TransformBox {
   /// values the user set.
   double baseWidth;
   double baseHeight;
-
-  /// True when THIS session opened the lift (Escape then reverts the whole
-  /// session — pixels return byte-exactly, as if Ctrl+T never happened).
-  /// False when the box rode an already-pending move (Escape only closes the
-  /// box; the pending float stays).
-  bool openedLift;
 
   /// 🚨★★★**ONE OPERATION INSIDE AN OPEN BOX = ONE STEP BACK.**
   ///

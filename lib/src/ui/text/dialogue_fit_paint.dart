@@ -24,6 +24,12 @@ import 'vertical_writing_text.dart';
 /// w600 12pt and the sheet's regular 9pt are values rather than two
 /// placers. `style.fontSize` must be set — the vertical cell sizes
 /// against it. [setWord] is how the host sets a glyph ([WordSetter]).
+///
+/// [shownFrom] and [shownTo], down from [topCenter], are a WINDOW on the
+/// column: the text is still laid out over all of [extent], and only the
+/// glyphs whose centre the window holds are painted, each whole and where
+/// that layout lays it ([dialogueGlyphsShownIn]) — a cut, or a page half,
+/// sees its part of a block that runs on past it (F-358).
 void paintDialogueFitColumn(
   Canvas canvas,
   String text, {
@@ -32,6 +38,8 @@ void paintDialogueFitColumn(
   required TextStyle style,
   required WordSetter setWord,
   double maxCrossExtent = double.infinity,
+  double shownFrom = double.negativeInfinity,
+  double shownTo = double.infinity,
 }) {
   final glyphs = text.characters.toList(growable: false);
   final centers = dialogueGlyphCenters(
@@ -42,9 +50,15 @@ void paintDialogueFitColumn(
     glyphCount: glyphs.length,
     mainExtent: extent,
   );
+  final shown = dialogueGlyphsShownIn(
+    glyphCount: glyphs.length,
+    mainExtent: extent,
+    from: shownFrom,
+    to: shownTo,
+  );
   double condense(double extentAlongColumn) =>
       wordCondensation(extent: extentAlongColumn, room: cellExtent);
-  for (var i = 0; i < glyphs.length; i += 1) {
+  for (var i = shown.first; i < shown.end; i += 1) {
     final painter = laidOutGlyph(glyphs[i], style);
     paintVerticalTextCell(
       canvas,

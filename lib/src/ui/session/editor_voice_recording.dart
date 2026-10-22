@@ -369,36 +369,70 @@ class EditorVoiceRecording {
     }
   }
 
-  /// Stopped-⏺ count-in beeps: the same standalone device path as the
-  /// test tone — [seconds] beeps a second apart, then the device closes
-  /// so the transport can take it for the roll.
-  /// The audio device, opened for a short cue, or null when it cannot be.
+  /// The audio device, kept for a short cue — opened if it is not open — or
+  /// null when it cannot be.
   ///
   /// ⛔TWO CUES OPENED IT — the count-in beeps and the output test tone —
-  /// with the same four refusals and the same FALLBACK: a saved device
-  /// that will not open drops back to the system default rather than
-  /// leaving the user with silence and no reason. Written twice, the
-  /// fallback is one edit away from existing on only one of them.
+  /// with the same refusals and the same FALLBACK: a saved device that will
+  /// not open drops back to the system default rather than leaving the
+  /// user with silence and no reason. Written twice, the fallback is one
+  /// edit away from existing on only one of them.
   ///
-  /// ⚠️Refuses under FLUTTER_TEST: a widget test must never bind a real
-  /// output, and the gate belongs with the opening, not at each caller.
+  /// 🚨IT REFUSES WHILE THE DEVICE IS BUSY MAKING REAL SOUND (REC1-D2,
+  /// 92625d608) — a run holding it, or anything sounding on it (a viewer's
+  /// sound, which the cue's schedule would cut) — not while it is open:
+  /// ↩️it asked `isOpen`, and a device stays open from the first play on —
+  /// so after it the cues were silent, and with the output opened ahead
+  /// (play-press-first-frame-stall-Q1) they would never have sounded. Being
+  /// opened off this thread, or open for another output than the setting
+  /// names, refuses as well: a cue rings the CHOSEN one.
+  ///
+  /// The device is the one a run plays on ([AudioDeviceTransport.output]) —
+  /// under a widget test, the one a test hands in or none
+  /// (`audioOutputUnlessTesting`). ↩️It spelled out a gate of its own.
   QaAudioDevice? _openDeviceForCue() {
-    if (Platform.environment['FLUTTER_TEST'] == 'true') {
+    final device = audioDeviceTransport.output;
+    if (device == null ||
+        playback.isActive ||
+        device.isOpening ||
+        device.isPlaying) {
       return null;
     }
-    final device = QaAudioDevice.instance;
-    if (device == null || playback.isActive || device.isOpen) {
+    final chosen = audioSyncSettings.value.outputDeviceName;
+    if (device.isOpen
+        ? device.openedFor != chosen
+        : !openAudioOutput(
+            device,
+            sampleRate: audioConformStore.projectSampleRate,
+            preferredName: chosen,
+          )) {
       return null;
     }
-    return openAudioOutput(
-          device,
-          sampleRate: 48000,
-          preferredName: audioSyncSettings.value.outputDeviceName,
-        )
-        ? device
-        : null;
+    device.keep(this);
+    return _cueDevice = device;
   }
 
+  /// The device a cue keeps while it sounds.
+  QaAudioDevice? _cueDevice;
+
+  /// A cue's end: silence, unless the transport has started on the device
+  /// meanwhile — and the cue lets it go, which closes it only where nobody
+  /// else keeps it open.
+  void _endCue() {
+    final device = _cueDevice;
+    _cueDevice = null;
+    if (device == null) {
+      return;
+    }
+    if (!playback.isActive) {
+      device.stop();
+    }
+    device.letGo(this);
+  }
+
+  /// Stopped-⏺ count-in beeps: the same device path as the test tone —
+  /// [seconds] beeps a second apart, on the device the transport then takes
+  /// for the roll.
   void _playCountInBeeps(int seconds) {
     final device = _openDeviceForCue();
     if (device == null) {
@@ -430,12 +464,10 @@ class EditorVoiceRecording {
       stopSample: (seconds - 1) * sampleRate + toneSamples,
     );
     _testToneTimer?.cancel();
-    _testToneTimer = Timer(Duration(milliseconds: seconds * 1000), () {
-      if (!playback.isActive && device.isOpen) {
-        device.stop();
-        device.close();
-      }
-    });
+    _testToneTimer = Timer(
+      Duration(milliseconds: seconds * 1000),
+      _endCue,
+    );
   }
 
   // --- Settings input meter + test tone (REC1-D2) --------------------------
@@ -522,13 +554,10 @@ class EditorVoiceRecording {
     );
     device.play(startSample: 0, stopSample: toneSamples);
     _testToneTimer?.cancel();
-    _testToneTimer = Timer(const Duration(milliseconds: 700), () {
-      // The transport may have started meanwhile — never yank ITS device.
-      if (!playback.isActive && device.isOpen) {
-        device.stop();
-        device.close();
-      }
-    });
+    _testToneTimer = Timer(
+      const Duration(milliseconds: 700),
+      _endCue,
+    );
     return true;
   }
 
@@ -1360,6 +1389,7 @@ class EditorVoiceRecording {
     voiceRecordPreviewLane.dispose();
     voiceRecordClipLit.dispose();
     _testToneTimer?.cancel();
+    _endCue();
     _voiceRecordCountInTimer?.cancel();
     _deleteCueBeepDirectory();
     detachInputMeter();

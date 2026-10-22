@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../core/point_bounds.dart';
 import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_pose.dart';
 import '../session/canvas_adjust.dart';
+import '../text/pixel_size_label.dart';
 import 'canvas_target_pill.dart';
 import 'canvas_viewport_offset.dart';
 import 'row_transform_box.dart';
@@ -33,15 +34,16 @@ class CanvasAdjustLayer extends StatelessWidget {
     super.key,
     required this.adjust,
     required this.viewport,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.onLand,
   });
 
   final CanvasAdjust adjust;
   final CanvasViewport viewport;
 
-  /// The canvas as it stands — what the box measures its stage against.
-  final CanvasSize canvasSize;
+  /// The wall of the canvas as it stands — what the box measures its stage
+  /// against.
+  final PasteboardWall pasteboard;
 
   /// Lands the edges: the canvas resized behind the app's wait window.
   final VoidCallback onLand;
@@ -74,11 +76,11 @@ class CanvasAdjustLayer extends StatelessWidget {
                   y: edges.center.dy,
                 ),
               ),
-              canvasSize: canvasSize,
+              pasteboard: pasteboard,
               viewport: viewport,
               // The canvas stays the tools' and the view's: a press is the
               // box's on its handles alone.
-              claimsCanvas: false,
+              presses: RowBoxPresses.handles,
               onCancelled: adjust.dropShowing,
               scale: RowBoxEdges((
                 changed: (edges) => adjust.show(to(edges)),
@@ -97,7 +99,7 @@ class CanvasAdjustLayer extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Text(
-                    '${edges.width.round()} × ${edges.height.round()}',
+                    pixelSizeLabel(edges.width.round(), edges.height.round()),
                     key: const ValueKey<String>('canvas-adjust-size'),
                     style: const TextStyle(fontSize: 12),
                   ),

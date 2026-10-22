@@ -231,27 +231,5 @@ void main() {
 
       expect(sliderValue(tester), closeTo(0.4, 1e-9));
     });
-
-    testWidgets('an OVERRIDE notifier wins outright — the camera row\'s '
-        'opacity IS a view notifier, and the slider follows it with no '
-        'host rebuild in the loop', (tester) async {
-      final override = ValueNotifier<double>(0.2);
-      addTearDown(override.dispose);
-
-      await pump(
-        tester,
-        layerOpacityField(
-          layer: row('a', opacity: 0.4),
-          keyPrefix: 'timeline',
-          override: override,
-          onChanged: (_, _) {},
-        ),
-      );
-      expect(sliderValue(tester), closeTo(0.2, 1e-9));
-
-      override.value = 0.7;
-      await tester.pump();
-      expect(sliderValue(tester), closeTo(0.7, 1e-9));
-    });
   });
 }

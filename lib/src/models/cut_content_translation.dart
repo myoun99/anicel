@@ -1,9 +1,12 @@
+import 'camera_pose.dart';
 import 'canvas_point.dart';
+import 'canvas_size.dart';
 import 'cut.dart';
 import 'cut_camera.dart';
 import 'drawing_guide.dart';
 import 'layer.dart';
 import 'property_track.dart';
+import 'transform_track.dart';
 
 /// D5 (R7): translates a cut's CANVAS-COORDINATE model data for a canvas
 /// resize — the model half of "the picture moves, so everything pinned
@@ -50,22 +53,63 @@ PropertyTrack<CanvasPoint> _translatedPointTrack(
   );
 }
 
+/// How a resize moves what stands on the canvas: the content by (dx, dy),
+/// and the canvas centre — what an unkeyed pose reads — by (centreDx,
+/// centreDy).
+typedef ResizeWalk = ({double dx, double dy, double centreDx, double centreDy});
+
+/// A POSITION lane moved by [walk]'s (dx, dy) for a resize. EMPTY, it reads
+/// [centre] — the canvas centre of the size it stood on, which walks by
+/// [walk]'s (centreDx, centreDy); where that is not the lane's own move,
+/// it is keyed first where it stood, or its pose walks off its picture.
+///
+/// 🗣️F-362 (유저 2026-10-20): 「캔버스 크기 바꾸면 카메라도 이동해버림.
+/// 소재는 기존 위치에 존재하는게 규칙 … 키를 찍어서라도 이동시켜두도록」 —
+/// After Effects' Composition Settings anchor 「layers to a corner or edge
+/// of the composition as it is resized」, the camera among them. ⛔No
+/// tolerance: a centre resize by an odd size rounds the content half a
+/// pixel off the centre, and the pose stays on the content there too.
+PropertyTrack<CanvasPoint> _translatedPositionLane(
+  PropertyTrack<CanvasPoint> lane, {
+  required CanvasPoint centre,
+  required ResizeWalk walk,
+}) {
+  final (:dx, :dy, :centreDx, :centreDy) = walk;
+  final stood = lane.isEmpty && (dx != centreDx || dy != centreDy)
+      ? pathLaneKeyed(lane, 0, centre)
+      : lane;
+  return _translatedPointTrack(stood, dx, dy);
+}
+
 /// Every camera keyframe centre moves with the content — THROUGH THE
 /// LANES, never the pose facade: `CutCamera(keyframes:)` rebuilds all
 /// lanes from resolved poses, which linearizes holds, erases key names
 /// and synthesizes keys at the union frames (adversarial review). Only
 /// the position lane (and an explicit anchor lane) is touched; scale,
-/// rotation and opacity lanes pass through untouched. An empty track
-/// needs nothing: the default pose recomputes the canvas centre itself.
-CutCamera translateCutCamera(CutCamera camera, double dx, double dy) {
-  if (camera.isEmpty || (dx == 0 && dy == 0)) {
+/// rotation and opacity lanes pass through untouched. An UNKEYED position
+/// reads [defaultCameraPoseFor] on [from] ([_translatedPositionLane]).
+CutCamera translateCutCamera(
+  CutCamera camera,
+  ResizeWalk walk, {
+  required CanvasSize from,
+}) {
+  final track = camera.track;
+  final position = _translatedPositionLane(
+    track.position,
+    centre: defaultCameraPoseFor(from).center,
+    walk: walk,
+  );
+  final anchorPoint = _translatedPointTrack(
+    track.anchorPoint,
+    walk.dx,
+    walk.dy,
+  );
+  if (identical(position, track.position) &&
+      identical(anchorPoint, track.anchorPoint)) {
     return camera;
   }
   return CutCamera.fromTrack(
-    camera.track.copyWith(
-      position: _translatedPointTrack(camera.track.position, dx, dy),
-      anchorPoint: _translatedPointTrack(camera.track.anchorPoint, dx, dy),
-    ),
+    track.copyWith(position: position, anchorPoint: anchorPoint),
   );
 }
 
@@ -130,6 +174,8 @@ CutGuides translateCutGuides(CutGuides guides, double dx, double dy) {
 ///    the render identical at every zoom.
 ///  * A NULL anchor re-reads as the canvas centre, so the position keys
 ///    move by Δcentre instead (see the file doc).
+///  * An UNKEYED position under an explicit anchor reads
+///    [layerIdentityPose] on [from] ([_translatedPositionLane]).
 ///  * The file a REFERENCE row shows stands where its reference fx puts its
 ///    centre on the canvas (I-68), and that moves by the content offset
 ///    like a camera's centre: the picture keeps its place among the
@@ -142,6 +188,7 @@ CutGuides translateCutGuides(CutGuides guides, double dx, double dy) {
 /// holds one.
 Layer translateLayerForResize(
   Layer layer, {
+  required CanvasSize from,
   required double dx,
   required double dy,
   required double centreDx,
@@ -159,12 +206,29 @@ Layer translateLayerForResize(
   }
   return layer.copyWith(
     transformTrack: track.copyWith(
-      position: _translatedPointTrack(track.position, positionDx, positionDy),
+      position: _translatedPositionLane(
+        track.position,
+        centre: layerIdentityPose(from).center,
+        walk: (
+          dx: positionDx,
+          dy: positionDy,
+          centreDx: centreDx,
+          centreDy: centreDy,
+        ),
+      ),
       anchorPoint: _translatedPointTrack(track.anchorPoint, dx, dy),
     ),
+    // Its keys and where its file is laid stand on the same canvas (F-374),
+    // so they move with it — the cel's pixels move with the drawings.
     mediaReference: reference?.copyWith(
       pose: reference.pose.copyWith(
         center: _translated(reference.pose.center, dx, dy),
+      ),
+      fx: reference.fx.copyWith(
+        position: _translatedPointTrack(reference.fx.position, dx, dy),
+      ),
+      laid: reference.laid.copyWith(
+        center: _translated(reference.laid.center, dx, dy),
       ),
     ),
   );
@@ -184,12 +248,17 @@ Cut translateCutContentModel(
     return cut;
   }
   return cut.copyWith(
-    camera: translateCutCamera(cut.camera, dx, dy),
+    camera: translateCutCamera(
+      cut.camera,
+      (dx: dx, dy: dy, centreDx: centreDx, centreDy: centreDy),
+      from: cut.canvasSize,
+    ),
     guides: translateCutGuides(cut.guides, dx, dy),
     layers: [
       for (final layer in cut.layers)
         translateLayerForResize(
           layer,
+          from: cut.canvasSize,
           dx: dx,
           dy: dy,
           centreDx: centreDx,

@@ -103,6 +103,14 @@ jobs:
   # native C 0.9. The hang was at 31 minutes and climbing when it was
   # noticed, which is what makes the boundary easy — a stuck job is not
   # near the healthy range, it is several times past it.
+  #
+  # Re-measured 2026-10-22, after the Linux shards went from many to three
+  # and the suite kept growing: the healthy Linux shards ran 9-14 min on
+  # 10-03, 13-18 on 10-08, 15-19 on 10-15 and 17-19 on 10-22, and since
+  # 10-15 ten of the eighteen shards that ran were killed at the 20-minute
+  # deadline while still passing tests — the real job this rule exists not
+  # to kill. So the Linux shards' deadline is 45: just over 2x the 20-21
+  # minutes a shard now takes, the same rule as before with today's numbers.
   native-portability:
     name: native C (gcc + clang)
     needs: scope
@@ -161,7 +169,7 @@ jobs:
   analyze-and-test:
     name: analyze + full test suite (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       # Without this one red shard hides the others, and the point of
       # splitting is to learn everything each run has to tell us.
@@ -343,3 +351,14 @@ jobs:
         with:
           total: 6
           index: ${{ matrix.shard }}
+      # A step that stood past its limit leaves the process's threads in
+      # build/native_call_watch before the run ends
+      # (test/helpers/native_call_watch.dart) — kept from a red shard.
+      - name: Keep a stuck run's dump
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-call-watch-shard-${{ matrix.shard }}
+          path: build/native_call_watch/
+          if-no-files-found: ignore
+          retention-days: 7

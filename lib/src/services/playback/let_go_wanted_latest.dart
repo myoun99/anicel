@@ -15,6 +15,11 @@
 /// by it. The second cache to take it wrote it out again, and a law the
 /// budget keeps in two copies is a law that can come to mean two things
 /// (playback-plays-the-screen-material, 10-09).
+///
+/// ⛔Not for a cache no step wants anything of — a sheet's images, the
+/// storyboard's panels, a brush's tip masks: that one is an `Lru`
+/// (`core/lru.dart`), this order with nothing wanted — the least recently
+/// used first, never the newest — kept by its map, with no sort.
 bool letGoWantedLatest<E>({
   required Iterable<E> entries,
   required int heldBytes,

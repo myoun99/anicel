@@ -190,7 +190,7 @@ void main() {
       expect(laneScript, matches(stampVariable));
       expect(
         laneScript,
-        matches(RegExp(r'tool/native_engine_provenance\.dart"? check ')),
+        matches(RegExp(r'tool/run\.sh"? native_engine_provenance check ')),
       );
     });
   });

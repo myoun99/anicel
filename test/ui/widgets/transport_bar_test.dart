@@ -5,7 +5,9 @@ import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/words_cut_off.dart';
 
 /// The shared transport. Two things are pinned here, because every surface
 /// that runs in time relies on them without re-testing them:
@@ -27,14 +29,16 @@ void main() {
     required int frameCount,
     int currentFrame = 0,
     bool playing = false,
-    ValueChanged<int>? onSeek,
+    ValueChanged<int>? onSeek = _ignoreFrame,
     VoidCallback? onPlayPause = _ignore,
     TransportRange? range,
     TransportSound? sound,
     double width = barWidth,
+    ThemeData? theme,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: theme,
         home: Scaffold(
           body: Center(
             child: SizedBox(
@@ -43,7 +47,7 @@ void main() {
                 frameCount: frameCount,
                 currentFrame: currentFrame,
                 playing: playing,
-                onSeek: onSeek ?? (_) {},
+                onSeek: onSeek,
                 onPlayPause: onPlayPause,
                 range: range,
                 sound: sound,
@@ -173,6 +177,33 @@ void main() {
       expect(
         TransportBar.heightIn(context, range: true),
         greaterThan(TransportBar.heightIn(context, range: false)),
+      );
+    });
+
+    testWidgets('🚨under a bigger OS text size the row of buttons grows with '
+        'its words — none is cut off, and the bar still stands as tall as '
+        'it says', (tester) async {
+      // text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
+      // 따라 자란다」), in the app's own face: the test font's lines are
+      // other heights. A book's page turner stands in this row's height
+      // (F-383).
+      await loadTheAppFaces();
+      final theme = ThemeData(fontFamily: AppTypography.bundledFamily);
+      await pump(tester, frameCount: 96, range: span(0, 95), theme: theme);
+      final atOne = TransportBar.buttonRowHeightIn(
+        tester.element(find.byType(TransportBar)),
+      );
+
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await pump(tester, frameCount: 96, range: span(0, 95), theme: theme);
+      final bar = find.byType(TransportBar);
+      final context = tester.element(bar);
+      expect(TransportBar.buttonRowHeightIn(context), greaterThan(atOne));
+      expect(wordsCutOff(bar), isEmpty);
+      expect(
+        tester.getSize(bar).height,
+        TransportBar.heightIn(context, range: true),
       );
     });
 
@@ -317,6 +348,20 @@ void main() {
       await tester.dragFrom(along(tester, 'track', 0.1), const Offset(120, 0));
       expect(seeks, isEmpty);
     });
+
+    testWidgets('a track that may not seek stands off, as one with one frame '
+        'does', (tester) async {
+      List<int> inks() => [
+        for (final rect in drawn(tester, 'track')) rect.color,
+      ];
+      await pump(tester, frameCount: 1);
+      final off = inks();
+      await pump(tester, frameCount: 10, currentFrame: 4);
+      expect(inks(), isNot(off), reason: 'a track that seeks is drawn live');
+
+      await pump(tester, frameCount: 10, currentFrame: 4, onSeek: null);
+      expect(inks(), off);
+    });
   });
 
   group('the buttons', () {
@@ -400,15 +445,22 @@ void main() {
       }
     });
 
-    testWidgets('a source with one frame leaves all four where they are, '
-        'off', (tester) async {
-      await pump(tester, frameCount: 1);
-      for (final suffix in ['first', 'step-back', 'step-forward', 'last']) {
-        expect(
-          tester.appIconButton(find.byKey(k(suffix))).onPressed,
-          isNull,
-          reason: suffix,
+    testWidgets('a source with one frame, or a bar that may not seek, leaves '
+        'all four where they are, off', (tester) async {
+      for (final (frameCount, onSeek) in [(1, _ignoreFrame), (10, null)]) {
+        await pump(
+          tester,
+          frameCount: frameCount,
+          currentFrame: frameCount ~/ 2,
+          onSeek: onSeek,
         );
+        for (final suffix in ['first', 'step-back', 'step-forward', 'last']) {
+          expect(
+            tester.appIconButton(find.byKey(k(suffix))).onPressed,
+            isNull,
+            reason: '$frameCount frame(s): $suffix',
+          );
+        }
       }
     });
   });

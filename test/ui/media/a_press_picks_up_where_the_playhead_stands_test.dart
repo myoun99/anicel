@@ -76,7 +76,6 @@ void main() {
       slot.request.value = const MediaViewerRequest(
         path: 'C:/work/clip.mp4',
         kind: MediaAssetKind.video,
-        name: 'clip',
       );
       await settleLoadedPages(tester);
     }
@@ -147,7 +146,6 @@ void main() {
       slot.request.value = const MediaViewerRequest(
         path: 'C:/work/line.wav',
         kind: MediaAssetKind.audio,
-        name: 'line',
       );
       await tester.pumpAndSettle();
       expect(
@@ -182,7 +180,6 @@ void main() {
       slot.request.value = const MediaViewerRequest(
         path: 'C:/work/other.wav',
         kind: MediaAssetKind.audio,
-        name: 'other',
       );
       await tester.pumpAndSettle();
       await press(tester);

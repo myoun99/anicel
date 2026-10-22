@@ -77,6 +77,70 @@ void main() {
     expect(joined.single.canonical, member('c9', 'z'));
   });
 
+  // 🗣️F-398 ⑤: a row stands in one group — a joiner in a group already
+  // brings it along, after the origin's members.
+  group('a joiner in a group already', () {
+    final theirs = LayerLinkGroup(
+      id: 'theirs',
+      members: [member('c3', 'a3'), member('c4', 'a4')],
+    );
+
+    test('joins its whole group to the origin\'s, and the group is gone', () {
+      final joined = linkGroupsJoined(
+        [
+          LayerLinkGroup(
+            id: 'ours',
+            members: [member('c1', 'a'), member('c2', 'a2')],
+          ),
+          theirs,
+        ],
+        origin: member('c1', 'a'),
+        joiner: member('c4', 'a4'),
+        plannedGroupId: 'unused',
+      );
+
+      expect(joined, [
+        LayerLinkGroup(
+          id: 'ours',
+          members: [
+            member('c1', 'a'),
+            member('c2', 'a2'),
+            member('c3', 'a3'),
+            member('c4', 'a4'),
+          ],
+        ),
+      ]);
+    });
+
+    test('opens the planned group with the origin first when the origin is '
+        'in none', () {
+      final joined = linkGroupsJoined(
+        [theirs],
+        origin: member('c1', 'a'),
+        joiner: member('c3', 'a3'),
+        plannedGroupId: 'planned',
+      );
+
+      expect(joined, [
+        LayerLinkGroup(
+          id: 'planned',
+          members: [member('c1', 'a'), member('c3', 'a3'), member('c4', 'a4')],
+        ),
+      ]);
+    });
+
+    test('in the origin\'s own group, leaves the groups as they are', () {
+      final joined = linkGroupsJoined(
+        [theirs],
+        origin: member('c3', 'a3'),
+        joiner: member('c4', 'a4'),
+        plannedGroupId: 'unused',
+      );
+
+      expect(joined, [theirs]);
+    });
+  });
+
   test('no planned id for an unlinked origin is a programming error', () {
     expect(
       () => linkGroupsJoined(

@@ -73,7 +73,7 @@ void main() {
           style: face,
           child: TimelineFrameCellsRow(
             layer: layer ?? twoRunLayer(),
-            playbackFrameCount: 24,
+            drawnFrameCount: 24,
             // Classic geometry: 48px cells put the grips at [0,12] / [84,96]
             // and run 0's end cluster at [96,120].
             geometry: testFrameGeometry(

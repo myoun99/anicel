@@ -4,11 +4,16 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
+import '../../core/lru.dart';
+import '../../core/signed_memo.dart';
 import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
-import '../../services/cel_text_box_edits.dart' show celTextBoxDepth;
+import '../../services/cel_text_box_edits.dart'
+    show celTextBoxDepth, celTextBoxLengthPast;
+import '../../services/cel_text_frame.dart';
 import '../timeline/axis_turn.dart' show extentAcross;
 import 'canvas_letter_faces.dart';
+import 'canvas_letter_lines.dart';
 import 'canvas_letter_passes.dart';
 import 'canvas_letter_style.dart';
 import 'vertical_writing.dart';
@@ -115,16 +120,11 @@ class CelTextLayout {
   /// How far past [block] anything of the text is drawn, in its own frame.
   final double _reach;
 
-  late final _TextFrame _frame = _TextFrame.of(content);
+  late final CelTextFrame _frame = CelTextFrame.of(content);
 
   /// Sets [canvas] — which is in canvas space — up for drawing in the
   /// text's own frame. The caller saves and restores around it.
-  void applyFrame(ui.Canvas canvas) {
-    canvas.translate(content.anchor.x, content.anchor.y);
-    if (content.rotationDegrees != 0) {
-      canvas.rotate(_frame.radians);
-    }
-  }
+  void applyFrame(ui.Canvas canvas) => _frame.applyTo(canvas);
 
   /// [local], a point of the text's own frame, on the canvas.
   ui.Offset toCanvas(ui.Offset local) => _frame.toCanvas(local);
@@ -178,6 +178,33 @@ class CelTextLayout {
   TextPosition positionAt(ui.Offset point) =>
       _setting.positionAt(toLocal(point));
 
+  /// The place on the line AFTER the one [position] stands on — or the one
+  /// before it — nearest [along], how far along the lines it is in the
+  /// text's own frame: the line below, in lines, and in columns the column
+  /// to the LEFT. Null with no line on that side.
+  ///
+  /// What an arrow across the lines goes to (`CelTextField`), read off the
+  /// letters where they stand: a field's own idea of the line above is set
+  /// by ONE alignment, and only in lines.
+  TextPosition? placeBeside(
+    TextPosition position, {
+    required bool after,
+    required double along,
+  }) {
+    final (:from, :to) = _setting.lineAcross(position);
+    final letters = _setting.block;
+    if (content.vertical) {
+      final x = after ? from - 0.5 : to + 0.5;
+      return x < letters.left || x > letters.right
+          ? null
+          : _setting.positionAt(ui.Offset(x, along));
+    }
+    final y = after ? to + 0.5 : from - 0.5;
+    return y < letters.top || y > letters.bottom
+        ? null
+        : _setting.positionAt(ui.Offset(along, y));
+  }
+
   /// Where a line of the text — or a column — ends for want of ROOM: the
   /// first letter of the one after, counted from the text's start. The
   /// places a box broke its text at, never the ones a break was typed at.
@@ -213,25 +240,13 @@ abstract interface class _TextSetting {
   /// The place between letters nearest [local], a point of the text's own
   /// frame.
   TextPosition positionAt(ui.Offset local);
+
+  /// The band ACROSS the lines that the line [position] stands on takes,
+  /// in the text's own frame: its top and its bottom — or, in columns, the
+  /// column's left and its right.
+  ({double from, double to}) lineAcross(TextPosition position);
   List<int> get wrapPlaces;
   void dispose();
-}
-
-/// The frame a text is set in: its origin at the text's anchor, its x along
-/// the lines — turned as the text is.
-class _TextFrame {
-  _TextFrame.of(CelTextContent content)
-    : anchor = ui.Offset(content.anchor.x, content.anchor.y),
-      radians = content.rotationDegrees * math.pi / 180;
-
-  final ui.Offset anchor;
-  final double radians;
-
-  /// [local], a point of the frame, on the canvas.
-  ui.Offset toCanvas(ui.Offset local) => _turned(local, radians) + anchor;
-
-  /// [point], a point of the canvas, in the frame.
-  ui.Offset toLocal(ui.Offset point) => _turned(point - anchor, -radians);
 }
 
 /// WHERE A TEXT'S BOX STANDS ON THE CANVAS: the frame a person sees the
@@ -247,7 +262,7 @@ class _TextFrame {
 class CelTextBox {
   const CelTextBox._(this._frame, this._rect);
 
-  final _TextFrame _frame;
+  final CelTextFrame _frame;
 
   /// The box in the text's own frame.
   final ui.Rect _rect;
@@ -263,8 +278,8 @@ class CelTextBox {
   /// Where the box's CROSS stands, carried [offCentre] from its middle: the
   /// point a hand outside the box turns the text about.
   ///
-  /// 🚨[offCentre] IS ALONG THE TEXT'S OWN LINES, in canvas pixels — a
-  /// displacement, and zero is the middle, so a cross nobody carried needs
+  /// 🚨[offCentre] IS IN THE TEXT'S OWN FRAME, along its lines and down
+  /// them ([CelTextFrame]) — a displacement, and zero is the middle, so a cross nobody carried needs
   /// no case of its own (the anchor point's law, `TransformValues.anchorX`:
   /// 「기본값 상자안의 자리에서 **얼마나 이동됬나**」). Kept that way it rides
   /// every edit the box takes: a move and a scale leave it as far from the
@@ -276,8 +291,7 @@ class CelTextBox {
   /// [travel], a hand's travel on the canvas, along the text's own lines —
   /// what carrying the cross that far adds to how far it stands off the
   /// middle ([crossAt]).
-  ui.Offset alongItsLines(ui.Offset travel) =>
-      _turned(travel, -_frame.radians);
+  ui.Offset alongItsLines(ui.Offset travel) => _frame.inFrame(travel);
 
   /// Whether [point], on the canvas, is inside the box.
   bool contains(ui.Offset point) => _rect.contains(_frame.toLocal(point));
@@ -294,18 +308,13 @@ class CelTextBox {
 /// ⚠️It is the box the letters have ON THIS MACHINE, in the faces it has
 /// NOW: a box kept from before a face arrived, or left, was measured in
 /// other letters, and is set again ([CanvasLetterFaces.generation]).
-CelTextBox celTextBoxOf(CelTextContent content) {
-  final faces = CanvasLetterFaces.current.generation;
-  final kept = _boxes[content];
-  if (kept != null && kept.faces == faces) {
-    return kept.box;
-  }
-  final box = _boxSetFor(content);
-  _boxes[content] = (faces: faces, box: box);
-  return box;
-}
+CelTextBox celTextBoxOf(CelTextContent content) => _boxes.resolve(
+  content,
+  CanvasLetterFaces.current.generation,
+  () => _boxSetFor(content),
+);
 
-final Expando<({int faces, CelTextBox box})> _boxes = Expando('cel text box');
+final SignedMemo<int, CelTextBox> _boxes = SignedMemo('cel text box');
 
 /// Whether a face [content]'s letters are written in is still ON ITS WAY to
 /// the engine ([CanvasLetterFaces]) — and it is sent for, if nobody had.
@@ -340,7 +349,8 @@ CelTextBox _boxSetFor(CelTextContent content) {
 /// A text with a [CelTextContent.wrapWidth] is set in a box that wide and
 /// wraps at it (유저 2026-10-06: 「폭이 정해진 상자(자동 줄바꿈)」); one
 /// without grows with its letters and breaks only at the breaks typed into
-/// it, its lines standing about the anchor as [CelTextContent.align] says.
+/// it, its lines standing about the anchor as their paragraph's
+/// [CelTextParagraph.align] says.
 ///
 /// [nextLetterStyle] is what the first letter typed into a text with NO
 /// letters will wear — such a text has no run to say how tall its caret is.
@@ -363,10 +373,15 @@ CelTextLayout layoutCelText(
   final pad = celTextBoxPad(largest);
   // Only a box behind the letters draws its room.
   final drawnPad = content.backgroundColor == null ? 0.0 : pad;
+  // A letter drawn wider reaches past its line's box as much farther.
+  final wider = math.max(1.0, content.letterWidth);
   return CelTextLayout._(
     content: content,
     pad: pad,
-    reach: drawnPad + _widestOutlineOf(letters) / 2 + largest * _glyphReach,
+    reach:
+        drawnPad +
+        _widestOutlineOf(letters) / 2 * wider +
+        largest * _glyphReach * wider,
     setting: content.vertical
         ? _ColumnsSetting(content, nextLetterStyle)
         : _linesOf(content, nextLetterStyle),
@@ -394,35 +409,94 @@ double _widestOutlineOf(List<TextLetterStyle> letters) => letters.fold(
       : math.max(width, style.outlineWidth),
 );
 
-/// [content]'s letters as the engine is handed them: one span a run, each
-/// saying its whole style, nested in the style of [paragraphLetters].
-TextSpan _spanOf(
+/// [content]'s letters as the engine is handed them, A PARAGRAPH AT A TIME:
+/// one span a paragraph, each holding a span of each run in it — a break
+/// being the last letter of the paragraph it ends — set at that
+/// paragraph's pitch, saying its whole style, and nested in the style of
+/// [paragraphLetters].
+///
+/// A paragraph with no letters at all — the one a break opens at the
+/// text's end, or a text's only one — is set in that nesting style alone.
+List<TextSpan> _paragraphSpansOf(
   CelTextContent content,
   TextLetterStyle paragraphLetters,
-  TextStyle Function(TextLetterStyle letters) styleOf,
-) => TextSpan(
-  style: canvasLetterTextStyle(
-    paragraphLetters,
-    lineHeight: content.lineHeight,
-  ),
-  children: [
-    for (final span in content.spans)
-      TextSpan(text: span.text, style: styleOf(span.style)),
-  ],
-);
+  TextStyle Function(TextLetterStyle letters, double lineHeight) styleOf,
+) {
+  final runs = [for (final _ in content.paragraphs) <TextSpan>[]];
+  var paragraph = 0;
+  for (final span in content.spans) {
+    var from = 0;
+    while (from < span.text.length) {
+      final broken = span.text.indexOf('\n', from);
+      final to = broken < 0 ? span.text.length : broken + 1;
+      runs[paragraph].add(
+        TextSpan(
+          text: span.text.substring(from, to),
+          style: styleOf(span.style, content.paragraphs[paragraph].lineHeight),
+        ),
+      );
+      if (broken >= 0) {
+        paragraph += 1;
+      }
+      from = to;
+    }
+  }
+  return [
+    for (final (index, children) in runs.indexed)
+      TextSpan(
+        style: canvasLetterTextStyle(
+          paragraphLetters,
+          lineHeight: content.paragraphs[index].lineHeight,
+        ),
+        children: children,
+      ),
+  ];
+}
 
 /// The letters of [content] as a FIELD is handed them — the very spans the
-/// layout's own fill pass is set from ([layoutCelText]), so a field that
-/// types into a text breaks its lines, and moves its caret up and down
-/// them, where the text on the canvas does.
+/// layout's own fill pass is set from ([layoutCelText]), one paragraph
+/// after the next, so a field that types into a text breaks its lines where
+/// the text on the canvas does, and sets them as tall.
+///
+/// ⚠️All but one: the paragraph a break opens at the END, while it has no
+/// letter. The canvas sets it at its own pitch; a field's one painter sets
+/// an empty last line at the pitch of the letters before the break — the
+/// paragraph the break ends — and no style without letters reaches that
+/// line (measured 2026-10-18: a run of no letters, an empty span — neither;
+/// the break in a run of its own sets the line it ends instead). Only the
+/// IME's window, opened under the field's caret, stands that much off, and
+/// only until a letter is typed there.
 TextSpan celTextFieldSpan(
   CelTextContent content, {
   required TextLetterStyle nextLetterStyle,
-}) => _spanOf(
-  content,
-  _paragraphLettersOf(content, nextLetterStyle),
-  (letters) => canvasLetterTextStyle(letters, lineHeight: content.lineHeight),
-);
+}) {
+  final paragraphLetters = _paragraphLettersOf(content, nextLetterStyle);
+  return TextSpan(
+    style: canvasLetterTextStyle(
+      paragraphLetters,
+      // A text with no letters is set at its one paragraph's pitch.
+      lineHeight: content.paragraphs.first.lineHeight,
+    ),
+    children: _paragraphSpansOf(
+      content,
+      paragraphLetters,
+      (letters, lineHeight) =>
+          canvasLetterTextStyle(letters, lineHeight: lineHeight),
+    ),
+  );
+}
+
+/// The width a box's lines are SET at: the box's, read before its letters
+/// are drawn as wide as [CelTextContent.letterWidth] says — so a box of
+/// narrower letters holds more of them a line — and null for a text that
+/// grows. Written in columns it is the box's own: how long a column runs,
+/// which the letters' width is across.
+double? celTextSetWidth(CelTextContent content) {
+  final wrapWidth = content.wrapWidth;
+  return wrapWidth == null || content.vertical
+      ? wrapWidth
+      : wrapWidth / content.letterWidth;
+}
 
 /// The letters the PARAGRAPH is set in — the style [content]'s runs are
 /// nested in. What no run sets is set by it: how tall a text with NO
@@ -469,19 +543,5 @@ ui.Rect _wholePixelsAround(List<ui.Offset> points) {
     top.floorToDouble(),
     right.ceilToDouble(),
     bottom.ceilToDouble(),
-  );
-}
-
-/// [point] turned by [radians] about the origin — clockwise on a canvas,
-/// whose y runs down.
-ui.Offset _turned(ui.Offset point, double radians) {
-  if (radians == 0) {
-    return point;
-  }
-  final cos = math.cos(radians);
-  final sin = math.sin(radians);
-  return ui.Offset(
-    point.dx * cos - point.dy * sin,
-    point.dx * sin + point.dy * cos,
   );
 }

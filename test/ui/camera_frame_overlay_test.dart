@@ -4,6 +4,7 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 
@@ -158,9 +159,12 @@ void main() {
             body: CameraFrameBox(
               pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
               cameraFrameSize: frameSize,
-              canvasSize: const CanvasSize(width: 1920, height: 1080),
+              pasteboard: const CanvasSize(
+                width: 1920,
+                height: 1080,
+              ).pasteboardAt(PasteboardReach.whole),
               viewport: CanvasViewport(zoom: 0.5),
-              claimsCanvas: true,
+              presses: RowBoxPresses.viewport,
               onCancelled: () {},
               move: into('move'),
               zoom: into('zoom'),

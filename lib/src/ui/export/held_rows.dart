@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
-import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../camera/camera_frame_render_service.dart' show RowPictures;
+import '../canvas/image_pieces.dart';
 import '../canvas/tiled_surface_compose.dart' show PositionedSurfaceImage;
 
 /// When a run next shows a row: how many frames on from the frame
@@ -94,7 +94,7 @@ class HeldRows {
       return await render(rows);
     } finally {
       for (final passing in rows._passing.values) {
-        passing.image.dispose();
+        passing.pieces.disposeAll();
       }
       _tell();
     }
@@ -159,10 +159,7 @@ class HeldRows {
     if (next == null) {
       return null;
     }
-    final bytes = estimatedImageBytes(
-      composed.image.width,
-      composed.image.height,
-    );
+    final bytes = composed.pieces.estimatedBytes;
     final fits = _letGoShownLatest(
       maxBytes: _room() - bytes,
       among: [
@@ -183,7 +180,7 @@ class HeldRows {
 
   void _letGo(_Row row) {
     _rows.remove(row.at);
-    row.picture.image.dispose();
+    row.picture.pieces.disposeAll();
     _bytes -= row.bytes;
     debugHeld -= 1;
   }

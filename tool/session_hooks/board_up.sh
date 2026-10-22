@@ -100,35 +100,11 @@ stop() {
 # it is fine.
 note() { echo "$(date '+%F %T') board_up: $1" >> "$MEM/.board_up.log"; }
 
-# ⚠️ONE READER FOR 「이 exe 가 이 소스인가」 -- this function, used for both
-# binaries AND by the server itself, which compares the same copy to decide
-# whether a refresh should bring new code. A BYTE COPY, not a hash: the server
-# has no hashing package and this needs no maintaining, and the copy doubles
-# as 「what this exe was built from」 if anyone ever has to look.
-# 🚨★★★AN EXE IS MADE OF MORE THAN ITS ENTRY FILE (#1434).
-# ⛔This compared the entry file ALONE, so a change to `board_model.dart` --
-# which BOTH binaries compile in -- rebuilt neither. 🧪#1433 changed only the
-# model and board_server.exe went on serving the previous one; nothing
-# anywhere would have noticed.
-# ⚠️ONE LEVEL is the whole graph: each entry imports board_model.dart and that
-# imports nothing of ours. DERIVED, not listed -- a listed name is a word
-# somebody has to remember.
-# ⛔THE SAME RULE LIVES IN board_server.dart (`sourcesOfEntry`), because the
-# server compares this stamp itself between hook runs. Change both or neither.
-# 🚨AND THE STAMP HAS A NEW NAME (.srcs). `.src` held a copy of the ENTRY
-# file; this holds the concatenation. They cannot share a path: the writer
-# (this file) and the reader (the repo) cannot land in the same instant, and
-# I proved it by taking the live board down -- the old exe found the
-# concatenation different on every request and exited every time.
-sources_of() {
-  dir="$(dirname "$1")"
-  { printf '%s\n' "$1"
-    grep -o "^import '[A-Za-z0-9_]*\.dart'" "$1" 2>/dev/null \
-      | sed "s|^import '|$dir/|; s|'$||"
-  } | sort -u
-}
-stamp_of() { sources_of "$1" | tr '\n' '\0' | xargs -0 cat 2>/dev/null; }
-built_from() { [ -f "$2" ] && stamp_of "$1" | cmp -s - "$2"; }
+# 「이 exe 가 이 소스인가」 -- `sources_of` · `stamp_of` · `built_from`, and
+# every decision about them, live in tool/exe_stamp.sh since 2026-10-18: a
+# third reader came (tool/run.sh), and a second shell spelling of one rule
+# is the copy this project does not keep.
+. "$REPO/tool/exe_stamp.sh"
 
 # Rebuild when the recorded source hash is not this source. Windows will not
 # let us overwrite a running exe, so the old one has to come down first --

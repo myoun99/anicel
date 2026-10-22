@@ -2,7 +2,7 @@ import 'dart:collection';
 
 import 'camera_pose.dart';
 import 'canvas_point.dart';
-import 'position_path.dart';
+import 'key_path_walk.dart';
 import 'property_track.dart';
 import 'transform_pose.dart';
 
@@ -12,6 +12,12 @@ export 'transform_pose.dart';
 /// conventions live at the UI/clipboard layer (Scale shown as zoom·100 %,
 /// Rotation shown with AE's clockwise-positive sign, Opacity as ·100 %).
 enum TransformPropertyId { anchorPoint, position, scale, rotation, opacity }
+
+/// The two lanes of a [TransformTrack] whose keys walk a path ([walksAPath]).
+typedef _PathLanes = ({
+  PropertyTrack<CanvasPoint> anchorPoint,
+  PropertyTrack<CanvasPoint> position,
+});
 
 /// A keyframed transform in the After Effects model: every property is its
 /// own independently keyed [PropertyTrack] (Position can carry three keys
@@ -37,7 +43,7 @@ class TransformTrack {
   /// [keyframes] as keys on position, scale and rotation, running straight
   /// between them — poses set whole, every lane at once (`CutCamera.new`).
   /// ⛔Not a key laid by hand: that one is smooth from the start
-  /// ([positionLaneKeyed], I-89-Q10 B), and a key smooth here would bend
+  /// ([pathLaneKeyed], I-89-Q10 B), and a key smooth here would bend
   /// the way between the poses it was given. ↩️An import's baked camera was
   /// kept here; it keys each lane where its file does now
   /// (`cutCameraOfFramePoses`, I-89 ⑦).
@@ -55,32 +61,36 @@ class TransformTrack {
       opacity = PropertyTrack.empty(),
       _written = null;
 
-  /// The five lanes as given — but for [position]'s roving keys, each on
-  /// the frame its run passes it nearest ([PropertyTrack.withRovingKeysSlotted],
-  /// I-89 ④): a roving key's frame is never anywhere else, whichever edit
-  /// made the track.
+  /// The five lanes as given — but for the roving keys of the two whose
+  /// keys walk a path ([walksAPath]), each on the frame its run passes it
+  /// nearest ([PropertyTrack.withRovingKeysSlotted], I-89 ④): a roving
+  /// key's frame is never anywhere else, whichever edit made the track.
   TransformTrack.properties({
-    required this.anchorPoint,
+    required PropertyTrack<CanvasPoint> anchorPoint,
     required PropertyTrack<CanvasPoint> position,
     required this.scale,
     required this.rotation,
     required this.opacity,
-  }) : position = position.withRovingKeysSlotted(positionKeySpace),
-       _written = position;
+  }) : anchorPoint = anchorPoint.withRovingKeysSlotted(pathKeySpace),
+       position = position.withRovingKeysSlotted(pathKeySpace),
+       _written = (anchorPoint: anchorPoint, position: position);
 
   factory TransformTrack.empty() => TransformTrack();
 
   final PropertyTrack<CanvasPoint> anchorPoint;
   final PropertyTrack<CanvasPoint> position;
 
-  /// [position] as the edit that made this track wrote it, before its
-  /// roving keys were placed — what the name link reads that edit by
-  /// ([transformNamedKeyChanges]). The link pairs a key with what it was
-  /// by its frame, and a roving key the edit changed may stand on another
-  /// frame once placed (I-89 ④): read off [position], the change would be
-  /// lost on the way to the keys its name links.
-  PropertyTrack<CanvasPoint> get writtenPosition => _written ?? position;
-  final PropertyTrack<CanvasPoint>? _written;
+  /// [anchorPoint] and [position] as the edit that made this track wrote
+  /// them, before their roving keys were placed — what the name link reads
+  /// that edit by ([transformNamedKeyChanges]). The link pairs a key with
+  /// what it was by its frame, and a roving key the edit changed may stand
+  /// on another frame once placed (I-89 ④): read off the placed lane, the
+  /// change would be lost on the way to the keys its name links.
+  PropertyTrack<CanvasPoint> get writtenAnchorPoint =>
+      _written?.anchorPoint ?? anchorPoint;
+  PropertyTrack<CanvasPoint> get writtenPosition =>
+      _written?.position ?? position;
+  final _PathLanes? _written;
 
   /// The scale along each axis as ONE value — x across, y down, 1 being the
   /// size the layer has (`TransformPose.scale`).
@@ -96,10 +106,10 @@ class TransformTrack {
     PropertyTrack<double>? opacity,
   }) {
     return TransformTrack.properties(
-      anchorPoint: anchorPoint ?? this.anchorPoint,
-      // The position as written, so an edit of another lane after it in
-      // the same verb leaves the link the position's own edit to read
-      // ([writtenPosition]); placed again, it stands as it stood.
+      // The two path lanes as written, so an edit of another lane after
+      // theirs in the same verb leaves the link their own edit to read
+      // ([writtenPosition]); placed again, each stands as it stood.
+      anchorPoint: anchorPoint ?? writtenAnchorPoint,
       position: position ?? writtenPosition,
       scale: scale ?? this.scale,
       rotation: rotation ?? this.rotation,
@@ -154,7 +164,7 @@ class TransformTrack {
   /// POSE FACADE: keys position+scale+rotation together at [frameIndex].
   TransformTrack withKeyframe(int frameIndex, TransformPose pose) {
     return copyWith(
-      position: positionLaneKeyed(position, frameIndex, pose.center),
+      position: pathLaneKeyed(position, frameIndex, pose.center),
       scale: scale.withKey(frameIndex, pose.scale),
       rotation: rotation.withKey(frameIndex, pose.rotationDegrees),
     );
@@ -197,7 +207,7 @@ class TransformTrack {
       center: position.resolveAtTime(
         time: time,
         orElse: () => fallback().center,
-        space: positionKeySpace,
+        space: pathKeySpace,
       ),
       scaleX: scales.x,
       scaleY: scales.y,
@@ -227,6 +237,7 @@ class TransformTrack {
       anchorPoint: PropertyTrack.fromJson(
         json['anchorPoint'] as List?,
         (value) => CanvasPoint.fromJson(value! as Map<String, dynamic>),
+        roves: true,
       ),
       position: PropertyTrack.fromJson(
         json['position'] as List?,
@@ -310,7 +321,7 @@ TransformNamedChanges transformNamedKeyChanges(
   TransformTrack before,
   TransformTrack after,
 ) => TransformNamedChanges(
-  anchorPoint: movedNamedKeys(before.anchorPoint, after.anchorPoint),
+  anchorPoint: movedNamedKeys(before.anchorPoint, after.writtenAnchorPoint),
   position: movedNamedKeys(before.position, after.writtenPosition),
   scale: movedNamedKeys(before.scale, after.scale),
   rotation: movedNamedKeys(before.rotation, after.rotation),
@@ -354,19 +365,32 @@ TransformPropertyId? transformPropertyOfLaneId(String laneId) =>
     };
 
 /// Whether [property]'s keys walk a path in space ([KeyPath], I-89 ④) —
-/// Position's alone: it resolves through [positionKeySpace], and no other
-/// lane's key is offered a path.
+/// AE's spatial properties, Position and Anchor Point
+/// (anchor-walks-a-path, 유저 2026-10-13: 「구조는 최대한 AE랑 통일하려고」):
+/// they resolve through [pathKeySpace], and no other lane's key is offered
+/// a path. ↩️Position's alone: an anchor ran straight from key to key,
+/// roved nowhere, and was keyed a corner.
 bool walksAPath(TransformPropertyId property) =>
+    property == TransformPropertyId.anchorPoint ||
     property == TransformPropertyId.position;
 
-/// [lane] — a position lane — with [value] keyed at [frameIndex]: the one
-/// write of a position key. A key new there is smooth through its
-/// neighbours ([KeyPath.auto]), as After Effects lays a new key on a motion
-/// path (I-89-Q10 B, 유저 2026-10-12: 「AE 처럼 처음부터 곡선」) — a move of
-/// two keys still runs straight, one of three or more bends. A key already
-/// there keeps the path it was given. ↩️A new key was a corner, the key
-/// window making it a curve (④-Q4 A).
-PropertyTrack<CanvasPoint> positionLaneKeyed(
+/// Whether the keys of the BARE transform lane [laneId]
+/// ([transformPropertyOfLaneId]) walk a path ([walksAPath]); false for
+/// any other lane.
+bool laneWalksAPath(String laneId) =>
+    switch (transformPropertyOfLaneId(laneId)) {
+      final property? => walksAPath(property),
+      null => false,
+    };
+
+/// [lane] — one whose keys walk a path ([walksAPath]) — with [value] keyed
+/// at [frameIndex]: the one write of such a key. A key new there is smooth
+/// through its neighbours ([KeyPath.auto]), as After Effects lays a new
+/// key on a motion path (I-89-Q10 B, 유저 2026-10-12: 「AE 처럼 처음부터
+/// 곡선」) — a move of two keys still runs straight, one of three or more
+/// bends. A key already there keeps the path it was given. ↩️A new key was
+/// a corner, the key window making it a curve (④-Q4 A).
+PropertyTrack<CanvasPoint> pathLaneKeyed(
   PropertyTrack<CanvasPoint> lane,
   int frameIndex,
   CanvasPoint value,
@@ -388,6 +412,20 @@ PropertyTrack<Object?> transformLaneOf(
   TransformPropertyId.scale => track.scale,
   TransformPropertyId.rotation => track.rotation,
   TransformPropertyId.opacity => track.opacity,
+};
+
+/// [property]'s lane of [track] as the points its keys walk — Anchor
+/// Point's or Position's, the lanes whose keys walk a path ([walksAPath]);
+/// null for any other. What a path is drawn and bent from.
+PropertyTrack<CanvasPoint>? transformPathLaneOf(
+  TransformTrack track,
+  TransformPropertyId property,
+) => switch (property) {
+  TransformPropertyId.anchorPoint => track.anchorPoint,
+  TransformPropertyId.position => track.position,
+  TransformPropertyId.scale ||
+  TransformPropertyId.rotation ||
+  TransformPropertyId.opacity => null,
 };
 
 /// [property]'s key at [frameIndex], or null ([transformLaneOf]).
@@ -458,7 +496,7 @@ CanvasPoint? resolveAnchorTrackAtTime(
   return track.resolveAtTime(
     time: time,
     orElse: () => CanvasPoint(x: 0, y: 0),
-    space: pointKeySpace,
+    space: pathKeySpace,
   );
 }
 
@@ -474,18 +512,20 @@ const KeyValueSpace<double> doubleKeySpace = KeyValueSpace(
   inverseLerp: inverseLerpDouble,
 );
 
-/// A point's [KeyValueSpace] — Anchor Point's, and Scale's two numbers.
+/// A point's [KeyValueSpace] — Scale's two numbers. ↩️Anchor Point's too,
+/// until its keys walked a path ([pathKeySpace]).
 const KeyValueSpace<CanvasPoint> pointKeySpace = KeyValueSpace(
   lerp: CanvasPoint.lerp,
   inverseLerp: CanvasPoint.inverseLerp,
 );
 
-/// Position's [KeyValueSpace]: a point's, its segments walking the path in
-/// space their keys bend ([positionPathBetween], I-89 ④).
-const KeyValueSpace<CanvasPoint> positionKeySpace = KeyValueSpace(
+/// The [KeyValueSpace] of a lane whose keys walk a path ([walksAPath]) —
+/// Position's and Anchor Point's: a point's, its segments walking the path
+/// in space their keys bend ([keyPathBetween], I-89 ④).
+const KeyValueSpace<CanvasPoint> pathKeySpace = KeyValueSpace(
   lerp: CanvasPoint.lerp,
   inverseLerp: CanvasPoint.inverseLerp,
-  walk: positionPathBetween,
+  walk: keyPathBetween,
 );
 
 /// An ARGB colour's [KeyValueSpace], channel by channel like [lerpArgb].

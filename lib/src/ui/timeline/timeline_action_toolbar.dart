@@ -38,33 +38,90 @@ Future<void> showTimelineCommaCountDialog(
   EditorSessionManager session, {
   required ToolbarPanelContext panel,
 }) async {
-  final comma = await showDialog<int>(
-    context: context,
-    builder: (context) => _CommaCountWindow(
-      framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
-      // 🗣️I-24-open-entry-Q1 (유저 2026-10-01): 「마지막에 쓴 방식으로 연다」
-      // — the entry last switched to, kept as an app setting so a restart
-      // keeps it too.
-      entry: AppFrameCountSettings.settings.value.lastEntry,
-      onEntryChanged: (entry) => session.appSettings.setFrameCountSettings(
-        AppFrameCountSettings(lastEntry: entry),
-      ),
-    ),
+  final comma = await _askFrameCount(
+    context,
+    session,
+    keyPrefix: 'set-comma-n',
+    title: AppText.strings.setCommasTitle,
+    titleIcon: Icons.timelapse_outlined,
+    field: AppText.strings.setCommasField,
   );
   if (comma != null && comma >= 1) {
     panel.setComma(comma);
   }
 }
 
-/// The N-comma window: the count typed as frames or as seconds+frames
+/// 🗣️I-58 (유저 2026-10-01): 「버튼누르면 창 열려서 숫자만 입력가능한창.
+/// 3적고 확인누르면 현재 블록에서 헤더부터 시작해서 3코마마다 점 찍음」 — the
+/// ● every n koma, pressed on [panel] as the N commas are. With no band it
+/// counts from the playhead's cell, and it toggles as the ● does (F-402 —
+/// `LayerMarks.markEvery`).
+Future<void> showMarkEveryDialog(
+  BuildContext context,
+  EditorSessionManager session, {
+  required ToolbarPanelContext panel,
+}) async {
+  final every = await _askFrameCount(
+    context,
+    session,
+    keyPrefix: 'mark-every',
+    title: editorActionLabel(EditorActionIds.frameMarkEvery),
+    titleIcon: _markEveryIcon,
+    field: AppText.strings.markEveryField,
+  );
+  if (every != null && every >= 1) {
+    panel.markEvery(every);
+  }
+}
+
+const _markEveryIcon = Icons.linear_scale;
+
+/// A count of frames, asked in a window and popped as frames — null when
+/// it closes without one. Every window that asks for a count of frames
+/// asks with [FrameCountField] (I-24).
+Future<int?> _askFrameCount(
+  BuildContext context,
+  EditorSessionManager session, {
+  required String keyPrefix,
+  required String title,
+  required IconData titleIcon,
+  required String field,
+}) => showDialog<int>(
+  context: context,
+  builder: (context) => _FrameCountWindow(
+    keyPrefix: keyPrefix,
+    title: title,
+    titleIcon: titleIcon,
+    field: field,
+    framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
+    // 🗣️I-24-open-entry-Q1 (유저 2026-10-01): 「마지막에 쓴 방식으로 연다」
+    // — the entry last switched to, kept as an app setting so a restart
+    // keeps it too.
+    entry: AppFrameCountSettings.settings.value.lastEntry,
+    onEntryChanged: (entry) => session.appSettings.setFrameCountSettings(
+      AppFrameCountSettings(lastEntry: entry),
+    ),
+  ),
+);
+
+/// The count window: the count typed as frames or as seconds+frames
 /// ([FrameCountField], I-24), popped as frames.
-class _CommaCountWindow extends StatefulWidget {
-  const _CommaCountWindow({
+class _FrameCountWindow extends StatefulWidget {
+  const _FrameCountWindow({
+    required this.keyPrefix,
+    required this.title,
+    required this.titleIcon,
+    required this.field,
     required this.framesPerSecond,
     required this.entry,
     required this.onEntryChanged,
   });
 
+  /// `<keyPrefix>-dialog`, `<keyPrefix>-apply`, and the field's own.
+  final String keyPrefix;
+  final String title;
+  final IconData titleIcon;
+  final String field;
   final int framesPerSecond;
 
   /// The entry the window opens on.
@@ -72,10 +129,10 @@ class _CommaCountWindow extends StatefulWidget {
   final ValueChanged<FrameCountEntry> onEntryChanged;
 
   @override
-  State<_CommaCountWindow> createState() => _CommaCountWindowState();
+  State<_FrameCountWindow> createState() => _FrameCountWindowState();
 }
 
-class _CommaCountWindowState extends State<_CommaCountWindow> {
+class _FrameCountWindowState extends State<_FrameCountWindow> {
   int? _count;
 
   void _apply() => Navigator.of(context).pop(_count);
@@ -84,14 +141,14 @@ class _CommaCountWindowState extends State<_CommaCountWindow> {
   Widget build(BuildContext context) {
     final strings = AppText.strings;
     return AppWindow(
-      windowKey: const ValueKey<String>('set-comma-n-dialog'),
-      title: strings.setCommasTitle,
-      titleIcon: Icons.timelapse_outlined,
+      windowKey: ValueKey<String>('${widget.keyPrefix}-dialog'),
+      title: widget.title,
+      titleIcon: widget.titleIcon,
       onClose: () => Navigator.of(context).pop(),
       width: 300,
       body: FrameCountField(
-        keyPrefix: 'set-comma-n',
-        label: strings.setCommasField,
+        keyPrefix: widget.keyPrefix,
+        label: widget.field,
         framesPerSecond: widget.framesPerSecond,
         onChanged: (count) => _count = count,
         onSubmitted: _apply,
@@ -105,7 +162,7 @@ class _CommaCountWindowState extends State<_CommaCountWindow> {
         ),
         AppWindowAction(
           label: strings.commonApply,
-          actionKey: const ValueKey<String>('set-comma-n-apply'),
+          actionKey: ValueKey<String>('${widget.keyPrefix}-apply'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: _apply,
         ),
@@ -735,13 +792,14 @@ class TimelineActionToolbar extends StatelessWidget {
     ),
     children: [
       const PillDivider(),
-      // Cached on the three predicates THESE buttons read, for the reason
+      // Cached on the predicates THESE buttons read, for the reason
       // spelled out at the comma group below.
       _StaticCommandGroup(
         rebuildKey: (
           _canCreateInstance,
           panelContext.canBlankExposure,
           panelContext.canToggleMark,
+          panelContext.canMarkEvery,
           session.languageSettings.value,
         ),
         builder: (context) => Row(
@@ -750,9 +808,14 @@ class TimelineActionToolbar extends StatelessWidget {
             // ⛔NO band on this `＋`: it makes ONE thing, in the place you
             // are standing. A band means there is something to choose, so
             // its absence here is the signal rather than an omission.
+            //
+            // 🗣️I-58 (유저 2026-10-18): 「컷 추가버튼은 새 컷이고 레이어는
+            // 레이어 추가고 프레임은 추가임 … 통일」 — the ＋ × ● wear their
+            // actions' names, as the cut's and the layer's ＋ do (I-40).
+            // ↩️Each had a string of its own.
             _iconButton(
               key: const ValueKey<String>('new-frame-button'),
-              tooltip: AppText.strings.tlAdd,
+              tooltip: editorActionLabel(EditorActionIds.frameNewDrawing),
               // The film verbs ship unbound; naming the action is what shows
               // a key the day one is recorded for it.
               shortcuts: const [EditorActionIds.frameNewDrawing],
@@ -762,7 +825,7 @@ class TimelineActionToolbar extends StatelessWidget {
             ),
             _iconButton(
               key: const ValueKey<String>('blank-exposure-button'),
-              tooltip: AppText.strings.tlBlankX,
+              tooltip: editorActionLabel(EditorActionIds.frameBlankExposure),
               shortcuts: const [EditorActionIds.frameBlankExposure],
               icon: Icons.close,
               onPressed: panelContext.canBlankExposure
@@ -774,8 +837,11 @@ class TimelineActionToolbar extends StatelessWidget {
             // 두라하지않았나?** 프레임 알약 안, **중간나누기 버튼 오른쪽**에
             // 두도록. 기존 잔재는 삭제」.
             //
-            // 「중간나누기 버튼」 is the × above — `tlBlankX`, 「중간 없음 /
-            // ×」 (中割なし). This sits to its right, exactly as asked.
+            // ↩️A session read 「중간나누기 버튼」 as the × above (中割なし)
+            // and stood this to its right. The user names the × 「비우기」
+            // and the ● 「중간나누기 마크」 (I-58, 10-18), and keeps this
+            // where it stands — I-58-Q1: 「토글은 지금 자리, 새 버튼만 ●
+            // 오른쪽」.
             //
             // ⚠️A SETTING among commands, and that is the point: it is the
             // standing answer to 「what does a press on an empty cell do」,
@@ -816,11 +882,26 @@ class TimelineActionToolbar extends StatelessWidget {
             ),
             _iconButton(
               key: const ValueKey<String>('toggle-mark-button'),
-              tooltip: AppText.strings.tlMark,
+              tooltip: editorActionLabel(EditorActionIds.frameToggleMark),
               shortcuts: const [EditorActionIds.frameToggleMark],
               icon: Icons.circle,
               onPressed: panelContext.canToggleMark
                   ? panelContext.toggleMark
+                  : null,
+            ),
+            // 🗣️I-58-Q1 (유저 2026-10-18): 「토글은 지금 자리, 새 버튼만 ●
+            // 오른쪽」.
+            _iconButton(
+              key: const ValueKey<String>('mark-every-button'),
+              tooltip: editorActionLabel(EditorActionIds.frameMarkEvery),
+              shortcuts: const [EditorActionIds.frameMarkEvery],
+              icon: _markEveryIcon,
+              onPressed: panelContext.canMarkEvery
+                  ? () => showMarkEveryDialog(
+                      context,
+                      session,
+                      panel: panelContext,
+                    )
                   : null,
             ),
           ],

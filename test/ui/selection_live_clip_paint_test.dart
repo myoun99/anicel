@@ -10,6 +10,7 @@ import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
@@ -105,7 +106,7 @@ void main() {
     BrushBlendMode mode = BrushBlendMode.color,
   }) async {
     final rasterizer = BrushLiveStrokeRasterizer(
-      canvasSize: canvasSize,
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
       tileSize: tileSize,
     )..selectionRegion = region;
     final dirty = rasterizer.blendFrom(dabs, from: 0);

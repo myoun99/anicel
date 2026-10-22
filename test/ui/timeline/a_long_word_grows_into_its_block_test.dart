@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🗣️F-96 (유저 2026-09-12): 「프레임 블록의 텍스트, 프레임 이름은 해당 칸에
@@ -181,9 +182,7 @@ void main() {
       reason: 'fixture: the name covers the first cell of the next tile',
     );
     expect(nextTile(), isNull, reason: 'fixture: the store starts cold');
-    while (landings == 0) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await pollUntil(() => landings > 0);
     final image = nextTile();
     expect(image, isNotNull, reason: 'fixture: the tile landed');
     final bytes = (await image!.toByteData(
@@ -275,9 +274,7 @@ void main() {
       devicePixelRatio: 1.0,
     );
     expect(tile(), isNull, reason: 'fixture: the store starts cold');
-    while (landings == 0) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await pollUntil(() => landings > 0);
     final image = tile();
     expect(image, isNotNull, reason: 'fixture: the tile landed');
     final bytes = (await image!.toByteData(

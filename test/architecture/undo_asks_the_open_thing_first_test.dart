@@ -9,7 +9,10 @@ import '../helpers/source_body.dart';
 ///
 /// 🗣️유저 2026-09-20: 「**변형도구 사용시 변형에 대한 조작마다 언두로 기록**
 /// 된단거야 … **확정하면 변형 하나로서의 언두만 작동**」. The polygon trace
-/// had the same law first (유저 확정, 2026-08).
+/// had the same law first (유저 확정, 2026-08), and F-377 (유저 2026-10-17:
+/// 「변형 상태는 모두 기본적으로 그걸 따르도록. 텍스트 변형이든 뭐든」) gave it
+/// to an adjust on the canvas, a photo held on a sheet and a text held by
+/// its box.
 ///
 /// ⛔**THE BEHAVIOUR IS PINNED ELSEWHERE** — `test/ui/canvas/
 /// ctrl_z_steps_inside_the_open_box_test.dart` presses the real key and the
@@ -27,40 +30,54 @@ import '../helpers/source_body.dart';
 void main() {
   const verbs = 'lib/src/ui/brush/history_verbs.dart';
 
-  test('undo asks polygon, then transform, then the document', () {
+  test('undo asks the adjust, the polygon, the box, the photo held and the '
+      'text held, then the document', () {
     final undo = sourceBodyOf(
       File(verbs).readAsStringSync(),
       'VoidCallback? _undo()',
     );
-    final polygon = undo.indexOf('selection.hasOpenPolygon');
-    final transform = undo.indexOf('selection.canUndoTransformStep');
+    const adjust = 'session.canvasAdjust.canStepBack';
+    // ↩️F-380: the trace is asked of every canvas's (`CanvasTraces`) — a
+    // viewer keeps one of its own — where it was the window's channel's.
+    const polygon = 'traces.open case final trace?';
+    const transform = 'selection.canUndoTransformStep';
+    const photo = 'session.sheetPhotoHold.canStepBack';
+    const text = 'text.canStepBack';
     final document = undo.indexOf('session.canUndo');
 
     // ⚠️THE QUESTION IS THE WHOLE CONDITION, not a term inside one. ↩️This
     // pin read positions alone and a mutant that wrote `if (false && …)`
     // kept every position it was reading — it survived (2026-09-22).
-    for (final question in const ['hasOpenPolygon', 'canUndoTransformStep']) {
+    for (final question in const [adjust, polygon, transform, photo, text]) {
       expect(
         undo,
-        matches(RegExp('if \\(selection\\.$question\\) \\{')),
+        matches(RegExp('if \\(${RegExp.escape(question)}\\) \\{')),
         reason: '$question decides on its own answer, ungated',
       );
     }
-    expect(polygon, isNonNegative, reason: 'the polygon trace is asked');
-    expect(transform, isNonNegative, reason: 'the open box is asked');
     expect(document, isNonNegative, reason: 'the document is the fallback');
     expect(
-      transform,
-      greaterThan(polygon),
-      reason: 'the polygon is the newer thing on screen and keeps its place',
+      undo.indexOf(polygon),
+      greaterThan(undo.indexOf(adjust)),
+      reason:
+          'an adjust (F-377) is a mode stepped into over whatever was open, '
+          'asked first as 확정 asks it first',
     );
     expect(
-      document,
-      greaterThan(transform),
-      reason:
-          '⛔the document is LAST. Asked first it would land the session and '
-          'undo somebody else\'s edit while the user was still transforming',
+      undo.indexOf(transform),
+      greaterThan(undo.indexOf(polygon)),
+      reason: 'the polygon is the newer thing on screen and keeps its place',
     );
+    for (final open in const [transform, photo, text]) {
+      expect(
+        document,
+        greaterThan(undo.indexOf(open)),
+        reason:
+            '⛔the document is LAST. Asked first it would land the session '
+            'and undo somebody else\'s edit while the user was still '
+            'transforming',
+      );
+    }
   });
 
   test('redo is the same shape, and says so by asking the trace first', () {
@@ -70,10 +87,10 @@ void main() {
     );
     expect(
       redo,
-      matches(RegExp(r'if \(selection\.canRedoPolygonPoint\) \{')),
+      matches(RegExp(r'if \(traces\.toRedo case final trace\?\) \{')),
     );
     expect(
-      redo.indexOf('canRedoPolygonPoint'),
+      redo.indexOf('traces.toRedo'),
       lessThan(redo.indexOf('session.canRedo')),
     );
   });

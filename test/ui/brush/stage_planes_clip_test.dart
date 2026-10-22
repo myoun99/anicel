@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 
 /// The stage planes must clip to their own box, and the reason is memory
 /// rather than appearance.
@@ -141,6 +145,27 @@ void main() {
               'measuring anything. Bounds: $bounds vs box: $box',
         );
       }
+    }
+  });
+
+  /// 🚨I-109: the pasteboard's plane stops where ink stops — at the wall
+  /// of the size in use, and at the paper when it is off (F-114's one
+  /// wall: 「법 나뉘어져있는거같으니 통일」).
+  test('the pasteboard plane reaches the wall of the size in use', () {
+    const canvasSize = CanvasSize(width: 400, height: 200);
+    for (final reach in PasteboardReach.values) {
+      final spy = _SpyCanvas();
+      StagePlanesPainter(
+        pasteboard: (color: const Color(0xFF808080), none: false),
+        pasteboardReach: reach,
+        canvasSize: canvasSize,
+        viewport: CanvasViewport(),
+      ).paint(spy, const Size(2000, 1000));
+      expect(
+        spy.pathBounds,
+        canvasSize.pasteboardAt(reach).rect,
+        reason: '$reach',
+      );
     }
   });
 }

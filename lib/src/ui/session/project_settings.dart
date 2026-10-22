@@ -1,4 +1,5 @@
 import '../../models/cut_id.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/project_background.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/storyboard_timeline_layout.dart';
@@ -51,6 +52,33 @@ class ProjectSettings {
     _project.cutCommandCoordinator.setProjectPasteboardNone();
     _changes.notifyChanged();
   }
+
+  /// One undo step; no-op when unchanged (I-109): the pasteboard's size,
+  /// every picture past its new wall cut with it.
+  void setPasteboardSize(PasteboardSize size) {
+    _project.cutCommandCoordinator.setProjectPasteboardSize(size);
+    _changes.notifyChanged();
+  }
+
+  /// One undo step; no-op when unchanged (I-109): whether the pasteboard is
+  /// there at all — off, nothing reaches past the paper.
+  void setPasteboardInUse(bool inUse) {
+    _project.cutCommandCoordinator.setProjectPasteboardInUse(inUse);
+    _changes.notifyChanged();
+  }
+
+  /// What [setPasteboardSize] to [size] or [setPasteboardInUse] to [inUse]
+  /// will cut of the pictures kept in files, worked out ahead on the
+  /// machine's workers — what a wait window holds up first (F-432).
+  Future<void> cutPasteboardAhead({
+    PasteboardSize? size,
+    bool? inUse,
+    void Function(double done)? report,
+  }) => _project.cutCommandCoordinator.cutProjectPasteboardAhead(
+    size: size,
+    inUse: inUse,
+    report: report,
+  );
 
   /// One undo step; no-op when unchanged. The BACKDROP (R3b): the stage's
   /// floor — what a translucent picture reveals (never a fade's screen,

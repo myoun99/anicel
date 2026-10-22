@@ -29,7 +29,11 @@ import '../../core/draw_space.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../services/composite_effect_paint.dart';
+import '../../services/import/cel_picture.dart'
+    show isPastTheSide, pictureSideLimitIfMeasured;
 import 'blends_in_place.dart';
+import 'display_resample.dart' show rectOutwardOnGrid;
+import 'image_pieces.dart';
 import 'raster_picture.dart';
 import 'subtree_image_composite.dart';
 import '../../services/layer_pose_paint.dart';
@@ -65,13 +69,15 @@ T withLayerPlacement<T>(
 
 /// One layer's image, posed, faded, blended, filtered and drawn.
 ///
-/// [worldRect] is where the image's pixels belong in canvas space, and
-/// [extent] the rect the image stands for — the canvas grown by any
-/// pasteboard tiles; every pixel of [extent] outside [worldRect] is
-/// transparent. A cached cel may be stored as its ink alone
+/// [pieces] are the image and where its pixels belong in canvas space — one
+/// piece, or several side by side for a picture past the side this engine
+/// holds ([_drawInPieces]) — and [extent] the rect the image stands for —
+/// the canvas grown by any pasteboard tiles; every pixel of [extent] outside
+/// the pieces is transparent. A cached cel may be stored as its ink alone
 /// (`LayerFrameImage`), and [_laidDown] decides whether that crop can be
 /// drawn as it is or the whole image has to be laid back first. Pass the
-/// same rect twice for an image that was never cropped. A holder that draws
+/// piece's rect as [extent] for an image that was never cropped. A holder
+/// that draws
 /// the same crop again and again passes its [laidBack], so the whole is laid
 /// back once rather than per draw. [rasterScale] is the
 /// quality tier the destination canvas is rastering at — it scales the
@@ -107,8 +113,7 @@ T withLayerPlacement<T>(
 /// drawn at `none` whatever the route asked.
 void drawPosedLayerImage(
   ui.Canvas canvas, {
-  required ui.Image image,
-  required ui.Rect worldRect,
+  required List<ImagePiece> pieces,
   required ui.Rect extent,
   required LayerPlacement? placement,
   required double opacity,
@@ -155,92 +160,214 @@ void drawPosedLayerImage(
       );
       plan.finalPaint.applyTo(paint);
       final copyScale = placement == null ? texelScale : null;
-      final laid = _laidDown(
-        (image: image, worldRect: worldRect, extent: extent),
-        texelScale: copyScale,
-        inkDrawsTheSame:
-            blendsInPlace(blendMode.paintBlendMode) && plan.outsetPixels == 0,
-        laidBack: laidBack,
-      );
-      // ⛔THE STEP SCALE IS NOT `rasterScale`, even though it equals it here.
-      // `rasterScale` answers "what space does the DRAW land in"; the steps
-      // ask "how many image pixels is a canvas pixel". On this route the
-      // image is at the same raster the canvas is, so the two numbers agree
-      // — which is exactly why one parameter was answering both until the
-      // playback painter needed them to differ. Derived, so it cannot drift.
-      final stepped = steppedForChain(
-        image: laid.image,
-        plan: plan,
-        canvasExtent: laid.worldRect.width,
-      );
-      // 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
-      // 2026-09-24 「통일해서」). The law the 1:1 blits beside it already keep
-      // — the sub-tree blit, the tile blits, the buffer carry — asked of a
-      // layer image: below 100% the buffer lays each level image down one
-      // texel per pixel, and so does a camera that moves pixels whole, and
-      // filtering that is only a copy on paper. 🔬Measured against the source image: bilinear
-      // at 1:1 IS the copy on the Windows app (Impeller GLES) and the test
-      // runner, and is NOT on Impeller Vulkan — Android's default — up to
-      // 9/255 off at a 2340×1654 image and 4/255 at the fit-zoom level,
-      // growing with the size. `none` is the copy on all three. So a layer
-      // drawn this way was a hair softer on Android than the same layer
-      // being drawn on, whose tiles are `none` — the active/inactive split
-      // D14 ruled out (「그림 자체에 통일해서 적용」).
-      final copies = _isTexelCopy(stepped, laid.worldRect, copyScale);
-      assert(() {
-        if (copies) {
-          debugTexelCopies += 1;
-        }
-        return true;
-      }());
-      paint.filterQuality = copies ? ui.FilterQuality.none : filterQuality;
-      final source = ui.Rect.fromLTWH(
-        0,
-        0,
-        stepped.width.toDouble(),
-        stepped.height.toDouble(),
-      );
-      try {
-        // 🚨F-243: in an advanced blend the image is held to where it lands
-        // — a layer whose ink reaches the edge of its image stretched that
-        // edge across the pasteboard ([drawHeldToItsRect]).
-        if (drawAtOriginWhen?.call(laid.worldRect, stepped) ?? false) {
+      void draw(_Stored stored, LaidBackWhole? laidBack) {
+        final laid = _laidDown(
+          stored,
+          texelScale: copyScale,
+          inkDrawsTheSame:
+              blendsInPlace(blendMode.paintBlendMode) && plan.outsetPixels == 0,
+          laidBack: laidBack,
+        );
+        // ⛔THE STEP SCALE IS NOT `rasterScale`, even though it equals it here.
+        // `rasterScale` answers "what space does the DRAW land in"; the steps
+        // ask "how many image pixels is a canvas pixel". On this route the
+        // image is at the same raster the canvas is, so the two numbers agree
+        // — which is exactly why one parameter was answering both until the
+        // playback painter needed them to differ. Derived, so it cannot drift.
+        final stepped = steppedForChain(
+          image: laid.image,
+          plan: plan,
+          canvasExtent: laid.worldRect.width,
+        );
+        // 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
+        // 2026-09-24 「통일해서」). The law the 1:1 blits beside it already keep
+        // — the sub-tree blit, the tile blits, the buffer carry — asked of a
+        // layer image: below 100% the buffer lays each level image down one
+        // texel per pixel, and so does a camera that moves pixels whole, and
+        // filtering that is only a copy on paper. 🔬Measured against the source image: bilinear
+        // at 1:1 IS the copy on the Windows app (Impeller GLES) and the test
+        // runner, and is NOT on Impeller Vulkan — Android's default — up to
+        // 9/255 off at a 2340×1654 image and 4/255 at the fit-zoom level,
+        // growing with the size. `none` is the copy on all three. So a layer
+        // drawn this way was a hair softer on Android than the same layer
+        // being drawn on, whose tiles are `none` — the active/inactive split
+        // D14 ruled out (「그림 자체에 통일해서 적용」).
+        final copies = _isTexelCopy(stepped, laid.worldRect, copyScale);
+        assert(() {
+          if (copies) {
+            debugTexelCopies += 1;
+          }
+          return true;
+        }());
+        paint.filterQuality = copies ? ui.FilterQuality.none : filterQuality;
+        final source = ui.Rect.fromLTWH(
+          0,
+          0,
+          stepped.width.toDouble(),
+          stepped.height.toDouble(),
+        );
+        try {
+          // 🚨F-243: in an advanced blend the image is held to where it lands
+          // — a layer whose ink reaches the edge of its image stretched that
+          // edge across the pasteboard ([drawHeldToItsRect]).
+          if (drawAtOriginWhen?.call(laid.worldRect, stepped) ?? false) {
+            drawHeldToItsRect(
+              canvas,
+              source,
+              paint,
+              () => canvas.drawImage(stepped, ui.Offset.zero, paint),
+            );
+            return;
+          }
+          final destination = ui.Rect.fromLTWH(
+            laid.worldRect.left * rasterScale,
+            laid.worldRect.top * rasterScale,
+            laid.worldRect.width * rasterScale,
+            laid.worldRect.height * rasterScale,
+          );
           drawHeldToItsRect(
             canvas,
-            source,
+            destination,
             paint,
-            () => canvas.drawImage(stepped, ui.Offset.zero, paint),
+            () => canvas.drawImageRect(stepped, source, destination, paint),
           );
-          return;
-        }
-        final destination = ui.Rect.fromLTWH(
-          laid.worldRect.left * rasterScale,
-          laid.worldRect.top * rasterScale,
-          laid.worldRect.width * rasterScale,
-          laid.worldRect.height * rasterScale,
-        );
-        drawHeldToItsRect(
-          canvas,
-          destination,
-          paint,
-          () => canvas.drawImageRect(stepped, source, destination, paint),
-        );
-      } finally {
-        // ⛔The steps made a NEW image, and a whole image laid back for this
-        // draw alone is this draw's; the one handed in belongs to the cache
-        // and a kept whole to its holder. Disposing either would take pixels
-        // someone still draws with. The draw above holds its own reference
-        // to whatever it drew.
-        if (!identical(stepped, laid.image)) {
-          stepped.dispose();
-        }
-        if (laid.drawOwnsIt) {
-          laid.image.dispose();
+        } finally {
+          // ⛔The steps made a NEW image, and a whole image laid back for this
+          // draw alone is this draw's; the one handed in belongs to the cache
+          // and a kept whole to its holder. Disposing either would take pixels
+          // someone still draws with. The draw above holds its own reference
+          // to whatever it drew.
+          if (!identical(stepped, laid.image)) {
+            stepped.dispose();
+          }
+          if (laid.drawOwnsIt) {
+            laid.image.dispose();
+          }
         }
       }
+
+      if (pieces case [final whole]) {
+        draw(
+          (image: whole.image, worldRect: whole.worldRect, extent: extent),
+          laidBack,
+        );
+        return;
+      }
+      _drawInPieces(
+        pieces,
+        // Grown by as far as the chain reads past a pixel, in canvas pixels
+        // — what a seen part has to hold beyond what is seen
+        // ([inkCropDrawsTheSame] asks the same number).
+        seen: _seenBy(
+          canvas,
+          rasterScale,
+        ).inflate(resolveCompositeEffectPlan(effects).outsetPixels),
+        extent: extent,
+        draw: (stored) => draw(stored, null),
+      );
     },
   );
 }
+
+/// What one draw stands on: an image, where its pixels belong, and the rect
+/// it stands for ([drawPosedLayerImage]'s `extent`).
+typedef _Stored = ({ui.Image image, ui.Rect worldRect, ui.Rect extent});
+
+/// 🚨★★★A PICTURE IN PIECES IS DRAWN AS ONE IMAGE: THE PART OF IT THIS DRAW
+/// CAN SHOW ([piecesOver] says why a picture is held in pieces).
+///
+/// Drawn piece by piece, a pose would sample each piece's edge clamped where
+/// the whole image samples its neighbour, a blur would stop at every cut,
+/// and an advanced blend would blend each piece through its own area — a
+/// seam the whole picture never had. So the pieces are laid into ONE image,
+/// texel for texel ([_laidInto]), over the part of [extent] the draw can
+/// [seen] — in canvas pixels, grown by as far as the chain reads — and two
+/// texels for the sampler; and that image is drawn the one way ([draw]), as
+/// the part a whole image stands for: every pixel this draw can land on
+/// reads the texels the whole image would hand it. It is the same lay
+/// [_wholeOf] makes of a crop.
+///
+/// A part longer on a side than the engine holds — a picture shrunk on a
+/// canvas that sees more of it than that, or a canvas that does not say
+/// what it sees — is drawn piece by piece ([debugPiecesDrawnApart]). Every
+/// canvas a cel is drawn onto says: the screen by its clip, a raster by
+/// its bounds (the display buffer, a sub-tree's, the bake's, a film
+/// frame's).
+void _drawInPieces(
+  List<ImagePiece> pieces, {
+  required ui.Rect seen,
+  required ui.Rect extent,
+  required void Function(_Stored stored) draw,
+}) {
+  final texels = _texelsOf(pieces);
+  final window = seen.inflate(2 / texels);
+  if (!window.overlaps(extent)) {
+    return;
+  }
+  final part = rectOutwardOnGrid(
+    window.intersect(extent),
+    texels,
+    origin: pieces.first.worldRect.topLeft,
+  ).intersect(extent);
+  final side = pictureSideLimitIfMeasured;
+  if (side != null &&
+      isPastTheSide(
+        (part.width * texels).round(),
+        (part.height * texels).round(),
+        side,
+      )) {
+    assert(() {
+      debugPiecesDrawnApart += 1;
+      return true;
+    }());
+    for (final piece in pieces) {
+      draw((
+        image: piece.image,
+        worldRect: piece.worldRect,
+        extent: piece.worldRect,
+      ));
+    }
+    return;
+  }
+  assert(() {
+    debugSeenPartsLaid += 1;
+    return true;
+  }());
+  final laid = _laidInto(pieces, part);
+  try {
+    draw((image: laid, worldRect: part, extent: part));
+  } finally {
+    // The draw holds its own reference to what it drew.
+    laid.dispose();
+  }
+}
+
+/// What [canvas] can land on, in canvas pixels: its clip in this draw's
+/// space, at [rasterScale].
+ui.Rect _seenBy(ui.Canvas canvas, double rasterScale) {
+  final clip = canvas.getLocalClipBounds();
+  return ui.Rect.fromLTRB(
+    clip.left / rasterScale,
+    clip.top / rasterScale,
+    clip.right / rasterScale,
+    clip.bottom / rasterScale,
+  );
+}
+
+/// How many texels a canvas pixel is in [pieces] — one scale for them all,
+/// read off the first: every piece but a row's or a column's last is a
+/// power of two texels across ([piecesOver]).
+double _texelsOf(List<ImagePiece> pieces) =>
+    pieces.first.image.width / pieces.first.worldRect.width;
+
+/// How many draws of a picture in pieces laid the part they show into one
+/// image ([_drawInPieces]), and how many drew the pieces apart. Written
+/// under `assert`.
+@visibleForTesting
+int debugSeenPartsLaid = 0;
+
+@visibleForTesting
+int debugPiecesDrawnApart = 0;
 
 /// Whether a layer drawn through [pose], [blendMode] and [effects] puts the
 /// same bytes on a raster from its ink alone as from the whole image — so a
@@ -403,20 +530,35 @@ ui.Image _wholeOf(
     debugWholesLaidBack += 1;
     return true;
   }());
-  final texels = image.width / worldRect.width;
+  return _laidInto([(image: image, worldRect: worldRect)], extent);
+}
+
+/// [pieces] laid into [rect] at their own resolution — each texel for texel
+/// where it lands, transparent wherever none lies: a crop laid back into its
+/// whole ([_wholeOf]), and the part of a picture in pieces a draw shows
+/// ([_drawInPieces]). A texel copy at the identity, so its bytes are exactly
+/// the pieces' over [rect].
+ui.Image _laidInto(List<ImagePiece> pieces, ui.Rect rect) {
+  final texels = _texelsOf(pieces);
   final recorder = ui.PictureRecorder();
-  ui.Canvas(recorder).drawImage(
-    image,
-    ui.Offset(
-      (worldRect.left - extent.left) * texels,
-      (worldRect.top - extent.top) * texels,
-    ),
-    ui.Paint()..filterQuality = ui.FilterQuality.none,
-  );
+  final canvas = ui.Canvas(recorder);
+  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
+  for (final piece in pieces) {
+    if (piece.worldRect.overlaps(rect)) {
+      canvas.drawImage(
+        piece.image,
+        ui.Offset(
+          (piece.worldRect.left - rect.left) * texels,
+          (piece.worldRect.top - rect.top) * texels,
+        ),
+        paint,
+      );
+    }
+  }
   return rasterPicture(
     recorder,
-    (extent.width * texels).round(),
-    (extent.height * texels).round(),
+    (rect.width * texels).round(),
+    (rect.height * texels).round(),
   );
 }
 

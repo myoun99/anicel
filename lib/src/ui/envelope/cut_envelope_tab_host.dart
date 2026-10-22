@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -20,15 +18,17 @@ import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart';
 import '../text/app_face.dart';
 import '../text/app_strings.dart';
+import '../timeline/memo_token.dart' show ByIdentity;
 import '../widgets/app_icon_button.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_strata.dart';
 import 'cut_envelope_builder.dart';
 import '../sheet/sheet_ink_layer.dart';
+import '../sheet/sheet_photo_drop.dart';
 import 'cut_envelope_ink.dart';
 import 'cut_envelope_overlay.dart';
 import 'cut_envelope_painter.dart';
-import 'envelope_picture_drop.dart';
 
 /// The cut-envelope PANEL: the 봉투 as paper inside the canvas panel shell
 /// — the timesheet's and conte's architecture with envelope content.
@@ -84,7 +84,7 @@ class CutEnvelopeTabHost extends StatefulWidget {
   final ValueChanged<bool>? onBrushAllowedChanged;
 
   /// Resolves a media asset path (the logo) to a decoded image.
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
 
   /// Notifies when an image [imageFor] answered null for has landed — the
   /// page's inputs do not change for it, so this is what repaints it.
@@ -95,6 +95,14 @@ class CutEnvelopeTabHost extends StatefulWidget {
   // conte's case too — so the panel's own floor is the whole story. Stating
   // a larger number here would only raise the bottom dock's minimum for
   // every tab beside it.
+
+  /// What the envelope prints of [session], to the panel host that hears
+  /// the session through it: the project — the cut it is the envelope of
+  /// and the work's form among it. The model is immutable, so a new one is
+  /// the only way it moves. Which cut that is, the one under the playhead
+  /// (F-90), turns it over through the host's own listenable.
+  static Object printedBy(EditorSessionManager session) =>
+      ByIdentity(session.repository.requireProject());
 
   @override
   State<CutEnvelopeTabHost> createState() => _CutEnvelopeTabHostState();
@@ -187,6 +195,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
       fitFocusRect: paper.canvasRect,
       viewLimit: paper.canvasRect,
       drawingOn: inking,
+      brushToolState: brushToolState,
       strokeHold: _strokeHold,
       content: (context, viewport) => LayoutBuilder(
         builder: (context, constraints) {
@@ -234,10 +243,15 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                       SheetStratum.content,
                       repaint: widget.imageRepaint,
                     ),
+                    // The ink, and a landed decode of a photo it holds
+                    // (I-97).
                     if (inkController != null)
                       SheetStratum.ink: painterOf(
                         SheetStratum.ink,
-                        repaint: inkController,
+                        repaint: Listenable.merge([
+                          inkController,
+                          widget.imageRepaint,
+                        ]),
                       ),
                   },
                   liveNow: (stratum) =>
@@ -260,17 +274,18 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                     viewport: viewport,
                     strokeActive: _strokeHold,
                     cacheInvalidationSink: _cacheInvalidationSink,
+                    imageFor: widget.imageFor,
+                    imageRepaint: widget.imageRepaint,
+                    photoHold: session.sheetPhotoHold,
                   ),
                 ),
-              // A pool picture dropped on a box stamps it, brush or no
-              // brush: a drop is no stray mark for the switch to guard.
+              // A pool picture dropped on a box is its photo (I-97).
               if (inkController != null && owner != null)
                 Positioned.fill(
-                  child: EnvelopePictureDrop(
+                  child: SheetPhotoDrop(
                     session: session,
-                    layout: layout,
-                    windows: windows,
                     ink: inkController,
+                    windows: () => windows,
                     viewport: viewport,
                     cacheInvalidationSink: _cacheInvalidationSink,
                   ),

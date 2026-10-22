@@ -13,7 +13,7 @@ import '../../models/new_row_placement.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/project_lookup.dart'
-    show cutIdOfLayer, projectLayersAnywhere;
+    show cutWritingRow, projectLayersAnywhere;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart'
     show carryBakedPictures, carryConteHandwriting;
@@ -259,11 +259,13 @@ class LayerVerbs {
     _changes.notifyChanged();
   }
 
-  /// The cut a row verb writes [layerId] in: the one HOLDING it, the active
-  /// one for a track's own row ([ActiveCutEdits.onCutOfRowQuietly]).
-  CutId? _cutWriting(LayerId layerId) =>
-      cutIdOfLayer(_project.repository.requireProject(), layerId) ??
-      _project.activeCutOrNull?.id;
+  /// The cut a row verb writes [layerId] in ([cutWritingRow]): the one
+  /// HOLDING it, the active one for a track's own row.
+  CutId? _cutWriting(LayerId layerId) => cutWritingRow(
+    _project.repository.requireProject(),
+    layerId,
+    standing: _project.activeCutId,
+  );
 
   /// ⑨: every selected row duplicated, in ONE undo — the rename's twin —
   /// standing on the last copy.
@@ -461,6 +463,35 @@ class LayerVerbs {
     );
   }
 
+  /// One row's delete, where the row lives: an S row off its TRACK — while
+  /// the track keeps more than its floor of two, asked again at each one so
+  /// a multi-row delete stops there — any other row in [cutId], whose
+  /// floors the coordinator asks ([CutCommandCoordinator.deleteLayer]).
+  ///
+  /// 🗣️F-359 (유저 2026-10-14): 「s행은 삭제창통해 삭제해도 삭제가안됨」.
+  /// ↩️Only the active row's delete took an S row off its track; the
+  /// selection's — the one the delete window commits — handed it to the
+  /// cut's, which holds no S row and refused it.
+  void _deleteRow(CutId cutId, LayerId layerId) {
+    final track = _selection.activeTrack;
+    if (!track.seLayers.any((row) => row.id == layerId)) {
+      _project.cutCommandCoordinator.deleteLayer(
+        cutId: cutId,
+        layerId: layerId,
+      );
+      return;
+    }
+    if (track.seLayers.length > 2) {
+      _project.historyManager.execute(
+        RemoveTrackSeLayerCommand(
+          repository: _project.repository,
+          trackId: _selection.selectedTrackId,
+          layerId: layerId,
+        ),
+      );
+    }
+  }
+
   /// Deletes the active layer. Callers should confirm via dialog first and check
   /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.
   void deleteActiveLayer() {
@@ -475,13 +506,7 @@ class LayerVerbs {
         beforeLayers: beforeSe,
         deletedLayerId: activeLayer.id,
       );
-      _project.historyManager.execute(
-        RemoveTrackSeLayerCommand(
-          repository: _project.repository,
-          trackId: _selection.selectedTrackId,
-          layerId: activeLayer.id,
-        ),
-      );
+      _deleteRow(_project.requireActiveCut.id, activeLayer.id);
       _changes.refreshAfterCutCommand(
         preferredActiveLayerId: nextActiveLayerId,
         filterSparesStanding: false,
@@ -530,10 +555,7 @@ class LayerVerbs {
     final nextActiveLayerId = _standAfterDeleting(ordered);
     _project.historyManager.runAsOneStep('Delete rows', () {
       for (final layerId in ordered) {
-        _project.cutCommandCoordinator.deleteLayer(
-          cutId: cut.id,
-          layerId: layerId,
-        );
+        _deleteRow(cut.id, layerId);
       }
     });
     _selection.clearRowSelection();
@@ -578,10 +600,12 @@ class LayerVerbs {
 
   /// Renames any row by id — folders included, because a folder is a row.
   void renameLayer(LayerId layerId, String name) {
+    final cutId = _cutWriting(layerId);
+    if (cutId == null) {
+      return;
+    }
     _project.cutCommandCoordinator.renameLayer(
-      cutId:
-          cutIdOfLayer(_project.repository.requireProject(), layerId) ??
-          _project.requireActiveCut.id,
+      cutId: cutId,
       layerId: layerId,
       name: name,
     );
@@ -595,12 +619,25 @@ class LayerVerbs {
   /// on the canvas, a file let go between two rail rows. Its two structural
   /// rules (an attach group is indivisible; a new row joins the folder of
   /// the row below it) are written there, with why.
-  void addRowAboveActive(Layer Function(Cut cut) build) {
+  void addRowAboveActive(Layer Function(Cut cut) build) =>
+      addRow(build, placementAboveActive);
+
+  /// Where [addRowAboveActive] places a new row in [stack].
+  ({int index, LayerId? folderId}) placementAboveActive(List<Layer> stack) =>
+      newRowPlacement(
+        stack,
+        _controllers.layerController.insertionIndexAboveActiveLayer(),
+      );
+
+  /// Inserts a NEW ROW in the active cut where [placeIn] places it in the
+  /// cut's stack — above the active layer ([placementAboveActive]), or at
+  /// a cut's conte row's birthplace (`conteRowPlacement`, F-369).
+  void addRow(
+    Layer Function(Cut cut) build,
+    ({int index, LayerId? folderId}) Function(List<Layer> stack) placeIn,
+  ) {
     final cut = _project.requireActiveCut;
-    final placement = newRowPlacement(
-      cut.layers,
-      _controllers.layerController.insertionIndexAboveActiveLayer(),
-    );
+    final placement = placeIn(cut.layers);
     final built = build(cut);
     _controllers.layerController.addLayer(
       layer: placement.folderId == null

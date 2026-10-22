@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/native_engine_path.dart';
+import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// F-166: the unworked-block tint's revision is ONE number for the whole
@@ -83,18 +84,8 @@ void main() {
     final store = TimelineGridTileStore.instance;
     var landings = 0;
     store.revision.addListener(() => landings += 1);
-    // Idle is the store's word, not a timer's ([debugBusy]): a slow drain
-    // on a loaded machine must not read as a finished one.
-    Future<void> waitIdle() async {
-      final deadline = DateTime.now().add(const Duration(seconds: 30));
-      await Future<void>.delayed(Duration.zero);
-      while (store.debugBusy) {
-        if (DateTime.now().isAfter(deadline)) {
-          fail('timed out waiting for the drain (have $landings landings)');
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
-    }
+    Future<void> waitIdle() =>
+        tileStoreIdle(store, seen: () => '$landings landings');
 
     // The session's shape: a fact per cel and ONE revision for all of
     // them. Every cel starts drawn.
@@ -103,6 +94,7 @@ void main() {
     final celContent = TimelineCelContentSource(
       hasContent: (layer, frameIndex) =>
           drawn[(layer.id.value, frameIndex < 4 ? 'f1' : 'f2')] ?? true,
+      cannotRead: (_, _) => false,
       revision: revision,
     );
     TimelineRowCellsPainter painterFor(Layer layer) => TimelineRowCellsPainter(

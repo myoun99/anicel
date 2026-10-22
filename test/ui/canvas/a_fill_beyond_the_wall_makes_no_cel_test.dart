@@ -99,7 +99,7 @@ void main() {
 
   const size = BrushCanvasFixture.canvasSize;
   final beyondTheWall = CanvasPoint(
-    x: size.pasteboardLeft - size.width / 4,
+    x: size.pasteboardAt(PasteboardReach.whole).left - size.width / 4,
     y: size.height / 2,
   );
   final onThePasteboard = CanvasPoint(

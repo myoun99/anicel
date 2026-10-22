@@ -64,6 +64,7 @@ void main() {
     expect(s.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
     expect(s.exposureVerbs.canBlankExposureAtCurrentFrame, isFalse);
     expect(s.layerMarks.canToggleMarkAtCurrentFrame, isFalse);
+    expect(s.layerMarks.canMarkEvery, isFalse);
 
     // Copy/duplicate quietly refuse the camera layer: selected, it is no
     // row the board takes, and the pill's copy leaves the board empty.

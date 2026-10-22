@@ -1,4 +1,6 @@
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, sizedAlong;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_scrub.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
@@ -25,7 +27,6 @@ void main() {
 
   /// A strip that scrolls along [axis], its viewport carrying [key].
   Widget strip(Axis axis, GlobalKey key, ScrollController controller) {
-    final horizontal = axis == Axis.horizontal;
     return SizedBox(
       width: stripExtent,
       height: stripExtent,
@@ -33,9 +34,10 @@ void main() {
         key: key,
         scrollDirection: axis,
         controller: controller,
-        child: SizedBox(
-          width: horizontal ? stripExtent * 10 : stripExtent,
-          height: horizontal ? stripExtent : stripExtent * 10,
+        child: sizedAlong(
+          axis,
+          along: stripExtent * 10,
+          across: stripExtent,
         ),
       ),
     );
@@ -114,8 +116,7 @@ void main() {
         for (final axis in Axis.values) {
           final origin = alongPoint(tester, keys[axis]!, axis);
           scrubs[axis]!.pressAt(
-            origin +
-                (axis == Axis.horizontal ? Offset(along, 8) : Offset(8, along)),
+            origin + offsetAlong(axis, along: along, across: 8),
           );
         }
       }
@@ -136,10 +137,7 @@ void main() {
       for (final axis in Axis.values) {
         final origin = alongPoint(tester, keys[axis]!, axis);
         scrubs[axis]!.pressAt(
-          origin +
-              (axis == Axis.horizontal
-                  ? const Offset(stripExtent - 2, 8)
-                  : const Offset(8, stripExtent - 2)),
+          origin + offsetAlong(axis, along: stripExtent - 2, across: 8),
         );
       }
       for (final axis in Axis.values) {
@@ -153,10 +151,7 @@ void main() {
       for (final axis in Axis.values) {
         final origin = alongPoint(tester, keys[axis]!, axis);
         scrubs[axis]!.dragTo(
-          origin +
-              (axis == Axis.horizontal
-                  ? const Offset(stripExtent - 2, 8)
-                  : const Offset(8, stripExtent - 2)),
+          origin + offsetAlong(axis, along: stripExtent - 2, across: 8),
         );
       }
       expect(controllers[Axis.horizontal]!.offset, greaterThan(0));
@@ -175,8 +170,7 @@ void main() {
       for (final axis in Axis.values) {
         final origin = alongPoint(tester, keys[axis]!, axis);
         Offset at(double along) =>
-            origin +
-            (axis == Axis.horizontal ? Offset(along, 8) : Offset(8, along));
+            origin + offsetAlong(axis, along: along, across: 8);
         scrubs[axis]!
           ..pressAt(at(100))
           ..dragTo(at(104))

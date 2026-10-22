@@ -1,4 +1,5 @@
-import '../../controllers/timeline_controller.dart' show SpliceRider;
+import '../../controllers/timeline_controller.dart'
+    show SpliceRider, SpliceRun;
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
@@ -17,6 +18,7 @@ import '../../services/project_lookup.dart' show attachedMirrorGroupOf;
 import '../../services/persistence/media_staging_store.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
+import 'drags/exposure_edge_drag.dart' show commitSpliceKeepingTheCutOnItsRow;
 import 'frame_verbs.dart' show rowTakesNewCels;
 import 'independent_clip_mint.dart';
 import 'session_roles.dart';
@@ -93,8 +95,19 @@ class FrameClipboard implements BringsMedia {
   // own axis, THE selection — and each panel answers only where its press
   // stands. The `…AtCurrentFrame` members are the timeline's doors.
 
-  /// The TIMELINE's place: the cut's active row, at the cut's playhead.
+  /// The TIMELINE's place: the cut's active row, at the cut's playhead —
+  /// null while the timeline stands on a LANE, as [storyboardPlace] is.
+  ///
+  /// 🗣️F-388 (유저 2026-10-17): 「해당 fx에 서있으면 지금 캔버스 조작이 그 행
+  /// 기준으로 작동할텐데 복붙은 그 fx의 주인인 레이어행을 기준으로 작동함.
+  /// 제대로 서있는곳에서 작동하도록」. Standing on a lane seats its owner as
+  /// the active layer, and this place read the owner's cel there. A lane row
+  /// is its own subject (R10 #19 · F-87 — Delete's rung); its keys are the
+  /// key board's ([KeyClipboard]).
   ClipboardPlace? get timelinePlace {
+    if (_selection.timelineStandingRow is LaneRowAddress) {
+      return null;
+    }
     final row = _selection.activeLayer;
     return row == null
         ? null
@@ -215,15 +228,17 @@ class FrameClipboard implements BringsMedia {
         // has no place on it ([canPasteIndependentFrameAtCurrentFrame]'s
         // stand-down). ↩️Every image row was turned away, by kind; one
         // standing EMPTY takes its picture back (image-row-cut-paste, 유저
-        // 2026-10-04 — the cut's other half, [canCutRunAtCurrentFrame]).
-        (layer.kind.holdsSingleCel && !pictureRowStandsEmpty(layer))) {
+        // 2026-10-04 — the cut's other half, [canCutRunAtCurrentFrame]),
+        // and so does one a selection empties ([_holdsAPictureOnceLifted]).
+        _holdsAPictureOnceLifted(layer, _selectedRunAt(place))) {
       return false;
     }
     // 🗣️I-71 — on a row the copy was NOT taken from, the link is by NAME
     // ([_keepsNamesOn]). ↩️Every other row was turned away here: 「is that
     // cel in THIS row」 was the whole of what a link could mean.
     if (layer.id != copiedFrame.layerId) {
-      return _keepsNamesOn(layer, copiedFrame) && place._index >= 0;
+      final room = _onceLifted(layer, _selectedRunAt(place));
+      return _keepsNamesOn(room, copiedFrame) && place._onRoom;
     }
 
     // 🚨T3 — the clipboard may be holding cels the layer no longer has: a
@@ -232,7 +247,7 @@ class FrameClipboard implements BringsMedia {
     // still has it" would have made cut-then-paste-back impossible while
     // the button sat lit.
     if (copiedFrame.cels.any((cel) => cel.id == copiedFrame.frameId)) {
-      return place._index >= 0;
+      return place._onRoom;
     }
 
     return _controllers.timelineController.canPasteLinkedFrameAt(
@@ -507,7 +522,7 @@ class FrameClipboard implements BringsMedia {
     // 아니다」.
     final band = place._band;
     final banked = bankedRowLayerIds;
-    _controllers.timelineController.spliceRunsForLayers(
+    final cutMoved = _splice(
       runs: [
         for (final bankedLayerId in banked)
           (
@@ -539,6 +554,9 @@ class FrameClipboard implements BringsMedia {
       description: 'Cut frames',
     );
     band?.clear();
+    if (cutMoved) {
+      _changes.refreshAfterCutCommand();
+    }
     _changes.notifyChanged();
   }
 
@@ -579,7 +597,7 @@ class FrameClipboard implements BringsMedia {
   /// ⛔The gate leaves no third case: a selection that misses this row
   /// stood the press down ([canCopyAt]).
   TimelineClipRow _clipToBank(ClipboardPlace place, Frame frame) {
-    final run = place._band == null ? null : _runAt(place);
+    final run = _selectedRunAt(place);
     return run == null
         ? _oneCellOf(frame.id)
         : _runCopiedOff(place._row, index: run.index, count: run.count);
@@ -693,11 +711,12 @@ class FrameClipboard implements BringsMedia {
     // direction row pastes blocks like every cel row (its span rides the
     // block it is, R27); a SYNCED attach row owns no timeline of its own; a
     // reference row's picture comes from the library; an IMAGE row holds
-    // ONE cel, and takes one only while it stands empty.
-    if (!rowTakesNewCels(layer)) {
+    // ONE cel, and takes one only while it stands empty — as the
+    // selection's lift leaves it ([_onceLifted]).
+    if (!rowTakesNewCels(_onceLifted(layer, _selectedRunAt(place)))) {
       return false;
     }
-    return place._index >= 0;
+    return place._onRoom;
   }
 
   void pasteIndependentFrameAtCurrentFrame() =>
@@ -774,6 +793,7 @@ class FrameClipboard implements BringsMedia {
     _CopiedFrameReference copied,
   ) {
     final board = copied.rows;
+    final band = place._band;
     final landings = <_PasteLanding>[];
     for (final (i, target) in [
       place._row,
@@ -781,6 +801,15 @@ class FrameClipboard implements BringsMedia {
     ].indexed) {
       if (board.length > 1 && i >= board.length) {
         break;
+      }
+      // A picture row the selection leaves holding its picture has no room
+      // for one more — it keeps its SEAT, [i], and takes nothing. Asked of
+      // the anchor too: its gate asked the same ([canPasteLinkedAt]).
+      final lift = band == null
+          ? null
+          : (index: band.startOn(target.id), count: band.length);
+      if (_holdsAPictureOnceLifted(target, lift)) {
+        continue;
       }
       // The anchor row is the board's first — the pictures live on rows.
       final mine = board[board.length <= 1 ? 0 : i];
@@ -845,23 +874,22 @@ class FrameClipboard implements BringsMedia {
   /// Empty when no band covers the anchor, which is what keeps the
   /// single-row paste on the same code path instead of beside it.
   ///
-  /// ⚠️The kind filter is the paste gate's own: a SYNCED attach row has no
-  /// timing of its own, and a SINGLE-CEL row holds one block the covering
-  /// normalization keeps — a paste into either writes something the next
-  /// normalize takes straight back out. ↩️It was called 「the delete
-  /// collector's」 while that collector passed image rows over; the delete
-  /// takes an image row's block now (F-98), and a paste still has no second
-  /// place on one.
+  /// ⚠️The kind filter: a SYNCED attach row has no timing of its own — a
+  /// paste into it writes something the next normalize takes straight back
+  /// out.
   ///
-  /// ⚠️NOT the gate's any more, for one row: the press with no band lands
-  /// on a picture row standing EMPTY (image-row-cut-paste), and a band
-  /// still passes every picture row over, empty or not. That is kept on
-  /// purpose, undecided rather than decided: these are also the rows a
-  /// copy TAKES ([_copiedRowsBesides]), the board pairs its rows with the
-  /// targets IN ORDER ([_pasteRun]), and a filter that changed with what a
-  /// row holds would pair a clip with another row's seat the moment the
-  /// row was emptied between the copy and the paste. What a band does with
-  /// a picture row is asked on the board (image-row-cut-paste-Q1).
+  /// 🗣️image-row-cut-paste-Q1 (유저 2026-10-07): 「밴드도 이미지 행을
+  /// 다룬다 — 그림이 있어도 갈아끼운다」 — a PICTURE row takes its seat
+  /// like any cel row: a copy takes its picture, a cut lifts it, and a
+  /// paste puts the clip's first in its place ([_landingsOn]). ↩️Every
+  /// picture row was passed over, held or empty.
+  ///
+  /// ⛔By KIND alone, never by what a row holds: these are also the rows a
+  /// copy TAKES ([_copiedRowsBesides]), and the board pairs its rows with
+  /// the targets IN ORDER ([_landingsOn]) — a filter that changed with what
+  /// a row holds would pair a clip with another row's seat the moment the
+  /// row was emptied or filled between the copy and the paste. A row with
+  /// no room keeps its seat and takes nothing ([_holdsAPictureOnceLifted]).
   List<Layer> _pasteTargetRowsBesides(ClipboardPlace place) {
     final band = place._band;
     final anchor = place._row;
@@ -876,7 +904,6 @@ class FrameClipboard implements BringsMedia {
       final row = _project.rangeLayerById(id);
       if (row == null ||
           !row.kind.takesAuthoredCels ||
-          row.kind.holdsSingleCel ||
           isSyncedAttachedLayer(row)) {
         continue;
       }
@@ -927,17 +954,7 @@ class FrameClipboard implements BringsMedia {
     // The clipboard still holds ONE row, so a band across three rows gets
     // that row three times. With no band the list is the active row alone,
     // which is why this is one path rather than a branch beside the old one.
-    final runs =
-        <
-          ({
-            LayerId layerId,
-            int index,
-            int liftCount,
-            TimelineClipRow? clip,
-            List<Frame> bornFrames,
-            List<AudioClip> bornSounds,
-          })
-        >[];
+    final runs = <SpliceRun>[];
     // Which minted cel came from which source, per row — the pictures move
     // across this after the splice (F-62). Empty for a LINKED paste, which
     // mints nothing.
@@ -984,12 +1001,10 @@ class FrameClipboard implements BringsMedia {
     }
     final description = independent ? 'Paste frames' : 'Paste linked frames';
     // ONE undo for the paste and what it brought.
+    var cutMoved = false;
     _project.historyManager.runAsOneStep(description, () {
       landArrival(_project, arrival);
-      _controllers.timelineController.spliceRunsForLayers(
-        runs: runs,
-        description: description,
-      );
+      cutMoved = _splice(runs: runs, description: description);
     });
     final cut = _project.activeCutOrNull;
     for (final (targetId, minted, pictures) in mintedByLayer) {
@@ -1017,7 +1032,28 @@ class FrameClipboard implements BringsMedia {
       );
     }
     replaced?.clear();
+    if (cutMoved) {
+      _changes.refreshAfterCutCommand();
+    }
     _changes.notifyChanged();
+  }
+
+  /// THE ONE SPLICE ([TimelineController.splicedLayers]) committed by the
+  /// cut's law ([commitSpliceKeepingTheCutOnItsRow]): a conte row the splice
+  /// lengthens or shortens takes its cut's end line along (F-352). True
+  /// when the cut moved — the cut command's refresh is owed.
+  bool _splice({
+    required List<SpliceRun> runs,
+    required String description,
+    List<SpliceRider> riders = const [],
+  }) {
+    final controller = _controllers.timelineController;
+    return commitSpliceKeepingTheCutOnItsRow(
+      project: _project,
+      controller: controller,
+      edits: controller.splicedLayers(runs: runs, riders: riders),
+      description: description,
+    );
   }
 
   /// The first drawing [clip] shows, as ONE comma — what a row that holds a
@@ -1084,6 +1120,43 @@ class FrameClipboard implements BringsMedia {
     }
     return _controllers.timelineController.runAtForLayer(row, place._index);
   }
+
+  /// The run THE SELECTION names on [place]'s row — null with none up.
+  ({int index, int count})? _selectedRunAt(ClipboardPlace place) =>
+      place._band == null ? null : _runAt(place);
+
+  /// [row] as a paste finds it once [lift] — the cells a selection replaces
+  /// — is out of it: 「선택이 있으면 갈아끼우기」 is the lift and then the
+  /// clip, so the room a row has is the room the lift leaves it.
+  ///
+  /// ⚠️Lifted only for a PICTURE row, the one row whose room hangs on what
+  /// it holds ([rowTakesNewCels]: ONE picture, a cel only while it stands
+  /// empty); every other row's lift is the splice's to make.
+  static Layer _onceLifted(Layer row, ({int index, int count})? lift) {
+    if (lift == null || !row.kind.holdsSingleCel) {
+      return row;
+    }
+    return row.copyWith(
+      timeline: spliceTimeline(
+        timeline: ghostFreeTimeline(row),
+        index: lift.index,
+        liftCount: lift.count,
+      ),
+    );
+  }
+
+  /// Whether [row] is a picture row still holding its picture once [lift]
+  /// is out of it — no room for the one a paste brings.
+  ///
+  /// 🗣️image-row-cut-paste-Q1 (유저 2026-10-07): 「그림이 있어도
+  /// 갈아끼운다」 — a selection over the picture's block lifts it, and the
+  /// clip's first takes its place. One over the hold past it lifts nothing
+  /// there: that cell is not the block, as it is not to the delete
+  /// (image-row-cut-paste-Q2: 「블록이 있는 칸에서만」).
+  static bool _holdsAPictureOnceLifted(
+    Layer row,
+    ({int index, int count})? lift,
+  ) => row.kind.holdsSingleCel && rowHoldsABlock(_onceLifted(row, lift));
 
   // --- 링크 독립 (I-45): the frame-axis rung ------------------------------
 
@@ -1212,11 +1285,8 @@ class FrameClipboard implements BringsMedia {
         mintedByLayer.add((mirrors.layerId, mirrors.minted));
       }
     }
-    _controllers.timelineController.spliceRunsForLayers(
-      runs: splices,
-      description: 'Unlink frames',
-      riders: riders,
-    );
+    // Each run keeps its length, so the row's end — and its cut — stays.
+    _splice(runs: splices, description: 'Unlink frames', riders: riders);
     final cut = _project.activeCutOrNull;
     if (cut != null) {
       final store = _renderCaches.brushFrameStore;
@@ -1348,6 +1418,11 @@ class ClipboardPlace {
   final int _index;
 
   final _ClipboardBand? _band;
+
+  /// Whether a cel may land where the cursor stands on [_row]: at or past
+  /// the row's floor — a conte's held-back のりしろ is no room (F-339,
+  /// [layerBlockFloor]).
+  bool get _onRoom => _index >= layerBlockFloor(_row);
 
   /// Whether THE selection names rows this press would MISS — the law
   /// [SelectionAccess.bandNamesRowsThisPressWouldMiss] states for the cut's

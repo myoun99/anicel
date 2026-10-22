@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -18,13 +17,12 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/thaw_in_worker.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
-import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
 
 /// 🚨Card `cel-thaw-holds-the-ui-thread`: a cel still in the saved file was
 /// inflated on the UI thread the moment a row's image was made — 16–19 ms a
@@ -76,27 +74,10 @@ void main() {
 
   /// [cels] kept as an opened project keeps them: each a stretch of the
   /// saved file, cold until read.
-  Future<void> keepInTheFile(BrushFrameStore store, List<String> cels) async {
-    final directory = await Directory.systemTemp.createTemp('qa-frame-thaw');
-    deleteAfterSessionEnds(directory);
-    final refs = <BrushFrameKey, AnicelCelFileRef>{};
-    for (final (index, cel) in cels.indexed) {
-      final key = keyOf(cel);
-      final blob = AnicelCelBlob.encode(
-        AnicelCelEntry.fromSurface(key, surfaceOf(index + 1)),
-      );
-      final path = '${directory.path}/$cel.bin';
-      File(path).writeAsBytesSync(blob.bytes);
-      refs[key] = AnicelCelFileRef(
-        filePath: path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: canvasSize,
-        tileSize: blob.tileSize,
-      );
-    }
-    store.restoreFromFile(refs);
-  }
+  void keepInTheFile(BrushFrameStore store, List<String> cels) => keepInAFile(
+    store,
+    {for (final (index, cel) in cels.indexed) keyOf(cel): surfaceOf(index + 1)},
+  );
 
   /// [body] run while every worker's turn is taken — no thaw can start —
   /// and the turns given back after it, whatever it did.
@@ -140,7 +121,7 @@ void main() {
       'cel is not read on this thread', (tester) async {
     await tester.runAsync(() async {
       final store = _ThawAsks();
-      await keepInTheFile(store, ['a']);
+      keepInTheFile(store, ['a']);
       final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
 
@@ -167,7 +148,7 @@ void main() {
       'after another', (tester) async {
     await tester.runAsync(() async {
       final store = _ThawAsks();
-      await keepInTheFile(store, ['a', 'b', 'c']);
+      keepInTheFile(store, ['a', 'b', 'c']);
       final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
       final pictures = picturesOf(images, ['a', 'b', 'c']);
@@ -194,7 +175,7 @@ void main() {
       'the frame\'s nor a row\'s', (tester) async {
     await tester.runAsync(() async {
       final store = _ThawAsks();
-      await keepInTheFile(store, ['a', 'b']);
+      keepInTheFile(store, ['a', 'b']);
       final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
 

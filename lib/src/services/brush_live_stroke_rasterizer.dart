@@ -1,19 +1,17 @@
 import 'dart:ffi' show Pointer, Uint16, Uint16Pointer, Uint8;
-import 'dart:collection';
-
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../core/floor_math.dart';
+import '../core/lru.dart';
 import '../core/rgba_premultiply.dart';
 import '../core/sync_image_upload.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
-import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
@@ -153,8 +151,8 @@ class _ResultTile {
 /// Read access to the in-progress stroke's straight-alpha pixels — what
 /// the live overlay snapshots its tile images from.
 abstract interface class ActiveStrokePixelSource {
-  int get canvasWidth;
-  int get canvasHeight;
+  /// The wall the stroke stops at — its cel's ([BitmapSurface.pasteboard]).
+  PasteboardWall get pasteboard;
 
   /// Copies [count] straight-alpha RGBA pixels starting at canvas (x, y)
   /// into [target] at [targetOffset]. Unpainted pixels read as transparent
@@ -180,7 +178,7 @@ abstract interface class ActiveStrokePixelSource {
 /// is locked by `active_stroke_overlay_parity_test.dart` (byte-exact).
 class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   BrushLiveStrokeRasterizer({
-    required this.canvasSize,
+    required this.pasteboard,
     this.tileSize = defaultTileSize,
   });
 
@@ -199,13 +197,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// quadrant bookkeeping everywhere the two grids met.)
   final int tileSize;
 
-  final CanvasSize canvasSize;
-
   @override
-  int get canvasWidth => canvasSize.width;
-
-  @override
-  int get canvasHeight => canvasSize.height;
+  final PasteboardWall pasteboard;
 
   /// Straight-alpha RGBA tile buffers keyed by `tileY * tilesPerRow +
   /// tileX`, allocated (zeroed) the first time a dab touches the tile.
@@ -309,9 +302,21 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// insertion/refresh order — the exact bytes the commit holds at that
   /// coordinate, kept alive so pen-up can ADOPT them instead of blending
   /// the whole stroke a second time.
-  final LinkedHashMap<int, _ResultTile> _results =
-      LinkedHashMap<int, _ResultTile>();
-  int _resultBytes = 0;
+  ///
+  /// Budget: the LEAST recently blended results go (the ones the brush has
+  /// moved past). Their coordinates simply re-blend at pen-up — the stroke
+  /// tiles and the base are both still here, so nothing is lost but the
+  /// work. A result is one tile's bytes, whichever path blended it.
+  late final Lru<int, _ResultTile> _results = Lru(
+    limit: () => residentResultByteBudget,
+    costOf: (_) => tileSize * tileSize * 4,
+    letGo: (_, dropped) {
+      final buffer = dropped.native;
+      if (buffer != null) {
+        _native?.releaseTileBuffer(buffer);
+      }
+    },
+  );
 
   /// Resident-result byte budget (the round's one real cost: while a
   /// stroke runs, a touched coordinate holds its stroke tile AND its
@@ -331,12 +336,12 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// tab scales it ([CacheBudgets.liveStroke]).
   static const int defaultResidentResultByteBudget = 96 * 1024 * 1024;
 
-  // The linear key grid spans the PASTEBOARD (strokes reach one canvas
-  // size past every edge), offset so keys stay non-negative.
-  late final int _tileXMin = canvasSize.pasteboardTileXMin(tileSize);
-  late final int _tileYMin = canvasSize.pasteboardTileYMin(tileSize);
-  late final int _tilesPerRow =
-      canvasSize.pasteboardTileXEndExclusive(tileSize) - _tileXMin;
+  // The linear key grid spans the PASTEBOARD (strokes reach the wall, not
+  // the canvas edge), offset so keys stay non-negative.
+  late final TileRange _wallTiles = pasteboard.tileRange(tileSize);
+  late final int _tileXMin = _wallTiles.firstX;
+  late final int _tileYMin = _wallTiles.firstY;
+  late final int _tilesPerRow = _wallTiles.lastX + 1 - _tileXMin;
 
   int _tileKey(int tileX, int tileY) =>
       (tileY - _tileYMin) * _tilesPerRow + (tileX - _tileXMin);
@@ -391,7 +396,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _maskTiles.clear();
     _uniformMask = null;
     _results.clear();
-    _resultBytes = 0;
     _strokeBounds = null;
     _blendedDabCount = 0;
   }
@@ -399,6 +403,12 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// Resident result tiles (test/debug oracle for the memory budget).
   @visibleForTesting
   int get residentResultTileCount => _results.length;
+
+  /// Whether the result at the coordinate is resident (test oracle for the
+  /// order the budget lets results go in).
+  @visibleForTesting
+  bool holdsResultAt(int tileX, int tileY) =>
+      _results.containsKey(_tileKey(tileX, tileY));
 
   /// R25: the overlay's FUSED display path. Overlay tiles are the same
   /// 128px grid as the stroke tiles, so a full tile's snapshot +
@@ -505,7 +515,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
               int key,
               QaNativeTileBuffer buffer,
               int revision,
-              bool isNew,
               QaStampScratch scratch,
             })
           >[];
@@ -514,7 +523,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       for (final entry in staged) {
         final strokeNative = _nativeBuffers[entry.key];
         final revision = _tileRevisions[entry.key] ?? 0;
-        final existing = _results[entry.key];
+        final existing = _results.peek(entry.key);
         if (strokeNative == null) {
           // A Dart-buffer tile inside a native rasterizer: cannot happen
           // in practice, but fall back rather than mis-stage a span.
@@ -531,8 +540,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         if (existing != null && existing.revision == revision) {
           // Already current: the resident result stands, and its
           // premultiplied form is made only if the door asks for it.
-          _results.remove(entry.key);
-          _results[entry.key] = existing;
+          _results.use(entry.key);
           if (!existing.changed) {
             continue; // Equal to the base: nothing to show (see below).
           }
@@ -582,7 +590,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
           key: entry.key,
           buffer: stagedBuffer,
           revision: revision,
-          isNew: reused == null,
           scratch: scratch,
         ));
       }
@@ -596,7 +603,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         for (var i = 0; i < blends.length; i += 1) {
           final entry = blends[i];
           final touched = changed[i] != 0;
-          _storeResult(
+          _results.keep(
             entry.key,
             _ResultTile(
               native: entry.buffer,
@@ -604,8 +611,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
               revision: entry.revision,
               changed: touched,
             ),
-            byteLength,
-            isNew: entry.isNew,
           );
           if (!touched) {
             // The result equals the base — every stroke pixel here was
@@ -803,12 +808,11 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _MaskTile? mask,
   }) {
     final revision = _tileRevisions[key] ?? 0;
-    final existing = _results[key];
+    final existing = _results.peek(key);
     if (existing != null && existing.revision == revision) {
       // Refreshed by use: the frontier keeps its results, the tail drops
       // first when the budget bites.
-      _results.remove(key);
-      _results[key] = existing;
+      _results.use(key);
       return existing;
     }
     final tileLeft = tileX * tileSize;
@@ -851,7 +855,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         revision: revision,
         changed: changed[0] != 0,
       );
-      _storeResult(key, result, byteLength, isNew: existing == null);
+      _results.keep(key, result);
       return result;
     }
     // Dart route: the same kernels, in Dart. The straight result is a
@@ -892,37 +896,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       revision: revision,
       changed: changed,
     );
-    _storeResult(key, result, byteLength, isNew: existing == null);
+    _results.keep(key, result);
     return result;
-  }
-
-  void _storeResult(
-    int key,
-    _ResultTile result,
-    int byteLength, {
-    required bool isNew,
-  }) {
-    _results.remove(key);
-    _results[key] = result;
-    if (isNew) {
-      _resultBytes += byteLength;
-    }
-    // Budget: drop the LEAST recently blended results (the ones the brush
-    // has moved past). Their coordinates simply re-blend at pen-up — the
-    // stroke tiles and the base are both still here, so nothing is lost
-    // but the work.
-    while (_resultBytes > residentResultByteBudget && _results.length > 1) {
-      final oldestKey = _results.keys.first;
-      if (oldestKey == key) {
-        break;
-      }
-      final dropped = _results.remove(oldestKey)!;
-      final buffer = dropped.native;
-      if (buffer != null) {
-        _native?.releaseTileBuffer(buffer);
-      }
-      _resultBytes -= byteLength;
-    }
   }
 
   /// The finished tiles of this stroke, ready to be ADOPTED by the cel
@@ -947,7 +922,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       'promotion requires the stroke grid to be the surface grid',
     );
     final promoted = <PromotedStrokeTile>[];
-    final byteLength = tileSize * tileSize * 4;
     for (final key in _tiles.keys.toList()) {
       final coord = _tileCoords[key]!;
       final mask = _maskTileFor(key, coord);
@@ -977,8 +951,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
           : BitmapTile(size: tileSize, pixels: result.bytes);
       if (buffer != null) {
         // Adopted: the tile's finalizer owns the block now.
-        _results.remove(key);
-        _resultBytes -= byteLength;
+        _results.take(key);
       }
       promoted.add(PromotedStrokeTile(coord, tile, result.revision));
     }
@@ -1120,7 +1093,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     // composite at display time.
     final plan = BrushDabPlan.of(
       dab,
-      canvasSize: canvasSize,
+      wall: pasteboard,
       tileSize: tileSize,
       erase: false,
     );

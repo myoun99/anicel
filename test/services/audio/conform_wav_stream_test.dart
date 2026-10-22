@@ -59,6 +59,56 @@ void main() {
     }
   });
 
+  test('🚨a window lands IN the list its placer made — read in place, '
+      'each sample the decode\'s (streaming-advance-reads-on-the-ui-thread)',
+      () {
+    final path = writeRamp(4000);
+    final reader = ConformPcmStreamReader.open(path)!;
+    final full = decodeConform(File(path).readAsBytesSync());
+    Float32List? placed;
+
+    final window = reader.readWindow(
+      1234,
+      500,
+      place: (floats) => placed = Float32List(floats),
+    );
+
+    expect(placed, hasLength(500 * 2));
+    expect(
+      identical(window.samples, placed),
+      isTrue,
+      reason: 'the window was not read into the list made for it',
+    );
+    for (var index = 0; index < window.samples.length; index += 1) {
+      expect(
+        window.samples[index],
+        full.samples[1234 * 2 + index],
+        reason: 'placed sample $index diverged from the resident decode',
+      );
+    }
+  });
+
+  test('🚨a read cut short hands back only what landed — never the rest of '
+      'its list, which holds the 16-bit samples it was read into', () {
+    final path = writeRamp(4000);
+    final reader = ConformPcmStreamReader.open(path)!;
+    final full = decodeConform(File(path).readAsBytesSync());
+    // The file loses its tail after the reader has opened it: the read
+    // past sample 3000 comes back short.
+    final bytes = File(path).readAsBytesSync();
+    File(path).writeAsBytesSync(
+      Uint8List.sublistView(bytes, 0, bytes.length - 1000 * 2 * 2),
+    );
+
+    final window = reader.readWindow(2500, 1000);
+
+    expect(window.startSample, 2500);
+    expect(window.samples, hasLength(500 * 2));
+    for (var index = 0; index < window.samples.length; index += 1) {
+      expect(window.samples[index], full.samples[2500 * 2 + index]);
+    }
+  });
+
   test('windows clamp into the file instead of inventing samples', () {
     final reader = ConformPcmStreamReader.open(writeRamp(1000))!;
 

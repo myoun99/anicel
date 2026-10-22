@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 
 import '../../core/in_flight.dart';
+import '../../models/font_face_facts.dart' show FontLines;
+import '../../services/font_file_reader.dart' show readFontLines;
 import '../theme/app_theme.dart' show AppTypography;
 
 /// Hands the engine one font file, to be drawn with under [engineFamily].
@@ -94,6 +96,10 @@ class CanvasLetterFaces {
   /// for good.
   final Map<String, String> _inEngine = {};
 
+  /// Where each set of files in the engine draws its lines, by the set's
+  /// name — as the first of its files that says so says ([readFontLines]).
+  final Map<String, FontLines> _linesInEngine = {};
+
   /// The sets being read now, by name.
   final InFlight<String, void> _onTheirWay = InFlight();
 
@@ -136,6 +142,47 @@ class CanvasLetterFaces {
     sendFor(family);
     return _inEngine[_held[family]];
   }
+
+  /// Where letters asked for in [family] draw their lines: the lines of the
+  /// face they are SET in ([engineFamilyOf]) — one brought to this device
+  /// as its file says, the app's own as theirs do ([appFaceLines]), and the
+  /// app's first face's while the family is not here.
+  ///
+  /// 🚨THE FACE ASKED FOR, NOT EACH FACE A LETTER IS FOUND IN. The engine
+  /// draws a line apiece for the runs it sets in each face, at each face's
+  /// numbers (measured 2026-10-18: under 「あア漢 가나다 Abg」 in BIZ
+  /// UDPGothic its underline stepped down and thickened under the Hangul,
+  /// which 나눔고딕 sets — 0.26 em under the baseline to BIZ's 0.12). A
+  /// letter the face lacks is caught by another, and the line under it is
+  /// still the one face's: the rule a page's own decorations keep.
+  FontLines linesOf(String? family) {
+    if (isAppFace(family)) {
+      return appFaceLines[family ?? AppTypography.bundledFamily]!;
+    }
+    // Known only of a set the engine has — the one the family is set with
+    // now ([engineFamilyOf] reads the same two maps).
+    return _linesInEngine[_held[family]] ??
+        appFaceLines[AppTypography.bundledFamily]!;
+  }
+
+  /// Where the app's own faces draw their lines — as their files say
+  /// (pinned to them, `a_face_draws_its_own_lines_test.dart`). Written
+  /// here and not read from the files: the engine has those from the first
+  /// frame, and no code of the app reads their bytes.
+  static final Map<String, FontLines> appFaceLines = {
+    AppTypography.bundledFamily: const FontLines(
+      underline: 246 / 2048,
+      underlineThickness: 102 / 2048,
+      strikethrough: 727 / 2048,
+      strikethroughThickness: 102 / 2048,
+    ),
+    AppTypography.bundledFallback.single: const FontLines(
+      underline: 260 / 1000,
+      underlineThickness: 58 / 1000,
+      strikethrough: 512 / 1000,
+      strikethroughThickness: 102 / 1000,
+    ),
+  };
 
   /// Whether [family] is held and not in the engine yet — sent for, if
   /// nobody had.
@@ -184,9 +231,11 @@ class CanvasLetterFaces {
   Future<void> _fetch(String family, String files) async {
     final engineFamily = 'anicel-face-${_minted += 1}';
     var handed = 0;
+    FontLines? lines;
     try {
       for (final bytes in await _files(family)) {
         await _register(bytes, engineFamily: engineFamily);
+        lines ??= readFontLines(bytes);
         handed += 1;
       }
     } on Object {
@@ -201,6 +250,9 @@ class CanvasLetterFaces {
       _notHad.add(files);
     } else {
       _inEngine[files] = engineFamily;
+      if (lines != null) {
+        _linesInEngine[files] = lines;
+      }
     }
   }
 

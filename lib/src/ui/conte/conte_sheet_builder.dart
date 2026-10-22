@@ -10,7 +10,6 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/key_range_move.dart' show transformKeyAgreedNames;
 import '../../models/layer.dart';
-import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/project.dart';
@@ -55,7 +54,7 @@ ConteSheetSource buildConteSheetSource(Project project) {
   final info = project.timesheetInfo;
   return ConteSheetSource(
     cuts: cuts,
-    title: info.title.isEmpty ? project.name : info.title,
+    title: info.titleOr(project.name),
     episode: info.episode,
     logoAssetPath: info.logoAssetPath,
     coverImagePath: info.coverImagePath,
@@ -113,11 +112,7 @@ ConteCellSource _cellSource({
   return ConteCellSource(
     startFrame: cell.startIndex,
     endFrameExclusive: cell.endIndexExclusive,
-    pictureFrame: storyboardCellPictureFrame(
-      cell,
-      pinnedFrameIndex: cut.metadata.thumbnailFrameIndex,
-      conteStart: conteStart,
-    ),
+    pictureFrame: storyboardCellPictureFrame(cell, conteStart: conteStart),
     frameId: cell.frameId,
     inkId: switch (exposure?.memo?.inkId) {
       final inkId? when inkId.isNotEmpty => inkId,
@@ -231,7 +226,8 @@ ConteCameraKey _cameraKey(
   label: cameraKeyLabel(named, frameIndex),
 );
 
-/// The cut's lines, read off the track's SE rows and clipped to the cut.
+/// The cut's lines, read off the track's SE rows that print on paper
+/// ([layerPrintsSheetLines], F-345) and clipped to the cut.
 ///
 /// The SE block's frame NAME is the line and its `seName` is the speaker
 /// (design G) — the sheet reads them straight, which is why typing dialogue
@@ -239,7 +235,7 @@ ConteCameraKey _cameraKey(
 List<ConteDialogueLine> _dialogueOf(Track track, int startFrame, int endFrame) {
   final lines = <ConteDialogueLine>[];
   for (final layer in track.seLayers) {
-    if (layer.kind != LayerKind.se) {
+    if (!layerPrintsSheetLines(layer)) {
       continue;
     }
     for (final block in drawingBlocks(layer.timeline)) {
@@ -261,8 +257,7 @@ List<ConteDialogueLine> _dialogueOf(Track track, int startFrame, int endFrame) {
       lines.add(
         ConteDialogueLine(
           // Clipped: a line that began in an earlier cut still belongs to
-          // this cut's first cell, which is where the continuation arrow
-          // will sit.
+          // this cut's first cell.
           startFrame: math.max(0, block.startIndex - startFrame),
           text: text,
           speaker: frame?.seName ?? '',

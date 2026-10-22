@@ -2,6 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/native/qa_audio_native.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
@@ -76,10 +77,14 @@ void main() {
         // qa_engine_abi.dart IS the loader; qa_tablet_bridge.dart opens a
         // DIFFERENT binary (the Wintab sidecar, its own qat_abi_version);
         // windows_screen_reader.dart opens user32, which every Windows has
-        // — no candidate list to copy, no version to gate (I-57-Q3).
+        // — no candidate list to copy, no version to gate (I-57-Q3) —
+        // device_battery.dart kernel32, for the same reason (I-103-Q1), and
+        // windows_key_state.dart user32 again, for the held keys (I-61).
         if (name == 'qa_engine_abi.dart' ||
             name == 'qa_tablet_bridge.dart' ||
-            name == 'windows_screen_reader.dart') {
+            name == 'windows_screen_reader.dart' ||
+            name == 'device_battery.dart' ||
+            name == 'windows_key_state.dart') {
           continue;
         }
         final source = file.readAsStringSync();
@@ -136,6 +141,22 @@ void main() {
         );
       }
     });
+  });
+
+  test('🚨a worker with this engine reads the binary this isolate reads — a '
+      'worker isolate starts with none of this one\'s statics', () async {
+    final workersRanHere = debugWorkersRunHere;
+    debugWorkersRunHere = false;
+    debugQaEngineLibraryPathOverride = 'the/binary/this/isolate/reads';
+    addTearDown(() {
+      debugWorkersRunHere = workersRanHere;
+      debugQaEngineLibraryPathOverride = null;
+    });
+
+    expect(
+      await onAWorkerWithThisEngine(() => debugQaEngineLibraryPathOverride),
+      'the/binary/this/isolate/reads',
+    );
   });
 
   group('with a built engine', () {

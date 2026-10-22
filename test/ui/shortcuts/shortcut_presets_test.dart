@@ -1,7 +1,12 @@
 // 🗣️I-63 (유저 2026-10-07): 「tvp기반,클튜기반,anicel 이렇게 세개 두고싶음」,
 // and how a program's keys become a preset (I-63-Q3): 「초안대로 — 그
 // 프로그램을 최대한 닮게」 = 「공식 키가 있는 줄은 그 프로그램의 키로, 없는
-// 줄은 anicel 의 키 그대로. 키가 부딪히면 그 프로그램의 뜻을 따른다」.
+// 줄은 anicel 의 키 그대로. 키가 부딪히면 그 프로그램의 뜻을 따른다」 —
+// ↩️and F-417 (유저 2026-10-20) turned the rows a program does not name to the
+// other program's keys: 「클튜에서 확인안된것들은 tvp기반, tvp에서
+// 확인안된건 클튜기반으로」 — and a row neither names, or one whose every
+// key the preset's own program took, has none (F-417-Q1 · Q2, 10-21:
+// 「키 없이 둔다」 both).
 //
 // A PRESET IS THE KEYS THE SHORTCUT WINDOW STARTS FROM: the bindings read
 // their defaults through the one in use, keep what was recorded under each
@@ -28,7 +33,6 @@ import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
-import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
@@ -149,64 +153,75 @@ void main() {
       ]);
     });
 
-    test('an action the program does not name keeps the registry\'s keys — '
-        'its animation commands have none', () {
+    test('↩️🚨F-417: an action Clip Studio does not name takes TVPaint\'s '
+        'keys — the moves along the film, A and D no more', () {
       const clipStudio = ShortcutPreset.clipStudio;
-      expect(keysOf(clipStudio, EditorActionIds.drawingPrevious), ['←', 'A']);
-      expect(keysOf(clipStudio, EditorActionIds.frameNext), [
-        'Shift+→',
-        'Shift+D',
-      ]);
-      expect(keysOf(clipStudio, EditorActionIds.playbackToggle), ['Shift+X']);
-      expect(keysOf(clipStudio, EditorActionIds.timelineComma3), ['3']);
-      expect(keysOf(clipStudio, EditorActionIds.toolCutStamp), ['V']);
-      expect(keysOf(clipStudio, EditorActionIds.editInstance), ['Shift+F']);
-      // A tile of a tool whose key went to the rail tool alone keeps its own.
-      expect(keysOf(clipStudio, lassoSelectId), ['X']);
+      expect(keysOf(clipStudio, EditorActionIds.drawingPrevious), ['Ctrl+←']);
+      expect(keysOf(clipStudio, EditorActionIds.drawingNext), ['Ctrl+→']);
+      expect(keysOf(clipStudio, EditorActionIds.framePrevious), ['←']);
+      expect(keysOf(clipStudio, EditorActionIds.frameNext), ['→']);
+      expect(keysOf(clipStudio, EditorActionIds.onionSkinToggle), ['Ctrl+L']);
+      expect(keysOf(clipStudio, EditorActionIds.canvasFlipVertical), [']']);
     });
 
-    test('a key the program gave to something else leaves the action that '
-        'had it — 「부딪히면 그 프로그램의 뜻을 따른다」', () {
-      const clipStudio = ShortcutPreset.clipStudio;
-      // T is the text tool's, C the erase blend's, F2 · F4 cut and paste.
-      expect(keysOf(clipStudio, EditorActionIds.onionSkinToggle), isEmpty);
-      expect(keysOf(clipStudio, lassoCutId), isEmpty);
-      expect(
-        keysOf(clipStudio, blendModeActionId(BrushBlendMode.behind)),
-        isEmpty,
-      );
-      expect(
-        keysOf(clipStudio, blendModeActionId(BrushBlendMode.darken)),
-        isEmpty,
-      );
-      expect(keysOf(clipStudio, blendModeActionId(BrushBlendMode.color)), [
-        'F1',
+    test('🚨F-417: an action TVPaint does not name takes Clip Studio\'s '
+        'keys', () {
+      const tvpaint = ShortcutPreset.tvpaint;
+      expect(keysOf(tvpaint, EditorActionIds.toolSelect), ['M']);
+      expect(keysOf(tvpaint, addLayerKindActionId(LayerKind.folder)), [
+        'Ctrl+G',
+      ]);
+      expect(keysOf(tvpaint, EditorActionIds.selectionInvert), [
+        'Ctrl+Shift+I',
+        'Shift+F7',
       ]);
     });
 
-    test('⛔only the key that was taken leaves: an action with another key '
-        'keeps that one', () {
-      // No row of the registry has one key taken and one left under this
-      // preset today, so the rule is asked of a row made for it.
-      const twoKeys = EditorActionDefinition(
-        id: 'a-row-no-preset-names',
-        label: '',
-        shelf: ShortcutShelf.tools,
-        defaultActivators: [
-          SingleActivator(LogicalKeyboardKey.keyG),
-          SingleActivator(LogicalKeyboardKey.keyK),
-          SingleActivator(LogicalKeyboardKey.keyG, shift: true),
-        ],
-      );
+    test('🚨F-417-Q1 「키 없이 둔다」: an action neither program names has no '
+        'key under either program\'s preset — anicel\'s keys are anicel\'s', () {
+      for (final preset in [
+        ShortcutPreset.clipStudio,
+        ShortcutPreset.tvpaint,
+      ]) {
+        expect(keysOf(preset, EditorActionIds.timelineComma3), isEmpty);
+        expect(keysOf(preset, EditorActionIds.toolCutStamp), isEmpty);
+        expect(keysOf(preset, EditorActionIds.editInstance), isEmpty);
+        expect(keysOf(preset, EditorActionIds.voiceRecordToggle), isEmpty);
+        expect(
+          keysOf(preset, blendModeActionId(BrushBlendMode.multiply)),
+          isEmpty,
+        );
+        expect(keysOf(preset, lassoSelectId), isEmpty);
+      }
       expect(
-        written(presetActivators(ShortcutPreset.clipStudio, twoKeys)),
-        ['K', 'Shift+G'],
-        reason: 'G is the fill tool\'s there; Shift+G is another key',
+        keysOf(ShortcutPreset.anicel, EditorActionIds.timelineComma3),
+        ['3'],
+        reason: '⛔전제: the registry has a key for it',
       );
+    });
+
+    test('🚨F-417-Q2 「키 없이 둔다」: a row of the other program\'s whose '
+        'every key the preset\'s own program took has none', () {
+      const clipStudio = ShortcutPreset.clipStudio;
+      // Space — TVPaint's play — is Clip Studio's hand; I — TVPaint's new
+      // frame — its eyedropper; F2 — TVPaint's Color blend — its cut; B —
+      // TVPaint's cut tool — its brush.
+      expect(keysOf(clipStudio, EditorActionIds.playbackToggle), isEmpty);
+      expect(keysOf(clipStudio, EditorActionIds.frameNewDrawing), isEmpty);
       expect(
-        written(presetActivators(ShortcutPreset.anicel, twoKeys)),
-        ['G', 'K', 'Shift+G'],
+        keysOf(clipStudio, blendModeActionId(BrushBlendMode.color)),
+        isEmpty,
       );
+      expect(keysOf(clipStudio, EditorActionIds.toolCut), isEmpty);
+      // Clip Studio's hand on Space and its shape on U meet TVPaint's play
+      // and undo.
+      const tvpaint = ShortcutPreset.tvpaint;
+      expect(keysOf(tvpaint, EditorActionIds.canvasPanHold), isEmpty);
+      expect(keysOf(tvpaint, EditorActionIds.toolShape), isEmpty);
+      // F8 — TVPaint's Lighten — is a key Clip Studio left free.
+      expect(keysOf(clipStudio, blendModeActionId(BrushBlendMode.lighten)), [
+        'F8',
+      ]);
     });
 
     test('where one program key stood on several rows of the table it is on '
@@ -221,14 +236,18 @@ void main() {
         'Ctrl+Delete',
         'Ctrl+Backspace',
       ]);
-      expect(keysOf(clipStudio, EditorActionIds.editDelete), isEmpty);
+      expect(
+        keysOf(clipStudio, EditorActionIds.editDelete),
+        ['Shift+F5'],
+        reason: 'no Delete — TVPaint\'s key for it, as Clip Studio names none '
+            '(F-417)',
+      );
       // Ctrl+T — Scale/Rotate is the normal transform.
       expect(keysOf(clipStudio, EditorActionIds.toolTransformNormal), [
         'Ctrl+T',
       ]);
       expect(keysOf(clipStudio, EditorActionIds.toolTransform), isEmpty);
-      // G · M · U — 「도구 버튼 하나에만 준다」.
-      expect(keysOf(clipStudio, EditorActionIds.toolFillBucket), isEmpty);
+      // G · M · U — 「도구 버튼 하나에만 준다」: no tile has its rail tool's.
       for (final verb in [
         CanvasTool.fillShape,
         CanvasTool.select,
@@ -238,8 +257,8 @@ void main() {
           final tile = toolActionIdFor(ShapeTilePress(verb, shape));
           expect(
             keysOf(clipStudio, tile),
-            keysOf(ShortcutPreset.anicel, tile),
-            reason: '$tile keeps what the registry gives it',
+            isNot(anyOf(contains('G'), contains('M'), contains('U'))),
+            reason: '$tile leaves its tool\'s key to the rail',
           );
         }
       }
@@ -301,20 +320,22 @@ void main() {
         'Backspace',
         'Shift+K',
       ]);
-      // F is the bucket itself.
+      // F is the bucket itself; the fill button takes Clip Studio's G, as
+      // TVPaint names it none (F-417).
       expect(keysOf(tvpaint, EditorActionIds.toolFillBucket), ['F']);
-      expect(keysOf(tvpaint, EditorActionIds.toolFill), isEmpty);
+      expect(keysOf(tvpaint, EditorActionIds.toolFill), ['G']);
       // Space plays.
       expect(keysOf(tvpaint, EditorActionIds.canvasPanHold), isEmpty);
     });
 
-    test('a TVPaint key that names a command the app lacks leaves the key '
-        'where it was', () {
-      const tvpaint = ShortcutPreset.tvpaint;
-      // E steps a tool option there; G and V are selection modes.
-      expect(keysOf(tvpaint, EditorActionIds.toolEraser), ['E']);
-      expect(keysOf(tvpaint, EditorActionIds.toolGuide), ['G']);
-      expect(keysOf(tvpaint, EditorActionIds.toolCutStamp), ['V']);
+    test('a TVPaint key that names a command the app lacks takes the key '
+        'from no action', () {
+      // E steps a tool option there: Clip Studio's eraser keeps it.
+      // ↩️V — a selection mode there — was the cut stamp's own here until
+      // F-417-Q1 left a row neither program names without a key.
+      expect(keysOf(ShortcutPreset.tvpaint, EditorActionIds.toolEraser), [
+        'E',
+      ]);
     });
 
     test('Add Frame and Add Layer ship with TVPaint\'s keys, and each '
@@ -326,14 +347,16 @@ void main() {
       // I is the eyedropper here: Shift+I, TVPaint's key for the next frame.
       expect(keysOn(ShortcutPreset.anicel), ('Shift+I', 'Ctrl+N'));
       expect(keysOn(ShortcutPreset.tvpaint), ('I', 'Ctrl+N'));
-      // The program has no animation keys, so Add Frame keeps anicel's.
-      expect(keysOn(ShortcutPreset.clipStudio), ('Shift+I', 'Ctrl+Shift+N'));
+      // The program has no animation keys, and TVPaint's I is the
+      // eyedropper's here: Add Frame has none (F-417-Q2). ↩️It kept anicel's
+      // Shift+I until then.
+      expect(keysOn(ShortcutPreset.clipStudio), ('', 'Ctrl+Shift+N'));
     });
 
     test('the view\'s turn is held on Shift+Space under every preset — Clip '
         'Studio\'s own key, which anicel took (I-88-Q1 「Anicel 배치도 '
-        'Shift+Space」), and anicel\'s under TVPaint, whose turn is Ctrl+Alt '
-        'held, no key (I-88)', () {
+        'Shift+Space」), and Clip Studio\'s under TVPaint, whose turn is '
+        'Ctrl+Alt held, no key (F-417)', () {
       String turn(ShortcutPreset preset) =>
           keysOf(preset, EditorActionIds.canvasRotateHold).join(' ');
       expect(turn(ShortcutPreset.anicel), 'Shift+Space');
@@ -397,7 +420,12 @@ void main() {
       addTearDown(bindings.dispose);
       expect(bindings.preset, ShortcutPreset.clipStudio);
       expect(actionOn(bindings, g), EditorActionIds.toolFill);
-      expect(actionOn(bindings, f), isNull, reason: 'F presses nothing there');
+      expect(
+        actionOn(bindings, f),
+        EditorActionIds.toolFillBucket,
+        reason: 'F is TVPaint\'s bucket there, as Clip Studio names it none '
+            '(F-417)',
+      );
       expect(
         written(bindings.activatorsFor(EditorActionIds.toolFill)),
         ['G'],
@@ -792,8 +820,8 @@ void main() {
       expect(bindings.preset, ShortcutPreset.tvpaint);
       expect(
         chipsOf(tester, EditorActionIds.toolFill),
-        isEmpty,
-        reason: 'F is the bucket\'s there',
+        ['G'],
+        reason: 'F is the bucket\'s there, and G Clip Studio\'s fill (F-417)',
       );
 
       await pick(tester, ShortcutPreset.clipStudio);
@@ -864,11 +892,14 @@ void main() {
       const fill = '채우기 도구';
       expect(rowOf(anicel, fill), '| $fill | <kbd>F</kbd> |');
       expect(rowOf(clipStudio, fill), '| $fill | <kbd>G</kbd> |');
-      expect(tvpaint, isNot(contains('| $fill |')));
-      // A row with no key under a preset is not written there.
+      expect(rowOf(tvpaint, fill), '| $fill | <kbd>G</kbd> |');
       const onion = '어니언 스킨 켜기/끄기';
       expect(rowOf(anicel, onion), contains('<kbd>T</kbd>'));
-      expect(clipStudio, isNot(contains('| $onion |')));
+      // A row with no key under a preset is not written there.
+      final english = sectionsOf(shortcutTableMarkdown(AppLanguage.en));
+      const screen = 'Blend: Screen';
+      expect(rowOf(english['Anicel']!, screen), contains('<kbd>F8</kbd>'));
+      expect(english['Clip Studio based'], isNot(contains('| $screen |')));
       // A key that is another one on a Mac is written both ways.
       expect(
         rowOf(clipStudio, '다른 이름으로 저장…'),

@@ -56,6 +56,7 @@ class FlipHudRow {
     required this.kind,
     required this.runs,
     this.isLane = false,
+    this.isGroupHeader = false,
     this.holdsDrawings = true,
     this.showsKindIcon = true,
   });
@@ -75,6 +76,10 @@ class FlipHudRow {
   final List<FlipHudRun> runs;
 
   final bool isLane;
+
+  /// Whether this lane heads a group — its keys are unions, drawn at a
+  /// union's size as the panels draw them (`PropertyLaneRow.isGroupHeader`).
+  final bool isGroupHeader;
 
   /// Whether an uncovered cell on this row prints the timesheet `X`. The
   /// cells painter's own rule: only rows that hold drawings do.

@@ -135,6 +135,9 @@ final class VideoViewerDocument implements ViewerDocument {
       ui.Size(_info.width.toDouble(), _info.height.toDouble());
 
   @override
+  bool get drawnAtAnySize => false;
+
+  @override
   Future<ui.Image> renderPage(
     int pageIndex, {
     required int width,

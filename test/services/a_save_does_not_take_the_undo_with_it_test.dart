@@ -14,11 +14,11 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/undo_surface_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/cels_parked_cold.dart';
 import '../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**THE SAVE DELETES IN ONE ROOM AND THE UNDO LIVES IN THE OTHER.**
@@ -84,12 +84,8 @@ void main() {
 
     final key = keyOf();
     final savedPicture = surfaceOf(17);
-    final store = BrushFrameStore()
-      ..restoreBaked({
-        key: AnicelCelBlob.encode(
-          AnicelCelEntry.fromSurface(key, savedPicture),
-        ),
-      });
+    final store = BrushFrameStore();
+    parkCold(store, {key: savedPicture});
     expect(store.isCelCold(key), isTrue, reason: 'a real file in 이사대기');
     final stagedBefore = filesIn(SessionScratch.stagedFolder());
     expect(stagedBefore, isNotEmpty);
@@ -126,7 +122,7 @@ void main() {
       isTrue,
       reason: '⛔the save must not reach 휘발성',
     );
-    final restored = parked.surfaceOver(null);
+    final restored = parked.surfaceOver(() => null);
     expect(restored, isNotNull, reason: 'the undo still has its payload');
     expect(
       restored!.tiles[origin]!.pixels,

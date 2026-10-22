@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import '../../models/canvas_size.dart';
+import '../straight_rgba_image.dart' show straightRgbaOf;
 import 'media_byte_source.dart';
 
 /// One open document the viewer can show: how many pages it has, how big
@@ -93,6 +95,20 @@ abstract class ViewerDocument {
   /// One page's natural size; pages of one document may differ.
   ui.Size pageSize(int pageIndex);
 
+  /// Whether a page rendered past its own size ([pageSize]) shows more than
+  /// that size holds: true of one DRAWN at the size asked — a PDF's vectors
+  /// and text, a waveform — false of one made of its file's own pixels — a
+  /// picture, a movie's frame, a composite — which has none more to give
+  /// past 100%, a pixel of the file, and is never rendered larger
+  /// (`viewerRenderScaleFor`).
+  ///
+  /// 🗣️유저 2026-09-11 (viewer-tier-ignores-zoom): 「pdf는 확대하면
+  /// 선명해지는게 맞긴하네. 벡터인 텍스트정보가 있으니까. 이미지나 비디오는
+  /// 아닐지라도」. ↩️Every page climbed to eight times its size: a photo
+  /// zoomed in was decoded at up to eight times its own width, every pixel
+  /// past its own made up.
+  bool get drawnAtAnySize;
+
   /// Renders page [pageIndex] to exactly [width]×[height] pixels.
   Future<ui.Image> renderPage(
     int pageIndex, {
@@ -126,6 +142,32 @@ abstract class ViewerDocument {
 /// exactly as the engine it stands in for would be.
 typedef ViewerDocumentOpener =
     Future<ViewerDocument> Function(MediaByteSource source);
+
+/// [pageIndex]'s size in whole pixels at [at] times its own — at 1, what
+/// the renderer calls 1:1: the size a PDF page lands at, the one a pose
+/// stands on. Never under one pixel a side, nor over the 8192 a page is
+/// ever asked to render at.
+///
+/// 🪦A PDF's placement, the viewer's page rasters and a picture run each
+/// worked this out for themselves; the import window's resolution column
+/// (F-375, 2026-10-17) would have been the fourth.
+/// ⛔Not [viewerPagePixels], which has no ceiling on purpose: a box cut at
+/// a page's own size reads every pixel the page has, past 8192 too.
+CanvasSize pagePixelSize(
+  ViewerDocument document,
+  int pageIndex, {
+  double at = 1,
+}) {
+  final size = document.pageSize(pageIndex);
+  return CanvasSize(
+    width: pagePixels(size.width * at),
+    height: pagePixels(size.height * at),
+  );
+}
+
+/// An extent of a page as the whole pixels it is rendered at — never under
+/// one, nor over 8192 ([pagePixelSize]).
+int pagePixels(double extent) => extent.round().clamp(1, 1 << 13).toInt();
 
 /// A page's own size in whole PIXELS — the size
 /// [ViewerDocument.readRegionRgba] reads at. PDF points round to the
@@ -188,13 +230,7 @@ Future<Uint8List> cropImageRgba(
     picture.dispose();
   }
   try {
-    final data = await cropped.toByteData(
-      format: ui.ImageByteFormat.rawStraightRgba,
-    );
-    if (data == null) {
-      throw StateError('the box could not be read back');
-    }
-    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    return await straightRgbaOf(cropped);
   } finally {
     cropped.dispose();
   }

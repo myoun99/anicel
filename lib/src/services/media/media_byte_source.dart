@@ -714,10 +714,20 @@ typedef HoldMediaBytes = Future<HeldMediaBytes> Function(String path);
 
 /// All of [path]'s bytes, read while [hold] holds them — for a reader that
 /// decodes a whole file at once (a picture, a Photoshop document).
-Future<Uint8List> readHeldMediaBytes(HoldMediaBytes hold, String path) async {
+Future<Uint8List> readHeldMediaBytes(HoldMediaBytes hold, String path) =>
+    readOnHeldBytes(hold, path, (source) => source.read());
+
+/// [read] on the bytes [hold] answers for [path], given back the moment it
+/// is done — a reader that is done in a moment never looks at
+/// [HeldMediaBytes.moved].
+Future<T> readOnHeldBytes<T>(
+  HoldMediaBytes hold,
+  String path,
+  Future<T> Function(MediaByteSource source) read,
+) async {
   final held = await hold(path);
   try {
-    return await held.source.read();
+    return await read(held.source);
   } finally {
     held.release();
   }

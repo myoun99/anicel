@@ -15,6 +15,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -27,6 +28,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+
+import '../../helpers/no_guides_laid.dart';
 
 /// **CAM (I-89-Q18)** — the camera's work laid over a cel is written into
 /// its file as the canvas draws it off the camera's row: every key's frame
@@ -94,6 +98,25 @@ void main() {
     return session;
   }
 
+  /// The cel of [session]'s cut, the camera's work laid over it or not.
+  ExportCelGroupTask taskOf(
+    EditorSessionManager session, {
+    required bool laid,
+  }) {
+    final cut = session.requireActiveCut;
+    final layer = cut.layers.firstWhere((layer) => layer.id == layerId);
+    return ExportCelGroupTask(
+      cut: cut,
+      baseLayer: layer,
+      members: [layer],
+      memberFrames: [drawing],
+      baseFrame: drawing,
+      celName: '1',
+      fileName: 'A1.png',
+      cameraLaid: laid,
+    );
+  }
+
   /// The cel of [session]'s cut, the camera's work laid over it or not, as
   /// [mode] writes it: its pixels, and how wide it is.
   Future<({ByteData bytes, int width})> celOf(
@@ -101,20 +124,10 @@ void main() {
     required bool laid,
     ExportSizeMode mode = ExportSizeMode.canvas,
   }) async {
-    final cut = session.requireActiveCut;
-    final layer = cut.layers.firstWhere((layer) => layer.id == layerId);
     final image = await ExportFrameRenderer(session: session).renderCelGroup(
-      ExportCelGroupTask(
-        cut: cut,
-        baseLayer: layer,
-        members: [layer],
-        memberFrames: [drawing],
-        baseFrame: drawing,
-        celName: '1',
-        fileName: 'A1.png',
-        cameraLaid: laid,
-      ),
+      taskOf(session, laid: laid),
       mode,
+      guideColor: noGuidesLaid,
     );
     final bytes = await image!.toByteData(format: ui.ImageByteFormat.rawRgba);
     final width = image.width;
@@ -195,6 +208,43 @@ void main() {
         0xFFFFFF,
         reason: 'five pixels of the file, not five of the canvas (ten here)',
       );
+    });
+    await tester.pumpAndSettle();
+  });
+
+  // 🗣️I-117: a cel's Photoshop file keeps the rows it is made of apart.
+  testWidgets('in a Photoshop file the camera\'s work is a row of its own '
+      'over the artwork\'s, named as the CAM pill is and laid whole: its '
+      'marks on nothing', (tester) async {
+    await tester.runAsync(() async {
+      final session = sessionOf(
+        CameraPose(center: CanvasPoint(x: 200, y: 200)),
+        CameraPose(center: CanvasPoint(x: 440, y: 440)),
+      );
+      final rows = ExportFrameRenderer(session: session).celGroupRows(
+        taskOf(session, laid: true),
+        ExportSizeMode.canvas,
+        guideColor: noGuidesLaid,
+      );
+
+      expect(
+        [for (final row in rows) row.name],
+        [AppText.strings.exBackground, 'A', AppText.strings.tlKindCamera],
+      );
+      expect(
+        (rows.last.opacity, rows.last.blendMode),
+        (1.0, LayerBlendMode.normal),
+        reason: 'as the cel\'s picture lays it over its artwork',
+      );
+      final image = await rows.last.draw();
+      final marks = (await image.toByteData(
+        format: ui.ImageByteFormat.rawStraightRgba,
+      ))!;
+      final width = image.width;
+      image.dispose();
+      int alphaAt(int x, int y) => marks.getUint8((y * width + x) * 4 + 3);
+      expect(alphaAt(203, 200), greaterThan(0), reason: 'the first cross');
+      expect(alphaAt(0, 0), 0, reason: 'not the artwork, nor the ground');
     });
     await tester.pumpAndSettle();
   });

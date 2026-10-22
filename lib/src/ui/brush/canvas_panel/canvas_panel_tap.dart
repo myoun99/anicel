@@ -107,7 +107,9 @@ class _CanvasPanelTap {
   void _toolTapCancel(PointerCancelEvent event) {
     _tapLayerTouches.remove(event.pointer);
     _touchTap = null;
-    _lastStampCenter = null;
+    if (event.pointer == _pressPointer) {
+      _stampDrag = null;
+    }
     _letGoOfPress(event.pointer);
   }
 
@@ -120,7 +122,9 @@ class _CanvasPanelTap {
     }
     _tapLayerTouches.remove(event.pointer);
     _touchTap = null;
-    _lastStampCenter = null;
+    if (event.pointer == _pressPointer) {
+      _endStampDrag();
+    }
     _letGoOfPress(event.pointer);
   }
 
@@ -223,6 +227,13 @@ class _CanvasPanelTap {
     // this exists for.
     if (event.kind == PointerDeviceKind.touch) {
       _tapLayerTouches.add(event.pointer);
+      // A finger beside a pen's press is no press of its own — the pen's
+      // Shift ([_stampShiftHeld]) or a palm — as beside a pen's stroke
+      // (I-121-Q1). ↩️It took the press: the pen's drag stopped where it
+      // landed, and its lift stamped a piece under it.
+      if (_aPenPresses) {
+        return;
+      }
       if (_tapLayerTouches.length > 1) {
         // A tap still waiting was the first half of a pinch, and a pinch
         // continues no verb whichever of its fingers moves. A drag that
@@ -282,20 +293,7 @@ class _CanvasPanelTap {
         if (slot == null || _state.widget._editableCoordinator == null) {
           return null;
         }
-        return (point) {
-          final piece = slot.piece;
-          // Pressed on the canvas, landed on the row's own artwork where the
-          // row shows the press (a-marquee-on-a-posed-row) — the piece is the
-          // row's pure pixels, so it lands in the row's own coordinates.
-          final onTheRow = _state._selectionSeat.pointOnTheRow(point);
-          if (piece == null || onTheRow == null) {
-            return;
-          }
-          _stampAt(piece, point);
-          // A press is also the start of a possible drag, and the drag
-          // measures its spacing from the stamp that just landed.
-          _lastStampCenter = onTheRow;
-        };
+        return (point) => _pressStamp(slot.piece, point);
       case CanvasTool.eyedropper:
         return eyedropperPick();
       case CanvasTool.fill:
@@ -335,9 +333,43 @@ class _CanvasPanelTap {
     };
   }
 
-  /// Where the last stamp of the current drag landed, on the standing row's
-  /// own artwork. Null between drags.
-  CanvasPoint? _lastStampCenter;
+  /// The stamp's drag: the path's lock, and where its last stamp landed,
+  /// on the standing row's own artwork. Null between drags.
+  ///
+  /// 🗣️I-121 (유저 2026-10-21): 「잘라내기 도구의 스탬프도 쉬프트 누른동안 법
+  /// 통일해서 스냅. 떼면 스냅 끝남.」 — the stroke's lock ([StrokeLock]), as
+  /// the lasso took it (I-110: 「프리핸드로 하는 모든것들도 스냅되도록. 최대한
+  /// 법 통일」): Shift's eight ways and the line a hold kept while it is held,
+  /// the snapping perspectives' rays where it is not. On the CANVAS, where a
+  /// press is read; the row's own artwork is where the spacing is measured.
+  ({StrokeLock lock, CanvasPoint lastCenter})? _stampDrag;
+
+  /// A press of the stamp at [point]: [piece] lands there, and the drag it
+  /// may begin is armed. Pressed under the hold that kept a line, it lands
+  /// on that line (I-121), as a stroke's press does.
+  void _pressStamp(CutPiece? piece, CanvasPoint point) {
+    final line = _state._shiftLine..heldNow(_stampShiftHeld);
+    final pressed = line.onTheLine(point);
+    // Pressed on the canvas, landed on the row's own artwork where the
+    // row shows the press (a-marquee-on-a-posed-row) — the piece is the
+    // row's pure pixels, so it lands in the row's own coordinates.
+    final onTheRow = _state._selectionSeat.pointOnTheRow(pressed);
+    if (piece == null || onTheRow == null) {
+      return;
+    }
+    _stampAt(piece, pressed);
+    // A press is also the start of a possible drag, and the drag
+    // measures its spacing from the stamp that just landed.
+    _stampDrag = (
+      lock: StrokeLock(
+        guides: _state.widget.guides ?? CutGuides.empty,
+        start: pressed,
+        zoom: _state._viewportState._viewport.zoom,
+        line: line,
+      ),
+      lastCenter: onTheRow,
+    );
+  }
 
   /// One stamp of [piece] centred on [onCanvas] — a point on the CANVAS,
   /// which every row the stamp lands on takes on its own artwork, where
@@ -431,22 +463,63 @@ class _CanvasPanelTap {
     if (!canvasToolStamps(_state._brush.tool)) {
       return;
     }
+    final lock = _stampDrag?.lock;
+    if (lock != null) {
+      _stampAlong(lock.follow(point, shift: _stampShiftHeld));
+    }
+  }
+
+  /// Whether the press under way is a pen's — or a mouse's: anything but a
+  /// finger's ([_tapLayerTouches]).
+  bool get _aPenPresses =>
+      _pressPointer != null && !_tapLayerTouches.contains(_pressPointer);
+
+  /// Whether the stamp's Shift is held now: the key, or a finger resting
+  /// beside a pen's press, behind the switch a stroke's finger has
+  /// ([CanvasTouchContacts.aFingerHoldsAStrokesShift]).
+  ///
+  /// 🗣️I-121-Q1 (유저 2026-10-22): 「손가락도 — 세는 곳을 하나로 묶고
+  /// 나서」 — the answer read 「펜으로 끄는 스탬프에 한해 … 손가락으로 끄는
+  /// 스탬프는 지금처럼 두 번째 손가락 = 핀치」: a finger's press takes none.
+  bool get _stampShiftHeld =>
+      ModifierKeys.isShiftPressed ||
+      (_aPenPresses &&
+          CanvasTouchContacts.aFingerHoldsAStrokesShift(_pressPointer));
+
+  /// The hand has lifted: what the drag's lock still holds is stamped
+  /// ([StrokeLock.finish]), and the drag is over.
+  void _endStampDrag() {
+    final lock = _stampDrag?.lock;
+    if (lock != null) {
+      _stampAlong(lock.finish());
+    }
+    _stampDrag = null;
+  }
+
+  /// The drag's stamps along [points], on the canvas, each a piece's own
+  /// size on from the last.
+  void _stampAlong(List<CanvasPoint> points) {
     final piece = _state.widget.cutPieceSlot?.piece;
-    final from = _lastStampCenter;
-    // The trail is laid on the row's own artwork, as the press was, so the
-    // spacing is the piece's own size in its own pixels.
-    final to = _state._selectionSeat.pointOnTheRow(point);
-    if (piece == null || from == null || to == null) {
-      return;
+    for (final point in points) {
+      final drag = _stampDrag;
+      // The trail is laid on the row's own artwork, as the press was, so the
+      // spacing is the piece's own size in its own pixels.
+      final to = _state._selectionSeat.pointOnTheRow(point);
+      if (piece == null || drag == null || to == null) {
+        return;
+      }
+      final centers = cutStampCentersAlong(
+        piece: piece,
+        from: drag.lastCenter,
+        to: to,
+      );
+      for (final center in centers) {
+        // Back on the canvas, where the other rows of a range read it from.
+        _stampAt(piece, _state._selectionSeat.pointOnTheCanvas(center));
+      }
+      if (centers.isNotEmpty) {
+        _stampDrag = (lock: drag.lock, lastCenter: centers.last);
+      }
     }
-    final centers = cutStampCentersAlong(piece: piece, from: from, to: to);
-    if (centers.isEmpty) {
-      return;
-    }
-    for (final center in centers) {
-      // Back on the canvas, where the other rows of a range read it from.
-      _stampAt(piece, _state._selectionSeat.pointOnTheCanvas(center));
-    }
-    _lastStampCenter = centers.last;
   }
 }

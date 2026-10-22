@@ -59,7 +59,7 @@ void main() {
           nextFrameId: (_) => FrameId('F${frames += 1}'),
           nextCutId: () => const CutId('C1'),
         ),
-        canvasFromDocument: true,
+        newCut: true,
       ),
     );
     final surface = expansion!.cels.single.surface;

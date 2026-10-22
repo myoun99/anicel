@@ -5,7 +5,6 @@ import 'package:anicel/src/core/floor_math.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -13,6 +12,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -38,6 +38,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'panel_finders.dart';
+import 'settle_async.dart';
 
 /// THE TEXT TOOL, DRIVEN ON THE REAL APP (R9-rest): the project it works
 /// on, the baker that stands in for the engine, and the few verbs a test
@@ -121,7 +122,7 @@ const _drawings = [textToolFrameId, textToolSecondFrameId];
 /// its first letter's colour — the stand-in for the engine.
 Future<Map<TileCoord, BitmapTile>> boxFillingBake(
   CelTextLayout layout, {
-  required CanvasSize canvasSize,
+  required PasteboardWall pasteboard,
   required int tileSize,
   Map<TileCoord, BitmapTile> previous = const {},
 }) async {
@@ -197,17 +198,14 @@ Future<void> pumpFrames(WidgetTester tester, [int frames = 6]) async {
 /// is let pass, and what it answered is then let run, until the text on
 /// screen is the text wanted.
 Future<void> settleWithTheEngine(WidgetTester tester) async {
-  for (var turn = 0; turn < 100; turn += 1) {
+  bool settled() {
     final session = textToolOf(tester).session;
-    if (session == null || session.settled) {
-      return;
-    }
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 20)),
-    );
-    await tester.pump();
+    return session == null || session.settled;
   }
-  fail('the engine did not set the text');
+
+  if (!await settleAsync(tester, settled)) {
+    fail('the engine did not set the text');
+  }
 }
 
 EditorSessionManager sessionOf(WidgetTester tester) =>
@@ -340,14 +338,17 @@ Offset onLayer(WidgetTester tester, double x, double y) => tester
 Offset onScreen(WidgetTester tester, double x, double y) =>
     tester.getTopLeft(textLayer()) + onLayer(tester, x, y);
 
-/// A mouse press on the canvas pixel ([x], [y]), still down a frame later.
-Future<TestGesture> pressAt(WidgetTester tester, double x, double y) async {
-  final mouse = await tester.startGesture(
-    onScreen(tester, x, y),
-    kind: PointerDeviceKind.mouse,
-  );
+/// A mouse press on the canvas pixel ([x], [y]) — or a [kind]'s — still
+/// down a frame later.
+Future<TestGesture> pressAt(
+  WidgetTester tester,
+  double x,
+  double y, {
+  PointerDeviceKind kind = PointerDeviceKind.mouse,
+}) async {
+  final hand = await tester.startGesture(onScreen(tester, x, y), kind: kind);
   await tester.pump();
-  return mouse;
+  return hand;
 }
 
 /// A mouse click on the canvas pixel ([x], [y]).
@@ -357,21 +358,23 @@ Future<void> clickAt(WidgetTester tester, double x, double y) async {
   await pumpFrames(tester);
 }
 
-/// A mouse drag from one canvas pixel to another, in a few steps.
+/// A mouse drag from one canvas pixel to another — or a [kind]'s — in a
+/// few steps.
 Future<void> dragFrom(
   WidgetTester tester,
   Offset from,
   Offset to, {
   int steps = 4,
+  PointerDeviceKind kind = PointerDeviceKind.mouse,
 }) async {
   final start = onScreen(tester, from.dx, from.dy);
   final end = onScreen(tester, to.dx, to.dy);
-  final mouse = await pressAt(tester, from.dx, from.dy);
+  final hand = await pressAt(tester, from.dx, from.dy, kind: kind);
   for (var i = 1; i <= steps; i += 1) {
-    await mouse.moveTo(Offset.lerp(start, end, i / steps)!);
+    await hand.moveTo(Offset.lerp(start, end, i / steps)!);
     await tester.pump();
   }
-  await mouse.up();
+  await hand.up();
   await pumpFrames(tester);
 }
 

@@ -33,10 +33,11 @@ class VisibilitySolo {
   void dispose() => soloedSeLayerIds.dispose();
 
   /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
-  /// engaging it snapshots every row's eye (cut layers + track SE), turns
-  /// every non-active eye OFF and the active one ON — the rows show it and
-  /// playback/fill follow naturally, exactly like clicking the eyes by
-  /// hand (view-ish controller writes, not undoable). Switching the active
+  /// engaging it snapshots every row's eye (cut layers + track SE) but the
+  /// camera's, the camera view (F-363-Q2), turns every other non-active eye
+  /// OFF and the active one ON — the rows show it and playback/fill follow
+  /// naturally, exactly like clicking the eyes by hand (view-ish controller
+  /// writes, not undoable). Switching the active
   /// layer re-solos; disengaging restores each eye from the snapshot.
   /// Leaving the cut exits the mode (restoring first) — the snapshot is
   /// cut-scoped.
@@ -68,16 +69,18 @@ class VisibilitySolo {
     } else {
       _layerVisibilitySoloEnabled = true;
       _visibilitySoloCutId = _timeline.editingSession.activeCutId;
-      _visibilitySoloSnapshot = {
-        for (final layer in _project.layers) layer.id: layer.isVisible,
-      };
+      // Filled by the solo's own pass ([_applyVisibilitySolo]).
+      _visibilitySoloSnapshot = {};
       _applyVisibilitySolo();
     }
     _changes.notifyChanged();
   }
 
-  /// Re-solos to the CURRENT active layer. Rows born during the solo join
-  /// the snapshot with their pre-flip eye so exiting restores them too.
+  /// Re-solos to the CURRENT active layer. Each row joins the snapshot with
+  /// its eye from before the solo first flips it — the rows there when it
+  /// began, and those born during it — so exiting restores them all.
+  /// ⛔Not the camera's: its eye is the camera VIEW, which the legend's bulk
+  /// switches leave alone ([LayerKind.hasPictureEye], F-363-Q2).
   void _applyVisibilitySolo() {
     final activeId = _selection.activeLayerId;
     final snapshot = _visibilitySoloSnapshot;
@@ -118,7 +121,7 @@ class VisibilitySolo {
     // count only goes down, because every extra place that re-derives
     // "is this row shown" is a place a hidden folder can be forgotten.
     final flips = <LayerId, bool>{};
-    for (final layer in stack) {
+    for (final layer in stack.where((row) => row.kind.hasPictureEye)) {
       final before = snapshot.putIfAbsent(layer.id, () => layer.isVisible);
       final shouldShow = heldByIt.contains(layer.id)
           ? before
@@ -175,10 +178,34 @@ class VisibilitySolo {
     return asSaved;
   }
 
+  /// [layers] with each eye as the USER set it — the solo's flips put back,
+  /// as the file records them ([projectAsSavedWithoutSolo]). Identity with
+  /// no solo up.
+  ///
+  /// 🚨F-399 (유저 2026-10-18): 「활성레이어 솔로 상태라도 여러 행의 블록
+  /// 선택하고 변형작동시 가능하게하도록. 지금 현재 서있는 레이어만
+  /// 적용되는듯」. A pixel verb acts on the rows that are switched on
+  /// (유저 08-27), and the solo switched none of them for an edit: it is
+  /// display (F-125: 「진짜 표시용만 바꿀뿐」), and the file keeps the eyes
+  /// from before it (F-153). So an edit asks the eyes the file does.
+  List<Layer> layersAsSet(List<Layer> layers) {
+    final snapshot = _visibilitySoloSnapshot;
+    if (snapshot == null) {
+      return layers;
+    }
+    return [
+      for (final layer in layers)
+        switch (snapshot[layer.id]) {
+          null => layer,
+          final wasVisible => _eyeRestoredTo(wasVisible)(layer),
+        },
+    ];
+  }
+
   /// What 「put this row's eye back to what the snapshot remembers」 MEANS,
-  /// spelled once. [exitVisibilitySolo] writes it into the session and
-  /// [projectAsSavedWithoutSolo] writes it into the project being saved —
-  /// two sinks, one law.
+  /// spelled once. [exitVisibilitySolo] writes it into the session,
+  /// [projectAsSavedWithoutSolo] into the project being saved and
+  /// [layersAsSet] into the rows an edit asks — three sinks, one law.
   Layer Function(Layer) _eyeRestoredTo(bool visible) => (layer) =>
       layer.isVisible == visible ? layer : layer.copyWith(isVisible: visible);
 

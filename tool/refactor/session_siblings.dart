@@ -22,6 +22,8 @@
 
 import 'dart:io';
 
+import '../source_brackets.dart';
+
 const _hostPath = 'lib/src/ui/editor_session_manager.dart';
 const _rolesPath = 'lib/src/ui/session/session_roles.dart';
 const _sessionDir = 'lib/src/ui/session';
@@ -64,11 +66,16 @@ void main(List<String> args) {
 
   // --- the candidates: SessionInternals members the host forwards --------
   final roles = File('$root/$_rolesPath').readAsLinesSync();
-  final start = roles.indexWhere(
-    (l) => l.startsWith('abstract interface class SessionInternals'),
-  );
+  const declaration = 'abstract interface class SessionInternals';
+  final start = roles.indexWhere((l) => l.startsWith(declaration));
+  // The interface's lines up to the one its body closes on — the body read
+  // by its braces, as every body is.
+  final body = start < 0
+      ? ''
+      : bodyOf(roles.sublist(start).join('\n'), declaration) ?? '';
+  final end = start + '\n'.allMatches(body).length;
   final memberLine = <String, List<int>>{};
-  for (var i = start + 1; i < roles.length && roles[i] != '}'; i += 1) {
+  for (var i = start + 1; i < end; i += 1) {
     // A property says `get x` / `set x`; a method's name is the identifier
     // before the LAST `(` on the line, because a `Function(` in the return
     // type sits before it and would otherwise win.

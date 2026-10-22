@@ -60,6 +60,9 @@ final class ProjectClockDocument implements ViewerDocument {
   ui.Size pageSize(int pageIndex) => _movie.pageSize(_frameOf(pageIndex));
 
   @override
+  bool get drawnAtAnySize => _movie.drawnAtAnySize;
+
+  @override
   Future<ui.Image> renderPage(
     int pageIndex, {
     required int width,

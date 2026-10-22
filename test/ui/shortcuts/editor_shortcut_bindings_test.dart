@@ -37,13 +37,31 @@ void main() {
     });
   }
 
+  test('🗣️I-103-Q2: the list holds the registry as this platform offers it, '
+      'before anything else is told — no full screen on a tablet', () {
+    final bindings = EditorShortcutBindings();
+    addTearDown(bindings.dispose);
+    expect(bindings.definitions, editorActionsHere());
+    expect(
+      editorActionsHere().map((action) => action.id),
+      isNot(contains(EditorActionIds.fullScreen)),
+      reason: '⛔premise: the suite runs as Android',
+    );
+    expect(bindings.definitionFor(EditorActionIds.fullScreen), isNull);
+  });
+
   test('🗣️I-15: 「이동」 is HELD on Space — never an intent in the map — '
       'and playback lets Space go (its four-finger tap stays)', () {
     final bindings = EditorShortcutBindings();
     expect(
       editorActionDefinitions.where((d) => d.hold).map((d) => d.id),
-      [EditorActionIds.canvasPanHold, EditorActionIds.canvasRotateHold],
-      reason: 'the view\'s two held actions — the pan, and the turn (I-88)',
+      [
+        EditorActionIds.canvasPanHold,
+        EditorActionIds.canvasRotateHold,
+        EditorActionIds.canvasLineHold,
+      ],
+      reason: 'the view\'s two held actions — the pan, and the turn (I-88) '
+          '— and the line from the last stroke (I-119)',
     );
     final pan = bindings.activatorsFor(EditorActionIds.canvasPanHold);
     expect(pan, hasLength(1));
@@ -124,10 +142,12 @@ void main() {
       isTrue,
     );
 
-    // Setting the exact defaults back clears the override entirely.
+    // Setting the exact defaults back clears the override entirely — the
+    // preset's, which are the registry's only where neither program names
+    // the row (F-417).
     bindings.setActivators(
       EditorActionIds.frameNext,
-      bindings.definitionFor(EditorActionIds.frameNext)!.defaultActivators,
+      bindings.defaultActivatorsFor(EditorActionIds.frameNext),
     );
     expect(bindings.isOverridden(EditorActionIds.frameNext), isFalse);
 

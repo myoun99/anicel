@@ -3,6 +3,8 @@ import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/brush/text_tool_settings_values.dart';
+import 'package:anicel/src/ui/canvas/text/cel_text_press.dart'
+    show celTextCrossOf;
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/text/cel_text_box_width.dart';
 import 'package:flutter/widgets.dart';
@@ -34,6 +36,7 @@ void main() {
     double? wrapWidth,
     TextCelAlign align = TextCelAlign.left,
     double lineHeight = CelTextContent.defaultLineHeight,
+    double letterWidth = 1,
     int? background,
     double turned = 0,
   }) => CelTextContent(
@@ -42,6 +45,7 @@ void main() {
     wrapWidth: wrapWidth,
     align: align,
     lineHeight: lineHeight,
+    letterWidth: letterWidth,
     backgroundColor: background,
     rotationDegrees: turned,
   );
@@ -79,6 +83,21 @@ void main() {
 
   CelTextContent landed(CelTextCel cel) => landedOn(cel);
 
+  /// Every bake asked for, answered — the newest want is asked for only
+  /// once the one before it is made.
+  Future<void> allMade(HeldBaker baker) async {
+    while (baker.asked.any((bake) => !bake.answered)) {
+      await baker.pending.answer();
+    }
+  }
+
+  /// A paragraph setting's change: each paragraph it reaches set to
+  /// [align], or to lines [pitch] apart.
+  CelTextParagraph Function(CelTextParagraph) aligned(TextCelAlign align) =>
+      (paragraph) => paragraph.copyWith(align: align);
+  CelTextParagraph Function(CelTextParagraph) pitched(double pitch) =>
+      (paragraph) => paragraph.copyWith(lineHeight: pitch);
+
   group('with NO text in hand', () {
     test('it shows what the next text will start as', () {
       final (:values, options: _, tool: _, host: _, baker: _, cel: _) =
@@ -87,6 +106,7 @@ void main() {
               letters: red,
               align: TextCelAlign.right,
               lineHeight: 2,
+              letterWidth: 0.6,
               backgroundColor: 0xFF00FF00,
             ),
           );
@@ -95,8 +115,15 @@ void main() {
         value: 0xFFFF0000,
         mixed: false,
       ));
-      expect(values.align, TextCelAlign.right);
-      expect(values.lineHeight, 2);
+      expect(values.paragraph((it) => it.align), (
+        value: TextCelAlign.right,
+        mixed: false,
+      ));
+      expect(values.paragraph((it) => it.lineHeight), (
+        value: 2.0,
+        mixed: false,
+      ));
+      expect(values.letterWidth, 0.6);
       expect(values.backgroundColor, 0xFF00FF00);
     });
 
@@ -105,15 +132,61 @@ void main() {
 
       values
         ..setLetters((style) => style.copyWith(fontSize: 30))
-        ..setAlign(TextCelAlign.center)
-        ..setLineHeight(1.5)
+        ..setParagraphs(aligned(TextCelAlign.center))
+        ..setParagraphs(pitched(1.5))
+        ..setLetterWidth(1.4)
         ..setBackgroundColor(0xFF112233);
 
       expect(options.value.letters(brushColour: null).fontSize, 30);
       expect(options.value.align, TextCelAlign.center);
       expect(options.value.lineHeight, 1.5);
+      expect(options.value.letterWidth, 1.4);
       expect(options.value.backgroundColor, 0xFF112233);
       expect(host.ran, isEmpty);
+    });
+
+    test('🚨a text begun holds every value of the box the next text holds — '
+        'and so it does once the next text\'s letters are changed after', () {
+      const next = TextToolOptions(
+        align: TextCelAlign.center,
+        lineHeight: 1.6,
+        letterWidth: 0.6,
+        backgroundColor: 0xFF102030,
+        vertical: true,
+        rotationDegrees: 10,
+        skewDegrees: 15,
+        flipped: true,
+      );
+      (TextCelAlign, double, double, int?, bool, double, double, bool) boxOf(
+        TextToolOptions of,
+      ) {
+        final begun = of.newTextAt(CanvasPoint(x: 3, y: 4));
+        return (
+          begun.paragraphs.single.align,
+          begun.paragraphs.single.lineHeight,
+          begun.letterWidth,
+          begun.backgroundColor,
+          begun.vertical,
+          begun.rotationDegrees,
+          begun.skewDegrees,
+          begun.flipped,
+        );
+      }
+
+      for (final (changed, after) in [
+        ('nothing', next),
+        (
+          'the letters',
+          next.withLetters((style) => style.copyWith(bold: true)),
+        ),
+        ('the colour', next.withColour(0xFF405060)),
+      ]) {
+        expect(
+          boxOf(after),
+          (TextCelAlign.center, 1.6, 0.6, 0xFF102030, true, 10, 15, true),
+          reason: changed,
+        );
+      }
     });
 
     test('🚨whether the next text grows or wraps is not a setting: the '
@@ -140,6 +213,7 @@ void main() {
               [run('ab', large)],
               align: TextCelAlign.center,
               lineHeight: 2,
+              letterWidth: 0.7,
             ),
             next: const TextToolOptions(
               letters: plain,
@@ -151,8 +225,15 @@ void main() {
         value: 16.0,
         mixed: false,
       ));
-      expect(values.align, TextCelAlign.center);
-      expect(values.lineHeight, 2);
+      expect(values.paragraph((it) => it.align), (
+        value: TextCelAlign.center,
+        mixed: false,
+      ));
+      expect(values.paragraph((it) => it.lineHeight), (
+        value: 2.0,
+        mixed: false,
+      ));
+      expect(values.letterWidth, 0.7);
       // ⚠️None is a VALUE: this text has no box behind it, and the next
       // text's green is not shown in its place.
       expect(values.backgroundColor, isNull);
@@ -226,6 +307,46 @@ void main() {
       ]);
     });
 
+    test('🚨a PARAGRAPH setting shows the paragraphs the selected letters are '
+        'in, and reaches those alone — with none, every one', () async {
+      const right = CelTextParagraph(align: TextCelAlign.right, lineHeight: 2);
+      final (:values, :options, :tool, host: _, :baker, :cel) = settings(
+        text: CelTextContent(
+          spans: [run('ab\ncd')],
+          anchor: CanvasPoint(x: 8, y: 8),
+          paragraphs: const [CelTextParagraph(), right],
+        ),
+      );
+
+      expect(values.paragraph((it) => it.align), (
+        value: TextCelAlign.left,
+        mixed: true,
+      ));
+
+      tool.typeAt(const TextSelection(baseOffset: 3, extentOffset: 5));
+
+      // 「cd」 alone: its one paragraph, nothing mixed.
+      expect(values.paragraph((it) => it.align), (
+        value: TextCelAlign.right,
+        mixed: false,
+      ));
+      expect(values.paragraph((it) => it.lineHeight), (
+        value: 2.0,
+        mixed: false,
+      ));
+
+      values.setParagraphs(aligned(TextCelAlign.center));
+      tool.stopTyping();
+      await baker.pending.answer();
+
+      expect(landed(cel).paragraphs, const [
+        CelTextParagraph(),
+        CelTextParagraph(align: TextCelAlign.center, lineHeight: 2),
+      ]);
+      expect(options.value.align, TextCelAlign.center);
+      expect(options.value.lineHeight, CelTextContent.defaultLineHeight);
+    });
+
     test('a text with NO letters shows what its first letter will wear, and '
         'a change sets that', () {
       final (:values, :options, :tool, host: _, baker: _, :cel) = settings(
@@ -245,17 +366,18 @@ void main() {
       expect(values.letter((style) => style.color).value, 0xFF0000FF);
     });
 
-    test('a setting of the WHOLE text reaches the text and the next one', () async {
+    test('a setting of the paragraphs, and one of the WHOLE text, reaches '
+        'the text and the next one', () async {
       final (:values, :options, tool: _, :host, :baker, :cel) = settings(
         text: said([run('ab')]),
       );
 
-      values.setAlign(TextCelAlign.right);
+      values.setParagraphs(aligned(TextCelAlign.right));
       await baker.pending.answer();
       values.setBackgroundColor(0xFF445566);
       await baker.pending.answer();
 
-      expect(landed(cel).align, TextCelAlign.right);
+      expect(landed(cel).paragraphs.single.align, TextCelAlign.right);
       expect(landed(cel).backgroundColor, 0xFF445566);
       expect(host.ran, hasLength(2));
       expect(options.value.align, TextCelAlign.right);
@@ -332,31 +454,53 @@ void main() {
       expect(host.ran, hasLength(1), reason: 'nothing more to land');
     });
 
-    test('a setting of the WHOLE text dragged does not land either, until '
+    test('a setting of the paragraphs dragged does not land either, until '
         'it comes to rest', () async {
       final (:values, options: _, tool: _, :host, :baker, :cel) = settings(
         text: said([run('ab')]),
       );
 
-      values.setLineHeight(2, settled: false);
+      values.setParagraphs(pitched(2), settled: false);
       await baker.pending.answer();
 
       expect(host.ran, isEmpty);
-      expect(landed(cel).lineHeight, CelTextContent.defaultLineHeight);
+      expect(
+        landed(cel).paragraphs.single.lineHeight,
+        CelTextContent.defaultLineHeight,
+      );
 
-      values.setLineHeight(2);
+      values.setParagraphs(pitched(2));
 
       expect(host.ran, hasLength(1));
-      expect(landed(cel).lineHeight, 2);
+      expect(landed(cel).paragraphs.single.lineHeight, 2);
     });
 
     test('a line pitch dragged is the next text\'s as it goes', () {
       final (:values, :options, tool: _, host: _, baker: _, cel: _) =
           settings();
 
-      values.setLineHeight(1.75, settled: false);
+      values.setParagraphs(pitched(1.75), settled: false);
 
       expect(options.value.lineHeight, 1.75);
+    });
+
+    test('the letters\' width dragged is the next text\'s as it goes, and '
+        'lands on the text only once it comes to rest', () async {
+      final (:values, :options, tool: _, :host, :baker, :cel) = settings(
+        text: said([run('ab')]),
+      );
+
+      values.setLetterWidth(0.5, settled: false);
+      await baker.pending.answer();
+
+      expect(options.value.letterWidth, 0.5);
+      expect(host.ran, isEmpty);
+      expect(landed(cel).letterWidth, 1);
+
+      values.setLetterWidth(0.5);
+
+      expect(host.ran, hasLength(1));
+      expect(landed(cel).letterWidth, 0.5);
     });
   });
 
@@ -475,15 +619,89 @@ void main() {
 
   // 🗣️I-95 (유저 2026-10-12): 「텍스트도구에도 변형도구처럼 위치값 존재」 —
   // I-95-Q1 (10-14): 「상자의 가운데 — 캔버스 왼쪽 위에서 잰 픽셀」.
-  group('its place: where the middle of its box stands', () {
-    /// Every bake asked for, answered — the newest want is asked for only
-    /// once the one before it is made.
-    Future<void> allMade(HeldBaker baker) async {
-      while (baker.asked.any((bake) => !bake.answered)) {
-        await baker.pending.answer();
-      }
-    }
+  group('its frame: its turn, its lean, its mirror (⑦)', () {
+    test('it shows the text in hand\'s turn and lean, and with none the next '
+        'text\'s', () {
+      expect(
+        (
+          settings(
+            next: const TextToolOptions(rotationDegrees: 12, skewDegrees: 5),
+          ).values.rotationDegrees,
+          settings(
+            next: const TextToolOptions(rotationDegrees: 12, skewDegrees: 5),
+          ).values.skewDegrees,
+        ),
+        (12, 5),
+      );
+      final (:values, options: _, tool: _, host: _, baker: _, cel: _) =
+          settings(text: said([run('ab')], turned: 30));
+      expect((values.rotationDegrees, values.skewDegrees), (30, 0));
+    });
 
+    test('🚨a turn, a lean and a mirror set here go about the box\'s CROSS, '
+        'which stays where it was — one step each — and the next text takes '
+        'each', () async {
+      final (:values, :options, :tool, :host, :baker, :cel) = settings(
+        text: said([run('ab')]),
+      );
+      Offset cross() => celTextCrossOf(tool, tool.session!.shown.layout);
+      final before = cross();
+
+      values.setRotation(30);
+      await allMade(baker);
+      expect(landed(cel).rotationDegrees, 30);
+      expect(cross(), offsetMoreOrLessEquals(before), reason: 'turned');
+
+      values.setSkew(20);
+      await allMade(baker);
+      expect(landed(cel).skewDegrees, 20);
+      expect(cross(), offsetMoreOrLessEquals(before), reason: 'leaned');
+
+      values.flipHorizontal();
+      await allMade(baker);
+      expect(landed(cel).flipped, isTrue);
+      expect(cross(), offsetMoreOrLessEquals(before), reason: 'mirrored');
+
+      expect(host.ran, hasLength(3));
+      expect(
+        (
+          options.value.rotationDegrees,
+          options.value.skewDegrees,
+          options.value.flipped,
+        ),
+        (30, 20, true),
+      );
+    });
+
+    test('a turn dragged lands nothing until it comes to rest', () async {
+      final (:values, options: _, tool: _, :host, :baker, :cel) = settings(
+        text: said([run('ab')]),
+      );
+
+      values
+        ..setRotation(10, settled: false)
+        ..setRotation(20, settled: false);
+      await allMade(baker);
+      expect(host.ran, isEmpty);
+
+      values.settle();
+      await allMade(baker);
+      expect(host.ran, hasLength(1));
+      expect(landed(cel).rotationDegrees, 20);
+    });
+
+    test('a lean stops a degree short of the quarter turn a text refuses', () {
+      final (:values, :options, tool: _, host: _, baker: _, cel: _) =
+          settings();
+
+      values.setSkew(120);
+      expect(options.value.skewDegrees, TextToolSettingsValues.maxSkewDegrees);
+      values.setSkew(-120);
+      expect(options.value.skewDegrees, -TextToolSettingsValues.maxSkewDegrees);
+    });
+  });
+
+  group('its place: where the middle of its box stands', () {
     test('🚨is the middle of the box as it stands on the canvas — a turned '
         'text\'s too — and with none in hand there is none', () {
       expect(settings().values.boxCentre, isNull);
@@ -667,12 +885,15 @@ void main() {
         value: TextToolOptions.defaults.letters(brushColour: null).fontSize,
         mixed: false,
       ));
-      expect(nowhere.align, TextToolOptions.defaults.align);
+      expect(nowhere.paragraph((it) => it.align), (
+        value: TextToolOptions.defaults.align,
+        mixed: false,
+      ));
 
       // And saying one anyway is nobody's.
       nowhere
         ..setLetters((style) => style.copyWith(bold: true))
-        ..setAlign(TextCelAlign.right)
+        ..setParagraphs(aligned(TextCelAlign.right))
         ..setWraps(true)
         ..carryBy(dx: 1)
         ..setBoxCentre(x: 1)

@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/models/app_workspace_colors.dart';
 
 import '../../helpers/library_source.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// Every app-level settings family `EditorAppSettings` keeps: each has
@@ -194,7 +195,7 @@ void main() {
     );
     // The saves are fire-and-forget. Waiting on the files rather than on a
     // fixed delay keeps this honest on a machine that is busy building.
-    await _settleUntil(
+    await pollUntil(
       () => names.every((name) => File(path(name)).existsSync()),
     );
     for (final name in names) {
@@ -215,7 +216,14 @@ void main() {
 
     final second = openRun();
     addTearDown(second.dispose);
-    await _settleUntil(
+    // ⚠️A DEADLINE, not a count of rounds ([waitPatience]). Three hundred
+    // rounds of 10ms ran out while a parallel batch filled the machine
+    // (09-24, `settings-roundtrip-poll-runs-out-under-load`): the memory
+    // allowance was restored late, not never — the same file passed alone.
+    // A generous deadline costs nothing when the restores land; it only
+    // decides how long a real failure takes to say so. ↩️The deadline was
+    // this file's own `_settleUntil`, 30 s, until 2026-10-16.
+    await pollUntil(
       () =>
           AppText.settings.value.programLanguage == AppLanguage.ko &&
           AppColors.accentSettings.value.accent == const Color(0xFF123456) &&
@@ -257,7 +265,7 @@ void main() {
     // The onion's live value is the run's settings object, read through the
     // second session's onion skin — and nothing had to be reset for that to
     // mean something.
-    await _settleUntil(
+    await pollUntil(
       () => second.onionSkin.settings.value.mode == OnionSkinMode.images,
     );
     expect(second.onionSkin.settings.value.beforePegs.first.opacity, 0.9);
@@ -380,10 +388,12 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    await _settleUntil(
-      () => false,
-      within: const Duration(milliseconds: 100),
-    );
+    // ⛔Rounds, not a time: under load fewer of them fit in a time, and a
+    // window that sees less passes what it is there to catch. ↩️It was
+    // 100 ms of the machine's until 2026-10-16.
+    for (var round = 0; round < 10; round += 1) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
 
     expect(session.languageSettings.value, const AppLanguageSettings());
     expect(AppColors.accentSettings.value, const AppAccentSettings());
@@ -412,26 +422,6 @@ void main() {
           'F-150 itself',
     );
   });
-}
-
-/// Polls [done] instead of sleeping a fixed span: it returns the moment the
-/// asynchronous restores land, and still gives up rather than hanging when
-/// they never do (the assertion after it names which one).
-///
-/// ⚠️A DEADLINE, not a count of rounds. Three hundred rounds of 10ms ran
-/// out while a parallel batch filled the machine (09-24,
-/// `settings-roundtrip-poll-runs-out-under-load`): the memory allowance was
-/// restored late, not never — the same file passed alone. A generous
-/// deadline costs nothing when the restores land; it only decides how long
-/// a real failure takes to say so.
-Future<void> _settleUntil(
-  bool Function() done, {
-  Duration within = const Duration(seconds: 30),
-}) async {
-  final clock = Stopwatch()..start();
-  while (!done() && clock.elapsed < within) {
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-  }
 }
 
 /// A language store that counts its reads — the witness that a session on

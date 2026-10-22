@@ -1,5 +1,9 @@
+import 'dart:math' as math;
+import 'dart:ui' show Offset;
+
 import '../../models/key_mark.dart';
 import '../../models/se_name_tag.dart';
+import '../../services/cel_text_box_edits.dart' show celTextMinFontSize;
 import '../text/app_strings.dart' show AppText;
 import 'property_lane_lens.dart';
 import '../text/readout_text.dart';
@@ -19,15 +23,23 @@ const String seNameTagGroupLaneId = 'name-tag-group';
 const String seNameTagSizeLaneId = 'name-tag:size';
 const String seNameTagTrackingLaneId = 'name-tag:tracking';
 const String seNameTagBoldLaneId = 'name-tag:bold';
+const String seNameTagItalicLaneId = 'name-tag:italic';
+const String seNameTagUnderlineLaneId = 'name-tag:underline';
+const String seNameTagStrikethroughLaneId = 'name-tag:strikethrough';
 const String seNameTagNameInkLaneId = 'name-tag:name-ink';
 const String seNameTagBoxColorLaneId = 'name-tag:box-color';
 const String seNameTagLineInkLaneId = 'name-tag:line-ink';
 const String seNameTagShowLineLaneId = 'name-tag:show-line';
 
+/// ⚠️The letter switches stand where the text tool's do — bold, then the
+/// lean, the line under and the line through (`text_tool_settings.dart`).
 const List<String> seNameTagLaneDisplayOrder = [
   seNameTagSizeLaneId,
   seNameTagTrackingLaneId,
   seNameTagBoldLaneId,
+  seNameTagItalicLaneId,
+  seNameTagUnderlineLaneId,
+  seNameTagStrikethroughLaneId,
   seNameTagNameInkLaneId,
   seNameTagBoxColorLaneId,
   seNameTagLineInkLaneId,
@@ -41,7 +53,7 @@ List<String> get seNameTagLaneSelectionOrder => [
 ];
 
 /// Whether [laneId] belongs to the name-tag group (header included) — the
-/// predicate every routing switch asks instead of matching seven strings.
+/// predicate every routing switch asks instead of matching every member's.
 bool laneIsSeNameTag(String? laneId) =>
     laneId == seNameTagGroupLaneId ||
     (laneId != null && laneId.startsWith('name-tag:'));
@@ -59,14 +71,21 @@ String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
     seNameTagTrackingLaneId => columnValueText(
       resolved.style.letterSpacing,
     ),
-    seNameTagBoldLaneId => resolved.style.bold ? 'on' : 'off',
+    seNameTagBoldLaneId => _onOff(resolved.style.bold),
+    seNameTagItalicLaneId => _onOff(resolved.style.italic),
+    seNameTagUnderlineLaneId => _onOff(resolved.style.underline),
+    seNameTagStrikethroughLaneId => _onOff(resolved.style.strikethrough),
     seNameTagNameInkLaneId => hex(resolved.style.color),
     seNameTagBoxColorLaneId => hex(resolved.style.backgroundColor),
     seNameTagLineInkLaneId => hex(resolved.lineStyle.color),
-    seNameTagShowLineLaneId => resolved.showLine ? 'on' : 'off',
+    seNameTagShowLineLaneId => _onOff(resolved.showLine),
     _ => '',
   };
 }
+
+/// A switch's readout — the words the value editor reads back
+/// (`parseBoolInput`).
+String _onOff(bool on) => on ? 'on' : 'off';
 
 /// The name-tag family's lane table: where each member lane lives on the
 /// track — the name-tag twin of `transformLaneLens`, and the family's arm
@@ -87,6 +106,18 @@ PropertyLaneLens<SeNameTagTrack, Object?>? seNameTagLaneLens(String laneId) =>
         get: (keys) => keys.bold,
         set: (keys, lane) => keys.copyWith(bold: lane),
       ),
+      seNameTagItalicLaneId => PropertyLaneLens<SeNameTagTrack, bool>(
+        get: (keys) => keys.italic,
+        set: (keys, lane) => keys.copyWith(italic: lane),
+      ),
+      seNameTagUnderlineLaneId => PropertyLaneLens<SeNameTagTrack, bool>(
+        get: (keys) => keys.underline,
+        set: (keys, lane) => keys.copyWith(underline: lane),
+      ),
+      seNameTagStrikethroughLaneId => PropertyLaneLens<SeNameTagTrack, bool>(
+        get: (keys) => keys.strikethrough,
+        set: (keys, lane) => keys.copyWith(strikethrough: lane),
+      ),
       seNameTagNameInkLaneId => PropertyLaneLens<SeNameTagTrack, int>(
         get: (keys) => keys.nameInk,
         set: (keys, lane) => keys.copyWith(nameInk: lane),
@@ -106,12 +137,35 @@ PropertyLaneLens<SeNameTagTrack, Object?>? seNameTagLaneLens(String laneId) =>
       _ => null,
     };
 
-/// The member lane's keyed frames — what the move machine's keyed gate
-/// reads (the name-tag twin of `transformLaneKeyFrames`). The lane rows
-/// read the keys with the marks they wear ([seNameTagLaneKeyMarks]),
-/// through the same table.
+/// The member lane's keyed frames (the name-tag twin of
+/// `transformLaneKeyFrames`). The lane rows read the keys with the marks
+/// they wear ([seNameTagLaneKeyMarks]), through the same table. ↩️What the
+/// move machine's keyed gate read, until every home's verbs read their
+/// lanes through the lens itself (F-374).
 Set<int> seNameTagLaneKeyFrames(SeNameTagTrack keys, String laneId) =>
     seNameTagLaneLens(laneId)?.keyFrames(keys) ?? const {};
+
+/// Whether [name] is already used by member lane [laneId] in [keys] — the
+/// read a rename does before it commits, as `transformLaneUsesName` is a
+/// transform lane's: a tag's keys name on that tag alone (F-374).
+/// [excludeFrames] drops the keys a RANGE rename is about to name — they
+/// are the ones joining, so they must not answer for the name.
+bool seNameTagLaneUsesName(
+  SeNameTagTrack keys,
+  String laneId,
+  String name, {
+  Set<int> excludeFrames = const {},
+}) =>
+    seNameTagLaneLens(
+      laneId,
+    )?.get(keys).keyForName(name, excludeFrames: excludeFrames) !=
+    null;
+
+/// Whether member lane [laneId]'s keys take the key window's SIDES: a
+/// flag's do not — it holds by nature, half a shown line not being a
+/// state, so its keys are authored HOLD (#902) and stay so.
+bool seNameTagLaneTakesSides(String laneId) =>
+    seNameTagLaneValueKind(laneId) != PropertyLaneValueKind.boolean;
 
 /// The member lane's keys with the marks they wear, read through the same
 /// table as its frames — so a flag lane's held keys draw as holds.
@@ -135,10 +189,14 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
       // F-37: `tlNameTagGroup` was tabled for this header and read by nobody.
       label: AppText.strings.tlNameTagGroup,
       // The members' key union, the summary every group header shows
-      // ([unionKeyMarks]).
+      // ([unionKeyMarks], [unionKeyNames]).
       keyMarks: unionKeyMarks([
         for (final laneId in seNameTagLaneDisplayOrder)
           seNameTagLaneKeyMarks(keys, laneId),
+      ]),
+      keyNames: unionKeyNames([
+        for (final laneId in seNameTagLaneDisplayOrder)
+          ?seNameTagLaneLens(laneId)?.get(keys),
       ]),
       showsKeyNavigator: false,
       isGroupHeader: true,
@@ -163,12 +221,46 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
           laneId: laneId,
           label: seNameTagLaneLabel(laneId),
           keyMarks: seNameTagLaneKeyMarks(keys, laneId),
+          keyNames:
+              seNameTagLaneLens(laneId)?.get(keys).namedKeysByFrame ??
+              const {},
           valueKind: seNameTagLaneValueKind(laneId),
           colorCanBeNone: seNameTagLaneColorCanBeNone(laneId),
           valueLabel: (frame) =>
               formatSeNameTagLaneValue(laneId, resolveAt(frame)),
+          scrubValue: seNameTagLaneValueKind(laneId) ==
+                  PropertyLaneValueKind.number
+              ? (label, delta) => scrubSeNameTagLaneValue(laneId, label, delta)
+              : null,
         ),
   ];
+}
+
+/// A member's number scrubbed by a drag on its readout, in the form the
+/// value editor parses back — the rate every number lane scrubs at
+/// ([scrubbedNumber]). Null for a member that is not a number.
+///
+/// 🗣️F-407 (유저 2026-10-19): 「S행의 이름표, 크기나 자간 변경하려해도 값
+/// 변경 안됨」 — the lanes wore no scrub, so a drag on them did nothing.
+/// The size stops at the smallest a text can be set in, as the text tool's
+/// size bar does ([celTextMinFontSize]).
+String? scrubSeNameTagLaneValue(
+  String laneId,
+  String currentLabel,
+  Offset dragDelta,
+) {
+  final value = columnValueOf(currentLabel);
+  if (value == null) {
+    return null;
+  }
+  final scrubbed = scrubbedNumber(value, dragDelta);
+  return switch (laneId) {
+    seNameTagSizeLaneId => columnValueText(
+      math.max(celTextMinFontSize, scrubbed),
+    ),
+    seNameTagTrackingLaneId => columnValueText(scrubbed),
+    _ => null,
+  };
 }
 
 /// What KIND of value a member holds — the one place that knows, since it
@@ -188,6 +280,9 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
 /// where it is not. So all three are circles and the rule is one rule.
 PropertyLaneValueKind seNameTagLaneValueKind(String laneId) => switch (laneId) {
   seNameTagBoldLaneId ||
+  seNameTagItalicLaneId ||
+  seNameTagUnderlineLaneId ||
+  seNameTagStrikethroughLaneId ||
   seNameTagShowLineLaneId => PropertyLaneValueKind.boolean,
   seNameTagNameInkLaneId ||
   seNameTagBoxColorLaneId ||
@@ -215,6 +310,9 @@ String seNameTagLaneLabel(String laneId) => switch (laneId) {
   seNameTagSizeLaneId => AppText.strings.seNameTagSizeLabel,
   seNameTagTrackingLaneId => AppText.strings.seNameTagTrackingLabel,
   seNameTagBoldLaneId => AppText.strings.seNameTagBoldLabel,
+  seNameTagItalicLaneId => AppText.strings.seNameTagItalicLabel,
+  seNameTagUnderlineLaneId => AppText.strings.seNameTagUnderlineLabel,
+  seNameTagStrikethroughLaneId => AppText.strings.seNameTagStrikethroughLabel,
   seNameTagNameInkLaneId => AppText.strings.seNameTagNameInkLabel,
   seNameTagBoxColorLaneId => AppText.strings.seNameTagBoxColorLabel,
   seNameTagLineInkLaneId => AppText.strings.seNameTagLineInkLabel,

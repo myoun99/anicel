@@ -12,8 +12,9 @@ import '../sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import '../text/app_strings.dart';
 import '../text/canvas_letter_faces.dart';
 import '../text/imported_fonts.dart';
-import '../text/readout_text.dart' show columnValueText;
+import '../text/readout_text.dart' show columnValueOf, columnValueText;
 import '../theme/app_theme.dart';
+import '../timeline/axis_turn.dart' show partAlong;
 import '../widgets/app_icon_button.dart';
 import '../widgets/color_swatch_button.dart';
 import '../widgets/drag_value_label.dart';
@@ -31,9 +32,10 @@ import 'tool_settings_section.dart';
 /// like every other tool's (유저: 툴 설정은 툴 설정 패널에).
 ///
 /// The layout is the one 유저 took on 2026-10-06, top to bottom: the text in
-/// hand and its delete · **글자** — face, size, tracking, bold, colour,
-/// outline, outline width, and the smoothing of their edges (유저: 「2차에서
-/// 스위치로 넣음」) · **상자** — the way it is written (가로 · 세로,
+/// hand and its delete · **글자** — face, size, tracking, bold (and beside
+/// it the lean and the two lines, 유저 10-17), colour, outline, outline
+/// width, and the smoothing of their edges (유저: 「2차에서 스위치로 넣음」)
+/// · **상자** — the way it is written (가로 · 세로,
 /// 유저: 「세로쓰기 … 그거 통합하면서 진행」), alignment, box width, line spacing,
 /// background · and at the foot 「래스터라이즈」.
 ///
@@ -77,21 +79,32 @@ class TextToolSettings extends StatelessWidget {
       currentColorOf: currentColorOf,
     );
     final strings = AppText.strings;
-    final section = ToolSettingsSection(
-      tool: 'text',
-      title: strings.toolText,
-      children: [
-        _TextInHandRow(reading: reading),
-        ToolSettingsGroupHeader(strings.textToolLetters),
-        _LetterRows(
-          reading: reading,
-          currentColorOf: currentColorOf,
-          fonts: fonts,
-        ),
-        ToolSettingsGroupHeader(strings.textToolBox),
-        _BoxRows(reading: reading, currentColorOf: currentColorOf),
-        _IntoDrawingButton(reading: reading),
-      ],
+    final section = ToolSettingsFolds.listen(
+      'text',
+      (foldOf) => ToolSettingsSection(
+        tool: 'text',
+        title: strings.toolText,
+        children: [
+          _TextInHandRow(reading: reading),
+          ...toolSettingsGroup(
+            strings.textToolLetters,
+            fold: foldOf('letters'),
+            rows: [
+              _LetterRows(
+                reading: reading,
+                currentColorOf: currentColorOf,
+                fonts: fonts,
+              ),
+            ],
+          ),
+          ...toolSettingsGroup(
+            strings.textToolBox,
+            fold: foldOf('box'),
+            rows: [_BoxRows(reading: reading, currentColorOf: currentColorOf)],
+          ),
+          _IntoDrawingButton(reading: reading),
+        ],
+      ),
     );
     // A key presses the 🗑, the two centrings and 래스터라이즈 as the text
     // tool's settings (I-40) — bound again when any of them comes to have
@@ -325,6 +338,22 @@ typedef _LetterBar = ({
   String unit,
 });
 
+/// A setting of the letters that a switch turns on and off.
+///
+/// 🗣️유저 2026-10-17 (card text-letters-lean-and-underline): 「기울임/밑줄
+/// 같은것도 어차피 넣어야할 기능이니까 넣도록」 — the lean and the two lines
+/// stand beside bold, the setting of their kind.
+enum _LetterSwitch { bold, italic, underline, strikethrough, smoothing }
+
+/// One of those as its switch: what it is called, and how it is read off a
+/// style and written into one.
+typedef _LetterToggle = ({
+  String name,
+  String label,
+  bool Function(TextLetterStyle style) read,
+  TextLetterStyle Function(TextLetterStyle style, bool on) write,
+});
+
 /// The rows of the 글자 group — every one a setting of LETTERS, which
 /// reaches the selected ones or, with none selected, the whole text.
 class _LetterRows extends StatelessWidget {
@@ -359,29 +388,16 @@ class _LetterRows extends StatelessWidget {
       ),
       _bar(_LetterNumber.size),
       _bar(_LetterNumber.tracking),
-      reading.follow(
-        (values) => (
-          bold: values.letter((style) => style.bold),
-          writable: values.writable,
-        ),
-        (shown) => SettingsSwitchRow(
-          tileKey: const ValueKey<String>('text-tool-bold'),
-          label: AppText.strings.textToolBold,
-          value: !shown.bold.mixed && shown.bold.value,
-          mixed: shown.bold.mixed,
-          onChanged: shown.writable
-              ? (on) => reading.now.setLetters(
-                  (style) => style.copyWith(bold: on),
-                )
-              : null,
-        ),
-      ),
+      _switch(_LetterSwitch.bold),
+      _switch(_LetterSwitch.italic),
+      _switch(_LetterSwitch.underline),
+      _switch(_LetterSwitch.strikethrough),
       _colour(),
       _outline(),
       // A width with no colour is no outline: until the letters have one
       // there is nothing for it to be the width of.
       _bar(_LetterNumber.outlineWidth, live: _outlined),
-      _smoothing(),
+      _switch(_LetterSwitch.smoothing),
     ],
   );
 
@@ -391,29 +407,64 @@ class _LetterRows extends StatelessWidget {
     return outlined.mixed || outlined.value;
   }
 
-  /// Whether the letters' edges are smoothed — the switch the shape fill
-  /// and the selection carry, under their word for it.
-  ///
-  /// 🗣️유저 2026-10-06 (asked whether letters need it): 「권장대로. 2차에서
-  /// 스위치로 넣음」 — in this group, so it is a setting of LETTERS: it
-  /// reaches the selected ones or, with none selected, the whole text.
-  Widget _smoothing() => reading.follow(
-    (values) => (
-      smooth: values.letter((style) => style.antialias),
-      writable: values.writable,
+  /// One switch of the letters: on where every letter it speaks for is, and
+  /// 「—」 where they disagree.
+  Widget _switch(_LetterSwitch which) {
+    final toggle = _switchOf(which);
+    return reading.follow(
+      (values) => (on: values.letter(toggle.read), writable: values.writable),
+      (shown) => SettingsSwitchRow(
+        tileKey: ValueKey<String>('text-tool-${toggle.name}'),
+        label: toggle.label,
+        value: !shown.on.mixed && shown.on.value,
+        mixed: shown.on.mixed,
+        onChanged: shown.writable
+            ? (on) => reading.now.setLetters(
+                (style) => toggle.write(style, on),
+              )
+            : null,
+      ),
+    );
+  }
+
+  static _LetterToggle _switchOf(_LetterSwitch which) => switch (which) {
+    _LetterSwitch.bold => (
+      name: 'bold',
+      label: AppText.strings.textToolBold,
+      read: (style) => style.bold,
+      write: (style, on) => style.copyWith(bold: on),
     ),
-    (shown) => SettingsSwitchRow(
-      tileKey: const ValueKey<String>('text-tool-antialias'),
+    _LetterSwitch.italic => (
+      name: 'italic',
+      label: AppText.strings.textToolItalic,
+      read: (style) => style.italic,
+      write: (style, on) => style.copyWith(italic: on),
+    ),
+    _LetterSwitch.underline => (
+      name: 'underline',
+      label: AppText.strings.textToolUnderline,
+      read: (style) => style.underline,
+      write: (style, on) => style.copyWith(underline: on),
+    ),
+    _LetterSwitch.strikethrough => (
+      name: 'strikethrough',
+      label: AppText.strings.textToolStrikethrough,
+      read: (style) => style.strikethrough,
+      write: (style, on) => style.copyWith(strikethrough: on),
+    ),
+    // Whether the letters' edges are smoothed — the switch the shape fill
+    // and the selection carry, under their word for it.
+    //
+    // 🗣️유저 2026-10-06 (asked whether letters need it): 「권장대로. 2차에서
+    // 스위치로 넣음」 — in this group, so it is a setting of LETTERS: it
+    // reaches the selected ones or, with none selected, the whole text.
+    _LetterSwitch.smoothing => (
+      name: 'antialias',
       label: AppText.strings.brAntiAlias,
-      value: !shown.smooth.mixed && shown.smooth.value,
-      mixed: shown.smooth.mixed,
-      onChanged: shown.writable
-          ? (on) => reading.now.setLetters(
-              (style) => style.copyWith(antialias: on),
-            )
-          : null,
+      read: (style) => style.antialias,
+      write: (style, on) => style.copyWith(antialias: on),
     ),
-  );
+  };
 
   /// One number of the letters as a bar: dragged it shows, and where the
   /// hand lets go it lands. [live] says whether it takes a change at all.
@@ -549,7 +600,7 @@ class _FaceRow extends StatelessWidget {
   static String _nameOf(String? family) =>
       family ?? AppTypography.bundledFamily;
 
-  static ShownLetterSetting<String?> _faceOf(TextToolSettingsValues values) =>
+  static ShownTextSetting<String?> _faceOf(TextToolSettingsValues values) =>
       values.letter((style) => style.fontFamily);
 
   @override
@@ -736,6 +787,12 @@ class _BoxRows extends StatelessWidget {
   static const double _loosest = 3;
   static const double _pitchStep = 0.05;
 
+  /// The letter widths set from here, as shares of the letters' own width,
+  /// and the step between two of them.
+  static const double _narrowest = 0.1;
+  static const double _widest = 4;
+  static const double _widthStep = 0.01;
+
   /// What a centring presses, button or key: the text in hand stood on the
   /// canvas's middle line [across] (or down), through the values as they
   /// stand at the press — nothing while none is in hand.
@@ -754,8 +811,74 @@ class _BoxRows extends StatelessWidget {
       _alignment(),
       _boxWidth(),
       _linePitch(),
+      _letterWidth(),
+      ..._turnLeanAndMirror(),
       _background(),
     ],
+  );
+
+  /// How the box's frame stands (⑦): its turn and its lean in the transform
+  /// tool's own boxes — a scrub a degree a step, one step back a scrub; a
+  /// number typed sets it — and its mirror in the transform tool's 좌우반전
+  /// glyph. Of the text in hand about its cross, and of the next text.
+  ///
+  /// 🗣️⑦ (text-letters-lean-and-underline-Q6, 유저 2026-10-18): 「앱에서도
+  /// 만들게 — 회전 · 기울임 · 뒤집기를 텍스트 도구에」.
+  List<Widget> _turnLeanAndMirror() {
+    final strings = AppText.strings;
+    return [
+      ToolSettingRow.bar(
+        label: strings.trRotation,
+        bar: _angleBox(
+          keyValue: 'text-tool-rotation',
+          read: (values) => values.rotationDegrees,
+          write: (degrees, {required settled}) =>
+              reading.now.setRotation(degrees, settled: settled),
+        ),
+      ),
+      ToolSettingRow.bar(
+        label: strings.textToolSkew,
+        bar: _angleBox(
+          keyValue: 'text-tool-skew',
+          read: (values) => values.skewDegrees,
+          write: (degrees, {required settled}) =>
+              reading.now.setSkew(degrees, settled: settled),
+        ),
+      ),
+      ToolSettingRow.bar(
+        label: '',
+        bar: reading.follow(
+          (values) => values.writable,
+          (writable) => ToolSettingAction.glyph(
+            keyValue: 'text-tool-flip-horizontal',
+            label: strings.trFlipHorizontal,
+            glyph: const Icon(Icons.flip),
+            onPressed: writable ? () => reading.now.flipHorizontal() : null,
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Widget _angleBox({
+    required String keyValue,
+    required double Function(TextToolSettingsValues values) read,
+    required void Function(double degrees, {required bool settled}) write,
+  }) => reading.follow(
+    (values) => (degrees: read(values), writable: values.writable),
+    (shown) => DragValueLabel.box(
+      keyValue: keyValue,
+      text: '${columnValueText(shown.degrees)}°',
+      enabled: shown.writable,
+      onDragDelta: (units) => write(read(reading.now) + units, settled: false),
+      onOperationEnd: () => reading.now.settle(),
+      onEditSubmit: (raw) {
+        final typed = columnValueOf(raw);
+        if (typed != null) {
+          write(typed, settled: true);
+        }
+      },
+    ),
   );
 
   /// Where the middle of the text in hand's box stands (I-95,
@@ -770,11 +893,19 @@ class _BoxRows extends StatelessWidget {
     return [
       ToolSettingRow.bar(
         label: strings.trPosition,
-        bar: _valueBox(keyValue: 'text-tool-x', name: 'X', across: true),
+        bar: _valueBox(
+          keyValue: 'text-tool-x',
+          name: 'X',
+          axis: Axis.horizontal,
+        ),
       ),
       ToolSettingRow.bar(
         label: '',
-        bar: _valueBox(keyValue: 'text-tool-y', name: 'Y', across: false),
+        bar: _valueBox(
+          keyValue: 'text-tool-y',
+          name: 'Y',
+          axis: Axis.vertical,
+        ),
       ),
       reading.follow(
         (values) => values.boxCentre != null,
@@ -799,35 +930,33 @@ class _BoxRows extends StatelessWidget {
     ];
   }
 
-  /// One of the place's numbers, X [across] or Y, as it reads — none with
-  /// nothing in hand. A box of its own, as each of the transform tool's is
-  /// (`_valueBox` there).
+  /// One of the place's numbers — X on [Axis.horizontal], Y on
+  /// [Axis.vertical] — as it reads, none with nothing in hand. A box of its
+  /// own, as each of the transform tool's is (`_valueBox` there).
   Widget _valueBox({
     required String keyValue,
     required String name,
-    required bool across,
+    required Axis axis,
   }) => reading.follow(
     (values) {
       final centre = values.boxCentre;
-      return centre == null
-          ? null
-          : columnValueText(across ? centre.dx : centre.dy);
+      return centre == null ? null : columnValueText(partAlong(axis, centre));
     },
     (number) => DragValueLabel.box(
       keyValue: keyValue,
       name: name,
       text: number ?? '',
       enabled: number != null,
-      onDragDelta: (units) => across
+      onDragDelta: (units) => axis == Axis.horizontal
           ? reading.now.carryBy(dx: units.round())
           : reading.now.carryBy(dy: units.round()),
       onOperationEnd: () => reading.now.settle(),
       onEditSubmit: (raw) {
-        final typed = double.tryParse(raw.trim());
+        final typed = columnValueOf(raw);
         if (typed == null) {
           return;
         }
-        if (across) {
+        if (axis == Axis.horizontal) {
           reading.now.setBoxCentre(x: typed);
         } else {
           reading.now.setBoxCentre(y: typed);
@@ -869,12 +998,12 @@ class _BoxRows extends StatelessWidget {
   /// Where the letters stand along their way: the three answers keep their
   /// values and are NAMED by what they are on screen — the left, the middle
   /// and the right of a line; the top, the middle and the bottom of a
-  /// column.
+  /// column. A setting of PARAGRAPHS: paragraphs aligned unlike light none.
   Widget _alignment() {
     final strings = AppText.strings;
     return reading.follow(
       (values) => (
-        align: values.align,
+        align: values.paragraph((paragraph) => paragraph.align),
         columns: values.vertical,
         writable: values.writable,
       ),
@@ -882,7 +1011,7 @@ class _BoxRows extends StatelessWidget {
         tool: 'text-tool',
         name: 'align',
         label: strings.textToolAlign,
-        current: shown.align,
+        current: shown.align.mixed ? null : shown.align.value,
         answers: [
           for (final (align, label) in [
             (
@@ -901,8 +1030,11 @@ class _BoxRows extends StatelessWidget {
           ])
             (value: align, key: align.name, label: label),
         ],
-        onPick: (align) =>
-            shown.writable ? () => reading.now.setAlign(align) : null,
+        onPick: (align) => shown.writable
+            ? () => reading.now.setParagraphs(
+                (paragraph) => paragraph.copyWith(align: align),
+              )
+            : null,
       ),
     );
   }
@@ -933,24 +1065,59 @@ class _BoxRows extends StatelessWidget {
     );
   }
 
-  /// A line's pitch, read as a share of its letters' size.
-  Widget _linePitch() => ToolSettingRow.bar(
-    label: AppText.strings.textToolLineHeight,
+  /// A line's pitch, read as a share of its letters' size — a setting of
+  /// PARAGRAPHS.
+  Widget _linePitch() {
+    void set(double pitch, {required bool settled}) =>
+        reading.now.setParagraphs(
+          (paragraph) => paragraph.copyWith(lineHeight: pitch),
+          settled: settled,
+        );
+    return ToolSettingRow.bar(
+      label: AppText.strings.textToolLineHeight,
+      bar: reading.follow(
+        (values) => (
+          pitch: values.paragraph((paragraph) => paragraph.lineHeight),
+          writable: values.writable,
+        ),
+        (shown) => FieldSlider.cell(
+          key: const ValueKey<String>('text-tool-line-height'),
+          label: AppText.strings.textToolLineHeight,
+          min: _tightest,
+          max: _loosest,
+          divisions: ((_loosest - _tightest) / _pitchStep).round(),
+          displayScale: 100,
+          unit: '%',
+          value: shown.pitch.value.clamp(_tightest, _loosest),
+          valueTextBuilder: shown.pitch.mixed ? (_, _) => _mixed : null,
+          onChanged: shown.writable
+              ? (pitch) => set(pitch, settled: false)
+              : null,
+          onChangeEnd: (pitch) => set(pitch, settled: true),
+        ),
+      ),
+    );
+  }
+
+  /// How wide the letters are drawn, read as a share of their own width
+  /// (장평).
+  Widget _letterWidth() => ToolSettingRow.bar(
+    label: AppText.strings.textToolLetterWidth,
     bar: reading.follow(
-      (values) => (pitch: values.lineHeight, writable: values.writable),
+      (values) => (width: values.letterWidth, writable: values.writable),
       (shown) => FieldSlider.cell(
-        key: const ValueKey<String>('text-tool-line-height'),
-        label: AppText.strings.textToolLineHeight,
-        min: _tightest,
-        max: _loosest,
-        divisions: ((_loosest - _tightest) / _pitchStep).round(),
+        key: const ValueKey<String>('text-tool-letter-width'),
+        label: AppText.strings.textToolLetterWidth,
+        min: _narrowest,
+        max: _widest,
+        divisions: ((_widest - _narrowest) / _widthStep).round(),
         displayScale: 100,
         unit: '%',
-        value: shown.pitch.clamp(_tightest, _loosest),
+        value: shown.width.clamp(_narrowest, _widest),
         onChanged: shown.writable
-            ? (pitch) => reading.now.setLineHeight(pitch, settled: false)
+            ? (width) => reading.now.setLetterWidth(width, settled: false)
             : null,
-        onChangeEnd: (pitch) => reading.now.setLineHeight(pitch),
+        onChangeEnd: (width) => reading.now.setLetterWidth(width),
       ),
     ),
   );

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
+import '../canvas/view_hand.dart';
 
 import '../../models/app_input_settings.dart';
 import '../../models/layer_effect.dart';
@@ -11,6 +12,7 @@ import '../../models/brush_history_policy.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
 import '../canvas/canvas_press.dart';
@@ -84,6 +86,8 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.pasteboardNone,
     this.onPasteboardColorChanged,
     this.onPasteboardNone,
+    this.onPasteboardSizeChanged,
+    this.onPasteboardInUseChanged,
     this.backdropArgb,
     this.backdropNone,
     this.onBackdropColorChanged,
@@ -107,9 +111,10 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.cutPieceSlot,
     this.lastStroke,
     this.onStrokeInputActiveChanged,
-    this.onStrokeLanderChanged,
+    this.strokeLander,
     this.onSelectionInteractionChanged,
     this.onPressNeedsCel,
+    this.markMakesItsOwnCel,
     this.onStrokeNeedsCel,
     this.standingFrameKeyOf,
     this.onAutoFrameSettled,
@@ -255,6 +260,8 @@ class MainCanvasBrushHost extends StatefulWidget {
   final ValueChanged<int>? onPasteboardColorChanged;
   final bool? pasteboardNone;
   final VoidCallback? onPasteboardNone;
+  final ValueChanged<PasteboardSize>? onPasteboardSizeChanged;
+  final ValueChanged<bool>? onPasteboardInUseChanged;
 
   /// The BACKDROP behind the pasteboard (R3b). null = from the scope.
   final int? backdropArgb;
@@ -317,9 +324,9 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel]: stroke lifecycle (R13-3 warm hold).
   final ValueChanged<bool>? onStrokeInputActiveChanged;
 
-  /// This canvas view's stroke lander, published upward while it is
-  /// mounted — see [InteractiveBrushEditCanvasView.onStrokeLanderChanged].
-  final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
+  /// Forwarded to [BrushCanvasPanel]: where the canvas holds up what a
+  /// save lands first — see [BrushCanvasPanel.strokeLander].
+  final ViewHand<StrokeLander>? strokeLander;
 
   /// Forwarded to [BrushCanvasPanel]: selection-drag lifecycle — the
   /// prerender's warm hold (↩️F-196: no longer a
@@ -344,6 +351,13 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// nothing to say: a tool that marks nothing asks for no block and earns
   /// no notice).
   final bool Function()? onPressNeedsCel;
+
+  /// Whether a mark pressed now makes a cel of its own although one stands
+  /// under the playhead (I-113) — see
+  /// [InteractiveBrushEditCanvasView.markMakesItsOwnCel]. A press it takes
+  /// is the view's to ask about, so this host's own listener stays quiet
+  /// over it: the cel stands, and `hasEditableFrame` says so.
+  final bool Function()? markMakesItsOwnCel;
 
   /// The same answer for a STROKE whatever tool is up — what 확정's 재입력
   /// asks on an empty cell (confirm-button). [onPressNeedsCel] is this after
@@ -575,7 +589,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       // opened in a rail column or the bottom panel is simply not under the
       // provider, and nothing lies on it.
       floorCover: CanvasFloorInsets.maybeOf(context)?.insets ?? EdgeInsets.zero,
-      floorLeftRailBand: CanvasFloorInsets.maybeOf(context)?.leftRailBand,
       floorRightRailBand: CanvasFloorInsets.maybeOf(context)?.rightRailBand,
       // ⑩: what a control on the bottom edge has to clear.
       floorBottomOverlaySpan:
@@ -596,6 +609,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       historyManager: widget.historyManager,
       takeStrokePrefixCommand: widget.takeStrokePrefixCommand,
       onPressNeedsCel: widget.onPressNeedsCel,
+      markMakesItsOwnCel: widget.markMakesItsOwnCel,
       onStrokeNeedsCel: widget.onStrokeNeedsCel,
       onAutoFrameSettled: widget.onAutoFrameSettled,
       viewport: widget.viewport,
@@ -623,6 +637,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       pasteboardNone: widget.pasteboardNone,
       onPasteboardColorChanged: widget.onPasteboardColorChanged,
       onPasteboardNone: widget.onPasteboardNone,
+      onPasteboardSizeChanged: widget.onPasteboardSizeChanged,
+      onPasteboardInUseChanged: widget.onPasteboardInUseChanged,
       backdropArgb: widget.backdropArgb,
       backdropNone: widget.backdropNone,
       onBackdropColorChanged: widget.onBackdropColorChanged,
@@ -646,7 +662,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       cutPieceSlot: widget.cutPieceSlot,
       lastStroke: widget.lastStroke,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,
-      onStrokeLanderChanged: widget.onStrokeLanderChanged,
+      strokeLander: widget.strokeLander,
       onSelectionInteractionChanged: widget.onSelectionInteractionChanged,
     );
   }

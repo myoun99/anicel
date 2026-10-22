@@ -1,9 +1,13 @@
+import 'package:flutter/foundation.dart' show listEquals, mapEquals;
+
 import 'brush_anti_alias.dart';
 import 'brush_input_source.dart';
 import 'brush_blend_mode.dart';
+import 'brush_correction.dart';
 import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
+import 'brush_tip_order.dart';
 import 'brush_tip_rotation_mode.dart';
 
 /// What a response curve is FOR: the setting it drives, and the input that
@@ -11,10 +15,13 @@ import 'brush_tip_rotation_mode.dart';
 /// giving it a class would add a name nobody needs to learn.
 typedef BrushDynamicsKey = (BrushPressureTarget, BrushInputSource);
 
-/// Which of the three sampled-mask slots a write targets.
-enum BrushMaskSlot { tip, dual, texture }
+/// Which of the two one-mask slots a write targets.
+///
+/// ↩️The tip was a third slot until a brush could carry several tips
+/// (F-176-Q3); [BrushShape.tips] is written whole, with `copyWith`.
+enum BrushMaskSlot { dual, texture }
 
-/// The 26 brush parameters shared, byte-for-byte, by every settings bag in the
+/// The brush parameters shared, byte-for-byte, by every settings bag in the
 /// stroke chain: the UI's `BrushToolState`, the preset payload `BrushSettings`,
 /// and the canvas input `BrushEditCanvasInputSettings`. Each of those HOLDS one
 /// of these and exposes the fields through forwarding getters; the converters
@@ -29,7 +36,7 @@ enum BrushMaskSlot { tip, dual, texture }
 ///
 /// The per-dab resolved unit (`BrushDab`) is deliberately NOT built on this: it
 /// carries a different, smaller set (the pressure curves are baked into scalar
-/// values, spacing/scatter/jitter are resolved away) plus its own per-stamp
+/// values, spacing/scatter/chance are resolved away) plus its own per-stamp
 /// fields, so it is a downstream shape, not another copy of these parameters.
 class BrushShape {
   const BrushShape({
@@ -42,10 +49,9 @@ class BrushShape {
     this.curves = const {},
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
-    this.tipMask,
+    this.tips = const [],
+    this.tipOrder = BrushTipOrder.repeat,
     this.rotationMode = BrushTipRotationMode.fixed,
-    this.sizeJitter = 0.0,
-    this.opacityJitter = 0.0,
     this.angleJitter = 0.0,
     this.scatterRadiusRatio = 0.0,
     this.scatterCount = 1,
@@ -60,14 +66,13 @@ class BrushShape {
     this.textureContrast = 0.0,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
-    this.roundnessJitter = 0.0,
-    this.spacingJitter = 0.0,
     this.antiAlias = BrushAntiAlias.high,
     this.blendMode = BrushBlendMode.color,
     this.mixesGroundColor = false,
     this.paintAmount = 1.0,
     this.paintDensity = 1.0,
     this.colorStretch = 0.0,
+    this.correction = const BrushCorrection(),
   });
 
   /// 🚨The finest [spacing] a brush may have: 1% of its size (유저
@@ -136,20 +141,38 @@ class BrushShape {
   /// horizontal, in degrees.
   final double angleDegrees;
 
-  /// Sampled (bitmap) tip; when set it overrides the analytic round tip and
-  /// [hardness]. This and the round tip are the ONLY two shapes a brush has.
-  final BrushTipMask? tipMask;
+  /// Sampled (bitmap) tips, in the order the dabs take them ([tipOrder]);
+  /// any at all override the analytic round tip and [hardness]. These and
+  /// the round tip are the ONLY two shapes a brush has.
+  ///
+  /// 유저 2026-09-22: 「브러시 팁 이미지도 여러개 사용하게해서 여러개
+  /// 순차적으로 dab 떨굴지 랜덤하게할지 클튜보니 설정가능하니 도입」 —
+  /// Clip Studio's tip list (F-176-Q3).
+  ///
+  /// ⛔ONE LIST, NOT A TIP AND ITS FOLLOWERS. A first-tip field beside a
+  /// list of the rest could hold followers with no first; the list cannot.
+  /// [tipMask] reads the first, the way the four pressure-curve names read
+  /// [curves].
+  ///
+  /// ⚠️STORED BY REFERENCE, as [curves] is: every producer hands over a
+  /// fresh list it does not keep, and nobody mutates one afterwards.
+  final List<BrushTipMask> tips;
+
+  /// Which tip each dab of a stroke takes — see [BrushTipOrder].
+  final BrushTipOrder tipOrder;
+
+  /// The first tip, or `null` for the round one: what a single picture of
+  /// the brush shows (its cursor, its tip swatch) and what a dab takes when
+  /// nothing turns the tips.
+  BrushTipMask? get tipMask => tips.isEmpty ? null : tips.first;
 
   /// How dab angles are chosen at placement time.
   final BrushTipRotationMode rotationMode;
 
-  /// Random per-dab size reduction, 0..1 of the base size.
-  final double sizeJitter;
-
-  /// Random per-dab opacity reduction, 0..1 of the base opacity.
-  final double opacityJitter;
-
-  /// Random per-dab tip rotation, 0..1 of a half turn in each direction.
+  /// The random turn of 向き: 0..1 of a half turn either way, thrown per
+  /// dab on top of the base the rotation mode picks (F-176-Q1 「기준 +
+  /// 랜덤」). Unlike the other settings' ランダム row it ADDS — an angle
+  /// has no base to scale.
   final double angleJitter;
 
   /// Scatter radius as a ratio of the dab size; 0 disables scattering.
@@ -221,12 +244,6 @@ class BrushShape {
   final double textureScale;
   final double textureDensity;
 
-  /// Random per-dab roundness reduction, 0..1 — Clip Studio drives this from
-  /// its thickness effector's random input source. The tip squashes by a
-  /// different amount on every dab, which is how a textured stamp brush
-  /// stops looking stamped.
-  final double roundnessJitter;
-
   /// How this brush composites. Every brush states one; [BrushBlendMode.color]
   /// IS 通常, so "normal" is a value here rather than an absence.
   ///
@@ -250,11 +267,6 @@ class BrushShape {
   /// existed, so a preset that says nothing draws exactly as it always did.
   final BrushAntiAlias antiAlias;
 
-  /// Random per-segment spacing reduction, 0..1 — Clip Studio drives this
-  /// from its interval effector's random input source, which breaks up the
-  /// even beat of a stamped brush.
-  final double spacingJitter;
-
   /// Whether the brush mixes with the colour already on the cel — Clip
   /// Studio's 밑바탕 혼색, Photoshop's Mixer Brush. The gate: with it off the
   /// three knobs below mean nothing and the brush paints its own colour flat.
@@ -276,6 +288,10 @@ class BrushShape {
   /// How strongly the reservoir takes on the colour under the brush, 0..1 —
   /// Clip Studio's 색 늘이기. This is what smears colour along a stroke.
   final double colorStretch;
+
+  /// How the line this brush draws is corrected — Clip Studio's 補正, the
+  /// brush's own (F-418-Q6).
+  final BrushCorrection correction;
 
   /// The curve by which [source] drives [target], if any.
   BrushPressureCurve? curveFor(
@@ -351,10 +367,11 @@ class BrushShape {
     BrushPressureCurve? curve,
   ) => withCurve(target, BrushInputSource.pressure, curve);
 
-  /// Replaces — or CLEARS, with null — one of the three sampled masks.
+  /// Replaces — or CLEARS, with null — the dual or the texture mask.
   ///
   /// [copyWith] deliberately preserves them so a slider tweak never drops a
   /// textured tip, which leaves no way to take one OFF. This is that way.
+  /// (The tips need none: `copyWith(tips: const [])` says "none" outright.)
   BrushShape withMask(BrushMaskSlot slot, BrushTipMask? mask) {
     return BrushShape(
       color: color,
@@ -366,18 +383,16 @@ class BrushShape {
       curves: curves,
       roundness: roundness,
       angleDegrees: angleDegrees,
-      tipMask: slot == BrushMaskSlot.tip ? mask : tipMask,
-      roundnessJitter: roundnessJitter,
-      spacingJitter: spacingJitter,
+      tips: tips,
+      tipOrder: tipOrder,
       blendMode: blendMode,
       antiAlias: antiAlias,
       mixesGroundColor: mixesGroundColor,
       paintAmount: paintAmount,
       paintDensity: paintDensity,
       colorStretch: colorStretch,
+      correction: correction,
       rotationMode: rotationMode,
-      sizeJitter: sizeJitter,
-      opacityJitter: opacityJitter,
       angleJitter: angleJitter,
       scatterRadiusRatio: scatterRadiusRatio,
       scatterCount: scatterCount,
@@ -407,10 +422,9 @@ class BrushShape {
     Map<BrushDynamicsKey, BrushPressureCurve>? curves,
     double? roundness,
     double? angleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask>? tips,
+    BrushTipOrder? tipOrder,
     BrushTipRotationMode? rotationMode,
-    double? sizeJitter,
-    double? opacityJitter,
     double? angleJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
@@ -425,14 +439,13 @@ class BrushShape {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
-    double? roundnessJitter,
-    double? spacingJitter,
     bool? mixesGroundColor,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
+    BrushCorrection? correction,
   }) {
     return BrushShape(
       color: color ?? this.color,
@@ -444,10 +457,9 @@ class BrushShape {
       curves: curves ?? this.curves,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
-      tipMask: tipMask ?? this.tipMask,
+      tips: tips ?? this.tips,
+      tipOrder: tipOrder ?? this.tipOrder,
       rotationMode: rotationMode ?? this.rotationMode,
-      sizeJitter: sizeJitter ?? this.sizeJitter,
-      opacityJitter: opacityJitter ?? this.opacityJitter,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
       scatterCount: scatterCount ?? this.scatterCount,
@@ -462,14 +474,13 @@ class BrushShape {
       textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
-      roundnessJitter: roundnessJitter ?? this.roundnessJitter,
-      spacingJitter: spacingJitter ?? this.spacingJitter,
       blendMode: blendMode ?? this.blendMode,
       antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
+      correction: correction ?? this.correction,
     );
   }
 
@@ -483,13 +494,14 @@ class BrushShape {
           other.flow == flow &&
           other.hardness == hardness &&
           other.spacing == spacing &&
-          _sameCurves(other.curves, curves) &&
+          // ⚠️`==` on a map or a list is IDENTITY: every rebuilt shape would
+          // be unequal to itself and every listener rebuild forever.
+          mapEquals(other.curves, curves) &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
-          other.tipMask == tipMask &&
+          listEquals(other.tips, tips) &&
+          other.tipOrder == tipOrder &&
           other.rotationMode == rotationMode &&
-          other.sizeJitter == sizeJitter &&
-          other.opacityJitter == opacityJitter &&
           other.angleJitter == angleJitter &&
           other.scatterRadiusRatio == scatterRadiusRatio &&
           other.scatterCount == scatterCount &&
@@ -504,14 +516,13 @@ class BrushShape {
           other.textureContrast == textureContrast &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
-          other.roundnessJitter == roundnessJitter &&
-          other.spacingJitter == spacingJitter &&
           other.blendMode == blendMode &&
           other.antiAlias == antiAlias &&
           other.mixesGroundColor == mixesGroundColor &&
           other.paintAmount == paintAmount &&
           other.paintDensity == paintDensity &&
-          other.colorStretch == colorStretch;
+          other.colorStretch == colorStretch &&
+          other.correction == correction;
 
   @override
   int get hashCode => Object.hashAll([
@@ -526,10 +537,9 @@ class BrushShape {
     ]),
     roundness,
     angleDegrees,
-    tipMask,
+    Object.hashAll(tips),
+    tipOrder,
     rotationMode,
-    sizeJitter,
-    opacityJitter,
     angleJitter,
     scatterRadiusRatio,
     scatterCount,
@@ -543,14 +553,13 @@ class BrushShape {
     textureContrast,
     textureScale,
     textureDensity,
-    roundnessJitter,
-    spacingJitter,
     blendMode,
     antiAlias,
     mixesGroundColor,
     paintAmount,
     paintDensity,
     colorStretch,
+    correction,
   ]);
 
   @override
@@ -558,9 +567,9 @@ class BrushShape {
       'BrushShape(color: $color, size: $size, opacity: $opacity, '
       'flow: $flow, hardness: $hardness, spacing: $spacing, '
       'curves: $curves, '
-      'roundness: $roundness, angleDegrees: $angleDegrees, tipMask: $tipMask, '
-      'rotationMode: $rotationMode, sizeJitter: $sizeJitter, '
-      'opacityJitter: $opacityJitter, angleJitter: $angleJitter, '
+      'roundness: $roundness, angleDegrees: $angleDegrees, tips: $tips, '
+      'tipOrder: $tipOrder, '
+      'rotationMode: $rotationMode, angleJitter: $angleJitter, '
       'scatterRadiusRatio: $scatterRadiusRatio, scatterCount: $scatterCount, '
       'scatterBothAxes: $scatterBothAxes, dualMask: $dualMask, '
       'dualMaskScale: $dualMaskScale, '
@@ -568,31 +577,8 @@ class BrushShape {
       'textureInvert: $textureInvert, '
       'textureBrightness: $textureBrightness, '
       'textureContrast: $textureContrast, '
-      'textureScale: $textureScale, textureDensity: $textureDensity)';
-}
-
-/// Whether two curve maps hold the same curves.
-///
-/// ⚠️`Map ==` is IDENTITY in Dart, so comparing the maps directly would make
-/// every rebuilt shape unequal to itself and every listener rebuild forever.
-/// The four named fields this replaced were compared one by one and got that
-/// for free; a map has to say it.
-bool _sameCurves(
-  Map<BrushDynamicsKey, BrushPressureCurve> a,
-  Map<BrushDynamicsKey, BrushPressureCurve> b,
-) {
-  if (identical(a, b)) {
-    return true;
-  }
-  if (a.length != b.length) {
-    return false;
-  }
-  for (final entry in a.entries) {
-    if (b[entry.key] != entry.value) {
-      return false;
-    }
-  }
-  return true;
+      'textureScale: $textureScale, textureDensity: $textureDensity, '
+      'correction: $correction)';
 }
 
 /// The four pressure curves as a [BrushShape.curves] map.

@@ -1,7 +1,6 @@
-import 'dart:async' show unawaited;
-
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/canvas_point.dart';
+import '../../models/cut.dart';
 import '../../models/cut_camera.dart'
     show cameraKeyFits, cameraWriteKeepsKeysIn;
 import '../../models/transform_track.dart';
@@ -9,24 +8,22 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/reference_swap.dart' show ReferenceRedraw;
 import '../../models/property_track.dart'
     show KeyExit, KeyPath, KeySide, KeySidesEdit, KeyTypePick, PropertyKey;
-import '../../models/se_name_tag.dart' show SeNameTag;
+import '../../models/se_name_tag.dart' show SeNameTag, SeNameTagTrack;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_camera_row.dart' show isTrackCameraRow;
 import '../../models/track_projection_row.dart' show projectionRowUnder;
+import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/camera_pose_resolver.dart';
+import '../../services/project_lookup.dart' show rowPoseSpace;
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
-import '../../services/cut_frame_composite_plan.dart';
 import '../timeline/effect_lane_editing.dart'
     show
-        effectLaneKeyFrames,
         effectsWithEnabledToggled,
         effectsWithGroupReset,
-        effectsWithLaneKeyRemoved,
         effectsWithLaneKeyToggled,
         effectsWithLaneKeysWritten,
         effectsWithLaneValueEdited,
@@ -34,21 +31,33 @@ import '../timeline/effect_lane_editing.dart'
 import '../timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, parseEffectLaneId;
 import '../timeline/reference_lane_policy.dart'
-    show laneIsReference, referenceMemberTransformLane, referenceScaleForm;
+    show
+        laneIsReference,
+        referenceGroupLaneId,
+        referenceLaneDisplayOrder,
+        referenceMemberTransformLane,
+        referenceScaleForm;
 import '../timeline/transform_lane_editing.dart'
     show
-        poseWithLaneValueEdited,
-        transformLaneKeyFrames,
         transformTrackWithGroupReset,
-        transformTrackWithLaneKeyRemoved,
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneKeysWritten,
         transformTrackWithLaneValueEdited;
 import '../timeline/scale_lane_form.dart' show scaleLaneFormOf;
 import '../timeline/se_name_tag_lane_editing.dart'
-    show seNameTagWithLaneKeyToggled, seNameTagWithLaneValueEdited;
+    show
+        seNameTagTrackWithLaneKeysWritten,
+        seNameTagWithGroupReset,
+        seNameTagWithLaneKeyToggled,
+        seNameTagWithLaneValueEdited;
 import '../timeline/se_name_tag_lane_policy.dart'
-    show laneIsSeNameTag, seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
+    show
+        laneIsSeNameTag,
+        seNameTagGroupLaneId,
+        seNameTagLaneDisplayOrder,
+        seNameTagLaneTakesSides,
+        seNameTagLaneUsesName;
+import '../timeline/property_lane_model.dart' show LaneKeyValues;
 import '../timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
 import '../timeline/timeline_drag_preview.dart'
@@ -57,7 +66,10 @@ import '../timeline/timeline_drag_preview.dart'
         TimelineDragPreview,
         timelineDragPreviewGlobalLayerFor;
 import 'active_cut_controllers.dart';
+import 'active_cut_edits.dart';
 import 'lane_edit_subject.dart';
+import 'lane_homes.dart';
+import 'row_written_by_id.dart';
 import 'session_roles.dart';
 import 'effects_and_fx.dart';
 
@@ -89,14 +101,14 @@ class LaneVerbs {
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required EffectsAndFx effectsAndFx,
     required ChangeSink changes,
-    required void Function(TransformTrack track, {required String description})
-    updateActiveCutCameraTrack,
+    required ActiveCutEdits activeCut,
+    required void Function(
+      LayerId cameraRow,
+      TransformTrack track, {
+      required String description,
+    })
+    updateCameraTrack,
     required ({Layer shown, Layer? global}) Function(Layer row) previewFormsOf,
-    required Future<ReferenceRedraw> Function(
-      LayerId layerId,
-      TransformPose pose,
-    )
-    reposeReference,
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
@@ -106,15 +118,9 @@ class LaneVerbs {
        _dragPreview = dragPreview,
        _effectsAndFx = effectsAndFx,
        _changes = changes,
-       _updateActiveCutCameraTrack = updateActiveCutCameraTrack,
-       _previewFormsOf = previewFormsOf,
-       _reposeReference = reposeReference;
-
-  /// `ProjectImportDoors.reposeReference` — a reference fx's one write
-  /// (I-68): the file is laid again where the pose stands it, which only
-  /// the doors that read files can do.
-  final Future<ReferenceRedraw> Function(LayerId layerId, TransformPose pose)
-  _reposeReference;
+       _activeCut = activeCut,
+       _updateCameraTrack = updateCameraTrack,
+       _previewFormsOf = previewFormsOf;
 
   final EffectsAndFx _effectsAndFx;
   final ChangeSink _changes;
@@ -132,8 +138,12 @@ class LaneVerbs {
   final bool Function() _sessionDisposed;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
-  /// `Camera.updateActiveCutCameraTrack` — the camera row's lanes go home to
-  /// the CUT, not to a layer.
+  /// The cut a lane verb reads and writes a row in ([ActiveCutEdits.cutOfRow])
+  /// — the one holding it, stood in or not (I-89-Q23).
+  final ActiveCutEdits _activeCut;
+
+  /// `Camera.updateCameraTrack` — the camera row's lanes go home to the
+  /// CUT holding it, not to a layer.
   ///
   /// ⚠️A closure, not the `Camera`: the camera holds the lane move, which
   /// holds these verbs, so naming it here would close a construction cycle
@@ -143,8 +153,12 @@ class LaneVerbs {
   /// rides the preview channel, which the camera is handed as the notifier
   /// itself — so that cycle is gone. The closure stays: the verbs need the
   /// camera's one write, not the camera.
-  final void Function(TransformTrack track, {required String description})
-  _updateActiveCutCameraTrack;
+  final void Function(
+    LayerId cameraRow,
+    TransformTrack track, {
+    required String description,
+  })
+  _updateCameraTrack;
 
   /// What the open cut shows of a row in flight — the preview's two forms,
   /// the pair `TrackSeDisplay.previewFormsOf` decides.
@@ -181,7 +195,7 @@ class LaneVerbs {
     )) {
       return track;
     }
-    final cutId = _timeline.editingSession.activeCutId;
+    final cutId = _activeCut.cutOfRow(layer.id);
     if (cutId == null || trackIdOfTransformLaneCarrier(layer.id) != null) {
       return null;
     }
@@ -194,7 +208,6 @@ class LaneVerbs {
     );
   }
 
-  /// The lane-selection create (UI-R25 #3): a key frozen at the resolved
   /// The lanes a VERB acts on for a span (R9 #20): a GROUP HEADER stands
   /// for its members.
   ///
@@ -221,9 +234,14 @@ class LaneVerbs {
         continue;
       }
       // The name-tag header stands for its seven members, exactly as the
-      // transform header does (한번에 잡아 이동).
+      // transform header does (한번에 잡아 이동) — and the reference fx's
+      // for its three (F-374).
       if (laneId == seNameTagGroupLaneId) {
         seNameTagLaneDisplayOrder.forEach(add);
+        continue;
+      }
+      if (laneId == referenceGroupLaneId) {
+        referenceLaneDisplayOrder.forEach(add);
         continue;
       }
       final address = parseEffectLaneId(laneId);
@@ -250,27 +268,11 @@ class LaneVerbs {
   /// group header's whole-member expansion and the effect-lane branch
   /// come along either way.
   TimelineLaneSelection? get laneVerbRange {
-    final span = _selection.laneRangeSelection.value;
+    final span = _selectedLaneSpan;
     if (span != null) {
       return span;
     }
-    // 🚨㉙ → F-17/F-84: the CAMERA row IS its transform group header — its
-    // band already draws the members' union (B4) — and 유저 2026-09-11:
-    // 「트랜스폼이나 카메라나 똑같으니까 법 싹 하나로 통일해줘」. So a band on
-    // the camera row ALONE is a header span, and standing on it stands on
-    // the header: every lane verb (name, type, add, delete) reaches the
-    // camera's keys through the one path the fx header's take.
     final cells = _selection.frameRangeSelection.value;
-    if (cells != null &&
-        cells.spanLayerIds.length == 1 &&
-        _isCameraRow(cells.spanLayerIds.single)) {
-      return TimelineLaneSelection(
-        layerId: cells.spanLayerIds.single,
-        laneId: transformGroupHeaderLane.laneId,
-        startIndex: cells.startIndex,
-        endIndexExclusive: cells.endIndexExclusive,
-      );
-    }
     return switch (_currentRow()) {
       final LaneRowAddress lane when projectionRowUnder(lane) != null =>
         _projectedLaneSpan(lane),
@@ -302,6 +304,33 @@ class LaneVerbs {
     };
   }
 
+  /// The lane span a SELECTION states — [laneVerbRange]'s, before the row
+  /// stood on answers — or null where nothing is selected.
+  TimelineLaneSelection? get _selectedLaneSpan {
+    final span = _selection.laneRangeSelection.value;
+    if (span != null) {
+      return span;
+    }
+    // 🚨㉙ → F-17/F-84: the CAMERA row IS its transform group header — its
+    // band already draws the members' union (B4) — and 유저 2026-09-11:
+    // 「트랜스폼이나 카메라나 똑같으니까 법 싹 하나로 통일해줘」. So a band on
+    // the camera row ALONE is a header span, and standing on it stands on
+    // the header: every lane verb (name, type, add, delete) reaches the
+    // camera's keys through the one path the fx header's take.
+    final cells = _selection.frameRangeSelection.value;
+    if (cells != null &&
+        cells.spanLayerIds.length == 1 &&
+        _isCameraRow(cells.spanLayerIds.single)) {
+      return TimelineLaneSelection(
+        layerId: cells.spanLayerIds.single,
+        laneId: transformGroupHeaderLane.laneId,
+        startIndex: cells.startIndex,
+        endIndexExclusive: cells.endIndexExclusive,
+      );
+    }
+    return null;
+  }
+
   /// Whether [lane] holds a frame a key can be made on
   /// ([_keyableFrames]) — the ＋'s gate, asked of the span it presses.
   bool canCreateLaneKeysFor(TimelineLaneSelection lane) {
@@ -313,9 +342,10 @@ class LaneVerbs {
   /// the CAMERA's lanes none its cut is not drawn for — 🗣️I-73-camera-row-Q2
   /// (유저 2026-10-09: 「콘티처럼 컷밖으로 못나가게 클리핑」 → `own-frames`).
   List<int> _keyableFrames(Layer layer, TimelineLaneSelection lane) {
-    final drawn = _transformHomeOf(layer) == _TransformHome.cutCamera
-        ? _project.activeCutDrawnFrameCount
+    final cut = _transformHomeOf(layer) == _TransformHome.cutCamera
+        ? _cutWriting(layer)
         : null;
+    final drawn = cut == null ? null : _drawnFramesOf(cut);
     return [
       for (
         var frame = lane.startIndex;
@@ -329,19 +359,50 @@ class LaneVerbs {
     ];
   }
 
-  /// Whether the open cut's camera can be written as [track]: it puts no
-  /// key out of the frames the cut is drawn for ([cameraWriteKeepsKeysIn],
-  /// 🗣️I-73-camera-row-Q2). Both camera arms below ask it, so what a drag
-  /// shows is what its release keeps.
-  bool _cameraTakes(TransformTrack track) {
-    final camera = _project.activeCutOrNull?.camera.track;
-    return camera != null &&
-        cameraWriteKeepsKeysIn(
-          camera,
-          track,
-          drawnFrameCount: _project.activeCutDrawnFrameCount,
-        );
+  /// The cut whose camera the camera row [layer] writes as [track] — null
+  /// where no cut holds the row, or where [track] puts a key out of the
+  /// frames the cut is drawn for ([cameraWriteKeepsKeysIn],
+  /// 🗣️I-73-camera-row-Q2). The commit, a drag's preview and a paste's
+  /// gate all ask it, so what a drag shows and a button lights is what the
+  /// press keeps. ↩️The gate did not ask, and a paste that pushed a key
+  /// past the cut's end lit and wrote nothing (F-388, 관제 10-22).
+  Cut? _cutTakingCamera(Layer layer, TransformTrack track) {
+    final cut = _cutWriting(layer);
+    return cut != null &&
+            cameraWriteKeepsKeysIn(
+              cut.camera.track,
+              track,
+              drawnFrameCount: _drawnFramesOf(cut),
+            )
+        ? cut
+        : null;
   }
+
+  /// Whether the commit of [edit] on [layer] refuses its OWN transform
+  /// lanes: the camera's, where a key would leave the cut
+  /// ([_cutTakingCamera]).
+  bool _refusesOwn(Layer layer, LaneEdit edit) {
+    final own = edit.transform.own;
+    return own != null &&
+        _transformHomeOf(layer) == _TransformHome.cutCamera &&
+        _cutTakingCamera(layer, own) == null;
+  }
+
+  /// The cut [layer] is read and written in ([ActiveCutEdits.cutOfRow]):
+  /// the one holding it, stood in or not — a header graph draws a line for
+  /// every cut, and a cut's line is edited where it is (I-89-Q23). ↩️The
+  /// cut stood in, whichever cut's row the verb was handed.
+  Cut? _cutWriting(Layer layer) {
+    final cutId = _activeCut.cutOfRow(layer.id);
+    return cutId == null ? null : _project.cutById(cutId);
+  }
+
+  /// How many frames [cut] is DRAWN for ([cutDrawnFrameCount]): its own and
+  /// the のりしろ the transitions crossing it ask — none for a cut no track
+  /// holds.
+  int _drawnFramesOf(Cut cut) =>
+      cutDrawnFrameCount(_project.repository.requireProject(), cut.id) ??
+      cut.duration;
 
   /// A LANE of a storyboard projection row (I-73 ④ⓔ) stood on: that lane of
   /// the layer the row has in hand ([projectedLayerInHand]) — or of nothing.
@@ -375,7 +436,7 @@ class LaneVerbs {
       laneVerbLayerFor(layerId)?.kind == LayerKind.camera;
 
   /// The transform track a LANE row edits: the CAMERA row's lanes live on
-  /// the cut's camera, every other row's on the layer itself.
+  /// its cut's camera ([_cutWriting]), every other row's on the layer itself.
   ///
   /// R10 R3: the lane-verb family read `layer.transformTrack` flat, so Add
   /// and Delete silently missed the camera row — which only showed once
@@ -383,8 +444,28 @@ class LaneVerbs {
   /// the lane the marker's context menu used to.
   TransformTrack _laneTransformTrackOf(Layer layer) =>
       layer.kind == LayerKind.camera
-      ? (_project.activeCutOrNull?.camera.track ?? layer.transformTrack)
+      ? (_cutWriting(layer)?.camera.track ?? layer.transformTrack)
       : layer.transformTrack;
+
+  /// The transform track [layer]'s lanes of one home hold: its reference
+  /// fx's where [reference] says (F-374), else its own.
+  TransformTrack _transformTrackAt(Layer layer, {required bool reference}) =>
+      reference
+      ? (layer.mediaReference?.fx ?? TransformTrack.empty())
+      : _laneTransformTrackOf(layer);
+
+  /// [track] as an edit of one home alone.
+  TransformHomes _transformHomesWith(
+    TransformTrack track, {
+    required bool reference,
+  }) => reference
+      ? (own: null, reference: track)
+      : (own: track, reference: null);
+
+  /// The transform lane [laneId] is on its home's track: a reference
+  /// member's is the lane it holds (F-374), every other lane itself.
+  String _trackLaneOf(String laneId) =>
+      referenceMemberTransformLane(laneId) ?? laneId;
 
   /// The layer a LANE verb READS and WRITES.
   ///
@@ -407,6 +488,10 @@ class LaneVerbs {
   /// reported "no keys here": Delete then fell through to the CEL path and
   /// removed the active layer's drawing instead. The commit funnels below
   /// send it home to the track.
+  /// ★And a row of a cut not stood in answers as itself
+  /// ([RowWrittenById.rowWrittenById]), its verbs reading and writing in
+  /// that cut ([_cutWriting]): a header graph's line of that cut is edited
+  /// where it is (I-89-Q23).
   Layer? laneVerbLayerFor(LayerId layerId) {
     final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
     if (carrierTrackId != null) {
@@ -422,7 +507,7 @@ class LaneVerbs {
               effects: track.effects,
             );
     }
-    return _project.commitLayerById(layerId);
+    return _project.rowWrittenById(layerId);
   }
 
   /// The playhead as [layerId]'s own lanes key it — the frame half of
@@ -505,10 +590,14 @@ class LaneVerbs {
           laneId: laneId,
           frameIndex: frame,
         ),
-        transform: (layer, track, frame) =>
-            _transformTrackWithKeyToggled(layer, track, laneId, frame),
-        // A reference fx holds no keys (I-68 「키 없는 값 하나」).
-        reference: (_) => null,
+        transform: (layer, track, frame, {required reference}) =>
+            _transformTrackWithKeyToggled(
+              layer,
+              track,
+              _trackLaneOf(laneId),
+              frame,
+              reference: reference,
+            ),
       ),
     ),
     description: description,
@@ -600,28 +689,50 @@ class LaneVerbs {
       frameIndex: frame,
       input: input,
     ),
-    transform: (layer, track, frame) => transformTrackWithLaneValueEdited(
-      track,
-      laneId: laneId,
-      frameIndex: frame,
-      input: input,
-      scaleForm: scaleLaneFormOf(layer),
-      scaleLinked: scaleLinked,
-    ),
-    reference: (pose) => poseWithLaneValueEdited(
-      pose,
-      laneId: referenceMemberTransformLane(laneId) ?? laneId,
-      input: input,
-      scaleForm: referenceScaleForm,
-      scaleLinked: scaleLinked,
-    ),
+    transform: (layer, track, frame, {required reference}) =>
+        transformTrackWithLaneValueEdited(
+          track,
+          laneId: _trackLaneOf(laneId),
+          frameIndex: frame,
+          input: input,
+          scaleForm: reference ? referenceScaleForm : scaleLaneFormOf(layer),
+          scaleLinked: scaleLinked,
+          unkeyedScale: reference ? layer.mediaReference?.pose.scale : null,
+        ),
   );
 
+  /// [subject] — [layer]'s keys, or what an edit in flight leaves them at —
+  /// with [values] written into the keys they name, each as the value
+  /// editor writes it at its frame ([setLaneValueAt]), one after another
+  /// into ONE edit: a header graph's keys moved in their values (I-3 ②).
+  /// Null where none changes.
+  LaneEdit? laneValuesWritten(
+    Layer layer,
+    LaneEditSubject subject,
+    LaneKeyValues values,
+  ) {
+    var written = const LaneEdit();
+    var now = subject;
+    for (final MapEntry(key: laneId, value: inputs) in values.inputs.entries) {
+      for (final MapEntry(key: frame, value: input) in inputs.entries) {
+        final step = _laneEditOn(
+          layer,
+          now,
+          (laneId: laneId, frame: frame),
+          _valueEdits(laneId, input, scaleLinked: values.scaleLinked),
+        );
+        written = written.then(step);
+        now = now.after(step);
+      }
+    }
+    return written.isEmpty ? null : written;
+  }
+
   /// The ONE dispatch behind every lane verb at a frame: which of a row's
-  /// three keyed families [laneId] names, the row and frame to edit it on,
-  /// and what [edits] leaves that family at — or null when it changes
-  /// nothing. Committing it and showing it are the caller's.
-  ({Layer layer, _LaneEdit edit})? _laneEditAt(
+  /// keyed families [laneId] names, the row and frame to edit it on, and
+  /// what [edits] leaves that family at — or null when it changes nothing.
+  /// Committing it and showing it are the caller's.
+  ({Layer layer, LaneEdit edit})? _laneEditAt(
     LayerId layerId,
     String laneId,
     int frameIndex, {
@@ -637,95 +748,72 @@ class LaneVerbs {
       frameIndex,
       frameIsGlobal: frameIsGlobal,
     );
+    final edit = _laneEditOn(
+      layer,
+      laneEditSubjectOf(layer),
+      (laneId: laneId, frame: frame),
+      edits,
+    );
+    return edit.isEmpty ? null : (layer: layer, edit: edit);
+  }
+
+  /// What [edits] leaves the family of [from] that [cell]'s lane names at,
+  /// on its frame of [layer]'s row — [from] the row's keys as they stand,
+  /// or as an edit before this one in the same step leaves them.
+  LaneEdit _laneEditOn(
+    Layer layer,
+    LaneEditSubject from,
+    ({String laneId, int frame}) cell,
+    _LaneEdits edits,
+  ) {
+    final (:laneId, :frame) = cell;
     // R5 #7: the name tag is a fixed FIELD on the row, so it lands through
-    // its own funnel — not the transform track, not the chain. I-68: so
-    // does a reference's fx, the file's own pose.
-    final _LaneEdit? edit;
-    final reference = layer.mediaReference;
+    // its own funnel — not the transform track, not the chain.
     if (laneIsSeNameTag(laneId)) {
-      final next = edits.nameTag(layer.seNameTag ?? const SeNameTag(), frame);
-      edit = next == null ? null : _NameTagEdit(next);
-    } else if (laneIsReference(laneId)) {
-      final next = reference == null ? null : edits.reference(reference.pose);
-      edit = next == null || next == reference?.pose
-          ? null
-          : _ReferenceEdit(next);
-    } else if (parseEffectLaneId(laneId) != null) {
-      final next = edits.effects(layer.effects, frame);
-      edit = next == null ? null : _EffectsEdit(next);
-    } else {
-      final next = edits.transform(layer, _laneTransformTrackOf(layer), frame);
-      edit = next == null ? null : _TransformEdit(next);
+      return LaneEdit(
+        nameTag: edits.nameTag(from.seNameTag ?? const SeNameTag(), frame),
+      );
     }
-    return edit == null ? null : (layer: layer, edit: edit);
+    if (parseEffectLaneId(laneId) != null) {
+      return LaneEdit(effects: edits.effects(from.effects, frame));
+    }
+    // A reference's fx is a transform's lanes in another home (F-374).
+    final reference = laneIsReference(laneId);
+    final next = edits.transform(
+      layer,
+      reference
+          ? (from.referenceFx ?? TransformTrack.empty())
+          : from.transformTrack,
+      frame,
+      reference: reference,
+    );
+    return LaneEdit(
+      transform: next == null
+          ? (own: null, reference: null)
+          : _transformHomesWith(next, reference: reference),
+    );
   }
 
   /// Writes [target] as one undo step — after dropping any lane edit in
   /// flight, since this is the release that edit was showing.
   void _commitLaneEdit(
-    ({Layer layer, _LaneEdit edit})? target, {
+    ({Layer layer, LaneEdit edit})? target, {
     required String description,
   }) {
-    if (target?.edit is! _ReferenceEdit) {
-      endLaneEditPreview();
-    }
-    if (target == null) {
-      return;
-    }
-    final layer = target.layer;
-    switch (target.edit) {
-      case _NameTagEdit(:final next):
-        _commitLaneSeNameTag(layer, next, description: description);
-      case _EffectsEdit(:final next):
-        _commitLaneEffects(layer, next, description: description);
-      case _TransformEdit(:final next):
-        _commitTransformTrack(layer, next, description: description);
-      case _ReferenceEdit(:final next):
-        _commitReferencePose(layer, next);
+    endLaneEditPreview();
+    if (target != null) {
+      _commitRowLanes(target.layer, target.edit, description: description);
     }
   }
-
-  /// The lane path's REFERENCE FX commit (I-68) — the fourth funnel. The
-  /// file is laid again where [pose] stands it, which takes a read (a
-  /// still's picture is made anew from its file), so the value stays on the
-  /// preview channel until it has landed: dropped first, the picture would
-  /// stand back where it was for the length of the read, the frame
-  /// 「한 프레임 보이는 건 무조건 걸린다」 is about.
-  void _commitReferencePose(Layer layer, TransformPose pose) {
-    final shown = _referencePreview(layer, pose);
-    _dragPreview.value = shown;
-    unawaited(
-      _reposeReference(layer.id, pose).whenComplete(() {
-        // Another edit's preview is not this one's to drop.
-        if (!_sessionDisposed() && identical(_dragPreview.value, shown)) {
-          _dragPreview.value = null;
-        }
-      }),
-    );
-  }
-
-  /// [layer] with its reference fx at [pose], as an edit in flight shows it.
-  TimelineDragPreview _referencePreview(Layer layer, TransformPose pose) =>
-      _rowPreview(
-        layer.copyWith(
-          mediaReference: layer.mediaReference?.copyWith(pose: pose),
-        ),
-      );
 
   /// Shows [target] on the preview channel — the committed row when it is
   /// null.
-  void _previewLaneEdit(({Layer layer, _LaneEdit edit})? target) {
+  void _previewLaneEdit(({Layer layer, LaneEdit edit})? target) {
     if (target == null) {
       endLaneEditPreview();
       return;
     }
-    final layer = target.layer;
-    _dragPreview.value = switch (target.edit) {
-      _NameTagEdit(:final next) => _rowPreview(layer.copyWith(seNameTag: next)),
-      _EffectsEdit(:final next) => _laneEffectsPreview(layer, next),
-      _TransformEdit(:final next) => _laneTransformPreview(layer, next),
-      _ReferenceEdit(:final next) => _referencePreview(layer, next),
-    };
+    _dragPreview.value = _laneEditPreview(target.layer, target.edit);
   }
 
   /// A canvas handle's drag landing on [layerId]'s transform: [edit] writes
@@ -741,18 +829,12 @@ class LaneVerbs {
     LayerId layerId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit, {
     required String description,
-  }) {
-    endLaneEditPreview();
-    final layer = laneVerbLayerFor(layerId);
-    if (layer == null) {
-      return;
-    }
-    _commitTransformTrack(
-      layer,
-      edit(_laneTransformTrackOf(layer), _laneVerbFrameFor(layerId)),
-      description: description,
-    );
-  }
+  }) => _editAtPlayhead(
+    layerId,
+    edit,
+    reference: false,
+    description: description,
+  );
 
   /// A canvas handle mid-drag: the edit [editLayerTransformAtPlayhead]
   /// would write at the release, shown on the preview channel (F-195) — the
@@ -760,65 +842,97 @@ class LaneVerbs {
   void previewLayerTransformAtPlayhead(
     LayerId layerId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit,
-  ) {
+  ) => _previewAtPlayhead(layerId, edit, reference: false);
+
+  /// A canvas box's drag landing on [layerId]'s REFERENCE FX (I-68): the
+  /// same ONE key at the playhead a transform's box writes (F-374 — 유저
+  /// 「지금 움직여도 키 안생긴다거나 … 싹 통일」), one undo.
+  void editReferenceFxAtPlayhead(
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit, {
+    required String description,
+  }) => _editAtPlayhead(
+    layerId,
+    edit,
+    reference: true,
+    description: description,
+  );
+
+  /// The reference box mid-drag: the edit [editReferenceFxAtPlayhead]
+  /// would write at the release, shown on the preview channel.
+  void previewReferenceFxAtPlayhead(
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit,
+  ) => _previewAtPlayhead(layerId, edit, reference: true);
+
+  /// [edit] of [layerId]'s transform track — its reference fx's where
+  /// [reference] says — at the playhead on the row's own axis, committed as
+  /// one undo, any lane edit in flight dropped with it.
+  void _editAtPlayhead(
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit, {
+    required bool reference,
+    required String description,
+  }) {
+    endLaneEditPreview();
     final layer = laneVerbLayerFor(layerId);
     if (layer == null) {
       return;
     }
-    _dragPreview.value = _laneTransformPreview(
+    _commitTransformHomes(
       layer,
-      edit(_laneTransformTrackOf(layer), _laneVerbFrameFor(layerId)),
+      _transformHomesWith(
+        edit(
+          _transformTrackAt(layer, reference: reference),
+          _laneVerbFrameFor(layerId),
+        ),
+        reference: reference,
+      ),
+      description: description,
     );
   }
 
-  /// A canvas box's drag landing on [layerId]'s reference fx (I-68): the
-  /// file laid again where [pose] stands it, one undo — and the box's
-  /// preview held until it has landed ([_commitReferencePose]).
-  void editReferencePose(LayerId layerId, TransformPose pose) {
+  /// [_editAtPlayhead]'s edit, shown on the preview channel and not written.
+  void _previewAtPlayhead(
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit, {
+    required bool reference,
+  }) {
     final layer = laneVerbLayerFor(layerId);
-    if (layer?.mediaReference == null || layer!.mediaReference!.pose == pose) {
-      endLaneEditPreview();
+    if (layer == null) {
       return;
     }
-    _commitReferencePose(layer, pose);
-  }
-
-  /// A canvas box mid-drag on [layerId]'s reference fx: the pose
-  /// [editReferencePose] would lay the file at, shown on the preview channel.
-  void previewReferencePose(LayerId layerId, TransformPose pose) {
-    final layer = laneVerbLayerFor(layerId);
-    if (layer?.mediaReference == null) {
-      return;
-    }
-    _dragPreview.value = _referencePreview(layer!, pose);
-  }
-
-  /// WHAT a lane edit on [layer] edits — the homes its three families land
-  /// in and show in, answered by the same funnels every verb here commits
-  /// and previews through. The range move asks for it ([LaneEditSubject]).
-  LaneEditSubject laneEditSubjectOf(Layer layer) {
-    final isSe = layer.kind == LayerKind.se;
-    return LaneEditSubject(
-      transformTrack: _laneTransformTrackOf(layer),
-      effects: layer.effects,
-      // The name-tag arm (C①) is armed only on SE rows: the commit verb
-      // throws elsewhere. The layer is GLOBAL for a track-SE row
-      // ([laneVerbLayerFor]), so the tag goes home as it is.
-      seNameTag: isSe ? (layer.seNameTag ?? const SeNameTag()) : null,
-      commitTransform: (next, why) =>
-          _commitTransformTrack(layer, next, description: why),
-      commitEffects: (next, why) =>
-          _commitLaneEffects(layer, next, description: why),
-      commitSeNameTag: isSe
-          ? (next, why) => _commitLaneSeNameTag(layer, next, description: why)
-          : null,
-      previewTransform: (next) => _laneTransformPreview(layer, next),
-      previewEffects: (next) => _laneEffectsPreview(layer, next),
-      previewSeNameTag: isSe
-          ? (next) => _rowPreview(layer.copyWith(seNameTag: next))
-          : null,
+    _dragPreview.value = _laneEditPreview(
+      layer,
+      LaneEdit(
+        transform: _transformHomesWith(
+          edit(
+            _transformTrackAt(layer, reference: reference),
+            _laneVerbFrameFor(layerId),
+          ),
+          reference: reference,
+        ),
+      ),
     );
   }
+
+  /// WHAT a lane edit on [layer] edits — the homes its families land in and
+  /// show in, answered by the same funnels every verb here commits and
+  /// previews through. The range move asks for it ([LaneEditSubject]), and
+  /// so does every verb over a span ([_laneVerbScope]).
+  LaneEditSubject laneEditSubjectOf(Layer layer) => LaneEditSubject(
+    transformTrack: _laneTransformTrackOf(layer),
+    referenceFx: layer.mediaReference?.fx,
+    effects: layer.effects,
+    // The name tag (C①) only on SE rows: its write throws elsewhere. The
+    // layer is GLOBAL for a track-SE row ([laneVerbLayerFor]), so the tag
+    // goes home as it is.
+    seNameTag: layer.kind == LayerKind.se
+        ? (layer.seNameTag ?? const SeNameTag())
+        : null,
+    commit: (next, why) => _commitRowLanes(layer, next, description: why),
+    preview: (next) => _laneEditPreview(layer, next),
+  );
 
   /// An effect header's eyeball (R6): [effectId] switched on or off in
   /// [layerId]'s chain, one undo — read off the row the project holds, like
@@ -859,25 +973,60 @@ class LaneVerbs {
     }
   }
 
+  /// Whether the switch [toggleLaneGroupEnabled] flips for [headerLaneId]
+  /// is on RIGHT NOW, dispatched as that flip dispatches; null where the
+  /// header names no switch.
+  ///
+  /// 🚨A LIVE READ: a lane row built at the last frame carries a stale
+  /// `groupEnabled`, and the rail's bulk-drag has to spread what the press
+  /// just set. ↩️The rail read the layer's TRANSFORM flag for every lane
+  /// row, so a sweep begun on an effect header spread the transform's
+  /// state instead of the effect's (I-89 ①ⓒ).
+  bool? isLaneGroupOn(LayerId layerId, String headerLaneId) {
+    final layer = laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return null;
+    }
+    if (headerLaneId == transformGroupHeaderLane.laneId) {
+      return layer.transformEnabled;
+    }
+    final effectId = parseEffectLaneId(headerLaneId)?.effectId;
+    for (final effect in layer.effects) {
+      if (effect.id == effectId) {
+        return effect.enabled;
+      }
+    }
+    return null;
+  }
+
   /// [track] with [laneId]'s key at [frame] toggled — a new one frozen at
-  /// the value [layer] resolves there. What the navigator's ◆ and the range
-  /// Create both write.
+  /// the value [layer] resolves there: where its reference fx stands the
+  /// picture, when [reference] says the lane is that fx's (F-374). What the
+  /// navigator's ◆ and the range Create both write.
   TransformTrack? _transformTrackWithKeyToggled(
     Layer layer,
     TransformTrack track,
     String laneId,
-    int frame,
-  ) {
-    final isCamera = layer.kind == LayerKind.camera;
+    int frame, {
+    required bool reference,
+  }) {
+    final pose = reference
+        ? layer.mediaReference?.poseAt(frame)
+        : _laneResolvedPose(layer, frame);
+    if (pose == null) {
+      return null;
+    }
+    // The camera's lanes and a reference fx's are the pose trio alone.
+    final poseOnly = reference || layer.kind == LayerKind.camera;
     return transformTrackWithLaneKeyToggled(
       track,
       laneId: laneId,
       frameIndex: frame,
-      resolvedPose: _laneResolvedPose(layer, frame),
-      resolvedAnchorPoint: isCamera
+      resolvedPose: pose,
+      resolvedAnchorPoint: poseOnly
           ? null
           : _timeline.layerAnchorPointAtFrame(layer, frame),
-      resolvedOpacity: isCamera
+      resolvedOpacity: poseOnly
           ? 1
           : resolveOpacityTrackAt(layer.transformTrack.opacity, frame),
     );
@@ -915,8 +1064,8 @@ class LaneVerbs {
     return _TransformHome.row;
   }
 
-  /// THE transform commit of a row's lanes — the camera row goes home to the
-  /// cut, a V row's carrier to nowhere, every other row to its layer.
+  /// The commit of a row's OWN transform lanes — the camera row goes home to
+  /// the cut, a V row's carrier to nowhere, every other row to its layer.
   ///
   /// ↩️The lane MOVE spelled the camera-or-layer half of this again inline
   /// (and without the carrier's arm); it commits through here now
@@ -929,8 +1078,8 @@ class LaneVerbs {
   }) {
     switch (_transformHomeOf(layer)) {
       case _TransformHome.cutCamera:
-        if (_cameraTakes(track)) {
-          _updateActiveCutCameraTrack(track, description: description);
+        if (_cutTakingCamera(layer, track) != null) {
+          _updateCameraTrack(layer.id, track, description: description);
         }
       case _TransformHome.nowhere:
         return;
@@ -943,22 +1092,106 @@ class LaneVerbs {
     }
   }
 
+  /// THE commit of a row's lanes (F-374): every family [edit] changes,
+  /// each through its own funnel, as ONE undo step — a span over lanes of
+  /// several is one gesture.
+  void _commitRowLanes(
+    Layer layer,
+    LaneEdit edit, {
+    required String description,
+  }) => _project.historyManager.runAsOneStep(description, () {
+    if (edit.nameTag case final tag?) {
+      _commitLaneSeNameTag(layer, tag, description: description);
+    }
+    if (edit.effects case final effects?) {
+      _commitLaneEffects(layer, effects, description: description);
+    }
+    _commitTransformHomes(layer, edit.transform, description: description);
+  });
+
+  /// THE transform commit of a row's lanes, home by home (F-374): its own
+  /// lanes through [_commitTransformTrack], a reference row's fx through
+  /// [_commitReferenceFx] — one undo step for the two.
+  void _commitTransformHomes(
+    Layer layer,
+    TransformHomes next, {
+    required String description,
+  }) => _project.historyManager.runAsOneStep(description, () {
+    if (next.own case final own?) {
+      _commitTransformTrack(layer, own, description: description);
+    }
+    if (next.reference case final fx?) {
+      _commitReferenceFx(layer, fx, description: description);
+    }
+  });
+
+  /// The REFERENCE FX's commit (F-374): its keys written the moment they
+  /// change, as every fx's are. The file is not laid again — the canvas
+  /// moves the picture from where it was laid to where the keys stand it
+  /// (`referenceMoveAt`), as a transform fx moves its row.
+  ///
+  /// 🗣️F-374-Q1 (유저 2026-10-17, 「트랜스폼처럼 화면에서 옮긴다」): 「굳이
+  /// 다시 그릴필요도없고 그래봣자 더 선명해지지도않음」. ↩️Where the keys
+  /// stood the picture still, the file was laid there again and folded into
+  /// the same undo step once it landed.
+  void _commitReferenceFx(
+    Layer layer,
+    TransformTrack fx, {
+    required String description,
+  }) {
+    if (layer.mediaReference == null) {
+      return;
+    }
+    _project.cutCommandCoordinator.updateLayerReferenceFx(
+      layerId: layer.id,
+      fx: fx,
+      description: description,
+    );
+    _changes.notifyChanged();
+  }
+
+  /// [edit] on [layer] as a lane edit in flight shows it — the twin of
+  /// [_commitRowLanes], home for home: a V row's chain is its TRACK's, the
+  /// row's own lanes show where [_ownTransformPreview] says, and every
+  /// other family rides on the row, so one row carries them all in flight.
+  /// Null where it shows nothing, and where the commit would refuse it: a
+  /// range move holds there.
+  TimelineDragPreview? _laneEditPreview(Layer layer, LaneEdit edit) {
+    final effects = edit.effects;
+    final carrierTrackId = trackIdOfTransformLaneCarrier(layer.id);
+    if (carrierTrackId != null) {
+      return effects == null
+          ? null
+          : LaneEditPreview.track(
+              trackId: carrierTrackId,
+              trackEffects: effects,
+            );
+    }
+    var row = effects == null ? layer : layer.copyWith(effects: effects);
+    if (edit.nameTag case final tag?) {
+      row = row.copyWith(seNameTag: tag);
+    }
+    final reference = layer.mediaReference;
+    if (edit.transform.reference case final fx? when reference != null) {
+      row = row.copyWith(mediaReference: reference.copyWith(fx: fx));
+    }
+    final own = edit.transform.own;
+    return own == null ? _rowPreview(row) : _ownTransformPreview(row, own);
+  }
+
   /// [track] on [layer] as a lane edit in flight shows it — the twin of
   /// [_commitTransformTrack], home for home. Null where it shows nothing,
   /// and where that commit would refuse it: a range move holds there.
-  TimelineDragPreview? _laneTransformPreview(
-    Layer layer,
-    TransformTrack track,
-  ) {
+  TimelineDragPreview? _ownTransformPreview(Layer layer, TransformTrack track) {
     switch (_transformHomeOf(layer)) {
       case _TransformHome.cutCamera:
-        final cut = _project.activeCutOrNull;
-        return cut == null || !_cameraTakes(track)
+        final cut = _cutTakingCamera(layer, track);
+        return cut == null
             ? null
             : LaneEditPreview.camera(
                 cameraCutId: cut.id,
                 cameraTrack: track,
-                cameraMarkerLayer: _project.layerById(layer.id)?.copyWith(),
+                cameraMarkerLayer: layer.copyWith(),
               );
       case _TransformHome.nowhere:
         return null;
@@ -968,28 +1201,26 @@ class LaneVerbs {
   }
 
   /// Replaces [layerId]'s transform track (the AE Transform lanes on every
-  /// drawing layer — applied at composite time, never baked); one undo
-  /// step, no-op when unchanged.
+  /// drawing layer — applied at composite time, never baked) in the cut
+  /// writing it, stood in or not ([ActiveCutEdits.onCutOfRowQuietly]); one
+  /// undo step, no-op when unchanged.
   ///
   /// ↩️The session's until the fifteenth family: these verbs were the one
   /// collaborator that asked for it, so it lives beside its funnel.
+  /// ↩️Addressed in the cut stood in until I-89-Q23.
   void updateLayerTransformTrack(
     LayerId layerId,
     TransformTrack track, {
     String description = 'Edit layer transform',
-  }) {
-    final cutId = _project.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.updateLayerTransformTrack(
+  }) => _activeCut.onCutOfRowQuietly(
+    layerId,
+    (cutId) => _project.cutCommandCoordinator.updateLayerTransformTrack(
       cutId: cutId,
       layerId: layerId,
       transformTrack: track,
       description: description,
-    );
-    _changes.notifyChanged();
-  }
+    ),
+  );
 
   /// The lane path's EFFECT commit — the twin of [_commitTransformTrack].
   ///
@@ -1018,22 +1249,6 @@ class LaneVerbs {
     );
   }
 
-  /// [effects] on [layer] as a lane edit in flight shows them — the twin of
-  /// [_commitLaneEffects]: a V row's chain is its TRACK's.
-  TimelineDragPreview _laneEffectsPreview(
-    Layer layer,
-    List<LayerEffect> effects,
-  ) {
-    final carrierTrackId = trackIdOfTransformLaneCarrier(layer.id);
-    if (carrierTrackId != null) {
-      return LaneEditPreview.track(
-        trackId: carrierTrackId,
-        trackEffects: effects,
-      );
-    }
-    return _rowPreview(layer.copyWith(effects: effects));
-  }
-
   /// [row] as an edit in flight leaves it, on its OWN axis: what the open cut
   /// shows of it and, for a track-owned row, the track's own form.
   ///
@@ -1045,22 +1260,6 @@ class LaneVerbs {
   TimelineDragPreview _rowPreview(Layer row) {
     final forms = _previewFormsOf(row);
     return LaneEditPreview.row(row: forms.shown, globalRow: forms.global);
-  }
-
-  /// Folds [step] over [laneIds] from [start] and hands the result to
-  /// [commit] ONCE, when any lane changed — one undo for the whole span.
-  /// Returns whether anything was committed.
-  bool _commitLaneFold<T>(
-    T start,
-    Iterable<String> laneIds,
-    T? Function(T value, String laneId) step, {
-    required void Function(T value) commit,
-  }) {
-    final next = _foldedEdits(start, laneIds, step);
-    if (next != null) {
-      commit(next);
-    }
-    return next != null;
   }
 
   /// The lanes a verb may act on for [layer]. The CAMERA row draws only
@@ -1085,7 +1284,7 @@ class LaneVerbs {
     if (layer.kind != LayerKind.camera) {
       return _timeline.layerPoseAtFrame(layer, frameIndex);
     }
-    final cut = _project.activeCutOrNull;
+    final cut = _cutWriting(layer);
     if (cut == null) {
       return _timeline.layerPoseAtFrame(layer, frameIndex);
     }
@@ -1098,64 +1297,60 @@ class LaneVerbs {
     );
   }
 
-  /// Removes every key the range covers on every spanned lane — the
-  /// mirror of [createLaneKeysForSelection], one undo. Returns whether
-  /// anything was there to remove.
+  /// Removes every key the range covers on every spanned lane, whichever
+  /// home each lives in — the mirror of [createLaneKeysForSelection], one
+  /// undo. Returns whether anything was there to remove.
   bool removeLaneKeysForSelection(TimelineLaneSelection lane) {
     final scope = _laneVerbScope(lane);
     if (scope == null) {
       return false;
     }
-    final layer = scope.layer;
-    if (scope.effectLanes) {
-      return _commitLaneFold(
-        layer.effects,
-        scope.targets,
-        (effects, laneId) => _foldedEdits(
-          effects,
-          effectLaneKeyFrames(effects, laneId).where(lane.contains),
-          (value, frame) => effectsWithLaneKeyRemoved(
-            value,
-            laneId: laneId,
-            frameIndex: frame,
-          ),
-        ),
-        commit: (effects) =>
-            _commitLaneEffects(layer, effects, description: 'Delete keys'),
-      );
-    }
-    return _commitLaneFold(
-      _laneTransformTrackOf(layer),
-      _laneVerbTargetsFor(layer, scope.targets),
-      (track, laneId) => _foldedEdits(
-        track,
-        transformLaneKeyFrames(track, laneId).where(lane.contains),
-        (value, frame) => transformTrackWithLaneKeyRemoved(
-          value,
-          laneId: laneId,
-          frameIndex: frame,
-        ),
+    final removed = laneKeysRemovedWhere(lane.contains);
+    return _commitSpanEdit(
+      scope,
+      rowLaneHomesEdited(
+        scope.subject,
+        scope.homes,
+        <T>(LaneHome<T> home) => home.edited(removed),
       ),
-      commit: (track) =>
-          _commitTransformTrack(layer, track, description: 'Delete keys'),
+      description: 'Delete keys',
     );
   }
 
-  /// What every lane verb settles first: the row the lane range names (an
-  /// attach row stands down), the lanes the verb targets, and whether those
-  /// are EFFECT lanes (parameter tracks) or the layer's own TRANSFORM lanes.
-  ({Layer layer, List<String> targets, bool effectLanes})? _laneVerbScope(
-    TimelineLaneSelection lane,
-  ) {
+  /// [edit] of [scope]'s row committed as ONE undo step, when it changes
+  /// anything. Returns whether it did.
+  bool _commitSpanEdit(
+    _SpanScope scope,
+    LaneEdit edit, {
+    required String description,
+  }) {
+    if (edit.isEmpty) {
+      return false;
+    }
+    scope.subject.commit(edit, description);
+    return true;
+  }
+
+  /// What every lane verb over a span settles first: the row the lane range
+  /// names (an attach row stands down), the lanes the verb targets, and
+  /// those lanes in the homes they live in, whichever families they are of
+  /// ([RowLaneHomes], F-374). ↩️It said whether they were EFFECT lanes, and
+  /// each verb then worked the effect chain or the transform, never both.
+  _SpanScope? _laneVerbScope(TimelineLaneSelection lane) {
     final layer = laneVerbLayerFor(lane.layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return null;
     }
-    final targets = laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    final targets = _laneVerbTargetsFor(
+      layer,
+      laneVerbTargets(lane.spanLaneIds, effects: layer.effects),
+    );
+    final subject = laneEditSubjectOf(layer);
     return (
       layer: layer,
       targets: targets,
-      effectLanes: targets.any((laneId) => parseEffectLaneId(laneId) != null),
+      subject: subject,
+      homes: rowLaneHomes(subject, targets),
     );
   }
 
@@ -1168,64 +1363,312 @@ class LaneVerbs {
   /// cannot disagree about which keys the range covers.
   List<_LaneRangeKey> _laneRangeKeys() {
     final lane = laneVerbRange;
-    if (lane == null) {
+    final scope = lane == null ? null : _laneVerbScope(lane);
+    if (lane == null || scope == null) {
       return const [];
     }
-    final scope = _laneVerbScope(lane);
-    if (scope == null) {
-      return const [];
-    }
-    final layer = scope.layer;
-    final targets = scope.targets;
-    final keys = <_LaneRangeKey>[];
-    if (scope.effectLanes) {
-      for (final laneId in targets) {
-        final address = parseEffectLaneId(laneId);
-        final parameterId = address?.parameterId;
-        if (address == null || parameterId == null) {
-          continue;
-        }
-        for (final effect in layer.effects) {
-          if (effect.id != address.effectId) {
-            continue;
-          }
-          final track = effect.parameters[parameterId]?.track;
-          if (track == null) {
-            continue;
-          }
-          for (final entry in track.keys.entries) {
-            if (lane.contains(entry.key)) {
-              // An effect's keys walk no path, so none roves.
-              keys.add((laneId: laneId, key: entry.value, canRove: false));
-            }
-          }
-        }
-      }
-      return keys;
-    }
-    final track = _laneTransformTrackOf(layer);
-    for (final laneId in _laneVerbTargetsFor(layer, targets)) {
-      final property = transformPropertyOfLaneId(laneId);
-      if (property == null) {
-        continue;
-      }
-      for (final frame in transformLaneKeyFrames(track, laneId)) {
-        final key = transformLaneKeyAt(track, property, frame);
-        if (key != null && lane.contains(frame)) {
-          keys.add((
-            laneId: laneId,
-            key: key,
-            canRove: transformLaneKeyCanRove(track, property, frame),
-          ));
-        }
-      }
-    }
-    return keys;
+    final homes = scope.homes;
+    // Only a position's keys walk a path, so only a transform's may rove.
+    bool roves(TransformTrack track, String laneId, int frame) =>
+        transformLaneKeyCanRove(
+          track,
+          transformPropertyOfLaneId(laneId)!,
+          frame,
+        );
+    return [
+      ..._coveredKeys(homes.own, lane, canRove: roves),
+      ..._coveredKeys(homes.reference, lane, canRove: roves),
+      ..._coveredKeys(homes.effects, lane),
+      ..._coveredKeys(homes.nameTag, lane, takesSides: seNameTagLaneTakesSides),
+    ];
   }
+
+  /// The keys [lane] covers on [home]'s lanes, each with whether it may
+  /// give its time up there — none may where [canRove] does not say — and
+  /// whether it takes the key window's sides: all do where [takesSides]
+  /// does not say.
+  static Iterable<_LaneRangeKey> _coveredKeys<T>(
+    LaneHome<T> home,
+    TimelineLaneSelection lane, {
+    bool Function(T keys, String laneId, int frame)? canRove,
+    bool Function(String laneId)? takesSides,
+  }) sync* {
+    for (final (:laneId, :keys) in home.keysWhere(lane.contains)) {
+      final sided = takesSides?.call(laneId) ?? true;
+      for (final MapEntry(key: frame, value: key) in keys.entries) {
+        yield (
+          laneId: laneId,
+          key: key,
+          canRove: canRove?.call(home.keys, laneId, frame) ?? false,
+          takesSides: sided,
+        );
+      }
+    }
+  }
+
+  /// Every lane [lane] reaches ([laneVerbTargets]), with the keys it holds
+  /// inside the range by their frame from the range's first — what a copy
+  /// of keys banks (F-388, [KeyClipboard]). Null where the range names no
+  /// row a lane verb serves.
+  List<LaneKeys>? laneKeysCopiedFrom(TimelineLaneSelection lane) {
+    final homes = _laneVerbScope(lane)?.homes;
+    if (homes == null) {
+      return null;
+    }
+    return [
+      for (final (:laneId, :keys) in [
+        ...homes.own.keysWhere(lane.contains),
+        ...homes.reference.keysWhere(lane.contains),
+        ...homes.effects.keysWhere(lane.contains),
+        ...homes.nameTag.keysWhere(lane.contains),
+      ])
+        (
+          laneId: laneId,
+          keys: {
+            for (final MapEntry(key: frame, value: key) in keys.entries)
+              frame - lane.startIndex: key,
+          },
+        ),
+    ];
+  }
+
+  /// 독립 붙여넣기 of [copy] where the press stands ([laneVerbRange]), as a
+  /// frame paste puts its run down ([laneKeysSpliced]): a selection
+  /// replaced, standing in at the playhead — each key unnamed, a value of
+  /// its own (유저 확정, of frames: 「독립 붙여넣기 = 그냥 복제」). One undo
+  /// (F-388).
+  void pasteLaneKeys(KeyCopy copy) {
+    if (_laneKeysPasted(copy, keepNames: false) case final pasted?) {
+      _commitSpanEdit(pasted.scope, pasted.edit, description: 'Paste keys');
+    }
+  }
+
+  /// Whether a paste of [copy] puts any of it down here.
+  bool canPasteLaneKeys(KeyCopy copy) =>
+      _laneKeysPasted(copy, keepNames: false) != null;
+
+  /// 링크 붙여넣기 of [copy]: [pasteLaneKeys] with each key's name kept. A
+  /// name the lane's naming space holds already is that name's key there,
+  /// so the key pasted under it takes what it holds — as a frame pasted
+  /// under a name its row holds shows the row's drawing (I-71). Where that
+  /// would put down another value than the copied one and [joinTakenNames]
+  /// was not given, this writes NOTHING and hands back the names, for the
+  /// caller to ask about once; null when it pasted, or had nothing to do.
+  ///
+  /// 🗣️F-388-Q2 (유저 2026-10-20): 「이름 있는 키만 링크 — 그냥
+  /// 생각할것도없이 프레임블록 복붙이랑 똑같은 규칙」: an unnamed key has no
+  /// name to link by and goes down as its value.
+  Set<String>? pasteLinkedLaneKeys(
+    KeyCopy copy, {
+    bool joinTakenNames = false,
+  }) {
+    final pasted = _laneKeysPasted(copy, keepNames: true);
+    if (pasted == null) {
+      return null;
+    }
+    if (!joinTakenNames && pasted.joins.isNotEmpty) {
+      return pasted.joins;
+    }
+    _commitSpanEdit(
+      pasted.scope,
+      pasted.edit,
+      description: 'Paste linked keys',
+    );
+    return null;
+  }
+
+  /// What a paste of [copy] here writes, and with [keepNames] the names it
+  /// joins at another value — null where it lands nothing, the commit's
+  /// refusal included ([_refusesOwn]): one answer for the gate and the
+  /// press (I-19/T25).
+  ({_SpanScope scope, LaneEdit edit, Set<String> joins})? _laneKeysPasted(
+    KeyCopy copy, {
+    required bool keepNames,
+  }) {
+    final lane = laneVerbRange;
+    final scope = lane == null ? null : _laneVerbScope(lane);
+    if (lane == null || scope == null) {
+      return null;
+    }
+    final pasted = _keysSplicedInto(
+      scope,
+      _keysPairedWith(copy.lanes, _pasteTargetsOf(scope.homes)),
+      (
+        start: lane.startIndex,
+        liftCount: _selectedLaneSpan == null ? 0 : lane.lengthFrames,
+        length: copy.length,
+      ),
+      keepNames: keepNames,
+    );
+    return pasted.edit.isEmpty || _refusesOwn(scope.layer, pasted.edit)
+        ? null
+        : (scope: scope, edit: pasted.edit, joins: pasted.joins);
+  }
+
+  /// [paired]'s keys put in on [scope]'s lanes over [span] — the frames
+  /// from its start it lifts, and the frames it puts in ([laneKeysSpliced])
+  /// — with the names they join at another value ([keepNames]).
+  ({LaneEdit edit, Set<String> joins}) _keysSplicedInto(
+    _SpanScope scope,
+    Map<_PastedLane, Map<int, PropertyKey<Object?>>> paired,
+    ({int start, int liftCount, int length}) span, {
+    required bool keepNames,
+  }) {
+    final homes = scope.homes;
+    final lifted = {
+      for (var frame = 0; frame < span.liftCount; frame += 1)
+        span.start + frame,
+    };
+    final holders = _nameHoldersOf(scope);
+    final joins = <String>{};
+    // [home]'s lanes with their keys put down — named keys as the name's
+    // key there ([heldOf]: what holds a name on a lane of it, or null).
+    T? pastedOn<T>(
+      LaneHome<T> home,
+      PropertyKey<Object?>? Function(String laneId, String name) heldOf,
+    ) => home.editedEach(
+      (laneId) => switch (paired[(home: home, laneId: laneId)]) {
+        null => null,
+        final keys => laneKeysSpliced(
+          start: span.start,
+          liftCount: span.liftCount,
+          length: span.length,
+          keys: {
+            for (final MapEntry(key: frame, value: key) in keys.entries)
+              frame: _pastedKey(
+                key,
+                keepNames ? (name) => heldOf(laneId, name) : null,
+                joins,
+              ),
+          },
+        ),
+      },
+    );
+    PropertyKey<Object?>? Function(String, String) namedIn<T>(
+      LaneHome<T> home,
+      T? Function(String laneId, String name, Set<int> frames) holder,
+    ) => (laneId, name) =>
+        _keyNamed(home, laneId, holder(laneId, name, lifted), name);
+    final edit = LaneEdit(
+      transform: (
+        own: pastedOn(homes.own, namedIn(homes.own, holders.own)),
+        reference: pastedOn(
+          homes.reference,
+          namedIn(homes.reference, holders.reference),
+        ),
+      ),
+      effects: pastedOn(
+        homes.effects,
+        (laneId, name) => holders.effects(laneId, name, lifted),
+      ),
+      nameTag: scope.subject.nameTagWith(
+        pastedOn(homes.nameTag, namedIn(homes.nameTag, holders.nameTag)),
+      ),
+    );
+    return (edit: edit, joins: joins);
+  }
+
+  /// Every lane of [homes], each with the home it lives in — what a paste
+  /// of keys pairs its lanes with ([_keysPairedWith]), in the order a copy
+  /// reads them ([laneKeysCopiedFrom]).
+  static List<_PastedLane> _pasteTargetsOf(RowLaneHomes homes) => [
+    for (final LaneHome<Object?> home in [
+      homes.own,
+      homes.reference,
+      homes.effects,
+      homes.nameTag,
+    ])
+      for (final laneId in home.laneIds) (home: home, laneId: laneId),
+  ];
+
+  /// [key] as a paste puts it down: with no name kept ([heldOf] null) or
+  /// none to keep, unnamed — a value of its own; under a name its lane
+  /// holds already, that name's key ([_joined]); else as it was copied.
+  static PropertyKey<Object?> _pastedKey(
+    PropertyKey<Object?> key,
+    PropertyKey<Object?>? Function(String name)? heldOf,
+    Set<String> joins,
+  ) {
+    final name = key.name;
+    if (heldOf == null || name == null) {
+      return key.copyWith(name: () => null);
+    }
+    final held = heldOf(name);
+    return held == null ? key : _joined(key, held, joins);
+  }
+
+  /// The key called [name] on [laneId] of [home]'s keys [holder] — null
+  /// where nothing holds the name.
+  static PropertyKey<Object?>? _keyNamed<T>(
+    LaneHome<T> home,
+    String laneId,
+    T? holder,
+    String name,
+  ) => holder == null
+      ? null
+      : home
+            .lensOf(laneId)
+            ?.keysOf(holder)
+            .values
+            .where((key) => key.name == name)
+            .firstOrNull;
+
+  /// [key] under a name [held] already holds: the held key's value, sides,
+  /// path and time, and its own name — [joins] taking the name where that
+  /// is another value than the key's own.
+  static PropertyKey<Object?> _joined(
+    PropertyKey<Object?> key,
+    PropertyKey<Object?> held,
+    Set<String> joins,
+  ) {
+    if (held.held != key.held) {
+      joins.add(key.name!);
+    }
+    return key.withHeld(held.held);
+  }
+
+  /// Which of [targets] takes which lane of [copied] — 🚨THE FRAME PASTE'S
+  /// PAIRING (결정 14 ③ⓐ): a copied lane goes on its own lane where that is
+  /// among them; where none is, ONE copied lane goes on every target (「모든
+  /// 행에 같은 것을」) and several pair with them in order, as a frame copy's
+  /// rows pair with a band's. A lane of another kind of data takes nothing
+  /// ([_sameKind]).
+  static Map<_PastedLane, Map<int, PropertyKey<Object?>>> _keysPairedWith(
+    List<LaneKeys> copied,
+    List<_PastedLane> targets,
+  ) {
+    final byId = {for (final lane in copied) lane.laneId: lane.keys};
+    if (targets.any((target) => byId.containsKey(target.laneId))) {
+      return {
+        for (final target in targets) target: ?byId[target.laneId],
+      };
+    }
+    LaneKeys? pairedAt(int index) =>
+        copied.length == 1 ? copied.single : copied.elementAtOrNull(index);
+    return {
+      for (final (index, target) in targets.indexed)
+        if (pairedAt(index) case final lane?
+            when _sameKind(lane.laneId, target.laneId))
+          target: lane.keys,
+    };
+  }
+
+  /// Whether keys copied on lane [from] mean on lane [to] what they meant
+  /// there — AE's 「the same type of data」: a place in space
+  /// ([laneWalksAPath] — a position or an anchor, a reference's too: its
+  /// home names its lanes bare) on a place, any other on any other of its
+  /// value type ([laneKeysSpliced]).
+  /// 🗣️key-paste-across-lanes-keeps-the-raw-value-Q1 (유저 2026-10-22):
+  /// 「AE 그대로 — 같은 종류의 데이터끼리」 — a position's 1170 put on a
+  /// scale made it 117000%.
+  static bool _sameKind(String from, String to) =>
+      laneWalksAPath(from) == laneWalksAPath(to);
 
   /// The names the range's keys carry — null for an unnamed one.
   Set<String?> _laneRangeKeyNames() => {
-    for (final (:key, laneId: _, canRove: _) in _laneRangeKeys()) key.name,
+    for (final (:key, laneId: _, canRove: _, takesSides: _)
+        in _laneRangeKeys())
+      key.name,
   };
 
   /// Whether the lane range has a key to name — Edit Instance's gate on a
@@ -1243,14 +1686,15 @@ class LaneVerbs {
     return names.length == 1 ? names.first : null;
   }
 
-  /// The sides of every key the range covers — what the key window's two
-  /// rows open with (I-89 ②): a choice is lit where the keys all are that
-  /// kind ([keySidesTogether]), so nothing is lit where they disagree, by
-  /// the rule the name above follows (and the ○ the group header draws
-  /// where its members disagree).
+  /// The sides of every key the range covers that takes them — what the key
+  /// window's two rows open with (I-89 ②): a choice is lit where the keys
+  /// all are that kind ([keySidesTogether]), so nothing is lit where they
+  /// disagree, by the rule the name above follows (and the ◉ the group
+  /// header draws where its members disagree). A name tag's flag holds by
+  /// nature, so its keys are not asked (#902).
   List<({KeySide incoming, KeyExit outgoing})> get laneKeySidesForSelection => [
-    for (final (:key, laneId: _, canRove: _) in _laneRangeKeys())
-      (incoming: key.incoming, outgoing: key.outgoing),
+    for (final (:key, :takesSides, laneId: _, canRove: _) in _laneRangeKeys())
+      if (takesSides) (incoming: key.incoming, outgoing: key.outgoing),
   ];
 
   /// The paths of the keys the range covers on a lane whose keys walk one
@@ -1258,10 +1702,8 @@ class LaneVerbs {
   /// lit where they agree as the sides are. Empty where no covered key
   /// walks a path: the row is offered and refused.
   List<KeyPath> get laneKeyPathsForSelection => [
-    for (final (:laneId, :key, canRove: _) in _laneRangeKeys())
-      if (transformPropertyOfLaneId(laneId) case final property?
-          when walksAPath(property))
-        key.path,
+    for (final (:laneId, :key, canRove: _, takesSides: _) in _laneRangeKeys())
+      if (laneWalksAPath(laneId)) key.path,
   ];
 
   /// Whether each key the range covers that may give its time up roves
@@ -1270,23 +1712,26 @@ class LaneVerbs {
   /// covered key may — the first and the last keep their time, and only a
   /// position's keys walk a path: the row is offered and refused.
   List<bool> get laneKeyRovingForSelection => [
-    for (final (:key, :canRove, laneId: _) in _laneRangeKeys())
+    for (final (:key, :canRove, laneId: _, takesSides: _) in _laneRangeKeys())
       if (canRove) key.roving,
   ];
 
   /// Whether the sides the key window picks count on a key the range
   /// covers, the window's roving row picked as [roves] says — on every key
   /// but one whose time roves: the pace through it is the one its run's
-  /// timed ends set, and its mark is the roving dot, no sides. Where they
-  /// count on none, the window's two rows are offered and refused (유저
-  /// 2026-10-12: 「설정한 시작/끝 보간이 의미가 있다면 비활성화 안되는게
-  /// 맞고. 의미가 없다면 비활성화 시키는게 맞겟고」).
+  /// timed ends set, and its mark is the roving pill, no sides — and but a
+  /// name tag's flag's, which holds by nature (#902). Where they count on
+  /// none, the window's two rows are offered and refused (유저 2026-10-12:
+  /// 「설정한 시작/끝 보간이 의미가 있다면 비활성화 안되는게 맞고. 의미가
+  /// 없다면 비활성화 시키는게 맞겟고」).
   ///
   /// The keys are read once: the window asks again at every pick.
   bool Function(bool? roves) get laneKeySidesCountForSelection {
     final keys = _laneRangeKeys();
     return (roves) => keys.any(
-      (covered) => !covered.canRove || !(roves ?? covered.key.roving),
+      (covered) =>
+          covered.takesSides &&
+          (!covered.canRove || !(roves ?? covered.key.roving)),
     );
   }
 
@@ -1337,6 +1782,23 @@ class LaneVerbs {
   void setLaneKeyTypeForSelection(KeyTypePick pick) =>
       _writeLaneKeysForSelection(pick: pick);
 
+  /// The key window's TYPE while it is being picked: what
+  /// [setLaneKeyTypeForSelection] would write for [pick], shown and not
+  /// written — the same write, not a look-alike, as a graph handle's in
+  /// flight ([previewLaneKeySidesAt]). An empty pick shows the committed
+  /// row.
+  ///
+  /// 🗣️F-389 (유저 2026-10-17): 「키에 관한 리니어 등 타입 편집, 세기편집이
+  /// 라이브로 화면이나 그래프에도 보이도록」.
+  void previewLaneKeyTypeForSelection(KeyTypePick pick) {
+    final lane = laneVerbRange;
+    _previewLaneEdit(
+      lane == null || pick.isEmpty
+          ? null
+          : _laneKeysWriteOver(lane, pick: pick).edit,
+    );
+  }
+
   /// The shared body: [_laneKeysWriteOver] the lane range, committed as one
   /// undo step — or nothing, and true, when a name is taken. Stopping
   /// before any commit is what makes the confirmation honest — nothing is
@@ -1372,7 +1834,7 @@ class LaneVerbs {
   ///
   /// No [naming] leaves every name as it is: the TYPE alone — [pick]'s
   /// sides, and its path and roving time on the lanes whose keys walk one.
-  ({bool taken, ({Layer layer, _LaneEdit edit})? edit}) _laneKeysWriteOver(
+  ({bool taken, ({Layer layer, LaneEdit edit})? edit}) _laneKeysWriteOver(
     TimelineLaneSelection lane, {
     _LaneKeyNaming? naming,
     KeyTypePick pick = const KeyTypePick(),
@@ -1382,7 +1844,8 @@ class LaneVerbs {
       return (taken: false, edit: null);
     }
     final layer = scope.layer;
-    final cutId = _timeline.editingSession.activeCutId;
+    final homes = scope.homes;
+    final holders = _nameHoldersOf(scope);
     final asked = naming?.name;
     final adopt = naming?.adopt ?? false;
     final named = naming == null
@@ -1390,97 +1853,146 @@ class LaneVerbs {
         : (name: asked, preferredFrame: _laneVerbFrameFor(lane.layerId));
 
     // Every lane is READ before any is written — the keys it covers, and
-    // what already holds the name — so a taken name stops the verb while
-    // the range is still untouched.
-    if (scope.effectLanes) {
-      final reads =
-          <String, ({Set<int> frames, PropertyKey<double>? adopted})>{};
-      for (final laneId in scope.targets) {
-        final address = parseEffectLaneId(laneId);
-        final parameterId = address?.parameterId;
-        if (address == null || parameterId == null) {
-          continue;
-        }
-        final frames = effectLaneKeyFrames(
-          layer.effects,
-          laneId,
-        ).where(lane.contains).toSet();
+    // what already holds the name ([_nameHoldersOf]) — so a taken name
+    // stops the verb while the range is still untouched.
+    var taken = false;
+    T? written<T, H extends Object>(
+      LaneHome<T> home,
+      H? Function(String laneId, Set<int> frames) holderOf,
+      T? Function(T keys, String laneId, Set<int> frames, H? holder) write,
+    ) {
+      if (taken) {
+        return null;
+      }
+      final reads = <String, ({Set<int> frames, H? holder})>{};
+      for (final laneId in home.laneIds) {
+        final frames = {
+          ...?home.lensOf(laneId)?.keyFrames(home.keys).where(lane.contains),
+        };
         if (frames.isEmpty) {
           continue;
         }
-        final adopted = asked == null || cutId == null
-            ? null
-            : _project.cutCommandCoordinator.namedEffectKeyInSpace(
-                cutId: cutId,
-                layerId: layer.id,
-                effectId: address.effectId,
-                parameterId: parameterId,
-                name: asked,
-                excludeFramesOnSource: frames,
-              );
-        if (adopted != null && !adopt) {
-          return (taken: true, edit: null);
+        final holder = asked == null ? null : holderOf(laneId, frames);
+        if (holder != null && !adopt) {
+          taken = true;
+          return null;
         }
-        reads[laneId] = (frames: frames, adopted: adopted);
+        reads[laneId] = (frames: frames, holder: holder);
       }
-      final next = _foldedEdits(layer.effects, reads.keys, (effects, laneId) {
+      return foldedEdits(home.keys, reads.keys, (keys, laneId) {
         final read = reads[laneId]!;
-        return effectsWithLaneKeysWritten(
-          effects,
-          laneId: laneId,
-          frames: read.frames,
-          naming: named,
-          adopted: read.adopted,
-          pick: pick,
-        );
+        return write(keys, laneId, read.frames, read.holder);
       });
-      return (
-        taken: false,
-        edit: next == null ? null : (layer: layer, edit: _EffectsEdit(next)),
-      );
     }
 
-    final track = _laneTransformTrackOf(layer);
-    final reads = <String, ({Set<int> frames, TransformTrack? holder})>{};
-    for (final laneId in _laneVerbTargetsFor(layer, scope.targets)) {
-      final property = transformPropertyOfLaneId(laneId);
-      if (property == null) {
-        continue;
-      }
-      final frames = transformLaneKeyFrames(
-        track,
-        laneId,
-      ).where(lane.contains).toSet();
-      if (frames.isEmpty) {
-        continue;
-      }
-      final holder = asked == null
-          ? null
-          : _laneTransformHoldingName(
-              layer,
-              property,
-              asked,
-              excludeFrames: frames,
-            );
-      if (holder != null && !adopt) {
-        return (taken: true, edit: null);
-      }
-      reads[laneId] = (frames: frames, holder: holder);
+    TransformTrack? transformWritten(
+      TransformTrack keys,
+      String laneId,
+      Set<int> frames,
+      TransformTrack? holder,
+    ) => transformTrackWithLaneKeysWritten(
+      keys,
+      laneId: laneId,
+      frames: frames,
+      naming: named,
+      adoptFrom: holder,
+      pick: pick,
+    );
+    final edit = LaneEdit(
+      transform: (
+        own: written(
+          homes.own,
+          (laneId, frames) => holders.own(laneId, asked!, frames),
+          transformWritten,
+        ),
+        reference: written(
+          homes.reference,
+          (laneId, frames) => holders.reference(laneId, asked!, frames),
+          transformWritten,
+        ),
+      ),
+      effects: written(
+        homes.effects,
+        (laneId, frames) => holders.effects(laneId, asked!, frames),
+        (effects, laneId, frames, adopted) => effectsWithLaneKeysWritten(
+          effects,
+          laneId: laneId,
+          frames: frames,
+          naming: named,
+          adopted: adopted,
+          pick: pick,
+        ),
+      ),
+      nameTag: scope.subject.nameTagWith(
+        written(
+          homes.nameTag,
+          (laneId, frames) => holders.nameTag(laneId, asked!, frames),
+          (keys, laneId, frames, holder) => seNameTagTrackWithLaneKeysWritten(
+            keys,
+            laneId: laneId,
+            frames: frames,
+            naming: named,
+            adoptFrom: holder,
+            pick: pick,
+          ),
+        ),
+      ),
+    );
+    if (taken) {
+      return (taken: true, edit: null);
     }
-    final next = _foldedEdits(track, reads.keys, (value, laneId) {
-      final read = reads[laneId]!;
-      return transformTrackWithLaneKeysWritten(
-        value,
-        laneId: laneId,
-        frames: read.frames,
-        naming: named,
-        adoptFrom: read.holder,
-        pick: pick,
-      );
-    });
     return (
       taken: false,
-      edit: next == null ? null : (layer: layer, edit: _TransformEdit(next)),
+      edit: edit.isEmpty ? null : (layer: layer, edit: edit),
+    );
+  }
+
+  /// What already holds a name on each home's lanes of [scope], outside the
+  /// frames given — the keys a key joining the name takes. Each home is its
+  /// own naming space: a row's own lanes and its effects name across its
+  /// 겸용 link group, a reference fx's (F-374) and a name tag's on
+  /// themselves alone. Null where the name is free.
+  ///
+  /// The key window's naming reads it ([_laneKeysWriteOver]) and so does a
+  /// 링크 붙여넣기 of keys ([_laneKeysPasted], F-388): one answer to 「who
+  /// holds this name here」.
+  _NameHolders _nameHoldersOf(_SpanScope scope) {
+    final layer = scope.layer;
+    final cutId = _activeCut.cutOfRow(layer.id);
+    final fx = scope.homes.reference.keys;
+    final tag = scope.homes.nameTag.keys;
+    return (
+      own: (laneId, name, frames) => _laneTransformHoldingName(
+        layer,
+        transformPropertyOfLaneId(laneId)!,
+        name,
+        excludeFrames: frames,
+      ),
+      reference: (laneId, name, frames) =>
+          transformLaneUsesName(
+            fx,
+            transformPropertyOfLaneId(laneId)!,
+            name,
+            excludeFrames: frames,
+          )
+          ? fx
+          : null,
+      effects: (laneId, name, frames) => switch (parseEffectLaneId(laneId)) {
+        (:final effectId, parameterId: final parameterId?) when cutId != null =>
+          _project.cutCommandCoordinator.namedEffectKeyInSpace(
+            cutId: cutId,
+            layerId: layer.id,
+            effectId: effectId,
+            parameterId: parameterId,
+            name: name,
+            excludeFramesOnSource: frames,
+          ),
+        _ => null,
+      },
+      nameTag: (laneId, name, frames) =>
+          seNameTagLaneUsesName(tag, laneId, name, excludeFrames: frames)
+          ? tag
+          : null,
     );
   }
 
@@ -1514,7 +2026,7 @@ class LaneVerbs {
   /// The write a handle's drag makes: [sides] over the lane range when it
   /// holds the handle's key, else over that key alone, as a one-frame span
   /// on its lane.
-  ({Layer layer, _LaneEdit edit})? _handleEdit(
+  ({Layer layer, LaneEdit edit})? _handleEdit(
     LaneRowAddress lane,
     int frameIndex,
     KeySidesEdit sides, {
@@ -1550,7 +2062,8 @@ class LaneVerbs {
   /// property into an animated one behind the user's back.
   ///
   /// [headerLaneId] names the group: the transform header resets the
-  /// transform track, an `fx-group:` header its own effect.
+  /// transform track, an `fx-group:` header its own effect, and the two
+  /// fixed groups' headers the SE row's name tag and a reference row's fx.
   bool resetLaneGroup(LayerId layerId, String headerLaneId) {
     final layer = laneVerbLayerFor(layerId);
     if (layer == null || isAttachedLayer(layer)) {
@@ -1581,25 +2094,77 @@ class LaneVerbs {
       _commitLaneEffects(layer, effects, description: 'Reset group');
       return true;
     }
+    // ↩️The two fixed groups drew the button and nothing answered it
+    // (F-374, 유저 2026-10-17: 「참조fx에서 리셋버튼도 안먹힘」).
+    if (headerLaneId == seNameTagGroupLaneId) {
+      final tag = layer.kind == LayerKind.se
+          ? seNameTagWithGroupReset(
+              layer.seNameTag ?? const SeNameTag(),
+              frameIndexes: frames,
+              keyedFramesOnly: scoped,
+            )
+          : null;
+      if (tag == null) {
+        return false;
+      }
+      _commitLaneSeNameTag(layer, tag, description: 'Reset group');
+      return true;
+    }
+    if (headerLaneId == referenceGroupLaneId) {
+      return _resetReferenceGroup(layer, frames, scoped: scoped);
+    }
     // An effect's reset above needs no space and runs anywhere; the
     // transform's goes to the middle of the space the row is posed in.
     return headerLaneId == transformGroupHeaderLane.laneId &&
         _resetTransformGroup(layer, frames, scoped: scoped);
   }
 
+  /// [layer]'s reference fx back at [frames] to where an unkeyed lane of it
+  /// stands — where its file was placed ([MediaReference.pose]), as a
+  /// transform's reset is the identity its unkeyed lanes hold (F-374-Q2).
+  bool _resetReferenceGroup(
+    Layer layer,
+    List<int> frames, {
+    required bool scoped,
+  }) {
+    final reference = layer.mediaReference;
+    if (reference == null) {
+      return false;
+    }
+    final next = transformTrackWithGroupReset(
+      reference.fx,
+      frameIndexes: frames,
+      identity: reference.pose,
+      // No anchor lane: nothing is reset to it.
+      defaultAnchorPoint: reference.pose.center,
+      keyedFramesOnly: scoped,
+    );
+    if (next == null) {
+      return false;
+    }
+    _commitTransformHomes(
+      layer,
+      (own: null, reference: next),
+      description: 'Reset group',
+    );
+    return true;
+  }
+
   /// [layer]'s transform group back to its defaults at [frames]: the middle
-  /// of the space the row is posed in ([LayerKind.poseSpace]). A cut's row
-  /// in a gap has no canvas, so there is nothing to reset TO; an S row is
-  /// posed in the shot (I-67-Q1), which a gap has too — the storyboard's S
-  /// rows reach this with no cut open since F-101.
+  /// of the space the row is posed in ([rowPoseSpace]) — its cut's canvas,
+  /// stood in or not (I-89-Q23), or the shot an S row is posed in
+  /// (I-67-Q1), which a gap has too: the storyboard's S rows reach this
+  /// with no cut open since F-101. ↩️A cut's row read the canvas of the cut
+  /// stood in, and in a gap had nothing to reset TO.
   bool _resetTransformGroup(
     Layer layer,
     List<int> frames, {
     required bool scoped,
   }) {
-    final space = layer.kind.poseSpace(
-      shot: _project.repository.requireProject().cameraSize,
-      canvas: _project.activeCutOrNull?.canvasSize,
+    final space = rowPoseSpace(
+      _project.repository.requireProject(),
+      layer,
+      standing: _project.activeCutId,
     );
     if (space == null) {
       return false;
@@ -1621,37 +2186,128 @@ class LaneVerbs {
     return true;
   }
 
-  /// Whether [laneVerbRange] holds a key to delete.
+  /// Whether [laneVerbRange] holds a key to delete, on a lane of any home.
   bool get laneVerbRangeHasKeys {
     final lane = laneVerbRange;
+    return lane != null && _laneSpanHasKeys(lane);
+  }
+
+  /// Whether [lane] holds a key, on a lane of any home.
+  bool _laneSpanHasKeys(TimelineLaneSelection lane) {
     // The same layer the verb will act on, or the answer is about a
     // different set of keys than the one Delete is about to remove: a
     // track-SE row's clone holds only this cut's, on this cut's numbers,
     // and the span is stated globally.
-    final layer = lane == null ? null : laneVerbLayerFor(lane.layerId);
-    if (lane == null || layer == null || isAttachedLayer(layer)) {
-      return false;
-    }
-    final targets = _laneVerbTargetsFor(
-      layer,
-      laneVerbTargets(lane.spanLaneIds, effects: layer.effects),
-    );
-    return targets.any(
-      (laneId) => parseEffectLaneId(laneId) != null
-          ? effectLaneKeyFrames(layer.effects, laneId).any(lane.contains)
-          : transformLaneKeyFrames(
-              _laneTransformTrackOf(layer),
-              laneId,
-            ).any(lane.contains),
-    );
+    final scope = _laneVerbScope(lane);
+    return scope != null && rowLaneHomesKeyedWhere(scope.homes, lane.contains);
   }
 
   /// Whether the one Delete has something to take from [laneVerbRange]: a key
   /// under it, or — on a live RANGE — an fx header it names (F-87).
   bool get laneVerbRangeHasSomethingToDelete {
     final lane = laneVerbRange;
-    return laneVerbRangeHasKeys ||
-        (lane != null && _effectsNamedByHeaderRange(lane).isNotEmpty);
+    return lane != null &&
+        _laneSpanHasSomethingToDelete(lane, range: _laneRangeIsLive);
+  }
+
+  /// Whether [lane] holds what the one Delete takes: a key under it, or — a
+  /// RANGE's — an fx header it names.
+  bool _laneSpanHasSomethingToDelete(
+    TimelineLaneSelection lane, {
+    required bool range,
+  }) =>
+      _laneSpanHasKeys(lane) ||
+      (range && _effectsNamedByHeaders(lane).isNotEmpty);
+
+  /// Whether the span [laneVerbRange] answers with is the live lane RANGE —
+  /// not the row stood on, nor the camera row's band.
+  bool get _laneRangeIsLive => _selection.laneRangeSelection.value != null;
+
+  /// 🚨F-87 — the LANES a live band holds, and only those that hold what the
+  /// one Delete takes: one span per layer, over the band's frames on each
+  /// row's own axis — every lane row it swept, and the CAMERA row, which IS
+  /// its transform header (F-17/F-84, 유저 2026-09-11: 「트랜스폼이나 카메라나
+  /// 똑같으니까 법 싹 하나로 통일해줘」).
+  ///
+  /// 유저 (2026-10-18): 「fx를 넘어서 뭐든 선택된 대상으로 버튼의 대상이
+  /// 바껴야하는데 법 통일해서 해결하도록」 — and 08-12's 「선택 객체 하나가
+  /// 종류 섞인 행들을 담고, 각 동사가 행 종류별로 알아서 처리」. A band's lane
+  /// row is deleted the way a range over it is: an fx header takes its fx,
+  /// every other lane its keys ([deleteForBandLanes]). ↩️Its rows were read
+  /// as their layers' blocks, so a band over an fx row deleted the layer's
+  /// frames and, with none, left the button grey.
+  ///
+  /// ⚠️A lane of a row no lane verb resolves — a storyboard projection
+  /// row's, whose layer is a different cut's at every frame — holds nothing
+  /// here: no single span names it.
+  List<TimelineLaneSelection> get bandLanesToDelete => [
+    for (final lane in _bandLaneSpans())
+      if (_laneSpanHasSomethingToDelete(lane, range: true)) lane,
+  ];
+
+  /// The band's lane rows as spans ([bandLanesToDelete]) — the cut's band on
+  /// its rows' own axes, the track's on the track's.
+  List<TimelineLaneSelection> _bandLaneSpans() {
+    final inCut = _selection.frameRangeSelection.value;
+    if (inCut != null) {
+      return _laneSpansOver(
+        // A band no drag swept — a move's landing — names its layer rows
+        // alone, the camera's among them.
+        inCut.rows.isNotEmpty
+            ? inCut.rows
+            : [for (final id in inCut.spanLayerIds) LayerRowAddress(id)],
+        inCut.startIndex,
+        inCut.endIndexExclusive,
+        frameIsGlobal: false,
+      );
+    }
+    final onTrack = _selection.trackFrameRangeSelection.value;
+    if (onTrack != null) {
+      return _laneSpansOver(
+        onTrack.spanRows,
+        onTrack.startFrame,
+        onTrack.endFrameExclusive,
+        frameIsGlobal: true,
+      );
+    }
+    return const [];
+  }
+
+  /// The lanes among [rows], gathered per layer in display order, over
+  /// [start]..[endExclusive] as each layer's own lanes key it.
+  List<TimelineLaneSelection> _laneSpansOver(
+    List<TimelineRowAddress> rows,
+    int start,
+    int endExclusive, {
+    required bool frameIsGlobal,
+  }) {
+    final lanesByLayer = <LayerId, List<String>>{};
+    void add(LayerId layerId, String laneId) =>
+        (lanesByLayer[layerId] ??= []).add(laneId);
+    for (final row in rows) {
+      switch (row) {
+        case LaneRowAddress(:final layerId, :final laneId)
+            when laneVerbLayerFor(layerId) != null:
+          add(layerId, laneId);
+        case LayerRowAddress(:final layerId) when _isCameraRow(layerId):
+          add(layerId, transformGroupHeaderLane.laneId);
+        case LaneRowAddress() || LayerRowAddress() || TrackRowAddress():
+          break;
+      }
+    }
+    int onAxis(LayerId layerId, int frame) =>
+        _laneVerbFrameAt(layerId, frame, frameIsGlobal: frameIsGlobal);
+    return [
+      for (final MapEntry(key: layerId, value: laneIds)
+          in lanesByLayer.entries)
+        TimelineLaneSelection(
+          layerId: layerId,
+          laneId: laneIds.first,
+          startIndex: onAxis(layerId, start),
+          endIndexExclusive: onAxis(layerId, endExclusive),
+          laneIds: laneIds,
+        ),
+    ];
   }
 
   /// 🚨F-87 — THE ONE DELETE ON A LANE ROW (유저 2026-09-12: 「공용 삭제버튼을
@@ -1666,8 +2322,21 @@ class LaneVerbs {
   /// press does nothing — never the cel of the layer the lane belongs to.
   /// Standing on a header is not a range: it takes the keys at the playhead,
   /// as it always did. One undo for the whole press.
-  void deleteForLaneSelection(TimelineLaneSelection lane) {
-    final removed = _effectsNamedByHeaderRange(lane);
+  void deleteForLaneSelection(TimelineLaneSelection lane) =>
+      _deleteForLaneSpan(lane, range: _laneRangeIsLive);
+
+  /// The band's lanes ([bandLanesToDelete]), each deleted the way a RANGE
+  /// over it is — inside the caller's one step, beside the band's blocks.
+  void deleteForBandLanes(List<TimelineLaneSelection> lanes) {
+    for (final lane in lanes) {
+      _deleteForLaneSpan(lane, range: true);
+    }
+  }
+
+  /// THE delete of one lane span ([deleteForLaneSelection]'s law): a RANGE's
+  /// fx headers take their effects, and every lane left loses its keys.
+  void _deleteForLaneSpan(TimelineLaneSelection lane, {required bool range}) {
+    final removed = range ? _effectsNamedByHeaders(lane) : const <EffectId>[];
     if (removed.isEmpty) {
       removeLaneKeysForSelection(lane);
       return;
@@ -1687,10 +2356,11 @@ class LaneVerbs {
 
   /// The effects a live lane RANGE names by their HEADER rows — none for the
   /// span of the row being stood on, which is not a range.
-  List<EffectId> _effectsNamedByHeaderRange(TimelineLaneSelection lane) {
-    if (_selection.laneRangeSelection.value == null) {
-      return const [];
-    }
+  ///
+  /// ↩️It read the live range itself to tell the two apart; a band's lanes
+  /// are ranges too and live in no lane range, so the caller says which
+  /// ([_deleteForLaneSpan]'s `range`).
+  List<EffectId> _effectsNamedByHeaders(TimelineLaneSelection lane) {
     final layer = laneVerbLayerFor(lane.layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return const [];
@@ -1708,72 +2378,62 @@ class LaneVerbs {
     return ids;
   }
 
-  /// value on every unkeyed frame of the range — one undo.
+  /// The lane-selection create (UI-R25 #3): a key frozen at the resolved
+  /// value on every unkeyed frame of the range, on every lane it spans of
+  /// every home (R26 #3, F-374) — one undo. Each key is the navigator's ◆
+  /// there ([LaneHome.keyedAt]).
   void createLaneKeysForSelection(TimelineLaneSelection lane) {
     final scope = _laneVerbScope(lane);
     if (scope == null) {
       return;
     }
     final layer = scope.layer;
+    final homes = scope.homes;
     final frames = _keyableFrames(layer, lane);
-    // R6: an EFFECT-lane selection freezes keys on the effect chain
-    // instead — same rule, same single undo.
-    if (scope.effectLanes) {
-      _commitLaneFold(
-        layer.effects,
-        scope.targets,
-        (effects, laneId) => _foldedEdits(
-          effects,
-          frames,
-          (value, frame) => effectLaneKeyFrames(value, laneId).contains(frame)
-              ? null
-              : effectsWithLaneKeyToggled(
-                  value,
-                  laneId: laneId,
-                  frameIndex: frame,
-                ),
+    TransformTrack? Function(TransformTrack, String, int) transform({
+      required bool reference,
+    }) => (track, laneId, frame) => _transformTrackWithKeyToggled(
+      layer,
+      track,
+      laneId,
+      frame,
+      reference: reference,
+    );
+    final tag = scope.subject.seNameTag;
+    _commitSpanEdit(
+      scope,
+      LaneEdit(
+        transform: (
+          own: homes.own.keyedAt(frames, transform(reference: false)),
+          reference: homes.reference.keyedAt(
+            frames,
+            transform(reference: true),
+          ),
         ),
-        commit: (effects) =>
-            _commitLaneEffects(layer, effects, description: 'Create keys'),
-      );
-      return;
-    }
-    // R26 #3: a multi-lane span freezes keys on EVERY spanned lane —
-    // still one undo.
-    _commitLaneFold(
-      _laneTransformTrackOf(layer),
-      _laneVerbTargetsFor(layer, scope.targets),
-      (track, laneId) => _foldedEdits(
-        track,
-        frames,
-        (value, frame) => transformLaneKeyFrames(value, laneId).contains(frame)
-            ? null
-            : _transformTrackWithKeyToggled(layer, value, laneId, frame),
+        effects: homes.effects.keyedAt(
+          frames,
+          (effects, laneId, frame) => effectsWithLaneKeyToggled(
+            effects,
+            laneId: laneId,
+            frameIndex: frame,
+          ),
+        ),
+        nameTag: scope.subject.nameTagWith(
+          homes.nameTag.keyedAt(
+            frames,
+            (keys, laneId, frame) => tag == null
+                ? null
+                : seNameTagWithLaneKeyToggled(
+                    tag.copyWith(track: keys),
+                    laneId: laneId,
+                    frameIndex: frame,
+                  )?.track,
+          ),
+        ),
       ),
-      commit: (track) =>
-          _commitTransformTrack(layer, track, description: 'Create keys'),
+      description: 'Create keys',
     );
   }
-}
-
-/// [start] with [step] applied for each of [items] in turn, or null when no
-/// step changed it — a step answers null when it leaves the value alone.
-///
-/// ⛔THE LANE-KEY VERBS FOLD THIS WAY. Create, Delete and the key window's
-/// name/type write each walked their lanes and frames with the same
-/// accumulate-and-flag loop, once per family (effect chain, transform
-/// track), and the clone scan named the third copy when the window's TYPE
-/// arrived (F-17, 2026-09-11).
-T? _foldedEdits<T, I>(
-  T start,
-  Iterable<I> items,
-  T? Function(T value, I item) step,
-) {
-  T? result;
-  for (final item in items) {
-    result = step(result ?? start, item) ?? result;
-  }
-  return result;
 }
 
 /// The edits a lane verb makes of each family at a frame — null where it
@@ -1781,9 +2441,14 @@ T? _foldedEdits<T, I>(
 typedef _LaneEdits = ({
   SeNameTag? Function(SeNameTag tag, int frame) nameTag,
   List<LayerEffect>? Function(List<LayerEffect> effects, int frame) effects,
-  TransformTrack? Function(Layer layer, TransformTrack track, int frame)
+  // [reference]: the lane is a reference fx's (F-374), [track] that fx.
+  TransformTrack? Function(
+    Layer layer,
+    TransformTrack track,
+    int frame, {
+    required bool reference,
+  })
   transform,
-  TransformPose? Function(TransformPose pose) reference,
 });
 
 /// What the key window writes of the keys' NAMES: [name] on every key the
@@ -1792,38 +2457,39 @@ typedef _LaneEdits = ({
 typedef _LaneKeyNaming = ({String? name, bool adopt});
 
 /// A key the lane range covers ([LaneVerbs._laneRangeKeys]): the lane it is
-/// on, the key, and whether it may give its time up there (I-89 ④).
+/// on, the key, whether it may give its time up there (I-89 ④), and
+/// whether it takes the key window's sides — a name tag's flag holds by
+/// nature (#902).
 typedef _LaneRangeKey = ({
   String laneId,
   PropertyKey<Object?> key,
   bool canRove,
+  bool takesSides,
 });
 
-/// One lane edit's result: the family it lands in and what it leaves there
-/// — computed once, then committed or shown.
-sealed class _LaneEdit {
-  const _LaneEdit();
-}
+/// What a verb over a span settles first ([LaneVerbs._laneVerbScope]).
+/// A lane a paste of keys can land on: the home it lives in, by identity,
+/// and its id there ([LaneVerbs._keysPairedWith]).
+typedef _PastedLane = ({Object home, String laneId});
 
-class _NameTagEdit extends _LaneEdit {
-  const _NameTagEdit(this.next);
-  final SeNameTag next;
-}
+/// What holds a name on a lane of each home ([LaneVerbs._nameHoldersOf]),
+/// asked with the lane, the name and the frames left out.
+typedef _NameHolders = ({
+  TransformTrack? Function(String laneId, String name, Set<int> frames) own,
+  TransformTrack? Function(String laneId, String name, Set<int> frames)
+  reference,
+  PropertyKey<double>? Function(String laneId, String name, Set<int> frames)
+  effects,
+  SeNameTagTrack? Function(String laneId, String name, Set<int> frames)
+  nameTag,
+});
 
-class _EffectsEdit extends _LaneEdit {
-  const _EffectsEdit(this.next);
-  final List<LayerEffect> next;
-}
-
-class _TransformEdit extends _LaneEdit {
-  const _TransformEdit(this.next);
-  final TransformTrack next;
-}
-
-class _ReferenceEdit extends _LaneEdit {
-  const _ReferenceEdit(this.next);
-  final TransformPose next;
-}
+typedef _SpanScope = ({
+  Layer layer,
+  List<String> targets,
+  LaneEditSubject subject,
+  RowLaneHomes homes,
+});
 
 /// Where a row's TRANSFORM lanes live ([LaneVerbs._transformHomeOf]).
 enum _TransformHome {

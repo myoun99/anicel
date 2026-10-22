@@ -11,6 +11,7 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -94,22 +95,20 @@ void main() {
   }
 
   Future<void> settleLoaded(WidgetTester tester) async {
-    for (var i = 0; i < 60; i += 1) {
-      // ⚠️A REAL delay inside runAsync: decoding a PNG is genuine async I/O
-      // and a zero-duration microtask drain never lets it finish.
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump(const Duration(milliseconds: 16));
-      if (panelCanvas(tester) != const Size(640, 480)) {
-        return;
-      }
+    // ⚠️REAL time ([settleAsync]): decoding a PNG is genuine async I/O and
+    // a zero-duration microtask drain never lets it finish.
+    final shown = await settleAsync(
+      tester,
+      () => panelCanvas(tester) != const Size(640, 480),
+      step: const Duration(milliseconds: 16),
+    );
+    if (!shown) {
+      // 🚨A LOOP THAT GIVES UP QUIETLY IS AN INSTRUMENT THAT LIES. Without
+      // this the document simply never loaded and every assertion below
+      // was measuring an empty viewer — which is how the first version of
+      // these tests stayed green with the fix deleted.
+      fail('the viewer never showed a page — the document did not load');
     }
-    // 🚨A LOOP THAT GIVES UP QUIETLY IS AN INSTRUMENT THAT LIES. Without
-    // this the document simply never loaded and every assertion below was
-    // measuring an empty viewer — which is how the first version of these
-    // tests stayed green with the fix deleted.
-    fail('the viewer never showed a page — the document did not load');
   }
 
   testWidgets('reopening a viewer on the SAME document leaves the view alone',
@@ -206,10 +205,11 @@ void main() {
     // ⚠️`settleLoaded` cannot be used here: a page is ALREADY on screen from
     // the first document, so it would return before the second even
     // decoded. Pump until the record actually moves, or give up loudly.
-    for (var i = 0; i < 80 && slot.framedFor.value != second; i += 1) {
-      await tester.pump(const Duration(milliseconds: 16));
-      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-    }
+    await settleAsync(
+      tester,
+      () => slot.framedFor.value == second,
+      step: const Duration(milliseconds: 16),
+    );
 
     expect(
       slot.framedFor.value,

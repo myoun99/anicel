@@ -1,5 +1,6 @@
 import '../models/attached_layer_resolve.dart';
 import '../models/brush_frame_key.dart';
+import '../models/canvas_size.dart';
 import '../models/cel_bank_lanes.dart';
 import '../models/cut.dart';
 import '../models/track_id.dart';
@@ -169,6 +170,44 @@ CutId? cutIdOfLayer(Project project, LayerId layerId) {
     }
   }
   return null;
+}
+
+/// The cut an edit of [layerId] is WRITTEN in: the cut that holds it, stood
+/// in or not — and [standing], the cut the edit is made from, for a row no
+/// cut holds (a track's own row) or an id no row answers to. Null only for
+/// such a row with nothing stood in: a gap.
+///
+/// 🗣️I-89-Q23 (유저 2026-10-16): 「강제로 서있게해서 고치는건 유저에게
+/// 선택지가 제공안되는거라 불편함. 안서고 고치고싶을때의 대응이 안되기때문
+/// … 안서고 고친다는게 이번에 처음 생기니 다른곳에서도 쓸수있으니 제대로
+/// 모듈/법통일」 — the line a header graph draws for a cut not stood in is
+/// edited there, where it is. ↩️The rows the storyboard presses under any
+/// cut (I-73) found their cut this way already, each writing the find out:
+/// two controllers, the head walk, six of the session's verbs and the
+/// camera row's lanes. They ask here, with the lane verbs.
+CutId? cutWritingRow(
+  Project project,
+  LayerId layerId, {
+  required CutId? standing,
+}) => cutIdOfLayer(project, layerId) ?? standing;
+
+/// The space [layer] is posed in ([LayerKind.poseSpace]): the project's
+/// shot, or the canvas of the cut writing it ([cutWritingRow]) — null for a
+/// cut's row with no cut to be posed in.
+///
+/// ↩️Three readers asked the cut stood in for the canvas (I-89-Q23), and
+/// one required it — a row posed in the shot threw in a gap.
+CanvasSize? rowPoseSpace(
+  Project project,
+  Layer layer, {
+  required CutId? standing,
+}) {
+  final cutId = cutWritingRow(project, layer.id, standing: standing);
+  final cut = cutId == null ? null : cutPositionOf(project, cutId)?.cut;
+  return layer.kind.poseSpace(
+    shot: project.cameraSize,
+    canvas: cut?.canvasSize,
+  );
 }
 
 /// The lanes of every OTHER use of ([cutId], [layerId])'s cel bank — its

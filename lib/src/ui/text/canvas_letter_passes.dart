@@ -43,6 +43,50 @@ class CanvasLetterPass {
       !identical(_paintOf(letters), _drawsNothing);
 }
 
+/// Whether every pass paints letters of [a] as it paints letters of [b]:
+/// the fields a pass's paint is made of ([CanvasLetterPass.paintOf] — the
+/// colour, the outline and the smoothing) agree.
+bool canvasLettersPaintAlike(TextLetterStyle a, TextLetterStyle b) =>
+    a.color == b.color &&
+    a.outlineColor == b.outlineColor &&
+    a.outlineWidth == b.outlineWidth &&
+    a.antialias == b.antialias;
+
+/// One line a run of letters wears — under them or through them — as a
+/// rect in the frame its letters are drawn in, with the letters it is
+/// theirs ([CanvasLetterLines]).
+typedef CanvasLetterLine = ({TextLetterStyle letters, ui.Rect rect});
+
+/// THE LINES A TEXT'S LETTERS WEAR, drawn in the letters' own passes
+/// ([CanvasLetterPasses.paint]): each pass draws a line in what paints its
+/// letters in that pass. So an outlined letter's line is outlined with it,
+/// under every fill, and a hard letter's line is hard — set in the same
+/// layer as the letters, and cut by the same cliff.
+///
+/// Where the lines stand is the setting's to say (`canvas_letter_lines.dart`
+/// for a text in lines, the columns' own for one in columns).
+class CanvasLetterLines {
+  const CanvasLetterLines(this._lines);
+
+  /// A text none of whose letters wears a line.
+  static const CanvasLetterLines none = CanvasLetterLines([]);
+
+  final List<CanvasLetterLine> _lines;
+
+  /// Draws each line in what paints its letters in [pass] — which, for
+  /// letters that are not the pass's, draws nothing
+  /// ([CanvasLetterPass.paintOf]).
+  void paintIn(ui.Canvas canvas, CanvasLetterPass pass) {
+    for (final line in _lines) {
+      canvas.drawRect(
+        line.rect,
+        pass.paintOf(line.letters) ??
+            (ui.Paint()..color = line.letters.colorValue),
+      );
+    }
+  }
+}
+
 /// The kinds of pass there are — a hard one told from the others of its
 /// kind by the colour it covers in ([CanvasLetterPass.key]).
 enum _PassKind { fill, stroke, hardStroke, hardFill }
@@ -152,7 +196,7 @@ class CanvasLetterPasses<T extends Object> {
           for (final style in hard)
             if (canvasLetterOutlinePaint(style) != null) style.outlineColor!,
         })
-          (argb: argb, cover: set(_hardOutlinePass(argb))),
+          _hardPassOf(argb, _hardOutlinePass(argb), set),
       ],
       hardFills: [
         for (final argb in {for (final style in hard) style.color})
@@ -169,18 +213,24 @@ class CanvasLetterPasses<T extends Object> {
     CanvasLetterSetter<T> set,
   ) {
     final cover = _coverIn(argb);
-    return (
-      argb: argb,
-      cover: set(
-        CanvasLetterPass._(
-          (_PassKind.hardFill, argb),
-          (letters) => !letters.antialias && letters.color == argb
-              ? cover
-              : _drawsNothing,
-        ),
+    return _hardPassOf(
+      argb,
+      CanvasLetterPass._(
+        (_PassKind.hardFill, argb),
+        (letters) => !letters.antialias && letters.color == argb
+            ? cover
+            : _drawsNothing,
       ),
+      set,
     );
   }
+
+  /// The hard pass [pass], of the colour [argb], set.
+  static _HardPass<T> _hardPassOf<T extends Object>(
+    int argb,
+    CanvasLetterPass pass,
+    CanvasLetterSetter<T> set,
+  ) => (argb: argb, pass: pass, cover: set(pass));
 
   /// The letters as the engine sets them — what a caret, a selection and a
   /// press are measured on — and the pass that fills the smooth ones.
@@ -214,26 +264,45 @@ class CanvasLetterPasses<T extends Object> {
     );
   }
 
-  /// Draws the letters, [draw] being how one setting of them is drawn.
-  /// [within] holds everything they can draw, in the canvas's own space:
-  /// the hard letters are cut just past it ([_drawHard]).
+  /// Draws the letters, [draw] being how one setting of them is drawn, and
+  /// the [lines] they wear — over the letters of each pass, as the engine
+  /// draws its own over a run. [within] holds everything they can draw, in
+  /// the canvas's own space: the hard letters are cut just past it
+  /// ([_drawHard]).
+  ///
+  /// [letterWidth] draws the letters and their lines that many times as
+  /// wide about the frame's x = 0 (`CelTextContent.letterWidth`) — INSIDE
+  /// each pass, under the hard ones' cut: [within] is still the canvas's
+  /// own space, so a hard pass is cut as far past its letters, in the
+  /// canvas's pixels, at every width.
   void paint(
     ui.Canvas canvas, {
     required ui.Rect within,
     required void Function(T set) draw,
+    CanvasLetterLines lines = CanvasLetterLines.none,
+    double letterWidth = 1,
   }) {
+    void drawIn(T set, CanvasLetterPass pass) {
+      canvas
+        ..save()
+        ..scale(letterWidth, 1);
+      draw(set);
+      lines.paintIn(canvas, pass);
+      canvas.restore();
+    }
+
     void hard(_HardPass<T> pass) => _drawHard(
       canvas,
       pass.argb,
       within: within,
-      cover: () => draw(pass.cover),
+      cover: () => drawIn(pass.cover, pass.pass),
     );
     final stroke = _stroke;
     if (stroke != null) {
-      draw(stroke);
+      drawIn(stroke, _outlinePass);
     }
     _hardStrokes.forEach(hard);
-    draw(fill);
+    drawIn(fill, _fillPass);
     _hardFills.forEach(hard);
   }
 
@@ -264,17 +333,23 @@ CanvasLetterPasses<TextPainter> canvasLetterPainterPasses(
 
 /// Drawing the passes of a text whose every setting is one painter.
 extension CanvasLetterPainterPasses on CanvasLetterPasses<TextPainter> {
-  /// Draws the letters with their box's corner at [at] ([paint]).
-  void paintAt(ui.Canvas canvas, ui.Offset at, {required ui.Rect within}) =>
-      paint(
-        canvas,
-        within: within,
-        draw: (painter) => painter.paint(canvas, at),
-      );
+  /// Draws the letters with their box's corner at [at] ([paint]) — and
+  /// [lines], which stand where the letters are drawn.
+  void paintAt(
+    ui.Canvas canvas,
+    ui.Offset at, {
+    required ui.Rect within,
+    CanvasLetterLines lines = CanvasLetterLines.none,
+  }) => paint(
+    canvas,
+    within: within,
+    draw: (painter) => painter.paint(canvas, at),
+    lines: lines,
+  );
 }
 
-/// The hard letters of one colour, set as cover ([_coverIn]).
-typedef _HardPass<T> = ({int argb, T cover});
+/// The hard letters of one colour, set as cover ([_coverIn]) — by [pass].
+typedef _HardPass<T> = ({int argb, CanvasLetterPass pass, T cover});
 
 /// Draws what [cover] draws HARD, in the colour [argb]: every pixel it
 /// covers by half or more is that colour, whole, and every other is

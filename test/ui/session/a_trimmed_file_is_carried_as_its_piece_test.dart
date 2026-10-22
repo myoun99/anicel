@@ -514,11 +514,12 @@ void main() {
       required ({int numerator, int denominator}) speed,
       required double pace,
     }) async {
+      final watch = await watched(tester, 'a trimmed movie at $pace');
+      watch.step('asking for the encoder');
       final encoder = QaVideoEncoder.instance;
       if (encoder == null || !encoder.isSupported) {
         return null;
       }
-      final watch = await watched(tester, 'a trimmed movie at $pace');
       final s = EditorSessionManager(
         initialProject: createDefaultProject().copyWith(
           audioSpeedNumerator: speed.numerator,
@@ -612,11 +613,12 @@ void main() {
         'written — one encode and one decode, on every engine', (
       tester,
     ) async {
+      final watch = await watched(tester, 'a frame comes back its colour');
+      watch.step('asking for the encoder');
       final encoder = QaVideoEncoder.instance;
       if (encoder == null || !encoder.isSupported) {
         return;
       }
-      final watch = await watched(tester, 'a frame comes back its colour');
       final source = inTemp('colours.mp4');
       watch.step('writing the take');
       writeMovie(encoder, source, (numerator: 12, denominator: 1));

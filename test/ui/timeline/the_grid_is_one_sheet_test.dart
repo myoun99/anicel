@@ -48,6 +48,7 @@ void main() {
 
   TimelineGridSheetPainter sheet({
     List<TimelineGridRow> rows = const [],
+    List<TimelineGridDash> dashes = const [],
     double cell = 24,
     Color? ground,
     bool noGround = false,
@@ -56,7 +57,7 @@ void main() {
     framesPerSecond: 24,
     colorScheme: scheme,
     ground: noGround ? null : (ground ?? host),
-    rows: TimelineGridRows(rows),
+    rows: TimelineGridRows(rows, dashes: dashes),
   );
 
   // Colours are compared as the 32-bit pixels they land as: a `Paint`
@@ -160,6 +161,122 @@ void main() {
       expect(lined(5), isFalse);
       expect(lined(6), isTrue);
     });
+
+    group('a row that strokes its own dash (F-347)', () {
+      /// Frame [frame]'s line, as the stretches it is drawn in.
+      List<(double, double)> spansAt(_PaintSpy spy, int frame) => [
+        for (final l in spy.lines)
+          if (l.from.dx == timelineFrameBoundaryLinePosition(frame, 24))
+            (l.from.dy, l.to.dy),
+      ];
+
+      final threeRows = <TimelineGridRow>[
+        (extent: 28, ground: host),
+        (extent: 28, ground: host),
+        (extent: 28, ground: host),
+      ];
+
+      test('leaves that boundary unruled across that row alone', () {
+        final spy = _PaintSpy();
+        sheet(
+          rows: threeRows,
+          dashes: [(frame: 1, from: 28, to: 56)],
+        ).paint(spy, const Size(120, 84));
+        expect(spansAt(spy, 1), [(0, 28), (56, 84)]);
+        expect(
+          spansAt(spy, 2),
+          [(0, 84)],
+          reason: 'the row\'s other boundaries stay the sheet\'s',
+        );
+      });
+
+      test('rows side by side leave one gap, and a gap at the end leaves '
+          'the start alone', () {
+        final spy = _PaintSpy();
+        sheet(
+          rows: threeRows,
+          dashes: [
+            (frame: 1, from: 56, to: 84),
+            (frame: 1, from: 28, to: 56),
+          ],
+        ).paint(spy, const Size(120, 84));
+        expect(spansAt(spy, 1), [(0, 28)]);
+      });
+
+      test('a row on its own ground yields its own line AND the host\'s '
+          'under it', () {
+        final spy = _PaintSpy();
+        sheet(
+          rows: [
+            (extent: 28, ground: host),
+            (extent: 28, ground: timelineLaneGround(host)),
+          ],
+          dashes: [(frame: 1, from: 28, to: 56)],
+        ).paint(spy, const Size(120, 56));
+        expect(spansAt(spy, 1), [(0, 28)]);
+      });
+
+      test('a stretch the yield lies outside of keeps its line whole', () {
+        final lane = timelineLaneGround(host);
+        final after = _PaintSpy();
+        sheet(
+          rows: [
+            (extent: 28, ground: lane),
+            (extent: 28, ground: host),
+            (extent: 28, ground: host),
+          ],
+          dashes: [(frame: 1, from: 56, to: 84)],
+        ).paint(after, const Size(120, 84));
+        expect(
+          spansAt(after, 1),
+          [(0, 56), (0, 28)],
+          reason: 'the host\'s line stops at the dashed row, and the lane\'s '
+              'before it is ruled to its own end',
+        );
+
+        final before = _PaintSpy();
+        sheet(
+          rows: [
+            (extent: 28, ground: host),
+            (extent: 28, ground: host),
+            (extent: 28, ground: lane),
+          ],
+          dashes: [(frame: 1, from: 0, to: 28)],
+        ).paint(before, const Size(120, 84));
+        expect(spansAt(before, 1), [(28, 84), (56, 84)]);
+      });
+
+      test('every row dashing it rules nothing there', () {
+        final spy = _PaintSpy();
+        sheet(
+          rows: threeRows,
+          dashes: [
+            for (final top in [0.0, 28.0, 56.0])
+              (frame: 1, from: top, to: top + 28),
+          ],
+        ).paint(spy, const Size(120, 84));
+        expect(spansAt(spy, 1), isEmpty);
+        expect(spansAt(spy, 2), [(0, 84)]);
+      });
+
+      test('the dashes are part of the value — a sheet whose dashes moved '
+          'repaints', () {
+        TimelineGridRows at(int frame) => TimelineGridRows(
+          threeRows,
+          dashes: [(frame: frame, from: 0, to: 28)],
+        );
+        expect(at(1), at(1));
+        expect(at(1).hashCode, at(1).hashCode);
+        expect(at(1), isNot(at(2)));
+        expect(
+          sheet(
+            rows: threeRows,
+            dashes: [(frame: 1, from: 0, to: 28)],
+          ).shouldRepaint(sheet(rows: threeRows)),
+          isTrue,
+        );
+      });
+    });
   });
 
   group('the rows', () {
@@ -199,6 +316,7 @@ void main() {
       baseTextStyle: const TextStyle(fontSize: 11),
       celContent: TimelineCelContentSource(
         hasContent: (_, _) => celHasContent,
+        cannotRead: (_, _) => false,
         revision: ValueNotifier<int>(0),
       ),
       paperGround: paperGround,

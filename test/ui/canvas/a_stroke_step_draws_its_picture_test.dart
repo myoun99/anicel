@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
+import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -181,10 +182,13 @@ void main() {
     }
   }
 
+  /// The rows' images, warmed at [level]'s quality — the one the view asks
+  /// for there; a row it has to wait for arrives in the middle of a stroke.
   Future<LayerFrameImageCache> imagesFor(
     WidgetTester tester,
-    List<CompositeNode<CanvasStackRow>> nodes,
-  ) async {
+    List<CompositeNode<CanvasStackRow>> nodes, {
+    int level = 0,
+  }) async {
     final images = LayerFrameImageCache(frameStore: storeWithCels());
     addTearDown(images.dispose);
     for (final request in requestsIn(nodes)) {
@@ -192,7 +196,7 @@ void main() {
         () => images.prepare(
           key: request.frameKey,
           canvasSize: canvasSize,
-          quality: PlaybackQuality.forLevel(0),
+          quality: PlaybackQuality.forLevel(level),
           sourceEffects: request.sourceEffects,
           inkSuffices: request.inkSuffices,
         ),
@@ -253,8 +257,10 @@ void main() {
   }
 
   /// A stroke painted step by step over [below], each step's screen
-  /// captured, and how many of its steps patched and drew their picture.
-  Future<({List<Uint8List> screens, int patched, int pictures})> stroke(
+  /// captured, and how many of its steps patched, drew their picture and
+  /// were composed apart.
+  Future<({List<Uint8List> screens, int patched, int pictures, int apart})>
+  stroke(
     WidgetTester tester, {
     required CanvasViewport viewport,
     List<CompositeNode<CanvasStackRow>> below = const [],
@@ -264,7 +270,13 @@ void main() {
     bool paintPaper = true,
   }) async {
     final all = nodes ?? [...below, activeRow];
-    final images = await imagesFor(tester, all);
+    final images = await imagesFor(
+      tester,
+      all,
+      level: displayLevelOf(
+        displayScaleOf(viewport.zoom, tester.view.devicePixelRatio),
+      ),
+    );
     final buffers = DisplayBufferCache();
     addTearDown(buffers.dispose);
     final surfaces = painters ?? onPaper;
@@ -292,6 +304,7 @@ void main() {
       screens: screens,
       patched: buffers.patchedCount,
       pictures: buffers.drawnCount,
+      apart: buffers.composedApartCount,
     );
   }
 
@@ -343,6 +356,42 @@ void main() {
     tester.view.physicalSize = view;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+  }
+
+  /// A stamp ghost over the stroke: a white 4×4 piece through `color`.
+  Future<ValueNotifier<CutStampPreview?>> aGhost(WidgetTester tester) async {
+    final ghostImage = await tester.runAsync(() {
+      final done = Completer<ui.Image>();
+      ui.decodeImageFromPixels(
+        Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 255),
+        4,
+        4,
+        ui.PixelFormat.rgba8888,
+        done.complete,
+      );
+      return done.future;
+    });
+    addTearDown(ghostImage!.dispose);
+    final ghost = ValueNotifier<CutStampPreview?>(
+      CutStampPreview(
+        piece: CutPiece(
+          image: BrushStampImage(
+            id: 'ghost',
+            width: 4,
+            height: 4,
+            rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 255),
+          ),
+          originLeft: 0,
+          originTop: 0,
+        ),
+        image: ghostImage,
+        canvasRect: const Rect.fromLTWH(30.5, 40.25, 4, 4),
+        opacity: 1,
+        blendMode: BrushBlendMode.color,
+      ),
+    );
+    addTearDown(ghost.dispose);
+    return ghost;
   }
 
   group('a step over the real base draws its picture, and the screen is the '
@@ -543,40 +592,9 @@ void main() {
     });
 
     testWidgets('with a stamp ghost on the layer', (tester) async {
-      final ghostImage = await tester.runAsync(() {
-        final done = Completer<ui.Image>();
-        ui.decodeImageFromPixels(
-          Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 255),
-          4,
-          4,
-          ui.PixelFormat.rgba8888,
-          done.complete,
-        );
-        return done.future;
-      });
-      addTearDown(ghostImage!.dispose);
-      final ghost = ValueNotifier<CutStampPreview?>(
-        CutStampPreview(
-          piece: CutPiece(
-            image: BrushStampImage(
-              id: 'ghost',
-              width: 4,
-              height: 4,
-              rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 255),
-            ),
-            originLeft: 0,
-            originTop: 0,
-          ),
-          image: ghostImage,
-          canvasRect: const Rect.fromLTWH(30.5, 40.25, 4, 4),
-          opacity: 1,
-          blendMode: BrushBlendMode.color,
-        ),
-      );
-      addTearDown(ghost.dispose);
       await expectHeads(
         tester,
-        painters: strokeIn(TileCoord(x: 1, y: 1), ghost: ghost),
+        painters: strokeIn(TileCoord(x: 1, y: 1), ghost: await aGhost(tester)),
       );
     });
 
@@ -587,6 +605,167 @@ void main() {
       } finally {
         debugDefaultTargetPlatformOverride = null;
       }
+    });
+  });
+
+  // 🚨★★★F-287: a step over a stack holding a blend that is not in place is
+  // composed APART. On the Windows app the clip such a step stood on did
+  // not hold the blend, which was laid over the carried pixels once more
+  // on every patch (the paint pass's `_recomposeOverCarried` has the
+  // measurement). This engine's clip holds, so what is pinned here is the
+  // route — every patch goes apart, and only such a stack's — and that the
+  // route lays down the bytes the clip did.
+  group('F-287 — a step through a blend that is not in place is composed '
+      'apart, and lays the bytes the clip did', () {
+    const multiplied = LayerBlendMode.multiply;
+    // The user's: two rows in multiply, a normal row drawn on above.
+    final usersStack = <CompositeNode<CanvasStackRow>>[
+      row('below', blendMode: multiplied),
+      row('aside', blendMode: multiplied),
+      activeRow,
+    ];
+    final stacks = <String, List<CompositeNode<CanvasStackRow>>>{
+      'two rows in multiply under the live row': usersStack,
+      'the live row itself in screen': [
+        row('below'),
+        const CompositeLeaf<CanvasStackRow>(
+          CanvasActiveLayerRow(opacity: 1, blendMode: LayerBlendMode.screen),
+        ),
+      ],
+      'a folder in overlay': [
+        CompositeGroup<CanvasStackRow>(
+          children: [row('below')],
+          opacity: 1,
+          blendMode: LayerBlendMode.overlay,
+        ),
+        activeRow,
+      ],
+      'a row in multiply inside a normal folder': [
+        CompositeGroup<CanvasStackRow>(
+          children: [row('below', blendMode: multiplied)],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+        ),
+        activeRow,
+      ],
+      'a row in multiply under an adjustment': [
+        CompositeAdjustment<CanvasStackRow>(
+          children: [row('below', blendMode: multiplied)],
+          effects: [
+            ResolvedLayerEffect(
+              kind: EffectKind.brightnessContrast,
+              values: const [20, 15],
+            ),
+          ],
+          mix: 1,
+        ),
+        activeRow,
+      ],
+    };
+    final views = <String, (CanvasViewport, bool)>{
+      '100%': (CanvasViewport(), true),
+      // Below 100% the buffer is a level image: the region composed apart
+      // lands 1:1 only if it is drawn at the buffer's own scale.
+      '50%': (CanvasViewport(zoom: 0.5), true),
+      // Translucent where nothing is drawn: a blit that blended instead of
+      // replacing would lay the step over its own previous frame.
+      '100%, no paper': (CanvasViewport(), false),
+    };
+
+    Future<void> expectApart(
+      WidgetTester tester, {
+      required List<CompositeNode<CanvasStackRow>> nodes,
+      required CanvasViewport viewport,
+      bool paintPaper = true,
+      List<BitmapSurfacePainter>? painters,
+    }) async {
+      useView(tester);
+      final apart = await stroke(
+        tester,
+        viewport: viewport,
+        nodes: nodes,
+        painters: painters,
+        paintPaper: paintPaper,
+      );
+      expect(
+        apart.patched,
+        greaterThanOrEqualTo(steps),
+        reason: 'the steps did not patch, so nothing here was compared',
+      );
+      expect(apart.apart, apart.patched, reason: 'a patch stood on its clip');
+      debugRecomposeApart = false;
+      try {
+        final clipped = await stroke(
+          tester,
+          viewport: viewport,
+          nodes: nodes,
+          painters: painters,
+          paintPaper: paintPaper,
+        );
+        expect(clipped.apart, 0, reason: 'the reference went apart');
+        expectSameScreens(apart.screens, clipped.screens);
+      } finally {
+        debugRecomposeApart = true;
+      }
+    }
+
+    for (final MapEntry(key: stack, value: nodes) in stacks.entries) {
+      for (final MapEntry(key: at, value: (viewport, paintPaper))
+          in views.entries) {
+        testWidgets('$stack, at $at', (tester) async {
+          await expectApart(
+            tester,
+            nodes: nodes,
+            viewport: viewport,
+            paintPaper: paintPaper,
+          );
+        });
+      }
+    }
+
+    testWidgets('a stamp ghost on the live row, whatever the rows wear', (
+      tester,
+    ) async {
+      await expectApart(
+        tester,
+        nodes: [row('below'), activeRow],
+        viewport: CanvasViewport(),
+        painters: strokeIn(TileCoord(x: 1, y: 1), ghost: await aGhost(tester)),
+      );
+    });
+
+    // A region composed apart is an image of what it is given, and a step's
+    // dirty rect is the live tiles it changed — which reach past the view.
+    testWidgets('a step that changes only what lies past the view composes '
+        'nothing apart: the region is held to the buffer', (tester) async {
+      useView(tester);
+      // At 200% the view holds the canvas's top-left quarter; the stroke
+      // is in its bottom-right tile, a tile away from it.
+      final made = await stroke(
+        tester,
+        viewport: CanvasViewport(zoom: 2),
+        nodes: usersStack,
+        painters: strokeIn(TileCoord(x: 3, y: 3)),
+      );
+      expect(
+        made.patched,
+        greaterThanOrEqualTo(steps),
+        reason: 'the steps did not patch, so nothing here was asked',
+      );
+      expect(made.apart, 0, reason: 'a step composed apart past the buffer');
+    });
+
+    testWidgets('…and a stack that blends in place stands on its clip, its '
+        'steps still drawn as their pictures', (tester) async {
+      useView(tester);
+      final made = await stroke(
+        tester,
+        viewport: CanvasViewport(),
+        below: [row('below'), row('aside')],
+      );
+      expect(made.patched, greaterThanOrEqualTo(steps));
+      expect(made.apart, 0);
+      expect(made.pictures, steps);
     });
   });
 

@@ -8,6 +8,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
@@ -46,7 +47,7 @@ void main() {
   /// does it; the rasterizer is handed back for the promotion.
   BrushLiveStrokeRasterizer stroke(ActiveStrokeOverlayModel model) {
     final rasterizer = BrushLiveStrokeRasterizer(
-      canvasSize: canvasSize,
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
       tileSize: tileSize,
     );
     final dabs = strokeDabs();

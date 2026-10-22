@@ -41,7 +41,8 @@ void main() {
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    final name = 'storyboard-se-lane-toggle-${session.activeTrack.id.value}-1';
+    final name =
+        'storyboard-lane-toggle-${session.activeTrack.seLayers.first.id}';
     LayerFoldTwirl twirl() => tester.widget<LayerFoldTwirl>(
       find.byWidgetPredicate((w) => w is LayerFoldTwirl && w.name == name),
     );

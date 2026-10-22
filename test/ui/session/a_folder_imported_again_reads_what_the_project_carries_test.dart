@@ -9,14 +9,16 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/solid_png_fixture.dart';
-import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
 /// Audit 2026-09-24 (card `carried-bytes-audit-0924`): the cut-folder door
-/// asks the two questions every placement door asks — whether the project
-/// already holds a file, and where a file's bytes are (the project's own
-/// copy first). 🪦It staged a second copy of what the project already
-/// carried, and baked its cels from the files on disk.
+/// reads a file's bytes where every placement door reads them — the
+/// project's own copy first. 🪦It baked its cels from the files on disk.
+///
+/// ↩️It also registered the folder's scans and movie, and asked whether the
+/// project held them already, so a folder brought in again staged no second
+/// copy. Those are the import window's rows now (F-429-Q4), registered
+/// through the pool, which takes no file twice.
 void main() {
   late Directory directory;
   late EditorSessionManager session;
@@ -53,42 +55,6 @@ void main() {
         ))!,
       );
 
-  Future<void> importTheFolder(WidgetTester tester, {required bool carry}) =>
-      tester.runAsync(
-        () => session.cutFolderDoor.importCutFolder(
-          folderPath: folder,
-          copyIntoProject: carry,
-        ),
-      );
-
-  testWidgets('a folder imported again copies nothing the project already '
-      'carries', (tester) async {
-    session = aSession();
-    // A timesheet scan registers in the pool rather than baking.
-    final sheet = await scanned(tester, '069_ts.png');
-    await importTheFolder(tester, carry: true);
-    expect(
-      stagedCopyIn(session, sheet),
-      isNotNull,
-      reason: 'the premise: carried, it was staged at the import',
-    );
-    await saveProject(tester, session, directory);
-    expect(
-      session.mediaStagingStore.holdsAnyCopyOf(sheet),
-      isFalse,
-      reason: 'the premise: the save absorbed the staged copy',
-    );
-
-    await importTheFolder(tester, carry: true);
-
-    expect(
-      session.mediaStagingStore.holdsAnyCopyOf(sheet),
-      isFalse,
-      reason: 'the project already holds it — nothing is copied again',
-    );
-    await tester.pumpAndSettle();
-  });
-
   testWidgets('a scan the project carries bakes from the project\'s copy, '
       'whatever sits on disk under its name', (tester) async {
     session = aSession();
@@ -99,7 +65,9 @@ void main() {
     await saveProject(tester, session, directory);
     OriginalFate.replacedBySomethingElse.befall(scan);
 
-    await importTheFolder(tester, carry: false);
+    await tester.runAsync(
+      () => session.cutFolderDoor.importCutFolder(folderPath: folder),
+    );
 
     final cut = session.repository
         .requireProject()

@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
@@ -80,8 +81,8 @@ void main() {
     expect(line, findsWidgets, reason: 'fixture: the end line is built');
     for (final element in line.evaluate()) {
       final rect = tester.getRect(find.byWidget(element.widget));
-      final farEdge = axis == Axis.horizontal ? rect.right : rect.bottom;
-      final viewEdge = axis == Axis.horizontal ? view.right : view.bottom;
+      final farEdge = endAlong(axis, rect);
+      final viewEdge = endAlong(axis, view);
       expect(
         farEdge,
         lessThanOrEqualTo(viewEdge),

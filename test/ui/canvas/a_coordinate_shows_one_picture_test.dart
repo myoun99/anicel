@@ -12,6 +12,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -192,7 +193,7 @@ void main() {
     // rasterizer's exact commit math, pre-blended against the cel into the
     // overlay's result tiles.
     final rasterizer = BrushLiveStrokeRasterizer(
-      canvasSize: canvasSize,
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
       tileSize: tileSize,
     );
     final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)

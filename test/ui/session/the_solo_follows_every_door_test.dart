@@ -27,8 +27,11 @@ void main() {
     return s;
   }
 
+  /// The eyes the solo answers for — not the camera's, the camera view
+  /// (F-363-Q2).
   Map<LayerId, bool> eyesOf(EditorSessionManager s) => {
-    for (final layer in s.layers) layer.id: layer.isVisible,
+    for (final layer in s.layers)
+      if (layer.kind.hasPictureEye) layer.id: layer.isVisible,
   };
 
   Set<LayerId> shownIn(EditorSessionManager s) => {

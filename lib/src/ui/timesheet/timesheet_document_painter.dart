@@ -10,6 +10,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/cel_photo.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/se_line_type.dart' show SeLineType;
@@ -22,15 +23,16 @@ import '../../models/timesheet_sheet_kind.dart';
 import '../../models/timesheet_words.dart';
 import '../../models/transition_geometry.dart'
     show TransitionSides, transitionSidesOf;
-import '../text/dialogue_fit_layout.dart' show dialogueGlyphCenters;
 import '../text/dialogue_fit_paint.dart';
 import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;
+import '../canvas/display_resample.dart' show displayScaleOf;
 import '../canvas/viewport_canvas_transform.dart';
 import '../text/vertical_writing_text.dart';
 import '../text/word_condensation.dart' show paintScaledText;
 import '../theme/app_theme.dart';
 import '../timeline/inbetween_mark_painter.dart';
+import '../timeline/se_crossing_mark_painter.dart';
 import '../timeline/timeline_span_name.dart' show instructionLabelInset;
 import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount, timelineDrawnEndPreviewFrameCount;
@@ -38,6 +40,7 @@ import '../timeline/timeline_drag_preview.dart';
 import '../timeline/timeline_frame_ruler_painter.dart'
     show timelineRulerSecondsLabel;
 import '../repaint_props.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
 import '../timeline/memo_token.dart';
@@ -303,7 +306,7 @@ class TimesheetDocumentLayout {
   static const double bookTagFontSize = 9;
   static const double bookTagFloorGap = 2;
 
-  /// Where each book's tag stands over the ACTION block of [half] of
+  /// Where each book's tag stands over its block of [half] of
   /// [pageIndex]: the x of its boundary and the tag's bottom edge. The last
   /// book's tag sits on the memo band's bottom and each before it a step
   /// higher — the reference sheets' diagonal (유저 2026-09-25, 사진 셋),
@@ -385,6 +388,21 @@ class TimesheetDocumentLayout {
     }
     return boxes;
   }
+
+  /// What a header box prints that someone TYPED — the work's title and
+  /// episode, the cut's name, its sheet worker — or null for a box the
+  /// sheet counts itself (the length, the page). Shared by the painter and
+  /// the tap-to-edit layer, so the field opens on the printed words.
+  String? typedHeaderValue(TimesheetHeaderField field) => switch (field) {
+    TimesheetHeaderField.episode => document.episode,
+    TimesheetHeaderField.title => document.title,
+    // Written by hand: a scene belongs to a group of cuts, which the
+    // conte will make (유저 09-25), not to the work.
+    TimesheetHeaderField.scene => '',
+    TimesheetHeaderField.cut => document.cutName,
+    TimesheetHeaderField.name => document.artist,
+    TimesheetHeaderField.time || TimesheetHeaderField.sheet => null,
+  };
 
   /// The memo band rect of a page — directly under the header band, same
   /// grid-aligned edges.
@@ -542,11 +560,16 @@ class TimesheetDocumentPainter extends CustomPainter
     this.effectiveRatio = 1.0,
     this.ink = const [],
     this.inkImageFor,
+    this.inkPhotosFor,
     this.inkSurfaceFor,
     this.liveInkKeys = const {},
+    this.imageFor,
     Listenable? inkRepaint,
+    Listenable? imageRepaint,
   }) : accent = AppColors.accent,
-       super(repaint: Listenable.merge([dragPreview, inkRepaint]));
+       super(
+         repaint: Listenable.merge([dragPreview, inkRepaint, imageRepaint]),
+       );
 
   /// The windows the sheet's ink shows through — the walk the brush writes
   /// through too (`timesheetInkWindows`), handed in by whoever built it.
@@ -555,6 +578,10 @@ class TimesheetDocumentPainter extends CustomPainter
   /// A window's baked ink raster, or null to print none there — for an
   /// EXPORT, which has no view to draw it through.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// The photos laid on a window's ink (I-97), for an export, beside its
+  /// raster — each drawn from its file by [imageFor].
+  final List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor;
 
   /// A window's ink surface ON SCREEN, printed as the brush's live window
   /// paints it ([SheetInkOnScreen], F-215).
@@ -566,10 +593,16 @@ class TimesheetDocumentPainter extends CustomPainter
   @override
   final Set<BrushFrameKey> liveInkKeys;
 
+  /// The pool files the ink's photos are drawn from (I-97); a landed decode
+  /// repaints through `imageRepaint`.
+  @override
+  final SheetImageLookup? imageFor;
+
   /// Device pixels per LOGICAL pixel — monitor ratio × UI scale; the
-  /// viewport transform lands the paper on the device grid with it.
-  /// Defaulting to 1.0 keeps every focused test and the PSD export path
-  /// unchanged.
+  /// viewport transform lands the paper on the device grid with it. An
+  /// export, which has no viewport, says here how many of its pixels a
+  /// unit of the sheet is — what its photos are sampled for (I-97).
+  /// Defaulting to 1.0 keeps every focused test unchanged.
   @override
   final double effectiveRatio;
 
@@ -629,7 +662,7 @@ class TimesheetDocumentPainter extends CustomPainter
   final CutId? cutId;
 
   bool _draws(SheetPaintLayer layer) =>
-      layers == null || layers!.contains(layer);
+      drawsSheetLayer(layers, layer);
 
   bool get _drawPaper => _draws(SheetPaintLayer.paper);
   bool get _drawForm => _draws(SheetPaintLayer.form);
@@ -789,19 +822,27 @@ class TimesheetDocumentPainter extends CustomPainter
   /// the switch off (every sheet's default since 09-25) the timesheet's
   /// writing vanished while the conte's and the envelope's stayed (유저
   /// 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」).
+  ///
+  /// A window's photos (I-97) lie under its handwriting, sampled for the
+  /// device pixels a unit of the sheet is ([effectiveRatio]).
   void _paintInk(Canvas canvas) {
-    final imageFor = inkImageFor;
-    if (imageFor == null) {
+    final rasterFor = inkImageFor;
+    final photosFor = inkPhotosFor;
+    if (rasterFor == null && photosFor == null) {
       return;
     }
     for (final window in ink) {
       if (liveInkKeys.contains(window.key)) {
         continue;
       }
-      final image = imageFor(window.key);
-      if (image != null) {
-        paintSheetInkWindow(canvas, image, window.placement);
-      }
+      paintSheetInkWindow(
+        canvas,
+        rasterFor?.call(window.key),
+        window.placement,
+        photos: photosFor?.call(window.key) ?? const [],
+        photoFiles: imageFor,
+        displayScale: displayScaleOf(viewport?.zoom ?? 1, effectiveRatio),
+      );
     }
   }
 
@@ -927,6 +968,11 @@ class TimesheetDocumentPainter extends CustomPainter
     bool centeredAtY = false,
     double? maxWidth,
   }) {
+    // A word's room is its column's less a margin, and the S group's
+    // columns share the form's fixed width: past twenty of them that room
+    // went below zero and stopped the sheet on an assertion (2026-10-21,
+    // 26 S rows). No room at all is the least a word is laid in.
+    final room = math.max(0.0, maxWidth ?? double.infinity);
     final painter = TextPainter(
       text: TextSpan(
         text: text,
@@ -935,7 +981,7 @@ class TimesheetDocumentPainter extends CustomPainter
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: '…',
-    )..layout(maxWidth: maxWidth ?? double.infinity);
+    )..layout(maxWidth: room);
     final across = centeredAtX
         ? anchor - Offset(painter.width / 2, 0)
         : rightAlignedAtX

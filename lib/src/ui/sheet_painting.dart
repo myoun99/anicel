@@ -7,15 +7,20 @@ import '../core/convex_clip.dart' show convexIntersection;
 import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
+import '../models/cel_photo.dart';
 import '../models/sheet_marks.dart';
 import '../models/sheet_paint_layer.dart';
 import 'canvas/display_resample.dart';
 import 'canvas/viewport_canvas_transform.dart';
 import 'media/viewer_render_tier.dart' show pictureRenderWidthFor;
+import 'sheet/sheet_image_cache.dart' show SheetImageLookup;
+import 'sheet/sheet_photos.dart' show paintSheetPhotos;
 
-/// Draws one baked ink window: the raster where its [placement] lays it,
-/// clipped to the window so a stroke that ran past the box does not bleed
-/// into its neighbour.
+/// Draws one baked ink window, for an export, which has no view to draw it
+/// through: the [photos] laid on its surface (I-97), each from its file
+/// ([photoFiles]), and the raster over them, where its [placement] lays
+/// them — clipped to the window so a stroke that ran past the box does not
+/// bleed into its neighbour. A window with neither draws nothing.
 ///
 /// ⛔EVERY SHEET DRAWS INK THIS WAY. The conte page and the cut envelope
 /// each wrote out the save / clip / drawImageRect / restore with the same
@@ -23,20 +28,77 @@ import 'media/viewer_render_tier.dart' show pictureRenderWidthFor;
 /// part that has to agree with whatever rendered the ink, so two copies of
 /// it is two chances to scale a sheet's ink differently from the sheet it
 /// was drawn on.
+///
+/// The photos are drawn by the screen's own painter ([paintSheetPhotos]),
+/// sampled by the display's law: [displayScale] is how many target pixels
+/// one unit of the paper is (`displayScaleOf`).
 void paintSheetInkWindow(
   Canvas canvas,
-  ui.Image image,
-  SheetInkPlacement placement,
-) {
+  ui.Image? image,
+  SheetInkPlacement placement, {
+  required List<CelPhoto> photos,
+  required SheetImageLookup? photoFiles,
+  required double displayScale,
+}) {
+  final files = photoFiles;
+  final drawsPhotos = photos.isNotEmpty && files != null;
+  if (image == null && !drawsPhotos) {
+    return;
+  }
   canvas.save();
   canvas.clipRect(placement.window);
-  canvas.drawImageRect(
-    image,
-    Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-    placement.rasterRect(image.width, image.height),
-    Paint()..filterQuality = FilterQuality.medium,
-  );
+  if (drawsPhotos) {
+    final paperFromSurface = sheetInkPaperFromSurface(placement);
+    canvas.save();
+    canvas.transform(paperFromSurface.storage);
+    paintSheetPhotos(
+      canvas,
+      photos,
+      imageFor: files,
+      // Target pixels per pixel of the surface, on its narrower axis.
+      displayScale:
+          displayScale *
+          math.min(paperFromSurface.entry(0, 0), paperFromSurface.entry(1, 1)),
+    );
+    canvas.restore();
+  }
+  if (image != null) {
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      placement.rasterRect(image.width, image.height),
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+  }
   canvas.restore();
+}
+
+/// Where [placement] lays its surface on the paper, as a transform: what
+/// is drawn in the surface's own pixels rather than laid as its raster —
+/// the photos on it (I-97) — on an export's canvas and in the PDF. Read off
+/// [SheetInkPlacement.paperOf] itself, so the two cannot drift.
+Matrix4 sheetInkPaperFromSurface(SheetInkPlacement placement) {
+  final origin = placement.paperOf(Offset.zero);
+  final x = placement.paperOf(const Offset(1, 0)) - origin;
+  final y = placement.paperOf(const Offset(0, 1)) - origin;
+  return Matrix4(
+    x.dx,
+    x.dy,
+    0,
+    0,
+    y.dx,
+    y.dy,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    origin.dx,
+    origin.dy,
+    0,
+    1,
+  );
 }
 
 /// Draws [image] contained in [slot] — as large as fits, centred, its own
@@ -426,12 +488,20 @@ class SheetMarkImages {
     this.pictureFor,
     this.imageFor,
     this.inkImageFor,
+    this.inkPhotosFor,
     this.liveInkKeys = const {},
   });
 
   final SheetPictureLookup? pictureFor;
-  final ui.Image? Function(String assetPath)? imageFor;
+
+  /// A media image by its asset path — the logo, and the files the ink's
+  /// photos are drawn from (I-97).
+  final SheetImageLookup? imageFor;
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// The photos laid on a window's ink (I-97), for an export — beside its
+  /// raster ([inkImageFor]), from the same surface.
+  final List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor;
 
   /// Keys a LIVE input window is already showing: skipped, so translucent
   /// ink never composites twice.
@@ -514,7 +584,7 @@ class SheetCanvasPrinter {
       canvas.clipRect(Offset.zero & size);
     }
     for (final mark in marks) {
-      if (layers?.contains(mark.layer) ?? true) {
+      if (drawsSheetLayer(layers, mark.layer)) {
         page.printMark(mark);
       }
     }
@@ -561,19 +631,38 @@ class _SheetCanvas {
             ),
           );
         }
-      case SheetInk(:final key, :final placement):
-        final image = images.liveInkKeys.contains(key)
-            ? null
-            : images.inkImageFor?.call(key);
-        if (image != null) {
-          canvas.save();
-          _yieldToPictures(placement.window);
-          _inPaperSpace(
-            () => paintSheetInkWindow(canvas, image, placement),
-          );
-          canvas.restore();
-        }
+      case SheetInk():
+        _ink(mark);
     }
+  }
+
+  /// A window's ink, for an export: its photos and its raster, out of the
+  /// pictures over it — but for a window a live view is showing. The screen
+  /// hands neither, and prints its ink as the live windows draw it.
+  void _ink(SheetInk ink) {
+    final images = printer.images;
+    final key = ink.key;
+    if (images.liveInkKeys.contains(key)) {
+      return;
+    }
+    final raster = images.inkImageFor?.call(key);
+    final photos = images.inkPhotosFor?.call(key) ?? const <CelPhoto>[];
+    if (raster == null && photos.isEmpty) {
+      return;
+    }
+    canvas.save();
+    _yieldToPictures(ink.placement.window);
+    _inPaperSpace(
+      () => paintSheetInkWindow(
+        canvas,
+        raster,
+        ink.placement,
+        photos: photos,
+        photoFiles: images.imageFor,
+        displayScale: displayScaleOf(grid.scale, grid.devicePixelRatio),
+      ),
+    );
+    canvas.restore();
   }
 
   /// No ink of [window] shows where a picture over it shows its cut's

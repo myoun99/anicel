@@ -23,7 +23,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectGroupLaneId;
 import 'package:anicel/src/ui/timeline/held_row_pin.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show SectionBandZone;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
@@ -280,6 +284,105 @@ Project _folderWithMemberProject() {
   );
 }
 
+/// One cut holding [layers] (model order, bottom → top) under a camera.
+Project _stackProject(List<Layer> layers) {
+  return Project(
+    id: const ProjectId('drag-project'),
+    name: 'Drag Project',
+    createdAt: DateTime.utc(2026, 10, 18),
+    tracks: [
+      Track(
+        id: const TrackId('drag-track'),
+        name: 'Video Track',
+        cuts: [
+          Cut(
+            id: const CutId('drag-cut'),
+            name: 'Drag Cut',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+            camera: CutCamera.empty(),
+            layers: [
+              ...layers,
+              Layer(
+                id: const LayerId('cam'),
+                name: 'Camera',
+                kind: LayerKind.camera,
+                frames: const [],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+/// A folder of two over a loose row. Rail top-down: Camera, X, F, M2, M1, A.
+Project _folderMembersProject() => _stackProject([
+  Layer(id: const LayerId('a'), name: 'A', frames: const []),
+  Layer(
+    id: const LayerId('m1'),
+    name: 'M1',
+    frames: const [],
+    folderId: const LayerId('f'),
+  ),
+  Layer(
+    id: const LayerId('m2'),
+    name: 'M2',
+    frames: const [],
+    folderId: const LayerId('f'),
+  ),
+  createFolderLayer(id: const LayerId('f'), name: 'F'),
+  Layer(id: const LayerId('x'), name: 'X', frames: const []),
+]);
+
+/// The same folder with nothing loose above it. Rail top-down: Camera,
+/// transitions, F, M2, M1, A.
+Project _topFolderProject() => _stackProject([
+  Layer(id: const LayerId('a'), name: 'A', frames: const []),
+  Layer(
+    id: const LayerId('m1'),
+    name: 'M1',
+    frames: const [],
+    folderId: const LayerId('f'),
+  ),
+  Layer(
+    id: const LayerId('m2'),
+    name: 'M2',
+    frames: const [],
+    folderId: const LayerId('f'),
+  ),
+  createFolderLayer(id: const LayerId('f'), name: 'F'),
+]);
+
+/// The conte with a row riding it on each side, two loose rows above.
+/// Rail top-down: Camera, B, A, Conte+1, Conte, Conte-1.
+Project _conteGroupProject() => _stackProject([
+  Layer(
+    id: const LayerId('under'),
+    name: 'Conte-1',
+    kind: LayerKind.storyboard,
+    frames: const [],
+    attachedToLayerId: const LayerId('conte'),
+    attachedPlacement: AttachedPlacement.below,
+  ),
+  Layer(
+    id: const LayerId('conte'),
+    name: 'Conte',
+    kind: LayerKind.storyboard,
+    frames: const [],
+  ),
+  Layer(
+    id: const LayerId('over'),
+    name: 'Conte+1',
+    kind: LayerKind.storyboard,
+    frames: const [],
+    attachedToLayerId: const LayerId('conte'),
+  ),
+  Layer(id: const LayerId('a'), name: 'A', frames: const []),
+  Layer(id: const LayerId('b'), name: 'B', frames: const []),
+]);
+
 void main() {
   testWidgets('dragging a rail row up moves it up the stack', (tester) async {
     await _pump(tester);
@@ -427,16 +530,22 @@ void main() {
     final before = chain();
     expect(before.length, 2);
 
-    await tester.tap(
-      find.named('timeline-lane-toggle-b'),
-    );
+    // The add shows the row's lanes and each new header open (F-396); the
+    // headers are shut again so one row's drag carries the first past the
+    // second.
+    final effects = session.requireActiveCut.layers
+        .firstWhere((layer) => layer.id == const LayerId('b'))
+        .effects;
+    for (final effect in effects) {
+      session.layerSwitches.setLayerLaneGroupExpanded(
+        const LayerId('b'),
+        effectGroupLaneId(effect.id),
+        expanded: false,
+      );
+    }
     await tester.pumpAndSettle();
 
-    final firstId = session.requireActiveCut.layers
-        .firstWhere((layer) => layer.id == const LayerId('b'))
-        .effects
-        .first
-        .id;
+    final firstId = effects.first.id;
     final header = find.byKey(
       ValueKey<String>('timeline-lane-label-b-fx-group:${firstId.value}'),
     );
@@ -620,10 +729,21 @@ void main() {
     await gesture.moveBy(const Offset(0, -28));
     await tester.pump();
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-row-swallow-b')),
-      findsOneWidget,
+    final swallow = find.byKey(
+      const ValueKey<String>('timeline-row-swallow-b'),
     );
+    expect(swallow, findsOneWidget);
+    // What the drop does is said at the row's FAR end, centred across it.
+    final box = tester.getRect(swallow);
+    final badge = tester.getRect(
+      find.descendant(of: swallow, matching: find.byType(Text)),
+    );
+    expect(
+      box.right - badge.right,
+      lessThan(badge.left - box.left),
+      reason: 'the badge stands at the end the row runs to',
+    );
+    expect(badge.center.dy, moreOrLessEquals(box.center.dy, epsilon: 0.5));
 
     await gesture.up();
     await tester.pumpAndSettle();
@@ -829,6 +949,334 @@ void main() {
 
     expect(_order(session), ['q', 'b1', 'b1up', 'p', 'b2down', 'b2']);
     expect(_layerOf(session, 'p').attachedToLayerId, isNull);
+  });
+
+  /// [id], held at its name, its pointer put [fraction] of the way down
+  /// [into]'s row — 0 its top edge, 1 its bottom. A fifth from an edge is a
+  /// line's; the middle of a row is the row's own (R5 #15).
+  Future<TestGesture> lift(WidgetTester tester, String id) async {
+    final grip = _railRowGrip(id);
+    await tester.ensureVisible(grip);
+    await tester.pumpAndSettle();
+    await _selectRow(tester, grip);
+    final gesture = await tester.startGesture(
+      Offset(tester.getCenter(grip).dx, tester.getCenter(_railRow(id)).dy),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    return gesture;
+  }
+
+  Future<void> pointInto(
+    WidgetTester tester,
+    TestGesture gesture,
+    String into, {
+    required double fraction,
+    required double dx,
+  }) async {
+    final row = tester.getRect(_railRow(into));
+    await gesture.moveTo(Offset(dx, row.top + row.height * fraction));
+    await tester.pump();
+  }
+
+  Finder caretBefore(String id) =>
+      find.byKey(ValueKey<String>('timeline-row-caret-before-$id'));
+
+  final anyCaret = find.byWidgetPredicate(
+    (widget) =>
+        widget.key is ValueKey<String> &&
+        (widget.key! as ValueKey<String>).value.startsWith(
+          'timeline-row-caret-',
+        ),
+  );
+
+  testWidgets('🚨F-312 (10-08): the OUTERMOST attach row lets go where it '
+      'stands — on its own edge, in the half past its group', (tester) async {
+    // 유저: 「가장 바깥에 있는 어태치레이어는 그게 적용안됨. 적용되도록하고 다른
+    // 곳에서도 법 다른거있으면 통일」. B2-1 is B2's outermost row below it,
+    // B1+1 B1's above it, and the line they share is both groups' edge.
+    await _pump(tester, project: _facingGroupsProject());
+    final session = _sessionOf(tester);
+    final dx = tester.getCenter(_railRowGrip('b2down')).dx;
+
+    var gesture = await lift(tester, 'b2down');
+    await pointInto(tester, gesture, 'b2down', fraction: 0.85, dx: dx);
+    expect(anyCaret, findsNothing, reason: 'in its own row it goes nowhere');
+    await pointInto(tester, gesture, 'b1up', fraction: 0.15, dx: dx);
+    expect(caretBefore('b1up'), findsOneWidget, reason: 'its own edge');
+    expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['q', 'b1', 'b1up', 'b2down', 'b2', 'p']);
+    expect(_layerOf(session, 'b2down').attachedToLayerId, isNull);
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(_layerOf(session, 'b2down').attachedToLayerId, const LayerId('b2'));
+
+    // And B1+1 from below, over the same line.
+    gesture = await lift(tester, 'b1up');
+    await pointInto(tester, gesture, 'b1up', fraction: 0.15, dx: dx);
+    expect(anyCaret, findsNothing, reason: 'in its own row it goes nowhere');
+    await pointInto(tester, gesture, 'b2down', fraction: 0.85, dx: dx);
+    expect(caretBefore('b1up'), findsOneWidget, reason: 'its own edge');
+    expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['q', 'b1', 'b1up', 'b2down', 'b2', 'p']);
+    expect(_layerOf(session, 'b1up').attachedToLayerId, isNull);
+  });
+
+  testWidgets('🚨F-312 (10-08): a FOLDER\'s bottom line splits the same way '
+      '— in from inside, out from past it, and its last member goes out '
+      'where it stands', (tester) async {
+    await _pump(tester, project: _folderMembersProject());
+    final session = _sessionOf(tester);
+    final dx = tester.getCenter(_railRowGrip('m1')).dx;
+    final out = find.text(AppText.strings.tlDropOutOfFolder);
+
+    var gesture = await lift(tester, 'm1');
+    await pointInto(tester, gesture, 'a', fraction: 0.15, dx: dx);
+    expect(caretBefore('a'), findsOneWidget);
+    expect(out, findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['a', 'm1', 'm2', 'x']);
+    expect(_layerOf(session, 'm1').folderId, isNull);
+    session.undo();
+    await tester.pumpAndSettle();
+
+    // M2 to the folder's bottom, with the pointer still in M1: it stays in.
+    gesture = await lift(tester, 'm2');
+    await pointInto(tester, gesture, 'm1', fraction: 0.85, dx: dx);
+    expect(caretBefore('a'), findsOneWidget);
+    expect(out, findsNothing, reason: 'still the folder\'s');
+    // …and past M1 into A, the same line lets it out.
+    await pointInto(tester, gesture, 'a', fraction: 0.15, dx: dx);
+    expect(caretBefore('a'), findsOneWidget);
+    expect(out, findsOneWidget);
+    await pointInto(tester, gesture, 'm1', fraction: 0.85, dx: dx);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['a', 'm2', 'm1', 'x']);
+    expect(_layerOf(session, 'm2').folderId, const LayerId('f'));
+  });
+
+  testWidgets('🚨F-423: a member of the TOP folder carried over the camera '
+      'rows lands above its folder, out of it — as over a loose row there', (
+    tester,
+  ) async {
+    // 유저 2026-10-20: 「선택한 파일을 폴더 위로 옮기는게 불가. 위 폴더밖에
+    // 레이어가 존재해야만 이동되는거같은데」. The camera rows take no drop,
+    // so the line they point at is the nearest one the drag may draw.
+    await _pump(tester, project: _topFolderProject());
+    final session = _sessionOf(tester);
+    final dx = tester.getCenter(_railRowGrip('m1')).dx;
+
+    final gesture = await lift(tester, 'm1');
+    await pointInto(tester, gesture, 'cam', fraction: 0.8, dx: dx);
+    expect(caretBefore('f'), findsOneWidget);
+    expect(find.text(AppText.strings.tlDropOutOfFolder), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    final ids = [
+      for (final layer in session.requireActiveCut.layers) layer.id.value,
+    ];
+    expect(ids.indexOf('m1'), greaterThan(ids.indexOf('f')));
+    expect(_layerOf(session, 'm1').folderId, isNull);
+  });
+
+  testWidgets('🚨F-423②: what a drop draws on a row — the line\'s notice, '
+      'the swallow\'s outline — starts clear of the section zone', (
+    tester,
+  ) async {
+    // 유저 2026-10-20: 「ㅁㅁ 밖으로 안으로 등 가로선에 메시지도 액션섹션에
+    // 잘려서 다 안보임. 가로선 안에 다 보이도록」.
+    await _pump(tester, project: _topFolderProject());
+    final dx = tester.getCenter(_railRowGrip('m1')).dx;
+    final folder = tester.getRect(find.named('timeline-folder-row-f'));
+    final zone = [
+      for (final element in find.byType(SectionBandZone).evaluate())
+        if (element.renderObject case final RenderBox box)
+          box.localToGlobal(Offset.zero) & box.size,
+    ].singleWhere(
+      (band) => band.top <= folder.top && band.bottom >= folder.bottom,
+    );
+
+    var gesture = await lift(tester, 'm1');
+    await pointInto(tester, gesture, 'cam', fraction: 0.8, dx: dx);
+    final notice = find.ancestor(
+      of: find.text(AppText.strings.tlDropOutOfFolder),
+      matching: find.byType(DecoratedBox),
+    );
+    expect(notice, findsWidgets, reason: '⛔전제: the line says it');
+    expect(tester.getRect(notice.first).left, greaterThanOrEqualTo(zone.right));
+    await gesture.cancel();
+    await tester.pumpAndSettle();
+
+    gesture = await lift(tester, 'a');
+    await pointInto(tester, gesture, 'm2', fraction: 0.5, dx: dx);
+    final swallow = find.byKey(const ValueKey('timeline-row-swallow-m2'));
+    expect(swallow, findsOneWidget, reason: '⛔전제: M2 takes it on');
+    expect(tester.getRect(swallow).left, greaterThanOrEqualTo(zone.right));
+    await gesture.cancel();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('F-423 on the sheet: a drawing column carried past its '
+      'section\'s far end draws its line at that end', (tester) async {
+    await _pump(tester, project: _topFolderProject());
+    final session = _sessionOf(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+    final grip = find.named('xsheet-layer-name-a');
+    await tester.ensureVisible(grip);
+    await tester.pumpAndSettle();
+    await tester.drag(grip, const Offset(0, 30));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(tester.getCenter(grip));
+    await tester.pump(const Duration(milliseconds: 16));
+    final cam = tester.getRect(find.named('xsheet-layer-row-cam'));
+    await gesture.moveTo(
+      Offset(cam.left + cam.width * 0.8, tester.getCenter(grip).dy),
+    );
+    await tester.pump();
+    expect(
+      [
+        for (final element in anyCaret.evaluate())
+          (element.widget.key! as ValueKey<String>).value,
+      ],
+      ['timeline-row-caret-after-f'],
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+    final ids = [
+      for (final layer in session.requireActiveCut.layers) layer.id.value,
+    ];
+    expect(ids.indexOf('a'), ids.indexOf('f') + 1);
+  });
+
+  testWidgets('the pointer over a row\'s LANES stands in that row — its own '
+      'or a neighbour\'s', (tester) async {
+    await _pump(tester, project: _folderMembersProject());
+    final session = _sessionOf(tester);
+    final rowHeight = tester.getSize(_railRow('m1')).height;
+    session.layerSwitches.toggleLayerLanes(const LayerId('m1'));
+    await tester.pumpAndSettle();
+    final lanes =
+        tester.getRect(_railRow('a')).top -
+        tester.getRect(_railRow('m1')).bottom;
+    expect(
+      lanes,
+      greaterThanOrEqualTo(rowHeight),
+      reason: '⛔전제: M1 twirled open — a lane row at least',
+    );
+    final dx = tester.getCenter(_railRowGrip('m1')).dx;
+
+    // Over its own last lane, by the line under them: it goes nowhere. Read
+    // as no row at all, that half let it out of its folder.
+    final gesture = await lift(tester, 'm1');
+    await pointInto(tester, gesture, 'a', fraction: -0.1, dx: dx);
+    expect(anyCaret, findsNothing);
+    await pointInto(tester, gesture, 'a', fraction: 0.15, dx: dx);
+    expect(caretBefore('a'), findsOneWidget);
+    expect(find.text(AppText.strings.tlDropOutOfFolder), findsOneWidget);
+    await gesture.cancel();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the pointer over a NEIGHBOUR\'s lanes is past the group: the '
+      'row carried there lets go', (tester) async {
+    await _pump(tester, project: _facingGroupsProject());
+    final session = _sessionOf(tester);
+    final rowHeight = tester.getSize(_railRow('p')).height;
+    session.layerSwitches.toggleLayerLanes(const LayerId('p'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(_railRow('b2')).top -
+          tester.getRect(_railRow('p')).bottom,
+      greaterThanOrEqualTo(rowHeight),
+      reason: '⛔전제: P twirled open — a lane row at least, or the pointer '
+          'is in P\'s own row',
+    );
+    final dx = tester.getCenter(_railRowGrip('b2down')).dx;
+
+    // B2-1 carried up past its base, to the line under P's lanes: P's.
+    final gesture = await lift(tester, 'b2down');
+    await pointInto(tester, gesture, 'b2', fraction: -0.1, dx: dx);
+    expect(caretBefore('b2'), findsOneWidget);
+    expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['q', 'b1', 'b1up', 'b2', 'b2down', 'p']);
+    expect(_layerOf(session, 'b2down').attachedToLayerId, isNull);
+  });
+
+  testWidgets('the MIDDLE of a row that takes no drop is still that row: '
+      'the folder\'s top member, carried onto the folder row, stays in', (
+    tester,
+  ) async {
+    // Rail top-down: Camera, X, F, M2, M1, A. M2 is already at the top of
+    // F's members, so the middle of F's row hands the drag back to the gap
+    // above F — with the pointer still in the folder's rows, where a
+    // member stays in, and a member cannot stand over its folder's row.
+    // ↩️Handed no row there, the gap read the formula and let M2 out over
+    // the row it never left.
+    await _pump(tester, project: _folderMembersProject());
+    final session = _sessionOf(tester);
+    final dx = tester.getCenter(_railRowGrip('m2')).dx;
+
+    final gesture = await lift(tester, 'm2');
+    final folderRow = tester.getRect(find.named('timeline-folder-row-f'));
+    await gesture.moveTo(Offset(dx, folderRow.center.dy));
+    await tester.pump();
+    expect(anyCaret, findsNothing);
+    expect(find.text(AppText.strings.tlDropOutOfFolder), findsNothing);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['a', 'm1', 'm2', 'x']);
+    expect(_layerOf(session, 'm2').folderId, const LayerId('f'));
+  });
+
+  testWidgets('🚨a row riding the conte, carried past its group, stands at '
+      'the group\'s edge wherever past it the pointer is (결정 6)', (
+    tester,
+  ) async {
+    // It is never let go (I-73-one-head-Q1), so the half past the edge has
+    // only the edge's other meaning to give. ↩️Left to the walk, the line
+    // fell a row INSIDE with the pointer by the edge and came back to the
+    // edge further out (F-393's sweep, 10-18).
+    await _pump(tester, project: _conteGroupProject());
+    final session = _sessionOf(tester);
+    final dx = tester.getCenter(_railRowGrip('under')).dx;
+
+    final gesture = await lift(tester, 'under');
+    for (final (row, fraction) in [
+      ('over', 0.15),
+      ('a', 0.85),
+      ('a', 0.5),
+      ('a', 0.15),
+      ('b', 0.85),
+      ('b', 0.5),
+    ]) {
+      await pointInto(tester, gesture, row, fraction: fraction, dx: dx);
+      expect(
+        [for (final caret in anyCaret.evaluate()) caret.widget.key],
+        [const ValueKey<String>('timeline-row-caret-before-over')],
+        reason: '$row at $fraction',
+      );
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    final moved = session.requireActiveCut.layers;
+    expect(
+      [for (final layer in moved) layer.id.value],
+      ['conte', 'over', 'under', 'a', 'b', 'cam'],
+    );
+    final under = _layerOf(session, 'under');
+    expect(under.attachedToLayerId, const LayerId('conte'));
+    expect(under.attachedPlacement, AttachedPlacement.above);
   });
 
   testWidgets('dragging an attach row clear of its group detaches it', (
@@ -1099,6 +1547,57 @@ void main() {
       reason: 'the bar straddles the column boundary, badge or no badge',
     );
     expect(find.text('어태치 해제'), findsOneWidget);
+  });
+
+  testWidgets('F-423② on the sheet: a column\'s swallow outline is the whole '
+      'column — its band is a strip of its own, not a slot in it', (
+    tester,
+  ) async {
+    final drag = ValueNotifier<LayerRowDragState?>(
+      const LayerRowDragState(
+        subject: LayerRowSubject(LayerId('a')),
+        caretSlot: 0,
+        legal: true,
+        onRowTarget: LayerId('b'),
+      ),
+    );
+    addTearDown(drag.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              height: 300,
+              child: LayerRowDragTarget(
+                subject: const LayerRowSubject(LayerId('b')),
+                slotBefore: 1,
+                rowExtent: 28,
+                axis: Axis.vertical,
+                hooks: TimelineRowDragHooks(
+                  drag: drag,
+                  onBegin: (_) {},
+                  onUpdate: (_, _, {pointerInRow}) {},
+                  onRowTarget: (_, _, _) {},
+                  onEffectUpdate: (_, _, _) {},
+                  onEnd: () {},
+                  onCancel: () {},
+                ),
+                onCrossed: (_, _, _) {},
+                child: const SizedBox(width: 28, key: ValueKey('the-column')),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final swallow = find.byKey(const ValueKey('timeline-row-swallow-b'));
+    expect(swallow, findsOneWidget, reason: '⛔전제');
+    expect(
+      tester.getRect(swallow).left,
+      tester.getRect(find.byKey(const ValueKey('the-column'))).left,
+    );
   });
 
   testWidgets('A5: the wrapper takes the ONE pin for the row it holds, and '

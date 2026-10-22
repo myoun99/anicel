@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 
@@ -22,11 +23,6 @@ void main() {
   final windowed = content.windowed(originPx: 200, extentPx: 300);
 
   for (final axis in Axis.values) {
-    final horizontal = axis == Axis.horizontal;
-    double from(Rect clip) => horizontal ? clip.left : clip.top;
-    double to(Rect clip) => horizontal ? clip.right : clip.bottom;
-    double fromAcross(Rect clip) => horizontal ? clip.top : clip.left;
-
     Future<Rect> clipSeenBy(
       WidgetTester tester,
       TimelineFrameGeometry geometry, {
@@ -40,9 +36,10 @@ void main() {
           textDirection: TextDirection.ltr,
           child: Align(
             alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: horizontal ? main : 40,
-              height: horizontal ? 40 : main,
+            child: sizedAlong(
+              axis,
+              along: main,
+              across: 40,
               child: TimelineFrameSpanLayout(
                 geometry: ValueNotifier(geometry),
                 crossAxisExtent: 40,
@@ -71,10 +68,10 @@ void main() {
 
       // The span starts 200px before the window, so the window is 200..500
       // of the span's own box.
-      expect(from(clip), closeTo(200, 1));
-      expect(to(clip), closeTo(500, 1));
+      expect(startAlong(axis, clip), closeTo(200, 1));
+      expect(endAlong(axis, clip), closeTo(500, 1));
       expect(
-        fromAcross(clip),
+        startAcross(axis, clip),
         lessThan(-1000),
         reason: 'across the axis the span reaches as far as it always did',
       );
@@ -89,7 +86,7 @@ void main() {
         startIndex: 10,
         endIndexExclusive: 30,
       );
-      expect(from(comingIn), closeTo(100, 1));
+      expect(startAlong(axis, comingIn), closeTo(100, 1));
 
       // Frames 40..60 stand at 200..400: out past its end.
       final goingOut = await clipSeenBy(
@@ -98,7 +95,7 @@ void main() {
         startIndex: 40,
         endIndexExclusive: 60,
       );
-      expect(to(goingOut), closeTo(100, 1));
+      expect(endAlong(axis, goingOut), closeTo(100, 1));
     });
 
     testWidgets('${axis.name}: a span inside the window is not clipped', (
@@ -112,15 +109,15 @@ void main() {
         endIndexExclusive: 45,
       );
 
-      expect(from(clip), lessThan(-1000));
+      expect(startAlong(axis, clip), lessThan(-1000));
     });
 
     testWidgets('${axis.name}: a box that is not windowed draws its spans '
         'whole', (tester) async {
       final clip = await clipSeenBy(tester, content);
 
-      expect(from(clip), lessThan(-1000));
-      expect(to(clip), greaterThan(10000));
+      expect(startAlong(axis, clip), lessThan(-1000));
+      expect(endAlong(axis, clip), greaterThan(10000));
     });
   }
 }

@@ -4,7 +4,8 @@ import 'dart:ui' show Offset, Rect;
 import '../../models/canvas_point.dart';
 import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
-import '../../services/cel_text_box_edits.dart' show celTextMinWrapWidth;
+import '../../services/cel_text_box_edits.dart'
+    show celTextBoxLengthPast, celTextMinWrapWidth;
 import '../../services/cel_text_edits.dart';
 import '../timeline/axis_turn.dart'
     show extentAcross, extentAlong, offsetAlong;
@@ -26,15 +27,17 @@ import 'cel_text_layout.dart';
 /// how wide a line is, and where a line broke for want of room, only the
 /// layout knows.
 
-/// [content] as a BOX that looks the same: as wide as the next whole pixel
-/// PAST its longest line, hung where its lines already stand.
+/// [content] as a BOX that looks the same: the box it is set in as it grows
+/// ([celTextBoxLengthPast]) — as wide as the next whole pixel PAST its
+/// longest line — hung where its lines already stand.
 ///
 /// The anchor of a text that grows is the point its lines are set ABOUT; a
-/// box's is its top left corner. It moves there, by the text's own
-/// alignment, so that no line does.
+/// box's is its top left corner. It moves there, by how the text stands
+/// about it ([CelTextContent.standsBy]), so that no line does — however
+/// its paragraphs are aligned: each stands in the box where it stood.
 ///
 /// ⚠️PAST the longest line, and never exactly as wide as it: the engine
-/// aligns a line only where it has room (`_roomToAlign`, measured
+/// aligns a line only where it has room (`_frameOf`, measured
 /// 2026-10-06), and a line that filled its box to the pixel would be set
 /// half its tracking off the others.
 ///
@@ -50,13 +53,8 @@ CelTextContent celTextBoxed(CelTextContent content) {
   }
   final layout = layoutCelText(content);
   final block = layout.block;
-  final room = math.max(
-    extentAlong(
-          celTextLettersAxis(vertical: content.vertical),
-          block.size,
-        ).floorToDouble() +
-        1,
-    celTextMinWrapWidth,
+  final room = celTextBoxLengthPast(
+    extentAlong(celTextLettersAxis(vertical: content.vertical), block.size),
   );
   final corner = layout.toCanvas(_boxCornerOf(content, block, room));
   layout.dispose();
@@ -71,23 +69,26 @@ CelTextContent celTextBoxed(CelTextContent content) {
 /// stay where they are: its top left corner, or written in columns its top
 /// right.
 Offset _boxCornerOf(CelTextContent content, Rect block, double room) {
+  // It begins what of it is past the block — or half of that — before the
+  // block does, as the text stands: where the letters are set in it.
+  final before = content.standsBy.shareBefore;
   if (content.vertical) {
-    return Offset(block.right, switch (content.align) {
-      TextCelAlign.left => block.top,
-      TextCelAlign.center => block.center.dy - room / 2,
-      TextCelAlign.right => block.bottom - room,
-    });
+    return Offset(block.right, block.top - (room - block.height) * before);
   }
-  return Offset(switch (content.align) {
-    TextCelAlign.left => block.left,
-    TextCelAlign.center => block.center.dx - room / 2,
-    TextCelAlign.right => block.right - room,
-  }, block.top);
+  return Offset(block.left - (room - block.width) * before, block.top);
 }
 
 /// [content] as a text that GROWS and looks the same: a break typed in
 /// wherever a line had wrapped for want of room, and the anchor moved from
 /// the box's corner to the point its lines stand about.
+///
+/// ⚠️BUT a box whose paragraphs are aligned UNLIKE, and wider than the box
+/// its text grows in ([celTextBoxLengthPast]), cannot look the same: a text
+/// that grows has no width of its own to keep. Its paragraphs aligned as
+/// the first stay where they are, and the others move by what the box was
+/// wider — or half of that, between the middle and an end (Q5's one block;
+/// put on its card 2026-10-18). A box a growing text was made comes back
+/// with no letter moved: it is that box.
 ///
 /// 🔬Measured 2026-10-06: a line that wraps at a space keeps that space,
 /// hanging past its end and counted by no alignment — and a space before a
@@ -116,11 +117,7 @@ CelTextContent celTextUnboxed(CelTextContent content) {
   }
   // How far along its room the point its letters stand ABOUT is: the head
   // of a line or a column, its middle, or its foot.
-  final along = switch (content.align) {
-    TextCelAlign.left => 0.0,
-    TextCelAlign.center => width / 2,
-    TextCelAlign.right => width,
-  };
+  final along = width * content.standsBy.shareBefore;
   final about = layout.toCanvas(
     offsetAlong(
       celTextLettersAxis(vertical: content.vertical),

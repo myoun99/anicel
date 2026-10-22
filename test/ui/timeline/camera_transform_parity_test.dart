@@ -27,8 +27,6 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
-    show timelineFittedGlyphFontSize;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show
@@ -153,44 +151,63 @@ void main() {
   const cellWidth = timelineFrameCellWidth; // 24 — the default zoom.
 
   group('B4-③ one metric law for every union mark', () {
-    test('the union size is derived from the member size — one constant '
-        'path, no second literal', () {
-      expect(
-        timelineLaneKeyMarkerSize(28, frameCellExtent: 24),
-        (28 * 0.32).clamp(6.0, 11.0),
-      );
+    // 🗣️F-367 (유저 2026-10-16): 「칸 그냥 차지는 마름모라던가. 원도 칸 다
+    // 차지한다던가. 헤더는 그렇게하고 멤버키는 작게하는 구분 좋으니 그거보다
+    // 좀 더 작게」.
+    test('a union mark fills its cell, and a member key is the union\'s '
+        '㉗ step smaller — one path, no second literal', () {
       expect(
         timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24),
-        timelineLaneKeyMarkerSize(28, frameCellExtent: 24) * 1.5,
-        reason: 'at the default cell there is room for the whole ×1.5',
+        const Size(24, 28),
+        reason: 'the whole of the cell: as high as the row, as wide as it',
+      );
+      expect(
+        timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 48),
+        const Size(28, 28),
+        reason: 'and never wider than it is high where the cell is wider',
+      );
+      expect(
+        timelineLaneKeyMarkerSize(28, frameCellExtent: 24),
+        timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24) / 1.5,
+        reason: 'the union is still half again a member (㉗)',
       );
     });
 
     // D39 (2026-08-18): the marks follow the ZOOM like block text and edge
-    // grips do — the cross-derived base runs through the same fit law, so
-    // a shrunken cell shrinks its diamond instead of wearing a fixed 13px
-    // mark across three neighbours.
-    test('D39: the marks shrink with the cell through the one fit law', () {
-      // At the default cell nothing changes (the fit's knee is 14).
-      expect(
-        timelineLaneKeyMarkerSize(28, frameCellExtent: 24),
-        timelineLaneKeyMarkerSize(28, frameCellExtent: 999),
-      );
-      // Below the knee the member follows the fit exactly...
-      expect(
-        timelineLaneKeyMarkerSize(28, frameCellExtent: 8),
-        timelineFittedGlyphFontSize(
-          (28 * 0.32).clamp(6.0, 11.0).toDouble(),
-          8,
-          crossExtent: 28,
-        ),
-      );
-      // ...and the union keeps reading as half again the member (㉗),
-      // riding ON the fitted size rather than re-inflating past the cell.
+    // grips do, so a shrunken cell shrinks its diamond instead of wearing a
+    // fixed mark across its neighbours. A mark that fills its cell does it
+    // by being the cell.
+    test('D39: the marks narrow with the cell', () {
       expect(
         timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 8),
-        lessThan(timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24)),
+        const Size(8, 28),
       );
+      expect(
+        timelineLaneKeyMarkerSize(28, frameCellExtent: 8),
+        const Size(8 / 1.5, 28 / 1.5),
+      );
+      expect(
+        timelineLaneKeyMarkerSize(28, frameCellExtent: 5).width,
+        4,
+        reason: 'down to the floor every mark keeps while it has room',
+      );
+    });
+
+    // 🗣️F-367-Q4 (유저 2026-10-18 「세로 유지 · 가로만 줄임(프레임 블록처럼)」):
+    // the row says how high a mark stands, its cell how wide.
+    test('F-367-Q4: a mark keeps its height while its cell narrows', () {
+      for (final cell in const [24.0, 16.0, 8.0, 4.0]) {
+        expect(
+          timelineLaneUnionKeyMarkerSize(rowHeight, frameCellExtent: cell),
+          Size(cell, rowHeight),
+          reason: 'a union key at a $cell px cell',
+        );
+        expect(
+          timelineLaneKeyMarkerSize(rowHeight, frameCellExtent: cell).height,
+          rowHeight / 1.5,
+          reason: 'a member key at a $cell px cell stands as high as ever',
+        );
+      }
     });
 
     /// 🚨D39-2 (유저 스크린샷 3장, 2026-08-22) — 「크기가 종횡비 유지한채로
@@ -199,16 +216,20 @@ void main() {
     /// The mark is one square Container turned 45°, so asking for more than
     /// the cell is wide gets the WIDTH squeezed by the parent and the height
     /// left alone: a lozenge. The size law has to be the thing that never
-    /// asks, because a widget cannot un-squeeze itself.
+    /// asks, because a widget cannot un-squeeze itself. ↩️The shapes are
+    /// drawn in their box now, and F-367-Q4 narrows only that box's width.
     test('D39-2: no mark is ever wider than the cell it stands in', () {
       for (final cell in const [24.0, 16.0, 12.0, 8.0, 6.0, 4.0, 3.0, 2.0]) {
         expect(
-          timelineLaneKeyMarkerSize(rowHeight, frameCellExtent: cell),
+          timelineLaneKeyMarkerSize(rowHeight, frameCellExtent: cell).width,
           lessThanOrEqualTo(cell),
           reason: 'a member key at a $cell px cell',
         );
         expect(
-          timelineLaneUnionKeyMarkerSize(rowHeight, frameCellExtent: cell),
+          timelineLaneUnionKeyMarkerSize(
+            rowHeight,
+            frameCellExtent: cell,
+          ).width,
           lessThanOrEqualTo(cell),
           reason: 'a union key at a $cell px cell — the ×1.5 used to escape '
               'the fit and hand an 8px cell a 9.36px diamond',
@@ -219,9 +240,9 @@ void main() {
     test('and no mark is ever taller than the row it stands in', () {
       for (final row in const [28.0, 20.0, 14.0, 9.0, 5.0]) {
         expect(
-          timelineLaneUnionKeyMarkerSize(row, frameCellExtent: 999),
+          timelineLaneUnionKeyMarkerSize(row, frameCellExtent: 999).height,
           lessThanOrEqualTo(row),
-          reason: 'the other axis of the same square, at a $row px row',
+          reason: 'the other side of its box, at a $row px row',
         );
       }
     });

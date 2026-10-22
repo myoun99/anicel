@@ -5,6 +5,7 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/ui/canvas/camera_adjust_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_target_pill.dart';
 import 'package:anicel/src/ui/session/canvas_adjust.dart';
@@ -54,7 +55,7 @@ void main() {
                   rotationDegrees: rotationDegrees,
                 ),
                 viewport: CanvasViewport(),
-                canvasSize: canvas,
+                pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
                 onLand: () => landed += 1,
               ),
             ),
@@ -106,7 +107,7 @@ void main() {
     );
     expect(pill.center.dx - origin.dx, closeTo(400, 0.01));
     expect(pill.top - origin.dy, closeTo(400 + targetPillGap, 0.01));
-    expect(sizeShown(tester), '400 × 200');
+    expect(sizeShown(tester), '400×200');
     expect(ratioShown(tester), CameraAdjustLayer.labelOf(CameraRatioLock.free));
   });
 
@@ -116,7 +117,7 @@ void main() {
     await drag(tester, origin + const Offset(600, 300), const Offset(50, 30));
 
     expect(kept(), const CanvasSize(width: 500, height: 200));
-    expect(sizeShown(tester), '500 × 200');
+    expect(sizeShown(tester), '500×200');
     final pill = tester.getRect(
       find.byKey(const ValueKey<String>('camera-adjust-pill')),
     );
@@ -148,7 +149,7 @@ void main() {
     await gesture.moveBy(const Offset(-20, -10));
     await tester.pump();
 
-    expect(sizeShown(tester), '480 × 240');
+    expect(sizeShown(tester), '480×240');
     expect(kept(), frame, reason: 'not let go yet');
     final pill = tester.getRect(
       find.byKey(const ValueKey<String>('camera-adjust-pill')),
@@ -222,7 +223,7 @@ void main() {
     await drag(tester, origin + const Offset(400, 300), const Offset(60, 40));
 
     expect(kept(), frame);
-    expect(sizeShown(tester), '400 × 200');
+    expect(sizeShown(tester), '400×200');
   });
 
   testWidgets('✓ lands the size; ✕ closes the adjust for nothing', (

@@ -20,12 +20,14 @@ import '../helpers/temp_dir.dart';
 /// noticed.** The self-replace was a lie for every change that missed one
 /// file.
 ///
-/// ⚠️WHAT THIS FILE CANNOT TEST: `board_up.sh` WRITES the stamp and lives in
-/// the memory folder, outside this repository, so CI cannot see it. Its
-/// `sources_of` is the same rule in shell. They were verified byte-identical
-/// by measurement on 2026-08-31 (170815 bytes each) — ⛔and if they ever
-/// disagree the server relaunches on EVERY request, so the two comments point
-/// at each other and say「change both or neither」.
+/// ⚠️WHAT THIS FILE CANNOT TEST: the stamp is WRITTEN in shell —
+/// `tool/exe_stamp.sh`'s `sources_of`, the same rule — and the suite spawns
+/// no process (tests_do_not_race_the_code_test). They were verified
+/// byte-identical by measurement on 2026-08-31 (170815 bytes each) and again
+/// on 2026-10-18, when both began to follow every level: the same files in
+/// the same order, and the same bytes, for every entry in `tool/` —
+/// ⛔and if they ever disagree the server relaunches on EVERY request, so
+/// the two comments point at each other and say「change both or neither」.
 void main() {
   late Directory dir;
   setUp(() => dir = Directory.systemTemp.createTempSync('exe-src'));
@@ -92,6 +94,37 @@ void main() {
       "// import 'board_model.dart';\nvoid main() {}\n",
     );
     expect(namesOf(entry), ['board_server.dart']);
+  });
+
+  test('🚨every level: a file reached through another file is in it', () {
+    // 2026-10-18: `tool/run.sh` builds any tool, and `board_ack` reaches
+    // `board_model` only through `board_check`. One level missed it.
+    write('board_model.dart', 'const x = 1;\n');
+    write('board_check.dart', "import 'board_model.dart';\n");
+    final entry = write('board_ack.dart', "import 'board_check.dart';\n");
+    expect(
+      namesOf(entry),
+      ['board_ack.dart', 'board_check.dart', 'board_model.dart'],
+    );
+  });
+
+  test('⛔two files that import each other end the walk', () {
+    write('a_model.dart', "import 'z_model.dart';\n");
+    write('z_model.dart', "import 'a_model.dart';\n");
+    final entry = write('board_server.dart', "import 'z_model.dart';\n");
+    expect(
+      namesOf(entry),
+      ['a_model.dart', 'board_server.dart', 'z_model.dart'],
+    );
+  });
+
+  test('an import that shows only some names is still compiled in', () {
+    write('board_model.dart', '1');
+    final entry = write(
+      'board_server.dart',
+      "import 'board_model.dart' show x;\nvoid main() {}\n",
+    );
+    expect(namesOf(entry), contains('board_model.dart'));
   });
 
   test('🚨★★★the REAL board_server names board_model — the case that broke',

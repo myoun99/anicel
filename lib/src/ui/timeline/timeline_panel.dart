@@ -39,8 +39,10 @@ import '../widgets/app_icon_button.dart';
 import 'timeline_command_bar.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_run_end_handles.dart';
+import '../canvas/view_hand.dart';
+import '../session/rail_legends.dart';
 import 'timeline_legend_menus.dart'
-    show LayerLegendCallbacks, TimelineLegendMenus;
+    show LayerLegendCallbacks;
 import 'timeline_row_filter.dart';
 import 'memo_token.dart' show Kept, keptWhileSame;
 import 'timeline_view_cluster.dart';
@@ -52,6 +54,7 @@ import 'xsheet_timeline_grid.dart';
 
 import '../../models/project_frame_rate.dart';
 import 'timeline_grid_hooks.dart';
+import 'timeline_grid_legend.dart';
 
 class TimelinePanel extends StatefulWidget {
   const TimelinePanel({
@@ -136,6 +139,7 @@ class TimelinePanel extends StatefulWidget {
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
+    this.layerOnTimesheetOf,
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -146,7 +150,7 @@ class TimelinePanel extends StatefulWidget {
     this.hiddenSections = const {},
     this.onToggleSection,
     this.legend,
-    this.onLegendMenus,
+    this.legendHand,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
     this.collapsedAttachBaseIds = const {},
@@ -160,7 +164,6 @@ class TimelinePanel extends StatefulWidget {
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
-    this.layerOpacityOverrideOf,
   });
 
   final List<Layer> layers;
@@ -169,10 +172,6 @@ class TimelinePanel extends StatefulWidget {
   /// R27 #6: the layer label's blend-mode column.
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
-
-  /// R27 #9: live opacity source for view-state rows (the camera dim).
-  final ValueListenable<double>? Function(LayerId layerId)?
-  layerOpacityOverrideOf;
 
   /// The session's edit-drag preview channel (comma/trim drags), consumed
   /// by both grids' row gates and cursor overlays.
@@ -515,10 +514,13 @@ class TimelinePanel extends StatefulWidget {
   final bool Function(LayerId layerId)? laneOpenOf;
 
   /// Forwarded to the grids — see [LayerTimelineGrid.laneGroupOnOf].
-  final bool Function(LayerId layerId)? laneGroupOnOf;
+  final bool? Function(LayerId layerId, String headerLaneId)? laneGroupOnOf;
 
   /// Forwarded to the grids — see [LayerTimelineGrid.layerEyeOnOf].
   final bool Function(LayerId layerId)? layerEyeOnOf;
+
+  /// Forwarded to the grids — see [TimelineGridHooks.layerOnTimesheetOf].
+  final bool Function(LayerId layerId)? layerOnTimesheetOf;
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
 
@@ -549,8 +551,9 @@ class TimelinePanel extends StatefulWidget {
   /// The rail legend's bulk commands (horizontal timeline only).
   final LayerLegendCallbacks? legend;
 
-  /// Told the menus the legend header opens, for a key (I-40) — the grid's.
-  final ValueChanged<TimelineLegendMenus?>? onLegendMenus;
+  /// Where this panel holds up the menus its legend header opens, for a key
+  /// (I-40) — the grid's, written as it builds them.
+  final ViewHand<RailLegendHold>? legendHand;
 
   /// The rail's row filter and its editor (R2); shared by both orientations.
   final TimelineRowFilter rowFilter;
@@ -577,6 +580,27 @@ class TimelinePanel extends StatefulWidget {
 class _TimelinePanelState extends State<TimelinePanel> {
   /// The pieces this panel keeps across its host's rebuilds (F-244 ⑧).
   final Map<Type, Kept<TimelineViewClusterFacts>> _kept = {};
+
+  /// The legend's menus go with the panel, not with a grid: a turn to the
+  /// other orientation builds the other grid's header, which tells its
+  /// menus, before the grid it replaces goes — and a grid that took its
+  /// menus with it took the new header's (F-408 ②). And a panel built anew
+  /// comes up before this one goes, so this one puts down only its own
+  /// ([ViewHand] — card `rail-legend-menus-lost-to-an-old-goodbye`).
+  final RailLegendHold _legend = RailLegendHold();
+  late final ViewHand<RailLegendHold>? _legendKeeper = widget.legendHand;
+
+  @override
+  void initState() {
+    super.initState();
+    _legendKeeper?.up(_legend);
+  }
+
+  @override
+  void dispose() {
+    _legendKeeper?.down(_legend);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -704,6 +728,15 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onResetLaneGroup: widget.onResetLaneGroup,
       hiddenSections: widget.hiddenSections,
       rowFilter: widget.rowFilter,
+      // The legend over either grid's rail (F-408 ②).
+      legend: TimelineGridLegend(
+        verbs: widget.legend,
+        onMenus: (menus) => _legend.menus = menus,
+        onToggleSection: widget.onToggleSection,
+        visibilitySoloEnabled: widget.visibilitySoloEnabled,
+        displayedOpacity: widget.masterOpacityValue,
+        displayedOnionSkinOn: widget.displayedOnionSkinOn,
+      ),
       collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
       onToggleAttachGroup: widget.onToggleAttachGroup,
       opacityDragPreview: widget.opacityDragPreview,
@@ -712,8 +745,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
       substrateGeneration: widget.substrateGeneration,
       memoAux: widget.memoAux,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
-      layerOpacityOverrideOf: widget.layerOpacityOverrideOf,
       layerEyeOnOf: widget.layerEyeOnOf,
+      layerOnTimesheetOf: widget.layerOnTimesheetOf,
     );
     return Material(
       color: colorScheme.surfaceContainerHighest,
@@ -800,13 +833,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       railExtent: widget.timelineRailExtent,
                       frameAxisOffset: widget.timelineFrameAxisOffset,
                       layerAxisOffset: widget.timelineLayerAxisOffset,
-                      displayedOnionSkinOn: widget.displayedOnionSkinOn,
                       metrics: horizontalMetrics,
-                      onToggleSection: widget.onToggleSection,
-                      legend: widget.legend,
-                      onLegendMenus: widget.onLegendMenus,
-                      visibilitySoloEnabled: widget.visibilitySoloEnabled,
-                      masterOpacityValue: widget.masterOpacityValue,
                     )
                   : XSheetTimelineGrid(
                       hooks: hooks,

@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 
 import '../core/point_bounds.dart';
 import '../models/canvas_point.dart';
-import '../models/canvas_size.dart';
 import '../models/pasteboard_bounds.dart';
 
 /// A selection region in canvas coordinates (P9): a closed polygon — the
@@ -52,20 +51,20 @@ class CanvasSelectionShape {
   /// keeps the box inside the finite wall every stage downstream (lift,
   /// resample, preview, commit) treats as the edge of the world.
   factory CanvasSelectionShape.wholePicture(
-    CanvasSize canvasSize,
+    PasteboardWall wall,
     ({int left, int top, int rightExclusive, int bottomExclusive})? content,
   ) {
-    final width = canvasSize.width.toDouble();
-    final height = canvasSize.height.toDouble();
+    final width = wall.canvas.width.toDouble();
+    final height = wall.canvas.height.toDouble();
     var left = 0.0;
     var top = 0.0;
     var right = width;
     var bottom = height;
     if (content != null) {
-      final wallLeft = canvasSize.pasteboardLeft.toDouble();
-      final wallTop = canvasSize.pasteboardTop.toDouble();
-      final wallRight = canvasSize.pasteboardRightExclusive.toDouble();
-      final wallBottom = canvasSize.pasteboardBottomExclusive.toDouble();
+      final wallLeft = wall.left.toDouble();
+      final wallTop = wall.top.toDouble();
+      final wallRight = wall.rightExclusive.toDouble();
+      final wallBottom = wall.bottomExclusive.toDouble();
       left = content.left.toDouble().clamp(wallLeft, wallRight);
       top = content.top.toDouble().clamp(wallTop, wallBottom);
       right = content.rightExclusive.toDouble().clamp(wallLeft, wallRight);

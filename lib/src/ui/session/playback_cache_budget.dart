@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../services/playback/cut_composite_structure.dart';
-import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/playback/frame_demand.dart';
 import '../playback/playback_cache_budget.dart';
 import '../playback/canvas_pictures.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart' show PictureRoom;
+import '../timeline/timeline_ruler_cursor_overlay.dart' show ReadyRun;
 import 'render_caches.dart';
 import 'session_roles.dart';
 
@@ -85,7 +85,10 @@ class PlaybackCacheBudget implements PictureRoom {
     _enforcer?.maxBytes = _debugMaxBytes ?? bytes;
   }
 
-  /// The playback cache's trim, run by the warmer after each picture lands.
+  /// The playback cache's trim, run when the line moves under what is held —
+  /// the allowance, a run that borrows it, a memory warning. ⛔Not after a
+  /// picture lands: the warmer asks the room again then ([makeRoomFor]),
+  /// which never lets go of what it just made (F-365).
   ///
   /// 🚨WHAT IS LET GO IS WHAT IS WANTED LATEST ([FrameDemand] — the one
   /// order the warmer makes pictures in). ↩️B1 had to DERIVE a kept range
@@ -137,12 +140,8 @@ class PlaybackCacheBudget implements PictureRoom {
   }
 
   /// The stretches of the active cut's frames in `[start, end)` that are
-  /// READY to play — the timeline ruler's green bar. None without an active
-  /// cut.
-  List<({int startIndex, int endIndexExclusive})> playbackReadyRuns(
-    int start,
-    int end,
-  ) {
+  /// READY to play — the timeline ruler's bar. None without an active cut.
+  List<ReadyRun> playbackReadyRuns(int start, int end) {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return const [];
@@ -174,34 +173,44 @@ class PlaybackCacheBudget implements PictureRoom {
   /// the question a run asks before it goes on ([CanvasPictures.has]) asked
   /// of the span's first frame. ↩️The film's bar — the storyboard's — counted
   /// composites while the film played on them.
-  List<({int startIndex, int endIndexExclusive})> playbackReadyRunsForCut(
-    Cut cut,
-    int start,
-    int end,
-  ) {
-    bool isReady(CutFrameCompositeSignature structure, int frameIndex) =>
-        structure.nodes.isEmpty ||
-        _run.pictures.has((cut: cut, frameIndex: frameIndex));
-
-    final runs = <({int startIndex, int endIndexExclusive})>[];
+  ///
+  /// 🗣️AND A SPAN THE RUN HAS STOPPED WAITING FOR, A CEL OF IT UNREADABLE, IS
+  /// READY RED (frame-picture-indicator-Q1 b): nothing more of its picture
+  /// is to come ([CanvasPictures.failed]) and a cel it shows could not be
+  /// read ([CanvasPictures.cannotRead]), so it plays without that cel.
+  /// ↩️The bar asked only [CanvasPictures.has], and such a span was never
+  /// painted at all — the run going on past it said nothing anywhere.
+  List<ReadyRun> playbackReadyRunsForCut(Cut cut, int start, int end) {
+    final pictures = _run.pictures;
+    final runs = <ReadyRun>[];
     for (final span in compositeStructureSpansIn(
       cut,
       start: start,
       end: end,
     )) {
-      if (!isReady(span.signature, span.start)) {
+      final picture = (cut: cut, frameIndex: span.start);
+      final bool unreadable;
+      if (span.signature.nodes.isEmpty || pictures.has(picture)) {
+        unreadable = false;
+      } else if (pictures.failed(picture) && pictures.cannotRead(picture)) {
+        unreadable = true;
+      } else {
         continue;
       }
       final last = runs.isEmpty ? null : runs.last;
-      if (last != null && last.endIndexExclusive == span.start) {
+      if (last != null &&
+          last.endIndexExclusive == span.start &&
+          last.unreadable == unreadable) {
         runs.last = (
           startIndex: last.startIndex,
           endIndexExclusive: span.endExclusive,
+          unreadable: unreadable,
         );
       } else {
         runs.add((
           startIndex: span.start,
           endIndexExclusive: span.endExclusive,
+          unreadable: unreadable,
         ));
       }
     }

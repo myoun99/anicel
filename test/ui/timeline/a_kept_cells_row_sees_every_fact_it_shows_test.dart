@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/timeline/berth_row.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cells_row_facts.dart';
+import 'package:anicel/src/ui/timeline/timeline_cut_end_handle.dart'
+    show TimelineNoriShiro;
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
@@ -101,6 +103,7 @@ void main() {
   (TimelineDisplayRow, TimelineCellsRowGrid) told({
     Layer? row,
     int playbackFrameCount = 24,
+    TimelineNoriShiro Function()? noriShiro,
     TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
     ProjectFrameRate projectFrameRate = ProjectFrameRate.fps24,
     String substrateGeneration = 'world-0',
@@ -126,6 +129,7 @@ void main() {
         activeLayerId: null,
         frameCursor: ValueNotifier<int>(0),
         playbackFrameCount: playbackFrameCount,
+        noriShiro: noriShiro,
         exposureStateForLayer: exposure ?? uncovered,
         frameNameForLayer: frameNames,
         onSelectLayer: onSelectLayer ?? (_) {},
@@ -253,6 +257,12 @@ void main() {
   final worlds = <String, ((TimelineDisplayRow, TimelineCellsRowGrid),
       (TimelineDisplayRow, TimelineCellsRowGrid))>{
     'playbackFrameCount': (told(), told(playbackFrameCount: 25)),
+    // F-358: the line the cut is DRAWN to — where an SE row's end `~`
+    // stands — moves with the のりしろ as well as the 尺.
+    'noriShiro': (
+      told(),
+      told(noriShiro: () => (drawnFrameCount: 36, label: 'O.L')),
+    ),
     'substrateGeneration': (told(), told(substrateGeneration: 'world-1')),
     // ㉘: a camera key is a new camera track — the camera row's only tell.
     'coverageIdentity': (

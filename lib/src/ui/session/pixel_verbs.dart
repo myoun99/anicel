@@ -20,12 +20,14 @@ import '../../services/cut_piece_lift.dart'
 import '../../services/cut_piece_stamp.dart' show buildCutPasteDab;
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/piece_landing.dart';
+import '../../services/selection_placement.dart' show stampInArtwork;
 import '../brush/cut_into_the_hand.dart';
 import 'active_cut_controllers.dart';
 import 'pixel_board.dart';
 import 'pixel_editing.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
+import 'visibility_solo.dart';
 
 /// The canvas-side facts a PIXEL VERB press needs, read together at the
 /// moment of the press.
@@ -65,12 +67,17 @@ class PixelVerbs {
     required PixelEditing pixelEditing,
     required RenderCaches renderCaches,
     required PixelBoard pixelBoard,
+    required VisibilitySolo solo,
   }) : _project = project,
        _selection = selection,
        _controllers = controllers,
        _pixelEditing = pixelEditing,
        _renderCaches = renderCaches,
-       _pixelBoard = pixelBoard;
+       _pixelBoard = pixelBoard,
+       _solo = solo;
+
+  /// The eyes an edit asks — the user's, not the solo's ([_celOf]).
+  final VisibilitySolo _solo;
 
   /// 픽셀 복사's board — the app clipboard's, one for every open project.
   final PixelBoard _pixelBoard;
@@ -141,9 +148,9 @@ class PixelVerbs {
     if (cut == null) {
       return null;
     }
-    final shown = {
-      for (final layer in cut.layers) ?_celOf(cut, layer, null),
-    };
+    // What the canvas SHOWS — the solo's eyes, since the solo is what is on
+    // screen. A cel the ladder names that is not shown lands at the confirm.
+    final shown = {for (final layer in cut.layers) ?_celOf(cut, layer, null)};
     final standing = _standingCel(cut);
     final lifted = {
       ?standing,
@@ -194,12 +201,13 @@ class PixelVerbs {
     if (cut == null) {
       return const [];
     }
+    final asSet = _asSet(cut);
     final range = _selection.frameRangeSelection.value;
     if (range == null) {
       final standing = _standingLayer();
       return standing == null
           ? const []
-          : _rowCels(cut, standing, null, intoFolders: intoFolders);
+          : _rowCels(asSet, standing, null, intoFolders: intoFolders);
     }
     final byId = {for (final layer in _project.layers) layer.id: layer};
     final rows = range.layerIds.isEmpty ? [range.layerId] : range.layerIds;
@@ -207,7 +215,7 @@ class PixelVerbs {
       for (final layerId in rows)
         if (byId[layerId] case final layer?)
           for (var i = range.startIndex; i < range.endIndexExclusive; i++)
-            ..._rowCels(cut, layer, i, intoFolders: intoFolders),
+            ..._rowCels(asSet, layer, i, intoFolders: intoFolders),
     ];
   }
 
@@ -231,8 +239,15 @@ class PixelVerbs {
   /// The cel you are standing on: the ACTIVE layer's, at the playhead.
   BrushFrameKey? _standingCel(Cut cut) => switch (_standingLayer()) {
     null => null,
-    final layer => _celOf(cut, layer, null),
+    final layer => _celOf(_asSet(cut), layer, null),
   };
+
+  /// [cut] with each eye as the user set it — the eyes an edit asks
+  /// ([VisibilitySolo.layersAsSet]: the solo is display, F-399).
+  Cut _asSet(Cut cut) {
+    final layers = _solo.layersAsSet(cut.layers);
+    return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
+  }
 
   /// [layer]'s cel at [frameIndex] (the playhead when null) — or, a FOLDER
   /// reached [intoFolders], the cel of each row inside it there.
@@ -253,6 +268,10 @@ class PixelVerbs {
 
   /// [layer]'s cel at [frameIndex] (the playhead when null), if a pixel verb
   /// may reach it.
+  ///
+  /// [cut]'s eyes say what is switched on: the user's for an edit
+  /// ([_asSet]), the solo's for what the canvas shows. [layer] is asked
+  /// by its id there — a row handed in from the session wears the solo's.
   BrushFrameKey? _celOf(Cut cut, Layer layer, int? frameIndex) {
     // 🚨HIDDEN ROWS ARE NOT TOUCHED. 유저 2026-08-27: 「해당 두 버튼은
     // 비지블이 on인 레이어만 활성화되야함. **기본적으로 그림 조작하는건
@@ -265,7 +284,8 @@ class PixelVerbs {
     // `hidden_folder_is_hidden_test`, which caught this line reading the
     // raw flag — ⚠️and counts it in COMMENTS too, so the flag's name
     // cannot be written here even to say not to use it.
-    if (!layerAcceptsBrushInput(layer) || !cut.layers.rowVisible(layer)) {
+    if (!layerAcceptsBrushInput(layer) ||
+        !cut.layers.rowVisible(cut.layers.byId(layer.id) ?? layer)) {
       return null;
     }
     final frame = _controllers.timelineController.resolveFrameForLayer(
@@ -445,7 +465,7 @@ class PixelVerbs {
     final region = selection == null
         ? CanvasSelectionRegion.shape(
             CanvasSelectionShape.wholePicture(
-              surface.canvasSize,
+              surface.pasteboard,
               bitmapSurfaceContentBounds(surface),
             ),
           )
@@ -583,27 +603,59 @@ class PixelVerbs {
   /// tool's stamp lands through too (F-293): one cel or a whole range, the
   /// same code answers (절대명령 2) — one undo.
   void _pastePixels(BrushBlendMode blend) {
-    final coordinator = _pixelEditing.coordinator;
     final piece = _pixelBoard.piece;
-    if (coordinator == null || piece == null) {
+    if (piece == null) {
       return;
     }
     // ONE dab for every row: the board goes back where it was read from,
     // whichever row takes it.
     final dab = buildCutPasteDab(piece);
-    final landed = pieceLandings(
-      coordinator: coordinator,
-      ground: pieceGround(),
-      stamp: PieceStamp(
+    _land(
+      PieceStamp(
         onTheRow: (_) => dab,
         blend: blend,
         description: 'Paste pixels',
       ),
+    );
+  }
+
+  /// A picture drawn ON THE CANVAS — [picture] at canvas coordinates —
+  /// laid over every cel the ladder names, each where its row shows it, as
+  /// one undo: 래스터라이즈's landing (vanishing-point-types-Q5, 유저 2026-10-16:
+  /// 「지금 레이어의 지금 셀에」 — no new row).
+  ///
+  /// ★The paste's door ([_land]): a range, a selection and its softness
+  /// answer here as they answer there (절대명령 2). Unlike the board, which
+  /// holds CEL coordinates, the picture is the canvas's, so a posed row
+  /// takes it through its placement ([stampInArtwork]) — the crossing a
+  /// transform's landing makes.
+  void landCanvasPicture(CutPiece picture, {required String description}) {
+    final dab = buildCutPasteDab(picture);
+    _land(
+      PieceStamp(
+        onTheRow: (placement) => stampInArtwork(dab, placement),
+        blend: BrushBlendMode.color,
+        description: description,
+      ),
+    );
+  }
+
+  /// [stamp] through the piece door onto the ground a press reads
+  /// ([pieceGround]), as one undo.
+  void _land(PieceStamp stamp) {
+    final coordinator = _pixelEditing.coordinator;
+    if (coordinator == null) {
+      return;
+    }
+    final landed = pieceLandings(
+      coordinator: coordinator,
+      ground: pieceGround(),
+      stamp: stamp,
       // Without the hub the canvas keeps the old composite until you leave
       // the frame (see [runPixelVerb]).
       cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
     );
-    _project.historyManager.executeAsOneStep('Paste pixels', [
+    _project.historyManager.executeAsOneStep(stamp.description, [
       for (final cel in landed.values) cel.landing,
     ]);
   }

@@ -121,6 +121,62 @@ void main() {
     });
   });
 
+  group('🚨the paragraphs typing makes and takes', () {
+    const right = CelTextParagraph(align: TextCelAlign.right, lineHeight: 2);
+    const apart = CelTextParagraph(align: TextCelAlign.center, lineHeight: 3);
+
+    /// 「ab」 set to the right, then 「cd」 set apart.
+    final two = CelTextContent(
+      spans: [run('ab\ncd')],
+      anchor: CanvasPoint(x: 3, y: 4),
+      paragraphs: const [right, apart],
+    );
+
+    test('a break typed into a paragraph splits it into two set as it '
+        'was', () {
+      expect(typed(two, 1, 1, '\n').paragraphs, [right, right, apart]);
+      expect(typed(two, 4, 4, '\n').paragraphs, [right, apart, apart]);
+    });
+
+    test('a place between two belongs to the one it begins — or ends, at '
+        'a break', () {
+      expect(typed(two, 3, 3, '\n').paragraphs, [right, apart, apart]);
+      expect(typed(two, 2, 2, '\n').paragraphs, [right, right, apart]);
+      expect(typed(two, 5, 5, '\n').paragraphs, [right, apart, apart]);
+    });
+
+    test('a break taken out joins two as the first was set', () {
+      final joined = typed(two, 2, 3, '');
+
+      expect(joined.text, 'abcd');
+      expect(joined.paragraphs, [right]);
+    });
+
+    test('typed over letters of several, what is typed is set as the first '
+        '— a paragraph of it for each break it has', () {
+      expect(typed(two, 1, 4, 'X').paragraphs, [right]);
+      expect(typed(two, 1, 4, 'X\nY\nZ').paragraphs, [right, right, right]);
+      expect(typed(two, 0, 5, '').paragraphs, [right]);
+    });
+
+    test('letters typed with no break leave every paragraph as it was', () {
+      expect(typed(two, 0, 0, 'X').paragraphs, [right, apart]);
+      expect(typed(two, 4, 4, 'X').paragraphs, [right, apart]);
+      expect(typed(two, 4, 5, 'XY').paragraphs, [right, apart]);
+    });
+
+    test('a text with no letters has one paragraph — and what is typed into '
+        'it is set as that one', () {
+      final empty = CelTextContent(
+        spans: const [],
+        anchor: CanvasPoint(x: 3, y: 4),
+        paragraphs: const [apart],
+      );
+
+      expect(typed(empty, 0, 0, 'a\nb').paragraphs, [apart, apart]);
+    });
+  });
+
   group('setting letters', () {
     CelTextContent coloured(CelTextContent content, int start, int end) =>
         celTextRestyled(
@@ -210,6 +266,110 @@ void main() {
         () => celTextStylesOf(three, (start: 0, end: 7)),
         throwsRangeError,
       );
+    });
+  });
+
+  group('🚨the paragraphs a setting speaks for: those of its letters', () {
+    /// 「ab」, 「cd」, 「ef」 and, after the last break, one with no letter.
+    final four = said([run('ab\ncd\nef\n')]);
+
+    CelTextParagraphRange spokenFor(int start, int end) => celTextParagraphsOf(
+      four,
+      celTextLettersSpokenFor(four, selectionStart: start, selectionEnd: end),
+    );
+
+    test('with none selected — a caret alone, wherever it stands — every '
+        'paragraph, the one after the last break too', () {
+      for (final caret in [0, 4, 9]) {
+        expect(
+          spokenFor(caret, caret),
+          (first: 0, last: 3),
+          reason: 'the caret at $caret',
+        );
+      }
+    });
+
+    test('the ones the selected letters are in — a break is the last letter '
+        'of the one it ends', () {
+      expect(spokenFor(1, 2), (first: 0, last: 0), reason: '「b」');
+      expect(spokenFor(0, 3), (first: 0, last: 0), reason: '「ab」 and break');
+      expect(spokenFor(2, 3), (first: 0, last: 0), reason: 'its break alone');
+      expect(spokenFor(1, 4), (first: 0, last: 1), reason: '「b」 to 「c」');
+      expect(spokenFor(7, 3), (first: 1, last: 2), reason: 'dragged back');
+    });
+
+    test('a selection run to the end of the text takes the last — empty, '
+        'after a break there', () {
+      expect(spokenFor(4, 9), (first: 1, last: 3));
+      expect(spokenFor(8, 9), (first: 2, last: 3), reason: 'the last break');
+    });
+
+    test('no letters at all are in the paragraph they stand in', () {
+      expect(
+        celTextParagraphsOf(four, (start: 3, end: 3)),
+        (first: 1, last: 1),
+        reason: 'at the head of 「cd」, just past a break',
+      );
+      expect(celTextParagraphsOf(four, (start: 9, end: 9)), (
+        first: 3,
+        last: 3,
+      ));
+      expect(
+        celTextParagraphsOf(said(const []), (start: 0, end: 0)),
+        (first: 0, last: 0),
+        reason: 'a text with no letters has its one',
+      );
+    });
+
+    test('a place outside the text is refused', () {
+      expect(
+        () => celTextParagraphsOf(four, (start: 0, end: 10)),
+        throwsRangeError,
+      );
+    });
+  });
+
+  group('setting paragraphs', () {
+    const right = CelTextParagraph(align: TextCelAlign.right, lineHeight: 2);
+    const apart = CelTextParagraph(align: TextCelAlign.center, lineHeight: 3);
+    final three = CelTextContent(
+      spans: [run('ab\ncd\nef')],
+      anchor: CanvasPoint(x: 3, y: 4),
+      paragraphs: const [right, apart, right],
+    );
+
+    CelTextContent pitched(CelTextParagraphRange range) =>
+        celTextReparagraphed(
+          three,
+          range: range,
+          change: (paragraph) => paragraph.copyWith(lineHeight: 5),
+        );
+
+    test('reaches the paragraphs of the range and no others — each keeping '
+        'what the change leaves alone', () {
+      expect(pitched((first: 1, last: 2)).paragraphs, [
+        right,
+        const CelTextParagraph(align: TextCelAlign.center, lineHeight: 5),
+        const CelTextParagraph(align: TextCelAlign.right, lineHeight: 5),
+      ]);
+      expect(pitched((first: 0, last: 0)).paragraphs, [
+        const CelTextParagraph(align: TextCelAlign.right, lineHeight: 5),
+        apart,
+        right,
+      ]);
+    });
+
+    test('nothing but the paragraphs changes', () {
+      final after = pitched((first: 0, last: 2));
+
+      expect(after.spans, three.spans);
+      expect(after.anchor, three.anchor);
+    });
+
+    test('a paragraph outside the text is refused', () {
+      expect(() => pitched((first: 0, last: 3)), throwsRangeError);
+      expect(() => pitched((first: 2, last: 1)), throwsRangeError);
+      expect(() => pitched((first: -1, last: 0)), throwsRangeError);
     });
   });
 

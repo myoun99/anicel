@@ -264,6 +264,41 @@ void main() {
     );
   });
 
+  // 🗣️F-389 (유저 2026-10-17): 「키에 관한 리니어 등 타입 편집, 세기편집이
+  // 라이브로 화면이나 그래프에도 보이도록」.
+  test('the key window\'s pick is shown before it is written, by the write '
+      'its OK makes — as a handle in flight is', () {
+    final row = session.activeLayer!.id;
+    keyTheRow(row);
+    select(row, lanes: ['rotation', 'opacity'], start: 0, end: 9);
+    final undoable = session.historyManager.canUndo;
+    const pick = KeyTypePick(sides: pulled);
+
+    laneVerbs.previewLaneKeyTypeForSelection(pick);
+    final preview = session.dragPreview.value;
+    expect(preview, isA<LaneEditPreview>());
+    final shown = (preview! as LaneEditPreview).row!.transformTrack;
+    expect(shown.opacity.keyAt(8)!.outgoing, pulledEase);
+    expect(leaving(row, 'opacity', 8), const EaseSide(), reason: 'shown');
+    expect(session.historyManager.canUndo, undoable, reason: 'not written');
+
+    laneVerbs.previewLaneKeyTypeForSelection(const KeyTypePick());
+    expect(
+      session.dragPreview.value,
+      isNull,
+      reason: 'nothing picked shows the row as it stands',
+    );
+
+    laneVerbs.previewLaneKeyTypeForSelection(pick);
+    laneVerbs.setLaneKeyTypeForSelection(pick);
+    expect(session.dragPreview.value, isNull, reason: 'dropped with it');
+    expect(
+      layerOf(row).transformTrack,
+      shown,
+      reason: 'ONE computation: the OK writes what the pick showed',
+    );
+  });
+
   test('a track-owned SE row on the SECOND cut: the handle names its key by '
       'its rail\'s frame, the cut\'s or the track\'s, and the key is the '
       'track\'s', () {

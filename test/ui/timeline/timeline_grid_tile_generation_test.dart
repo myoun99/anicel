@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨#29 프레임 블록 회색 깜빡임 — THE SUBSTRATE GENERATION.
@@ -151,9 +152,7 @@ void main() {
       isNull,
     );
 
-    while (landings == 0) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await pollUntil(() => landings > 0);
     // Let the drain finish whatever else it would do.
     await Future<void>.delayed(const Duration(milliseconds: 25));
 
@@ -210,9 +209,7 @@ void main() {
       spanEndIndexExclusive: 4,
       devicePixelRatio: 1.0,
     );
-    while (landings == 0) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await pollUntil(() => landings > 0);
     expect(
       store.tileFor(
         painter: cutA,
@@ -272,9 +269,7 @@ void main() {
       spanEndIndexExclusive: 4,
       devicePixelRatio: 1.0,
     );
-    while (landings == 0) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await pollUntil(() => landings > 0);
 
     // The same row after an edit: new instance, same id, same generation,
     // same geometry. The stale arm exists exactly for this frame.

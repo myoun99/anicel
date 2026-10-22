@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../timeline/axis_turn.dart'
+    show extentAlong, partAlong, sizeAlong, stripAlong;
 import 'app_scrollbar_lane.dart';
 import 'owning_axis_grip.dart';
 import 'tick_layer.dart';
@@ -187,11 +189,14 @@ class _AppScrollbarState extends State<AppScrollbar> {
   @override
   Widget build(BuildContext context) {
     final horizontal = widget.axis == Axis.horizontal;
+    final thumb = sizeAlong(
+      widget.axis,
+      along: double.infinity,
+      across: _thickness,
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
-        final trackExtent = horizontal
-            ? constraints.maxWidth
-            : constraints.maxHeight;
+        final trackExtent = extentAlong(widget.axis, constraints.biggest);
         final geometry = _geometry(trackExtent);
         // Colour is the whole state machine (see the class doc). White
         // rather than a palette grey because a 4px thumb has to win
@@ -227,13 +232,10 @@ class _AppScrollbarState extends State<AppScrollbar> {
               fit: StackFit.expand,
               children: [
                 Positioned.fill(child: SizedBox.expand(key: widget.laneKey)),
-                Positioned(
-                  left: horizontal ? geometry.thumbStart : 0,
-                  right: horizontal ? null : 0,
-                  top: horizontal ? 0 : geometry.thumbStart,
-                  bottom: horizontal ? 0 : null,
-                  width: horizontal ? geometry.thumbExtent : null,
-                  height: horizontal ? null : geometry.thumbExtent,
+                stripAlong(
+                  widget.axis,
+                  along: geometry.thumbStart,
+                  alongExtent: geometry.thumbExtent,
                   child: Align(
                     // The lane's thickness is reach; where in it the
                     // thumb sits is the seat (㉔).
@@ -248,8 +250,8 @@ class _AppScrollbarState extends State<AppScrollbar> {
                       key: widget.thumbKey,
                       duration: _stateAnimation,
                       curve: Curves.easeOut,
-                      width: horizontal ? double.infinity : _thickness,
-                      height: horizontal ? _thickness : double.infinity,
+                      width: thumb.width,
+                      height: thumb.height,
                       decoration: BoxDecoration(
                         color: color,
                         borderRadius: BorderRadius.circular(_thickness / 2),
@@ -290,7 +292,7 @@ class _AppScrollbarState extends State<AppScrollbar> {
   }
 
   double _axisPosition(Offset localPosition) =>
-      widget.axis == Axis.horizontal ? localPosition.dx : localPosition.dy;
+      partAlong(widget.axis, localPosition);
 
   void _lanePressed(double position, AppScrollbarGeometry geometry) {
     if (!widget.enabled ||

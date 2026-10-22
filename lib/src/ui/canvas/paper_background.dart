@@ -1,6 +1,10 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/widgets.dart';
 
 import '../../models/project_background.dart';
+import 'raster_picture.dart';
 
 /// Paints the project PAPER (R10-⑥ / R3b): the paper color, alpha
 /// included — a thinned paper lets the pasteboard and the backdrop behind
@@ -58,24 +62,50 @@ class AlphaCheckerboardPainter extends CustomPainter {
 /// menu (R3b). 유저 2026-09-16: 「설정의 알파 미리보기 필요없어졌으니 잔재 싹
 /// 삭제」 — the switch and its app-view notifier are gone; the checkerboard
 /// stayed, because every OTHER caller was drawing real absent alpha.
+///
+/// 🚨ONE DRAW, HOWEVER MUCH IT COVERS (F-373, 2026-10-17): one period of
+/// the checker ([_checkerTile]) repeated by a shader. It was a `drawRect`
+/// per grey cell, and on Impeller nothing keeps a still surface baked
+/// (`StaticRaster.capturePays`), so every frame replayed every one of
+/// them: under a 4000×3000 picture in the import window's preview that
+/// was about 94,000 rects and 370–540 ms of raster a frame on the Surface
+/// Pro 11, and a press in the window showed most of a second late (유저
+/// F-373: 「배치창 조작이 너무느림」). As one tile the same frames
+/// rasterized in 3–65 ms — no slower than with no checker at all.
+///
+/// ⛔NEAREST, not smoothed: drawn on that device against the cells it
+/// replaced, nearest gave the same pixels at 1× and 2× and the same grain
+/// zoomed out to 0.2×, where smoothing (low · medium) blurred the cells
+/// and washed the grain out.
 void paintAlphaCheckerboard(Canvas canvas, Rect rect) {
-  const cell = 8.0;
-  canvas.save();
-  canvas.clipRect(rect);
-  canvas.drawRect(rect, Paint()..color = const Color(0xFFFFFFFF));
-  final gray = Paint()..color = const Color(0xFFCCCCCC);
-  final firstColumn = (rect.left / cell).floor();
-  final firstRow = (rect.top / cell).floor();
-  for (var row = firstRow; row * cell < rect.bottom; row += 1) {
-    for (var column = firstColumn; column * cell < rect.right; column += 1) {
-      if ((row + column).isEven) {
-        continue;
-      }
-      canvas.drawRect(
-        Rect.fromLTWH(column * cell, row * cell, cell, cell),
-        gray,
-      );
-    }
-  }
-  canvas.restore();
+  canvas.drawRect(rect, Paint()..shader = _checkerShader);
+}
+
+/// [_checkerTile] repeated from the origin of whatever space the canvas is
+/// in — the cells' own grid, so they zoom and pan with the artwork.
+final ui.ImageShader _checkerShader = ui.ImageShader(
+  _checkerTile(),
+  TileMode.repeated,
+  TileMode.repeated,
+  Float64List(16)
+    ..[0] = 1
+    ..[5] = 1
+    ..[10] = 1
+    ..[15] = 1,
+  filterQuality: FilterQuality.none,
+);
+
+/// One period of the checker, drawn once for the process: two cells of
+/// eight by two, white, the two where row + column is odd grey.
+ui.Image _checkerTile() {
+  final grey = Paint()..color = const Color(0xFFCCCCCC);
+  final recorder = ui.PictureRecorder();
+  Canvas(recorder)
+    ..drawRect(
+      const Rect.fromLTWH(0, 0, 16, 16),
+      Paint()..color = const Color(0xFFFFFFFF),
+    )
+    ..drawRect(const Rect.fromLTWH(8, 0, 8, 8), grey)
+    ..drawRect(const Rect.fromLTWH(0, 8, 8, 8), grey);
+  return rasterPicture(recorder, 16, 16);
 }

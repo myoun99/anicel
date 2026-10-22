@@ -22,6 +22,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 
+import '../../helpers/camera_key_names.dart';
+
 /// A conte cell's camera work, read off its cut's camera (유저 2026-09-29/30):
 /// the camera at the cell's first and last frames and every key between
 /// (H54, 10-01), what the sheet calls each one, and the canvas their frames
@@ -30,27 +32,14 @@ void main() {
   CameraPose at(double x, double y, {double zoom = 1}) =>
       CameraPose(center: CanvasPoint(x: x, y: y), zoom: zoom);
 
-  /// [camera] with the key at [frame] called [position], [scale] and
-  /// [rotation] on those lanes.
-  CutCamera named(
-    CutCamera camera,
-    int frame, {
-    String? position,
-    String? scale,
-    String? rotation,
-  }) {
-    final track = camera.track;
-    return CutCamera.fromTrack(
-      track.copyWith(
-        position: track.position.withKeyName(frame, position),
-        scale: track.scale.withKeyName(frame, scale),
-        rotation: track.rotation.withKeyName(frame, rotation),
-      ),
-    );
-  }
-
   CutCamera calledEverywhere(CutCamera camera, int frame, String name) =>
-      named(camera, frame, position: name, scale: name, rotation: name);
+      cameraKeyNamed(
+        camera,
+        frame,
+        position: name,
+        scale: name,
+        rotation: name,
+      );
 
   /// The cells of a 24-frame cut whose camera is [camera] — a 160×90 camera
   /// over a 640×360 canvas — one block to each of [lengths], in order.
@@ -197,7 +186,13 @@ void main() {
   test('a key whose lanes disagree on its name — the header\'s 「...」 — is '
       'as good as unnamed (「레인끼리 달라서 헤더가 ...으로 표시되는 경우 … '
       '이름 안정해진거랑 같은 규칙으로」)', () {
-    final mixed = named(pan, 0, position: 'A', scale: 'B', rotation: 'A');
+    final mixed = cameraKeyNamed(
+      pan,
+      0,
+      position: 'A',
+      scale: 'B',
+      rotation: 'A',
+    );
     expect(cellOf(mixed).camera!.keys.map((key) => key.label), ['1f', '13f']);
   });
 

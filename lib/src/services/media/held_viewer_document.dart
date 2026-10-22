@@ -64,6 +64,9 @@ final class HeldViewerDocument implements ViewerDocument {
   ui.Size pageSize(int pageIndex) => _document.pageSize(pageIndex);
 
   @override
+  bool get drawnAtAnySize => _document.drawnAtAnySize;
+
+  @override
   Future<ui.Image> renderPage(
     int pageIndex, {
     required int width,

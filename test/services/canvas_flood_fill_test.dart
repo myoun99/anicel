@@ -14,6 +14,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -466,6 +467,67 @@ void main() {
         ).single;
 
         expect((dab.stamp!.width, dab.stamp!.height), (8, 8));
+      });
+
+      /// 🚨I-109: the apron is as wide as the pasteboard in use — at 1.5x
+      /// the 8 × 8 canvas's wall stands 2 past each edge, x in [-2, 10).
+      group('at the pasteboard\'s size', () {
+        List<BrushDab> fill(
+          Set<(int, int)> ink, {
+          required CanvasPoint at,
+          required PasteboardReach reach,
+          void Function()? onOpenRegion,
+        }) => buildFillDabs(
+          cut: cutWith([inkLayer()]),
+          frameIndex: 0,
+          surfaceResolver: (_, _) => outlineSurfaceAt(ink),
+          point: at,
+          color: 0xFF3366CC,
+          options: const FloodFillOptions(
+            expandPx: 0,
+            antiAlias: false,
+            extendBeyondCanvas: true,
+          ),
+          onOpenRegion: onOpenRegion,
+          pasteboardReach: reach,
+        );
+
+        test('a box whose wall stands past the pasteboard\'s is open', () {
+          var leaked = false;
+          final dabs = fill(
+            boxAcrossLeftEdge(),
+            at: CanvasPoint(x: 0, y: 3),
+            reach: PasteboardReach.quarter,
+            onOpenRegion: () => leaked = true,
+          );
+          expect(dabs, isEmpty);
+          expect(leaked, isTrue);
+        });
+
+        test('a box closed inside it fills, off-canvas pixels included', () {
+          final dab = fill(
+            {
+              for (var x = -2; x <= 4; x += 1) ...{(x, 2), (x, 5)},
+              for (var y = 3; y <= 4; y += 1) ...{(-2, y), (4, y)},
+            },
+            at: CanvasPoint(x: 0, y: 3),
+            reach: PasteboardReach.quarter,
+          ).single;
+          expect((dab.stamp!.width, dab.stamp!.height), (5, 2));
+          expect(dab.center, CanvasPoint(x: 1.5, y: 4));
+        });
+
+        test('off, the fill beyond the canvas is the fill inside it', () {
+          var leaked = false;
+          final dab = fill(
+            const {},
+            at: CanvasPoint(x: 3, y: 3),
+            reach: PasteboardReach.none,
+            onOpenRegion: () => leaked = true,
+          ).single;
+          expect((dab.stamp!.width, dab.stamp!.height), (8, 8));
+          expect(leaked, isFalse);
+        });
       });
     });
 

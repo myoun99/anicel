@@ -26,6 +26,10 @@ import '../../helpers/temp_dir.dart';
 /// is a load-bearing trick — if it ever stops working, the reports simply
 /// stop arriving and nothing else fails.
 void main() {
+  // The session warms playback's rows in the quiet this test leaves it, and
+  // a row asks the binding for the quiet it takes its turn in ([QuietTurns]):
+  // without one, every run printed the warm's assertion.
+  TestWidgetsFlutterBinding.ensureInitialized();
   late Directory directory;
   late String projectPath;
 
@@ -219,7 +223,8 @@ void main() {
   });
 
   test(
-    '🚨 a BIGGER asset is reported on more often, at the same entry count',
+    '🚨 a BIGGER asset is told chunk by chunk across its own share of the '
+    'bar, at the same entry count',
     () async {
       // Isolates the one idea the entry count cannot express: a streaming
       // entry advancing by the fraction of ITSELF already read.
@@ -229,7 +234,7 @@ void main() {
       // rises even with the within-entry reporting deleted. Holding the entry
       // count FIXED and varying only the asset's size leaves the sub-entry
       // fraction as the only thing that can move the number.
-      final watch = await watched('a BIGGER asset is reported on more often');
+      final watch = await watched('a BIGGER asset is told chunk by chunk');
       Future<List<double>> saveAssetOf(String tag, int bytes) async {
         watch.step('drawing ($tag)');
         final s = session();
@@ -255,12 +260,20 @@ void main() {
       final small = await saveAssetOf('small', 256 * 1024);
       final big = await saveAssetOf('big', 20 * 256 * 1024);
 
+      // The asset is written last, so its share is the bar's last stretch:
+      // from the small save's last stop before the end, which only whole
+      // entries move. The big one's twenty chunks tell twenty even steps
+      // across it. ⛔Not a count of reports: told as a share of the WHOLE
+      // bar, a chunk restarts below where the bar stands, those reports are
+      // dropped as dips, and the rest still outnumber the small save's.
+      final assetFrom = small[small.length - 2];
       expect(
-        big.length,
-        greaterThan(small.length),
-        reason:
-            'a twenty-times-larger asset produced no more reports than a '
-            'one-chunk one, so nothing is reporting DURING an entry',
+        big.where((told) => told > assetFrom),
+        [
+          for (var chunk = 1; chunk <= 20; chunk += 1)
+            closeTo(assetFrom + (1 - assetFrom) * chunk / 20, 1e-9),
+        ],
+        reason: 'small $small · big $big',
       );
     },
   );

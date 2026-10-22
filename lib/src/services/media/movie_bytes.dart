@@ -106,6 +106,29 @@ Future<HeldMovie?> openHeldMovie(
   ),
 );
 
+/// What [path]'s movie says of itself — its frame size, its rate, its
+/// length — opened as [openHeldMovie] opens it and closed at once; null
+/// when it does not open.
+///
+/// 🪦The import window (a pulldown's partner) and a reference sized to its
+/// movie each opened, read and closed for themselves; the import window's
+/// resolution column (F-375, 2026-10-17) would have been the third.
+Future<QaVideoInfo?> readHeldMovieInfo(
+  VideoDecodeBackend backend,
+  HoldMediaBytes hold,
+  String path,
+) async {
+  final opened = await openHeldMovie(backend, hold, path);
+  if (opened == null) {
+    return null;
+  }
+  try {
+    return opened.info;
+  } finally {
+    await opened.close();
+  }
+}
+
 /// The bytes a movie decoder should read for a medium the project answers
 /// with [carried]: those — or, when [backend]'s decoder cannot read them
 /// where they lie and [original] is still there, the original.

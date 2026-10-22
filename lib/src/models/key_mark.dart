@@ -7,6 +7,8 @@
 /// draw the same half.
 library;
 
+import 'dart:collection';
+
 import 'property_track.dart';
 
 /// What one frame's key mark says.
@@ -48,9 +50,10 @@ final class SidesKeyMark extends KeyMark {
 
 /// 🚨F-17 (유저: 「멤버 타입이 서로 다르면 헤더에 동그라미」): a UNION whose
 /// keyed members do not wear one mark. ↩️It was a disc; since I-89 ② a disc
-/// is 「부드럽게 지나감」, so it is the same circle left HOLLOW (유저 10-10
-/// 「추천대로」). Never a member lane's: one key has nothing to disagree
-/// with.
+/// is 「부드럽게 지나감」, so it was the same circle left HOLLOW (유저 10-10
+/// 「추천대로」) — and since F-367-Q2 the hole is filled again with a thin
+/// ring cut round it, a ◉ (유저 2026-10-16 「구멍을 메우고 가는 틈만
+/// 남긴다」). Never a member lane's: one key has nothing to disagree with.
 final class MixedKeyMark extends KeyMark {
   const MixedKeyMark._();
 
@@ -58,9 +61,10 @@ final class MixedKeyMark extends KeyMark {
   String toString() => 'KeyMark.mixed';
 }
 
-/// A key whose time is its run's (I-89 ④, [PropertyKey.roving]) — After
-/// Effects' small dot. It says nothing of its sides: the pace through it
-/// is the one the run's timed ends set.
+/// A key whose time is its run's (I-89 ④, [PropertyKey.roving]) — a pill
+/// lying along the frame axis (F-367, 유저 2026-10-16 「로빙키 누운
+/// 알약으로」; ↩️After Effects' small dot). It says nothing of its sides:
+/// the pace through it is the one the run's timed ends set.
 final class RovingKeyMark extends KeyMark {
   const RovingKeyMark._();
 
@@ -96,3 +100,52 @@ Map<int, KeyMark> unionKeyMarks(Iterable<Map<int, KeyMark>> lanes) {
   }
   return union;
 }
+
+/// A GROUP's names from its members' ([lanes]): at each frame some member
+/// keys, the name every member keyed there carries — [unionMixedKeyName]
+/// where they do not agree. The ONE name union every group header draws
+/// beside its marks ([unionKeyMarks]).
+///
+/// ㉚ (user, 2026-08-12): 「유니언 그룹 이름 규칙 — 해당 인덱스 멤버들 이름이
+/// 같으면 그 이름 그대로, 다르면 `...`」.
+///
+/// Two edges the rule does not spell out, decided here so they are visible
+/// and cheap to reverse:
+/// - a frame where NO keyed member is named gets no entry at all. `...`
+///   means "several different names"; over a set with none it would be
+///   noise where the row used to print nothing.
+/// - a frame where one member is named and another is not DIFFERS, so it
+///   reads `...`. The alternative — letting the lone name speak for the
+///   group — would claim the whole union carries a name that only one lane
+///   actually has.
+///
+/// 🚨F-414 (유저 2026-10-19): 「레이어의 fx에서 변형에는 헤더에 이름지으면
+/// 보이는데 흐림 효과fx에는 헤더에 이름지어도 안보임 … 다른거도 확인하고 법
+/// 통일」. It was the transform track's alone, so the headers that are not
+/// one — an effect's, the name tag's — drew their members' marks and none
+/// of their names.
+Map<int, String> unionKeyNames(Iterable<PropertyTrack<Object?>> lanes) {
+  final members = lanes.toList();
+  final frames = SplayTreeSet<int>.of([
+    for (final member in members) ...member.keys.keys,
+  ]);
+  final names = <int, String>{};
+  for (final frame in frames) {
+    // Only the lanes that actually hold a key here get a vote.
+    final memberNames = <String?>[
+      for (final member in members)
+        if (member.keys[frame] case final key?) key.name,
+    ];
+    if (memberNames.every((name) => name == null)) {
+      continue;
+    }
+    final first = memberNames.first;
+    names[frame] = first != null && memberNames.every((name) => name == first)
+        ? first
+        : unionMixedKeyName;
+  }
+  return names;
+}
+
+/// What a union prints where its members disagree (㉚).
+const String unionMixedKeyName = '...';

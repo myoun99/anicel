@@ -27,6 +27,25 @@ void premultiplyRgbaInPlace(Uint8List bytes) {
   }
 }
 
+/// Zeroes the colour of every fully clear pixel of straight RGBA [bytes],
+/// IN PLACE: a pixel no alpha shows is (0,0,0,0), whatever colour it came
+/// with.
+///
+/// ONE law for a clear pixel's bytes. A stroke's landing writes one so
+/// (its srcOver skips α==0 — `preBlendStrokeOverlayPixels` mirrors it), and
+/// the engine's decoder hands one back so, as the app's own decoders of a
+/// picture past its side do (`readPngRows`, `readFramesByPackage`) — the
+/// third to carry the loop (2026-10-20), so it is one.
+void zeroFullyClearPixels(Uint8List bytes) {
+  for (var offset = 3; offset < bytes.length; offset += 4) {
+    if (bytes[offset] == 0) {
+      bytes[offset - 3] = 0;
+      bytes[offset - 2] = 0;
+      bytes[offset - 1] = 0;
+    }
+  }
+}
+
 /// A premultiplied copy of [straight]; the source is left as it was.
 Uint8List premultipliedRgbaCopy(Uint8List straight) {
   final bytes = Uint8List.fromList(straight);

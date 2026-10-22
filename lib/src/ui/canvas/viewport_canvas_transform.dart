@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../../core/bounded_memo.dart';
 import '../../models/canvas_viewport.dart';
 import 'display_resample.dart';
 
@@ -130,17 +131,11 @@ double samplingPhaseFor(double scale) {
   if (!(scale > 1) || !scale.isFinite) {
     return 0;
   }
-  final kept = _phaseMemo[scale];
-  if (kept != null) {
-    return kept;
-  }
-  if (_phaseMemo.length >= 8) {
-    _phaseMemo.remove(_phaseMemo.keys.first);
-  }
-  return _phaseMemo[scale] = _bestPhaseFor(scale);
+  return _phaseMemo.resolve(scale, () => _bestPhaseFor(scale));
 }
 
 double _bestPhaseFor(double scale) {
+  debugPhaseMeasures += 1;
   final convergents = _convergentsOf(scale);
   final (:p, :q) = convergents.last;
   // Exactly p/q, with a full period of residues inside the measured pixels:
@@ -171,7 +166,12 @@ double _bestPhaseFor(double scale) {
 /// The last few scales' phases. More than one: the sheet canvas and the
 /// editing canvas paint at their own scales in the same frame, and a pinch
 /// moves one of them every frame.
-final Map<double, double> _phaseMemo = {};
+final BoundedMemo<double, double> _phaseMemo = BoundedMemo(8);
+
+/// How many phases have been measured — a scale is measured once and kept
+/// ([_phaseMemo]). ⚠️TEST ONLY.
+@visibleForTesting
+int debugPhaseMeasures = 0;
 
 /// The device pixel centres a phase is measured over: this many either
 /// side of the canvas origin.

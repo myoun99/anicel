@@ -31,6 +31,7 @@ void main() {
     double turn = 0,
     TextCelAlign align = TextCelAlign.left,
     bool vertical = false,
+    double letterWidth = 1,
   }) => CelTextContent(
     spans: spans,
     anchor: CanvasPoint(x: x, y: y),
@@ -39,6 +40,7 @@ void main() {
     align: align,
     lineHeight: 1,
     vertical: vertical,
+    letterWidth: letterWidth,
   );
 
   CelTextSpan run(String words, [TextLetterStyle style = plain]) =>
@@ -105,7 +107,7 @@ void main() {
 
       expect(boxed.wrapWidth, 81);
       expect(boxed.anchor, CanvasPoint(x: 59.5, y: 50));
-      expect(boxed.align, TextCelAlign.center);
+      expect(boxed.paragraphs, growing.paragraphs);
       expectSameLetters(growing, boxed);
     });
 
@@ -204,7 +206,7 @@ void main() {
         expect(growing.wrapWidth, isNull);
         expect(growing.text, 'ab \ncd');
         expect(growing.anchor, CanvasPoint(x: x, y: 50));
-        expect(growing.align, align);
+        expect(growing.paragraphs, List.filled(2, box.paragraphs.single));
         expectSameLetters(box, growing);
       });
 
@@ -454,6 +456,47 @@ void main() {
     });
   });
 
+  // text-letters-lean-and-underline ⑥: the swap reads the letters where
+  // they are DRAWN, and a box's width is the width it shows.
+  group('🚨letters drawn narrower or wider: no swap moves one', () {
+    for (final width in [0.5, 1.5]) {
+      for (final align in TextCelAlign.values) {
+        final named = '${width * 100}%, ${align.name}';
+
+        test('a text that grows, made a box as wide as its lines are drawn '
+            '($named)', () {
+          // 「abcd」 is 80 wide set, and drawn that times [width].
+          final growing = said(
+            [run('abcd\nef')],
+            align: align,
+            letterWidth: width,
+          );
+
+          final boxed = celTextBoxed(growing);
+
+          expect(boxed.wrapWidth, (80 * width).floorToDouble() + 1);
+          expect(boxed.letterWidth, width);
+          expectSameLetters(growing, boxed);
+        });
+
+        test('a box made to grow: a break where a line wrapped ($named)', () {
+          // Set 70 wide, 「ab cd」 wraps after its space.
+          final box = said(
+            [run('ab cd')],
+            wrapWidth: 70 * width,
+            align: align,
+            letterWidth: width,
+          );
+
+          final growing = celTextUnboxed(box);
+
+          expect(growing.text, 'ab \ncd');
+          expectSameLetters(box, growing);
+        });
+      }
+    }
+  });
+
   group('there and back', () {
     for (final align in TextCelAlign.values) {
       test('a text made a box and made to grow again is the text it was '
@@ -474,6 +517,102 @@ void main() {
       // A pixel past its longest line, the space at its end counted.
       expect(again.wrapWidth, 61);
       expectSameLetters(box, again);
+    });
+  });
+
+  // 🗣️text-letters-lean-and-underline-Q5 (유저 2026-10-18): 「글 덩어리 하나가
+  // 첫 문단의 정렬로 기준점에 선다」 — ONE block, and made a box it moves no
+  // letter: the law of 10-06, for a text whose paragraphs are aligned
+  // unlike.
+  group('🚨paragraphs aligned UNLIKE', () {
+    // Four letters of 20.3, each with 0.37 of tracking: 82.68 long, and
+    // the box past it not a whole pixel more.
+    const odd = TextLetterStyle(fontSize: 20.3, letterSpacing: 0.37);
+
+    CelTextContent saidEach(
+      String words,
+      List<TextCelAlign> aligns, {
+      TextLetterStyle letters = plain,
+      double letterWidth = 1,
+      double? wrapWidth,
+      bool vertical = false,
+    }) => CelTextContent(
+      spans: [run(words, letters)],
+      anchor: CanvasPoint(x: 100, y: 50),
+      wrapWidth: wrapWidth,
+      vertical: vertical,
+      letterWidth: letterWidth,
+      paragraphs: [
+        for (final align in aligns)
+          CelTextParagraph(align: align, lineHeight: 1),
+      ],
+    );
+
+    for (final first in TextCelAlign.values) {
+      for (final (named, letters, width) in [
+        ('plain', plain, 1.0),
+        ('tracked', odd, 1.0),
+        // Drawn narrower: the box past the longest line is a pixel past it
+        // AS DRAWN, which set is not a whole pixel past it.
+        ('tracked and narrowed', odd, 0.73),
+      ]) {
+        for (final vertical in [false, true]) {
+          final how =
+              '${first.name} first, $named, '
+              '${vertical ? 'in columns' : 'in lines'}';
+          // The first paragraph, then one aligned each way.
+          final growing = saidEach(
+            vertical ? 'あいうえ\nあい\nあい\nあい' : 'abcd\nab\nab\nab',
+            [first, ...TextCelAlign.values],
+            letters: letters,
+            letterWidth: width,
+            vertical: vertical,
+          );
+
+          test('a text that grows, made a box: no letter moves ($how)', () {
+            final boxed = celTextBoxed(growing);
+
+            expect(boxed.paragraphs, growing.paragraphs);
+            expectSameLetters(growing, boxed);
+          });
+
+          test('made a box and made to grow again, it is the text it was '
+              '($how)', () {
+            expect(celTextUnboxed(celTextBoxed(growing)), growing);
+          });
+        }
+      }
+    }
+
+    test('⚠️a BOX wider than the one its text grows in comes back with the '
+        'paragraphs aligned as the first where they were, and each other '
+        'moved by what the box was wider — or half of that (put on the '
+        'card 2026-10-18): a text that grows has no width to keep', () {
+      // 「abcd」 is 80 long: its text grows in a box of 81, and this is 120.
+      List<double> leftsOf(CelTextContent content) {
+        final layout = layoutCelText(content);
+        addTearDown(layout.dispose);
+        return [
+          for (final at in [0, 5, 8])
+            layout
+                .toCanvas(layout.selectionRects(at, at + 1).single.topLeft)
+                .dx,
+        ];
+      }
+
+      final box = saidEach('abcd\nab\nab', [
+        TextCelAlign.left,
+        TextCelAlign.center,
+        TextCelAlign.right,
+      ], wrapWidth: 120);
+
+      final grown = celTextUnboxed(box);
+
+      final was = leftsOf(box);
+      final now = leftsOf(grown);
+      expect(now[0], closeTo(was[0], 1e-3), reason: 'aligned as the first');
+      expect(now[1], closeTo(was[1] - (120 - 81) / 2, 1e-3));
+      expect(now[2], closeTo(was[2] - (120 - 81), 1e-3));
     });
   });
 

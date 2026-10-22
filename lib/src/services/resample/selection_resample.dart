@@ -103,19 +103,20 @@ ResampleTransform selectionAffineResampleTransform({
   required int outLeft,
   required int outTop,
 }) {
-  final cos = affine.cosTheta;
-  final sin = affine.sinTheta;
+  final turn = affine.turn;
   final invSx = 1 / affine.sx;
   final invSy = 1 / affine.sy;
-  final offsetX = outLeft - affine.pivot.x - affine.appliedTx;
-  final offsetY = outTop - affine.pivot.y - affine.appliedTy;
+  final offset = turn.back.apply(
+    outLeft - affine.pivot.x - affine.appliedTx,
+    outTop - affine.pivot.y - affine.appliedTy,
+  );
   return ResampleTransform(
-    a: cos * invSx,
-    b: sin * invSx,
-    c: (offsetX * cos + offsetY * sin) * invSx + affine.pivot.x - srcLeft,
-    d: -sin * invSy,
-    e: cos * invSy,
-    f: (offsetX * -sin + offsetY * cos) * invSy + affine.pivot.y - srcTop,
+    a: turn.cos * invSx,
+    b: turn.sin * invSx,
+    c: offset.x * invSx + affine.pivot.x - srcLeft,
+    d: -turn.sin * invSy,
+    e: turn.cos * invSy,
+    f: offset.y * invSy + affine.pivot.y - srcTop,
   );
 }
 

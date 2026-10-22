@@ -11,10 +11,15 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 
 /// R27 repro: after a cel round-trip the store REMATERIALIZES the
 /// surface — every BitmapTile is a brand-new object, so the tile image
-/// cache (keyed by tile identity) starts from zero and the painter's
-/// budgeted decode chunks (32/paint) must CONVERGE via the completion →
-/// notify → repaint chain. The user's 8K fill showed only the top-left
-/// region after a cut round-trip: convergence stalled partway.
+/// cache (keyed by tile identity) starts from zero. The user's 8K fill
+/// showed only the top-left region after a cut round-trip.
+///
+/// ↩️The painter decoded 32 tiles a paint then, and the rest had to
+/// CONVERGE through a completion → notify → repaint chain, which stalled
+/// partway; so this waited forty rounds of real time for it. A tile is
+/// pictured inside the paint that needs it since 2026-09-17
+/// (`BitmapTileImageCache.pictureFor`): the frame that paints the surface
+/// pictures every tile of it.
 void main() {
   BitmapSurface freshSurface({required int tiles}) {
     final map = <TileCoord, BitmapTile>{};
@@ -36,10 +41,10 @@ void main() {
     );
   }
 
-  testWidgets('a fully re-materialized surface CONVERGES: every tile '
-      'decodes within a bounded number of frames', (tester) async {
-    // 12x12 = 144 tiles: needs 5 chunks of 32 — the chain must keep
-    // itself alive across at least 5 paint cycles.
+  testWidgets('a fully re-materialized surface is pictured whole by the '
+      'frame that paints it', (tester) async {
+    // 12x12 = 144 tiles: more than four times the 32 a paint used to
+    // decode.
     final surface = freshSurface(tiles: 12);
 
     Widget host(BitmapSurface s) => MaterialApp(
@@ -50,40 +55,26 @@ void main() {
     );
 
     await tester.pumpWidget(host(surface));
-    // Let decode completions land + chain: real async decodes need
-    // runAsync-style pumping; pump generously with real waits.
-    for (var i = 0; i < 40; i += 1) {
-      await tester.runAsync(() => Future<void>.delayed(
-            const Duration(milliseconds: 10),
-          ));
-      await tester.pump();
-    }
     final undecoded = surface.tiles.values
         .where((tile) => BitmapTileImageCache.instance.imageFor(tile) == null)
         .length;
     expect(
       undecoded,
       0,
-      reason: 'decode chain must drain all 144 tiles (stall = the 8K '
+      reason: 'the frame pictures all 144 tiles (a stall was the 8K '
           'top-left-only bug)',
     );
 
     // The ROUND-TRIP: a rematerialized surface = all-new tile objects.
     final rematerialized = freshSurface(tiles: 12);
     await tester.pumpWidget(host(rematerialized));
-    for (var i = 0; i < 40; i += 1) {
-      await tester.runAsync(() => Future<void>.delayed(
-            const Duration(milliseconds: 10),
-          ));
-      await tester.pump();
-    }
     final undecodedAfter = rematerialized.tiles.values
         .where((tile) => BitmapTileImageCache.instance.imageFor(tile) == null)
         .length;
     expect(
       undecodedAfter,
       0,
-      reason: 'convergence must also complete after rematerialization',
+      reason: 'and all of them after rematerialization',
     );
   });
 }

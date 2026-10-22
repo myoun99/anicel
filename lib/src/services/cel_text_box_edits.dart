@@ -1,7 +1,9 @@
 import 'dart:math' as math;
+import 'dart:ui' show Offset;
 
 import '../models/canvas_point.dart';
 import '../models/cel_text.dart';
+import 'cel_text_frame.dart';
 
 /// THE EDITS A TEXT'S BOX TAKES (R9-rest, the text tool) — what a hand on
 /// its corner, outside it or on its edge does — as values: a content in, a
@@ -22,6 +24,23 @@ const double celTextMinFontSize = 1;
 
 /// The narrowest a box wraps at, in canvas pixels.
 const double celTextMinWrapWidth = 1;
+
+/// HOW LONG THE BOX IS THAT A TEXT WHICH GROWS IS SET IN, its longest line —
+/// or column — being [longest] long as it is drawn: to the next whole pixel
+/// PAST it. It is the box the text is made when it is made one
+/// (`celTextBoxed`).
+///
+/// 🗣️유저 2026-10-18 (text-letters-lean-and-underline-Q5, of a text that
+/// grows whose paragraphs are aligned unlike): 「글 덩어리 하나가 첫 문단의
+/// 정렬로 기준점에 선다」 — the text is ONE block, a box its longest line
+/// fills, and each paragraph stands in it as its own alignment says. So it
+/// is set in the very box it would be made, and made one no letter moves
+/// (유저 2026-10-06, `cel_text_box_width.dart`).
+///
+/// ⚠️PAST it, and never exactly as long: the engine aligns a line only where
+/// it has room (measured 2026-10-06, `_frameOf` in `cel_text_lines.dart`).
+double celTextBoxLengthPast(double longest) =>
+    math.max(longest.floorToDouble() + 1, celTextMinWrapWidth);
 
 /// [content] with every LENGTH of it [factor] times what it was — the
 /// letters' size, their tracking and their outline, and the box's width
@@ -77,31 +96,66 @@ CelTextContent celTextTurnedAbout(
   CelTextContent content,
   double degrees,
   CanvasPoint centre,
+) => _keptAt(
+  content,
+  content.copyWith(rotationDegrees: content.rotationDegrees + degrees),
+  centre,
+);
+
+/// [content] leaning by [degrees] ([CelTextContent.skewDegrees]) about
+/// [centre], which stays where it is.
+CelTextContent celTextLeanedAbout(
+  CelTextContent content,
+  double degrees,
+  CanvasPoint centre,
+) => _keptAt(content, content.copyWith(skewDegrees: degrees), centre);
+
+/// [content] mirrored — [flipped] — or not, about [centre], which stays
+/// where it is ([CelTextContent.flipped]).
+CelTextContent celTextFlippedAbout(
+  CelTextContent content,
+  CanvasPoint centre, {
+  required bool flipped,
+}) => _keptAt(content, content.copyWith(flipped: flipped), centre);
+
+/// [changed] — [content] turned, leaned or mirrored otherwise — standing so
+/// the point of it at [centre] stays there: its anchor carried to where
+/// that point standing still puts it.
+CelTextContent _keptAt(
+  CelTextContent content,
+  CelTextContent changed,
+  CanvasPoint centre,
 ) {
-  final radians = degrees * math.pi / 180;
-  final cos = math.cos(radians);
-  final sin = math.sin(radians);
-  final dx = content.anchor.x - centre.x;
-  final dy = content.anchor.y - centre.y;
-  return content.copyWith(
-    rotationDegrees: content.rotationDegrees + degrees,
-    anchor: CanvasPoint(
-      x: centre.x + dx * cos - dy * sin,
-      y: centre.y + dx * sin + dy * cos,
-    ),
-  );
+  final still = Offset(centre.x, centre.y);
+  final local = CelTextFrame.of(content).toLocal(still);
+  final anchor = still - CelTextFrame.of(changed).onCanvas(local);
+  return changed.copyWith(anchor: CanvasPoint(x: anchor.dx, y: anchor.dy));
 }
 
 /// The way [content]'s letters run, as one step of it on the canvas: along
-/// its lines — or, written in columns, DOWN them — turned as the text is.
+/// its lines — or, written in columns, DOWN them — leaned, mirrored and
+/// turned as the text is ([CelTextFrame]).
 ///
 /// What a box's room is measured along ([CelTextContent.wrapWidth]), and so
-/// what a hand on the edge that sets it travels along.
+/// what a hand on the edge that sets it carries the anchor along.
 ({double dx, double dy}) celTextLettersWay(CelTextContent content) {
-  final radians = content.rotationDegrees * math.pi / 180;
+  final frame = CelTextFrame.of(content);
+  final step = content.vertical ? frame.yStep : frame.xStep;
+  return (dx: step.dx, dy: step.dy);
+}
+
+/// How far [travel], a hand's travel on the canvas, goes the way
+/// [content]'s letters run ([celTextLettersWay]) and the way its lines
+/// stack ([celTextStackingWay]) — read in its own frame, where a box's
+/// room and its height are measured.
+({double letters, double stacking}) celTextTravelAlong(
+  CelTextContent content,
+  Offset travel,
+) {
+  final local = CelTextFrame.of(content).inFrame(travel);
   return content.vertical
-      ? (dx: -math.sin(radians), dy: math.cos(radians))
-      : (dx: math.cos(radians), dy: math.sin(radians));
+      ? (letters: local.dy, stacking: -local.dx)
+      : (letters: local.dx, stacking: local.dy);
 }
 
 /// A box [content] given [width] of room by one of the two edges its
@@ -138,16 +192,16 @@ CelTextContent celTextBoxWidened(
 }
 
 /// The way [content]'s lines stack, as one step of it on the canvas: down
-/// them — or, written in columns, leftwards across them — turned as the
-/// text is. A quarter turn clockwise from the way its letters run
-/// ([celTextLettersWay]), in lines and in columns alike.
+/// them — or, written in columns, leftwards across them — leaned, mirrored
+/// and turned as the text is ([CelTextFrame]).
 ///
 /// What a box's least height is measured along
 /// ([CelTextContent.minHeight]), and so what a hand on the edge that sets
-/// it travels along.
+/// it carries the anchor along.
 ({double dx, double dy}) celTextStackingWay(CelTextContent content) {
-  final letters = celTextLettersWay(content);
-  return (dx: -letters.dy, dy: letters.dx);
+  final frame = CelTextFrame.of(content);
+  final step = content.vertical ? -frame.xStep : frame.yStep;
+  return (dx: step.dx, dy: step.dy);
 }
 
 /// How deep [content]'s box is — across its lines, or the way its columns

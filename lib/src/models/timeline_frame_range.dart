@@ -46,11 +46,28 @@ class TimelineFrameRangeSelection {
   /// so nothing reads differently than it did before rows existed.
   final List<TimelineRowAddress> rows;
 
-  /// The layers this selection covers, anchor-only selections included.
-  List<LayerId> get spanLayerIds => layerIds.isEmpty ? [layerId] : layerIds;
+  /// The layers whose BLOCKS this selection covers, anchor-only selections
+  /// included.
+  ///
+  /// 🚨F-87: off [rows] whenever the drag swept them — the LAYER rows among
+  /// them ([TimelineRowAddress.blockLayerId]) and nothing else. A swept lane
+  /// is its own row and holds its own keys; its layer's blocks are covered
+  /// when the layer's row is. ↩️The anchor stood in when no layer row was
+  /// swept, and the drag's own derivation counted every lane as its layer:
+  /// a band over one fx row deleted the frames of a row it never lit.
+  List<LayerId> get spanLayerIds => rows.isNotEmpty
+      ? [
+          ...{for (final row in rows) ?row.blockLayerId},
+        ]
+      : layerIds.isEmpty
+      ? [layerId]
+      : layerIds;
 
-  bool coversLayer(LayerId id) =>
-      layerIds.isEmpty ? id == layerId : layerIds.contains(id);
+  bool coversLayer(LayerId id) => rows.isNotEmpty
+      ? rows.any((row) => row.blockLayerId == id)
+      : layerIds.isEmpty
+      ? id == layerId
+      : layerIds.contains(id);
 
   /// Whether THIS row — of any kind — is in the swept run.
   ///
@@ -265,32 +282,26 @@ RangeBlock? aggregateRunBlockAt(
   return null;
 }
 
-/// Snaps a raw dragged span to WHOLE blocks on [layer] — THE shared rule
-/// ([snapSpanToBlocks]), handed this row's lanes.
+/// Snaps a raw dragged span to whole blocks on EVERY row of a band at once —
+/// THE shared rule ([snapSpanToBlocks]), handed all their lanes: grown
+/// until no swept row's block is cut. No rows is the raw span (a band of
+/// lanes alone: a lane's keys are points). One row is a drag on it.
 ///
-/// [aggregateRuns] is the folder case: a row whose blocks are derived from
+/// A row's `runs` are the folder case: a row whose blocks are derived from
 /// its members rather than owned. Empty for every ordinary row.
-TimelineFrameRangeSelection? snapFrameRangeToBlocks({
-  required Layer layer,
+///
+/// ↩️A band snapped each row on its own and grew the span until none moved
+/// it — this rule again, by hand, around a per-row snap (F-87's clone).
+RangeSpan? snapSpanToRowsBlocks({
+  required List<({Layer layer, List<({int start, int endExclusive})> runs})>
+  rows,
   required int anchorIndex,
   required int headIndex,
-  List<({int start, int endExclusive})> aggregateRuns = const [],
-}) {
-  final span = snapSpanToBlocks(
-    lanes: _blockLanesOf(layer, aggregateRuns),
-    anchorIndex: anchorIndex,
-    headIndex: headIndex,
-  );
-  if (span == null) {
-    return null;
-  }
-
-  return TimelineFrameRangeSelection(
-    layerId: layer.id,
-    startIndex: span.startIndex,
-    endIndexExclusive: span.endIndexExclusive,
-  );
-}
+}) => snapSpanToBlocks(
+  lanes: [for (final row in rows) ..._blockLanesOf(row.layer, row.runs)],
+  anchorIndex: anchorIndex,
+  headIndex: headIndex,
+);
 
 /// The unit the cell [frameIndex] stands for on [layer]'s row, and whether
 /// it is a block ([standingUnitAt]) — read off the lanes a drag on that row

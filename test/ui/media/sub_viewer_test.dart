@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
@@ -11,6 +12,7 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/media_file_views.dart';
 
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/fake_pdf_document.dart';
@@ -496,6 +498,90 @@ void main() {
       expect(main.position.value, 4);
       expect(sub.request.value, isNull);
       expect(sub.position.value, 0);
+    });
+
+    /// 🗣️F-382 (유저 2026-10-17): 「… 줌 상태나 페이지상태등이 기억되서
+    /// 다른 파일 열엇다가 돌아오면 그대로 열리도록」 — the page the file's,
+    /// the framing the viewer's (`MediaFileViews`).
+    group('what it keeps of each file (F-382)', () {
+      const conte = MediaViewerRequest(
+        path: 'C:/work/conte.pdf',
+        kind: MediaAssetKind.pdf,
+      );
+      const layout = MediaViewerRequest(
+        path: 'C:/work/layout.pdf',
+        kind: MediaAssetKind.pdf,
+      );
+      late MediaFileViews views;
+      late MediaViewerSlot main;
+      late MediaViewerSlot sub;
+
+      setUp(() {
+        views = MediaFileViews();
+        main = MediaViewerSlot()..keepIn(views, viewer: 'media-viewer');
+        sub = MediaViewerSlot()..keepIn(views, viewer: 'media-viewer-sub');
+      });
+
+      tearDown(() {
+        main.dispose();
+        sub.dispose();
+      });
+
+      /// [slot] showing [file]: opened, and its document in — which the
+      /// viewer marks once it has loaded it ([MediaViewerSlot.framedFor]).
+      void shows(MediaViewerSlot slot, MediaViewerRequest file) {
+        slot.open(file);
+        slot.framedFor.value = file.path;
+      }
+
+      test('a file opens at the page it was last seen at — in either '
+          'viewer', () {
+        shows(main, conte);
+        main.position.value = 3;
+        shows(main, layout);
+        expect(
+          main.position.value,
+          0,
+          reason: 'the arriving file\'s page, never the leaving one\'s',
+        );
+
+        sub.open(conte);
+        expect(sub.position.value, 3);
+        main.open(conte);
+        expect(main.position.value, 3);
+      });
+
+      test('the framing is the viewer\'s own', () {
+        shows(main, conte);
+        final framing = CanvasViewport(zoom: 2, panX: -40, panY: -300);
+        main.viewport.value = framing;
+
+        expect(main.keptFramingOf(conte.path), framing);
+        expect(
+          sub.keptFramingOf(conte.path),
+          isNull,
+          reason: 'the two viewers are different sizes',
+        );
+      });
+
+      test('🚨nothing is kept while the viewer is between files — what '
+          'moves then is the last one\'s view, or the next one\'s page on '
+          'its way', () {
+        shows(main, conte);
+        main.position.value = 3;
+        final framing = CanvasViewport(zoom: 2);
+        main.viewport.value = framing;
+
+        // Its document not in yet: the view is still the conte's.
+        main.open(layout);
+        main.position.value = 1;
+        main.viewport.value = CanvasViewport(zoom: 5);
+
+        expect(views.pageOf(conte.path), 3);
+        expect(views.pageOf(layout.path), 0);
+        expect(main.keptFramingOf(conte.path), framing);
+        expect(main.keptFramingOf(layout.path), isNull);
+      });
     });
   });
 

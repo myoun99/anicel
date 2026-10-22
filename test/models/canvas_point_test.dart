@@ -51,7 +51,7 @@ void main() {
     });
 
     // The two vector operations every point type owns (Offset.distance /
-    // Offset.lerp): the stabilizer's rope, the stamp drag, the dab
+    // Offset.lerp): the stabilizer, the stamp drag, the dab
     // interpolator and the transform track each spelled them out (the
     // audit's clone scan, 2026-09-06).
     test('distanceTo is the Euclidean length, both ways round', () {
@@ -60,6 +60,15 @@ void main() {
       expect(a.distanceTo(b), 5);
       expect(b.distanceTo(a), 5);
       expect(a.distanceTo(a), 0);
+    });
+
+    test('distanceToSegment measures to the segment, its ends included — '
+        'not to the line through it', () {
+      final a = CanvasPoint(x: 0, y: 0);
+      final b = CanvasPoint(x: 10, y: 0);
+      expect(CanvasPoint(x: 5, y: 3).distanceToSegment(a, b), 3);
+      expect(CanvasPoint(x: 13, y: 4).distanceToSegment(a, b), 5);
+      expect(CanvasPoint(x: -3, y: 4).distanceToSegment(a, b), 5);
     });
 
     test('lerp walks the segment: 0 is a, 1 is b, the middle is halfway', () {

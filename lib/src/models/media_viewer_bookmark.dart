@@ -8,19 +8,19 @@ import 'media_asset.dart';
 /// file is shared by every project. It rides the same rule
 /// `ExportProjectOverrides` does — it travels with the film, but it is
 /// not a document EDIT, so it is written straight through the repository
-/// with no history entry. Turning a reference page must never land in
-/// undo, and it must never make the project dirty on its own.
+/// with no history entry. Opening a reference must never land in undo,
+/// and it must never make the project dirty on its own.
 ///
 /// That last part has a consequence the user accepted: open a reference,
 /// draw nothing, close — and the choice is not saved, because nothing
 /// asked to save. Draw one stroke and it rides along.
+///
+/// ↩️F-382 (유저 2026-10-17): how far into the file the viewer was is no
+/// longer here — the page is the FILE's (`MediaFileViews`), kept with the
+/// framing each viewer left it at, beside the project. It stood here as
+/// this viewer's page, and a file seen again came back at its first.
 class MediaViewerBookmark {
-  const MediaViewerBookmark({
-    required this.path,
-    required this.kind,
-    this.name,
-    this.position = 0,
-  });
+  const MediaViewerBookmark({required this.path, required this.kind});
 
   /// The file. For a pooled asset this is its pool key; for a file opened
   /// straight from the picker it is an absolute path that means nothing
@@ -31,30 +31,12 @@ class MediaViewerBookmark {
 
   final MediaAssetKind kind;
 
-  /// The pooled asset's display name, when it had one.
-  final String? name;
+  // 🪦No name of its own (F-376, 2026-10-17): it kept the pooled asset's
+  // name as it stood when the viewer opened, and a viewer shows the file
+  // as the pool shows it NOW — a copy here only ever said a name the pool
+  // had given up (`Project.shownNameOfMedia`).
 
-  /// How far into the document — see `MediaViewerTabHost.position`.
-  final int position;
-
-  MediaViewerBookmark copyWith({
-    String? path,
-    MediaAssetKind? kind,
-    String? name,
-    int? position,
-  }) => MediaViewerBookmark(
-    path: path ?? this.path,
-    kind: kind ?? this.kind,
-    name: name ?? this.name,
-    position: position ?? this.position,
-  );
-
-  Map<String, Object?> toJson() => {
-    'path': path,
-    'kind': kind.name,
-    if (name != null) 'name': name,
-    if (position != 0) 'position': position,
-  };
+  Map<String, Object?> toJson() => {'path': path, 'kind': kind.name};
 
   /// Null for anything this build cannot make sense of — a hand-edited
   /// file or one from a version that spelled a kind differently must lose
@@ -74,26 +56,15 @@ class MediaViewerBookmark {
     if (kind == null) {
       return null;
     }
-    final name = json['name'];
-    final position = json['position'];
-    return MediaViewerBookmark(
-      path: path,
-      kind: kind,
-      name: name is String ? name : null,
-      position: position is int && position >= 0 ? position : 0,
-    );
+    return MediaViewerBookmark(path: path, kind: kind);
   }
 
   @override
   bool operator ==(Object other) =>
-      other is MediaViewerBookmark &&
-      other.path == path &&
-      other.kind == kind &&
-      other.name == name &&
-      other.position == position;
+      other is MediaViewerBookmark && other.path == path && other.kind == kind;
 
   @override
-  int get hashCode => Object.hash(path, kind, name, position);
+  int get hashCode => Object.hash(path, kind);
 }
 
 /// The remembered documents of every viewer, keyed by the viewer's panel

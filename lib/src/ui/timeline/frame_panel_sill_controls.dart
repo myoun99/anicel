@@ -63,7 +63,6 @@ class FramePanelSillControls extends StatelessWidget {
     required this.session,
     required this.scope,
     required this.cameraViewKeyValue,
-    this.cameraViewEnabled,
     this.playbackStartFrame,
     this.onSkipToStart,
   });
@@ -75,8 +74,8 @@ class FramePanelSillControls extends StatelessWidget {
   final PlaybackScope scope;
 
   /// R28 #1: camera view is a VIEW MODE, so every panel with a transport
-  /// carries the toggle beside it — both entrances drive the one notifier.
-  final ValueNotifier<bool>? cameraViewEnabled;
+  /// carries the toggle beside it — both entrances press the one switch,
+  /// the project's camera row's eye ([EditorSessionManager.cameraViewMode]).
   final String cameraViewKeyValue;
 
   final int Function()? playbackStartFrame;
@@ -101,7 +100,7 @@ class FramePanelSillControls extends StatelessWidget {
           resolveStrings: () => session.uiStrings,
         ),
         CameraViewToggleButton(
-          enabled: cameraViewEnabled,
+          view: session.cameraViewMode,
           keyValue: cameraViewKeyValue,
         ),
         const SizedBox(width: 4),

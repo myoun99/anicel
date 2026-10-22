@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import '../straight_rgba_image.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
@@ -11,6 +10,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../photoshop/psd_reader.dart';
+import 'cel_picture.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 import 'psd_layer_plan.dart';
 import 'raster_cel_import.dart';
@@ -50,13 +50,16 @@ class PsdExpansion {
   final List<ImportWarning> warnings;
 
   /// The canvas the stack was laid out on — the document's own size when
-  /// the stack makes a NEW cut ([readPsdExpansion]'s `canvasFromDocument`).
+  /// the stack makes a NEW cut ([readPsdExpansion]'s `newCut`).
   final CanvasSize canvas;
 }
 
 /// Expands [bytes] into layers and cel surfaces, or null when the document
 /// has no layer stack to expand (a flattened PSD — which the MERGE reading
 /// handles perfectly well).
+///
+/// [newCut]: the stack makes a cut of its own — laid out at the document's
+/// own size, and standing in it unwrapped ([planPsdExpansion]).
 Future<PsdExpansion?> readPsdExpansion({
   required Uint8List bytes,
   required String displayName,
@@ -65,7 +68,7 @@ Future<PsdExpansion?> readPsdExpansion({
   required CanvasSize canvas,
   required MediaFitMode fit,
   required ImportIdMint mint,
-  bool canvasFromDocument = false,
+  required bool newCut,
 }) async {
   // Off the UI isolate: a layout PSD is routinely a hundred megabytes, and
   // its layer section is the expensive half.
@@ -75,7 +78,7 @@ Future<PsdExpansion?> readPsdExpansion({
   }
   // A NEW cut is made at the document's own size, which is only known once
   // the header has been read — here.
-  final laidOn = canvasFromDocument
+  final laidOn = newCut
       ? CanvasSize(width: document.width, height: document.height)
       : canvas;
   final plan = planPsdExpansion(
@@ -86,6 +89,7 @@ Future<PsdExpansion?> readPsdExpansion({
     canvas: laidOn,
     fit: fit,
     mint: mint,
+    newCut: newCut,
   );
 
   final cels = <PsdExpandedCel>[];
@@ -96,8 +100,8 @@ Future<PsdExpansion?> readPsdExpansion({
       continue;
     }
     final crop = placement.crop;
-    final image = await decodeStraightRgbaImage(
-      rgba: _croppedTo(crop, pixels, source.width),
+    final picture = await pictureOfPixels(
+      _croppedTo(crop, pixels, source.width),
       width: crop.width,
       height: crop.height,
     );
@@ -109,8 +113,8 @@ Future<PsdExpansion?> readPsdExpansion({
           // The rect comes from the plan, which already carried the
           // document's fit — fitting each layer on its own would scatter a
           // stack that lines up in Photoshop.
-          surface: await rasterizeImageToSurface(
-            image: image,
+          surface: await layCelPicture(
+            picture: picture,
             canvas: laidOn,
             placement: rectPlacement(
               placement.rect,
@@ -123,7 +127,7 @@ Future<PsdExpansion?> readPsdExpansion({
     } finally {
       // One layer's picture at a time: eighty full-canvas layers held at
       // once is how expanding a background runs a tablet out of memory.
-      image.dispose();
+      picture.dispose();
     }
   }
 

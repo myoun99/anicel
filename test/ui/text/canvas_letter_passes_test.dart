@@ -58,7 +58,7 @@ void main() {
   }
 
   /// What [passes] draw, call by call: each pass by the number it was set
-  /// as, and the layers opened and shut round them.
+  /// as, and the saves and the layers opened and shut round them.
   List<String> drawnBy(CanvasLetterPasses<TextPainter> passes) {
     final canvas = _WritesDown();
     passes.paintAt(
@@ -68,6 +68,23 @@ void main() {
     );
     return canvas.calls;
   }
+
+  /// A pass as [drawnBy] writes it down: in a save of its own, where it is
+  /// drawn as wide as its letters are (`CelTextContent.letterWidth`).
+  List<String> passDrawn(int pass) => ['save', 'pass $pass', 'restore'];
+
+  /// A HARD pass as [drawnBy] writes it down: cut, in a layer of its own —
+  /// and one more round that for a colour that is see-through.
+  List<String> hardPassDrawn(int pass, {bool seeThrough = false}) => [
+    'save',
+    'cut',
+    if (seeThrough) 'layer',
+    'layer',
+    ...passDrawn(pass),
+    'restore',
+    if (seeThrough) 'restore',
+    'restore',
+  ];
 
   bool drawsNothing(ui.Paint? paint) => paint != null && paint.color.a == 0;
 
@@ -139,20 +156,10 @@ void main() {
       // 4 the hard fill. (The hard outline's colour is see-through: a
       // layer of its own round the hard one.)
       expect(drawnBy(passes), [
-        'pass 2',
-        'cut',
-        'layer',
-        'layer',
-        'pass 3',
-        'restore',
-        'restore',
-        'restore',
-        'pass 1',
-        'cut',
-        'layer',
-        'pass 4',
-        'restore',
-        'restore',
+        ...passDrawn(2),
+        ...hardPassDrawn(3, seeThrough: true),
+        ...passDrawn(1),
+        ...hardPassDrawn(4),
       ]);
     });
 
@@ -162,19 +169,9 @@ void main() {
       // The fill (it measures) · the hard outline · the hard fill.
       expect(said, hasLength(3));
       expect(drawnBy(passes), [
-        'cut',
-        'layer',
-        'layer',
-        'pass 2',
-        'restore',
-        'restore',
-        'restore',
-        'pass 1',
-        'cut',
-        'layer',
-        'pass 3',
-        'restore',
-        'restore',
+        ...hardPassDrawn(2, seeThrough: true),
+        ...passDrawn(1),
+        ...hardPassDrawn(3),
       ]);
     });
 
@@ -470,6 +467,9 @@ void main() {
 /// letters long, in the test font's ten-pixel boxes).
 class _WritesDown implements ui.Canvas {
   final List<String> calls = [];
+
+  @override
+  void save() => calls.add('save');
 
   @override
   void saveLayer(ui.Rect? bounds, ui.Paint paint) => calls.add('layer');

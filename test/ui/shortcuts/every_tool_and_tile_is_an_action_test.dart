@@ -128,8 +128,9 @@ void main() {
     );
   });
 
-  test('🪦the retired keys are nobody\'s: M, L and Z alone, V off the '
-      'transform tool, and Ctrl+Y as a second redo', () {
+  test('🪦the retired keys are nobody\'s: M and L alone, V off the '
+      'transform tool, and Ctrl+Y as a second redo — and Z alone holds '
+      'only the line', () {
     // 「이동툴이라기보단 그냥 변형툴이잖아. v 삭제하고 v 관련 잔재있으면
     // 삭제」 took V off the tool; ↩️I-53 handed it to the stamp, so V alone
     // is someone's again — just never the transform tool's.
@@ -145,23 +146,25 @@ void main() {
     // 🗣️I-63 (유저 2026-10-03): 「z는 비워두도록. 언두 실수할때 z만
     // 누르거나하니까」 — bare Z is emptied ON PURPOSE: a finger that lost
     // Ctrl on an undo must press nothing. It was the lasso select's.
+    // ↩️I-119-Q3 (유저 2026-10-21): 「Z 그대로」 — asked with I-63 in front of
+    // them, the line from the last stroke is held on bare Z. A finger that
+    // lost Ctrl shows a line's preview and draws nothing until a click.
+    List<String> holdersOf(SingleActivator key) => [
+      for (final definition in editorActionDefinitions)
+        if (definition.defaultActivators.any(
+          (activator) => activatorsEqual(activator, key),
+        ))
+          definition.id,
+    ];
     for (final retired in const [
       SingleActivator(LogicalKeyboardKey.keyM),
       SingleActivator(LogicalKeyboardKey.keyL),
-      SingleActivator(LogicalKeyboardKey.keyZ),
     ]) {
-      expect(
-        [
-          for (final definition in editorActionDefinitions)
-            if (definition.defaultActivators.any(
-              (activator) => activatorsEqual(activator, retired),
-            ))
-              definition.id,
-        ],
-        isEmpty,
-        reason: retired.trigger.keyLabel,
-      );
+      expect(holdersOf(retired), isEmpty, reason: retired.trigger.keyLabel);
     }
+    expect(holdersOf(const SingleActivator(LogicalKeyboardKey.keyZ)), [
+      EditorActionIds.canvasLineHold,
+    ]);
     // 「다시실행 중복할당된거 제거하고 잔재도 제거해」
     final redo = editorActionDefinitions.firstWhere(
       (definition) => definition.id == EditorActionIds.redo,

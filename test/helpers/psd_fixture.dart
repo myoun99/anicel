@@ -55,10 +55,14 @@ class PsdTestLayer {
     this.compression = 0,
     this.effects,
     this.legacyEffects = false,
+    this.protection,
   });
 
   /// The payload of an `lfx2` block — [psdEffects] writes one.
   final List<int>? effects;
+
+  /// The flags of an `lspf` block — the locks the Layers panel sets.
+  final int? protection;
 
   /// Whether the record also carries the legacy effects block (`lrFX`).
   final bool legacyEffects;
@@ -375,6 +379,13 @@ void _writeLayerRecord(
         ..text('8BIM')
         ..text('lrFX');
       extra.block((block) => block.u32(0));
+    }
+    final protection = layer.protection;
+    if (protection != null) {
+      extra
+        ..text('8BIM')
+        ..text('lspf');
+      extra.block((block) => block.u32(protection));
     }
     final effects = layer.effects;
     if (effects != null) {

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/conte/conte_sheet_form.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
@@ -79,6 +80,46 @@ void main() {
       expect(restored, custom);
       expect(restored.exposureBarThreshold, 3);
       expect(restored.seEmptyFill, isFalse);
+    });
+
+    // F-430: 「액션란이랑 셀란 늘림선 따로따로 … 셀란은 기본 있음, 1코마」.
+    test('the CELL stretch line defaults on at 1, stays absent from default '
+        'JSON, and round-trips off and at another N apart from the ACTION '
+        'one', () {
+      const defaults = TimesheetInfo.empty;
+      expect(defaults.cellExposureBarThreshold, 1);
+      expect(defaults.toJson().containsKey('cellExposureBar'), isFalse);
+      expect(
+        defaults.toJson().containsKey('cellExposureBarThreshold'),
+        isFalse,
+      );
+      expect(
+        TimesheetInfo.fromJson(const {}).cellExposureBarThreshold,
+        TimesheetInfo.defaultCellExposureBarThreshold,
+      );
+
+      for (final custom in const [
+        TimesheetInfo(cellExposureBarThreshold: null),
+        TimesheetInfo(exposureBarThreshold: 2, cellExposureBarThreshold: 4),
+      ]) {
+        final restored = TimesheetInfo.fromJson(custom.toJson());
+        expect(restored, custom);
+        expect(
+          restored.cellExposureBarThreshold,
+          custom.cellExposureBarThreshold,
+        );
+        expect(restored.exposureBarThreshold, custom.exposureBarThreshold);
+      }
+
+      const info = TimesheetInfo(cellExposureBarThreshold: 4);
+      expect(info.copyWith(seEmptyFill: false).cellExposureBarThreshold, 4);
+      expect(
+        info
+            .copyWith(cellExposureBarThreshold: () => null)
+            .cellExposureBarThreshold,
+        isNull,
+      );
+      expect(info, isNot(const TimesheetInfo(cellExposureBarThreshold: 2)));
     });
 
     test('copyWith keeps and clears the exposure-bar threshold via the '
@@ -221,6 +262,36 @@ void main() {
         TimesheetInfo.empty.copyWith(conteCover: false),
         isNot(TimesheetInfo.empty),
         reason: 'a change of front is a change of the work — one undo step',
+      );
+    });
+
+    test('the conte sheet\'s form and its black travel with the work, the '
+        'analog sheet in black writes nothing, and a form this build does '
+        'not know reads analog', () {
+      // 유저 2026-10-21 (I-118): 「그리고 디지털식? … 그리고 서식 옵션으로
+      // 공통적용되게 화면에 검은 외곽선 적용/미적용 버튼」.
+      final whole = TimesheetInfo.empty.toJson();
+      expect(whole.containsKey('conteForm'), isFalse);
+      expect(whole.containsKey('conteOutlined'), isFalse);
+      for (final (form, outlined) in [
+        (ConteSheetForm.digital, true),
+        (ConteSheetForm.analog, false),
+        (ConteSheetForm.digital, false),
+      ]) {
+        final info = TimesheetInfo.empty.copyWith(
+          conteForm: form,
+          conteOutlined: outlined,
+        );
+
+        final restored = TimesheetInfo.fromJson(info.toJson());
+
+        expect(restored, info);
+        expect((restored.conteForm, restored.conteOutlined), (form, outlined));
+        expect(info, isNot(TimesheetInfo.empty), reason: 'one undo step');
+      }
+      expect(
+        TimesheetInfo.fromJson({'conteForm': 'riso'}).conteForm,
+        ConteSheetForm.analog,
       );
     });
   });

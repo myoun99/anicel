@@ -4,12 +4,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
+import '../text/pixel_size_label.dart';
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/boolean_dot.dart';
 import '../widgets/overflow_scrollers.dart';
+import '../widgets/settings_rows.dart' show settingsHelpTooltip;
 import '../input/control_press_claim.dart';
 
 /// The import window's file list: one row per file, one COLUMN per question.
@@ -46,6 +48,7 @@ class ImportColumn<T> {
     this.style = ImportColumnStyle.choice,
     this.wordOf,
     this.valuesFor,
+    this.help,
   });
 
   /// What the keys are built from — the same in every language, which the
@@ -53,6 +56,12 @@ class ImportColumn<T> {
   final String id;
   final String label;
   final ImportColumnStyle style;
+
+  /// What the question means, as a tooltip on its header — the law every
+  /// field's cap keeps ([settingsHelpTooltip]; 🗣️F-366, 유저 2026-10-16:
+  /// 「이런거 설명은 항목 헤더에 툴팁 띄워줬으면」). Null where the header says
+  /// it on its own.
+  final String? help;
 
   /// Every answer, in the order the popup lists them — and the header's
   /// popup, which speaks for every row, lists all of them.
@@ -85,17 +94,20 @@ class ImportColumn<T> {
 
   final void Function(Iterable<String> paths, T value) onPick;
 
-  /// What a row's cell says for its answer when the row has more to say
-  /// than the answer's [labelOf] — null where it has not. 🗣️I-76-Q1 ·
-  /// F-282 시안 ④: a numbered run's cell names the span it brings,
-  /// 「A2–A3 (2장)」 — picked on the preview, so its one answer is that word.
+  /// What a row says for an answer — on its cell, and in the popup its cell
+  /// opens — when the row has more to say than the answer's [labelOf]; null
+  /// where it has not. 🗣️I-76-Q1 · F-282 시안 ④: a numbered run's cell names
+  /// the span it brings, 「A2–A3 (2장)」 — picked on the preview, so its one
+  /// answer is that word. F-429-Q5: a cut folder's correction names the
+  /// symbol it rides, 「A에 어태치 (싱크)」.
   final String? Function(String path, T value)? wordOf;
 
+  /// The word [path]'s row says for [value].
+  String wordFor(String path, T value) =>
+      wordOf?.call(path, value) ?? labelOf(value);
+
   /// The word [path]'s cell shows.
-  String cellWordOf(String path) {
-    final value = valueOf(path);
-    return wordOf?.call(path, value) ?? labelOf(value);
-  }
+  String cellWordOf(String path) => wordFor(path, valueOf(path));
 }
 
 class ImportFileRow {
@@ -105,18 +117,29 @@ class ImportFileRow {
     required this.extension,
     required this.modified,
     required this.size,
+    required this.resolution,
+    this.lead,
   });
 
   final String path;
+
+  /// What the row wears before its name, in the table's
+  /// [ImportFileTable.leadWidth] — a cut folder's layer row, the timeline
+  /// row's own cells (F-429). Null leaves the room empty.
+  final Widget? lead;
 
   /// The name WITHOUT its extension, which [extension] carries: the name is
   /// what gets cut short when room runs out, the extension never is.
   final String name;
   final String extension;
 
-  /// Already formatted — the table does not know about dates or bytes.
+  /// Already formatted — the table does not know about dates, bytes or
+  /// pixels.
   final String modified;
   final String size;
+
+  /// The file's size in pixels (F-375) — empty while it is being read.
+  final String resolution;
 }
 
 class ImportFileTable extends StatefulWidget {
@@ -127,6 +150,7 @@ class ImportFileTable extends StatefulWidget {
     required this.selected,
     required this.onRowTap,
     this.enabled = true,
+    this.leadWidth = 0,
   });
 
   final List<ImportFileRow> rows;
@@ -134,6 +158,11 @@ class ImportFileTable extends StatefulWidget {
   final Set<String> selected;
   final ValueChanged<String> onRowTap;
   final bool enabled;
+
+  /// The room before every row's name for its [ImportFileRow.lead] —
+  /// kept on every row and over the header alike, so the names stand in
+  /// one column whether a row wears a lead or not.
+  final double leadWidth;
 
   /// Below this much room a name is no longer READ, and the name is the
   /// row's subject. The fixed columns used to take whatever they were given
@@ -157,10 +186,12 @@ class ImportFileTable extends StatefulWidget {
     BuildContext context, {
     required List<ImportFileRow> rows,
     required List<ImportColumn<Object?>> columns,
+    double leadWidth = 0,
   }) => _ImportTableMetrics.of(
     context,
     rows: rows,
     columns: columns,
+    leadWidth: leadWidth,
   ).tableWidthFor(nameMinWidth);
 
   /// The width that gives the name [namePreferredWidth].
@@ -168,10 +199,12 @@ class ImportFileTable extends StatefulWidget {
     BuildContext context, {
     required List<ImportFileRow> rows,
     required List<ImportColumn<Object?>> columns,
+    double leadWidth = 0,
   }) => _ImportTableMetrics.of(
     context,
     rows: rows,
     columns: columns,
+    leadWidth: leadWidth,
   ).tableWidthFor(namePreferredWidth);
 
   @override
@@ -184,8 +217,10 @@ class ImportFileTable extends StatefulWidget {
 /// asked those numbers separately, and the name got what was left.
 class _ImportTableMetrics {
   _ImportTableMetrics._({
+    required this.leadWidth,
     required this.modifiedWidth,
     required this.sizeWidth,
+    required this.resolutionWidth,
     required this.columnWidths,
     required this.rowHeight,
   });
@@ -194,6 +229,7 @@ class _ImportTableMetrics {
     BuildContext context, {
     required List<ImportFileRow> rows,
     required List<ImportColumn<Object?>> columns,
+    required double leadWidth,
   }) {
     final text = TextMeasure(
       context,
@@ -202,6 +238,7 @@ class _ImportTableMetrics {
 
     final chipHeight = text.size('Ag').height + 2 * chipPadV + 2 * chipBorder;
     return _ImportTableMetrics._(
+      leadWidth: leadWidth,
       modifiedWidth:
           text.widest([
             AppText.strings.imModified,
@@ -212,6 +249,18 @@ class _ImportTableMetrics {
           text.widest([
             AppText.strings.imSize,
             for (final row in rows) row.size,
+          ]) +
+          gap,
+      // ⛔Not the widest that has come in: the sizes come in one by one
+      // after the rows are up, and a column that widened with them would
+      // shove every column past it while the person reads — the room is
+      // kept and only what is in it changes (「없다가 생기는 UI 금지」). It
+      // is kept for five digits a side from the start.
+      resolutionWidth:
+          text.widest([
+            AppText.strings.imResolution,
+            pixelSizeLabel(99999, 99999),
+            for (final row in rows) row.resolution,
           ]) +
           gap,
       columnWidths: [
@@ -247,13 +296,22 @@ class _ImportTableMetrics {
   static const double dotSize = 20;
   static const double dotGap = 4;
 
+  final double leadWidth;
   final double modifiedWidth;
   final double sizeWidth;
+  final double resolutionWidth;
   final List<double> columnWidths;
   final double rowHeight;
 
+  /// A line's height inside its row's padding — what a lead stands in.
+  double get lineHeight => rowHeight - 2 * rowPadV;
+
   double get _fixedWidth =>
-      modifiedWidth + sizeWidth + columnWidths.fold(0.0, (sum, w) => sum + w);
+      leadWidth +
+      modifiedWidth +
+      sizeWidth +
+      resolutionWidth +
+      columnWidths.fold(0.0, (sum, w) => sum + w);
 
   double tableWidthFor(double nameWidth) =>
       2 * ImportFileTable._sidePadding +
@@ -287,11 +345,6 @@ class _ImportFileTableState extends State<ImportFileTable> {
     }
   }
 
-  /// Which rows a press on [path]'s cell speaks for: the selection when
-  /// this row is part of it, otherwise this row alone.
-  Iterable<String> _targets(String path) =>
-      widget.selected.contains(path) ? widget.selected : [path];
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -299,6 +352,7 @@ class _ImportFileTableState extends State<ImportFileTable> {
       context,
       rows: widget.rows,
       columns: widget.columns,
+      leadWidth: widget.leadWidth,
     );
     // Below the width that keeps every column and a readable name, the
     // table scrolls sideways at that width instead of overflowing — the
@@ -361,12 +415,19 @@ class _ImportFileTableState extends State<ImportFileTable> {
   /// only the rows stood beside the scrollbar lane.
   Widget _tableLine(
     _ImportTableMetrics metrics, {
+    Widget? lead,
     required Widget name,
     required Widget modified,
     required Widget size,
+    required Widget resolution,
     required Widget Function(ImportColumn<Object?> column) cell,
   }) => Row(
     children: [
+      SizedBox(
+        width: metrics.leadWidth,
+        height: metrics.lineHeight,
+        child: lead,
+      ),
       Expanded(child: name),
       SizedBox(
         width: metrics.modifiedWidth,
@@ -376,6 +437,7 @@ class _ImportFileTableState extends State<ImportFileTable> {
         ),
       ),
       SizedBox(width: metrics.sizeWidth, child: size),
+      SizedBox(width: metrics.resolutionWidth, child: resolution),
       for (var index = 0; index < widget.columns.length; index += 1)
         SizedBox(
           width: metrics.columnWidths[index],
@@ -399,6 +461,12 @@ class _ImportFileTableState extends State<ImportFileTable> {
       modified: Text(AppText.strings.imModified, style: dim, maxLines: 1),
       size: Text(
         AppText.strings.imSize,
+        style: dim,
+        maxLines: 1,
+        textAlign: TextAlign.right,
+      ),
+      resolution: Text(
+        AppText.strings.imResolution,
         style: dim,
         maxLines: 1,
         textAlign: TextAlign.right,
@@ -444,6 +512,7 @@ class _ImportFileTableState extends State<ImportFileTable> {
           ),
           child: _tableLine(
             metrics,
+            lead: row.lead,
             name: Row(
               children: [
                 Flexible(
@@ -467,11 +536,18 @@ class _ImportFileTableState extends State<ImportFileTable> {
               maxLines: 1,
               textAlign: TextAlign.right,
             ),
+            resolution: Text(
+              row.resolution,
+              key: ValueKey<String>('import-resolution-${row.path}'),
+              style: dim,
+              maxLines: 1,
+              textAlign: TextAlign.right,
+            ),
             cell: (column) => _OptionCell(
               column: column,
               path: row.path,
               enabled: widget.enabled,
-              targets: _targets(row.path),
+              targets: importRowsPressedWith(widget.selected, row.path),
             ),
           ),
         ),
@@ -492,6 +568,12 @@ class _ImportFileTableState extends State<ImportFileTable> {
         },
       );
 }
+
+/// Which rows a press on [pressed]'s row speaks for: the [selected] rows
+/// when it is one of them, otherwise [pressed] alone — a cell's press, and
+/// the press of any control a row wears before its name ([ImportFileRow.lead]).
+Iterable<String> importRowsPressedWith(Set<String> selected, String pressed) =>
+    selected.contains(pressed) ? selected : [pressed];
 
 /// The key a column's answer goes by: the enum's name, or the value itself.
 String _optionKey(Object? value) => value is Enum ? value.name : '$value';
@@ -520,6 +602,7 @@ class _HeaderButton extends StatelessWidget {
             answers: column.values,
             targets: paths,
             enabledFor: (value) => true,
+            wordOf: column.labelOf,
             current: null,
           )
         : null;
@@ -530,12 +613,15 @@ class _HeaderButton extends StatelessWidget {
         onTap: silentPress(open),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 1),
-          child: Text(
-            column.label,
-            maxLines: 1,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: enabled ? AppColors.textDim : theme.disabledColor,
+          child: settingsHelpTooltip(
+            column.help,
+            Text(
+              column.label,
+              maxLines: 1,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: enabled ? AppColors.textDim : theme.disabledColor,
+              ),
             ),
           ),
         ),
@@ -593,6 +679,7 @@ class _OptionCell extends StatelessWidget {
             answers: answers,
             targets: targets,
             enabledFor: (option) => column.enabledFor(path, option),
+            wordOf: (option) => column.wordFor(path, option),
             current: value,
           );
     final wordStyle = theme.textTheme.labelSmall?.copyWith(
@@ -650,13 +737,15 @@ class _OptionCell extends StatelessWidget {
   }
 }
 
-/// One column's [answers], anchored under whatever was pressed.
+/// One column's [answers], anchored under whatever was pressed — each in
+/// the word [wordOf] gives it: the row's, under a row's cell.
 void _openColumnPopup(
   BuildContext context, {
   required ImportColumn<Object?> column,
   required List<Object?> answers,
   required Iterable<String> targets,
   required bool Function(Object? value) enabledFor,
+  required String Function(Object? value) wordOf,
   required Object? current,
 }) {
   final rows = answers;
@@ -670,7 +759,7 @@ void _openColumnPopup(
       label: column.label,
       width: math.max(
         132,
-        text.widest(rows.map(column.labelOf)) + 2 * _PopupRow.padH + 8,
+        text.widest(rows.map(wordOf)) + 2 * _PopupRow.padH + 8,
       ),
       height: 8.0 + rows.length * rowHeight,
       builder: (context, close) => Column(
@@ -680,7 +769,7 @@ void _openColumnPopup(
           for (final value in rows)
             _PopupRow(
               keyValue: 'import-option-${column.id}-${_optionKey(value)}',
-              label: column.labelOf(value),
+              label: wordOf(value),
               height: rowHeight,
               selected: value == current,
               enabled: enabledFor(value),

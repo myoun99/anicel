@@ -8,6 +8,7 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 
+import '../../helpers/device_paced.dart';
 import '../../helpers/native_engine_path.dart';
 
 /// The device stage, driven for real.
@@ -51,20 +52,6 @@ void main() {
     );
     expect(rate, greaterThan(0), reason: 'the null device failed to open');
     return device;
-  }
-
-  /// Waits until [check] holds or the budget runs out. The callback runs
-  /// on the device's own thread, so the test has to wait for real time
-  /// rather than pump anything.
-  Future<bool> waitFor(bool Function() check, {int millis = 3000}) async {
-    final deadline = DateTime.now().add(Duration(milliseconds: millis));
-    while (DateTime.now().isBefore(deadline)) {
-      if (check()) {
-        return true;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-    return check();
   }
 
   AudioMixSource constantSource(double value, int frames, int channels) {
@@ -262,8 +249,11 @@ void main() {
       expect(device.isPlaying, isFalse);
 
       device.play(startSample: 0);
-      expect(await waitFor(() => device.positionSamples > 0), isTrue,
-          reason: 'the callback never ran — the transport is not the clock');
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples > 0),
+        isTrue,
+        reason: 'the callback never ran — the transport is not the clock',
+      );
 
       device.stop();
       final parked = device.positionSamples;
@@ -284,7 +274,7 @@ void main() {
       const start = 96000;
       device.play(startSample: start);
       expect(
-        await waitFor(() => device.positionSamples > start),
+        await waitOnTheDevice(device, () => device.positionSamples > start),
         isTrue,
       );
       expect(device.positionSamples, greaterThanOrEqualTo(start));
@@ -299,11 +289,14 @@ void main() {
         sources: [constantSource(0.25, 48000, 2)],
       );
       device.play(startSample: 0);
-      expect(await waitFor(() => device.positionSamples > 0), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples > 0),
+        isTrue,
+      );
 
       device.seek(1000000);
       expect(
-        await waitFor(() => device.positionSamples >= 1000000),
+        await waitOnTheDevice(device, () => device.positionSamples >= 1000000),
         isTrue,
       );
       expect(device.isPlaying, isTrue, reason: 'a seek must not stop playback');
@@ -328,7 +321,7 @@ void main() {
       );
       device.play(startSample: 0, looping: true);
       expect(
-        await waitFor(() => device.peakFor(0) > 1.0),
+        await waitOnTheDevice(device, () => device.peakFor(0) > 1.0),
         isTrue,
         reason: 'a 1.2 bus peak must read past unity — clipping made visible',
       );
@@ -347,7 +340,7 @@ void main() {
         sources: [constantSource(0.25, 48000, 2)],
       );
       device.play(startSample: 0, stopSample: 24000);
-      expect(await waitFor(() => !device.isPlaying), isTrue);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
       expect(
         device.positionSamples,
         greaterThanOrEqualTo(24000),
@@ -364,14 +357,215 @@ void main() {
         sources: [constantSource(0.25, 48000, 2)],
       );
       device.play(startSample: 0, stopSample: 12000, looping: true);
-      expect(await waitFor(() => device.positionSamples > 0), isTrue);
-      // It must keep playing and stay inside the loop window.
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples > 0),
+        isTrue,
+      );
+      // It must keep playing and stay inside the loop window, a fifth of a
+      // second of its own on. ↩️Of the wall, which a starved device can sit
+      // through.
+      final handed = Handed(device);
+      await waitOnTheDevice(
+        device,
+        () => handed.samples >= 9600 || !device.isPlaying,
+      );
       expect(device.isPlaying, isTrue);
       expect(
         device.positionSamples,
         lessThanOrEqualTo(12000),
         reason: 'a looping transport must never leave its window',
+      );
+    }, skip: skip);
+  });
+
+  // board a-start-is-heard-ahead-of-its-first-picture: a run's first sample
+  // must be heard as its first picture is shown, refreshes after the look
+  // that starts it — so the run is started that far ahead, in silence
+  // (`HeardOnTheDevice.leadFor`).
+  group('🚨the lead: a run started ahead of its first sample', () {
+    /// Four seconds of a steady tone from the timeline's start.
+    void scheduleTone(QaAudioDevice device) => device.setSchedule(
+      clips: const [
+        AudioMixClip(sourceIndex: 0, startSample: 0, endSample: 4 * 48000),
+      ],
+      sources: [constantSource(0.25, 4 * 48000, 2)],
+    );
+
+    test('it is counted from the lead\'s first sample, hands silence until '
+        'its own first sample, and sounds from it', () async {
+      final device = openNull();
+      scheduleTone(device);
+      const first = 96000;
+      const lead = 48000;
+      device.play(startSample: first, leadSamples: lead);
+      expect(
+        device.positionSamples,
+        inInclusiveRange(first - lead, first - 1),
+        reason: 'counted from the lead\'s first sample',
+      );
+
+      expect(
+        await waitOnTheDevice(
+          device,
+          () => device.positionSamples > first - lead + 2400,
+        ),
+        isTrue,
+      );
+      // The peak first: a block that sounds is stored before the count that
+      // passes it, so a count still short of the first sample says the peak
+      // read before it was the lead's.
+      final peak = device.peakFor(0);
+      expect(
+        device.positionSamples,
+        lessThan(first),
+        reason: '⛔premise: still in the lead',
+      );
+      expect(
+        peak,
+        0,
+        reason: 'the sound from before the first sample is never heard over '
+            'the first picture',
+      );
+
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0),
+        isTrue,
+      );
+      expect(
+        device.positionSamples,
+        greaterThan(first),
+        reason: 'its sound begins on its first sample',
+      );
+    }, skip: skip);
+
+    test('🚨the sound begins ON its first sample — where the lead ends '
+        'inside a callback, a sound sixteen samples long there is heard',
+        () async {
+      final device = openNull();
+      const first = 96000;
+      device.setSchedule(
+        clips: const [
+          AudioMixClip(
+            sourceIndex: 0,
+            startSample: first,
+            endSample: first + 16,
+          ),
+        ],
+        sources: [constantSource(0.25, 16, 2)],
+      );
+      // No whole number of callbacks of any size a device asks for (480,
+      // 512, 1024 …): the lead ends inside one. The run ends with the
+      // sound, so the last block the meter is left on is the sound's.
+      device.play(
+        startSample: first,
+        stopSample: first + 16,
+        leadSamples: 48007,
+      );
+      // ⛔The meter is the engine's one: a peak the last run left on it
+      // passed this for nothing (a lead held silent to its block's end
+      // lived as a mutant, 10-18). Watched only once the lead has zeroed
+      // it, still short of the first sample.
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) == 0),
+        isTrue,
+        reason: '⛔premise: the lead has silenced the meter',
+      );
+      expect(
+        device.positionSamples,
+        lessThan(first),
+        reason: '⛔premise: still in the lead',
+      );
+      // Read once the run has played out: a run that runs OUT is not
+      // stopped, and keeps its last block on the meter
+      // (`qa_audio_device_stop`). ↩️It was watched without a pause for the
+      // one callback the sound is mixed in, and on the Mac runners the
+      // watch never saw it (release 10-22, macOS · TestFlight).
+      expect(
+        await waitOnTheDevice(device, () => !device.isPlaying),
+        isTrue,
+        reason: '⛔premise: the run played out',
+      );
+      expect(
+        device.peakFor(0),
+        greaterThan(0),
+        reason: 'a lead held silent to the end of the callback it ends in '
+            'drops what the run sounds first',
+      );
+    }, skip: skip);
+
+    test('a loop wraps to its first sample: the lead is its first lap\'s '
+        'alone', () async {
+      final device = openNull();
+      scheduleTone(device);
+      // Laps of a quarter second, half a second of lead before the first.
+      device.play(
+        startSample: 0,
+        stopSample: 12000,
+        looping: true,
+        leadSamples: 24000,
+      );
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples > 6000),
+        isTrue,
+      );
+      // Looked at for two laps and more of what the device hands.
+      expect(
+        await waitOnTheDevice(
+          device,
+          () => device.positionSamples < 0 || device.positionSamples > 12000,
+          budget: const Duration(milliseconds: 600),
+        ),
+        isFalse,
+        reason: 'wrapped into the lead, every lap would start silent',
+      );
+    }, skip: skip);
+
+    test('the meter reads silence through the lead, after a run that '
+        'sounded', () async {
+      final device = openNull();
+      scheduleTone(device);
+      device.play(startSample: 0);
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0),
+        isTrue,
+      );
+      // Started again ahead with no stop between, as a run is re-armed.
+      device.play(startSample: 144000, leadSamples: 48000);
+      expect(
+        await waitOnTheDevice(
+          device,
+          () => device.positionSamples > 96000 + 2400,
+        ),
+        isTrue,
+      );
+      final bars = [device.peakFor(0), device.peakFor(1)];
+      expect(
+        device.positionSamples,
+        lessThan(144000),
+        reason: '⛔premise: still in the lead',
+      );
+      expect(
+        bars,
+        [0, 0],
+        reason: 'the bars must not hold the last run\'s sound',
+      );
+    }, skip: skip);
+
+    test('a seek ends the lead: where it lands is heard', () async {
+      final device = openNull();
+      scheduleTone(device);
+      device.play(startSample: 480000, leadSamples: 48000);
+      device.seek(0);
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0),
+        isTrue,
+        reason: 'held silent to the run\'s first sample, ten seconds of '
+            'sound would be lost',
+      );
+      expect(
+        device.positionSamples,
+        lessThan(480000 - 48000),
+        reason: '⛔premise: nowhere near where the lead would have ended',
       );
     }, skip: skip);
   });
@@ -388,7 +582,7 @@ void main() {
 
       device.play(startSample: 0);
       expect(
-        await waitFor(() => device.clockPoint != null),
+        await waitOnTheDevice(device, () => device.clockPoint != null),
         isTrue,
         reason: 'no callback spoke',
       );
@@ -413,11 +607,15 @@ void main() {
       final device = openNull();
       device.setSchedule(clips: const [], sources: const []);
       device.play(startSample: 0);
-      expect(await waitFor(() => device.clockPoint != null), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.clockPoint != null),
+        isTrue,
+      );
 
       final first = device.clockPoint!;
       expect(
-        await waitFor(
+        await waitOnTheDevice(
+          device,
           () => device.clockPoint!.positionSamples > first.positionSamples,
         ),
         isTrue,
@@ -431,7 +629,10 @@ void main() {
       final device = openNull();
       device.setSchedule(clips: const [], sources: const []);
       device.play(startSample: 0);
-      expect(await waitFor(() => device.clockPoint != null), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.clockPoint != null),
+        isTrue,
+      );
 
       // Armed again, far from where it was.
       const start = 2400000;
@@ -444,7 +645,7 @@ void main() {
             'the picture 50 seconds back for a callback\'s time',
       );
       expect(
-        await waitFor(() => device.clockPoint != null),
+        await waitOnTheDevice(device, () => device.clockPoint != null),
         isTrue,
         reason: 'the new arm never spoke',
       );
@@ -458,7 +659,10 @@ void main() {
         reason: 'a seek is an arm too',
       );
 
-      expect(await waitFor(() => device.clockPoint != null), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.clockPoint != null),
+        isTrue,
+      );
       device.stop();
       expect(
         device.clockPoint,
@@ -468,7 +672,10 @@ void main() {
 
       // A device that is closed while it plays, and opened again.
       device.play(startSample: 0);
-      expect(await waitFor(() => device.clockPoint != null), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.clockPoint != null),
+        isTrue,
+      );
       device.close();
       final again = openNull();
       expect(
@@ -502,7 +709,10 @@ void main() {
         sources: [constantSource(0.25, 48000, 2)],
       );
       device.play(startSample: 0, looping: true);
-      expect(await waitFor(() => device.peakFor(0) > 0.2), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0.2),
+        isTrue,
+      );
       final before = device.positionSamples;
 
       // The live edit: a louder schedule lands mid-play.
@@ -522,7 +732,7 @@ void main() {
       );
       expect(device.isPlaying, isTrue, reason: 'the swap must not stop audio');
       expect(
-        await waitFor(() => device.peakFor(0) > 0.55),
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0.55),
         isTrue,
         reason: 'the NEW schedule must be what the callback mixes',
       );
@@ -560,8 +770,11 @@ void main() {
         isTrue,
       );
       device.play(startSample: 0);
-      expect(await waitFor(() => device.positionSamples > 0), isTrue,
-          reason: 'the clock must run even with nothing to play');
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples > 0),
+        isTrue,
+        reason: 'the clock must run even with nothing to play',
+      );
     }, skip: skip);
   });
 
@@ -611,11 +824,14 @@ void main() {
         sources: [AudioMixSource(samples: made, channels: 2)],
       );
       device.play(startSample: 0);
-      expect(await waitFor(() => device.peakFor(0) > 0.2), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0.2),
+        isTrue,
+      );
 
       made.fillRange(0, made.length, 0.6);
       expect(
-        await waitFor(() => device.peakFor(0) > 0.55),
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0.55),
         isTrue,
         reason: 'the slot plays the buffer itself — nothing was copied',
       );
@@ -631,11 +847,20 @@ void main() {
         sources: [AudioMixSource(samples: plain, channels: 2)],
       );
       device.play(startSample: 0);
-      expect(await waitFor(() => device.peakFor(0) > 0.2), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0.2),
+        isTrue,
+      );
 
       plain.fillRange(0, plain.length, 0.6);
+      // For a third of a second of the device's own — ↩️of the wall, which a
+      // starved device can sit through having played none of it.
       expect(
-        await waitFor(() => device.peakFor(0) > 0.3, millis: 300),
+        await waitOnTheDevice(
+          device,
+          () => device.peakFor(0) > 0.3,
+          budget: const Duration(milliseconds: 300),
+        ),
         isFalse,
         reason: 'the schedule plays a copy made when it was set',
       );
@@ -669,7 +894,7 @@ void main() {
       final scratch = calloc<Float>(48000);
       var drained = 0;
       try {
-        final delivered = await waitFor(() {
+        final delivered = await waitOnTheDevice(device, () {
           drained += device.captureRead(scratch, 48000);
           return drained > 4800; // >100 ms of mono audio
         });
@@ -699,7 +924,10 @@ void main() {
         48000,
       );
       expect(
-        await waitFor(() => device.readCaptureClock().point != null),
+        await waitOnTheDevice(
+          device,
+          () => device.readCaptureClock().point != null,
+        ),
         isTrue,
         reason: 'no capture callback spoke',
       );
@@ -720,7 +948,8 @@ void main() {
             'moment ago',
       );
       expect(
-        await waitFor(
+        await waitOnTheDevice(
+          device,
           () =>
               device.readCaptureClock().point!.positionSamples >
               point.positionSamples,
@@ -729,7 +958,10 @@ void main() {
         reason: 'the points move on with the frames given',
       );
       expect(
-        await waitFor(() => device.readCaptureClock().stairSamples > 9600),
+        await waitOnTheDevice(
+          device,
+          () => device.readCaptureClock().stairSamples > 9600,
+        ),
         isTrue,
         reason: 'fixture: a fifth of a second taken in',
       );
@@ -786,13 +1018,23 @@ void main() {
 
   group('AudioRecorder (AUDIO-PRO R5)', () {
     test('a take accumulates and stops clean', () async {
-      final recorder = AudioRecorder(device: QaAudioDevice.instance);
+      final device = QaAudioDevice.instance!;
+      final recorder = AudioRecorder(device: device);
       final rate = recorder.start(sampleRate: 48000, useNullBackend: true);
       expect(rate, 48000);
       expect(recorder.isRecording, isTrue);
 
-      // Real time: the drain timer needs the event loop.
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+      // Real time: the drain timer needs the event loop — for the
+      // microphone's own 0.4s. ↩️0.4s of the wall, which a starved capture
+      // can spend having taken in nothing.
+      expect(
+        await waitOnTheDevice(
+          device,
+          () => device.readCaptureClock().stairSamples >= 19200,
+        ),
+        isTrue,
+        reason: 'the microphone took nothing in',
+      );
 
       final recording = recorder.stop();
       expect(recorder.isRecording, isFalse);
@@ -816,7 +1058,11 @@ void main() {
       expect(recorder.start(sampleRate: 48000, useNullBackend: true), 48000);
       expect(recorder.latencySamples, device.captureLatencySamples);
       bool spoke() => recorder.capturedAt(device.clockNowMicros) != null;
-      expect(await waitFor(spoke), isTrue, reason: 'no capture callback spoke');
+      expect(
+        await waitOnTheDevice(device, spoke),
+        isTrue,
+        reason: 'no capture callback spoke',
+      );
 
       final before = device.readCaptureClock();
       final taken = recorder.capturedAt(before.nowMicros)!;
@@ -832,9 +1078,21 @@ void main() {
       );
 
       // The count runs with the time: a third of a second on, a third of a
-      // second more taken in.
+      // second more taken in — read once the microphone has spoken a
+      // fifteenth of a second past it, so a count read at the moment of
+      // reading instead would be that much over. ↩️Read after 0.4s of the
+      // wall, which a starved capture can sit through silent.
       final later = device.clockNowMicros + 333333;
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(
+        await waitOnTheDevice(
+          device,
+          () =>
+              (device.readCaptureClock().point?.atMicros ?? 0) >=
+              later + 66667,
+        ),
+        isTrue,
+        reason: 'the microphone stopped',
+      );
       expect(
         recorder.capturedAt(later)! - taken,
         closeTo(

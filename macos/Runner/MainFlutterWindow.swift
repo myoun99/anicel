@@ -2,6 +2,7 @@ import AVFoundation
 import Cocoa
 import FileProvider
 import FlutterMacOS
+import IOKit.ps
 import UniformTypeIdentifiers
 
 /// Anicel pen sidecar (pen program, PEN-4 — macOS).
@@ -578,8 +579,340 @@ final class PathGrantHandler {
   }
 }
 
+/// I-103-Q2 (user 2026-10-16: 「데스크톱만 켜고 끄기, 모바일은 지금처럼 늘
+/// 전체 화면」): the window's full screen — the Mac's own, its Space, the
+/// menu bar and the Dock giving way. Thrown when Dart asks, and REPORTED
+/// whenever it is thrown — the green button and the Window menu's ⌃⌘F
+/// throw the same switch without asking anyone — so the app's mark follows
+/// the window, never the asking.
+///
+/// UNVERIFIED-ON-DEVICE: authored on the Windows workstation.
+final class FullScreenSwitch: NSObject {
+  private weak var window: NSWindow?
+  private let channel: FlutterMethodChannel
+
+  init(window: NSWindow, messenger: FlutterBinaryMessenger) {
+    self.window = window
+    channel = FlutterMethodChannel(
+      name: "anicel/window", binaryMessenger: messenger)
+    super.init()
+    // The window AppKit lets go full screen, whatever the xib left it.
+    window.collectionBehavior.insert(.fullScreenPrimary)
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "setFullScreen", let on = call.arguments as? Bool
+      else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self?.set(on)
+      result(nil)
+    }
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(entered),
+      name: NSWindow.didEnterFullScreenNotification, object: window)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(exited),
+      name: NSWindow.didExitFullScreenNotification, object: window)
+  }
+
+  /// Throws the switch where the window stands otherwise — the report comes
+  /// from the window once it has gone — and where it already stands so,
+  /// says so at once.
+  private func set(_ on: Bool) {
+    guard let window else {
+      return
+    }
+    if window.styleMask.contains(.fullScreen) == on {
+      report(on)
+    } else {
+      window.toggleFullScreen(nil)
+    }
+  }
+
+  @objc private func entered() {
+    report(true)
+  }
+
+  @objc private func exited() {
+    report(false)
+  }
+
+  private func report(_ on: Bool) {
+    channel.invokeMethod("fullScreenChanged", arguments: on)
+  }
+}
+
+/// I-116 (user, 2026-10-21: 「닫고 열때 마지막크기/위치로 열고싶음」): says
+/// where the window stands once it has moved or changed size, and puts it
+/// back there at the next start before the first frame
+/// (lib/src/native/window_place.dart). The frame is said from the top left
+/// of the main screen, as the other desktops say theirs; a Mac has no
+/// maximized apart from its frame, so it never says one. A frame no screen
+/// shows any longer is left where the window would open; a full-screen
+/// window says nothing.
+///
+/// UNVERIFIED-ON-DEVICE: authored on the Windows workstation.
+final class WindowPlaceKeeper: NSObject {
+  private weak var window: NSWindow?
+  private let channel: FlutterMethodChannel
+
+  init(window: NSWindow, messenger: FlutterBinaryMessenger) {
+    self.window = window
+    channel = FlutterMethodChannel(
+      name: "anicel/window_place", binaryMessenger: messenger)
+    super.init()
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "setPlace",
+        let frame = call.arguments as? [String: Any],
+        let left = frame["left"] as? Double,
+        let top = frame["top"] as? Double,
+        let width = frame["width"] as? Double,
+        let height = frame["height"] as? Double
+      else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self?.set(left: left, top: top, width: width, height: height)
+      result(nil)
+    }
+    for name in [
+      NSWindow.didMoveNotification, NSWindow.didEndLiveResizeNotification,
+      NSWindow.didResizeNotification,
+    ] {
+      NotificationCenter.default.addObserver(
+        self, selector: #selector(moved), name: name, object: window)
+    }
+  }
+
+  /// The height Cocoa's bottom-up frames are turned over by.
+  private var mainHeight: CGFloat {
+    NSScreen.screens.first?.frame.height ?? 0
+  }
+
+  private func set(left: Double, top: Double, width: Double, height: Double) {
+    let frame = NSRect(
+      x: left, y: mainHeight - top - height, width: width, height: height)
+    guard let window,
+      NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) })
+    else {
+      return
+    }
+    window.setFrame(frame, display: false)
+  }
+
+  /// Once a drag has ended: the steps of a live resize are not said.
+  @objc private func moved() {
+    guard let window, !window.inLiveResize,
+      !window.styleMask.contains(.fullScreen)
+    else {
+      return
+    }
+    let frame = window.frame
+    channel.invokeMethod(
+      "placeChanged",
+      arguments: [
+        "left": Double(frame.minX),
+        "top": Double(mainHeight - frame.maxY),
+        "width": Double(frame.width),
+        "height": Double(frame.height),
+        "maximized": false,
+      ])
+  }
+}
+
+/// The picture that stands in the middle of the screen from the moment the
+/// app is launched until its first frame (I-106-Q3/Q4/Q5, user 2026-10-20:
+/// the teal A and the white name, nothing behind them — the desktop shows
+/// through — on every desktop). The picture is drawn by tool/app_art.
+///
+/// UNVERIFIED-ON-DEVICE: authored on the Windows workstation.
+final class LaunchSplash {
+  private var panel: NSPanel?
+
+  /// I-106 (user, 2026-10-21): under the name, what the launch is doing,
+  /// small and faint — 「Anicel 아래에 어느정도 붙고, 글자크기도 좀 작게 …
+  /// 있는듯 없는듯한 느낌으로」 — with dots that turn once a second. Its
+  /// middle and type size as shares of the picture's height
+  /// (tool/app_art/render_app_art_test.dart), and its ink; spelled again in
+  /// windows/runner/launch_splash.cpp and linux/runner/launch_splash.cc.
+  private static let stageCenter: CGFloat = 210.0 / 232.0
+  private static let stageSize: CGFloat = 8.0 / 232.0
+  private static let stageInk = NSColor(white: 1, alpha: 0.6)
+  private static let stageShadow: Float = 0.3
+  private static let dotTurn: CFTimeInterval = 1
+  private static let mostDots = 3
+
+  /// What the last launch left (lib/src/native/launch_splash.dart,
+  /// LaunchSplash.labelsFileName under appSupportFilePath's base).
+  private var faceFiles = ""
+  private var stageNames: [String] = []
+
+  private var stageLayers: [CATextLayer] = []
+  private var fontFaceFiles: String?
+  private var font: CTFont?
+
+  /// Shows the splash centred on [screen]. Shows nothing when the picture
+  /// is missing — the app starts the same without it.
+  func show(on screen: NSScreen?) {
+    readLabels()
+    guard
+      let image = NSImage(named: "LaunchSplash"),
+      let screen = screen ?? NSScreen.main
+    else { return }
+    // I-106-Q6 (user, 2026-10-20): half as tall as the screen's short
+    // side — 「짧은 변의 50%로하면 가로일땐 높이의 50%」 — so a turned
+    // monitor gets the same picture. Spelled again in
+    // windows/runner/launch_splash.cpp and linux/runner/launch_splash.cc.
+    let area = screen.visibleFrame
+    let height = min(area.width, area.height) / 2
+    let width = height * image.size.width / image.size.height
+    let frame = NSRect(
+      x: area.midX - width / 2, y: area.midY - height / 2,
+      width: width, height: height)
+    let panel = NSPanel(
+      contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
+      backing: .buffered, defer: false)
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.hasShadow = false
+    let bounds = NSRect(origin: .zero, size: frame.size)
+    let content = NSView(frame: bounds)
+    content.wantsLayer = true
+    let view = NSImageView(frame: bounds)
+    view.image = image
+    view.imageScaling = .scaleProportionallyUpOrDown
+    content.addSubview(view)
+    // The name, then one layer a dot.
+    stageLayers = (0...LaunchSplash.mostDots).map { _ in
+      let layer = CATextLayer()
+      layer.contentsScale = screen.backingScaleFactor
+      layer.shadowColor = NSColor.black.cgColor
+      layer.shadowOpacity = LaunchSplash.stageShadow
+      layer.shadowRadius = 0
+      layer.shadowOffset = CGSize(width: 0, height: -height / 232)
+      content.layer?.addSublayer(layer)
+      return layer
+    }
+    panel.contentView = content
+    panel.orderFrontRegardless()
+    self.panel = panel
+    // Drawn now: the run loop is about to be busy starting the engine.
+    panel.display()
+    CATransaction.flush()
+  }
+
+  /// Says the runner's own stage [index] (0 the engine, 1 the plugins) by
+  /// the name the last launch left. The first launch has none yet: the
+  /// line stays empty, its place kept, until Dart speaks.
+  func sayRunnerStage(_ index: Int) {
+    if index < stageNames.count {
+      say(faceFiles: faceFiles, name: stageNames[index])
+    }
+  }
+
+  /// Says a stage in the face of [faceFiles] (tab-separated, relative to
+  /// flutter_assets; empty is the OS's face).
+  func say(faceFiles: String, name: String) {
+    guard let panel = panel, let nameLayer = stageLayers.first else { return }
+    let height = panel.frame.height
+    if fontFaceFiles != faceFiles {
+      fontFaceFiles = faceFiles
+      font = LaunchSplash.face(faceFiles, size: height * LaunchSplash.stageSize)
+    }
+    guard let font = font else { return }
+    let attributes: [NSAttributedString.Key: Any] = [
+      .font: font, .foregroundColor: LaunchSplash.stageInk,
+    ]
+    let nameText = NSAttributedString(string: name, attributes: attributes)
+    let dotText = NSAttributedString(string: ".", attributes: attributes)
+    let nameSize = nameText.size()
+    let dotSize = dotText.size()
+    let middle = height * (1 - LaunchSplash.stageCenter)
+    let bottom = middle - nameSize.height / 2
+    // The name stands still; the dots grow to its right.
+    let left = (panel.frame.width - nameSize.width) / 2
+
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    nameLayer.string = nameText
+    nameLayer.frame = CGRect(
+      x: left, y: bottom, width: nameSize.width, height: nameSize.height)
+    let now = CACurrentMediaTime()
+    for (i, dot) in stageLayers.dropFirst().enumerated() {
+      dot.string = dotText
+      dot.frame = CGRect(
+        x: left + nameSize.width + CGFloat(i) * dotSize.width, y: bottom,
+        width: dotSize.width, height: nameSize.height)
+      // 「1초마다 .을 붙이고 초기화하고」: dot i shows from second i of each
+      // three, on the window server, so it turns while the main thread
+      // starts the engine. A new stage starts again from one dot.
+      dot.removeAllAnimations()
+      if i > 0 {
+        let turn = CAKeyframeAnimation(keyPath: "opacity")
+        turn.calculationMode = .discrete
+        turn.values = [0, 1]
+        let shows = Double(i) / Double(LaunchSplash.mostDots)
+        turn.keyTimes = [0, NSNumber(value: shows), 1]
+        turn.duration = LaunchSplash.dotTurn * Double(LaunchSplash.mostDots)
+        turn.repeatCount = .infinity
+        turn.beginTime = now
+        dot.add(turn, forKey: "turn")
+      }
+    }
+    CATransaction.commit()
+    CATransaction.flush()
+  }
+
+  func close() {
+    panel?.orderOut(nil)
+    panel = nil
+    stageLayers = []
+  }
+
+  private func readLabels() {
+    let environment = ProcessInfo.processInfo.environment
+    guard let base = environment["APPDATA"] ?? environment["HOME"],
+      let text = try? String(
+        contentsOfFile: base + "/anicel/launch-labels.txt", encoding: .utf8)
+    else { return }
+    var lines = text.components(separatedBy: "\n")
+    faceFiles = lines.removeFirst()
+    stageNames = lines.filter { !$0.isEmpty }
+  }
+
+  /// The face's files in order — the first speaks, the rest fill in what
+  /// it lacks, then the OS — or the OS's own face when there are none.
+  private static func face(_ faceFiles: String, size: CGFloat) -> CTFont {
+    let assets = Bundle.main.privateFrameworksURL?
+      .appendingPathComponent("App.framework/Resources/flutter_assets")
+    let descriptors: [CTFontDescriptor] = faceFiles
+      .split(separator: "\t")
+      .compactMap { file in
+        guard let url = assets?.appendingPathComponent(String(file)) else {
+          return nil
+        }
+        let found = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL)
+        return (found as? [CTFontDescriptor])?.first
+      }
+    guard let first = descriptors.first else {
+      return NSFont.systemFont(ofSize: size) as CTFont
+    }
+    let cascaded = CTFontDescriptorCreateCopyWithAttributes(
+      first,
+      [kCTFontCascadeListAttribute: Array(descriptors.dropFirst())]
+        as CFDictionary)
+    return CTFontCreateWithFontDescriptor(cascaded, size, nil)
+  }
+}
+
 class MainFlutterWindow: NSWindow {
   private let penStreamHandler = PenSidecarStreamHandler()
+
+  private let launchSplash = LaunchSplash()
+
+  /// Held for the channel's sake, like the handlers beside it.
+  private var fullScreenSwitch: FullScreenSwitch?
+  private var windowPlaceKeeper: WindowPlaceKeeper?
 
   /// Held as a property for the same reason `penStreamHandler` is: the
   /// channel keeps no strong reference, and this object owns the open
@@ -587,6 +920,15 @@ class MainFlutterWindow: NSWindow {
   private let pathGrantHandler = PathGrantHandler()
 
   override func awakeFromNib() {
+    // Before the engine starts: starting it is the wait the splash covers.
+    // The window stays ordered in — so the full screen the last run left
+    // can be thrown before the first frame — but unseen and untouchable
+    // until that frame.
+    launchSplash.show(on: self.screen)
+    launchSplash.sayRunnerStage(0)
+    self.alphaValue = 0
+    self.ignoresMouseEvents = true
+
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
@@ -597,6 +939,16 @@ class MainFlutterWindow: NSWindow {
       name: "qa_pen/macos",
       binaryMessenger: flutterViewController.engine.binaryMessenger)
     penChannel.setStreamHandler(penStreamHandler)
+
+    // I-103-Q2: the window's full screen, switched and reported.
+    fullScreenSwitch = FullScreenSwitch(
+      window: self,
+      messenger: flutterViewController.engine.binaryMessenger)
+
+    // I-116: where the window stands, kept and put back.
+    windowPlaceKeeper = WindowPlaceKeeper(
+      window: self,
+      messenger: flutterViewController.engine.binaryMessenger)
 
     // PICK-2: the storage channel. macOS had none — `AppStorage` early
     // -returned for every non-mobile platform — so this is the first time
@@ -614,8 +966,78 @@ class MainFlutterWindow: NSWindow {
       handler.handle(call, host: self, result)
     }
 
+    // I-103-Q1: the battery the top strip shows — the one question
+    // DeviceBattery asks every platform. A Mac without one answers nil, and
+    // the strip keeps no place for it.
+    let batteryChannel = FlutterMethodChannel(
+      name: "anicel/battery",
+      binaryMessenger: flutterViewController.engine.binaryMessenger)
+    batteryChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "read":
+        result(MainFlutterWindow.batteryReading())
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    // I-106: the stages Dart runs — [face files, name] — and the first
+    // frame, which this embedder has no hook for
+    // (lib/src/native/launch_splash.dart says why).
+    let launchChannel = FlutterMethodChannel(
+      name: "anicel/launch",
+      binaryMessenger: flutterViewController.engine.binaryMessenger)
+    launchChannel.setMethodCallHandler { [weak self] call, result in
+      switch call.method {
+      case "stage":
+        guard let said = call.arguments as? [String], said.count == 2 else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        self?.launchSplash.say(faceFiles: said[0], name: said[1])
+        result(nil)
+      case "firstFrame":
+        self?.alphaValue = 1
+        self?.ignoresMouseEvents = false
+        // After the window shows, so the screen is never left with neither.
+        self?.launchSplash.close()
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    launchSplash.sayRunnerStage(1)
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()
+  }
+
+  /// The internal battery as `DeviceBattery.readingOf` reads it —
+  /// "percent", and "charging" for ON POWER (on the adapter, charging or
+  /// already full) — or nil on a Mac that has none.
+  ///
+  /// UNVERIFIED-ON-DEVICE: authored on the Windows workstation.
+  static func batteryReading() -> [String: Any]? {
+    let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
+    let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
+    for source in sources {
+      guard
+        let description = IOPSGetPowerSourceDescription(snapshot, source)?
+          .takeUnretainedValue() as? [String: Any],
+        description[kIOPSTypeKey] as? String == kIOPSInternalBatteryType,
+        let current = description[kIOPSCurrentCapacityKey] as? Int,
+        let most = description[kIOPSMaxCapacityKey] as? Int,
+        most > 0
+      else {
+        continue
+      }
+      let state = description[kIOPSPowerSourceStateKey] as? String
+      return [
+        "percent": min(100, current * 100 / most),
+        "charging": state == kIOPSACPowerValue,
+      ]
+    }
+    return nil
   }
 }

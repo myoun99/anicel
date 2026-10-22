@@ -5,6 +5,7 @@ import '../../services/persistence/anicel_project_archive.dart'
     show anicelObjectMapField;
 import '../timeline/lane_graph.dart'
     show LaneGraph, LaneGraphMode, LaneGraphsView;
+import 'media_file_views.dart' show MediaFileView;
 
 /// Where the work stood when the project was saved — the cut, the row and
 /// the frame in front of the person, and what their tools were holding —
@@ -42,6 +43,7 @@ class ProjectResume {
     this.frameAxisOffsets = const {},
     this.layerAxisOffsets = const {},
     this.laneGraphs = LaneGraphsView.none,
+    this.mediaFileViews = const {},
   });
 
   static const ProjectResume none = ProjectResume();
@@ -88,6 +90,12 @@ class ProjectResume {
   /// nothing marks the film unsaved, and the file still keeps it.
   final LaneGraphsView laneGraphs;
 
+  /// The page and the framing each file was left at in the viewers, by the
+  /// file's path (F-382, `MediaFileViews`) — a view kept here as the zooms
+  /// are: looking at a reference is no edit, and the file still keeps it. A
+  /// file nobody turned or framed is not here.
+  final Map<String, MediaFileView> mediaFileViews;
+
   Map<String, Object?> toJson() => {
     if (cutId != null) 'cutId': cutId!.value,
     if (layerId != null) 'layerId': layerId!.value,
@@ -111,6 +119,11 @@ class ProjectResume {
           },
       },
     if (laneGraphs.pinned.isNotEmpty) 'pinnedLanes': [...laneGraphs.pinned],
+    if (mediaFileViews.isNotEmpty)
+      'mediaFileViews': {
+        for (final MapEntry(key: path, value: view) in mediaFileViews.entries)
+          path: view.toJson(),
+      },
   };
 
   /// The resume point [json] holds; any part it does not hold readably is
@@ -150,6 +163,13 @@ class ProjectResume {
               if (key is String && key.isNotEmpty) key,
         },
       ),
+      mediaFileViews: {
+        for (final MapEntry(:key, :value)
+            in anicelObjectMapField(json['mediaFileViews']).entries)
+          if (MediaFileView.fromJson(value) case final view?
+              when key.isNotEmpty)
+            key: view,
+      },
     );
   }
 

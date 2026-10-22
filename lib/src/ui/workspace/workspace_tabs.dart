@@ -51,6 +51,30 @@ class _WorkspaceTabs {
     return () => session.layerSwitches.toggleLayerFillReference(layer.id);
   }
 
+  /// 래스터라이즈 (vanishing-point-types-Q5 · Q6): the picked guide's lines baked
+  /// onto [paper] off the frame's clock, then laid on the cels through the
+  /// paste's door as one undo. Null with no paper to bake onto.
+  ValueChanged<DrawingGuide>? _guideRasterizer(
+    BuildContext context,
+    CanvasSize? paper,
+  ) {
+    if (paper == null) {
+      return null;
+    }
+    final pixels = _state.widget.session.pixelVerbs;
+    return (guide) => unawaited(
+      guideLinesOnPaper(
+        guide,
+        canvasSize: paper,
+        color: guideColorOf(context),
+      ).then((picture) {
+        if (picture != null) {
+          pixels.landCanvasPicture(picture, description: 'Rasterize guide');
+        }
+      }),
+    );
+  }
+
   /// What the tool settings show of the session — the slice their panel
   /// rebuilds by, with [fillSource] and [eyedropperSource] the two sources
   /// it names the read layers of.
@@ -80,7 +104,7 @@ class _WorkspaceTabs {
       eyedropperReads: reads(eyedropperSource),
       activeLayerIsFillReference: session.activeLayer?.isFillReference ?? false,
       canToggleFillReference: _activeLayerFillReferenceToggle() != null,
-      canvasSize: session.activeCutOrNull?.canvasSize,
+      pasteboard: session.activePasteboardOrNull,
       language: session.languageSettings.value.programLanguage,
     );
   }
@@ -98,13 +122,29 @@ class _WorkspaceTabs {
   /// frame panels too — they build their host again on every edit, and bare,
   /// every commit (a comma drag's release) laid the dock out again and
   /// repainted the page's root around the panel.
+  ///
+  /// A host that says what it prints of the session ([printed]) hears the
+  /// session only when that changes. 🔬The conte and the envelope heard all
+  /// of it in [listenable] and rebuilt — 107 and 108 elements — for a guide
+  /// picked on the canvas or the onion switched on, news neither prints
+  /// (session-news-rebuilds-unsliced, 2026-10-20). The timesheet hears it
+  /// inside its host, through its document's memo key; the frame panels
+  /// still hear it all, what they show of it being their rows' facts
+  /// (F-244).
   Widget _panelHost({
     required Listenable listenable,
+    Object? Function()? printed,
     required WidgetBuilder host,
   }) => TickLayer.host(
     child: ListenableBuilder(
       listenable: listenable,
-      builder: (context, _) => host(context),
+      builder: (context, _) => printed == null
+          ? host(context)
+          : SlicedListenableBuilder<Object?>(
+              listenable: _state.widget.session,
+              slice: printed,
+              builder: (context, _) => host(context),
+            ),
     ),
   );
 
@@ -116,7 +156,6 @@ class _WorkspaceTabs {
     return FramePanelSillControls(
       session: session,
       scope: transport.scope,
-      cameraViewEnabled: _state._views._cameraViewEnabled,
       cameraViewKeyValue: cameraViewKeyValue,
       playbackStartFrame: transport.startFrame,
       onSkipToStart: transport.skipToStart,
@@ -143,8 +182,11 @@ class _WorkspaceTabs {
       builder: (context) => ListenableBuilder(
         // The request, the position and the viewport are the HOST's own
         // subscriptions (the page read moves with the view, F-201) — so
-        // nothing here rebuilds it for them.
-        listenable: _state.widget.session.languageSettings,
+        // nothing here rebuilds it for them. The brush switch is the slot's.
+        listenable: Listenable.merge([
+          _state.widget.session.languageSettings,
+          slot.brushAllowed,
+        ]),
         builder: (context, _) => MediaViewerTabHost(
           viewerId: tabId,
           session: _state.widget.session,
@@ -154,12 +196,18 @@ class _WorkspaceTabs {
           onRequestClosed: () => slot.open(null),
           viewportController: slot.viewport,
           framedFor: slot.framedFor,
+          keptFraming: slot.keptFramingOf,
           loudness: slot.loudness,
+          selection: _state.widget.viewerSelections?[tabId],
           onSwapViewers: () => _state._swapViewers(fromTabId: tabId),
           // I-14: the cut tool reaches the viewer, and a cut there lands in
           // the piece the canvas's cuts fill.
           brushTool: _state._brushTool,
           cutPieceSlot: _state._cutPieceSlot,
+          // I-114: the brush writes on a file the project carries.
+          inkController: _state._views._viewerInk,
+          brushAllowed: slot.brushAllowed.value,
+          onBrushAllowedChanged: (allowed) => slot.brushAllowed.value = allowed,
           // 유저 확정 ⑱: the promote button calls the SAME import every
           // other entrance calls — a viewer-only policy here would be a
           // third import surface nobody remembers to fix. Since F-282-Q4
@@ -338,8 +386,10 @@ class _WorkspaceTabs {
                   cutPieceSlot: _state._cutPieceSlot,
                   lastStroke: _state.widget.lastStroke,
                   toolHold: _state.widget.toolHold,
-                  cameraViewEnabled: _state._views._cameraViewEnabled,
-                  cameraDimOpacity: _state._views._cameraDimOpacity,
+                  // F-363: the project's camera row's eye and opacity.
+                  cameraViewEnabled:
+                      _state.widget.session.cameraViewMode.enabled,
+                  cameraDimOpacity: _state.widget.session.cameraViewMode.dim,
                   expandedLaneLayerIds:
                       _state.widget.session.railView.expandedLaneLayerIds,
                   fillOptions: _state._views._fillOptions,
@@ -616,6 +666,10 @@ class _WorkspaceTabs {
                                               .session
                                               .cutVerbs
                                               .previewActiveCutGuides,
+                                          onGuideRasterized: _guideRasterizer(
+                                            context,
+                                            cut.pasteboard?.canvas,
+                                          ),
                                           tips: cut.tips,
                                           onTipImportRequested: () {
                                             unawaited(
@@ -671,6 +725,8 @@ class _WorkspaceTabs {
                                           selectionCommands: _state
                                               .widget
                                               .canvasSelectionCommands,
+                                          canvasTraces:
+                                              _state.widget.canvasTraces,
                                           textOptions:
                                               _state._views._textToolOptions,
                                           textCommands:
@@ -678,7 +734,7 @@ class _WorkspaceTabs {
                                           textFonts: _state._fonts,
                                           // The wall 선택 반전 inverts out
                                           // to (I-23): the cut on screen.
-                                          canvasSize: cut.canvasSize,
+                                          pasteboard: cut.pasteboard,
                                           cutPieceSlot: _state._cutPieceSlot,
                                           // TS8: composite order is
                                           // the BLEND's answer, so
@@ -752,7 +808,12 @@ class _WorkspaceTabs {
           icon: Icons.library_music_outlined,
           locked: locked,
           builder: (context) => ListenableBuilder(
-            listenable: _state.widget.session,
+            // I-97: a sheet's photo is a use as well, and a sheet's ink is
+            // written without the session saying so.
+            listenable: Listenable.merge([
+              _state.widget.session,
+              _state.widget.session.mediaPool.sheetPhotoWrites,
+            ]),
             builder: (context, _) => MediaPoolPanel(
               assets: _state.widget.session.mediaPool.mediaAssets,
               // F-118: one list per file — the mark, its window and the
@@ -869,12 +930,7 @@ class _WorkspaceTabs {
               // #4): the host scopes it to the panel subtree, so a zoom
               // step skips this whole tab rebuild.
               _state._showSecondsDisplay,
-              _state.widget.session.railView.expandedLaneLayerIds,
-              _state.widget.session.railView.expandedLaneGroupKeys,
-              _state.widget.session.railView.laneGraphs,
-              _state.widget.session.railView.hiddenSections,
-              _state.widget.session.railView.collapsedAttachBaseIds,
-              _state.widget.session.railView.rowFilter,
+              _state.widget.session.railView.drawn,
             ]),
             host: (context) => TimelineTabHost(
               session: _state.widget.session,
@@ -976,11 +1032,6 @@ class _WorkspaceTabs {
               onToggleAttachGroup: SessionRowButtonPresses(
                 _state.widget.session,
               ).toggleGroupFold,
-              // Unified layer controls: the camera row's visibility/opacity
-              // drive the same camera-view state as the canvas overlay and
-              // the camera panel.
-              cameraViewEnabled: _state._views._cameraViewEnabled,
-              cameraDimOpacity: _state._views._cameraDimOpacity,
               // The legend's "open onion panel" (UI-R17 #5): already open
               // = the panel flashes in place (the common reveal logic).
               onRevealOnionSkinPanel: () =>
@@ -1021,17 +1072,11 @@ class _WorkspaceTabs {
             listenable: Listenable.merge([
               _state.widget.session,
               _state._storyboardPixelsPerFrame,
-              // F-199: a section toggle is not a session notify.
-              _state.widget.session.railView.hiddenSections,
-              // Nor is a fold: the conte row's twirl folds its attach rows
-              // here as it does on the timeline's rail (I-73).
-              _state.widget.session.railView.collapsedAttachBaseIds,
-              // Nor a twirl: the camera row opens its lanes, a conte row its
-              // lanes and their groups (I-73 ④ⓔ), an S row its SE row's, a
-              // V row its track's (F-360).
-              _state.widget.session.railView.expandedLaneLayerIds,
-              _state.widget.session.railView.expandedLaneGroupKeys,
-              _state.widget.session.railView.twirledTrackIds,
+              // The rail's view is no session notify: a section toggle
+              // (F-199), a fold (I-73), a twirl — the camera row's lanes, a
+              // conte row's and their groups (I-73 ④ⓔ), an S row's, a V
+              // row's (F-360) — a header graph (I-89 ①) and the filter.
+              _state.widget.session.railView.drawn,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
             ]),
@@ -1071,6 +1116,12 @@ class _WorkspaceTabs {
               expandedLaneGroupKeys:
                   _state.widget.session.railView.expandedLaneGroupKeys.value,
               onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
+              // And the header graphs (I-89 ①): the timeline's state and its
+              // verbs, so a graph opened on either rail is open on both.
+              laneGraphs: _state.widget.session.railView.laneGraphs.value,
+              laneGraphVerbs: SessionRowButtonPresses(
+                _state.widget.session,
+              ).laneGraphVerbs,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
               showSeconds: _state._showSecondsDisplay.value,
@@ -1100,13 +1151,6 @@ class _WorkspaceTabs {
               // The rows the ↑/↓ walk and the flip window read while the
               // storyboard is the panel being worked in.
               rowsChannel: _state._storyboardRows,
-              // The camera row's head is the timeline's camera row (I-73 ④):
-              // its eye and slider drive the same camera-view state as the
-              // timeline's, the canvas overlay and the camera panel. R28 #1's
-              // TOGGLE still rides the sill with the transport
-              // (`sillTrailing` above).
-              cameraViewEnabled: _state._views._cameraViewEnabled,
-              cameraDimOpacity: _state._views._cameraDimOpacity,
             ),
           ),
         );
@@ -1126,7 +1170,6 @@ class _WorkspaceTabs {
           // ink overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
             listenable: Listenable.merge([
-              _state.widget.session,
               _state._views._conteViewport,
               _state._views._conteBrushAllowed,
               _state._views._conteInk,
@@ -1136,6 +1179,7 @@ class _WorkspaceTabs {
               // The locale reprints the sheet chrome (labels/tooltips).
               _state.widget.session.languageSettings,
             ]),
+            printed: () => ConteTabHost.printedBy(_state.widget.session),
             host: (context) => ConteTabHost(
               session: _state.widget.session,
               // A landed thumbnail render repaints the page painter
@@ -1174,7 +1218,6 @@ class _WorkspaceTabs {
           // overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
             listenable: Listenable.merge([
-              _state.widget.session,
               _state._views._envelopeViewport,
               _state._views._envelopeBrushAllowed,
               _state._views._envelopeInk,
@@ -1183,6 +1226,7 @@ class _WorkspaceTabs {
               _state.widget.session.cutUnderPlayhead.listenable,
               _state.widget.session.languageSettings,
             ]),
+            printed: () => CutEnvelopeTabHost.printedBy(_state.widget.session),
             host: (context) => CutEnvelopeTabHost(
               session: _state.widget.session,
               // The work's choice, written back to the work — one undo.
@@ -1255,6 +1299,10 @@ class _WorkspaceTabs {
               onDataSheetChanged: (shown) {
                 _state._views._timesheetDataSheet.value = shown;
               },
+              // The files the ink's photos are drawn from (I-97), from the
+              // decode cache the conte and the envelope print from.
+              imageFor: _state._views._sheetImages.imageFor,
+              imageRepaint: _state._views._sheetImages,
             ),
           ),
         );
@@ -1317,6 +1365,6 @@ typedef _ToolSettingsCut = ({
   ByList<String>? eyedropperReads,
   bool activeLayerIsFillReference,
   bool canToggleFillReference,
-  CanvasSize? canvasSize,
+  PasteboardWall? pasteboard,
   AppLanguage language,
 });

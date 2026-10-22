@@ -3,12 +3,16 @@
 // (or null when the edit is a no-op/invalid) — callers commit it as ONE
 // undo step.
 
+import 'dart:ui' show Offset;
+
 import '../../models/canvas_point.dart';
+import '../../models/key_path_walk.dart' show keyPathPulled;
 import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
 import 'lane_span_keys_shift.dart';
 import 'property_lane_lens.dart';
 import 'scale_lane_form.dart';
+import '../text/readout_text.dart' show columnPairOf, columnValueOf;
 
 /// Adds a key at [frameIndex] with the property's RESOLVED value there
 /// (AE behavior: keying a property freezes its current value), or removes
@@ -37,13 +41,17 @@ TransformTrack? transformTrackWithLaneKeyToggled(
         return null;
       }
       return track.copyWith(
-        anchorPoint: track.anchorPoint.withKey(frameIndex, resolvedAnchorPoint),
+        anchorPoint: pathLaneKeyed(
+          track.anchorPoint,
+          frameIndex,
+          resolvedAnchorPoint,
+        ),
       );
     case 'position':
       return track.copyWith(
         position: track.position.keyAt(frameIndex) != null
             ? track.position.withoutKey(frameIndex)
-            : positionLaneKeyed(
+            : pathLaneKeyed(
                 track.position,
                 frameIndex,
                 resolvedPose.center,
@@ -80,17 +88,6 @@ TransformTrack? transformTrackWithLaneKeyToggled(
 // span — and a dead single-key mover left lying here is an invitation to
 // wire the second grammar back.
 
-/// Removes a lane's key at [frameIndex].
-TransformTrack? transformTrackWithLaneKeyRemoved(
-  TransformTrack track, {
-  required String laneId,
-  required int frameIndex,
-}) => transformLaneLens(laneId)?.update(
-  track,
-  <U>(PropertyTrack<U> lane) =>
-      lane.keyAt(frameIndex) == null ? null : lane.withoutKey(frameIndex),
-);
-
 /// The key window's write on lane [laneId] (F-17 · I-89): the keys inside
 /// [frames] named as [naming] says (a null name un-names them) — all
 /// collapsed onto ONE value, the key the name already holds on [adoptFrom]
@@ -112,27 +109,13 @@ TransformTrack? transformTrackWithLaneKeysWritten(
   TransformTrack? adoptFrom,
   KeyTypePick pick = const KeyTypePick(),
 }) {
-  final property = transformPropertyOfLaneId(laneId);
-  final picked = property != null && walksAPath(property)
-      ? pick
-      : pick.sidesAlone;
-  return transformLaneLens(laneId)?.updateBeside(track, adoptFrom, <U>(
-    PropertyTrack<U> lane,
-    PropertyTrack<U>? holder,
-  ) {
-    final name = naming?.name;
-    return lane.withKeysWritten(
-      frames: frames,
-      naming: naming == null
-          ? null
-          : (
-              name: name,
-              adopted: name == null ? null : holder?.keyForName(name),
-              preferredFrame: naming.preferredFrame,
-            ),
-      pick: picked,
-    );
-  });
+  return transformLaneLens(laneId)?.keysWritten(
+    track,
+    frames: frames,
+    naming: naming,
+    adoptFrom: adoptFrom,
+    pick: laneWalksAPath(laneId) ? pick : pick.sidesAlone,
+  );
 }
 
 /// Applies a value typed into a lane's value editor: sets/updates the key
@@ -143,6 +126,9 @@ TransformTrack? transformTrackWithLaneKeysWritten(
 /// `150, 80%`, the one left as shown carried when [scaleLinked]
 /// ([ScaleLaneForm.typed]); rotation `45` or `45°`; opacity `75` or `75%`
 /// (clamped 0–100). Null on parse failure.
+///
+/// [unkeyedScale] is what the Scale lane holds with no key — 1 on a layer,
+/// and where a reference's fx placed its picture (F-374).
 TransformTrack? transformTrackWithLaneValueEdited(
   TransformTrack track, {
   required String laneId,
@@ -150,6 +136,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
   required String input,
   required ScaleLaneForm scaleForm,
   required bool scaleLinked,
+  CanvasPoint? unkeyedScale,
 }) {
   if (frameIndex < 0) {
     return null;
@@ -161,10 +148,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         return null;
       }
       return track.copyWith(
-        anchorPoint: track.anchorPoint.withKey(
-          frameIndex,
-          point,
-        ),
+        anchorPoint: pathLaneKeyed(track.anchorPoint, frameIndex, point),
       );
     case 'position':
       final point = _parsePoint(input);
@@ -172,7 +156,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         return null;
       }
       return track.copyWith(
-        position: positionLaneKeyed(track.position, frameIndex, point),
+        position: pathLaneKeyed(track.position, frameIndex, point),
       );
     case 'scale':
       // What the lane shows at the frame is what the typed value is read
@@ -181,7 +165,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         input,
         current: track.scale.resolveAt(
           frameIndex: frameIndex,
-          orElse: () => uniformScale(1),
+          orElse: () => unkeyedScale ?? uniformScale(1),
           space: pointKeySpace,
         ),
         linked: scaleLinked,
@@ -191,7 +175,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
       }
       return track.copyWith(scale: track.scale.withKey(frameIndex, scale));
     case 'rotation':
-      final degrees = _parseDegrees(input);
+      final degrees = columnValueOf(input);
       if (degrees == null) {
         return null;
       }
@@ -202,7 +186,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         ),
       );
     case 'opacity':
-      final percent = double.tryParse(input.replaceAll('%', '').trim());
+      final percent = columnValueOf(input);
       if (percent == null) {
         return null;
       }
@@ -226,22 +210,41 @@ TransformTrack transformTrackWithPositionDragged(
   required CanvasPoint position,
 }) {
   return track.copyWith(
-    position: positionLaneKeyed(track.position, frameIndex, position),
+    position: pathLaneKeyed(track.position, frameIndex, position),
   );
 }
 
-/// A path's knob carried on the canvas (I-89 ④-Q4 A: 「캔버스에서 끈 접선 —
-/// 반대쪽은 거울」): the position key at [frameIndex] bends along [tangent],
-/// how far the knob stands from the key — its mirror behind it. The key's
-/// value, sides and name stay as they are, and where no position key stands
-/// nothing changes.
-TransformTrack transformTrackWithPositionHandle(
+/// A path's knob carried on the canvas (I-89 ④ · ②): the key at
+/// [frameIndex] of lane [property] — one whose keys walk a path
+/// ([walksAPath]) — bends as its [handle] — the one [ahead] of it or the
+/// one behind — reaching [reach] out of it leaves it ([keyPathPulled]).
+/// The key's value, sides and name stay as they are, and where no such key
+/// stands nothing changes.
+TransformTrack transformTrackWithPathHandle(
   TransformTrack track, {
+  required TransformPropertyId property,
   required int frameIndex,
-  required CanvasPoint tangent,
+  required ({bool ahead, CanvasPoint reach}) handle,
 }) {
-  final bent = track.position.withKeyPath(frameIndex, HandledPath(tangent));
-  return bent == null ? track : track.copyWith(position: bent);
+  final lane = transformPathLaneOf(track, property);
+  if (lane == null || lane.keyAt(frameIndex) == null) {
+    return track;
+  }
+  final bent = lane.withKeyPath(
+    frameIndex,
+    keyPathPulled(
+      lane.keys,
+      frameIndex,
+      ahead: handle.ahead,
+      reach: Offset(handle.reach.x, handle.reach.y),
+    ),
+  );
+  if (bent == null) {
+    return track;
+  }
+  return property == TransformPropertyId.anchorPoint
+      ? track.copyWith(anchorPoint: bent)
+      : track.copyWith(position: bent);
 }
 
 /// The transform box's SCALE release (R5 #10): ONE key at the playhead on
@@ -279,60 +282,19 @@ TransformTrack transformTrackWithAnchorDragged(
   required CanvasPoint anchorPoint,
 }) {
   return track.copyWith(
-    anchorPoint: track.anchorPoint.withKey(
-      frameIndex,
-      anchorPoint,
-    ),
+    anchorPoint: pathLaneKeyed(track.anchorPoint, frameIndex, anchorPoint),
   );
 }
 
-/// A value typed into one lane of a lone POSE — a reference fx's (I-68),
-/// one value with no keys. [laneId] is the transform lane it is
-/// (`position`, `scale` or `rotation`), read the way
-/// [transformTrackWithLaneValueEdited] reads that lane. Null on parse
-/// failure.
-TransformPose? poseWithLaneValueEdited(
-  TransformPose pose, {
-  required String laneId,
-  required String input,
-  required ScaleLaneForm scaleForm,
-  required bool scaleLinked,
-}) {
-  switch (laneId) {
-    case 'position':
-      final point = _parsePoint(input);
-      return point == null ? null : pose.copyWith(center: point);
-    case 'scale':
-      final scale = scaleForm.typed(
-        input,
-        current: pose.scale,
-        linked: scaleLinked,
-      );
-      return scale == null
-          ? null
-          : pose.copyWith(scaleX: scale.x, scaleY: scale.y);
-    case 'rotation':
-      final degrees = _parseDegrees(input);
-      return degrees == null ? null : pose.copyWith(rotationDegrees: degrees);
-  }
-  return null;
-}
+// F-374: `poseWithLaneValueEdited` — a value typed into a reference fx's
+// one pose — went when its lanes became keyed transform lanes. A reference
+// lane's value is [transformTrackWithLaneValueEdited] on its fx now, and a
+// second reader of the same three inputs is how the two would drift.
 
-CanvasPoint? _parsePoint(String input) {
-  final parts = input.split(',');
-  if (parts.length != 2) {
-    return null;
-  }
-  final x = double.tryParse(parts[0].trim());
-  final y = double.tryParse(parts[1].trim());
-  if (x == null || y == null) {
-    return null;
-  }
-  return CanvasPoint(x: x, y: y);
-}
-
-double? _parseDegrees(String input) =>
-    double.tryParse(input.replaceAll('°', '').trim());
+CanvasPoint? _parsePoint(String input) => switch (columnPairOf(input)) {
+  (final x, final y) => CanvasPoint(x: x, y: y),
+  null => null,
+};
 
 
 /// AE's group Reset, for the Transform group (R5, user 2026-08-09).
@@ -384,8 +346,8 @@ TransformTrack? transformTrackWithGroupReset(
     return next == lane ? null : next;
   }
 
-  final anchor = reset(track.anchorPoint, defaultAnchorPoint);
-  final position = reset(track.position, identity.center, positionLaneKeyed);
+  final anchor = reset(track.anchorPoint, defaultAnchorPoint, pathLaneKeyed);
+  final position = reset(track.position, identity.center, pathLaneKeyed);
   final scale = reset(track.scale, identity.scale);
   final rotation = reset(track.rotation, identity.rotationDegrees);
   final opacity = reset(track.opacity, 1.0);

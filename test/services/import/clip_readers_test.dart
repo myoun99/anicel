@@ -321,5 +321,59 @@ void main() {
       );
       expect(clipColourRgba(mask, {0: Uint8List(256 * 256)}), isNull);
     });
+
+    test('a mask comes out as one byte a pixel, each block in its place, cut '
+        'at its edge — and where no whole block is, its fill: all shown for '
+        'one that is not 0 (MoArt\'s reading)', () {
+      ClipOffscreenShape mask(int fill) => ClipOffscreenShape(
+        width: 300,
+        height: 260,
+        columns: 2,
+        rows: 2,
+        alphaChannels: 0,
+        colourChannels: 1,
+        fill: fill,
+      );
+      Uint8List block(int Function(int x, int y) value) {
+        final out = Uint8List(256 * 256);
+        for (var y = 0; y < 256; y += 1) {
+          for (var x = 0; x < 256; x += 1) {
+            out[y * 256 + x] = value(x, y);
+          }
+        }
+        return out;
+      }
+
+      final plane = clipMaskPlane(mask(1), {
+        0: block((x, y) => x),
+        1: block((_, _) => 70),
+        2: null,
+        3: Uint8List(10),
+      })!;
+      int at(int x, int y) => plane[y * 300 + x];
+
+      expect(plane.length, 300 * 260);
+      expect(at(17, 33), 17);
+      expect(at(256, 0), 70, reason: 'block 1, top right');
+      expect(at(299, 255), 70, reason: 'cut at the edge too');
+      expect(at(0, 256), 255, reason: 'a block stored empty is its fill');
+      expect(at(299, 259), 255, reason: 'and so is a block of another size');
+      expect(clipMaskPlane(mask(0), {})!.every((value) => value == 0), isTrue);
+      expect(mask(1).maskOutside, 255);
+      expect(mask(0).maskOutside, 0);
+    });
+
+    test('a picture of another channel bundle is not read as a mask', () {
+      const colour = ClipOffscreenShape(
+        width: 256,
+        height: 256,
+        columns: 1,
+        rows: 1,
+        alphaChannels: 1,
+        colourChannels: 4,
+        fill: 0,
+      );
+      expect(clipMaskPlane(colour, const {}), isNull);
+    });
   });
 }

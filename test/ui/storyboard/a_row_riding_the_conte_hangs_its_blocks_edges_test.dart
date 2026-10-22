@@ -23,12 +23,10 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
 import '../storyboard_conte_row_probe.dart';
+import '../../helpers/storyboard_host.dart';
 import '../timeline/timeline_row_chrome_probe.dart';
 
 /// 🗣️I-73 — the drawn proposal 유저 took on 2026-10-08, of a row riding
@@ -139,18 +137,9 @@ Project _project() => Project(
   ],
 );
 
-Future<void> _openStoryboard(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1900, 800));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
-}
+/// The conte as its tab hosts it ([pumpStoryboardHost]).
+Future<EditorSessionManager> _openStoryboard(WidgetTester tester) =>
+    pumpStoryboardHost(tester, _project(), surface: const Size(1900, 800));
 
 StoryboardPanel _panel(WidgetTester tester) =>
     tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
@@ -269,10 +258,7 @@ void main() {
   testWidgets('🚨a block of a cut the session is not in is gripped where it '
       'is: the hand shows it, the release writes it, and the session stands '
       'where it stood', (tester) async {
-    await _openStoryboard(tester);
-    final session = tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
+    final session = await _openStoryboard(tester);
     final standing = (
       cut: session.activeCutOrNull?.id,
       frame: session.currentFrameIndex,
@@ -314,8 +300,6 @@ void main() {
     ///
     /// At four pixels a frame a grip is wider than a frame.
     Future<EditorSessionManager> open(WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 760));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
       Cut cut(String id, Map<int, int> rider) => Cut(
         id: CutId(id),
         name: id,
@@ -323,8 +307,9 @@ void main() {
         canvasSize: const CanvasSize(width: 640, height: 360),
         layers: [_conte(id, {0: 12, 12: 12}), _rider(id, rider)],
       );
-      final session = EditorSessionManager(
-        initialProject: Project(
+      final session = await pumpStoryboardHost(
+        tester,
+        Project(
           id: const ProjectId('ol-riders'),
           name: 'O.L riders',
           createdAt: DateTime.utc(2026, 10, 8),
@@ -339,28 +324,12 @@ void main() {
             ),
           ],
         ),
+        surface: const Size(1400, 760),
+        pixelsPerFrame: ppf,
       );
-      addTearDown(session.dispose);
       session.transitions.updateTransitionInstructions({
         18: const InstructionEvent(instructionId: 'ol', length: 12),
       });
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ListenableBuilder(
-              listenable: session,
-              builder: (context, _) => StoryboardTabHost(
-                session: session,
-                pixelsPerFrame: ppf,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-                thumbnails: null,
-              ),
-            ),
-          ),
-        ),
-      );
       await tester.pumpAndSettle();
       return session;
     }

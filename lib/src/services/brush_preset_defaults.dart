@@ -178,6 +178,27 @@ final List<BrushGroup> defaultBrushGroups = List.unmodifiable(<BrushGroup>[
 /// share)` — twenty of them (Soft Round at 24 px: share 0.417, 0.394 became
 /// 0.6992; Airbrush at 40 px: share 0.25, 0.062 became 0.2259). A brush at
 /// flow 1 keeps it: whole is whole at any share.
+/// The ランダム rows a preset throws (F-176-Q2): each amount is how far below
+/// its base a throw may land — what the brush's jitter slider said before the
+/// row replaced it — so the row's 最小値 is one minus it.
+Map<BrushDynamicsKey, BrushPressureCurve> _randomRows({
+  double size = 0.0,
+  double opacity = 0.0,
+  double roundness = 0.0,
+  double spacing = 0.0,
+}) => {
+  for (final (target, amount) in [
+    (BrushPressureTarget.size, size),
+    (BrushPressureTarget.opacity, opacity),
+    (BrushPressureTarget.roundness, roundness),
+    (BrushPressureTarget.spacing, spacing),
+  ])
+    if (amount > 0.0)
+      (target, BrushInputSource.random): BrushPressureCurve.linearFrom(
+        1.0 - amount,
+      ),
+};
+
 final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // ---- Basic -----------------------------------------------------------
   // 🚨THE TWO ROUNDS ARE OLD BRUSHES UNDER NEW NAMES (board F-218): the ids
@@ -229,7 +250,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       flow: 0.45,
       opacity: 0.65,
       spacing: 0.05,
-      tipMask: grainBrushTipMask,
+      tips: [grainBrushTipMask],
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.0,
       textureDensity: 0.35,
@@ -247,7 +268,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       flow: 0.65,
       opacity: 0.8,
       spacing: 0.05,
-      tipMask: grainBrushTipMask,
+      tips: [grainBrushTipMask],
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.2,
       textureDensity: 0.5,
@@ -265,7 +286,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       flow: 0.8,
       opacity: 0.9,
       spacing: 0.05,
-      tipMask: grainBrushTipMask,
+      tips: [grainBrushTipMask],
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.3,
       textureDensity: 0.6,
@@ -282,7 +303,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 0.5,
       flow: 1.0,
       spacing: 0.05,
-      tipMask: grainBrushTipMask,
+      tips: [grainBrushTipMask],
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.4,
       textureDensity: 0.7,
@@ -316,7 +337,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 6,
       flow: 0.55,
       spacing: 0.08,
-      tipMask: grainBrushTipMask,
+      tips: [grainBrushTipMask],
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.4,
       textureDensity: 0.7,
@@ -327,6 +348,14 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // 연필. 연필 눕혀서 그리기도 하잖아 아날로그에서. 그런거 그대로 재현한
   // 연필」). Upright it draws a line; leaned over, the side of the lead
   // spreads the same graphite wide, pale and soft-edged.
+  //
+  // ↩️F-176-Q4 (유저 2026-10-18): 「세워서그리면 얇은선, 눕혀서 그리면 연필처럼
+  // dab이 길어지는? 그런거 기대했는데 전혀아니고 펜 실제 각도에 따라 dab 각도
+  // 바뀌는건가했는데 그거조차도아님. 가능하도록」. It used to hold a FIXED
+  // 35° tip squashed to 0.55 whatever the pen did, so leaning only made it
+  // bigger. Now the tip turns with the pen's lean (ペンの方向) and squashes
+  // as it lies down: round under an upright pen, a mark four times as long
+  // as it is wide along the way the pen leans when it is flat.
   BrushPreset(
     id: const BrushPresetId('builtin-shading-pencil'),
     name: 'Tilted Pencil',
@@ -336,19 +365,17 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 0.7,
       flow: 0.8,
       spacing: 0.05,
-      roundness: 0.55,
-      angleDegrees: 35,
-      rotationMode: BrushTipRotationMode.fixed,
-      tipMask: grainBrushTipMask,
+      rotationMode: BrushTipRotationMode.penTilt,
+      tips: [grainBrushTipMask],
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.2,
       textureDensity: 0.5,
-      // 🚨THE 0.25 FLOOR ON THE TILT CURVE IS LOAD-BEARING, not taste.
-      // `BrushPressureCurve.evaluate` returns `clamp(0,1) * maximum`, so the
-      // pair (0.25, maximum 4.0) evaluates to exactly 1.0 at lean 0.0 — and
-      // lean 0.0 is where a pen held UPRIGHT sits. Lower the floor and this
-      // brush draws at a quarter size for anyone who holds the stylus
-      // straight.
+      // 🚨THE 最小値 OF 100% ON THE TILT SIZE ROW IS LOAD-BEARING, not taste:
+      // lean 0.0 is where a pen held UPRIGHT sits, and the row answers its
+      // 最小値 there. Lower it and this brush draws below its size for anyone
+      // who holds the stylus straight.
+      // ↩️This was a 0.25 floor on a curve with maximum 4.0 — the same
+      // response, from before a curve held its 最小値 apart from its shape.
       // ⛔The reason used to be "that is where a mouse sits, because a device
       // reporting no tilt reads as an upright pen". That premise is gone: a
       // device with no tilt now answers null and the source is SKIPPED, so a
@@ -357,12 +384,17 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       curves: {
         (BrushPressureTarget.size, BrushInputSource.pressure):
             BrushPressureCurve.linearFrom(0.45),
-        (BrushPressureTarget.size, BrushInputSource.tilt): BrushPressureCurve(
-          const [BrushCurvePoint(0.0, 0.25), BrushCurvePoint(1.0, 1.0)],
-          maximum: 4.0,
-        ),
+        (BrushPressureTarget.size, BrushInputSource.tilt):
+            BrushPressureCurve.linearFrom(1.0, maximum: 4.0),
+        // Lying down, the lead's side is long and narrow: the mark keeps its
+        // width while it grows along the lean. A shape that FALLS — legal;
+        // only x must increase.
+        (BrushPressureTarget.roundness, BrushInputSource.tilt):
+            BrushPressureCurve(const [
+              BrushCurvePoint(0.0, 1.0),
+              BrushCurvePoint(1.0, 0.0),
+            ], minimum: 0.25),
         // Leaning the pencil over spreads the same graphite thinner.
-        // ⚠️A curve whose y DECREASES is legal; only x must increase.
         (BrushPressureTarget.opacity, BrushInputSource.tilt):
             BrushPressureCurve(const [
               BrushCurvePoint(0.0, 1.0),
@@ -516,7 +548,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 20,
       flow: 0.85,
       spacing: 0.2,
-      tipMask: chalkBrushTipMask,
+      tips: [chalkBrushTipMask],
       sizePressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -528,18 +560,17 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 28,
       flow: 0.9,
       spacing: 0.12,
-      tipMask: chalkBrushTipMask,
+      tips: [chalkBrushTipMask],
       dualMask: grainBrushTipMask,
       dualMaskScale: 0.55,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.8,
       textureDensity: 0.75,
-      sizeJitter: 0.2,
-      // ⚠️Spacing jitter is rolled once per SEGMENT, not per dab — the stick
-      // catches and skips along the paper rather than shivering in place.
-      // That is the right grain for charcoal, so nobody should "fix" it into
-      // a per-dab roll.
-      spacingJitter: 0.35,
+      curves: _randomRows(size: 0.2, spacing: 0.35),
+      // ⚠️Spacing's ランダム row is thrown once per SEGMENT, not per dab — the
+      // stick catches and skips along the paper rather than shivering in
+      // place. That is the right grain for charcoal, so nobody should "fix"
+      // it into a per-dab roll.
       sizePressureCurve: BrushPressureCurve.linearFrom(0.4),
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
@@ -552,7 +583,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 22,
       flow: 0.6,
       spacing: 0.1,
-      tipMask: chalkBrushTipMask,
+      tips: [chalkBrushTipMask],
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 1.4,
       textureDensity: 0.7,
@@ -573,7 +604,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 16,
       flow: 0.8996,
       spacing: 0.07,
-      tipMask: grainBrushTipMask,
+      tips: [grainBrushTipMask],
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 0.9,
       textureDensity: 0.9,
@@ -594,7 +625,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       roundness: 0.35,
       angleDegrees: 20,
       rotationMode: BrushTipRotationMode.fixed,
-      tipMask: grainBrushTipMask,
+      tips: [grainBrushTipMask],
       textureMaskSource: paperGrainTextureMask,
       textureScale: 2.0,
       textureDensity: 0.6,
@@ -652,9 +683,9 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       opacity: 0.8,
       spacing: 0.05,
       // The wet edge lives in the TIP, not in a new engine field.
-      tipMask: wetBlotBrushTipMask,
+      tips: [wetBlotBrushTipMask],
       angleJitter: 1.0,
-      sizeJitter: 0.2,
+      curves: _randomRows(size: 0.2),
       // ⚠️The blend is applied ONCE per stroke at pen-up, so washes darken
       // stroke over stroke — which is what layering washes does — while a
       // single stroke crossing itself stays even, which is what one wet pass
@@ -717,7 +748,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       spacing: 0.05,
       roundness: 0.3,
       angleDegrees: 45,
-      tipMask: bristleBrushTipMask,
+      tips: [bristleBrushTipMask],
       sizePressureCurve: BrushPressureCurve.linearFrom(0.6),
     ),
   ),
@@ -744,15 +775,15 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 26,
       flow: 0.9975,
       spacing: BrushShape.minSpacing,
-      tipMask: bristleBrushTipMask,
+      tips: [bristleBrushTipMask],
       // Bristles rake along the stroke, so the tip turns with it.
       rotationMode: BrushTipRotationMode.direction,
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 1.2,
       textureDensity: 0.4,
-      // ⚠️Roundness jitter only ever SHRINKS — the bundle splays thinner,
-      // never fatter — which is why a value this small still reads.
-      roundnessJitter: 0.2,
+      // ⚠️Roundness's ランダム row only ever SHRINKS — the bundle splays
+      // thinner, never fatter — which is why a floor this high still reads.
+      curves: _randomRows(roundness: 0.2),
       // Loaded paint picks up what it crosses.
       mixesGroundColor: true,
       colorStretch: 0.4,
@@ -794,13 +825,12 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 30,
       flow: 0.9009,
       spacing: 0.06,
-      tipMask: bristleBrushTipMask,
+      tips: [bristleBrushTipMask],
       rotationMode: BrushTipRotationMode.direction,
       dualMask: spongeBrushTipMask,
       dualMaskScale: 0.75,
       dualDensity: 0.55,
-      spacingJitter: 0.4,
-      opacityJitter: 0.2,
+      curves: _randomRows(spacing: 0.4, opacity: 0.2),
       sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
     ),
   ),
@@ -893,7 +923,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 14,
       flow: 0.5111,
       spacing: 0.05,
-      tipMask: grainBrushTipMask,
+      tips: [grainBrushTipMask],
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.3,
       textureDensity: 0.5,
@@ -913,7 +943,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 28,
       spacing: 0.9,
-      tipMask: splatterBrushTipMask,
+      tips: [splatterBrushTipMask],
     ),
   ),
   BrushPreset(
@@ -925,8 +955,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       spacing: 0.6,
       scatterRadiusRatio: 1.6,
       scatterCount: 4,
-      sizeJitter: 0.5,
-      opacityJitter: 0.4,
+      curves: _randomRows(size: 0.5, opacity: 0.4),
     ),
   ),
   BrushPreset(
@@ -937,10 +966,10 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 34,
       flow: 0.8,
       spacing: 0.35,
-      tipMask: spongeBrushTipMask,
+      tips: [spongeBrushTipMask],
       // A clump that landed the same way twice would read as a pattern.
       angleJitter: 1.0,
-      sizeJitter: 0.25,
+      curves: _randomRows(size: 0.25),
     ),
   ),
   BrushPreset(
@@ -951,7 +980,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 60,
       flow: 0.25,
       spacing: 0.25,
-      tipMask: spongeBrushTipMask,
+      tips: [spongeBrushTipMask],
       // ⛔`hardness` is DELIBERATELY absent, and its absence is the record of
       // a defect: this preset used to carry `hardness: 0.2`, which never did
       // anything. Hardness is not read when a tip MASK is set — the coverage
@@ -978,11 +1007,11 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 1.0,
       flow: 0.9749,
       spacing: 0.06,
-      tipMask: bristleBrushTipMask,
+      tips: [bristleBrushTipMask],
       rotationMode: BrushTipRotationMode.fixed,
       angleDegrees: 45,
       roundness: 0.7,
-      opacityJitter: 0.15,
+      curves: _randomRows(opacity: 0.15),
     ),
   ),
   BrushPreset(
@@ -994,10 +1023,10 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 0.9,
       flow: 1.0,
       spacing: 0.1,
-      tipMask: chalkBrushTipMask,
+      tips: [chalkBrushTipMask],
       // The EDGE is what varies, not the fill: roundness jitter chews the
       // silhouette while the dual grain keeps the inside from going flat.
-      roundnessJitter: 0.45,
+      curves: _randomRows(roundness: 0.45),
       angleJitter: 0.5,
       dualMask: grainBrushTipMask,
       dualMaskScale: 0.5,
@@ -1018,7 +1047,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 0.8,
       textureDensity: 0.75,
-      roundnessJitter: 0.3,
+      curves: _randomRows(roundness: 0.3),
     ),
   ),
   // ---- Decoration ------------------------------------------------------
@@ -1040,14 +1069,14 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 1.0,
       flow: 0.95,
       spacing: 0.6,
-      tipMask: leafBrushTipMask,
+      tips: [leafBrushTipMask],
       // Blades stand UP and lean a little, so the tip follows the stroke
       // rather than the fixed angle a fallen-leaf pile wants.
       rotationMode: BrushTipRotationMode.direction,
       angleDegrees: 90,
       angleJitter: 0.12,
       roundness: 0.35,
-      sizeJitter: 0.45,
+      curves: _randomRows(size: 0.45),
       scatterRadiusRatio: 0.8,
       scatterCount: 5,
       scatterBothAxes: false,
@@ -1062,10 +1091,9 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 1.0,
       flow: 1.0,
       spacing: 1.2,
-      tipMask: starBrushTipMask,
+      tips: [starBrushTipMask],
       angleJitter: 0.25,
-      sizeJitter: 0.6,
-      opacityJitter: 0.4,
+      curves: _randomRows(size: 0.6, opacity: 0.4),
       scatterRadiusRatio: 1.6,
       scatterCount: 3,
     ),
@@ -1079,12 +1107,11 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 1.0,
       flow: 0.9,
       spacing: 1.0,
-      tipMask: flakeBrushTipMask,
+      tips: [flakeBrushTipMask],
       // ⚠️A flake has six-fold symmetry, so a full half-turn of jitter says
       // the same thing twice — a sixth of a turn is all the variety there is.
       angleJitter: 0.17,
-      sizeJitter: 0.55,
-      opacityJitter: 0.3,
+      curves: _randomRows(size: 0.55, opacity: 0.3),
       scatterRadiusRatio: 2.0,
       scatterCount: 4,
     ),
@@ -1100,9 +1127,8 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       // is what keeps a cluster from reading as one solid blob.
       flow: 0.55,
       spacing: 1.4,
-      tipMask: ringBrushTipMask,
-      sizeJitter: 0.65,
-      opacityJitter: 0.35,
+      tips: [ringBrushTipMask],
+      curves: _randomRows(size: 0.65, opacity: 0.35),
       scatterRadiusRatio: 1.8,
       scatterCount: 3,
     ),
@@ -1116,14 +1142,13 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 1.0,
       flow: 0.9,
       spacing: 0.9,
-      tipMask: leafBrushTipMask,
+      tips: [leafBrushTipMask],
       // ⛔The opposite of Grass on purpose, out of the same tip: leaves lie at
       // every angle and grass stands up. One mask, two brushes — which is
       // what a full turn of angle jitter buys, and it is also what keeps the
       // two rows from being one brush wearing two names.
       angleJitter: 1.0,
-      sizeJitter: 0.5,
-      roundnessJitter: 0.25,
+      curves: _randomRows(size: 0.5, roundness: 0.25),
       scatterRadiusRatio: 1.5,
       scatterCount: 4,
     ),

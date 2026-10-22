@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/fake_playback_transport.dart';
 import '../../helpers/frame_keys.dart';
 
@@ -32,6 +33,7 @@ void main() {
       MaterialApp(theme: buildAppTheme(), home: const HomePage()),
     );
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     return tester
         .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
         .session;

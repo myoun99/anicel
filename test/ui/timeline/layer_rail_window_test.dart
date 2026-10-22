@@ -1,7 +1,10 @@
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show acrossBox;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 
@@ -147,11 +150,13 @@ void main() {
                 axis: axis,
                 rail: rail,
                 naturalExtent: 400,
-                child: Container(
-                  key: const ValueKey<String>('rail-content'),
-                  width: axis == Axis.horizontal ? null : 60,
-                  height: axis == Axis.horizontal ? 60 : null,
-                  color: const Color(0xFF00FF00),
+                child: acrossBox(
+                  axis,
+                  60,
+                  child: Container(
+                    key: const ValueKey<String>('rail-content'),
+                    color: const Color(0xFF00FF00),
+                  ),
                 ),
               ),
             ),
@@ -363,6 +368,28 @@ void main() {
         ),
       );
       expect(find.byType(InkWell), findsNothing);
+    });
+
+    testWidgets('I-102: the corner names the display a press turns to, in '
+        'the program\'s language', (tester) async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      Widget corner({required bool showSeconds}) => MaterialApp(
+        home: Scaffold(
+          body: TimelineSecondsToggleCorner(
+            width: 16,
+            height: 28,
+            showSeconds: showSeconds,
+            onChanged: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpWidget(corner(showSeconds: false));
+      expect(find.byTooltip('초+코마'), findsOneWidget);
+      await tester.pumpWidget(corner(showSeconds: true));
+      expect(find.byTooltip('프레임'), findsOneWidget);
     });
   });
 }

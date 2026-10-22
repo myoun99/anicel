@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/selection_affine.dart';
@@ -224,6 +226,46 @@ void main() {
       );
       expect(result.sx, closeTo(3, 1e-9));
       expect(result.sy, closeTo(1, 1e-9));
+    });
+
+    // ⛔Every pin above is on an UNTURNED box, where turning forward and
+    // turning back are the same turn — so the solve could read the pointer
+    // in the wrong frame, or fold the corner's shift the wrong way round,
+    // and none of them would know (three mutants lived, 2026-10-19).
+    test('a TURNED box: the pointer is read in the box\'s own frame, and '
+        'the corner that stays stays where it is on the canvas', () {
+      final turned = SelectionAffine(
+        pivot: CanvasPoint(x: 200, y: 100),
+        rotationDegrees: 30,
+      );
+      final cos = math.cos(math.pi / 6);
+      final sin = math.sin(math.pi / 6);
+      // The top-left corner, base-local (−50, −25), turned 30° about the
+      // centre (200, 100).
+      final topLeft = CanvasPoint(
+        x: 200 - 50 * cos + 25 * sin,
+        y: 100 - 50 * sin - 25 * cos,
+      );
+      // The bottom-right corner pulled to 200 × 150 from it along the
+      // box's own axes: twice the width, three times the height.
+      final pointer = CanvasPoint(
+        x: topLeft.x + 200 * cos - 150 * sin,
+        y: topLeft.y + 200 * sin + 150 * cos,
+      );
+
+      final result = TransformBoxLaw.scaled(
+        turned,
+        bottomRight,
+        pointer,
+        aboutCentre: false,
+        uniform: false,
+      );
+
+      expect(result.sx, closeTo(2, 1e-9));
+      expect(result.sy, closeTo(3, 1e-9));
+      final stays = result.apply(CanvasPoint(x: 150, y: 75));
+      expect(stays.x, closeTo(topLeft.x, 1e-9));
+      expect(stays.y, closeTo(topLeft.y, 1e-9));
     });
   });
 

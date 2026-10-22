@@ -4,7 +4,8 @@
 // 다음페이지 스냅」.
 //
 // THE VIEWER READS A BOOK: a PDF's pages lie one under another, each drawn
-// where it lies and asked for at the zoom the view has; the strip's ▲▼ snap
+// where it lies and asked for at the zoom the view has; the page turner's
+// ◀ ▶ (the 왼쪽 알약 then, in the band under the bars since F-383) snap
 // the view to a page and the page read is the slot's position; a cut is of
 // the page it lies on. A document that turns its own pages — a movie — shows
 // the page it is on alone.
@@ -20,12 +21,15 @@ import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
+import 'package:anicel/src/ui/session/media_file_views.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
@@ -76,10 +80,12 @@ void main() {
     double? framesPerSecond,
     required CanvasViewport view,
     bool firstOpen = false,
+    bool drawnAtAnySize = true,
   }) async {
     final fake = FakePdfDocument(
       pageSizes: List<ui.Size>.filled(pages, pageSize),
       framesPerSecond: framesPerSecond,
+      drawnAtAnySize: drawnAtAnySize,
     );
     PdfRenderService.debugOpenerOverride = (_) async => fake;
     slot.framedFor.value = firstOpen ? null : path;
@@ -132,8 +138,9 @@ void main() {
 
   /// [page] framed whole: a portrait page fits the window's height, less
   /// the fit's own margin — not the book, whose pages would each take a
-  /// share. The window is the box less the pill's band over it and the
-  /// lane under it (유저 2026-09-30: 「판정을 알약까지 포함해서」).
+  /// share. The window is the box less the pill's band over it, and the
+  /// lane and the page turner's band under it (유저 2026-09-30: 「판정을
+  /// 알약까지 포함해서」 · F-383).
   void expectFramed(WidgetTester tester, Rect page) {
     final view = renderOf(tester, slot.viewport.value!);
     final box = tester.getSize(
@@ -143,7 +150,7 @@ void main() {
       0,
       pillBandOf(tester),
       box.width - AppScrollbarLane.wide,
-      box.height - AppScrollbarLane.wide,
+      box.height - AppScrollbarLane.wide - bandCoverOf(tester),
     );
     final top = page.top * view.zoom + view.panY;
     final height = page.height * view.zoom;
@@ -225,6 +232,37 @@ void main() {
       fake.renderRequests.last.$2,
       greaterThan(wide),
       reason: 'zoomed in fourfold, the page is asked for sharper',
+    );
+  });
+
+  testWidgets('🚨a page made of its file\'s pixels is asked for at them '
+      'however the view zooms — never past them (유저 2026-09-11 「pdf는 '
+      '확대하면 선명해지는게 맞긴하네 … 이미지나 비디오는 아닐지라도」), never '
+      'under (10-16 「늘 원본(캔버스처럼)」)', (tester) async {
+    final quarter = CanvasZoomScale(tester.view.devicePixelRatio).render(0.25);
+    final fake = await open(
+      tester,
+      pages: 2,
+      view: CanvasViewport(zoom: quarter),
+      drawnAtAnySize: false,
+    );
+    expect(
+      fake.renderRequests.map((ask) => (ask.$2, ask.$3)).toSet(),
+      {(600, 800)},
+      reason: 'zoomed out fourfold, at its own pixels — ↩️at a quarter of '
+          'them',
+    );
+
+    slot.viewport.value = seedFromRender(
+      tester,
+      CanvasViewport(zoom: 2),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      fake.renderRequests.map((ask) => (ask.$2, ask.$3)).toSet(),
+      {(600, 800)},
+      reason: 'zoomed in eightfold, at its own pixels and no more',
     );
   });
 
@@ -391,5 +429,102 @@ void main() {
 
     expect(panel(tester).book, isNull);
     expect(drawn(tester).map((page) => page.rect), [pageRect(0)]);
+  });
+
+  /// 🗣️F-382 (유저 2026-10-17): 「… 줌 상태나 페이지상태등이 기억되서 다른
+  /// 파일 열엇다가 돌아오면 그대로 열리도록」 — the page the file's, the
+  /// framing the viewer's (`MediaFileViews`).
+  group('a file comes back where it was left (F-382)', () {
+    const book = MediaViewerRequest(path: path, kind: MediaAssetKind.pdf);
+    const layout = MediaViewerRequest(
+      path: 'C:/work/layout.pdf',
+      kind: MediaAssetKind.pdf,
+    );
+    late MediaFileViews views;
+
+    /// The viewer keeping what it shows in [views], with the two-page
+    /// [layout] in — so the five-page [book] comes in over another
+    /// document, as a file opened again does.
+    Future<void> showTheLayout(WidgetTester tester) async {
+      views = MediaFileViews();
+      slot.keepIn(views, viewer: 'media-viewer');
+      PdfRenderService.debugOpenerOverride = (source) async => FakePdfDocument(
+        pageSizes: List<ui.Size>.filled(switch (source) {
+          MediaFileBytes(path: final file) when file.endsWith('layout.pdf') =>
+            2,
+          _ => 5,
+        }, pageSize),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MediaViewerTabHost(
+              viewerId: 'media-viewer',
+              session: session,
+              request: slot.request,
+              position: slot.position,
+              viewportController: slot.viewport,
+              framedFor: slot.framedFor,
+              keptFraming: slot.keptFramingOf,
+            ),
+          ),
+        ),
+      );
+      slot.open(layout);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> openIt(WidgetTester tester, MediaViewerRequest file) async {
+      slot.open(file);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a file this viewer framed comes back framed so — and a page '
+        'turned since, in the other viewer, is a turn at that zoom', (
+      tester,
+    ) async {
+      await showTheLayout(tester);
+      await openIt(tester, book);
+      // The user reads it at a scale of their own.
+      slot.viewport.value = seedFromRender(tester, CanvasViewport(zoom: 1));
+      await tester.pumpAndSettle();
+      expect(slot.position.value, 0, reason: '⛔fixture');
+      final kept = renderOf(tester, slot.viewport.value!);
+
+      await openIt(tester, layout);
+      // Read on to its third page in the other viewer.
+      views.rememberPage(path, 2);
+      await openIt(tester, book);
+
+      expect(slot.position.value, 2);
+      expect(readout(tester), '3 / 5');
+      final view = renderOf(tester, slot.viewport.value!);
+      expect(
+        view.zoom,
+        closeTo(kept.zoom, 1e-9),
+        reason: 'the zoom it was left at — not fitted',
+      );
+      expect(view.panX, closeTo(kept.panX, 1e-9));
+      expect(
+        view.panY + pageRect(2).top * view.zoom,
+        closeTo(pillBandOf(tester) + 16 * view.zoom, 1e-6),
+        reason: 'turned to: its top half a gap under the window\'s',
+      );
+    });
+
+    testWidgets('a file this viewer never framed is fitted — at the page it '
+        'was left at, which the document it came in over does not have', (
+      tester,
+    ) async {
+      await showTheLayout(tester);
+      expect(readout(tester), '1 / 2', reason: '⛔fixture: two pages');
+      views.rememberPage(path, 3);
+
+      await openIt(tester, book);
+
+      expect(slot.position.value, 3);
+      expect(readout(tester), '4 / 5');
+      expectFramed(tester, pageRect(3));
+    });
   });
 }

@@ -26,6 +26,17 @@ FontFaceFacts? readFontFaceFacts(Uint8List bytes) {
   }
 }
 
+/// Where the face of [bytes] draws its lines ([FontLines]) — null when its
+/// file does not say: no `post` or `OS/2` long enough to say it, or a line
+/// no thicker than nothing.
+FontLines? readFontLines(Uint8List bytes) {
+  try {
+    return _SfntFace.of(bytes)?.lines;
+  } on RangeError {
+    return null;
+  }
+}
+
 /// The extension a font file of these [bytes] is kept under — what kind of
 /// file they are, read from their first four bytes and not from the name
 /// they were picked by.
@@ -40,8 +51,8 @@ String fontFileExtensionOf(Uint8List bytes) {
   };
 }
 
-/// One face of a font file: its table directory, and the three tables this
-/// app reads.
+/// One face of a font file: its table directory, and the tables this app
+/// reads.
 class _SfntFace {
   _SfntFace._(this._bytes, this._data, this._tables);
 
@@ -128,6 +139,39 @@ class _SfntFace {
           ? _data.getUint16(os2.offset + 62) & 0x0201 != 0
           : macStyle & 0x2 != 0,
       fsType: _data.getUint16(os2.offset + 8),
+    );
+  }
+
+  /// The face's lines: the underline from `post`, the strikethrough from
+  /// `OS/2`, in ems of `head`'s units — null where any of the three is too
+  /// short to say, or a line is no thicker than nothing.
+  FontLines? get lines {
+    final head = _tables['head'];
+    final post = _tables['post'];
+    final os2 = _tables['OS/2'];
+    if (head == null ||
+        head.length < 54 ||
+        post == null ||
+        post.length < 12 ||
+        os2 == null ||
+        os2.length < 30) {
+      return null;
+    }
+    final unitsPerEm = _data.getUint16(head.offset + 18);
+    final underlineThickness = _data.getInt16(post.offset + 10);
+    final strikethroughThickness = _data.getInt16(os2.offset + 26);
+    if (unitsPerEm == 0 ||
+        underlineThickness <= 0 ||
+        strikethroughThickness <= 0) {
+      return null;
+    }
+    double ems(int units) => units / unitsPerEm;
+    return FontLines(
+      // The format counts down from the baseline as less than nothing.
+      underline: -ems(_data.getInt16(post.offset + 8)),
+      underlineThickness: ems(underlineThickness),
+      strikethrough: ems(_data.getInt16(os2.offset + 28)),
+      strikethroughThickness: ems(strikethroughThickness),
     );
   }
 

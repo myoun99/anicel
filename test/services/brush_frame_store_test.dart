@@ -111,6 +111,60 @@ void main() {
       store.storeBakedSurface(unlinked, surfaceWithInk());
       expect(store.bakedSnapshotForSave().hot.keys, [unlinked]);
     });
+
+    // 🚨F-413: a block carried across rows in the cut its groups are not
+    // canonical in.
+    test('a carry between two member rows moves the canonical cel, and '
+        'tells the pictures the ROWS\' keys', () {
+      final store = BrushFrameStore();
+      store.setLinkResolver(
+        LayerLinkRegistry(
+          groups: [
+            for (final row in ['x', 'y'])
+              LayerLinkGroup(
+                id: row,
+                members: [
+                  LayerLinkMember(
+                    trackId: const TrackId('t'),
+                    cutId: const CutId('c'),
+                    layerId: LayerId(row),
+                  ),
+                  LayerLinkMember(
+                    trackId: const TrackId('t'),
+                    cutId: const CutId('cut-b'),
+                    layerId: LayerId('$row-b'),
+                  ),
+                ],
+              ),
+          ],
+        ).canonicalCelKey,
+      );
+      final from = key(cut: 'cut-b', layer: 'x-b');
+      final to = key(cut: 'cut-b', layer: 'y-b');
+      store.storeBakedSurface(from, surfaceWithInk());
+      final told = <(BrushFrameKey, BrushFrameKey)>[];
+      store.addRekeyListener(told.addAll);
+
+      store.carryCels([(from, to)]);
+
+      expect(store.celHasRenderableContent(to), isTrue);
+      expect(store.celHasRenderableContent(from), isFalse);
+      expect(
+        store.bakedSnapshotForSave().hot.keys,
+        [key(layer: 'y')],
+        reason: 'under the landing row\'s canonical key, the one saved',
+      );
+      expect(
+        told,
+        [(from, to)],
+        reason: 'a picture is made under the key its row asks with',
+      );
+
+      store.carryCels([(to, from)]);
+
+      expect(store.celHasRenderableContent(from), isTrue);
+      expect(store.bakedSnapshotForSave().hot.keys, [key(layer: 'x')]);
+    });
   });
 
   test('storeBakedSurface is the content oracle; empty tiles REMOVE the '
@@ -194,6 +248,28 @@ void main() {
     expect(store.frameOrNull(to)?.key, to);
   });
 
+  test('storeCopiedSurface tells the copy listeners only where the copy is '
+      'the very surface its source holds (F-275)', () {
+    final store = BrushFrameStore();
+    final source = key(layer: 'a');
+    final surface = surfaceWithInk();
+    store.storeBakedSurface(source, surface);
+    final told = <(BrushFrameKey, BrushFrameKey)>[];
+    store.addCopyListener(told.addAll);
+
+    final copy = key(layer: 'b');
+    store.storeCopiedSurface(copy, surface, source: source);
+    expect(told, [(source, copy)]);
+    expect(identical(store.bakedSurfaceOrNull(copy), surface), isTrue);
+
+    // Pixels taken before the source was drawn over are not its picture.
+    final older = key(layer: 'c');
+    final olderSurface = surfaceWithInk();
+    store.storeCopiedSurface(older, olderSurface, source: source);
+    expect(told, [(source, copy)]);
+    expect(identical(store.bakedSurfaceOrNull(older), olderSurface), isTrue);
+  });
+
   test('rekeyFrames is a content CROSSING the timeline hears: '
       'celContentRevision bumps for both ends of the move', () {
     final store = BrushFrameStore();
@@ -233,6 +309,7 @@ void main() {
       length: 1,
       canvasSize: CanvasSize(width: 4, height: 4),
       tileSize: 4,
+      photoPaths: [],
     );
 
     // Everyday save: the cel is hot before and after — no crossing.

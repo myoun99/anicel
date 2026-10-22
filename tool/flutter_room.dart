@@ -1,12 +1,18 @@
 // Is there room on this machine for one more Flutter run?
 //
-//   dart tool/flutter_room.dart          runs=<n> free_gb=<n> room=<yes|no>
-//   dart tool/flutter_room.dart --land   the same, asked for a land's gates
-//   dart tool/flutter_room.dart --list   … and every run there is, with
-//                                        whose it is
+//   bash tool/run.sh flutter_room          runs=<n> free_gb=<n> room=<yes|no>
+//   bash tool/run.sh flutter_room --land   the same, asked for a land's gates
+//   bash tool/run.sh flutter_room --list   … and every run there is, with
+//                                          whose it is
 //
-// `dart`, not `dart run`: nothing here comes from a package, so it starts
-// without resolving any — the lane script asks before every gate.
+// Through `tool/run.sh`, which runs it as an exe built once per machine: a
+// waiting lane asks every twenty seconds, and by JIT each ask compiled this
+// file again — 16.5s on 2026-10-18 under load (card tests-crowd-the-machine).
+// `dart tool/flutter_room.dart` still gives the same answer, slowly.
+//
+// Test runs do not ask it themselves: they stand in `test_queue.dart`'s one
+// line, and only the run at its head asks — through [measureRoom], once,
+// and again only while there is no room (유저 tests-crowd-the-machine-Q1).
 //
 // THE RULE IT MEASURES is CLAUDE.md's 「Flutter 실행은 여유만큼」 (유저
 // 2026-09-26 · 10-01): before a run is launched, 4GB of commit headroom
@@ -30,6 +36,14 @@
 // 넷에 세지 않는다 — 커밋 여유 4GB 는 똑같이 재고, 우선순위도 Idle
 // 그대로」. So `--land` asks for the headroom alone, and what a landing
 // lane's gates launch is not counted against anyone else.
+//
+// 🗣️AND THE LINE'S TESTS TAKE NONE EITHER (유저 tests-crowd-the-machine-Q9
+// 「line」, 10-20). A test was held by two bounds at once — the line's ten
+// suites and these four places — and the four counted a one-file run the
+// same as a five-suite one: at 18:00 that day the line used six suites of
+// its ten while nineteen runs waited, every place held. The line's ten are
+// what bound the CPU, so what the line launched counts in the line alone,
+// and the line asks for the headroom alone.
 //
 // Exit codes: 0 room · 1 no room · 2 could not measure.
 import 'dart:async';
@@ -59,6 +73,13 @@ const _aSession = 'claude.exe';
 /// Android Studio's helper and its debug app, a build from a terminal the
 /// user opened.
 const _theUsersOwn = {'studio64.exe', 'explorer.exe'};
+
+/// Under one of these the run is the line's: the exes `tool/run.sh` builds
+/// of the two tools that launch a `flutter test` in their turn
+/// (`<tool>-<stamp>.exe`). ⚠️A tool run by JIT, when its build failed, is a
+/// `dart.exe` like any other, and its run counts as the session's — a
+/// place taken that need not be, never one missed.
+const _theLines = ['test_queue-', 'affected_tests-'];
 
 /// One process as Windows lists it.
 class WindowsProcess {
@@ -115,7 +136,8 @@ enum RunOf {
   /// read. It runs all the same, and nothing says it is the user's.
   nobody('launched by nobody that can be named', takesAPlace: true),
   user("the user's own", takesAPlace: false),
-  land("a land's gate", takesAPlace: false);
+  land("a land's gate", takesAPlace: false),
+  line("the line's", takesAPlace: false);
 
   const RunOf(this.words, {required this.takesAPlace});
 
@@ -178,6 +200,9 @@ class Machine {
     final names = {
       for (final pid in above) ?_windows[pid]?.name.toLowerCase(),
     };
+    if (names.any((name) => _theLines.any(name.startsWith))) {
+      return RunOf.line;
+    }
     if (names.contains(_aSession)) return RunOf.session;
     if (names.any(_theUsersOwn.contains)) return RunOf.user;
     return RunOf.nobody;
@@ -206,13 +231,14 @@ class Machine {
   }
 }
 
-/// Whether one more run may be launched now. A land's gates ([aLand]) are
-/// asked for the headroom alone.
+/// Whether one more run may be launched now. A land's gates and the line's
+/// tests take no place, and are asked for the headroom alone
+/// ([headroomAlone]).
 bool roomFor({
   required int taken,
   required int freeGb,
-  required bool aLand,
-}) => freeGb >= kHeadroomGb && (aLand || taken < kFlutterPlaces);
+  required bool headroomAlone,
+}) => freeGb >= kHeadroomGb && (headroomAlone || taken < kFlutterPlaces);
 
 /// What PowerShell is asked: the free commit, then every process — and of
 /// a command line only what the Flutter tool was asked to do, so nothing
@@ -335,7 +361,7 @@ int? _landHolder() {
       'rev-parse',
       '--path-format=absolute',
       '--git-common-dir',
-    ], workingDirectory: File.fromUri(Platform.script).parent.path);
+    ], workingDirectory: _toolDir());
     if (git.exitCode != 0) return null;
     final pid = File('${(git.stdout as String).trim()}/$kLandTurn/pid');
     return int.tryParse(pid.readAsStringSync().trim());
@@ -346,6 +372,49 @@ int? _landHolder() {
   }
 }
 
+/// This file's folder. ⚠️As an exe built by `tool/run.sh` the script is the
+/// exe, in the machine's cache and outside any repository — git asked from
+/// there finds no land, and every land would count against the others. The
+/// launcher says where the exe was built from.
+String _toolDir() =>
+    Platform.environment['ANICEL_TOOL_DIR'] ??
+    File.fromUri(Platform.script).parent.path;
+
+/// The machine as this file reads it — what [main] prints, and what
+/// `test_queue.dart` asks before the run at the head of its line goes.
+typedef MachineRoom = ({
+  int taken,
+  int freeGb,
+  bool room,
+  List<FlutterRun> runs,
+  bool bashRead,
+});
+
+/// The room on this machine for one more run — one that takes no place
+/// when [headroomAlone] ([roomFor]) — or null when it could not be
+/// measured.
+Future<MachineRoom?> measureRoom({required bool headroomAlone}) async {
+  final answer = await _askWindows();
+  if (answer == null) return null;
+  final bash = _bashTable();
+  final runs = Machine(
+    windows: answer.processes,
+    bash: bash,
+  ).flutterRuns(landHolder: _landHolder());
+  final taken = runs.where((run) => run.of.takesAPlace).length;
+  return (
+    taken: taken,
+    freeGb: answer.freeGb,
+    room: roomFor(
+      taken: taken,
+      freeGb: answer.freeGb,
+      headroomAlone: headroomAlone,
+    ),
+    runs: runs,
+    bashRead: bash.isNotEmpty,
+  );
+}
+
 Future<void> main(List<String> args) async {
   const known = {'--land', '--list'};
   if (!args.every(known.contains)) {
@@ -353,8 +422,10 @@ Future<void> main(List<String> args) async {
     exitCode = 2;
     return;
   }
-  final answer = await _askWindows();
-  if (answer == null) {
+  final measured = await measureRoom(
+    headroomAlone: args.contains('--land'),
+  );
+  if (measured == null) {
     stderr.writeln(
       'flutter_room: this machine could not be measured (Windows was asked '
       'through powershell.exe)',
@@ -362,31 +433,21 @@ Future<void> main(List<String> args) async {
     exitCode = 2;
     return;
   }
-  final bash = _bashTable();
-  final runs = Machine(
-    windows: answer.processes,
-    bash: bash,
-  ).flutterRuns(landHolder: _landHolder());
-  final taken = runs.where((run) => run.of.takesAPlace).length;
-  final room = roomFor(
-    taken: taken,
-    freeGb: answer.freeGb,
-    aLand: args.contains('--land'),
-  );
   stdout.writeln(
-    'runs=$taken free_gb=${answer.freeGb} room=${room ? 'yes' : 'no'}',
+    'runs=${measured.taken} free_gb=${measured.freeGb} '
+    'room=${measured.room ? 'yes' : 'no'}',
   );
   if (args.contains('--list')) {
-    for (final run in runs) {
+    for (final run in measured.runs) {
       final counted = run.of.takesAPlace ? 'counted' : 'not counted';
       final asked = run.asked.length > 90
           ? '${run.asked.substring(0, 90)}…'
           : run.asked;
       stdout.writeln('  $counted — ${run.of.words}: pid ${run.pid}  $asked');
     }
-    if (bash.isEmpty) {
+    if (!measured.bashRead) {
       stdout.writeln("  (Git Bash's own table could not be read)");
     }
   }
-  exitCode = room ? 0 : 1;
+  exitCode = measured.room ? 0 : 1;
 }

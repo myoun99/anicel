@@ -7,6 +7,7 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/menu/opened_files_door.dart';
 import 'package:anicel/src/ui/menu/project_open_door.dart' show ProjectPick;
+import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 
 /// F-282 (유저 2026-10-09): 「열기랑 임포트랑 되도록 하나로」 — every door
@@ -91,19 +92,20 @@ void main() {
       ),
     );
     await tester.tap(find.text('go'));
-    for (var round = 0; round < 10 && !finished; round += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pumpAndSettle();
-      final close = find.byKey(const ValueKey<String>('app-notice-close'));
-      if (close.evaluate().isNotEmpty) {
-        onNotice?.call();
-        done.add('notice');
-        await tester.tap(close);
+    await settleAsync(
+      tester,
+      () => finished,
+      everyFrame: () async {
         await tester.pumpAndSettle();
-      }
-    }
+        final close = find.byKey(const ValueKey<String>('app-notice-close'));
+        if (close.evaluate().isNotEmpty) {
+          onNotice?.call();
+          done.add('notice');
+          await tester.tap(close);
+          await tester.pumpAndSettle();
+        }
+      },
+    );
     expect(finished, isTrue, reason: 'the door finished');
   }
 
@@ -150,7 +152,9 @@ void main() {
       [fileNamed('notes.txt'), fileNamed('A1.png')],
       onNotice: () => named ??= tester
           .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
-          .details,
+          .details
+          .single
+          .lines,
     );
 
     expect(

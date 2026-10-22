@@ -12,6 +12,7 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
@@ -196,7 +197,7 @@ void main() {
 
       for (final mode in preBlendModes) {
         final rasterizer = BrushLiveStrokeRasterizer(
-          canvasSize: bigCanvas,
+          pasteboard: bigCanvas.pasteboardAt(PasteboardReach.whole),
           tileSize: liveTile,
         )..selectionRegion = region;
         rasterizer.blendFrom([
@@ -338,7 +339,7 @@ void main() {
 
       for (final mode in preBlendModes) {
         final rasterizer = BrushLiveStrokeRasterizer(
-          canvasSize: bigCanvas,
+          pasteboard: bigCanvas.pasteboardAt(PasteboardReach.whole),
           tileSize: liveTile,
         );
         rasterizer.blendFrom([

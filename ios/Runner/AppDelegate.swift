@@ -45,7 +45,28 @@ import UniformTypeIdentifiers
     let result = super.application(
       application, didFinishLaunchingWithOptions: launchOptions)
     installPencilInteractionIfPossible()
+    keepTheScreenOn(application)
     return result
+  }
+
+  /// I-104 (user 2026-10-15: 「아이패드같은거 조작안하면 화면 꺼지는데 …
+  /// 안꺼지도록」; I-104-Q1, 2026-10-16: on the iPad and Android, always
+  /// while the app is in front). iOS honours the switch only for the app in
+  /// front, so leaving the app hands the screen back to Auto-Lock with
+  /// nothing to undo here. It is said again every time the app becomes
+  /// active, so nothing that turned it off while the app was away — a
+  /// system screen the app presented, say — outlasts the return.
+  ///
+  /// UNVERIFIED-ON-DEVICE like the rest of this file.
+  private func keepTheScreenOn(_ application: UIApplication) {
+    application.isIdleTimerDisabled = true
+    _ = NotificationCenter.default.addObserver(
+      forName: UIApplication.didBecomeActiveNotification,
+      object: nil,
+      queue: .main
+    ) { _ in
+      UIApplication.shared.isIdleTimerDisabled = true
+    }
   }
 
   override func applicationDidBecomeActive(_ application: UIApplication) {
@@ -130,6 +151,38 @@ import UniformTypeIdentifiers
         result(FlutterMethodNotImplemented)
       }
     }
+    // I-103-Q1: the battery the top strip shows — the one question
+    // DeviceBattery asks every platform.
+    let batteryRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "AnicelBattery")
+    let batteryChannel = FlutterMethodChannel(
+      name: "anicel/battery", binaryMessenger: batteryRegistrar!.messenger())
+    batteryChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "read":
+        result(AppDelegate.batteryReading())
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  /// The battery as `DeviceBattery.readingOf` reads it — "percent", and
+  /// "charging" for ON POWER (charging or already full: the bolt the status
+  /// bar draws) — or nil where UIKit cannot say (the simulator).
+  ///
+  /// UNVERIFIED-ON-DEVICE like the rest of this file.
+  static func batteryReading() -> [String: Any]? {
+    let device = UIDevice.current
+    device.isBatteryMonitoringEnabled = true
+    let level = device.batteryLevel
+    let state = device.batteryState
+    if level < 0 || state == .unknown {
+      return nil
+    }
+    return [
+      "percent": Int((level * 100).rounded()),
+      "charging": state == .charging || state == .full,
+    ]
   }
 
   /// F-178: the record permission, answered AFTER the user has spoken — the

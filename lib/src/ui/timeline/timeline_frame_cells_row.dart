@@ -14,6 +14,7 @@ import '../../models/transition_geometry.dart'
     show transitionEditableInCut, transitionMarkOf;
 import '../media/media_asset_drop_target.dart';
 import '../widgets/named.dart';
+import 'axis_turn.dart' show partAlong;
 import 'berth_row.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'memo_token.dart';
@@ -48,7 +49,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
     required this.layer,
-    required this.playbackFrameCount,
+    required this.drawnFrameCount,
     required this.geometry,
     required this.crossAxisExtent,
     required this.exposureStateForLayer,
@@ -103,7 +104,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// event and its pictures draw what it shows ([BerthRow.shows]). This
   /// one answers both where no berth stands above (a row mounted alone).
   final Layer layer;
-  final int playbackFrameCount;
+  final int drawnFrameCount;
 
   /// The LIVE frame-axis geometry — the part a ZOOM STEP moves (R28 #4).
   ///
@@ -251,7 +252,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
           berth?.world ??
           (
             substrateGeneration: substrateGeneration,
-            playbackFrameCount: playbackFrameCount,
+            drawnFrameCount: drawnFrameCount,
             spillInLeadFrames: spillInLeadFrames,
             coverageIdentity: ByIdentity(coverageIdentity),
             seAudioPeaks: const ByList([]),
@@ -494,6 +495,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         frameStartIndex: frames.frameStartIndex,
         frameEndIndexExclusive: frames.frameEndIndexExclusive,
         axis: axis,
+        spillInLeadFrames: spillInLeadFrames,
         keyPrefix: keyPrefix,
       ),
       if (clipTooltip != null)
@@ -509,10 +511,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
         ),
       ...timelineRowSeContinuationMarks(
         layer: layer,
-        cutFrameCount: shows.world.playbackFrameCount,
+        drawnFrameCount: shows.world.drawnFrameCount,
         spillsInAtStart: spillInLeadFrames != null,
         frameStartIndex: frames.frameStartIndex,
         frameEndIndexExclusive: frames.frameEndIndexExclusive,
+        axis: axis,
         keyPrefix: keyPrefix,
       ),
       if (onDropAsset != null)
@@ -944,9 +947,7 @@ class _LayerAssetDropTarget extends StatelessWidget {
       return start;
     }
     final local = box.globalToLocal(globalPosition);
-    return frames.frameIndexAt(
-      frames.edgeAt(start) + (axis == Axis.horizontal ? local.dx : local.dy),
-    );
+    return frames.frameIndexAt(frames.edgeAt(start) + partAlong(axis, local));
   }
 
   @override

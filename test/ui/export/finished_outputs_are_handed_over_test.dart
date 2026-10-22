@@ -7,6 +7,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -29,8 +30,10 @@ import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import 'fake_ffmpeg_process.dart';
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/files_written_under.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 /// WHERE AN EXPORT GOES IS ASKED WHEN IT IS PRESSED (F-221, 유저 2026-10-06:
@@ -148,13 +151,6 @@ void main() {
     return tester.state<ExportDialogState>(find.byType(ExportDialog));
   }
 
-  Future<void> pickPngSequence(WidgetTester tester) async {
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-format-still-png')),
-    );
-    await tester.pump();
-  }
-
   /// What [directory] still holds at its top — a run's own outbox counts,
   /// empty or not.
   List<String> leftIn(Directory directory) => !directory.existsSync()
@@ -209,9 +205,7 @@ void main() {
     late Future<void> whole;
     await tester.runAsync(() async {
       whole = run();
-      while (!reached()) {
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
+      expect(await pollUntil(reached), isTrue);
     });
     await tester.pump();
     await tester.pump();
@@ -220,12 +214,15 @@ void main() {
 
   /// Lets [whole] run to its end.
   ///
-  /// ⚠️With a limit of its own: a run left standing at a window nobody
-  /// answers never ends, and without one the test would wait out the
-  /// binding's ten minutes — each of them (measured 2026-10-07, a mutant
-  /// that swapped the two answers held the machine for twenty).
+  /// ⚠️With a limit: a run left standing at a window nobody answers never
+  /// ends, and without one the test would wait out the binding's ten
+  /// minutes — each of them (measured 2026-10-07, a mutant that swapped the
+  /// two answers held the machine for twenty). ↩️It was thirty seconds of
+  /// its own until 2026-10-17; the limit is [patiently]'s now, the one
+  /// every future a test awaits has (board
+  /// `a-test-awaits-a-future-with-a-ceiling-of-its-own`).
   Future<void> ended(WidgetTester tester, Future<void> whole) async {
-    await tester.runAsync(() => whole.timeout(const Duration(seconds: 30)));
+    await tester.runAsync(() => patiently(whole));
     await tester.pump();
   }
 
@@ -244,7 +241,7 @@ void main() {
         return FolderGrant.granted(path: placed.path);
       };
       final state = await open(tester, 'windows');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       expect(exportLive(tester), isTrue, reason: 'no place is chosen ahead');
       expect(madeWhenAsked, isNull, reason: 'nothing is asked until Export');
 
@@ -252,7 +249,7 @@ void main() {
       await tester.pump();
 
       expect(madeWhenAsked, isEmpty, reason: 'asked before anything was made');
-      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(placed), ['Cut_0001.png', 'Cut_0002.png']);
       expect(leftIn(outbox()), isEmpty, reason: 'it wrote straight there');
     });
 
@@ -264,7 +261,7 @@ void main() {
         return const FolderGrant.cancelled();
       };
       final state = await open(tester, 'windows');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
 
       await tester.runAsync(state.export);
       await tester.pump();
@@ -285,7 +282,7 @@ void main() {
         return FolderGrant.granted(path: placed.path);
       };
       final state = await open(tester, 'windows');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
 
       await tester.runAsync(state.export);
       await tester.pump();
@@ -304,13 +301,13 @@ void main() {
         return FolderGrant.granted(path: placed.path);
       };
       final state = await open(tester, 'android');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
 
       await tester.runAsync(state.export);
       await tester.pump();
 
       expect(madeWhenAsked, isEmpty);
-      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(placed), ['Cut_0001.png', 'Cut_0002.png']);
       expect(leftIn(outbox()), isEmpty);
     });
 
@@ -322,7 +319,7 @@ void main() {
       FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
           FolderGrant.granted(path: folders[asked++]);
       final state = await open(tester, 'windows');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
 
       await tapKey(tester, 'export-queue-add-button');
       expect(asked, 1, reason: 'asked as the job is queued');
@@ -333,8 +330,8 @@ void main() {
       await tester.pump();
 
       expect(asked, 2, reason: 'the run asks nothing more');
-      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
-      expect(filesWrittenUnder(second), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(placed), ['Cut_0001.png', 'Cut_0002.png']);
+      expect(filesWrittenUnder(second), ['Cut_0001.png', 'Cut_0002.png']);
     });
 
     testWidgets('a job whose folder window is backed out of is not queued', (
@@ -343,7 +340,7 @@ void main() {
       FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
           const FolderGrant.cancelled();
       await open(tester, 'windows');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
 
       await tapKey(tester, 'export-queue-add-button');
 
@@ -417,7 +414,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(windows.names, ['Project.png']);
+      expect(windows.names, ['Cut.png']);
       expect(windows.folders, isEmpty, reason: 'one file asks no folder');
       expect(windows.madeWhenAsked.single, isEmpty);
       expect(filesWrittenUnder(placed), ['renamed.png']);
@@ -430,13 +427,13 @@ void main() {
         'rule gives, and written under the one given there', (tester) async {
       final windows = desktopWindows(saveAs: 'only.png');
       final state = await open(tester, 'windows');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.typeExportRange(inFrame: '2');
 
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(windows.names, ['frame_0001.png']);
+      expect(windows.names, ['Cut_0001.png']);
       expect(windows.folders, isEmpty);
       expect(filesWrittenUnder(placed), ['only.png']);
     });
@@ -460,7 +457,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(windows.names, ['Project.mp4']);
+      expect(windows.names, ['Cut.mp4']);
       expect(encoderArguments!.last, '${placed.path}/rush.mp4');
     });
 
@@ -477,7 +474,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(windows.names, ['Project.png']);
+      expect(windows.names, ['Cut.png']);
       expect(windows.folders, isEmpty);
       expect(windows.madeWhenAsked.single, isEmpty);
       expect(filesWrittenUnder(placed), ['renamed.png']);
@@ -566,7 +563,7 @@ void main() {
       await tester.pump();
 
       await showTab(tester, 'sequence');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.runAsync(state.export);
       await tester.pump();
 
@@ -593,7 +590,7 @@ void main() {
       await showTab(tester, 'image');
 
       await tapKey(tester, 'export-queue-add-button');
-      expect(windows.names, ['Project.png'], reason: 'asked as it is queued');
+      expect(windows.names, ['Cut.png'], reason: 'asked as it is queued');
       expect(filesWrittenUnder(placed), isEmpty);
 
       await tester.runAsync(state.runQueue);
@@ -612,15 +609,15 @@ void main() {
         'none of them', (tester) async {
       final handed = iosPickerPlaces();
       final state = await open(tester, 'ios');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
 
       await tester.runAsync(state.export);
       await tester.pump();
 
       expect(handed, [
-        ['frame_0001.png', 'frame_0002.png'],
+        ['Cut_0001.png', 'Cut_0002.png'],
       ]);
-      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(placed), ['Cut_0001.png', 'Cut_0002.png']);
       expect(leftIn(outbox()), isEmpty);
       expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
     });
@@ -630,7 +627,7 @@ void main() {
         'the same window, where they are placed (F-221-Q6)', (tester) async {
       final handed = iosPickerPlaces(backedOut: 1);
       final state = await open(tester, 'ios');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
 
       final (whole: exporting) = await begun(
         tester,
@@ -640,17 +637,17 @@ void main() {
 
       expect(find.byKey(question), findsOneWidget);
       expect(namesOf(filesWrittenUnder(outbox())), [
-        'frame_0001.png',
-        'frame_0002.png',
+        'Cut_0001.png',
+        'Cut_0002.png',
       ], reason: 'backing out let nothing go');
       await tapKey(tester, 'hand-over-pending-pick-again');
       await ended(tester, exporting);
 
       expect(handed, [
-        ['frame_0001.png', 'frame_0002.png'],
-        ['frame_0001.png', 'frame_0002.png'],
+        ['Cut_0001.png', 'Cut_0002.png'],
+        ['Cut_0001.png', 'Cut_0002.png'],
       ]);
-      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(placed), ['Cut_0001.png', 'Cut_0002.png']);
       expect(leftIn(outbox()), isEmpty);
       expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
     });
@@ -659,7 +656,7 @@ void main() {
         'says so', (tester) async {
       final handed = iosPickerPlaces(backedOut: everyTime);
       final state = await open(tester, 'ios');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
 
       final (whole: exporting) = await begun(
         tester,
@@ -683,7 +680,7 @@ void main() {
         throw const FileSystemException('the picker lost them');
       };
       final state = await open(tester, 'ios');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
 
       final (whole: exporting) = await begun(
         tester,
@@ -733,7 +730,7 @@ void main() {
       await tester.pump();
 
       expect(askedFolder, 0, reason: 'one file is not asked a folder');
-      expect(saved, ['Project.png']);
+      expect(saved, ['Cut.png']);
       expect(filesWrittenUnder(placed), saved);
       expect(leftIn(outbox()), isEmpty);
     });
@@ -742,7 +739,7 @@ void main() {
         'the last job is done', (tester) async {
       final handed = iosPickerPlaces();
       final state = await open(tester, 'ios');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tapKey(tester, 'export-queue-add-button');
       expect(handed, isEmpty, reason: 'queued without being asked');
       await tester.ensureVisible(find.textContaining('Naming'));
@@ -762,7 +759,7 @@ void main() {
       await tester.pump();
 
       expect(handed, [
-        ['frame_0001.png', 'frame_0002.png', 'shot_0001.png', 'shot_0002.png'],
+        ['Cut_0001.png', 'Cut_0002.png', 'shot_0001.png', 'shot_0002.png'],
       ]);
       expect(leftIn(outbox()), isEmpty);
     });
@@ -783,9 +780,9 @@ void main() {
       await tester.pump();
 
       expect(handed, [
-        ['Project.png', 'Project_2.png'],
+        ['Cut.png', 'Cut_2.png'],
       ]);
-      expect(filesWrittenUnder(placed), ['Project.png', 'Project_2.png']);
+      expect(filesWrittenUnder(placed), ['Cut.png', 'Cut_2.png']);
       expect(leftIn(outbox()), isEmpty);
     });
 
@@ -801,7 +798,7 @@ void main() {
       );
       await tester.enterText(
         find.byKey(const ValueKey<String>('export-file-name-field')),
-        'project',
+        'cut',
       );
       await tester.pump();
       await tapKey(tester, 'export-queue-add-button');
@@ -810,7 +807,7 @@ void main() {
       await tester.pump();
 
       expect(handed, [
-        ['Project.png', 'project_2.png'],
+        ['Cut.png', 'cut_2.png'],
       ]);
     });
 
@@ -828,7 +825,7 @@ void main() {
       await tester.runAsync(state.runQueue);
       await tester.pump();
 
-      expect(filesWrittenUnder(placed), ['Project.png', 'Project_2.png']);
+      expect(filesWrittenUnder(placed), ['Cut.png', 'Cut_2.png']);
       expect(leftIn(outbox()), isEmpty);
     });
 
@@ -857,7 +854,7 @@ void main() {
         find.byKey(const ValueKey<String>('export-tab-sequence')),
       );
       await tester.pump();
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tester.typeExportRange(inFrame: '2');
       await tapKey(tester, 'export-queue-add-button');
       expect(folders, isEmpty, reason: 'one file each: nothing asked first');
@@ -867,7 +864,7 @@ void main() {
 
       expect(folders, hasLength(1));
       expect(saved, 0);
-      expect(filesWrittenUnder(placed), ['Project.png', 'frame_0001.png']);
+      expect(filesWrittenUnder(placed), ['Cut.png', 'Cut_0001.png']);
       expect(leftIn(outbox()), isEmpty);
     });
 
@@ -876,7 +873,7 @@ void main() {
         'again', (tester) async {
       final handed = iosPickerPlaces(backedOut: 1);
       final state = await open(tester, 'ios');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tapKey(tester, 'export-queue-add-button');
       await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
       await tester.pump();
@@ -892,7 +889,7 @@ void main() {
       await tapKey(tester, 'hand-over-pending-pick-again');
       await ended(tester, running);
 
-      const all = ['Project.png', 'frame_0001.png', 'frame_0002.png'];
+      const all = ['Cut.png', 'Cut_0001.png', 'Cut_0002.png'];
       expect(handed, [all, all]);
       expect(filesWrittenUnder(placed), all);
       expect(leftIn(outbox()), isEmpty);
@@ -902,7 +899,7 @@ void main() {
     testWidgets('a queue let go at that question says so', (tester) async {
       final handed = iosPickerPlaces(backedOut: everyTime);
       final state = await open(tester, 'ios');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       await tapKey(tester, 'export-queue-add-button');
 
       final (whole: running) = await begun(
@@ -985,7 +982,7 @@ void main() {
         reason: 'the tab opens on a video — one file',
       );
 
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       expect(orderLine(tester), AppText.strings.exOrderAsksFirst);
 
       await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
@@ -996,7 +993,7 @@ void main() {
     testWidgets('the COUNT decides, not the format: stills trimmed to one '
         'frame are one file, and Android asks afterwards', (tester) async {
       await open(tester, 'android');
-      await pickPngSequence(tester);
+      await pickExportStill(tester, ExportStillFormat.png);
       expect(orderLine(tester), AppText.strings.exOrderAsksFirst);
 
       await tester.typeExportRange(inFrame: '2');

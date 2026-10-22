@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 
 import '../ui/storyboard_cut_block_probe.dart';
@@ -76,10 +77,14 @@ Future<void> tapHomeTimelineCell(
   await tester.pumpAndSettle();
 }
 
-/// The top chips bar is retired: the storyboard panel is the cut oracle and
-/// actuator now. It only exists in storyboard mode, so these helpers hop in,
-/// act or read, and restore the timeline when they had to switch. Never call
-/// them while a dialog is open — the mode toggle would tap the modal barrier.
+/// The top chips bar is retired: the storyboard panel is the cut actuator
+/// now. It only exists in storyboard mode, so these helpers hop in, act, and
+/// restore the timeline when they had to switch. Never call them while a
+/// dialog is open — the mode toggle would tap the modal barrier.
+///
+/// ⛔Only to ACT. A probe that only reads the cuts reads what the panel is
+/// handed ([_cutsOnFilm]) — a hop there and back cost 1.3s, three quarters
+/// of `home_cut_list_test` (measured 2026-10-21, heavy-tests-common).
 Future<T> _withStoryboardPanel<T>(
   WidgetTester tester,
   Future<T> Function(StoryboardPanel panel) act,
@@ -96,6 +101,20 @@ Future<T> _withStoryboardPanel<T>(
   }
   return result;
 }
+
+EditorSessionManager _sessionOf(WidgetTester tester) =>
+    tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+
+/// The cuts on the film, in order, as the storyboard panel lays them out —
+/// from the project it is handed (`storyboard_tab_host.dart`), whose blocks
+/// print each cut's own name as their title.
+List<StoryboardTimelineLayoutEntry> _cutsOnFilm(WidgetTester tester) =>
+    buildStoryboardTimelineLayout(
+      _sessionOf(tester).repository.requireProject(),
+    );
+
+StoryboardTimelineLayoutEntry _cutOnFilm(WidgetTester tester, String cutId) =>
+    _cutsOnFilm(tester).singleWhere((entry) => entry.cutId.value == cutId);
 
 Future<void> switchToCut(WidgetTester tester, String cutId) async {
   await _withStoryboardPanel(tester, (panel) async {
@@ -173,9 +192,7 @@ Future<void> expectCutName(
   String cutId,
   String text,
 ) async {
-  await _withStoryboardPanel(tester, (panel) async {
-    expect(requireCutBlock(tester, cutId).title, text);
-  });
+  expect(_cutOnFilm(tester, cutId).cut.name, text);
 }
 
 Future<void> expectCutExists(
@@ -183,9 +200,10 @@ Future<void> expectCutExists(
   String cutId, {
   required bool exists,
 }) async {
-  await _withStoryboardPanel(tester, (panel) async {
-    expect(cutBlock(tester, cutId), exists ? isNotNull : isNull);
-  });
+  expect(
+    _cutsOnFilm(tester).any((entry) => entry.cutId.value == cutId),
+    exists,
+  );
 }
 
 Future<void> expectCutsNamed(
@@ -193,20 +211,17 @@ Future<void> expectCutsNamed(
   String name,
   int count,
 ) async {
-  await _withStoryboardPanel(tester, (panel) async {
-    expect(
-      cutBlocks(tester).where((block) => block.title == name).length,
-      count,
-    );
-  });
+  expect(
+    _cutsOnFilm(tester).where((entry) => entry.cut.name == name).length,
+    count,
+  );
 }
 
 Future<void> expectActiveCutName(WidgetTester tester, String name) async {
-  await _withStoryboardPanel(tester, (panel) async {
-    // The block highlight carries the active state (no ACTIVE badge);
-    // the panel's activeCutId is the oracle for WHICH cut that is.
-    expect(requireCutBlock(tester, panel.activeCutId!.value).title, name);
-  });
+  // The block highlight carries the active state (no ACTIVE badge); the
+  // active cut the panel is handed is the oracle for WHICH cut that is.
+  final active = _sessionOf(tester).activeCutId!;
+  expect(_cutOnFilm(tester, active.value).cut.name, name);
 }
 
 /// Drags [sourceCutId] far enough to take [targetCutId]'s place.
@@ -529,18 +544,14 @@ IconData layerKindIcon(WidgetTester tester, String layerId) => tester
     .icon!;
 
 Future<void> expectCutOrder(WidgetTester tester, List<String> cutIds) async {
-  await _withStoryboardPanel(tester, (panel) async {
-    expect(
-      buildStoryboardTimelineLayout(
-        panel.project,
-      ).map((entry) => entry.cutId.value).toList(),
-      cutIds,
-    );
-  });
+  expect(
+    _cutsOnFilm(tester).map((entry) => entry.cutId.value).toList(),
+    cutIds,
+  );
 }
 
-Future<CutId> activeCutIdOf(WidgetTester tester) {
-  return _withStoryboardPanel(tester, (panel) async => panel.activeCutId!);
+Future<CutId> activeCutIdOf(WidgetTester tester) async {
+  return _sessionOf(tester).activeCutId!;
 }
 
 Future<void> tapCutCommandButton(
@@ -589,10 +600,12 @@ Future<void> tapRedoButton(WidgetTester tester) async {
 void expectTimelineActionTooltips() {
   // Direct icons only (R-toolbar round) — the rest moved into the Layer ▾ /
   // Frame ▾ flyouts, and the exposure ± buttons are GONE (edge grips).
-  // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame ships with Shift+I.
-  expect(find.byTooltip('Add (Shift+I)'), findsOneWidget);
-  expect(find.byTooltip('Blank / X'), findsOneWidget);
-  expect(find.byTooltip('Mark ●'), findsOneWidget);
+  // An install's Clip Studio layout gives Add Frame no key (F-417-Q2).
+  // 🗣️I-58 (유저 2026-10-18): each wears its action's name. ↩️They read
+  // 'Add', 'Blank / X' and 'Mark ●'.
+  expect(find.byTooltip('New Frame'), findsOneWidget);
+  expect(find.byTooltip('Clear'), findsOneWidget);
+  expect(find.byTooltip('In-between Mark'), findsOneWidget);
   expect(find.byTooltip('Decrease Exposure'), findsNothing);
   expect(find.byTooltip('Increase Exposure'), findsNothing);
 }

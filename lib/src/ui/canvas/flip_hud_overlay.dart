@@ -4,6 +4,15 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/frame.dart' show drawingHeadOf;
+import '../timeline/axis_turn.dart'
+    show
+        centerEndAlong,
+        centerStartAlong,
+        endAcross,
+        endAlong,
+        offsetAlong,
+        startAcross,
+        startAlong;
 import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
@@ -11,7 +20,10 @@ import '../timeline/timeline_cell_style.dart';
 import '../text/laid_out_glyph.dart';
 import '../timeline/timeline_glyph_cache.dart';
 import '../timeline/timeline_lane_rows.dart'
-    show strokeKeysLineClearOf, timelineKeysLineSpan;
+    show
+        strokeKeysLineClearOf,
+        timelineKeysLineSpan,
+        timelineLaneKeyMarkerSizeOf;
 import '../timeline/timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'flip_hud_controller.dart';
 import 'flip_hud_model.dart';
@@ -420,7 +432,7 @@ class FlipHudPainter extends CustomPainter
     }
     final currentIndex = flipHudSlotIndexAt(slots, snapshot.frameIndex);
 
-    _inFadedLayer(canvas, stripRect, true, () {
+    _inFadedLayer(canvas, stripRect, Axis.horizontal, () {
       // The current column sits at the strip's centre; the strip slides.
       final originX = stripRect.center.dx - _scroll(snapshot);
       final first = flipHudFirstPaintedIndex(
@@ -442,6 +454,7 @@ class FlipHudPainter extends CustomPainter
       _paintKeysLine(canvas, row, slots, (
         origin: originX,
         step: slotWidth,
+        cross: stripRect.height,
         centre: stripRect.center.dy,
       ));
       for (var index = first; index <= last; index += 1) {
@@ -500,7 +513,7 @@ class FlipHudPainter extends CustomPainter
       ((stripRect.bottom - originY) / extent).ceil(),
     );
 
-    _inFadedLayer(canvas, stripRect, false, () {
+    _inFadedLayer(canvas, stripRect, Axis.vertical, () {
       canvas.drawRect(
         Rect.fromLTWH(stripRect.left, washTop, stripRect.width, extent),
         Paint()..color = timelineActiveRowWashColor(colorScheme),
@@ -564,11 +577,12 @@ class FlipHudPainter extends CustomPainter
 
   // --- pieces ------------------------------------------------------------
 
-  /// Paints [body] into its own layer, then eats both ends of it away.
+  /// Paints [body] into its own layer, then eats both of its ends along
+  /// [axis] away.
   void _inFadedLayer(
     Canvas canvas,
     Rect rect,
-    bool horizontal,
+    Axis axis,
     VoidCallback body,
   ) {
     canvas.saveLayer(rect, Paint());
@@ -576,7 +590,7 @@ class FlipHudPainter extends CustomPainter
     canvas.clipRect(rect);
     body();
     canvas.restore();
-    _fadeEnds(canvas, rect, horizontal: horizontal);
+    _fadeEnds(canvas, rect, axis);
     canvas.restore();
   }
 
@@ -615,7 +629,7 @@ class FlipHudPainter extends CustomPainter
         ).createShader(rect),
     );
     if (fadeAcross) {
-      _fadeEnds(canvas, rect, horizontal: false);
+      _fadeEnds(canvas, rect, Axis.vertical);
     }
     canvas.restore();
   }
@@ -742,13 +756,13 @@ class FlipHudPainter extends CustomPainter
       return;
     }
     if (run.keyMark case final mark?) {
-      // The lane's own drawing of the key ([paintKeyMark]), in the box the
-      // diamond and the square both stood in before the halves.
+      // The lane's own drawing of the key ([paintKeyMark]), at the lane's
+      // own size in this slot ([_keyMarkSizeIn]).
       paintKeyMark(
         canvas,
         mark,
         center: rect.center,
-        size: _keyMarkSize,
+        box: _keyMarkSizeIn(row, rect.size),
         // In the timeline's layout: a standing window turns all of it.
         standing: false,
         color: timelineDrawingHeldColor,
@@ -818,12 +832,12 @@ class FlipHudPainter extends CustomPainter
   /// as thick as the panels draw it, in its keys' colour, and kept out of a
   /// hollow mark's box as theirs is ([strokeKeysLineClearOf]). [strip] is
   /// where the slots stand: the first one's leading edge, how wide each is,
-  /// and the middle of the strip across.
+  /// how deep the strip is across and the middle of it.
   void _paintKeysLine(
     Canvas canvas,
     FlipHudRow row,
     List<FlipHudSlot> slots,
-    ({double origin, double step, double centre}) strip,
+    ({double origin, double step, double cross, double centre}) strip,
   ) {
     final span = timelineKeysLineSpan([
       for (final run in row.runs)
@@ -834,6 +848,7 @@ class FlipHudPainter extends CustomPainter
     }
     double centreOf(int frame) =>
         strip.origin + (flipHudSlotIndexAt(slots, frame) + 0.5) * strip.step;
+    final box = _keyMarkSizeIn(row, Size(strip.step, strip.cross));
     strokeKeysLineClearOf(
       canvas,
       [
@@ -841,8 +856,8 @@ class FlipHudPainter extends CustomPainter
           if (run.keyMark case final mark? when keyMarkIsHollow(mark))
             Rect.fromCenter(
               center: Offset(centreOf(run.startIndex), strip.centre),
-              width: _keyMarkSize,
-              height: _keyMarkSize,
+              width: box.width,
+              height: box.height,
             ),
       ],
       () => canvas.drawLine(
@@ -855,8 +870,18 @@ class FlipHudPainter extends CustomPainter
     );
   }
 
-  /// A key's box in its slot.
-  static const double _keyMarkSize = 9;
+  /// A key's box in a [slot] of [row]: the panels' own size for its lane
+  /// ([timelineLaneKeyMarkerSizeOf]) — the slot a frame's cell, a header's
+  /// union filling it, a member's key the step under it (F-367).
+  ///
+  /// ↩️A fixed 9px box — the one the diamond and the square stood in before
+  /// the halves, and a second answer beside the panels'.
+  static Size _keyMarkSizeIn(FlipHudRow row, Size slot) =>
+      timelineLaneKeyMarkerSizeOf(
+        slot.height,
+        frameCellExtent: slot.width,
+        heads: row.isGroupHeader,
+      );
 
   /// The type a block's head word is set in — its cel number, or the mark's
   /// size when it has none.
@@ -911,15 +936,15 @@ class FlipHudPainter extends CustomPainter
     final paint = Paint()
       ..color = timelineBaseGridInk(colorScheme, frameCellExtent: grid.step)
       ..strokeWidth = 1;
-    final horizontal = grid.axis == Axis.horizontal;
-    final from = horizontal ? rect.left : rect.top;
-    final to = horizontal ? rect.right : rect.bottom;
+    final axis = grid.axis;
+    final from = startAlong(axis, rect);
+    final to = endAlong(axis, rect);
     var at =
         grid.origin + (((from - grid.origin) / grid.step).ceil()) * grid.step;
     for (; at <= to; at += grid.step) {
       canvas.drawLine(
-        horizontal ? Offset(at, rect.top) : Offset(rect.left, at),
-        horizontal ? Offset(at, rect.bottom) : Offset(rect.right, at),
+        offsetAlong(axis, along: at, across: startAcross(axis, rect)),
+        offsetAlong(axis, along: at, across: endAcross(axis, rect)),
         paint,
       );
     }
@@ -936,15 +961,15 @@ class FlipHudPainter extends CustomPainter
     canvas.drawRect(rect, Paint()..color = timelinePlayheadWashColor);
   }
 
-  void _fadeEnds(Canvas canvas, Rect rect, {required bool horizontal}) {
+  void _fadeEnds(Canvas canvas, Rect rect, Axis axis) {
     const f = FlipHudMetrics.edgeFade;
     canvas.drawRect(
       rect,
       Paint()
         ..blendMode = BlendMode.dstIn
         ..shader = LinearGradient(
-          begin: horizontal ? Alignment.centerLeft : Alignment.topCenter,
-          end: horizontal ? Alignment.centerRight : Alignment.bottomCenter,
+          begin: centerStartAlong(axis),
+          end: centerEndAlong(axis),
           colors: const [
             Color(0x00000000),
             Color(0xFF000000),

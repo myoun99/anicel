@@ -1,9 +1,11 @@
 import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
+import 'brush_correction.dart';
 import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
+import 'brush_tip_order.dart';
 import 'brush_tip_rotation_mode.dart';
 
 class BrushEditCanvasInputSettings {
@@ -24,13 +26,10 @@ class BrushEditCanvasInputSettings {
     Map<BrushDynamicsKey, BrushPressureCurve> curves = const {},
     double roundness = 1.0,
     double angleDegrees = 0.0,
-    BrushTipMask? tipMask,
+    List<BrushTipMask> tips = const [],
+    BrushTipOrder tipOrder = BrushTipOrder.repeat,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
-    double sizeJitter = 0.0,
-    double opacityJitter = 0.0,
     double angleJitter = 0.0,
-    double roundnessJitter = 0.0,
-    double spacingJitter = 0.0,
     double scatterRadiusRatio = 0.0,
     int scatterCount = 1,
     bool scatterBothAxes = true,
@@ -47,13 +46,9 @@ class BrushEditCanvasInputSettings {
     bool erase = false,
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
-    double stabilizerStrength = 0.0,
+    BrushCorrection correction = const BrushCorrection(),
   }) {
     assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.');
-    assert(
-      stabilizerStrength >= 0.0 && stabilizerStrength <= 100.0,
-      'BrushEditCanvasInputSettings.stabilizerStrength must be in [0, 100].',
-    );
     assert(
       textureScale > 0.0,
       'BrushEditCanvasInputSettings.textureScale must be > 0.',
@@ -110,13 +105,10 @@ class BrushEditCanvasInputSettings {
         },
         roundness: roundness,
         angleDegrees: angleDegrees,
-        tipMask: tipMask,
+        tips: tips,
+        tipOrder: tipOrder,
         rotationMode: rotationMode,
-        sizeJitter: sizeJitter,
-        opacityJitter: opacityJitter,
         angleJitter: angleJitter,
-        roundnessJitter: roundnessJitter,
-        spacingJitter: spacingJitter,
         scatterRadiusRatio: scatterRadiusRatio,
         scatterCount: scatterCount,
         scatterBothAxes: scatterBothAxes,
@@ -131,10 +123,10 @@ class BrushEditCanvasInputSettings {
         textureScale: textureScale,
         textureDensity: textureDensity,
         antiAlias: antiAlias,
+        correction: correction,
       ),
       erase: erase,
       blendMode: blendMode,
-      stabilizerStrength: stabilizerStrength,
     );
   }
 
@@ -142,7 +134,6 @@ class BrushEditCanvasInputSettings {
     required this.shape,
     required this.erase,
     required this.blendMode,
-    required this.stabilizerStrength,
   });
 
   /// Builds canvas input from an already-legal [BrushShape], carrying the whole
@@ -152,17 +143,11 @@ class BrushEditCanvasInputSettings {
     BrushShape shape, {
     bool erase = false,
     BrushBlendMode blendMode = BrushBlendMode.color,
-    double stabilizerStrength = 0.0,
   }) {
-    assert(
-      stabilizerStrength >= 0.0 && stabilizerStrength <= 100.0,
-      'BrushEditCanvasInputSettings.stabilizerStrength must be in [0, 100].',
-    );
     return BrushEditCanvasInputSettings._raw(
       shape: shape,
       erase: erase,
       blendMode: blendMode,
-      stabilizerStrength: stabilizerStrength,
     );
   }
 
@@ -173,7 +158,6 @@ class BrushEditCanvasInputSettings {
         shape: BrushShape(size: 1.0, spacing: 0.25),
         erase: false,
         blendMode: BrushBlendMode.color,
-        stabilizerStrength: 0.0,
       );
 
   /// The shared 26-parameter spine; the fields below forward to it. See
@@ -209,13 +193,12 @@ class BrushEditCanvasInputSettings {
 
   double get roundness => shape.roundness;
   double get angleDegrees => shape.angleDegrees;
+  /// See [BrushShape.tips] — and [tipMask], the first of them.
+  List<BrushTipMask> get tips => shape.tips;
+  BrushTipOrder get tipOrder => shape.tipOrder;
   BrushTipMask? get tipMask => shape.tipMask;
   BrushTipRotationMode get rotationMode => shape.rotationMode;
-  double get sizeJitter => shape.sizeJitter;
-  double get opacityJitter => shape.opacityJitter;
   double get angleJitter => shape.angleJitter;
-  double get roundnessJitter => shape.roundnessJitter;
-  double get spacingJitter => shape.spacingJitter;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
   bool get scatterBothAxes => shape.scatterBothAxes;
@@ -241,6 +224,9 @@ class BrushEditCanvasInputSettings {
   /// How hard the edge lands — see [BrushShape.antiAlias].
   BrushAntiAlias get antiAlias => shape.antiAlias;
 
+  /// How the line is corrected — see [BrushShape.correction].
+  BrushCorrection get correction => shape.correction;
+
   /// Eraser mode: dabs remove destination alpha (destination-out) instead
   /// of painting color.
   final bool erase;
@@ -249,11 +235,6 @@ class BrushEditCanvasInputSettings {
   /// composites onto the cel at pen-up. [BrushBlendMode.erase] rides the
   /// [erase] flag instead (same kernels as the eraser tool).
   final BrushBlendMode blendMode;
-
-  /// Pull-string stabilization strength (P7): the rope length in SCREEN
-  /// pixels (0 = off), frozen per stroke as canvas px = strength / zoom.
-  /// A hand-feel setting, deliberately not part of brush presets.
-  final double stabilizerStrength;
 
   BrushEditCanvasInputSettings copyWith({
     int? color,
@@ -268,13 +249,10 @@ class BrushEditCanvasInputSettings {
     BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask>? tips,
+    BrushTipOrder? tipOrder,
     BrushTipRotationMode? rotationMode,
-    double? sizeJitter,
-    double? opacityJitter,
     double? angleJitter,
-    double? roundnessJitter,
-    double? spacingJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
@@ -291,7 +269,7 @@ class BrushEditCanvasInputSettings {
     bool? erase,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
-    double? stabilizerStrength,
+    BrushCorrection? correction,
   }) {
     return BrushEditCanvasInputSettings(
       color: color ?? this.color,
@@ -316,13 +294,10 @@ class BrushEditCanvasInputSettings {
           shape.curves,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
-      tipMask: tipMask ?? this.tipMask,
+      tips: tips ?? this.tips,
+      tipOrder: tipOrder ?? this.tipOrder,
       rotationMode: rotationMode ?? this.rotationMode,
-      sizeJitter: sizeJitter ?? this.sizeJitter,
-      opacityJitter: opacityJitter ?? this.opacityJitter,
       angleJitter: angleJitter ?? this.angleJitter,
-      roundnessJitter: roundnessJitter ?? this.roundnessJitter,
-      spacingJitter: spacingJitter ?? this.spacingJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
       scatterCount: scatterCount ?? this.scatterCount,
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
@@ -341,7 +316,9 @@ class BrushEditCanvasInputSettings {
       // ↩️The edge step rode the rebuild at its default until 2026-10-01: a
       // colour change or a mapped-erase press put a 없음 brush back at 3단계.
       antiAlias: antiAlias ?? this.antiAlias,
-      stabilizerStrength: stabilizerStrength ?? this.stabilizerStrength,
+      // A mapped-erase press takes the stroke through here: rebuilt at the
+      // default, its line would stop being steadied.
+      correction: correction ?? this.correction,
     );
   }
 
@@ -351,14 +328,13 @@ class BrushEditCanvasInputSettings {
       other is BrushEditCanvasInputSettings &&
           other.shape == shape &&
           other.erase == erase &&
-          other.blendMode == blendMode &&
-          other.stabilizerStrength == stabilizerStrength;
+          other.blendMode == blendMode;
 
   @override
-  int get hashCode => Object.hash(shape, erase, blendMode, stabilizerStrength);
+  int get hashCode => Object.hash(shape, erase, blendMode);
 
   @override
   String toString() =>
       'BrushEditCanvasInputSettings(shape: $shape, erase: $erase, '
-      'blendMode: $blendMode, stabilizerStrength: $stabilizerStrength)';
+      'blendMode: $blendMode)';
 }

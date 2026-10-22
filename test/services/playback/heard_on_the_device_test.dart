@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/services/playback/device_clock_line.dart';
 import 'package:anicel/src/services/playback/heard_on_the_device.dart';
 
@@ -33,6 +34,31 @@ void main() {
       userOffsetSamples: 0,
     );
     expect(shown - now, 960, reason: 'twenty milliseconds on, at 48k');
+  });
+
+  test('🚨a positive correction shows the picture LATER, as the settings say: '
+      'sound that reaches the ear late is an earlier sample heard (board '
+      'av-offset-sign-is-backwards)', () {
+    const wireless = AudioSyncSettings(offset: 100);
+    int heardWith(int userOffsetSamples) =>
+        (HeardOnTheDevice(frameClockNow: () => 1010000)
+              ..arm(deviceRate: rate, carriesFor: 4800))
+            .heard(
+              readAt(1010000),
+              latencySamples: 0,
+              userOffsetSamples: userOffsetSamples,
+            );
+    final offset = wireless.offsetSamples(
+      sampleRate: rate,
+      frameRateNumerator: 24,
+      frameRateDenominator: 1,
+    );
+    expect(
+      heardWith(offset),
+      heardWith(0) - rate ~/ 10,
+      reason: 'a tenth of a second back is heard: the frame shown at this '
+          'moment is the one a tenth of a second back',
+    );
   });
 
   test('🚨the moment is moved onto the device\'s clock by the two clocks\' '
@@ -147,10 +173,87 @@ void main() {
     });
   });
 
+  // board a-start-is-heard-ahead-of-its-first-picture: a run started ON its
+  // first sample was heard ahead of its first picture by however long the
+  // frame took to be shown past what the device holds — and the frames in
+  // between were never shown.
+  group('🚨the lead: a run\'s first sample is heard as its first picture is '
+      'shown', () {
+    test('what the device plays until the frame is shown, less what it '
+        'holds and less the user\'s correction', () {
+      final heard = HeardOnTheDevice(frameClockNow: () => 1010000)
+        ..arm(deviceRate: rate, carriesFor: 4800);
+      expect(
+        heard.leadFor(
+          deviceNowMicros: 1010000,
+          frameTime: const Duration(microseconds: 1060000),
+          latencySamples: 480,
+          userOffsetSamples: -960,
+        ),
+        2400 - 480 + 960,
+        reason: 'fifty milliseconds at 48k, less ten held — and sound that '
+            'reaches the ear early (a negative correction) is led further',
+      );
+    });
+
+    test('🚨a run started that far ahead reads its first sample at the look '
+        'that starts it', () {
+      final heard = HeardOnTheDevice(frameClockNow: () => 1010000)
+        ..arm(deviceRate: rate, carriesFor: 4800);
+      const shown = Duration(microseconds: 1060000);
+      final lead = heard.leadFor(
+        deviceNowMicros: 1010000,
+        frameTime: shown,
+        latencySamples: 480,
+        userOffsetSamples: 0,
+      );
+      const first = 96000;
+      expect(
+        heard.heard(
+          // Started, and no callback has spoken yet: only the stair.
+          (point: null, stairSamples: first - lead, nowMicros: 1010000),
+          frameTime: shown,
+          latencySamples: 480,
+          userOffsetSamples: 0,
+        ),
+        first,
+        reason: 'started ON its first sample, it read 1920 samples on',
+      );
+    });
+
+    test('none where the device holds more than the frame waits — and none '
+        'without a moment it is shown', () {
+      final heard = HeardOnTheDevice(frameClockNow: () => 1010000)
+        ..arm(deviceRate: rate, carriesFor: 4800);
+      expect(
+        heard.leadFor(
+          deviceNowMicros: 1010000,
+          frameTime: const Duration(microseconds: 1020000),
+          latencySamples: 960,
+          userOffsetSamples: 0,
+        ),
+        0,
+        reason: 'heard ten milliseconds after it is shown, it is not led on '
+            'into the frames before it',
+      );
+      expect(
+        heard.leadFor(
+          deviceNowMicros: 1010000,
+          frameTime: null,
+          latencySamples: 0,
+          userOffsetSamples: -960,
+        ),
+        960,
+        reason: 'no moment: only the correction leads',
+      );
+    });
+  });
+
   // take-head-trims-at-the-playback-start (10-15): a take is placed by the
   // moment its anchor was heard.
   group('🚨one who LISTENS reads now — not held to how far a picture got', () {
-    test('the line now, less the latency, with the user\'s correction on', () {
+    test('the line now, less the latency, and less the user\'s '
+        'correction', () {
       final heard = HeardOnTheDevice(frameClockNow: () => 1010000)
         ..arm(deviceRate: rate, carriesFor: 4800);
       expect(
@@ -159,7 +262,7 @@ void main() {
           latencySamples: 1440,
           userOffsetSamples: 480,
         ),
-        48480 - 1440 + 480,
+        48480 - 1440 - 480,
         reason: 'handed 48000 at 1s, ten milliseconds on',
       );
     });

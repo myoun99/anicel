@@ -8,7 +8,7 @@ import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
-import '../models/transform_track.dart' show positionKeySpace;
+import '../models/transform_track.dart' show pathKeySpace;
 import 'camera_pose_resolver.dart';
 import 'camera_projection_matrix.dart';
 
@@ -94,7 +94,7 @@ List<({int frameIndex, List<Offset> corners})> cameraFramesShown(
   required int first,
   required int last,
 }) {
-  final passed = cut.camera.track.position.rovingTimes(positionKeySpace);
+  final passed = cut.camera.track.position.rovingTimes(pathKeySpace);
   ({int frameIndex, List<Offset> corners}) shownAt(int frameIndex) => (
     frameIndex: frameIndex,
     corners: cameraFrameShownAtTime(

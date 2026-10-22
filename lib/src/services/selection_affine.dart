@@ -78,11 +78,9 @@ class SelectionAffine {
   ///
   /// ⚠️[tx]/[ty] stay **THE USER'S MOVE** — the tool panel shows them as
   /// X/Y, and turning the box must not make those digits drift.
-  double get appliedTx =>
-      tx + anchorX - (anchorX * cosTheta - anchorY * sinTheta);
+  double get appliedTx => tx + anchorX - turn.apply(anchorX, anchorY).x;
 
-  double get appliedTy =>
-      ty + anchorY - (anchorX * sinTheta + anchorY * cosTheta);
+  double get appliedTy => ty + anchorY - turn.apply(anchorX, anchorY).y;
 
   /// 🚨★★★**EVERY NUMBER THAT CHANGES THE PICTURE, AS ONE STRING — AND IT
   /// LIVES HERE.**
@@ -115,24 +113,24 @@ class SelectionAffine {
   CanvasPoint get anchorCanvas =>
       CanvasPoint(x: pivot.x + anchorX + tx, y: pivot.y + anchorY + ty);
 
-  /// The rotation's cosine and sine, EXACT at the quarter turns
-  /// ([turnSin] has the table and why it is one).
+  /// The rotation, EXACT at the quarter turns ([turnSin] has the table and
+  /// why it is one).
   ///
   /// Both the geometry ([apply], which moves the selection outline) and the
-  /// pixels (the resample fold) read these, so the ants and the picture can
-  /// never disagree about where the rotation went.
-  double get cosTheta => turnCos(rotationDegrees);
-
-  double get sinTheta => turnSin(rotationDegrees);
+  /// pixels (the resample fold) read this, so the ants and the picture can
+  /// never disagree about where the rotation went. ↩️Its cosine and sine
+  /// were two getters of their own (`cosTheta` · `sinTheta`) until the turn
+  /// of a point had one home ([PlaneTurn]).
+  PlaneTurn get turn => PlaneTurn(rotationDegrees);
 
   CanvasPoint apply(CanvasPoint point) {
-    final lx = (point.x - pivot.x) * sx;
-    final ly = (point.y - pivot.y) * sy;
-    final cos = cosTheta;
-    final sin = sinTheta;
+    final turned = turn.apply(
+      (point.x - pivot.x) * sx,
+      (point.y - pivot.y) * sy,
+    );
     return CanvasPoint(
-      x: lx * cos - ly * sin + pivot.x + appliedTx,
-      y: lx * sin + ly * cos + pivot.y + appliedTy,
+      x: turned.x + pivot.x + appliedTx,
+      y: turned.y + pivot.y + appliedTy,
     );
   }
 
@@ -146,13 +144,11 @@ class SelectionAffine {
   /// The scales cannot be zero — every writer clamps them away from it —
   /// so there is no degenerate case to guard.
   CanvasPoint applyInverse(CanvasPoint point) {
-    final ux = point.x - pivot.x - appliedTx;
-    final uy = point.y - pivot.y - appliedTy;
-    final cos = cosTheta;
-    final sin = sinTheta;
-    final lx = ux * cos + uy * sin;
-    final ly = -ux * sin + uy * cos;
-    return CanvasPoint(x: lx / sx + pivot.x, y: ly / sy + pivot.y);
+    final back = turn.back.apply(
+      point.x - pivot.x - appliedTx,
+      point.y - pivot.y - appliedTy,
+    );
+    return CanvasPoint(x: back.x / sx + pivot.x, y: back.y / sy + pivot.y);
   }
 
   /// Other values on the same pivot — how a door that changed the edit

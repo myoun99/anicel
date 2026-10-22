@@ -1,10 +1,13 @@
 import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
+import 'brush_correction.dart';
 import 'separable_blend_mode.dart';
 import 'brush_input_source.dart';
 import 'brush_pressure_curve.dart';
+import 'brush_settings_group.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
+import 'brush_tip_order.dart';
 import 'brush_tip_rotation_mode.dart';
 
 class BrushSettings {
@@ -26,10 +29,9 @@ class BrushSettings {
     Map<BrushDynamicsKey, BrushPressureCurve> curves = const {},
     double roundness = 1.0,
     double angleDegrees = 0.0,
-    BrushTipMask? tipMask,
+    List<BrushTipMask> tips = const [],
+    BrushTipOrder tipOrder = BrushTipOrder.repeat,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
-    double sizeJitter = 0.0,
-    double opacityJitter = 0.0,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
     int scatterCount = 1,
@@ -44,14 +46,14 @@ class BrushSettings {
     double textureContrast = 0.0,
     double textureScale = 1.0,
     double textureDensity = 1.0,
-    double roundnessJitter = 0.0,
-    double spacingJitter = 0.0,
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
     bool mixesGroundColor = false,
     double paintAmount = 1.0,
     double paintDensity = 1.0,
     double colorStretch = 0.0,
+    BrushCorrection correction = const BrushCorrection(),
+    this.folded = const {},
   }) : shape = BrushShape(
          color: color,
          size: size,
@@ -70,10 +72,9 @@ class BrushSettings {
          },
          roundness: roundness,
          angleDegrees: angleDegrees,
-         tipMask: tipMask,
+         tips: tips,
+         tipOrder: tipOrder,
          rotationMode: rotationMode,
-         sizeJitter: sizeJitter,
-         opacityJitter: opacityJitter,
          angleJitter: angleJitter,
          scatterRadiusRatio: scatterRadiusRatio,
          scatterCount: scatterCount,
@@ -88,14 +89,13 @@ class BrushSettings {
          textureContrast: textureContrast,
          textureScale: textureScale,
          textureDensity: textureDensity,
-         roundnessJitter: roundnessJitter,
-         spacingJitter: spacingJitter,
          blendMode: blendMode,
          antiAlias: antiAlias,
          mixesGroundColor: mixesGroundColor,
          paintAmount: paintAmount,
          paintDensity: paintDensity,
          colorStretch: colorStretch,
+         correction: correction,
        ) {
     _validateShape(shape);
   }
@@ -104,13 +104,18 @@ class BrushSettings {
   /// back through the flat parameter list — the wholesale hop the stroke
   /// chain's converters take (D4). Values are re-validated so an illegal
   /// shape still throws here rather than downstream.
-  BrushSettings.fromShape(this.shape) {
+  BrushSettings.fromShape(this.shape, {this.folded = const {}}) {
     _validateShape(shape);
   }
 
   /// The shared 26-parameter spine; every field below forwards to it, and the
   /// stroke chain moves presets across as a whole [shape] (see [BrushShape]).
   final BrushShape shape;
+
+  /// The groups of this brush's settings that are folded in the panel —
+  /// the one thing a brush keeps that is not how it paints, so it stands
+  /// beside [shape] rather than in it (F-418-Q10).
+  final Set<BrushSettingsGroup> folded;
 
   int get color => shape.color;
   double get size => shape.size;
@@ -131,10 +136,11 @@ class BrushSettings {
 
   double get roundness => shape.roundness;
   double get angleDegrees => shape.angleDegrees;
+  /// See [BrushShape.tips] — and [tipMask], the first of them.
+  List<BrushTipMask> get tips => shape.tips;
+  BrushTipOrder get tipOrder => shape.tipOrder;
   BrushTipMask? get tipMask => shape.tipMask;
   BrushTipRotationMode get rotationMode => shape.rotationMode;
-  double get sizeJitter => shape.sizeJitter;
-  double get opacityJitter => shape.opacityJitter;
   double get angleJitter => shape.angleJitter;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
@@ -157,8 +163,6 @@ class BrushSettings {
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
 
-  double get roundnessJitter => shape.roundnessJitter;
-  double get spacingJitter => shape.spacingJitter;
 
   /// How this brush composites — see [BrushShape.blendMode].
   BrushBlendMode get blendMode => shape.blendMode;
@@ -178,6 +182,9 @@ class BrushSettings {
   double get paintDensity => shape.paintDensity;
   double get colorStretch => shape.colorStretch;
 
+  /// The line's correction — see [BrushShape.correction].
+  BrushCorrection get correction => shape.correction;
+
   /// The pressure curve driving [target], if any.
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
       shape.pressureCurveFor(target);
@@ -195,10 +202,9 @@ class BrushSettings {
     BrushPressureCurve? hardnessPressureCurve,
     double? roundness,
     double? angleDegrees,
-    BrushTipMask? tipMask,
+    List<BrushTipMask>? tips,
+    BrushTipOrder? tipOrder,
     BrushTipRotationMode? rotationMode,
-    double? sizeJitter,
-    double? opacityJitter,
     double? angleJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
@@ -213,14 +219,14 @@ class BrushSettings {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
-    double? roundnessJitter,
-    double? spacingJitter,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     bool? mixesGroundColor,
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
+    BrushCorrection? correction,
+    Set<BrushSettingsGroup>? folded,
   }) {
     return BrushSettings(
       color: color ?? this.color,
@@ -246,10 +252,9 @@ class BrushSettings {
           shape.curves,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
-      tipMask: tipMask ?? this.tipMask,
+      tips: tips ?? this.tips,
+      tipOrder: tipOrder ?? this.tipOrder,
       rotationMode: rotationMode ?? this.rotationMode,
-      sizeJitter: sizeJitter ?? this.sizeJitter,
-      opacityJitter: opacityJitter ?? this.opacityJitter,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
       scatterCount: scatterCount ?? this.scatterCount,
@@ -264,18 +269,18 @@ class BrushSettings {
       textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
-      roundnessJitter: roundnessJitter ?? this.roundnessJitter,
-      spacingJitter: spacingJitter ?? this.spacingJitter,
       blendMode: blendMode ?? this.blendMode,
       antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
+      correction: correction ?? this.correction,
+      folded: folded ?? this.folded,
     );
   }
 
-  /// [withMasks] false leaves the three tips out — for comparing two
+  /// [withMasks] false leaves the masks out — for comparing two
   /// brushes' settings without writing every tip's pixels out as base64,
   /// which the hand bank does on every slider frame (H25-again). Every file
   /// writer takes the default.
@@ -298,13 +303,19 @@ class BrushSettings {
     ..._curvesToJson(_nonPressureCurves),
     'roundness': roundness,
     'angleDegrees': angleDegrees,
-    if (withMasks && tipMask != null) 'tipMask': tipMask!.toJson(),
+    if (withMasks && tips.isNotEmpty) 'tipMask': tips.first.toJson(),
+    // ⛔THE TIPS AFTER THE FIRST RIDE A KEY OF THEIR OWN, not one list of
+    // every tip: a file written while a brush had one tip keeps it at
+    // 'tipMask', and so reads unchanged with no code of its own — 유저
+    // 2026-09-24 wants no carry-forward code and no version bump, which
+    // would eat the library of their own brushes.
+    if (withMasks && tips.length > 1)
+      'moreTipMasks': [for (final tip in tips.skip(1)) tip.toJson()],
+    // 繰り返し is the default, so it writes nothing — presets saved before
+    // the setting existed round-trip byte-identically.
+    if (tipOrder != BrushTipOrder.repeat) 'tipOrder': tipOrder.name,
     'rotationMode': rotationMode.toJson(),
-    'sizeJitter': sizeJitter,
-    'opacityJitter': opacityJitter,
     'angleJitter': angleJitter,
-    if (roundnessJitter > 0.0) 'roundnessJitter': roundnessJitter,
-    if (spacingJitter > 0.0) 'spacingJitter': spacingJitter,
     // 通常 is the default, so it writes nothing — presets saved before every
     // brush carried a blend round-trip byte-identically.
     if (blendMode != BrushBlendMode.color) 'blendMode': blendMode.name,
@@ -332,6 +343,16 @@ class BrushSettings {
       'paintDensity': paintDensity,
       'colorStretch': colorStretch,
     },
+    // Written only off its default, as the tip order is — a preset saved
+    // before the brush held its correction round-trips byte-identically.
+    if (correction != const BrushCorrection())
+      'correction': correction.toJson(),
+    // Written only when a group is folded, for the same reason.
+    if (folded.isNotEmpty)
+      'folded': [
+        for (final group in BrushSettingsGroup.values)
+          if (folded.contains(group)) group.name,
+      ],
   };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
@@ -340,7 +361,7 @@ class BrushSettings {
     // minimumSizeRatio floor), opacity ON was plain `p`.
     BrushPressureCurve? curveOf(String key) => json[key] == null
         ? null
-        : BrushPressureCurve.fromJson(json[key] as List<dynamic>);
+        : BrushPressureCurve.fromJson(json[key]);
     var sizeCurve = curveOf('sizePressureCurve');
     if (sizeCurve == null && json['pressureSize'] == true) {
       sizeCurve = BrushPressureCurve.linearFrom(
@@ -365,15 +386,17 @@ class BrushSettings {
       curves: _curvesFromJson(json['curves']),
       roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
       angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
-      tipMask: json['tipMask'] == null
-          ? null
-          : BrushTipMask.fromJson(json['tipMask'] as Map<String, dynamic>),
+      tips: [
+        if (json['tipMask'] case final Map<String, dynamic> first)
+          BrushTipMask.fromJson(first),
+        for (final more in json['moreTipMasks'] as List<dynamic>? ?? const [])
+          BrushTipMask.fromJson(more as Map<String, dynamic>),
+      ],
+      tipOrder:
+          BrushTipOrder.values.asNameMap()[json['tipOrder']] ??
+          BrushTipOrder.repeat,
       rotationMode: BrushTipRotationMode.fromJson(json['rotationMode']),
-      sizeJitter: (json['sizeJitter'] as num?)?.toDouble() ?? 0.0,
-      opacityJitter: (json['opacityJitter'] as num?)?.toDouble() ?? 0.0,
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
-      roundnessJitter: (json['roundnessJitter'] as num?)?.toDouble() ?? 0.0,
-      spacingJitter: (json['spacingJitter'] as num?)?.toDouble() ?? 0.0,
       // The legacy `lockedBlendMode` key reads straight in: a preset that
       // PINNED a blend now simply has it.
       blendMode: BrushBlendMode.fromJson(
@@ -406,18 +429,30 @@ class BrushSettings {
       paintAmount: (json['paintAmount'] as num?)?.toDouble() ?? 1.0,
       paintDensity: (json['paintDensity'] as num?)?.toDouble() ?? 1.0,
       colorStretch: (json['colorStretch'] as num?)?.toDouble() ?? 0.0,
+      correction: BrushCorrection.fromJson(json['correction']),
+      folded: {
+        for (final name in json['folded'] as List<dynamic>? ?? const [])
+          ?BrushSettingsGroup.values.asNameMap()[name],
+      },
     );
   }
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || other is BrushSettings && other.shape == shape;
+      identical(this, other) ||
+      other is BrushSettings &&
+          other.shape == shape &&
+          other.folded.length == folded.length &&
+          other.folded.containsAll(folded);
 
   @override
-  int get hashCode => shape.hashCode;
+  int get hashCode => Object.hash(
+    shape,
+    Object.hashAllUnordered(folded),
+  );
 
   @override
-  String toString() => 'BrushSettings(shape: $shape)';
+  String toString() => 'BrushSettings(shape: $shape, folded: $folded)';
 }
 
 /// Throws [ArgumentError] if any parameter in [shape] is outside the model's
@@ -442,6 +477,16 @@ void _validateShape(BrushShape shape) {
   _validateUnitInterval(shape.paintAmount, 'paintAmount');
   _validateUnitInterval(shape.paintDensity, 'paintDensity');
   _validateUnitInterval(shape.colorStretch, 'colorStretch');
+  _validateCorrection(
+    shape.correction.stabilization,
+    'stabilization',
+    BrushCorrection.maxStabilization,
+  );
+  _validateCorrection(
+    shape.correction.postStrength,
+    'postStrength',
+    BrushCorrection.maxPostStrength,
+  );
   _validatePositive(shape.size, 'size');
   _validateUnitInterval(shape.opacity, 'opacity');
   _validateUnitInterval(shape.flow, 'flow');
@@ -449,11 +494,7 @@ void _validateShape(BrushShape shape) {
   _validatePositive(shape.spacing, 'spacing');
   _validateRoundness(shape.roundness);
   _validateFinite(shape.angleDegrees, 'angleDegrees');
-  _validateUnitInterval(shape.sizeJitter, 'sizeJitter');
-  _validateUnitInterval(shape.opacityJitter, 'opacityJitter');
   _validateUnitInterval(shape.angleJitter, 'angleJitter');
-  _validateUnitInterval(shape.roundnessJitter, 'roundnessJitter');
-  _validateUnitInterval(shape.spacingJitter, 'spacingJitter');
   _validateNonNegativeFinite(shape.scatterRadiusRatio, 'scatterRadiusRatio');
   if (shape.scatterCount < 1) {
     throw ArgumentError.value(
@@ -480,6 +521,17 @@ void _validateUnitInterval(double value, String fieldName) {
       value,
       fieldName,
       'BrushSettings.$fieldName must be between 0.0 and 1.0 inclusive.',
+    );
+  }
+}
+
+/// A correction value [name] on its 0..[max] scale.
+void _validateCorrection(double value, String name, double max) {
+  if (!value.isFinite || value < 0.0 || value > max) {
+    throw ArgumentError.value(
+      value,
+      name,
+      'BrushSettings.correction.$name must be between 0 and $max inclusive.',
     );
   }
 }
@@ -556,7 +608,7 @@ Map<BrushDynamicsKey, BrushPressureCurve> _curvesFromJson(Object? json) {
   final out = <BrushDynamicsKey, BrushPressureCurve>{};
   for (final entry in json.entries) {
     final parts = '${entry.key}'.split('.');
-    if (parts.length != 2 || entry.value is! List) {
+    if (parts.length != 2 || (entry.value is! List && entry.value is! Map)) {
       continue;
     }
     final target = BrushPressureTarget.values
@@ -568,9 +620,7 @@ Map<BrushDynamicsKey, BrushPressureCurve> _curvesFromJson(Object? json) {
     if (target == null || source == null) {
       continue;
     }
-    out[(target, source)] = BrushPressureCurve.fromJson(
-      entry.value as List<dynamic>,
-    );
+    out[(target, source)] = BrushPressureCurve.fromJson(entry.value);
   }
   return out;
 }

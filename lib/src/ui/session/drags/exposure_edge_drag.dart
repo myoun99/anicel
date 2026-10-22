@@ -740,6 +740,73 @@ void commitWithCutSync({
   description: description,
 );
 
+/// [edits] committed with their cut moved to end where its row now ends,
+/// as ONE undo step under [description] — where one of them is the row its
+/// cut ends with ([ridesCutLength]) and that row's end moved: the comma's
+/// law ([cutSyncResizeFor]). True when it committed; false when no cut
+/// moves with them, and nothing was committed.
+bool commitKeepingTheCutOnItsRow({
+  required ProjectAccess project,
+  required TimelineController controller,
+  required List<({Layer before, Layer after})> edits,
+  required String description,
+}) {
+  final cut = project.activeCutOrNull;
+  final synced = edits.where((edit) => ridesCutLength(edit.before));
+  if (cut == null || synced.isEmpty) {
+    return false;
+  }
+  final sync = cutSyncSnapshotFor(
+    project: project,
+    cut: cut,
+    row: synced.first.before,
+  );
+  final resize = cutSyncResizeFor(
+    project: project,
+    sync: sync,
+    afterRow: synced.first.after,
+  );
+  if (resize == null) {
+    return false;
+  }
+  commitWithCutSync(
+    controller: controller,
+    edits: edits,
+    sync: sync,
+    resize: resize,
+    description: description,
+  );
+  return true;
+}
+
+/// A splice's rows ([TimelineController.splicedLayers]) committed as ONE
+/// undo step under [description], the cut moved with its row where the
+/// splice moved that row's end ([commitKeepingTheCutOnItsRow]). True when
+/// the cut moved.
+///
+/// 🗣️F-352 (유저 2026-10-12): 「복붙할때 필요한 공간에 맞춰서 엔드라인
+/// 늘리는것도 같이하도록. 같이한다기보다 근본/구조적으로 그렇게 되도록」 —
+/// every splice the session makes commits by this: a paste, a cut, a
+/// duplicate, an unlink. ↩️They wrote the rows alone, and a conte block
+/// pasted from another cut stood past the end line, outside its cut.
+bool commitSpliceKeepingTheCutOnItsRow({
+  required ProjectAccess project,
+  required TimelineController controller,
+  required List<({Layer before, Layer after})> edits,
+  required String description,
+}) {
+  if (commitKeepingTheCutOnItsRow(
+    project: project,
+    controller: controller,
+    edits: edits,
+    description: description,
+  )) {
+    return true;
+  }
+  controller.commitLayerTimelineDrags(edits, description: description);
+  return false;
+}
+
 /// The fewest frames [cut] may keep for its camera's keys
 /// (I-73-camera-row-Q4, [minimumCutDurationForCamera]): a conte edit's end
 /// stops short of them, as a trim's does. Its keys are not the drag's, so

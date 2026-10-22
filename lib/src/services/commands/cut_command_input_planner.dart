@@ -19,6 +19,7 @@ import '../project_repository.dart';
 import 'add_layer_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'folder_mirror.dart';
+import 'link_duplicate_layer_command.dart' show LinkDuplicateUse;
 import 'link_mirror.dart';
 
 class PasteLayerCommandInputPlan {
@@ -196,7 +197,8 @@ class CreateLinkedCutCommandInputPlan {
 }
 
 /// A fresh layer id and a fresh link-group id for each of [sources],
-/// minted against what [project] and [ids] already hold.
+/// minted against what [ids] already holds — one [ids] for every cut a
+/// step mints in, so no two of its copies or groups share an id.
 ///
 /// ⛔THE TWO MAPS MUST BE KEYED BY THE SAME SOURCES. The command reads one
 /// to build the copy and the other to register the link, so a planner that
@@ -205,25 +207,14 @@ class CreateLinkedCutCommandInputPlan {
 /// Both link planners did exactly that walk.
 ({Map<LayerId, LayerId> layerIdMap, Map<LayerId, String> newGroupIdBySource})
 _mintLinkIds(
-  Project project,
   _ProjectIdSnapshot ids,
   Iterable<Layer> sources,
 ) {
-  final usedGroupIds = <String>{
-    for (final group in project.linkRegistry.groups) group.id,
-  };
   final layerIdMap = <LayerId, LayerId>{};
   final newGroupIdBySource = <LayerId, String>{};
   for (final source in sources) {
-    final copyId = LayerId(
-      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
-    );
-    ids.layerIds.add(copyId.value);
-    layerIdMap[source.id] = copyId;
-
-    final groupId = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
-    usedGroupIds.add(groupId);
-    newGroupIdBySource[source.id] = groupId;
+    layerIdMap[source.id] = ids.nextLayerId();
+    newGroupIdBySource[source.id] = ids.nextLinkGroupId();
   }
   return (layerIdMap: layerIdMap, newGroupIdBySource: newGroupIdBySource);
 }
@@ -240,7 +231,7 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
   final ids = _ProjectIdSnapshot.fromProject(project);
   final newCutId = mintCutId();
 
-  final minted = _mintLinkIds(project, ids, [
+  final minted = _mintLinkIds(ids, [
     for (final layer in sourceCut.layers)
       if (layer.kind.linksIntoLinkedCut) layer,
   ]);
@@ -284,10 +275,21 @@ class ConvertToLinkedCutCommandInputPlan {
     required this.unionLayerIdMap,
     required this.newGroupIdBySource,
     required this.coveringFrameIdBySource,
+    this.siblingUnionLayerIdMap = const {},
+    this.siblingCoveringFrameIds = const {},
   });
 
   /// (owning cut, source layer) → new copy id in the OTHER cut.
   final Map<(CutId, LayerId), LayerId> unionLayerIdMap;
+
+  /// (sibling, one-side-only source layer) → its copy's id in that 겸용
+  /// sibling: the origin's siblings take the target-only rows the origin
+  /// takes, the target's the origin-only rows the target takes (F-398).
+  final Map<(CutId, LayerId), LayerId> siblingUnionLayerIdMap;
+
+  /// The fresh panel each sibling copy of a row born with a frame is born
+  /// with, keyed like [siblingUnionLayerIdMap].
+  final Map<(CutId, LayerId), FrameId> siblingCoveringFrameIds;
 
   /// Planned registry group id per newly-linked source layer.
   final Map<LayerId, String> newGroupIdBySource;
@@ -311,59 +313,73 @@ ConvertToLinkedCutCommandInputPlan planConvertToLinkedCutCommandInput({
     targetCut: targetCut,
   );
   final ids = _ProjectIdSnapshot.fromProject(project);
-  final usedGroupIds = <String>{
-    for (final group in project.linkRegistry.groups) group.id,
-  };
-
-  final unionLayerIdMap = <(CutId, LayerId), LayerId>{};
+  final union = _PlannedCopies(ids);
+  final siblingCopies = _PlannedCopies(ids);
   final newGroupIdBySource = <LayerId, String>{};
-  final coveringFrameIdBySource = <(CutId, LayerId), FrameId>{};
 
-  String nextGroupId() {
-    final id = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
-    usedGroupIds.add(id);
-    return id;
+  for (final pair in plan.layerPairs) {
+    newGroupIdBySource[pair.originLayerId] = ids.nextLinkGroupId();
   }
-
-  LayerId nextLayerId() {
-    final id = LayerId(_firstAvailableId(prefix: 'layer', usedIds: ids.layerIds));
-    ids.layerIds.add(id.value);
-    return id;
+  for (final (owner, onlyIds) in [
+    (originCut, plan.originOnlyLayerIds),
+    (targetCut, plan.targetOnlyLayerIds),
+  ]) {
+    for (final layerId in onlyIds) {
+      union.plan(owner, layerId, key: (owner.id, layerId));
+      newGroupIdBySource[layerId] = ids.nextLinkGroupId();
+    }
   }
-
-  void planUnion(Cut owner, LayerId layerId) {
-    unionLayerIdMap[(owner.id, layerId)] = nextLayerId();
-    newGroupIdBySource[layerId] = nextGroupId();
-    if (_bornWithAFreshPanel(
-      owner.layers.firstWhere((layer) => layer.id == layerId),
-    )) {
-      coveringFrameIdBySource[(owner.id, layerId)] = mintFrameId(
-        unionLayerIdMap[(owner.id, layerId)]!,
-      );
+  // 🗣️F-398 (유저 2026-10-18): 「관련 링크안되는것들 다른것도 조사 법 통일」
+  // — a row the origin takes in from the target is an added row there, and
+  // the origin's 겸용 siblings take it too; so do the target's, of the rows
+  // the target takes in (⑤). ↩️Only the two cuts matched.
+  for (final (cut, other, onlyIds) in [
+    (originCut, targetCut, plan.targetOnlyLayerIds),
+    (targetCut, originCut, plan.originOnlyLayerIds),
+  ]) {
+    for (final sibling in linkedCutSiblings(project, cutId: cut.id)) {
+      if (sibling == other.id) {
+        continue;
+      }
+      for (final layerId in onlyIds) {
+        siblingCopies.plan(other, layerId, key: (sibling, layerId));
+      }
     }
   }
 
-  for (final pair in plan.layerPairs) {
-    newGroupIdBySource[pair.originLayerId] = nextGroupId();
-  }
-  for (final originLayerId in plan.originOnlyLayerIds) {
-    planUnion(originCut, originLayerId);
-  }
-  for (final targetLayerId in plan.targetOnlyLayerIds) {
-    planUnion(targetCut, targetLayerId);
-  }
-
   return ConvertToLinkedCutCommandInputPlan(
-    unionLayerIdMap: unionLayerIdMap,
+    unionLayerIdMap: union.ids,
     newGroupIdBySource: newGroupIdBySource,
-    coveringFrameIdBySource: coveringFrameIdBySource,
+    coveringFrameIdBySource: union.panels,
+    siblingUnionLayerIdMap: siblingCopies.ids,
+    siblingCoveringFrameIds: siblingCopies.panels,
   );
+}
+
+/// The copies a 겸용 변경 plans under one kind of key: each copy's id,
+/// minted from the one snapshot every copy of the step mints from, and the
+/// fresh panel a row born with a frame is born with (F-99).
+class _PlannedCopies {
+  _PlannedCopies(this._snapshot);
+
+  final _ProjectIdSnapshot _snapshot;
+  final ids = <(CutId, LayerId), LayerId>{};
+  final panels = <(CutId, LayerId), FrameId>{};
+
+  /// A copy of [owner]'s row [layerId], under [key].
+  void plan(Cut owner, LayerId layerId, {required (CutId, LayerId) key}) {
+    final copyId = ids[key] = _snapshot.nextLayerId();
+    if (_bornWithAFreshPanel(owner.layers.byId(layerId)!)) {
+      panels[key] = mintFrameId(copyId);
+    }
+  }
 }
 
 class LinkDuplicateLayerCommandInputPlan {
   const LinkDuplicateLayerCommandInputPlan({
     required this.layerIdMap,
     required this.newGroupIdBySource,
+    this.siblings = const [],
   });
 
   /// Source member id → its copy's id, over the whole attach group.
@@ -372,23 +388,63 @@ class LinkDuplicateLayerCommandInputPlan {
   /// Planned registry group id per source member (used only for members
   /// that are not in a link group yet).
   final Map<LayerId, String> newGroupIdBySource;
+
+  /// Each 겸용 sibling holding a row of the source: that row's group, its
+  /// copies' ids planned the same way (F-398).
+  final List<LinkDuplicateUse> siblings;
 }
 
 /// Plans a 링크 복제 (L2): one copy id per member of [sourceLayerId]'s
 /// attach group, plus fresh registry group ids. FrameIds are NOT mapped —
 /// keeping them identical IS the link.
+///
+/// 🗣️F-398 (유저 2026-10-18): 「관련 링크안되는것들 다른것도 조사 법 통일」 —
+/// a link paste in a 겸용 cut is an added row there too: each sibling
+/// holding a row of the source copies ITS row's group, planned the same
+/// way. ↩️Only the one cut got the copies.
 LinkDuplicateLayerCommandInputPlan planLinkDuplicateLayerCommandInput({
   required Project project,
   required Cut cut,
   required LayerId sourceLayerId,
 }) {
   final ids = _ProjectIdSnapshot.fromProject(project);
-  final source = cut.layers.firstWhere((layer) => layer.id == sourceLayerId);
-  final members = attachedGroupSlice(attachBaseIdOf(source), cut.layers);
-
-  final minted = _mintLinkIds(project, ids, members);
-
+  final own = _linkDuplicateShare(ids, cut, sourceLayerId);
   return LinkDuplicateLayerCommandInputPlan(
+    layerIdMap: own.layerIdMap,
+    newGroupIdBySource: own.newGroupIdBySource,
+    siblings: [
+      for (final sibling in linkedCutSiblings(project, cutId: cut.id))
+        if (linkCounterpartIn(
+              project,
+              cutId: cut.id,
+              layerId: sourceLayerId,
+              targetCutId: sibling,
+            )
+            case final there?)
+          _linkDuplicateShare(
+            ids,
+            requireCut(project, sibling),
+            there,
+          ),
+    ],
+  );
+}
+
+/// [cut]'s share of a 링크 복제 of its row [sourceLayerId]: that row's
+/// attach group, each member given a copy id and a group id from [ids].
+LinkDuplicateUse _linkDuplicateShare(
+  _ProjectIdSnapshot ids,
+  Cut cut,
+  LayerId sourceLayerId,
+) {
+  final source = cut.layers.firstWhere((layer) => layer.id == sourceLayerId);
+  final minted = _mintLinkIds(
+    ids,
+    attachedGroupSlice(attachBaseIdOf(source), cut.layers),
+  );
+  return (
+    cutId: cut.id,
+    sourceLayerId: sourceLayerId,
     layerIdMap: minted.layerIdMap,
     newGroupIdBySource: minted.newGroupIdBySource,
   );
@@ -483,73 +539,135 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
   required Project project,
   required CutId cutId,
   required Layer layer,
+}) => planAddLayersCommandInput(
+  project: project,
+  cutId: cutId,
+  layers: [layer],
+).single;
+
+/// [layers] added to [cutId] in ONE step, each planned as
+/// [planAddLayerCommandInput] plans a row — the plans in [layers]' order.
+///
+/// 🗣️F-398 (유저 2026-10-18): 「배치 통해 만들어진 레이어(이미지,애니메이션?)가
+/// 겸용컷에서 링크가 안됨. 관련 링크안되는것들 다른것도 조사 법 통일」 — an
+/// import put its rows in the one cut. An import lands a BATCH, and a PSD's
+/// folder rows come with the rows they hold: an anchor can be a row of the
+/// batch, whose copy in a sibling is that row's own copy there — and a copy
+/// whose anchor is dropped is dropped with it.
+///
+/// ⚠️The rows' own ids are taken before any copy's: a pasted row's is the
+/// project's first free `layer-N`, the very id the first copy would get.
+List<AddLayerCommandInputPlan> planAddLayersCommandInput({
+  required Project project,
+  required CutId cutId,
+  required List<Layer> layers,
 }) {
-  if (!layer.kind.linksIntoLinkedCut) {
-    return AddLayerCommandInputPlan.none;
-  }
   final siblings = linkedCutSiblings(project, cutId: cutId);
   if (siblings.isEmpty) {
-    return AddLayerCommandInputPlan.none;
+    return List.filled(layers.length, AddLayerCommandInputPlan.none);
   }
-  final ids = _ProjectIdSnapshot.fromProject(project);
-
-  LayerId? counterpart(LayerId anchor, CutId sibling) => linkCounterpartIn(
+  final batch = {for (final layer in layers) layer.id};
+  LayerId? outside(LayerId anchor, CutId sibling) => linkCounterpartIn(
     project,
     cutId: cutId,
     layerId: anchor,
     targetCutId: sibling,
   );
+  final copied = _copiesAnchored(project, layers, siblings, outside);
 
-  final mirrors = <AddLayerMirror>[];
-  for (final sibling in siblings) {
-    // The ONE row of its kind, that is — a row riding another is not it
-    // ([holdsSingletonOfKind]), so the conte row's attach rows mirror like
-    // any drawing row's.
-    if (layer.kind.isSingletonPerCut &&
-        !isAttachedLayer(layer) &&
-        holdsSingletonOfKind(
-          requireCut(project, sibling).layers,
-          layer.kind,
-        )) {
-      continue;
-    }
-    final folder = layer.folderId;
-    final base = layer.attachedToLayerId;
-    final mirroredFolder = folder == null ? null : counterpart(folder, sibling);
-    final mirroredBase = base == null ? null : counterpart(base, sibling);
-    if ((folder != null && mirroredFolder == null) ||
-        (base != null && mirroredBase == null)) {
-      continue;
-    }
-    final mirrorId = ids.nextLayerId();
-    mirrors.add(
-      AddLayerMirror(
-        cutId: sibling,
-        layerId: mirrorId,
-        folderId: mirroredFolder,
-        attachedToLayerId: mirroredBase,
-        coveringFrameId: _bornWithAFreshPanel(layer)
-            ? mintFrameId(mirrorId)
-            : null,
-      ),
-    );
-  }
-  if (mirrors.isEmpty) {
-    return AddLayerCommandInputPlan.none;
+  final ids = _ProjectIdSnapshot.fromProject(project)
+    ..layerIds.addAll([for (final id in batch) id.value]);
+  final copyIds = {for (final copy in copied) copy: ids.nextLayerId()};
+  LayerId? copyOf(LayerId? anchor, CutId sibling) => anchor == null
+      ? null
+      : batch.contains(anchor)
+      ? copyIds[(anchor, sibling)]
+      : outside(anchor, sibling);
+  AddLayerCommandInputPlan planOf(Layer layer) {
+    final mirrors = [
+      for (final sibling in siblings)
+        if (copyIds[(layer.id, sibling)] case final copyId?)
+          AddLayerMirror(
+            cutId: sibling,
+            layerId: copyId,
+            folderId: copyOf(layer.folderId, sibling),
+            attachedToLayerId: copyOf(layer.attachedToLayerId, sibling),
+            coveringFrameId: _bornWithAFreshPanel(layer)
+                ? mintFrameId(copyId)
+                : null,
+          ),
+    ];
+    return mirrors.isEmpty
+        ? AddLayerCommandInputPlan.none
+        : AddLayerCommandInputPlan(
+            mirrors: mirrors,
+            linkGroupId: ids.nextLinkGroupId(),
+          );
   }
 
-  return AddLayerCommandInputPlan(
-    mirrors: mirrors,
-    linkGroupId: ids.nextLinkGroupId(),
-  );
+  return [for (final layer in layers) planOf(layer)];
 }
+
+/// The copies [layers] take in [siblings]: each row of a kind that links
+/// into a 겸용 cut, in each sibling that keeps no singleton of its own —
+/// less every copy whose folder or attach base reaches no row there. An
+/// anchor in the batch reaches through its own copy, so a copy dropped
+/// drops the ones that hang on it; one outside reaches through [outside].
+Set<(LayerId, CutId)> _copiesAnchored(
+  Project project,
+  List<Layer> layers,
+  List<CutId> siblings,
+  LayerId? Function(LayerId anchor, CutId sibling) outside,
+) {
+  final batch = {for (final layer in layers) layer.id};
+  final copied = <(LayerId, CutId)>{
+    for (final layer in layers)
+      if (layer.kind.linksIntoLinkedCut)
+        for (final sibling in siblings)
+          if (!_keepsItsOwnSingleton(project, sibling, layer))
+            (layer.id, sibling),
+  };
+  bool reaches(LayerId? anchor, CutId sibling) =>
+      anchor == null ||
+      (batch.contains(anchor)
+          ? copied.contains((anchor, sibling))
+          : outside(anchor, sibling) != null);
+  for (var dropped = true; dropped;) {
+    dropped = false;
+    for (final layer in layers) {
+      for (final sibling in siblings) {
+        final anchored =
+            reaches(layer.folderId, sibling) &&
+            reaches(layer.attachedToLayerId, sibling);
+        if (!anchored && copied.remove((layer.id, sibling))) {
+          dropped = true;
+        }
+      }
+    }
+  }
+  return copied;
+}
+
+/// Whether [sibling] keeps its own row of [layer]'s SINGLETON kind, and so
+/// takes no copy — the ONE row of its kind, that is: a row riding another
+/// is not it ([holdsSingletonOfKind]), so the conte row's attach rows
+/// mirror like any drawing row's.
+bool _keepsItsOwnSingleton(Project project, CutId sibling, Layer layer) =>
+    layer.kind.isSingletonPerCut &&
+    !isAttachedLayer(layer) &&
+    holdsSingletonOfKind(requireCut(project, sibling).layers, layer.kind);
 
 /// [layer] added to [cutId] at [insertionIndex], and to the 겸용 siblings
 /// [planAddLayerCommandInput] plans against the project as it stands.
 ///
 /// ONE recipe for every way a row is added to a cut: the layer panel's Add
-/// Layer, on the cut the canvas stands on, and the conte row a picture's
-/// first stroke makes, on the picture's cut.
+/// Layer, on the cut the canvas stands on, the conte row a picture's first
+/// stroke makes, on the picture's cut, and a pasted or duplicated row. An
+/// import's rows take the same plans, a batch at a time
+/// ([planAddLayersCommandInput], `ImportMediaCommand`).
+///
+/// ↩️A pasted row went into its one cut (`PasteLayerCommand`), and so did
+/// an import's — no copy in a 겸용 sibling (F-398).
 ///
 /// ↩️A row added to a track's conte was planted in every other cut's here,
 /// wearing the head of its seat, and a conte born into the track was born

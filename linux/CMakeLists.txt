@@ -53,6 +53,9 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # System-level dependencies.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
+# The launch splash loads the app's face for its stage line
+# (runner/launch_splash.cc).
+pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
 
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
@@ -96,6 +99,12 @@ install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
+
+# The app icon and the launch splash (runner/launch_splash.cc), drawn by
+# tool/app_art.
+install(FILES "runner/resources/app_icon.png"
+  "runner/resources/launch_splash.png"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)

@@ -58,12 +58,7 @@ class _LevelBlocks {
         coord: coord,
       );
       if (seeded != null) {
-        _pass._canvas.drawImageRect(
-          seeded.image,
-          seeded.src,
-          seeded.dst,
-          _pass._tileImagePaint,
-        );
+        _drawSeeded(seeded);
         continue;
       }
       final levelTile = TilePyramid.instance.imageFor(
@@ -81,6 +76,19 @@ class _LevelBlocks {
       _pass._canvas.scale(span.toDouble());
       _pass._drawImageAtTile(levelTile, coord);
       _pass._canvas.restore();
+    }
+  }
+
+  /// A block drawn from the image its row was drawn with — or the pieces
+  /// of it the block lies on, a picture past the side ([TilePyramid.seed]).
+  void _drawSeeded(List<({ui.Image image, ui.Rect src, ui.Rect dst})> parts) {
+    for (final part in parts) {
+      _pass._canvas.drawImageRect(
+        part.image,
+        part.src,
+        part.dst,
+        _pass._tileImagePaint,
+      );
     }
   }
 }

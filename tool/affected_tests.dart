@@ -12,48 +12,82 @@
 // everything: the whole point of a safety net is that it does not share the
 // assumptions of the thing it is catching. What this buys is the edit-run
 // loop, where waiting 29 minutes to learn about a typo is the tax.
+// ↩️The one thing CI does take from it is HOW a list of files is run
+// (`--files-from`, [filesListed]) — never WHICH: that list comes from
+// elsewhere, so no assumption of the graph's rides along with it.
 //
 // Where it refuses to guess, it runs everything. That is the only safe
 // direction for a tool like this to be wrong in.
 //
+// 🗣️유저 2026-10-20 (tests-crowd-the-machine-Q8 「나눈다」): before a lane
+// lands it runs the tests NEAR its change — no more than [kNearImports]
+// imports away, what reads the changed paths as text, and every suite only
+// for the test config file itself (Q11 「설정 파일 자신만」). Every landing
+// since the last check is then run WIDE together, once, by `master_check`,
+// which walks a red back to the landing that made it; a red it put on a
+// landing this checkout carries holds no verdict back here.
+//
 // Usage:
-//   dart run tool/affected_tests.dart            # run them
-//   dart run tool/affected_tests.dart --list     # print them, run nothing
-//   dart run tool/affected_tests.dart --all      # the escape hatch
-//   dart run tool/affected_tests.dart --base HEAD~3
-//   dart run tool/affected_tests.dart --concurrency 4   # a machine in use
+//   bash tool/run.sh affected_tests            # the tests near the change
+//   bash tool/run.sh affected_tests --wide     # every test that reaches it
+//   bash tool/run.sh affected_tests --list     # print them, run nothing
+//   bash tool/run.sh affected_tests --all      # the escape hatch
+//   bash tool/run.sh affected_tests --base HEAD~3     # master when not given
+//   bash tool/run.sh affected_tests test/x_test.dart  # and these files too
+//   bash tool/run.sh affected_tests --concurrency 4   # fewer than its turn gives
+//   bash tool/run.sh affected_tests --no-cache        # run the record's greens too
+//   bash tool/run.sh affected_tests --reds-to <file>  # write the reds there
+//   bash tool/run.sh affected_tests --first-in-line   # the wide check's own
+//   bash tool/run.sh affected_tests --files-from parity.txt  # a given list
+//   bash tool/run.sh affected_tests --files-from parity.txt --outside-the-line
+//
+// A file green on this machine with byte-for-byte the inputs it has now is
+// not run again, and a red file is run once more: green the second time,
+// it is flaky — quarantined until it changes, and on the board
+// (`test_results.dart`, 유저 tests-crowd-the-machine-Q4).
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'import_graph.dart';
+import 'master_check.dart';
 import 'native_engine_provenance.dart';
+import 'test_queue.dart';
+import 'test_results.dart';
+import 'test_seconds.dart';
 
-/// Changing one of these means the graph cannot answer, so we do not ask it.
+/// Changing one of these means the graph cannot answer, so we do not ask it:
+/// what every suite reads without naming it — the green record's own list
+/// ([kEveryTestReads], [kEveryTestReadsUnder]) — and the analysis options.
 ///
 /// Dependencies and toolchain change what every file compiles to; the native
-/// sources sit behind FFI where no import edge reaches them; the platform
-/// directories decide what the app links against; and
-/// `test/flutter_test_config.dart` is loaded by flutter_test before every
-/// suite in the tree while nothing imports it — an edge the graph cannot
-/// see because it does not exist in the source.
+/// sources (`packages/`) sit behind FFI where no import edge reaches them,
+/// and the assets and shaders the pubspec bundles reach every suite the same
+/// way; and `test/flutter_test_config.dart` is loaded by flutter_test before
+/// every suite in the tree while nothing imports it — an edge the graph
+/// cannot see because it does not exist in the source. ↩️Until 10-20 this
+/// was a list of its own that left `assets/` and `shaders/` out, while the
+/// green record already ran every suite again for them.
+///
+/// ↩️THE PLATFORM FOLDERS ARE NO LONGER HERE (유저 10-20,
+/// tests-crowd-the-machine-Q6 「전부」). `android/ ios/ linux/ macos/
+/// windows/` stood in this list from 08-13 because 「they decide what the
+/// app links against」 — the app's, never a suite's: `flutter test` runs
+/// `flutter_tester`, which loads none of them, and the engine the suites
+/// load is the one [_engineCaveat] names. 🧪That day a lane that touched
+/// only `windows/runner/` ran all 2,561 files — eighty minutes of five
+/// suites, with eleven runs waiting behind it. A suite that reads a
+/// platform file as text is still chosen, by [selectTests], like any scan.
 const _runEverything = <String>[
-  'pubspec.yaml',
-  'pubspec.lock',
+  ...kEveryTestReads,
+  ...kEveryTestReadsUnder,
   'analysis_options.yaml',
-  'dart_test.yaml',
-  'packages/',
-  'android/',
-  'ios/',
-  'linux/',
-  'macos/',
-  'windows/',
-  'test/flutter_test_config.dart',
 ];
 
-/// The tag [gcTagMarker] writes, as `--exclude-tags` names it.
+/// The tag [gcTagMarker] writes, as `dart_test.yaml` declares it.
 const gcTag = 'gc';
 
 /// The marker a file writes to say 「my assertion waits for the garbage
@@ -82,9 +116,7 @@ const gcTagMarker = "@Tags(['$gcTag'])";
 ///
 /// ⚠️It is a whole-FILE question because the tag is a library annotation,
 /// so partitioning by file is exact — no `--exclude-tags` pass that could
-/// come back 「no tests match」 and read as a failure to start. (The whole
-/// suite is the one run that does exclude it, and [runPlan] says why that
-/// one cannot come back empty.)
+/// come back 「no tests match」 and read as a failure to start.
 ({List<String> crowd, List<String> alone}) partitionByGcTag(
   List<String> files,
   String Function(String path) read,
@@ -97,87 +129,171 @@ const gcTagMarker = "@Tags(['$gcTag'])";
   return (crowd: crowd, alone: alone);
 }
 
-/// The `flutter test` argument lists one run is made of: the [crowd], in as
-/// many commands as the command line allows, then the pins that wait for
-/// the collector, [alone] and last.
+/// How many imports from a test a change may stand and still choose it
+/// before a lane lands — the near run. 🗣️유저 2026-10-20,
+/// tests-crowd-the-machine-Q8 「나눈다」: 「처음엔 두 단계 안 — 착지 뒤
+/// 검사에서 놓친 빨강의 거리를 기록해 조정」. The wide run after landing
+/// (`master_check`) asks every import and keeps how far each red it finds
+/// stood (`near_misses.tsv`): this number is set by that record.
+/// ↩️Two until 10-21 — 🗣️tests-crowd-the-machine-Q12 「1단계 — 바뀐 파일을
+/// 직접 import 하는 테스트까지」, before that record had any: the 21 lanes
+/// standing in the line that night chose 400 to 1,600 files each at two
+/// steps, 6,126 machine-minutes together (ten hours of ten suites), and
+/// 1,922 at one; the timeline's code is imported widely enough that a
+/// second step reaches a thousand tests, the same thousand for every lane.
+const kNearImports = 1;
+
+/// How many imports from [kTestConfig] a change may stand and still be
+/// every suite's in the near run: none — the config file alone, which
+/// [forcesFullRun] already runs everything for. 🗣️유저 2026-10-20,
+/// tests-crowd-the-machine-Q11 「설정 파일 자신만」. The config imports
+/// `app_strings.dart` one step away, so a string changed made every suite
+/// run at two steps: 🧪over that day's 120 landings two steps saved 20% of
+/// the wide run's machine-hours, the config alone 32%. What the config
+/// reaches is still every suite's in the wide run (`master_check`).
+const kNearConfigImports = 0;
+
+/// The files a list run names (`--files-from <file>`: one path a line, from
+/// the repository root, as `tool/native_parity_tests.sh` prints them) — or
+/// why there is nothing to run.
 ///
-/// [selected] empty means THE WHOLE SUITE, and [suite] is then every test
-/// file there is. Its crowd stays ONE command that names no files — a whole
-/// suite of paths is far past what [batches] splits against — and leaves
-/// the tag out instead, which cannot come back 「no tests match」 with
-/// thousands of others in it.
+/// 🚨THE PARITY RUNS GO IN BATCHES TOO ([runInBatches]; parity-runs-crowd-
+/// the-collector-pins, 2026-10-17). Four places run the native parity list — `lane.sh
+/// native` and the TestFlight, Mac and Linux builds — and each ran it as ONE
+/// `xargs flutter test`, its collector pins in the very crowd the plan keeps
+/// them out of: `tile_images_are_counted` lost its 64 bytes inside a parity
+/// batch (2026-09-11). They hand the list here instead, so how a list is
+/// run is written once.
 ///
-/// 🚨**THE WHOLE SUITE USED TO SKIP THE SPLIT.** An empty selection names
-/// no files to partition, so it stayed one command with every file in it,
-/// the pins included — and every run a blanket file forces (the test
-/// config, `windows/`, the pubspec) and `--all` ran them in the crowd
-/// [partitionByGcTag] exists to keep them out of. The parked-transform pin
-/// went red that way in a whole-suite gate (2026-09-23, 「16 tiles, 16
-/// still alive」, green in its own batch) — that file's third time.
-({List<List<String>> crowd, List<String> alone}) runPlan({
-  required List<String> selected,
-  required List<String> suite,
-  required String Function(String path) read,
-  required List<List<String>> Function(List<String> files) batches,
+/// ⛔A list naming nothing is REFUSED, never run: to `flutter test` an empty
+/// selection is the whole suite, and a list that came back empty would turn
+/// a parity check into all of it. A path that is not there is refused too —
+/// `flutter test` would stop on it after the crowd had run.
+({List<String> files, String? refusal}) filesListed(
+  String? text, {
+  required bool Function(String path) exists,
 }) {
-  if (selected.isEmpty) {
-    final alone = partitionByGcTag(suite, read).alone;
-    final crowd = alone.isEmpty
-        ? const <String>[]
-        : const ['--exclude-tags', gcTag];
-    return (crowd: [crowd], alone: alone);
+  if (text == null) {
+    return (files: const <String>[], refusal: 'the list is not there');
   }
-  final split = partitionByGcTag(selected, read);
-  // ⛔An empty command IS the whole suite, so a selection of nothing but
-  // pins has no crowd at all — [batches] off Windows hands an empty list
-  // back as one empty batch.
-  return (
-    crowd: split.crowd.isEmpty ? const <List<String>>[] : batches(split.crowd),
-    alone: split.alone,
-  );
+  final files = [
+    for (final line in text.split('\n'))
+      if (line.trim().isNotEmpty) line.trim(),
+  ];
+  if (files.isEmpty) {
+    return (
+      files: const <String>[],
+      refusal: 'the list names no file, and an empty run is the whole suite',
+    );
+  }
+  final missing = [
+    for (final file in files)
+      if (!exists(file)) file,
+  ];
+  if (missing.isNotEmpty) {
+    return (
+      files: const <String>[],
+      refusal: 'the list names ${missing.length} file(s) that are not there '
+          '— ${missing.first}',
+    );
+  }
+  return (files: files, refusal: null);
+}
+
+/// Whether a run asked with [args] takes its turn in the machine's line
+/// (`test_queue.dart`) — or why it was asked wrongly.
+///
+/// 🗣️A LAND'S GATES TAKE NO PLACE IN IT. `tool/lane.sh` runs the native
+/// parity list among the gates a landing stands behind, beside its analyze
+/// and architecture tests, and those run at once, never in the line (유저
+/// 10-08, a-sent-lane-is-gated-once-Q1 「착지 게이트는 이 넷에 세지 않는다」;
+/// 10-18, tests-crowd-the-machine-Q2). A land waiting in the line would hold
+/// the land's turn all the while, and every other lane's land behind it. So
+/// the gates say `--outside-the-line` — ⛔for a list run only: any other run
+/// is a session's, and stands in the line.
+///
+/// A run that says `--first-in-line` stands at its head — the build's wide
+/// check, which `master_check` asks for (유저 10-22, tests-crowd-the-machine-
+/// Q18; `waitingInTurn` has why).
+({bool inTheLine, bool first, String? refusal}) lineFor(List<String> args) {
+  final first = args.contains('--first-in-line');
+  if (!args.contains('--outside-the-line')) {
+    return (inTheLine: true, first: first, refusal: null);
+  }
+  if (!args.contains('--files-from')) {
+    return (
+      inTheLine: true,
+      first: first,
+      refusal: "--outside-the-line is a land's gates' own, for a "
+          '--files-from list',
+    );
+  }
+  return (inTheLine: false, first: first, refusal: null);
 }
 
 /// What a change to [changed] — every changed file, Dart or not — can have
-/// broken, out of [tests].
+/// broken, out of [tests]: what reaches a changed file ([Reaches]) — by its
+/// imports, however far away or no more than [within] of them, or by a path
+/// it or anything it imports reads as text ([pathsReadAsText] has the
+/// rounds those reads were missing from) — the green record's own question.
+///
+/// 🚨flutter_test loads [kTestConfig] before every suite, and all it
+/// reaches with it — however far away or no more than [configWithin] of its
+/// imports — so a change the config reaches is every suite's. Until 10-20
+/// the selection asked each test alone: a change to the session sandbox the
+/// config sets up chose only the few tests that import it — 15% of that
+/// month's lib changes touched what the config reaches.
 Set<String> selectTests({
   required Set<String> changed,
   required List<String> tests,
   required Map<String, Set<String>> imports,
   required String Function(String path) read,
-}) => {
-  // A changed test runs because it changed, whatever it imports.
-  ...changed.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
-  // Everything that can reach a changed file, however far away.
-  for (final test in tests)
-    if (closureOf(test, imports).any(changed.contains)) test,
-  // And every test that reads, as text, where a changed file lives — the one
-  // dependency no edge carries.
-  ...scansReaching(changed, tests, read),
-};
-
-/// The [tests] that read, as text, a path holding one of the [changed]
-/// files — the source scans and file reads no import edge reaches. See
-/// [pathsReadAsText] for the rounds they were missing from.
-List<String> scansReaching(
-  Set<String> changed,
-  Iterable<String> tests,
-  String Function(String path) read,
-) => [
-  for (final test in tests)
-    if (pathsReadAsText(read(test)).any(
-      (prefix) => changed.any((file) => file.startsWith(prefix)),
-    ))
-      test,
-];
+  int? within,
+  int? configWithin,
+}) {
+  final reaches = Reaches(imports, read, within: within);
+  final everySuite = reachesAny(
+    Reaches(imports, read, within: configWithin).of(kTestConfig),
+    changed,
+  );
+  return {
+    // A changed test runs because it changed, whatever it imports.
+    ...changed.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
+    for (final test in tests)
+      if (everySuite || reachesAny(reaches.of(test), changed)) test,
+  };
+}
 
 Future<void> main(List<String> args) async {
   final listOnly = args.contains('--list');
   final runAll = args.contains('--all');
-  final base = _flagValue(args, '--base') ?? 'origin/master';
+  final wide = args.contains('--wide');
+  final within = wide ? null : kNearImports;
+  final configWithin = wide ? null : kNearConfigImports;
+  // ↩️`origin/master` until 10-20. Since PRs go up in bundles (08-31) the
+  // local master runs days ahead of origin — 454 commits that day — and a
+  // run given no base ran every landing since the last PR as its own. A
+  // lane's change is what it holds over master (🗣️Q8 「착지 전엔 가까운
+  // 테스트」); what landed is the wide check's (`master_check`).
+  final base = _flagValue(args, '--base') ?? 'master';
+  final named = [
+    for (final arg in args)
+      if (arg.endsWith('_test.dart')) arg.replaceAll('\\', '/'),
+  ];
+  final redsTo = _flagValue(args, '--reds-to');
+  final listed = _flagValue(args, '--files-from');
+  // Where the caller stands, before the run moves to the repository root.
+  final list = listed == null ? null : File(listed).absolute;
   final asked = _flagValue(args, '--concurrency');
   final concurrency = asked == null ? null : int.tryParse(asked);
   if (asked != null && (concurrency == null || concurrency < 1)) {
     stderr.writeln('--concurrency takes a whole number of suites, 1 or more.');
+    exit(2);
+  }
+  final useCache = !args.contains('--no-cache');
+  final turn = lineFor(args);
+  if (turn.refusal != null) {
+    stderr.writeln('${turn.refusal}.');
     exit(2);
   }
   _atIdle();
@@ -189,57 +305,187 @@ Future<void> main(List<String> args) async {
   }
   Directory.current = root;
 
+  Future<Never> run(
+    List<String> files, [
+    Map<String, Set<String>>? imports,
+  ]) async => exit(
+    await _runTests(
+      files,
+      listOnly: listOnly,
+      concurrency: concurrency,
+      cache: _openCache(imports),
+      useCache: useCache,
+      redsTo: redsTo,
+      inTheLine: turn.inTheLine,
+      firstInLine: turn.first,
+    ),
+  );
+
+  if (list != null) {
+    final given = filesListed(
+      list.existsSync() ? list.readAsStringSync() : null,
+      exists: (path) => File(path).existsSync(),
+    );
+    final refusal = given.refusal;
+    if (refusal != null) {
+      stderr.writeln('--files-from $listed: $refusal.');
+      exit(2);
+    }
+    _report('${given.files.length} file(s) from $listed.');
+    await run(given.files);
+  }
+
   if (runAll) {
     _report('--all: running the whole suite.');
-    exit(
-      await _runTests(
-        const [],
-        listOnly: listOnly,
-        concurrency: concurrency,
-      ),
-    );
+    await run(_wholeSuite());
   }
 
   final changed = _changedFiles(base);
-  if (changed.isEmpty) {
+  if (changed.isEmpty && named.isEmpty) {
     _report('nothing has changed against $base — nothing to run.');
+    _sayReds(redsTo, const []);
     exit(0);
   }
 
-  final blanket = changed.where(_forcesFullRun).toList()..sort();
+  final blanket = changed
+      .where((path) => forcesFullRun(path, near: !wide))
+      .toList()
+    ..sort();
   if (blanket.isNotEmpty) {
     _report('running everything: ${blanket.first} changed'
         '${blanket.length > 1 ? ' (and ${blanket.length - 1} more like it)' : ''}.');
-    exit(
-      await _runTests(
-        const [],
-        listOnly: listOnly,
-        concurrency: concurrency,
-      ),
-    );
+    await run(_wholeSuite());
+  }
+  final engine = changed.where(changesTheEngine).toList()..sort();
+  final parity = wide || engine.isEmpty ? const <String>[] : parityTests();
+  if (parity == null) {
+    _report('running everything: ${engine.first} changed and '
+        'tool/native_parity_tests.sh chose no test that exercises the '
+        'engine.');
+    await run(_wholeSuite());
   }
 
-  final imports = buildImportGraph();
+  final imports = buildImportGraph(roots: kGraphRoots);
   final tests = _suitesIn(imports);
 
-  final selected = selectTests(
-    changed: changed,
-    tests: tests,
-    imports: imports,
-    read: (path) => File(path).readAsStringSync(),
-  );
+  final selected = {
+    ...selectTests(
+      changed: changed,
+      tests: tests,
+      imports: imports,
+      read: (path) => File(path).readAsStringSync(),
+      within: within,
+      configWithin: configWithin,
+    ),
+    ...parity,
+    ...named,
+  };
+  if (parity.isNotEmpty) {
+    _report('${engine.first} is the engine\'s C — near, that is the '
+        '${parity.length} test(s) that exercise the engine '
+        '(tool/native_parity_tests.sh); every suite runs against it in the '
+        'wide check after landing.');
+  }
 
   final present = selected.where((f) => File(f).existsSync()).toList()..sort();
   if (present.isEmpty) {
     _report('no test reaches the ${changed.length} changed file(s).');
+    _sayReds(redsTo, const []);
     exit(0);
   }
 
   _report('${present.length} of ${tests.length} test files reach the '
-      '${changed.length} changed file(s).');
-  exit(
-    await _runTests(present, listOnly: listOnly, concurrency: concurrency),
+      '${changed.length} changed file(s)'
+      '${within == null ? '' : ' within $within import(s) — --wide asks every one'}'
+      '${named.isEmpty ? '' : ', with the ${named.length} named'}.');
+  final known = _knownTimes();
+  _report('longest first, by this machine\'s times '
+      '(${present.where(known.containsKey).length} of ${present.length} '
+      'files timed before).');
+  await run(longestFirst(present, known), imports);
+}
+
+/// What `master_check` reads a run by: the files red in [batches] but those
+/// [setAside] — flaky in this run, or quarantined — or null when a batch
+/// that went [red] did not say what each of its files did.
+List<String>? redsOf(
+  Map<int, List<SuiteRun>> batches,
+  Iterable<int> red,
+  bool Function(String file) setAside,
+) {
+  final told = red.every((i) {
+    final runs = batches[i] ?? const <SuiteRun>[];
+    return runs.isNotEmpty && runs.every((run) => run.green != null);
+  });
+  if (!told) return null;
+  return [
+    for (final runs in batches.values)
+      for (final run in runs)
+        if (run.green == false && !setAside(run.path)) run.path,
+  ]..sort();
+}
+
+/// Writes [reds] to the file [to] names, one a line — what `master_check`
+/// reads a run's verdict from — or nothing when none is named.
+void _sayReds(String? to, Iterable<String> reds) {
+  if (to == null) return;
+  File(to).writeAsStringSync([for (final red in reds) '$red\n'].join());
+}
+
+/// This machine's result records for this checkout ([ResultCache]), keyed
+/// through [imports] — the whole graph from [kGraphRoots] when not given.
+ResultCache? _openCache([Map<String, Set<String>>? imports]) {
+  final cache = ResultCache.open(
+    Directory.current.path,
+    Platform.environment,
+    imports ?? buildImportGraph(roots: kGraphRoots),
   );
+  if (cache == null) {
+    _report('no result record this time — the machine folder, git, Flutter '
+        "or the engine's stamp could not be read — so every file runs.");
+  }
+  return cache;
+}
+
+/// The file [machineCacheFolder] keeps the times in.
+File? _timesFile() {
+  final folder = machineCacheFolder(Platform.environment);
+  return folder == null ? null : File('$folder/test_times.tsv');
+}
+
+Map<String, int> _knownTimes() {
+  try {
+    final file = _timesFile();
+    return file != null && file.existsSync()
+        ? readTimes(file.readAsStringSync())
+        : const {};
+  } on FileSystemException {
+    return const {};
+  }
+}
+
+/// What a batch's [report] says of each file ([suiteRuns]), with its times
+/// and greens laid over the machine's records ([updatePairs]).
+List<SuiteRun> _recordBatch(File report, ResultCache? cache) {
+  if (!report.existsSync()) return const [];
+  final List<SuiteRun> runs;
+  try {
+    runs = suiteRuns(report.readAsStringSync(), root: Directory.current.path);
+  } on FileSystemException catch (e) {
+    _report('the report of this batch could not be read: ${e.message}');
+    return const [];
+  }
+  final file = _timesFile();
+  final measured = timesOf(runs);
+  try {
+    if (file != null && measured.isNotEmpty) {
+      updatePairs(file, (known) => merged(timesIn(known), measured));
+    }
+    cache?.keep(runs);
+  } on FileSystemException catch (e) {
+    _report('what this batch said was not kept: ${e.message}');
+  }
+  return runs;
 }
 
 String? _flagValue(List<String> args, String name) {
@@ -282,6 +528,13 @@ Directory? _repoRoot() {
 
 /// Committed changes against the merge base, plus whatever is still in the
 /// working tree — the edit-run loop is mostly the latter.
+/// Whether this checkout holds the commit [sha] — a landing that
+/// `master_check` named.
+bool _carries(String sha) =>
+    Process.runSync('git', ['merge-base', '--is-ancestor', sha, 'HEAD'])
+        .exitCode ==
+    0;
+
 Set<String> _changedFiles(String base) {
   final merged = <String>{};
   final mergeBase =
@@ -304,9 +557,45 @@ List<String> _gitLines(List<String> args) {
       .toList();
 }
 
-bool _forcesFullRun(String path) => _runEverything.any(
-      (prefix) => prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
+/// Whether a change to [path] is one the graph cannot answer
+/// ([_runEverything]), so the whole suite runs — but in a [near] run, never
+/// for the engine's own sources ([changesTheEngine]).
+///
+/// 🗣️유저 2026-10-21, tests-crowd-the-machine-Q14 「C 레인도 착지 전엔
+/// 가까운 것만」: a lane that changed the C ran all 2,500 files before it
+/// landed — two such lanes were 1,256 of the line's 4,000 waiting
+/// machine-minutes that evening. Narrowing by the graph buys nothing (2,041
+/// of 2,625 suites reach `lib/src/native/`), so a near run takes the tests
+/// that exercise the engine instead ([parityTests]) — the list the land's
+/// gate runs with the C tests — and the wide check after landing
+/// (`master_check`) runs every suite against that C, as it does for Dart.
+bool forcesFullRun(String path, {bool near = false}) =>
+    !(near && changesTheEngine(path)) &&
+    _runEverything.any(
+      (prefix) =>
+          prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
     );
+
+/// Whether [path] is one of the engine's sources — the C behind FFI that no
+/// import edge reaches.
+bool changesTheEngine(String path) => path.startsWith(kEngineSources);
+
+/// Where the engine's sources live.
+const kEngineSources = 'packages/';
+
+/// The tests that exercise the engine: `tool/native_parity_tests.sh`'s
+/// answer, asked rather than copied (the one answer — its header), or null
+/// when it gives none.
+List<String>? parityTests() {
+  final result = Process.runSync('bash', ['tool/native_parity_tests.sh']);
+  if (result.exitCode != 0) return null;
+  final files = const LineSplitter()
+      .convert(result.stdout as String)
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toList();
+  return files.isEmpty ? null : files;
+}
 
 /// The files `flutter test` runs as suites, out of [graph].
 ///
@@ -320,9 +609,8 @@ List<String> _suitesIn(Map<String, Set<String>> graph) => graph.keys
     .toList()
   ..sort();
 
-/// Every suite there is — what a whole-suite run has to find its collector
-/// pins among ([runPlan]).
-List<String> _suiteFiles() =>
+/// Every suite there is, named — what `--all` and a blanket file run.
+List<String> _wholeSuite() =>
     _suitesIn(buildImportGraph(roots: const ['test']));
 
 
@@ -340,26 +628,76 @@ List<String> _suiteFiles() =>
 /// megabytes and one batch is always enough.
 const _argBudget = 6000;
 
-/// Split so no invocation exceeds the budget. A file that is somehow longer
-/// than the whole budget still goes out alone rather than being dropped —
-/// failing loudly beats running less than we said we would.
-List<List<String>> _batches(List<String> files) {
-  if (!Platform.isWindows) return [files];
-  final out = <List<String>>[];
-  var current = <String>[];
-  var length = 0;
-  for (final file in files) {
-    final cost = file.length + 1;
-    if (current.isNotEmpty && length + cost > _argBudget) {
-      out.add(current);
-      current = <String>[];
-      length = 0;
-    }
-    current.add(file);
-    length += cost;
+/// Whether [batch] fits one invocation's budget — off Windows any batch
+/// does. A file that is somehow longer than the whole budget still goes out
+/// alone ([timedBatches] ends at one file a batch) rather than being dropped
+/// — failing loudly beats running less than we said we would.
+bool _fitsTheCommandLine(List<String> batch) =>
+    !Platform.isWindows ||
+    batch.fold(0, (length, file) => length + file.length + 1) <= _argBudget;
+
+/// How long a batch should run at the suites the line gave it, in seconds
+/// — what [nextBatch] cuts to.
+///
+/// 🗣️유저 10-20: 「계속 10줄 중 아까 낮처럼 2개쓴다거나 지금처럼 6개만쓴다거나
+/// 이런거 안일어나게 하고싶어」. The line now hands a run what is left of its
+/// share (`suitesToRun`), which may be two suites where it wanted five; a
+/// batch cut to a fixed work would then hold those two for twenty minutes.
+/// Cut to the suites it was given, every batch runs about this long however
+/// many it got, and the run asks again — for more, once more stand free.
+/// ⚖️Five minutes against the 5~15s a `flutter test` takes to start: the
+/// line decides again at least that often, for a few percent.
+/// ↩️It was forty machine-minutes a batch (`kBatchWork`, 유저 10-20 Q6),
+/// cut before the run began.
+const kBatchWall = 300;
+
+/// The batch to run next out of [left] at [suites] suites: as much work as
+/// they do in [kBatchWall], dealt the way every batch is ([timedBatches]) —
+/// so it starts on heavy files and ends on light ones — and never past
+/// [fits].
+///
+/// 🚨THE WHOLE SUITE IS CUT LIKE ANY SELECTION. An empty command is the
+/// whole suite, so the whole suite once went out as one command with the
+/// collector's pins in it ([partitionByGcTag]) — and the parked-transform
+/// pin went red in that crowd a third time (2026-09-23, 「16 tiles, 16 still
+/// alive」, green in its own batch). Since 유저 10-20 Q6 a whole suite names
+/// its files ([_wholeSuite]), and ⛔no batch is ever empty.
+List<String> nextBatch(
+  List<String> left,
+  Map<String, int> known, {
+  required int suites,
+  bool Function(List<String> batch) fits = _fitsTheCommandLine,
+}) => timedBatches(left, known, work: suites * kBatchWall, fits: fits).first;
+
+/// Runs [files] batch by batch: the crowd first, cut as it goes to the
+/// suites each batch is given ([nextBatch]), then the pins that wait for
+/// the collector as one batch of their own ([partitionByGcTag]). [take]
+/// stands in the line for the files still to run and says how many suites
+/// the next batch has; [run] runs the batch at them.
+Future<void> runInBatches(
+  List<String> files, {
+  required Map<String, int> known,
+  required String Function(String path) read,
+  required Future<int> Function(List<String> left) take,
+  required Future<void> Function(
+    List<String> batch,
+    int suites, {
+    required bool pins,
+  })
+  run,
+}) async {
+  final split = partitionByGcTag(files, read);
+  var left = split.crowd;
+  while (left.isNotEmpty) {
+    final suites = await take(left);
+    final batch = nextBatch(left, known, suites: suites);
+    await run(batch, suites, pins: false);
+    final ran = batch.toSet();
+    left = [for (final file in left) if (!ran.contains(file)) file];
   }
-  if (current.isNotEmpty) out.add(current);
-  return out;
+  if (split.alone.isNotEmpty) {
+    await run(split.alone, await take(split.alone), pins: true);
+  }
 }
 
 /// What one batch hands `flutter test`: [files], and at most [concurrency]
@@ -372,10 +710,19 @@ List<List<String>> _batches(List<String> files) {
 /// 「부하 좀 강도? 낮출수없나. pc가 너무느린데」): left out, `flutter test`
 /// runs as many suites as there are cores, and a run of a thousand files
 /// takes the whole machine for half an hour.
-List<String> flutterTestArguments(List<String> files, {int? concurrency}) => [
+///
+/// [report] is where the batch leaves a JSON report beside its console —
+/// the times [longestFirst] orders the next run by. The console a session
+/// reads is the same.
+List<String> flutterTestArguments(
+  List<String> files, {
+  int? concurrency,
+  String? report,
+}) => [
   'test',
   '--no-pub',
   if (concurrency != null) '--concurrency=$concurrency',
+  if (report != null) '--file-reporter=json:$report',
   ...files,
 ];
 
@@ -383,23 +730,27 @@ Future<int> _runTests(
   List<String> files, {
   required bool listOnly,
   int? concurrency,
+  ResultCache? cache,
+  bool useCache = true,
+  String? redsTo,
+  bool inTheLine = true,
+  bool firstInLine = false,
 }) async {
-  // The collector-waiting pins go last and by themselves, a whole suite
-  // included — see [runPlan].
-  final plan = runPlan(
-    selected: files,
-    suite: files.isEmpty ? _suiteFiles() : const [],
-    read: (path) => File(path).readAsStringSync(),
-    batches: _batches,
-  );
-  final batches = [...plan.crowd, if (plan.alone.isNotEmpty) plan.alone];
+  final selected = useCache && cache != null
+      ? _withoutStillGreen(files, cache)
+      : files;
+  if (selected == null) {
+    _report(listOnly
+        ? 'nothing to run — every file was green with these inputs.'
+        : 'PASSED (no batch — every file was green with these inputs, '
+            'exit 0)');
+    if (!listOnly) _sayReds(redsTo, const []);
+    return 0;
+  }
+  // The collector-waiting pins go last and by themselves.
+  final split = partitionByGcTag(selected, (path) => File(path).readAsStringSync());
   if (listOnly) {
-    for (final batch in batches) {
-      final wholeSuite = batch.isEmpty || batch.first.startsWith('--');
-      stdout.writeln(
-        wholeSuite ? '(the whole suite) ${batch.join(' ')}' : batch.join('\n'),
-      );
-    }
+    [...split.crowd, ...split.alone].forEach(stdout.writeln);
     return 0;
   }
 
@@ -412,30 +763,151 @@ Future<int> _runTests(
   final engine = _engineCaveat();
   if (engine != null) _report(engine);
 
-  if (plan.alone.isNotEmpty) {
-    _report('${plan.alone.length} pin(s) wait for the garbage collector '
+  if (split.alone.isNotEmpty) {
+    _report('${split.alone.length} pin(s) wait for the garbage collector '
         '($gcTagMarker) and run in a batch of their own — in company they '
         'report a holder that has already let go.');
   }
-  if (plan.crowd.length > 1) {
-    _report('${plan.crowd.expand((batch) => batch).length} files exceed the '
-        'command-line budget: running them in ${plan.crowd.length} batches. '
-        'Each batch pays the resident compiler\'s cold start again.');
+
+  var skipped = 0;
+  final exits = <int, int>{};
+  final neverRan = <int>[];
+  final runsOf = <int, List<SuiteRun>>{};
+  final flaky = <String>{};
+  final reports = Directory.systemTemp.createTempSync('affected-times');
+  // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
+  // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
+  // takes the suites the line gives it then, by the work still to do. A
+  // land's gates take none ([lineFor], [outsideTheLine]).
+  final known = _knownTimes();
+  var launched = 0;
+  Future<void> runBatches(Turn turn) async {
+    // Runs every file of [files] in batches ([runInBatches]) and hands
+    // [record] each batch's number, report and result.
+    Future<void> runAll(
+      List<String> files,
+      void Function(int i, File report, _BatchResult result) record,
+    ) => runInBatches(
+      files,
+      known: known,
+      read: (path) => File(path).readAsStringSync(),
+      take: (left) =>
+          turn.take(files: filesNamed(left), work: workOf(left, known)),
+      run: (batch, suites, {required pins}) async {
+        final i = launched++;
+        _report('batch ${i + 1}: ${batch.length} file(s) at $suites '
+            'suite(s)${pins ? ' — the pins' : ''}');
+        final report = File('${reports.path}/batch$i.json');
+        try {
+          record(
+            i,
+            report,
+            await _flutterTest(batch, concurrency: suites, report: report.path),
+          );
+        } finally {
+          turn.putDown();
+        }
+      },
+    );
+
+    await runAll(selected, (i, report, result) {
+      runsOf[i] = _recordBatch(report, cache);
+      skipped += result.skipped;
+      if (result.exitCode != 0) {
+        exits[i] = result.exitCode;
+        if (!result.ranTests) neverRan.add(i + 1);
+      }
+    });
+
+    // 🗣️Q4 b: a red file runs once more with the same inputs; green the
+    // second time, it is flaky.
+    final reds = {
+      for (final runs in runsOf.values)
+        for (final run in runs)
+          if (run.green == false) run.path,
+    };
+    if (reds.isEmpty) return;
+    _report('${reds.length} red file(s) — running them once more, to tell a '
+        'flaky one from a real red.');
+    await runAll(reds.toList()..sort(), (i, report, result) {
+      for (final run in _recordBatch(report, cache)) {
+        if (run.green == true && reds.contains(run.path)) flaky.add(run.path);
+      }
+    });
   }
 
-  var worst = 0;
-  var skipped = 0;
-  final failed = <int>[];
-  final neverRan = <int>[];
-  for (var i = 0; i < batches.length; i++) {
-    if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
-    final result = await _flutterTest(batches[i], concurrency: concurrency);
-    skipped += result.skipped;
-    if (result.exitCode != 0) {
-      failed.add(i + 1);
-      if (!result.ranTests) neverRan.add(i + 1);
-      if (worst == 0) worst = result.exitCode;
+  // ⚠️No pin reaches this one line, and its mutant lives (10-21): a pin
+  // would run a whole list. Each hop beside it is pinned — the gates pass
+  // the flag (lane.sh, scanned), [lineFor] answers it, and [outsideTheLine]
+  // holds what it asked at once. `first` likewise: master_check asks it
+  // ([kWideCheckStandsFirst]), [lineFor] answers it, the line reads it.
+  if (inTheLine) {
+    await standInLine(
+      'affected_tests',
+      runBatches,
+      say: _report,
+      asked: concurrency,
+      first: firstInLine,
+    );
+  } else {
+    await outsideTheLine(
+      'affected_tests',
+      runBatches,
+      say: _report,
+      asked: concurrency,
+    );
+  }
+  try {
+    reports.deleteSync(recursive: true);
+  } on FileSystemException {
+    // A report still held open is the system temp folder's to clear.
+  }
+
+  if (flaky.isNotEmpty) _quarantine(flaky.toList()..sort(), cache);
+  final held = <String>{};
+  final onMaster = MasterRecords.of(Platform.environment)?.reds ?? const {};
+  final fromMaster = <String, Landing>{};
+  bool forgiven(String file) {
+    if (flaky.contains(file)) return true;
+    if (cache?.isQuarantined(file) ?? false) {
+      held.add(file);
+      return true;
     }
+    if (redOnMaster(file, onMaster, _carries) case final landing?) {
+      fromMaster[file] = landing;
+      return true;
+    }
+    return false;
+  }
+
+  // A batch that went red is forgiven only when the report said what every
+  // file in it did, and every red one was flaky or is quarantined.
+  final failed = [
+    for (final MapEntry(key: i, value: _) in exits.entries)
+      if (holdsVerdictBack(runsOf[i] ?? const [], forgiven)) i + 1,
+  ]..sort();
+  final worst = failed.isEmpty ? 0 : exits[failed.first - 1]!;
+  if (held.isNotEmpty) {
+    _report('⚠️quarantined, and red again — flaky before and unchanged '
+        'since, so it holds no verdict back: ${(held.toList()..sort()).join(', ')}');
+  }
+  if (fromMaster.isNotEmpty) {
+    _report('⚠️red on master — master_check put it on a landing this '
+        "checkout carries, so it is not this change's and holds no verdict "
+        'back: ${[
+          for (final MapEntry(:key, :value) in fromMaster.entries)
+            '$key (${value.name})',
+        ].join(', ')}');
+  }
+
+  if (redsOf(
+        runsOf,
+        exits.keys,
+        (file) =>
+            flaky.contains(file) || (cache?.isQuarantined(file) ?? false),
+      )
+      case final reds?) {
+    _sayReds(redsTo, reds);
   }
 
   // A batch that exits non-zero having run NOTHING is not a test failure,
@@ -457,14 +929,70 @@ Future<int> _runTests(
   // ended it. A green tail under a red run has already nearly been
   // believed once.
   if (failed.isEmpty) {
-    _report('PASSED (${batches.length} batch(es), exit 0)');
+    _report('PASSED (${runsOf.length} batch(es), exit 0)');
   } else {
-    _report('FAILED — batch(es) ${failed.join(', ')} of ${batches.length}, '
+    _report('FAILED — batch(es) ${failed.join(', ')} of ${runsOf.length}, '
         'exit $worst');
   }
   _reportSkips(skipped);
   if (engine != null) _report(engine);
   return worst;
+}
+
+/// [files] without those green on this machine with the inputs they have
+/// now ([ResultCache.stillGreenAmong]), or null when none is left.
+List<String>? _withoutStillGreen(List<String> files, ResultCache cache) {
+  final green = cache.stillGreenAmong(files);
+  if (green.isEmpty) return files;
+  _report('${green.length} of ${files.length} file(s) were green on this '
+      'machine with the inputs they have now — not run again (--no-cache '
+      'runs them).');
+  final left = [
+    for (final file in files)
+      if (!green.contains(file)) file,
+  ];
+  return left.isEmpty ? null : left;
+}
+
+/// Quarantines the [flaky] files on this machine and puts them on the
+/// board — 🗣️Q4 b 「「불안정」으로 표시해 따로 모으고 보드에 올린다」.
+void _quarantine(List<String> flaky, ResultCache? cache) {
+  _report('⚠️FLAKY — red, then green with the same inputs: '
+      '${flaky.join(', ')}. Quarantined on this machine until the file '
+      'changes: a red from it holds no verdict back.');
+  try {
+    cache?.quarantine(flaky);
+  } on FileSystemException catch (e) {
+    _report('the quarantine was not kept: ${e.message}');
+  }
+  final line = jsonEncode({
+    'id': kFlakyCard,
+    'note': '⚠️**불안정 — 같은 입력으로 빨강 → 초록**(affected_tests, 기계 '
+        '`${Platform.localHostname}`): '
+        '${flaky.map((file) => '`$file`').join(' · ')}. 그 파일이 바뀔 '
+        '때까지 이 기계에서 격리 — 빨강이 판정을 안 막는다.',
+  });
+  final board = Platform.environment['ANICEL_BOARD'];
+  if (board == null || board.isEmpty) {
+    _report('no board named here — record it with board_say: $line');
+    return;
+  }
+  final lines = File('${Directory.systemTemp.path}/affected-flaky-$pid.jsonl')
+    ..writeAsStringSync('$line\n');
+  try {
+    final said = Process.runSync('bash', [
+      'tool/run.sh', 'board_say', board, lines.path, //
+    ]);
+    if (said.exitCode != 0) {
+      _report('the board did not take it — record it with board_say: $line');
+    }
+  } finally {
+    try {
+      lines.deleteSync();
+    } on FileSystemException {
+      // The temp folder's to clear.
+    }
+  }
 }
 
 /// What to say when the engine the suites load was not built from the C in
@@ -572,6 +1100,109 @@ int? lastSkipCount(String text) {
   return found;
 }
 
+/// How many tests `flutter test` has finished by the last counter in
+/// [text] — passed, skipped and failed together — or null if it shows none.
+/// The same counter [lastSkipCount] reads its tilde from; this asks only
+/// whether it moved.
+int? finishedByCounter(String text) {
+  int? found;
+  for (final m in RegExp(
+    r'\+(\d+)(?: ~(\d+))?(?: -(\d+))?:',
+  ).allMatches(text)) {
+    found = [1, 2, 3].fold<int>(
+      0,
+      (sum, group) => sum + int.parse(m.group(group) ?? '0'),
+    );
+  }
+  return found;
+}
+
+/// How long a batch may finish no test before it is cut.
+///
+/// 🗣️유저 2026-10-21, tests-crowd-the-machine-Q17 「15분 동안 끝나는 테스트가
+/// 없으면 배치를 끊는다」: that night two lanes' batches stood on one test
+/// that never ended — the old `a_flip_reaches_past_the_end_test` walk, on a
+/// tree whose frame key stepped nothing — and one of them held nine of the
+/// line's eighteen suites for seven hours. A loop that never yields is past
+/// any limit of the test's own. ⚖️Fifteen minutes, as measured over 364
+/// reports and 120,679 tests: the longest test took 351 s, the longest a
+/// batch went between two tests finishing was 164 s, and the slowest first
+/// test of a batch finished 192 s after it began.
+const kSilentBatch = Duration(minutes: 15);
+
+/// How often a batch's silence is looked at.
+const kLookForSilence = Duration(seconds: 30);
+
+/// When one batch last finished a test, as its output says ([heard]) — so
+/// one that has finished none for [kSilentBatch] can be told ([isPast]).
+/// The batch's start counts as its first finish.
+class BatchSilence {
+  BatchSilence(this._since);
+
+  DateTime _since;
+  int _finished = -1;
+
+  /// [text] came from the batch at [now].
+  void heard(String text, DateTime now) {
+    final finished = finishedByCounter(text);
+    if (finished != null && finished > _finished) {
+      _finished = finished;
+      _since = now;
+    }
+  }
+
+  /// Whether no test has finished for [silence] by [now].
+  bool isPast(Duration silence, DateTime now) =>
+      now.difference(_since) >= silence;
+}
+
+/// The tests [report] — a `json` file report — says started and never
+/// finished, each as `<test file>: <test name>`; a suite still loading is
+/// not one.
+List<String> stillRunning(String report) {
+  final paths = <int, String>{};
+  final open = <int, ({int suite, String name})>{};
+  for (final line in const LineSplitter().convert(report)) {
+    final Object? event;
+    try {
+      event = jsonDecode(line);
+    } on FormatException {
+      continue;
+    }
+    if (event is! Map<String, dynamic>) continue;
+    switch (event['type']) {
+      case 'suite':
+        final suite = event['suite'] as Map<String, dynamic>;
+        paths[suite['id'] as int] = '${suite['path']}'.replaceAll('\\', '/');
+      case 'testStart':
+        final test = event['test'] as Map<String, dynamic>;
+        final name = test['name'] as String;
+        if (!name.startsWith('loading ')) {
+          open[test['id'] as int] = (suite: test['suiteID'] as int, name: name);
+        }
+      case 'testDone':
+        open.remove(event['testID']);
+    }
+  }
+  return [
+    for (final test in open.values)
+      '${paths[test.suite] ?? '?'}: ${test.name}',
+  ];
+}
+
+/// Ends the process [pid] and every process under it: `flutter test` runs
+/// its testers two and three processes down, and ending the shell alone
+/// leaves them holding the machine. ⚠️Off Windows only the shell's own
+/// children go with it.
+void _cutTree(int pid) {
+  if (Platform.isWindows) {
+    Process.runSync('taskkill', ['/PID', '$pid', '/T', '/F']);
+  } else {
+    Process.runSync('pkill', ['-KILL', '-P', '$pid']);
+    Process.killPid(pid, ProcessSignal.sigkill);
+  }
+}
+
 /// `flutter test` writes its counter and its verdict in English whatever
 /// the machine's locale is, because they come from Dart. Anything cmd.exe
 /// says does not — which is why this looks for the shape of a test result
@@ -586,14 +1217,22 @@ final _testOutput = RegExp(r'\+\d+|All tests passed|Some tests failed');
 Future<_BatchResult> _flutterTest(
   List<String> files, {
   required int? concurrency,
+  required String report,
 }) async {
   final process = await Process.start(
     Platform.isWindows ? 'flutter.bat' : 'flutter',
-    flutterTestArguments(files, concurrency: concurrency),
+    flutterTestArguments(files, concurrency: concurrency, report: report),
     runInShell: true,
   );
   var ranTests = false;
   var skipped = 0;
+  final silence = BatchSilence(DateTime.now());
+  var cut = false;
+  final look = Timer.periodic(kLookForSilence, (_) {
+    if (cut || !silence.isPast(kSilentBatch, DateTime.now())) return;
+    cut = true;
+    _cutTree(process.pid);
+  });
   final pumped = <Future<void>>[
     process.stdout.map((chunk) {
       // latin1 never throws on malformed bytes; a mojibake launch error
@@ -604,11 +1243,24 @@ Future<_BatchResult> _flutterTest(
       }
       final skips = lastSkipCount(text);
       if (skips != null) skipped = skips;
+      silence.heard(text, DateTime.now());
       return chunk;
     }).forEach(stdout.add),
     process.stderr.forEach(stderr.add),
   ];
   final code = await process.exitCode;
+  look.cancel();
   await Future.wait(pumped);
-  return _BatchResult(code, ranTests, skipped);
+  if (cut) {
+    var open = const <String>[];
+    try {
+      open = stillRunning(File(report).readAsStringSync());
+    } on FileSystemException {
+      // No report to name them by; the cut is said all the same.
+    }
+    final named = open.isEmpty ? '(none named)' : open.join(' | ');
+    _report('🚨 no test finished for ${kSilentBatch.inMinutes} min — cut the '
+        'batch, red. Still running: $named');
+  }
+  return _BatchResult(cut && code == 0 ? 1 : code, ranTests, skipped);
 }

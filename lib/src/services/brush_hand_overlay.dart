@@ -42,19 +42,36 @@ BrushHandSettings brushHandOverlay({
     overlay[key] = held[key];
   }
   for (final key in brushSettingsMaskKeys) {
-    final tip = brushSettingsMaskAt(hand, key);
-    if (tip?.id == brushSettingsMaskAt(file, key)?.id) {
+    final tips = brushSettingsMasksAt(hand, key);
+    if (_sameIds(tips, brushSettingsMasksAt(file, key))) {
       continue;
     }
-    if (tip == null) {
+    if (tips.isEmpty) {
       overlay[key] = null;
-    } else if (byName(tip)) {
-      overlay[brushSettingsMaskIdKey(key)] = tip.id;
+    } else if (tips.every(byName)) {
+      overlay[brushSettingsMaskIdKey(key)] = brushSettingsMaskIdsJson(
+        key,
+        tips,
+      );
     } else {
-      overlay[key] = tip.toJson();
+      // A list goes whole if any of it must: one entry is either names or
+      // pixels, never a mix of the two.
+      overlay[key] = brushSettingsMasksJson(key, tips);
     }
   }
   return overlay;
+}
+
+bool _sameIds(List<BrushTipMask> a, List<BrushTipMask> b) {
+  if (a.length != b.length) {
+    return false;
+  }
+  for (var index = 0; index < a.length; index += 1) {
+    if (a[index].id != b[index].id) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// [file] with [overlay] laid over it — the brush as the hand left it.
@@ -78,13 +95,13 @@ BrushSettings brushSettingsUnderHand(
       }
     }
     // Read WITHOUT tips, so a tip the hand cleared stays cleared: the setter
-    // below cannot clear one (see [brushSettingsWithMask]).
+    // below cannot clear one (see [brushSettingsWithMasks]).
     var settings = BrushSettings.fromJson(json);
     for (final key in brushSettingsMaskKeys) {
-      settings = brushSettingsWithMask(
+      settings = brushSettingsWithMasks(
         settings,
         key,
-        _tipUnderHand(key, overlay, file: file, resolveTip: resolveTip),
+        _tipsUnderHand(key, overlay, file: file, resolveTip: resolveTip),
       );
     }
     return settings;
@@ -121,19 +138,19 @@ bool _namesATip(String key) =>
     brushSettingsMaskKeys.contains(key) ||
     brushSettingsMaskKeys.any((mask) => brushSettingsMaskIdKey(mask) == key);
 
-BrushTipMask? _tipUnderHand(
+/// The masks at [key] as the hand left them. Ids that are not ALL answered
+/// leave the file's — the one-tip rule above, for a list.
+List<BrushTipMask> _tipsUnderHand(
   String key,
   BrushHandSettings overlay, {
   required BrushSettings file,
   required BrushTipResolver? resolveTip,
 }) {
-  final filed = brushSettingsMaskAt(file, key);
   if (overlay.containsKey(key)) {
-    final whole = overlay[key];
-    return whole == null
-        ? null
-        : BrushTipMask.fromJson(whole as Map<String, dynamic>);
+    return brushSettingsMasksFrom(overlay[key]);
   }
-  final id = overlay[brushSettingsMaskIdKey(key)];
-  return id is String ? resolveTip?.call(id) ?? filed : filed;
+  final filed = brushSettingsMasksAt(file, key);
+  final ids = brushSettingsMaskIdsFrom(overlay[brushSettingsMaskIdKey(key)]);
+  final named = [for (final id in ids) ?resolveTip?.call(id)];
+  return ids.isNotEmpty && named.length == ids.length ? named : filed;
 }

@@ -107,17 +107,41 @@ void main() {
         reason: 'its left edge on the window\'s',
       );
     });
+
+    test('each axis holds the paper by its own edges — a paper and a window '
+        'set off by different amounts across and down', () {
+      const paperOff = Rect.fromLTWH(24, 60, 600, 800);
+      const windowOff = Rect.fromLTWH(10, 40, 400, 300);
+      final early = viewHeldTo(
+        CanvasViewport(panX: 900, panY: 900),
+        limit: paperOff,
+        window: windowOff,
+      );
+      // 10 − 24 · 40 − 60
+      expect((early.panX, early.panY), (-14.0, -20.0));
+      final late = viewHeldTo(
+        CanvasViewport(panX: -900, panY: -900),
+        limit: paperOff,
+        window: windowOff,
+      );
+      // 410 − (24 + 600) · 340 − (60 + 800)
+      expect((late.panX, late.panY), (-214.0, -520.0));
+    });
   });
 
   group('the pan bars span the paper and nothing past it', () {
-    CanvasViewportPanMetrics bar(Axis axis, CanvasViewport viewport) =>
-        CanvasViewportPanMetrics(
-          axis: axis,
-          viewport: viewport,
-          editorViewportSize: window.size,
-          canvasSize: const CanvasSize(width: 648, height: 848),
-          limit: (rect: paper, window: window),
-        );
+    CanvasViewportPanMetrics bar(
+      Axis axis,
+      CanvasViewport viewport, {
+      Rect limit = paper,
+      Rect over = window,
+    }) => CanvasViewportPanMetrics(
+      axis: axis,
+      viewport: viewport,
+      editorViewportSize: over.size,
+      canvasSize: const CanvasSize(width: 648, height: 848),
+      limit: (rect: limit, window: over),
+    );
 
     test('their two ends are the two places the view stops', () {
       final top = bar(Axis.vertical, CanvasViewport(panY: -24));
@@ -133,6 +157,28 @@ void main() {
       final metrics = bar(Axis.vertical, CanvasViewport(zoom: 0.25));
       expect(metrics.maxScroll, 0);
     });
+
+    test('each bar reads its ends off the window\'s own edges — a window '
+        'set off across and down by different amounts', () {
+      const paperOff = Rect.fromLTWH(24, 60, 600, 800);
+      const windowOff = Rect.fromLTWH(10, 40, 400, 300);
+      final top = bar(
+        Axis.vertical,
+        CanvasViewport(panY: -20),
+        limit: paperOff,
+        over: windowOff,
+      );
+      expect(top.scrollOffset, 0, reason: 'the paper\'s top on the window\'s');
+      expect(top.viewportForScroll(500).panY, -520);
+      final side = bar(
+        Axis.horizontal,
+        CanvasViewport(panX: -14),
+        limit: paperOff,
+        over: windowOff,
+      );
+      expect(side.scrollOffset, 0, reason: 'its left on the window\'s');
+      expect(side.viewportForScroll(200).panX, -214);
+    });
   });
 
   group('every road that moves the view ends held', () {
@@ -142,12 +188,12 @@ void main() {
       WidgetTester tester, {
       Rect? limit = paper,
       Size box = const Size(400, 300),
-      List<Widget> pageStrip = const [],
+      CanvasTransportBand? transport,
     }) async {
       final controller = ValueNotifier<CanvasViewport?>(null);
       addTearDown(controller.dispose);
       await tester.pumpWidget(
-        sheetIn(controller, box, limit: limit, pageStrip: pageStrip),
+        sheetIn(controller, box, limit: limit, transport: transport),
       );
       await tester.pumpAndSettle();
       // 🚨The store is in DEVICE units and the painting in logical ones,
@@ -244,22 +290,53 @@ void main() {
       expectStoreShows(tester, controller);
     });
 
-    testWidgets('🗣️F-346: zoomed in on a panel that turns pages, a drag '
-        'past the left end stops with the paper\'s edge beside the page '
-        'strip, as past the top it stops under the pill', (tester) async {
+    testWidgets('🗣️F-346: zoomed in on a panel with a band under it — a '
+        'book\'s page turner, a movie\'s player — a drag past the bottom end '
+        'stops with the paper\'s edge above the band, as past the top it '
+        'stops under the pill', (tester) async {
       final controller = await pumpSheet(
         tester,
-        pageStrip: const [SizedBox(width: 26, height: 40)],
+        transport: const CanvasTransportBand(height: 40, child: SizedBox()),
       );
       controller.value = device(tester, CanvasViewport(panX: -100));
       await tester.pump();
-      final strip = pageStripBandOf(tester);
-      expect(strip, greaterThan(30), reason: '⛔전제: the strip stands');
+      final band = tester.getRect(
+        find.byKey(const ValueKey<String>('canvas-transport')),
+      );
+      expect(band.height, greaterThan(40), reason: '⛔전제: the band stands');
+
+      await drag(tester, const Offset(-2000, -2000));
+      expect(
+        paperOnScreen(tester).bottom,
+        closeTo(band.top - AppScrollbarLane.wide, 1e-6),
+        reason: 'above the band, and the bar\'s lane lying on it',
+      );
+      expectStoreShows(tester, controller);
 
       await drag(tester, const Offset(900, 900));
-      final on = paperOnScreen(tester);
-      expect(on.left, closeTo(strip, 1e-6), reason: 'beside the strip');
-      expect(on.top, closeTo(pillBandOf(tester), 1e-6));
+      expect(paperOnScreen(tester).top, closeTo(pillBandOf(tester), 1e-6));
+      expectStoreShows(tester, controller);
+    });
+
+    testWidgets('🚨a drag back from past the end moves the view at once — '
+        'from where the view stopped, not from where the hand went', (
+      tester,
+    ) async {
+      final controller = await pumpSheet(tester);
+      controller.value = device(tester, CanvasViewport(panX: -100));
+      await tester.pump();
+      await drag(tester, const Offset(-2000, -2000));
+      final end = paperOnScreen(tester);
+      expect(
+        end.bottom,
+        closeTo(windowOf(tester).bottom, 1e-6),
+        reason: '⛔전제: the drag went past the end',
+      );
+
+      await drag(tester, const Offset(100, 100));
+      final back = paperOnScreen(tester);
+      expect(back.right, closeTo(end.right + 100, 1e-6));
+      expect(back.bottom, closeTo(end.bottom + 100, 1e-6));
       expectStoreShows(tester, controller);
     });
 
@@ -487,7 +564,6 @@ void main() {
       slot.request.value = const MediaViewerRequest(
         path: 'C:/work/conte.pdf',
         kind: MediaAssetKind.pdf,
-        name: 'conte',
       );
       await tester.pump();
       expect(
@@ -530,7 +606,7 @@ Widget sheetIn(
   ValueNotifier<CanvasViewport?> controller,
   Size box, {
   Rect? limit = const Rect.fromLTWH(24, 24, 600, 800),
-  List<Widget> pageStrip = const [],
+  CanvasTransportBand? transport,
 }) => MaterialApp(
   home: Align(
     alignment: Alignment.topLeft,
@@ -543,7 +619,7 @@ Widget sheetIn(
         viewportController: controller,
         viewLimit: limit,
         drawingOn: false,
-        pageStrip: pageStrip,
+        transport: transport,
         content: (context, viewport) => const SizedBox.expand(),
       ),
     ),

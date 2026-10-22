@@ -19,10 +19,10 @@ import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineRowPaperExtent;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_host.dart';
 import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
 
@@ -116,7 +117,13 @@ Project _project() => Project(
   ],
 );
 
+/// The conte as its tab hosts it ([pumpStoryboardHost]).
 Future<void> _openStoryboard(WidgetTester tester) async {
+  await pumpStoryboardHost(tester, _project());
+}
+
+/// The conte as the APP opens it: its tab turned to from the timeline's.
+Future<void> _openStoryboardInTheApp(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(1500, 800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
@@ -139,7 +146,7 @@ double _pixelsPerFrame(WidgetTester tester) => _panel(tester).pixelsPerFrame;
 CutId? _activeCut(WidgetTester tester) => _panel(tester).activeCutId;
 
 EditorSessionManager _session(WidgetTester tester) =>
-    tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+    tester.widget<StoryboardTabHost>(find.byType(StoryboardTabHost)).session;
 
 Cut _cutOf(WidgetTester tester, String id) => _panel(
   tester,
@@ -202,9 +209,10 @@ Future<void> _drag(WidgetTester tester, Offset from, Offset to) async {
 
 void main() {
   group('the row', () {
+    // In the app, as it is opened: what the panel's own tests stand on.
     testWidgets('stands directly under the V row, one row tall, on the same '
         'frames', (tester) async {
-      await _openStoryboard(tester);
+      await _openStoryboardInTheApp(tester);
 
       final cuts = _cutRowRect(tester);
       final conte = _conteRowRect(tester);

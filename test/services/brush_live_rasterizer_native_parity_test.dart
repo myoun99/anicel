@@ -7,6 +7,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
@@ -72,16 +73,18 @@ void main() {
 
     QaNativeEngine.debugResetForTests();
     QaNativeEngine.debugForceDartFallback = true;
-    final dart = BrushLiveStrokeRasterizer(canvasSize: canvasSize)
-      ..blendFrom(dabs, from: 0);
+    final dart = BrushLiveStrokeRasterizer(
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+    )..blendFrom(dabs, from: 0);
     final dartPixels = dart.strokePixelsWithinBounds();
 
     QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = dllPath;
     QaNativeEngine.debugForceDartFallback = false;
     expect(QaNativeEngine.instance, isNotNull);
-    final native = BrushLiveStrokeRasterizer(canvasSize: canvasSize)
-      ..blendFrom(dabs, from: 0);
+    final native = BrushLiveStrokeRasterizer(
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+    )..blendFrom(dabs, from: 0);
     final nativePixels = native.strokePixelsWithinBounds();
     expect(native.strokeBounds, dart.strokeBounds);
     expect(nativePixels, dartPixels, reason: 'live blend byte parity');

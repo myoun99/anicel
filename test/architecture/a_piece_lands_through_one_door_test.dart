@@ -61,11 +61,6 @@ void main() {
     expect(spelling('buildCutPasteDab(').files, [
       'lib/src/services/cut_piece_stamp.dart',
       'lib/src/ui/brush/brush_canvas_panel.dart',
-      // ⛔Not a road onto CELS: a picture dropped on the envelope lands on
-      // the sheet's ink, through the window it was dropped on — the pen's
-      // funnel there, which has no ladder and no cel to name. It borrows
-      // the builder for 「this picture, with its corner here」.
-      'lib/src/ui/envelope/envelope_picture_drop.dart',
       'lib/src/ui/session/pixel_verbs.dart',
     ]);
   });
@@ -95,9 +90,23 @@ void main() {
       'lib/src/ui/session/pixel_verbs.dart',
     ).readAsStringSync();
     expect(
-      sourceBodyOf(verbs, 'void _pastePixels(').contains('pieceLandings('),
+      sourceBodyOf(verbs, 'void _land(').contains('pieceLandings('),
       isTrue,
       reason: 'and the paste lands through the same one',
+    );
+    expect(
+      sourceBodyOf(verbs, 'void _pastePixels(').contains('_land('),
+      isTrue,
+    );
+    // vanishing-point-types-Q5: 래스터라이즈 lays its picture as a paste does.
+    // ⚠️The whole parameter list: the body is the first `{` after it.
+    expect(
+      sourceBodyOf(
+        verbs,
+        'void landCanvasPicture(CutPiece picture, '
+        '{required String description})',
+      ).contains('_land('),
+      isTrue,
     );
   });
 }

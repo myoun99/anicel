@@ -5,6 +5,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
@@ -35,7 +36,10 @@ void main() {
       // each keeps only its own slice — paying for the whole stroke in
       // every window is what this avoids.
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: const CanvasSize(width: 1024, height: 1024),
+        pasteboard: const CanvasSize(
+          width: 1024,
+          height: 1024,
+        ).pasteboardAt(PasteboardReach.whole),
       )..selectionRegion = box(0, 0, 100, 100);
       rasterizer.blendFrom([
         _dab(x: 600.5, y: 600.5),
@@ -48,7 +52,10 @@ void main() {
     test('a dab whose centre is outside but whose footprint reaches in '
         'still paints there', () {
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: const CanvasSize(width: 512, height: 512),
+        pasteboard: const CanvasSize(
+          width: 512,
+          height: 512,
+        ).pasteboardAt(PasteboardReach.whole),
       )..selectionRegion = box(100, 100, 200, 200);
       rasterizer.blendFrom([_dab(x: 96.5, y: 150.5, size: 12)], from: 0);
       final row = Uint8List(512 * 4);
@@ -62,7 +69,10 @@ void main() {
       // The point of the sparse storage: the timesheet ink planes are
       // logically huge, and a stroke must never pay for the whole surface.
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: const CanvasSize(width: 8000, height: 40000),
+        pasteboard: const CanvasSize(
+          width: 8000,
+          height: 40000,
+        ).pasteboardAt(PasteboardReach.whole),
       );
       expect(rasterizer.allocatedTileCount, 0);
 
@@ -81,7 +91,10 @@ void main() {
     test('copyRow reads painted pixels and zeros elsewhere, across tile '
         'boundaries', () {
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: const CanvasSize(width: 512, height: 512),
+        pasteboard: const CanvasSize(
+          width: 512,
+          height: 512,
+        ).pasteboardAt(PasteboardReach.whole),
       );
       // Straddle the 128px tile boundary at x=128.
       rasterizer.blendFrom([_dab(x: 128.0, y: 64.5, size: 8)], from: 0);
@@ -101,7 +114,10 @@ void main() {
 
     test('strokePixelsWithinBounds is bounds-local row-major', () {
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: const CanvasSize(width: 512, height: 512),
+        pasteboard: const CanvasSize(
+          width: 512,
+          height: 512,
+        ).pasteboardAt(PasteboardReach.whole),
       );
       expect(rasterizer.strokePixelsWithinBounds(), isNull);
 

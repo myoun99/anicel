@@ -8,15 +8,22 @@
 /// instead of its wall clock. Cumulative drift is structurally zero
 /// because there is no second clock to drift against.
 ///
-/// Standing down is graceful BY DESIGN, never silent in effect: no native
-/// binary, a device that refuses to open, or PCM not resident yet (a
-/// conform still building, a device-rate conversion in flight) leaves
-/// [carryingPlayback] false — the platform-player fallback carries the
-/// run, the wall clock drives the picture, and the missing pieces are
-/// kicked so the NEXT run rides the device. Silence is never an
-/// acceptable outcome for audio.
+/// 🚨A RUN WAITS FOR ITS SOUND, and goes on without only what will never
+/// come (playback-waits-for-its-sound — 유저 2026-10-16: 「대체 재생을 안
+/// 쓰고, 소리가 준비될 때까지 기다린다」 · 「다만 그런식으로 재생못하거나
+/// 하는 상황에선 제대로 메시지라던가 뭔가 표시 하도록」). An output being
+/// opened, a conform still building, a device-rate conversion in flight:
+/// the run's clock stands where it was put ([soundIsComing], asked with its
+/// picture — `PlaybackWait`) until the sound lands. No native binary, an
+/// output that will not open, or a source nothing will make ready: the run
+/// plays without that sound ([cannotPlay], [outputRefused]).
+/// ↩️It stood down instead — 「Silence is never an acceptable outcome for
+/// audio」: the platform-player fallback carried the run on the wall clock,
+/// and the missing pieces were kicked so the NEXT run rode the device. The
+/// sound came, but not with the picture.
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import '../../models/layer_id.dart';
@@ -62,13 +69,10 @@ class AudioDeviceTransport {
   final List<ScheduledAudioClip> Function()? resolveCueClips;
 
   /// The chosen output device by name (AUDIO-PRO R4); null = system
-  /// default. Read at each activation — a changed setting reopens the
-  /// device on the NEXT run (mid-run output hopping is not a thing any
-  /// pro tool does either).
+  /// default. A changed setting reopens the device ahead ([openAhead]) —
+  /// never under a run it carries (mid-run output hopping is not a thing
+  /// any pro tool does either), which reopens it as it ends.
   final String? Function()? resolveOutputDeviceName;
-
-  /// What the open device was opened as, to detect a setting change.
-  String? _openedDeviceName;
 
   final CanvasPlaybackController controller;
   final ProjectFrameRate Function() resolveFrameRate;
@@ -85,11 +89,27 @@ class AudioDeviceTransport {
   bool _wasActive = false;
   bool _wasSounding = false;
 
-  /// Whether THIS activation runs on the device. Decided once at
-  /// activation (like the schedule itself); the platform-player sync
-  /// consults it before building players.
+  /// Whether THIS activation runs on the device — decided where the run
+  /// starts ([_startsAt]), and again as what its sound waited on lands
+  /// ([_soundMayHaveCome]).
   bool _carrying = false;
 
+  /// The run's sound on its way ([soundIsComing]), heard landing by
+  /// [_soundMayHaveCome].
+  late final _SoundOnItsWay _coming = _SoundOnItsWay(
+    conformStore,
+    _soundMayHaveCome,
+  );
+
+  /// The sources the run plays without ([OutputArmed.cannotPlay]).
+  Set<String> _cannotPlay = const {};
+
+  /// Whether the run plays without any sound: no output, or one that would
+  /// not open or take the schedule ([OutputRefused]).
+  bool _outputRefused = false;
+
+  /// The output this transport keeps open ([QaAudioDevice.keep]) — from
+  /// when it opened it ahead or first played on it, to [dispose].
   QaAudioDevice? _device;
   ProjectFrameRate _rate = ProjectFrameRate.fps24;
   int _deviceRate = 0;
@@ -124,14 +144,30 @@ class AudioDeviceTransport {
 
   bool get carryingPlayback => _carrying;
 
-  /// Listener order matters: attach BEFORE the platform-player sync so
-  /// [carryingPlayback] is decided by the time the fallback asks.
+  /// Whether the run waits for its sound: its output is being opened, or a
+  /// source is being made ready — what the run's clock asks beside its
+  /// picture (`PlaybackWait`), and stands on the frame it was put on for.
+  bool get soundIsComing => _coming.isComing;
+
+  /// The sources the run plays without: nothing will make them ready to
+  /// play — undecodable, failed, not readable yet.
+  Set<String> get cannotPlay => _cannotPlay;
+
+  /// Whether the run plays without any sound: no native binary, or an
+  /// output that would not open or take the schedule.
+  bool get outputRefused => _outputRefused;
+
+  /// The output this transport plays on, as it resolves it — the one the
+  /// cues ring too (the take's count-in, the settings' test tone).
+  QaAudioDevice? get output => _resolveDevice();
+
   void attach() {
     if (_attached) {
       return;
     }
     _attached = true;
     controller.addListener(_onControllerChanged);
+    controller.onStartsAt = _startsAt;
     controller.onSeeked = _onSeeked;
     controller.resolveAudioClock = clockStatus;
   }
@@ -139,6 +175,9 @@ class AudioDeviceTransport {
   void dispose() {
     if (_attached) {
       controller.removeListener(_onControllerChanged);
+      if (controller.onStartsAt == _startsAt) {
+        controller.onStartsAt = null;
+      }
       if (controller.onSeeked == _onSeeked) {
         controller.onSeeked = null;
       }
@@ -147,9 +186,49 @@ class AudioDeviceTransport {
       }
       _attached = false;
     }
-    _stopDevice();
-    _device?.close();
+    _coming.end();
+    // Only the run it carries: the output is one per process, and another
+    // open project's sound plays on it too. ↩️It stopped the output
+    // whatever played, and a tab closed behind the one on screen silenced
+    // the run there.
+    if (_carrying) {
+      _stopDevice();
+    }
+    _device?.letGo(this);
     _device = null;
+  }
+
+  /// Opens the output ahead of a run, off the UI thread, for the setting
+  /// as it is — and reopens it there for a changed one
+  /// (play-press-first-frame-stall-Q1, 유저 10-15: 「프로젝트를 열면 미리
+  /// 연다(UI 스레드 밖에서)」 — a project opening, with sound or without
+  /// (Q2 a, `OpenProjects`), and the output setting changing). This
+  /// transport keeps it open from here.
+  ///
+  /// ⛔Never under a run this transport carries: the run plays on the
+  /// device it activated on, and its end opens it ahead again for the
+  /// setting it ends under.
+  void openAhead() {
+    final device = _resolveDevice();
+    if (device == null) {
+      return;
+    }
+    _keep(device);
+    if (_carrying) {
+      return;
+    }
+    unawaited(
+      openAudioOutputAhead(
+        device,
+        sampleRate: conformStore.projectSampleRate,
+        preferredName: resolveOutputDeviceName?.call(),
+      ),
+    );
+  }
+
+  void _keep(QaAudioDevice device) {
+    device.keep(this);
+    _device = device;
   }
 
   /// Rebuilds and re-uploads the schedule MID-RUN (AUDIO-PRO R3): an
@@ -163,27 +242,35 @@ class AudioDeviceTransport {
     if (!_carrying || device == null) {
       return;
     }
-    final schedule = buildAudioPlaybackSchedule(
-      window: controller.window,
-      project: resolveProject(),
-      rate: _rate,
-      durationSecondsFor: conformStore.durationSecondsFor,
-      soloedLayerIds: resolveSoloedLayerIds?.call(),
-      mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
-      extraClips: resolveCueClips?.call(),
-    );
+    final schedule = _scheduleOfThisRun();
     final mix = audioMixScheduleFrom(
       schedule: schedule,
       rate: _rate,
       sampleRate: _deviceRate,
     );
     _window.mix = mix;
-    _uploadWindow(device.positionSamples);
+    if (_uploadWindow(device.positionSamples) case OutputArmed(
+      :final cannotPlay,
+    )) {
+      _cannotPlay = cannotPlay;
+    }
   }
 
-  /// Moves the streaming window to [centerSample]. False uploads nothing,
-  /// so any old schedule keeps playing.
-  bool _uploadWindow(int centerSample) => _window.upload(
+  /// What this run plays, at its frame rate, as the project stands now —
+  /// the one schedule an activation arms and a mid-run refresh re-uploads.
+  List<ScheduledAudioClip> _scheduleOfThisRun() => buildAudioPlaybackSchedule(
+    window: controller.window,
+    project: resolveProject(),
+    rate: _rate,
+    durationSecondsFor: conformStore.durationSecondsFor,
+    soloedLayerIds: resolveSoloedLayerIds?.call(),
+    mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
+    extraClips: resolveCueClips?.call(),
+  );
+
+  /// Moves the streaming window to [centerSample]. Anything but
+  /// [OutputArmed] uploads nothing, so any old schedule keeps playing.
+  OutputArm _uploadWindow(int centerSample) => _window.upload(
     device: _device,
     conformStore: conformStore,
     deviceRate: _deviceRate,
@@ -232,13 +319,20 @@ class AudioDeviceTransport {
     // and starts the device exactly so.
     final sounding = controller.isPlaying && !controller.isWaiting;
     if (active && !_wasActive) {
-      _activate();
+      // Made ready where the run started ([_startsAt]), before the run
+      // asked whether it waits for it.
       if (sounding && _carrying) {
         _arm(controller.playlistFrame);
       }
     } else if (!active && _wasActive) {
       _carrying = false;
+      _coming.end();
       _stopDevice();
+      if (_device != null) {
+        // The output this transport keeps follows the setting the run ends
+        // under: one changed while the run played is reopened now.
+        openAhead();
+      }
     } else if (active && _carrying) {
       if (sounding && !_wasSounding) {
         // The picture came: the run goes on from the frame it stands on,
@@ -254,63 +348,93 @@ class AudioDeviceTransport {
     _wasSounding = sounding;
   }
 
+  /// A run starting at [playlistFrame] ([CanvasPlaybackController.onStartsAt])
+  /// has its sound made ready there — before the run asks whether it waits
+  /// for it ([soundIsComing]), which the listener would be too late to say.
+  ///
+  /// ⚠️A run already going keeps what it was made ready with: a play over a
+  /// run that plays is not a start (and the gate stops a run at any press).
+  void _startsAt(int playlistFrame) {
+    if (_wasActive) {
+      return;
+    }
+    _activate(from: playlistFrame);
+  }
+
   /// Decides whether this run rides the device, and uploads the schedule
-  /// if so. Every stand-down kicks the missing piece so the next run
-  /// converges onto the device path.
-  void _activate() {
+  /// centred on [from] if so — or waits for what is on its way, or plays
+  /// without what will never come.
+  void _activate({required int from}) {
     _carrying = false;
+    _coming.isComing = false;
+    _cannotPlay = const {};
+    _outputRefused = false;
     final device = _resolveDevice();
     if (device == null) {
+      _outputRefused = true;
+      return;
+    }
+    // The device stays open across runs (opening tears down and rebuilds an
+    // OS audio graph — not a per-play cost), opened ahead of the first
+    // ([openAhead]) or else here. One open for another output than the
+    // setting names is reopened ahead, and this run waits for it: ⛔not
+    // reopened here, where the open held the UI thread.
+    final desiredName = resolveOutputDeviceName?.call();
+    if (device.isOpen && device.openedFor != desiredName) {
+      openAhead();
+      _coming.waitOn(device);
       return;
     }
     _rate = resolveFrameRate();
-    final schedule = buildAudioPlaybackSchedule(
-      window: controller.window,
-      project: resolveProject(),
-      rate: _rate,
-      durationSecondsFor: conformStore.durationSecondsFor,
-      soloedLayerIds: resolveSoloedLayerIds?.call(),
-      mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
-      extraClips: resolveCueClips?.call(),
-    );
-
-    // The device opens lazily and stays open across runs (opening tears
-    // down and rebuilds an OS audio graph — not a per-play cost). A
-    // changed output-device setting reopens here, at the run boundary.
-    final desiredName = resolveOutputDeviceName?.call();
-    if (device.isOpen && _openedDeviceName != desiredName) {
-      device.stop();
-      device.close();
-    }
+    final schedule = _scheduleOfThisRun();
     // Every scheduled file must be resident at the DEVICE rate — or
     // streamable from its conform (AUDIO-PRO R6) — before the device can
-    // promise anything. A missing one stands this run down and is kicked
-    // (conform or rate conversion) for the next.
-    final armed = armAudioOutput(
+    // promise anything. One on its way holds the run where it starts.
+    switch (armAudioOutput(
       device: device,
       conformStore: conformStore,
       window: _window,
       schedule: schedule,
       rate: _rate,
-      centerFrame: controller.globalFrameIndexListenable.value ?? 0,
+      centerFrame: from,
       preferredDeviceName: desiredName,
-    );
-    if (armed == null) {
+    )) {
+      case OutputComing():
+        _keep(device);
+        _coming.waitOn(device);
+      case OutputRefused():
+        // 🧪MUTATION: setting this false SURVIVES the suite — never applied.
+        // With an output in hand, a refusal is an open that fails or a
+        // schedule the binary will not take, and no bench here can stage
+        // either: `QaAudioDevice` binds to the real binary, the null
+        // backend's one device always opens, and the binary turns away only
+        // a schedule the app never builds (a negative count, a buffer it did
+        // not make). The reachable half — no output at all — is pinned in
+        // `audio_device_transport_test` ("no device → …").
+        _outputRefused = true;
+      case OutputArmed(:final deviceRate, :final cannotPlay):
+        _keep(device);
+        _deviceRate = deviceRate;
+        _cannotPlay = cannotPlay;
+        // The run's own length — ↩️this kept a copy of the controller's
+        // arithmetic, which answered nothing for a track with no cut (F-341).
+        _totalFrames = controller.totalFrames;
+        _carrying = true;
+    }
+  }
+
+  /// Something the run's sound waited on landed: it is made ready again
+  /// where the run stands — and once it has come, or will never come, the
+  /// run looks again ([CanvasPlaybackController.lookAgain]) and goes on, with
+  /// it or without it.
+  void _soundMayHaveCome() {
+    if (!_coming.isComing) {
       return;
     }
-    // ⚠️Recorded even when the upload stands the run down: the device IS
-    // open under this name, and the reopen check above compares against
-    // what is open — not against what last carried a run.
-    _openedDeviceName = desiredName;
-    _device = device;
-    _deviceRate = armed.deviceRate;
-    if (!armed.uploaded) {
-      return;
+    _activate(from: controller.playlistFrame);
+    if (!_coming.isComing) {
+      controller.lookAgain();
     }
-    // The run's own length — ↩️this kept a copy of the controller's
-    // arithmetic, which answered nothing for a track with no cut (F-341).
-    _totalFrames = controller.totalFrames;
-    _carrying = true;
   }
 
   void _arm(int frame) {
@@ -328,32 +452,42 @@ class AudioDeviceTransport {
     // re-centred, and a run going on from where its activation had just
     // centred the window read and copied it twice: 🔬66ms and a GC on the
     // AMMI OP press (play-press-first-frame-stall, 10-15).
-    if (_window.wantsRecentreAt(startSample, _deviceRate)) {
-      _uploadWindow(startSample);
-    }
+    _window.cover(
+      startSample,
+      device: device,
+      conformStore: conformStore,
+      deviceRate: _deviceRate,
+    );
     _armDevice(device, startSample: startSample, looping: loop && frame == 0);
   }
 
   /// Arms the device at [startSample], and the line that reads it — started
   /// together in ONE place, so the device is never started under a line
   /// still counting the run before — on the clock's first look
-  /// ([FirstLookStart]).
+  /// ([FirstLookStart]), the lead ahead of it that has [startSample] heard
+  /// as that look's frame is shown ([HeardOnTheDevice.leadFor]).
   void _armDevice(
     QaAudioDevice device, {
     required int startSample,
     required bool looping,
   }) {
-    _start.arm(() {
-      device.play(
-        startSample: startSample,
-        stopSample: _stopSample,
-        looping: looping,
-      );
+    _start.arm((frameTime) {
       _heard.arm(
         deviceRate: _deviceRate,
         carriesFor: device.latencySamples,
         // A device loops from the top or not at all ([_needsLoopRearm]).
         lapSamples: looping ? _stopSample : 0,
+      );
+      device.play(
+        startSample: startSample,
+        stopSample: _stopSample,
+        looping: looping,
+        leadSamples: _heard.leadFor(
+          deviceNowMicros: device.clockNowMicros,
+          frameTime: frameTime,
+          latencySamples: device.latencySamples,
+          userOffsetSamples: _resolveUserOffsetSamples(_deviceRate),
+        ),
       );
     });
   }
@@ -394,7 +528,7 @@ class AudioDeviceTransport {
     }
     // A run armed at the press starts here, at the clock's first look: its
     // first frame and its first sound together ([FirstLookStart]).
-    _start.look();
+    _start.look(frameTime: frameTime);
     if (!device.isPlaying) {
       if (_needsLoopRearm) {
         // First pass of a mid-timeline loop ran out: every later pass is
@@ -404,7 +538,7 @@ class AudioDeviceTransport {
         _needsLoopRearm = false;
         _armFrame = 0;
         _armDevice(device, startSample: 0, looping: true);
-        _start.look();
+        _start.look(frameTime: frameTime);
         return const ClockReading(globalFrame: 0);
       }
       return ClockReading(globalFrame: _totalFrames - 1, ended: true);
@@ -504,5 +638,49 @@ class AudioDeviceTransport {
         deviceRate: _deviceRate,
       ),
     );
+  }
+}
+
+/// A run's sound on its way ([AudioDeviceTransport.soundIsComing]): whether
+/// it is, and its landing heard — a source by the store's notify, the output
+/// by its open ([QaAudioDevice.opening]) — each heard once, from the run's
+/// first wait for its sound to the run's end, however often the run is made
+/// ready meanwhile.
+final class _SoundOnItsWay {
+  _SoundOnItsWay(this._store, this._mayHaveCome);
+
+  final AudioConformStore _store;
+  final void Function() _mayHaveCome;
+
+  /// Whether the run's sound is on its way — its output being opened, a
+  /// source being made ready ([OutputComing]) — so the run waits for it.
+  bool isComing = false;
+
+  bool _hearingTheStore = false;
+  Future<void>? _awaitedOpening;
+
+  /// The run's sound is on its way to [device]: the run waits for it, and
+  /// hears it land.
+  void waitOn(QaAudioDevice device) {
+    isComing = true;
+    if (!_hearingTheStore) {
+      _hearingTheStore = true;
+      _store.addListener(_mayHaveCome);
+    }
+    final opening = device.opening;
+    if (opening != null && !identical(opening, _awaitedOpening)) {
+      _awaitedOpening = opening;
+      unawaited(opening.then((_) => _mayHaveCome()));
+    }
+  }
+
+  /// No run waits for its sound any more.
+  void end() {
+    isComing = false;
+    _awaitedOpening = null;
+    if (_hearingTheStore) {
+      _hearingTheStore = false;
+      _store.removeListener(_mayHaveCome);
+    }
   }
 }

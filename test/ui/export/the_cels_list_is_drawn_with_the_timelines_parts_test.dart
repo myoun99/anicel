@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -21,6 +22,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/ui/canvas/guide_overlay.dart' show guideColorOf;
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/export/export_cels_standing.dart';
@@ -155,7 +157,8 @@ void main() {
     bool enabled = true,
     double width = 900,
     List<ExportCelsDirection> directions = const [],
-    ExportCelsCamera camera = const (laid: false, onPressed: null),
+    ExportCelsLaying camera = const (laid: false, onPressed: null),
+    ExportCelsLaying guides = const (laid: false, onPressed: null),
     CelsExportSpec spec = celsAlone,
   }) async {
     pressed.clear();
@@ -180,6 +183,7 @@ void main() {
                   canStepOn: true,
                   directions: directions,
                   camera: camera,
+                  guides: guides,
                 ),
                 rows: rows,
                 standing: stood.rowIn(rows)?.idValue,
@@ -572,14 +576,26 @@ void main() {
         reason: 'nothing to lay: the pill keeps its place',
       );
 
+      expect(pill('export-cels-guides').label, AppText.strings.exLayGuides);
+      expect(pill('export-cels-guides').selected, isFalse);
+      expect(
+        pill('export-cels-guides').onTap,
+        isNull,
+        reason: 'nothing to lay: the pill keeps its place',
+      );
+
       await pumpBoard(
         tester,
         camera: (laid: true, onPressed: () => pressed.add('lay camera')),
+        guides: (laid: true, onPressed: () => pressed.add('lay guides')),
       );
       expect(pill('export-cels-cam').selected, isTrue);
+      expect(pill('export-cels-guides').selected, isTrue);
       await tester.tap(keyed('export-cels-cam'));
       await tester.pump();
-      expect(pressed, ['lay camera']);
+      await tester.tap(keyed('export-cels-guides'));
+      await tester.pump();
+      expect(pressed, ['lay camera', 'lay guides']);
     });
 
     testWidgets('a laid direction is said in ONE colour: its pill, and the '
@@ -668,6 +684,55 @@ void main() {
       }
     });
 
+    // 🗣️I-105 (유저 2026-10-16): 「셀 출력시 CAM 적용 하는거랑 똑같이 거기에
+    // 가이드 버튼 만들어서 해당 컷 가이드 그림에 넣기」.
+    testWidgets('the guides laid are said in ONE colour, the guides\' own on '
+        'the canvas: the 「가이드」 pill, and the 「G」 on the drawing they are '
+        'laid over — right of the 「C」 and the 「D」', (tester) async {
+      const b1 = (row: LayerId('b'), cel: FrameId('b-1'));
+      const b2 = (row: LayerId('b'), cel: FrameId('b-2'));
+      await pumpBoard(
+        tester,
+        delta: ExportCelsCutDelta()
+            .withGuidesOver(b1, true)
+            .withGuidesOver(b2, true)
+            .withCameraOver(b2, true)
+            .withDirectionOver(
+              b2,
+              (row: const LayerId('dir'), cel: const FrameId('d-1')),
+              true,
+            ),
+        guides: (laid: true, onPressed: () {}),
+      );
+
+      final ink = guideColorOf(tester.element(keyed('export-cels-guides')));
+      expect(tester.widget<Pill>(keyed('export-cels-guides')).tone, ink);
+      expect(
+        tester.widget<Text>(keyed('export-cels-block-g-b-b-1')).style!.color,
+        ink,
+      );
+      expect(
+        [
+          keyed('export-cels-block-c-b-b-1'),
+          keyed('export-cels-block-d-b-b-1'),
+        ],
+        everyElement(findsNothing),
+        reason: 'the guides alone are laid over b-1',
+      );
+      expect(
+        tester.getTopRight(keyed('export-cels-block-d-b-b-2')).dx,
+        lessThanOrEqualTo(
+          tester.getTopLeft(keyed('export-cels-block-g-b-b-2')).dx,
+        ),
+        reason: 'all three over b-2: 「C D G」',
+      );
+      // The mark is on the drawings the guides are laid over, and on no
+      // other.
+      for (final other in ['b-b-3', 'a-a-1', 'l-l-1']) {
+        expect(keyed('export-cels-block-g-$other'), findsNothing);
+      }
+    });
+
     testWidgets('the caption over the pills: the whole of it where the band '
         'has the room, the row kind\'s word where it has not — and the whole '
         'of it on hover either way', (tester) async {
@@ -675,23 +740,107 @@ void main() {
       String caption() =>
           tester.widget<Text>(keyed('export-cels-lay-caption')).data!;
 
-      // The band's room as the board had it before its attach column — on
-      // a surface wide enough to hold it.
+      // The band's room as the board had it before its attach column, and
+      // before 「가이드」 stood beside CAM (I-105) — on a surface wide
+      // enough to hold it.
       await tester.binding.setSurfaceSize(const Size(1400, 600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      await pumpBoard(tester, width: 800 + ExportCelsBoard.stackWidth);
+      await pumpBoard(tester, width: 1000 + ExportCelsBoard.stackWidth);
       expect(caption(), strings.exLayDirection);
       expect(find.byTooltip(strings.exLayDirection), findsOneWidget);
 
       await pumpBoard(tester, width: ExportCelsBoard.minimumWidth);
       expect(tester.takeException(), isNull);
       expect(caption(), strings.tlKindInstruction);
-      expect(
-        tester.getSize(keyed('export-cels-lay-caption')).width,
-        greaterThan(0),
-        reason: 'the short word is there to be READ at the narrowest',
-      );
+      // ↩️The word was pinned READ at the narrowest. With 「가이드」 beside
+      // CAM the narrowest band has not the room for the word and the pills
+      // both, and the word gives way first (I-105 — the test below).
       expect(find.byTooltip(strings.exLayDirection), findsOneWidget);
+    });
+
+    // ⚖️I-105 (공통 2026-10-17, the user's to overturn): a pill is what is
+    // pressed, and cut short, 「T.U」 and 「PAN」 read alike.
+    testWidgets('where the band\'s end has not the room for all of it, the '
+        'caption gives width up first — its whole, then its word — and the '
+        'pills only after it: the wider strip first', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(2400, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final strings = AppText.strings;
+      const tu = 'direction-tu';
+      const cam = 'export-cels-cam';
+      const guides = 'export-cels-guides';
+      final end = find
+          .ancestor(
+            of: keyed('export-cels-lay-caption'),
+            matching: find.byType(Row),
+          )
+          .first;
+      double widthOf(Finder finder) => tester.getSize(finder).width;
+      String caption() =>
+          tester.widget<Text>(keyed('export-cels-lay-caption')).data!;
+      Future<void> pumpAt(double width) async {
+        await pumpBoard(
+          tester,
+          width: width,
+          directions: [
+            (
+              keyValue: tu,
+              name: 'T.U',
+              fullName: 'T.U_A-B',
+              laid: false,
+              onPressed: () {},
+            ),
+          ],
+        );
+        expect(tester.takeException(), isNull);
+        expect(
+          tester.getRect(find.byType(PillStrips)).right,
+          lessThanOrEqualTo(tester.getRect(end).right + 0.01),
+          reason: 'nothing runs past the band',
+        );
+      }
+
+      const wide = 2000.0;
+      await pumpAt(wide);
+      final own = {
+        for (final key in [tu, cam, guides]) key: widthOf(keyed(key)),
+      };
+      final strips = widthOf(find.byType(PillStrips));
+      final whole = widthOf(keyed('export-cels-lay-caption'));
+      expect(caption(), strings.exLayDirection, reason: '⛔fixture: room');
+      // The end grows as the board does: what the board needs for [room].
+      final over = wide - widthOf(end);
+      Future<void> endAt(double room) => pumpAt(over + room);
+      void pillsWhole() {
+        for (final key in [tu, cam, guides]) {
+          expect(widthOf(keyed(key)), own[key], reason: '$key is whole');
+        }
+      }
+
+      await endAt(whole - 1 + 8 + strips);
+      expect(caption(), strings.tlKindInstruction);
+      final word = tester
+          .renderObject<RenderParagraph>(find.text(strings.tlKindInstruction))
+          .getMaxIntrinsicWidth(double.infinity);
+      expect(widthOf(keyed('export-cels-lay-caption')), word);
+      pillsWhole();
+
+      await endAt(word / 2 + 8 + strips);
+      expect(
+        widthOf(keyed('export-cels-lay-caption')),
+        closeTo(word / 2, 0.01),
+        reason: 'the word gives way before the pills',
+      );
+      pillsWhole();
+
+      await endAt(8 + strips - 10);
+      expect(widthOf(keyed('export-cels-lay-caption')), 0);
+      expect(widthOf(keyed(tu)), own[tu], reason: 'the narrower strip');
+      expect(
+        widthOf(keyed(cam)) + widthOf(keyed(guides)),
+        closeTo(own[cam]! + own[guides]! - 10, 0.01),
+        reason: 'the wider strip gives up what the end has not',
+      );
     });
   });
 

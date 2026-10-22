@@ -4,6 +4,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/ui/canvas/canvas_adjust_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_target_pill.dart';
 import 'package:anicel/src/ui/session/canvas_adjust.dart';
@@ -50,7 +51,7 @@ void main() {
               child: CanvasAdjustLayer(
                 adjust: adjust,
                 viewport: CanvasViewport(),
-                canvasSize: canvas,
+                pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
                 onLand: () => landed += 1,
               ),
             ),
@@ -85,7 +86,7 @@ void main() {
     );
     expect(pill.center.dx - origin.dx, closeTo(200, 0.01));
     expect(pill.top - origin.dy, closeTo(300 + targetPillGap, 0.01));
-    expect(sizeShown(tester), '400 × 300');
+    expect(sizeShown(tester), '400×300');
   });
 
   testWidgets('🚨the right edge dragged moves alone — the left edge stays, '
@@ -94,7 +95,7 @@ void main() {
     await drag(tester, origin + const Offset(400, 150), const Offset(100, 30));
 
     expect(shown().edges, const Rect.fromLTRB(0, 0, 500, 300));
-    expect(sizeShown(tester), '500 × 300');
+    expect(sizeShown(tester), '500×300');
     expect(kept().contentOffset, (dx: 0.0, dy: 0.0), reason: 'nothing moved');
   });
 
@@ -123,7 +124,7 @@ void main() {
               child: CanvasAdjustLayer(
                 adjust: adjust,
                 viewport: CanvasViewport(zoom: 2),
-                canvasSize: canvas,
+                pasteboard: canvas.pasteboardAt(PasteboardReach.whole),
                 onLand: () => landed += 1,
               ),
             ),

@@ -16,24 +16,33 @@ void main() {
   const photo = ui.Size(8000, 6000); // 48M pixels — a phone camera's raw.
   const page = ui.Size(595, 842); // A4 in points.
 
+  /// The scale for a page made of its file's pixels — a photo's.
+  double ofPixels(double zoom, ui.Size size) =>
+      viewerRenderScaleFor(zoom, size, drawnAtAnySize: false);
+
+  /// The scale for a page drawn at any size — a PDF's.
+  double ofDrawn(double zoom, ui.Size size) =>
+      viewerRenderScaleFor(zoom, size, drawnAtAnySize: true);
+
   int pixelsAt(double zoom, ui.Size size) =>
-      (size.width * viewerRenderScaleFor(zoom, size)).round() *
-      (size.height * viewerRenderScaleFor(zoom, size)).round();
+      (size.width * ofPixels(zoom, size)).round() *
+      (size.height * ofPixels(zoom, size)).round();
 
   group('fitted smaller than itself', () {
     test('🚨a photo at a quarter view is rasterised at a quarter, not whole', () {
-      expect(viewerRenderScaleFor(0.25, photo), 0.25);
+      expect(ofPixels(0.25, photo), 0.25);
       expect(pixelsAt(0.25, photo), 2000 * 1500);
     });
 
     test('and the further out it goes the smaller it gets, down to a floor', () {
-      expect(viewerRenderScaleFor(0.5, photo), 0.5);
-      expect(viewerRenderScaleFor(0.1, photo), 0.125);
-      expect(viewerRenderScaleFor(0.0001, photo), viewerMinRenderScale);
+      expect(ofPixels(0.5, photo), 0.5);
+      expect(ofPixels(0.1, photo), 0.125);
+      expect(ofPixels(0.0001, photo), viewerMinRenderScale);
     });
 
-    test('⛔the raster covers the view — or the CAP is the reason it does '
-        'not, and nothing else ever is', () {
+    test('⛔the raster covers the view — or the CAP, the FLOOR or a '
+        'picture\'s own size is the reason it does not, and nothing else '
+        'ever is', () {
       // The rounding is UP, so a raster is never thinner than what is drawn.
       // The one exception is deliberate and older than this change: past
       // 16M pixels bounded memory beats sharpness. Stating it as「A, or B
@@ -41,14 +50,23 @@ void main() {
       // 「A」alone fails wherever the cap binds, which is most of a large
       // page's range.
       for (final zoom in [0.05, 0.2, 0.3, 0.49, 0.7, 1.3, 3.0, 8.0]) {
-        for (final size in [photo, const ui.Size(2000, 1500), page]) {
-          final scale = viewerRenderScaleFor(zoom, size);
+        for (final (size, drawn) in [
+          (photo, false),
+          (const ui.Size(2000, 1500), false),
+          (page, true),
+        ]) {
+          final scale = viewerRenderScaleFor(
+            zoom,
+            size,
+            drawnAtAnySize: drawn,
+          );
           final covers = scale >= zoom;
           final capped = size.width * scale * 2 * size.height * scale * 2 >
               viewerMaxRenderPixels;
           final floored = scale <= viewerMinRenderScale;
+          final itsOwn = !drawn && scale == 1;
           expect(
-            covers || capped || floored,
+            covers || capped || floored || itsOwn,
             isTrue,
             reason: 'zoom $zoom on $size gave $scale for no stated reason',
           );
@@ -57,7 +75,7 @@ void main() {
     });
     test('⚠️above the cap the cap wins, and the page is knowingly softer', () {
       // 8000×6000 at a 0.7 view would want 0.7 — 23M pixels. It gets 0.5.
-      expect(viewerRenderScaleFor(0.7, photo), lessThan(0.7));
+      expect(ofPixels(0.7, photo), lessThan(0.7));
       expect(pixelsAt(0.7, photo), lessThanOrEqualTo(viewerMaxRenderPixels));
     });
   });
@@ -66,7 +84,7 @@ void main() {
   group('what it is NOT', () {
     test('⛔not a crop: the aspect is untouched at every zoom', () {
       for (final zoom in [0.1, 0.25, 1.0, 2.0, 8.0]) {
-        final scale = viewerRenderScaleFor(zoom, photo);
+        final scale = ofPixels(zoom, photo);
         expect(
           (photo.width * scale) / (photo.height * scale),
           closeTo(photo.width / photo.height, 1e-9),
@@ -82,17 +100,78 @@ void main() {
 
   group('a PDF page is measured the same way', () {
     test('at 1:1 it is its own size — points, so this was always small', () {
-      expect(viewerRenderScaleFor(1, page), 1.0);
+      expect(ofDrawn(1, page), 1.0);
     });
 
     test('zoomed IN it doubles, which is what the tier was written for', () {
-      expect(viewerRenderScaleFor(2, page), 2.0);
-      expect(viewerRenderScaleFor(3, page), 4.0);
+      expect(ofDrawn(2, page), 2.0);
+      expect(ofDrawn(3, page), 4.0);
     });
 
     test('and zoomed OUT it now shrinks too — a page drawn at a third does '
         'not need three times the pixels', () {
-      expect(viewerRenderScaleFor(0.25, page), 0.25);
+      expect(ofDrawn(0.25, page), 0.25);
+    });
+  });
+
+  group('🚨a page made of its file\'s pixels stops at its own size; one drawn '
+      'at any size climbs on — 유저 2026-09-11 「pdf는 확대하면 선명해지는게 '
+      '맞긴하네 … 이미지나 비디오는 아닐지라도」', () {
+    const picture = ui.Size(2000, 1500);
+
+    test('zoomed in, a picture is asked at its own pixels and no more — '
+        'every one past them would be made up', () {
+      expect(ofPixels(1.3, picture), 1.0);
+      expect(ofPixels(2, picture), 1.0);
+      expect(ofPixels(8, picture), 1.0);
+    });
+
+    test('the same size drawn at any size is asked at the zoom', () {
+      expect(ofDrawn(2, picture), 2.0);
+    });
+
+    test('at its own size and under, the two are one ladder', () {
+      for (final zoom in [0.05, 0.3, 0.5, 0.7, 1.0]) {
+        expect(
+          ofPixels(zoom, picture),
+          ofDrawn(zoom, picture),
+          reason: 'at $zoom',
+        );
+      }
+    });
+
+    test('a picture past the cap is still held to the cap', () {
+      expect(ofPixels(3, photo), 0.5, reason: '4000×3000 — 12M pixels');
+    });
+  });
+
+  group('🚨the media viewer asks a page made of its file\'s pixels at its '
+      'own size whatever the zoom; one drawn at any size by the ladder — '
+      '유저 2026-10-16 「늘 원본(캔버스처럼)」', () {
+    const picture = ui.Size(2000, 1500);
+
+    double inTheViewer(double zoom, ui.Size size, {required bool drawn}) =>
+        mediaViewerRenderScaleFor(zoom, size, drawnAtAnySize: drawn);
+
+    test('a picture, out or in, is its own pixels', () {
+      for (final zoom in [0.05, 0.25, 0.5, 1.0, 2.0, 8.0]) {
+        expect(inTheViewer(zoom, picture, drawn: false), 1.0, reason: '$zoom');
+      }
+    });
+
+    test('a page drawn at any size goes down the ladder and up it, as a '
+        'preview\'s does', () {
+      for (final zoom in [0.05, 0.25, 0.5, 1.0, 2.0, 8.0]) {
+        expect(
+          inTheViewer(zoom, page, drawn: true),
+          ofDrawn(zoom, page),
+          reason: '$zoom',
+        );
+      }
+    });
+
+    test('and a picture past the cap is held to the cap', () {
+      expect(inTheViewer(0.05, photo, drawn: false), 0.5);
     });
   });
 

@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import '../helpers/pill_row_clipboard.dart';
 
@@ -295,6 +297,108 @@ void main() {
       celA,
       reason: 'the whole rigid shift is refused',
     );
+  });
+
+  /// 🚨F-413 (유저 2026-10-19): 「겸용컷이 아닐땐 문제없는데, 겸용컷일때
+  /// 프레임블록 드래그해서 다른행으로 이동시키면 그림이 사라짐」.
+  ///
+  /// A 겸용 row is a window onto its group's ONE cel: the pixels live under
+  /// the group's canonical key. A move that carries a cel onto another row
+  /// re-homes the pixels the rows resolve to — in the cut the group is not
+  /// canonical in, the row's own key holds nothing to move.
+  group('a cel only the 겸용 cut shows, carried onto another row', () {
+    BrushFrameStore store() => session.renderCaches.brushFrameStore;
+
+    BrushFrameKey keyIn(CutId cutId, LayerId row, FrameId cel) =>
+        session.brushFrameKeyForCut(session.cutById(cutId)!, row, cel);
+
+    /// Cut 2's own cel at frame 2 of its row, with pixels stored for it,
+    /// and the row of cut 2 it can be carried onto.
+    ({CutId cut2, LayerId row2, FrameId cel, LayerId onto}) drawnInCut2() {
+      final pair = celInBothCuts(secondRow: true);
+      session.selectFrameIndex(2);
+      session.createDrawingAtCurrentFrame();
+      final cel = rowIn(pair.cut2, pair.row2).timeline[2]!.frameId!;
+      final key = keyIn(pair.cut2, pair.row2, cel);
+      store().getOrCreateFrame(key);
+      expect(
+        store().canonicalKeyOf(key),
+        isNot(key),
+        reason: 'LIVENESS — the row is a window onto cut 1\'s bank',
+      );
+      return (
+        cut2: pair.cut2,
+        row2: pair.row2,
+        cel: cel,
+        onto: otherRowOf(pair),
+      );
+    }
+
+    final carries = <String, void Function(LayerId from, LayerId onto)>{
+      'the grip drag': (from, onto) {
+        expect(
+          session.drawingBlockMove.beginDrawingBlockMoveDrag(
+            layerId: from,
+            blockStartIndex: 2,
+          ),
+          isTrue,
+        );
+        session.drawingBlockMove.updateDrawingBlockMoveDrag(
+          frameDelta: 0,
+          targetLayerId: onto,
+        );
+        session.drawingBlockMove.endDrawingBlockMoveDrag();
+      },
+      'the band move': (from, onto) {
+        session.updateFrameRangeSelectionDrag(
+          layerId: from,
+          anchorIndex: 2,
+          headIndex: 2,
+        );
+        expect(session.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+        session.rangeMove.updateFrameRangeMoveDrag(
+          frameDelta: 0,
+          targetLayerId: onto,
+        );
+        session.rangeMove.endFrameRangeMoveDrag();
+      },
+    };
+
+    for (final MapEntry(key: how, value: carry) in carries.entries) {
+      test('$how keeps its picture, and one undo puts it back', () {
+        final (:cut2, :row2, :cel, :onto) = drawnInCut2();
+
+        carry(row2, onto);
+
+        expect(
+          rowIn(cut2, onto).timeline[2]?.frameId,
+          cel,
+          reason: 'LIVENESS — the block landed on the other row',
+        );
+        expect(
+          store().frameOrNull(keyIn(cut2, onto, cel)),
+          isNotNull,
+          reason: '「그림이 사라짐」 — the row it landed on shows nothing',
+        );
+        expect(store().frameOrNull(keyIn(cut2, row2, cel)), isNull);
+
+        // One step back — the first press may walk to where it was made
+        // (I-41).
+        for (var press = 0; press < 2; press += 1) {
+          if (rowIn(cut2, row2).timeline[2]?.frameId == cel) {
+            break;
+          }
+          session.undo();
+        }
+        expect(rowIn(cut2, row2).timeline[2]?.frameId, cel);
+        expect(
+          store().frameOrNull(keyIn(cut2, row2, cel)),
+          isNotNull,
+          reason: 'the undo carries the picture back',
+        );
+        expect(store().frameOrNull(keyIn(cut2, onto, cel)), isNull);
+      });
+    }
   });
 
   group('the law this unifies — two exposures inside ONE bank', () {

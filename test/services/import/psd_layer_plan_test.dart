@@ -45,6 +45,8 @@ void main() {
     String? adjustment,
     bool pixels = true,
     bool effects = false,
+    bool unbakedMask = false,
+    bool locked = false,
   }) => PsdLayer(
     name: name,
     left: left,
@@ -59,6 +61,8 @@ void main() {
     pixels: pixels ? Uint8List((right - left) * (bottom - top) * 4) : null,
     adjustmentKey: adjustment,
     hasLayerEffects: effects,
+    hasUnbakedMask: unbakedMask,
+    locked: locked,
   );
 
   PsdLayer bracket(
@@ -67,6 +71,8 @@ void main() {
     String blend = 'pass',
     bool collapsed = false,
     bool effects = false,
+    bool unbakedMask = false,
+    bool locked = false,
   }) => PsdLayer(
     name: name,
     left: 0,
@@ -82,6 +88,8 @@ void main() {
     adjustmentKey: null,
     collapsed: collapsed,
     hasLayerEffects: effects,
+    hasUnbakedMask: unbakedMask,
+    locked: locked,
   );
 
   PsdDocument document(
@@ -105,6 +113,7 @@ void main() {
     MediaFitMode fit = MediaFitMode.none,
     CanvasSize canvas = const CanvasSize(width: 4, height: 4),
     int duration = 12,
+    bool newCut = false,
   }) => planPsdExpansion(
     document: doc,
     displayName: 'BG_a12.psd',
@@ -113,10 +122,12 @@ void main() {
     canvas: canvas,
     fit: fit,
     mint: mint(),
+    newCut: newCut,
   );
 
   group('the shape of the stack', () {
-    test('everything lands inside ONE folder named after the file', () {
+    test('into a cut already there, everything lands inside ONE folder '
+        'named after the file', () {
       final result = plan(document([raster('a'), raster('b')]));
       expect(result.layers, hasLength(3));
       final root = result.layers.last;
@@ -159,6 +170,29 @@ void main() {
       expect(book.folderId, root.id);
       expect(result.layers[0].folderId, root.id);
       expect(result.layers[3].folderId, root.id);
+    });
+
+    test('a NEW cut is the file: its rows stand in it bare, under no folder '
+        'the file does not have (F-422)', () {
+      final result = plan(
+        document([
+          raster('under'),
+          bracket(PsdLayerRole.groupClose),
+          raster('inside'),
+          bracket(PsdLayerRole.groupOpen, name: 'BOOK'),
+          raster('over'),
+        ]),
+        newCut: true,
+      );
+      expect(
+        result.layers.map((layer) => layer.name).toList(),
+        ['under', 'inside', 'BOOK', 'over'],
+      );
+      final book = result.layers[2];
+      expect(result.layers[1].folderId, book.id, reason: 'inside the group');
+      for (final row in [result.layers[0], book, result.layers[3]]) {
+        expect(row.folderId, isNull, reason: row.name);
+      }
     });
 
     test('a group shown closed comes in closed, an open one open — the '
@@ -277,13 +311,42 @@ void main() {
       expect(
         [
           for (final warning in result.warnings)
-            if (warning.key == 'psdLayerEffects') warning.values['name'],
+            if (warning.key == 'layerEffectsNotApplied')
+              warning.values['name'],
         ],
         ['shadowed', 'stroked'],
       );
       expect(
         result.layers.map((layer) => layer.name),
         containsAll(['plain', 'shadowed', 'stroked']),
+      );
+    });
+
+    test('a mask its pixels were not baked through and a lock are named — on '
+        'a layer and on a group — in every decoder\'s words, and the rows '
+        'still come in; an adjustment is named only as left out (보드 '
+        'the-clip-import-leaves-masks-and-locks-unsaid)', () {
+      final result = plan(
+        document([
+          raster('plain'),
+          bracket(PsdLayerRole.groupClose, locked: true),
+          raster('held', locked: true),
+          bracket(PsdLayerRole.groupOpen, name: 'masked', unbakedMask: true),
+          bracket(PsdLayerRole.groupClose),
+          raster('inside'),
+          bracket(PsdLayerRole.groupOpen, name: 'kept', locked: true),
+          raster('Curves 1', adjustment: 'curv', locked: true),
+        ]),
+      );
+      expect(result.warnings, [
+        lockNotImported('held'),
+        layerMaskNotApplied('masked'),
+        lockNotImported('kept'),
+        unsupportedLayerKind('Curves 1'),
+      ]);
+      expect(
+        result.layers.map((layer) => layer.name),
+        containsAll(['plain', 'held', 'masked', 'inside', 'kept']),
       );
     });
 

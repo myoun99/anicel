@@ -123,8 +123,21 @@ String? _graphKeyOf(TimelineDisplayRow row) {
 }
 
 /// A lane as a header graph draws it (I-89 ③): its row's layer, whose
-/// colour label its keys wear, and the lane.
-typedef LaneGraphLine = ({Layer layer, PropertyLaneRow lane});
+/// colour label its keys wear, the lane — and, for a lane of a CUT drawn
+/// on a track's axis, where it reaches ([LaneGraphReach]); null for a lane
+/// drawn on the axis its own frames are counted on, the whole way.
+typedef LaneGraphLine = ({
+  Layer layer,
+  PropertyLaneRow lane,
+  LaneGraphReach? reach,
+});
+
+/// Where a lane of one cut is drawn on its track's axis (I-89 ①): its own
+/// frame 0 at the track frame `start`, and nothing of it from the track
+/// frame `end` on — the cut's own frames, as the storyboard's projection
+/// rows hold each cut's keys to them (유저 2026-10-08: 「컷 클램핑만
+/// 되도록」).
+typedef LaneGraphReach = ({int start, int end});
 
 /// The pins [seat]'s graph draws as GUESTS (I-89 ③), dashed: every pinned
 /// lane that is no member of its group — another group's, another row's —
@@ -136,6 +149,45 @@ List<String> laneGraphGuests(TimelineGraphSeat seat, Set<String> pinned) => [
         when _groupKeyOfLane(layerId, laneId) != seat.groupKey)
       key,
 ];
+
+/// The lane the pin [key] names among [rows] (I-89 ③) as a header graph
+/// draws it — or null once its row or its lane is gone, or for a lane that
+/// draws no line. Each grid hands its rows as it draws them: the timeline
+/// the session's, the storyboard's rail a track's own (I-89 ①).
+///
+/// Read with the lane's own group twirled open — [lanesOf] asked with that
+/// group's key — whatever the rail shows: a pin in a folded group still
+/// reaches every graph (I-89-Q4 A, 유저 2026-10-12: 「계속 그림(AE 그래프
+/// 편집기 세트처럼)」).
+LaneGraphLine? laneGraphLineAmong(
+  String key, {
+  required Iterable<Layer> rows,
+  required List<PropertyLaneRow> Function(
+    Layer layer,
+    Set<String> expandedGroupKeys,
+  )
+  lanesOf,
+}) {
+  final pinned = parseLaneGroupKey(key);
+  if (pinned == null) {
+    return null;
+  }
+  final group = laneGroupOf(pinned.laneId);
+  for (final layer in rows) {
+    if (layer.id != pinned.layerId) {
+      continue;
+    }
+    final lanes = lanesOf(layer, {
+      if (group != null) laneGroupKey(layer.id, group),
+    });
+    for (final lane in lanes) {
+      if (lane.laneId == pinned.laneId && lane.curve != null) {
+        return (layer: layer, lane: lane, reach: null);
+      }
+    }
+  }
+  return null;
+}
 
 /// The key of the group [laneId] is a member of on [layerId]'s row, or
 /// null for a lane that is no member of a group — a header, a lane of its

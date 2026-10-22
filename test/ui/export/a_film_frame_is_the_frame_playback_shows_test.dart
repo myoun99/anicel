@@ -28,10 +28,11 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart' show CelRead;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+
+import '../../helpers/cels_parked_cold.dart';
 
 /// 🗣️유저 2026-10-13 (card video-export-speed-Q2): 「캔버스 규칙으로」 — a
 /// film is drawn as the canvas draws: each cut through its camera at the
@@ -110,17 +111,16 @@ void main() {
   );
 
   /// Parks [drawings] — each a cut, one of its rows by id, and that row's
-  /// drawing — as every drawing [session] holds: `restoreBaked` puts back
-  /// the whole store, so they go in at once.
+  /// drawing — as every drawing [session] holds: parking puts back the
+  /// whole store, so they go in at once.
   void ink(
     EditorSessionManager session,
     List<(Cut, String, BitmapSurface)> drawings,
   ) {
-    session.renderCaches.brushFrameStore.restoreBaked({
+    parkCold(session.renderCaches.brushFrameStore, {
       for (final (cut, id, surface) in drawings)
-        if (session.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-f'))
-            case final key)
-          key: AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface)),
+        session.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-f')):
+            surface,
     });
   }
 
@@ -359,6 +359,7 @@ void main() {
     const canvas = CanvasSize(width: 60, height: 38);
     const cutId = CutId('cut');
     const blue = 0xFF0000FF;
+    const black = 0xFF000000;
     // Ink to the canvas's edge and not a pixel past it.
     final filled = surfaceOf(
       canvas,
@@ -369,9 +370,10 @@ void main() {
       ],
     );
 
-    /// The cut through a camera at [pose], on a blue apron: filled to the
-    /// edge where [inked], blank where not; [size] for a canvas, and a
-    /// camera, other than the group's.
+    /// The cut through a camera at [pose], on a blue apron over a black
+    /// floor — the apron stops at the pasteboard's wall (I-109), and the
+    /// floor shows past it: filled to the edge where [inked], blank where
+    /// not; [size] for a canvas, and a camera, other than the group's.
     (EditorSessionManager, ExportFrameRenderer) filmAt(
       CameraPose pose, {
       bool inked = true,
@@ -383,6 +385,7 @@ void main() {
           name: 'Project',
           cameraSize: size,
           pasteboardArgb: blue,
+          backdropArgb: black,
           tracks: [
             Track(
               id: const TrackId('track'),
@@ -521,10 +524,18 @@ void main() {
             ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
           ], ExportSizeMode.camera).frame(0),
         );
+        // Film pixel p sees canvas [4 + (p − 4) × 4, 4 + (p − 3) × 4):
+        // pixel 2, [-4, 0), is past the canvas and inside the 3x wall at
+        // -8; pixel 0, [-12, -8), is past the wall.
         expect(
-          pixelOf(film, small.width, 0, 0),
+          pixelOf(film, small.width, 2, 2),
           (0, 0, 255, 255),
           reason: 'LIVENESS: the apron past the canvas',
+        );
+        expect(
+          pixelOf(film, small.width, 0, 0),
+          (0, 0, 0, 255),
+          reason: 'the floor past the pasteboard\'s wall (I-109)',
         );
         expect(pixelOf(film, small.width, 4, 4), (255, 255, 255, 255));
       });

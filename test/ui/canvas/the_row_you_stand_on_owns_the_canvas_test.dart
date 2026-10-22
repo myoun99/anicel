@@ -383,8 +383,11 @@ void main() {
     expect(session.requireActiveCut.camera.keyframeAt(0), isNotNull);
   });
 
-  testWidgets('an SE row\'s box is its name tag, and it only MOVES — no '
-      'corner, no cross, no turn', (tester) async {
+  // ↩️F-222 ② gave an SE row a box that only MOVED — no corner, no cross,
+  // no turn. F-387 (유저 2026-10-19: 「같은 fx인데 다른건 말이안됨」) made it a
+  // layer's box, and `an_se_rows_box_is_a_layers_test` holds its grabs.
+  testWidgets('an SE row\'s box is its name tag, and its move lands on the '
+      'tag', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -407,9 +410,6 @@ void main() {
     await pumpFrames(tester);
 
     final box = boxOf(tester);
-    expect(box.scale, isNull);
-    expect(box.turn, isNull);
-    expect(box.cross, isNull);
     final corners = box.corners;
     expect(
       corners[2].x - corners[0].x,

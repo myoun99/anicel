@@ -8,6 +8,9 @@
 # what a test IMPORTS rather than from a list, so a new parity test joins
 # without anybody remembering to add it.
 #
+# All four hand what it prints to `tool/affected_tests.dart --files-from`:
+# WHICH files is this script's answer, HOW they run is the run plan's.
+#
 # Prints one path per line, sorted, relative to the repository root.
 # ⛔Exits 1 when it selects NOTHING: a selector that stopped matching would
 # otherwise sail through as a pass — the one way this check could quietly

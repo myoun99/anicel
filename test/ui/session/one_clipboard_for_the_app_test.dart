@@ -11,9 +11,11 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/app_clipboard.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
+import 'package:anicel/src/ui/session/key_clipboard.dart';
 import 'package:anicel/src/ui/session/layer_clipboard.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
 
@@ -41,6 +43,7 @@ import '../../helpers/reference_to.dart';
 FrameClipboard frameBoardOf(EditorSessionManager session) => session.clipboard;
 LayerClipboard layerBoardOf(EditorSessionManager session) =>
     session.layerClipboard;
+KeyClipboard keyBoardOf(EditorSessionManager session) => session.keyClipboard;
 
 void main() {
   late AppClipboard clipboard;
@@ -171,6 +174,109 @@ void main() {
       final pasted = row.frames.firstWhere((frame) => frame.id == pastedId);
       expect(pasted.seName, 'A');
       expect(pasted.name, 'from A');
+    });
+  });
+
+  // I-101 ③ (유저 2026-10-15): 「다른 프로젝트 · 다른 컷에도 프레임 복사와
+  // 같은 규칙으로 결과적으로 되게」 — keys too: the key board is the app's.
+  group('KEYS', () {
+    void keyRotation(
+      EditorSessionManager session,
+      Map<int, double> values, {
+      Map<int, String> names = const {},
+    }) {
+      final layer = session.activeLayer!;
+      var lane = layer.transformTrack.rotation;
+      for (final MapEntry(key: frame, :value) in values.entries) {
+        lane = lane.withKey(frame, value);
+      }
+      for (final MapEntry(key: frame, value: name) in names.entries) {
+        lane = lane.withKeyName(frame, name);
+      }
+      session.laneVerbs.updateLayerTransformTrack(
+        layer.id,
+        layer.transformTrack.copyWith(rotation: lane),
+      );
+    }
+
+    Map<int, double> rotationOf(EditorSessionManager session) => {
+      for (final MapEntry(key: frame, value: key)
+          in session.activeLayer!.transformTrack.rotation.keys.entries)
+        frame: key.value,
+    };
+
+    void standOnRotation(EditorSessionManager session, {required int at}) {
+      session.selectFrameIndex(at);
+      session.standOnRow(LaneRowAddress(session.activeLayer!.id, 'rotation'));
+    }
+
+    test('copied on a lane in one project, they go down on that lane in '
+        'ANOTHER — the project they came from left as it was', () {
+      final a = open();
+      final b = open();
+      keyRotation(a, {3: 10, 7: 20});
+      standOnRotation(a, at: 7);
+      keyBoardOf(a).copy();
+
+      standOnRotation(b, at: 3);
+      expect(
+        keyBoardOf(b).canPasteIndependent,
+        isTrue,
+        reason: 'the copy is the APP\'s — every open project holds it',
+      );
+      keyBoardOf(b).pasteIndependent();
+
+      expect(rotationOf(b), {3: 20});
+      expect(rotationOf(a), {3: 10, 7: 20});
+      b.historyManager.undo();
+      expect(rotationOf(b), isEmpty, reason: 'one undo step, where it landed');
+    });
+
+    // 🗣️I-101-Q1 (유저 2026-10-21): 「켜 둔다 (지금 그대로)」 — 「말대로 이름만
+    // 지키는 식으로. 실제 링크는 아님」. A key's link is its NAME, which
+    // means the same in any project — unlike a cel's id (I-7).
+    test('a LINKED paste in another project keeps the name, and a name '
+        'that project already holds is its own value there', () {
+      final a = open();
+      final b = open();
+      keyRotation(a, {7: 20}, names: {7: 'A'});
+      standOnRotation(a, at: 7);
+      keyBoardOf(a).copy();
+
+      keyRotation(b, {0: 50}, names: {0: 'A'});
+      standOnRotation(b, at: 3);
+      expect(keyBoardOf(b).canPasteLinked, isTrue);
+      expect(
+        keyBoardOf(b).pasteLinked(),
+        {'A'},
+        reason: 'it asks before it joins the name B holds',
+      );
+      expect(rotationOf(b), {0: 50}, reason: 'asking writes nothing');
+      keyBoardOf(b).pasteLinked(joinTakenNames: true);
+
+      expect(rotationOf(b), {0: 50, 3: 50}, reason: "B's A, not A's");
+      expect(
+        b.activeLayer!.transformTrack.rotation.keys[3]!.name,
+        'A',
+      );
+      expect(rotationOf(a), {7: 20}, reason: 'no link back — a name only');
+    });
+
+    test('copied in one cut, they go down in another cut of the project', () {
+      final s = open();
+      keyRotation(s, {5: 30});
+      standOnRotation(s, at: 5);
+      keyBoardOf(s).copy();
+
+      final first = s.requireActiveCut.id;
+      s.cutVerbs.createCut();
+      s.selectCut(s.activeTrack.cuts.firstWhere((cut) => cut.id != first).id);
+      expect(s.requireActiveCut.id, isNot(first), reason: '⛔전제');
+      standOnRotation(s, at: 2);
+      expect(keyBoardOf(s).canPasteIndependent, isTrue);
+      keyBoardOf(s).pasteIndependent();
+
+      expect(rotationOf(s), {2: 30});
     });
   });
 

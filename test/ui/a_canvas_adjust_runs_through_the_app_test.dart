@@ -2,7 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/ui/dialogs/canvas_size_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -10,7 +18,9 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/session/canvas_adjust.dart';
 
+import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/draw_on_current_frame.dart';
+import '../helpers/key_chords.dart';
 import 'flyout_test_helpers.dart' show tapCommandButton;
 
 /// I-79 through the app: an adjust opened on the canvas stands its box and
@@ -114,6 +124,105 @@ void main() {
       inkBefore.left + 10,
       reason: 'the left edge pulled out by 10 moved the picture by as much',
     );
+  });
+
+  // 🔬Card `a-canvas-resize-rewrites-kept-cels-on-the-ui-thread`: the
+  // edges land behind the window a typed size waits in, and the cels kept in
+  // files are moved there first, on the machine's workers.
+  testWidgets('Enter lands the edges with the cels kept in files moved '
+      'ahead', (tester) async {
+    final session = await pumpApp(tester);
+    final store = session.renderCaches.brushFrameStore;
+    final cut = session.requireActiveCut;
+    final before = cut.canvasSize;
+    final kept = BrushFrameKey(
+      projectId: const ProjectId('p'),
+      trackId: const TrackId('t'),
+      cutId: cut.id,
+      layerId: const LayerId('l'),
+      frameId: const FrameId('kept'),
+    );
+    keepInAFile(store, {
+      kept: BitmapSurface(canvasSize: before, tileSize: 8).putTiles([
+        (
+          coord: TileCoord(x: 1, y: 1),
+          tile: BitmapTile(
+            size: 8,
+            pixels: Uint8List(256)..fillRange(0, 256, 50),
+          ),
+        ),
+      ]),
+    });
+    // The left edge pulled out by 10: a move of no whole tile.
+    session.canvasAdjust
+      ..begin(CanvasEdgesDraft.of(cut.id, before))
+      ..move(
+        CanvasEdgesDraft(
+          cut: cut.id,
+          edges: Rect.fromLTRB(
+            -10,
+            0,
+            before.width.toDouble(),
+            before.height.toDouble(),
+          ),
+        ),
+      );
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await pumpPastTheWait(tester);
+
+    expect(
+      store.bakedSurfaceOrNull(kept)!.canvasSize,
+      CanvasSize(width: before.width + 10, height: before.height),
+      reason: 'premise: the kept cel was resized with its cut',
+    );
+    expect(store.celsMovedHere, 0, reason: 'its move was worked out ahead');
+  });
+
+  testWidgets('🗣️F-377: Ctrl+Z takes the edges back a grab at a time while '
+      'the adjust is open, leaving the document\'s steps be — and landed, '
+      'the adjust is ONE step', (tester) async {
+    final session = await pumpApp(tester);
+    session.createDrawingAtCurrentFrame();
+    final history = session.historyManager;
+    expect(history.canUndo, isTrue, reason: '⛔전제: a step of the document');
+    final steps = history.undoCount;
+    final cut = session.requireActiveCut;
+    final before = cut.canvasSize;
+    CanvasEdgesDraft edges(int right) => CanvasEdgesDraft(
+      cut: cut.id,
+      edges: Rect.fromLTRB(
+        0,
+        0,
+        right.toDouble(),
+        before.height.toDouble(),
+      ),
+    );
+    session.canvasAdjust
+      ..begin(CanvasEdgesDraft.of(cut.id, before))
+      ..move(edges(before.width + 20))
+      ..move(edges(before.width + 40));
+    await tester.pump();
+
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+
+    expect(
+      (session.canvasAdjust.draft! as CanvasEdgesDraft).edges,
+      edges(before.width + 20).edges,
+      reason: 'the last grab taken back',
+    );
+    expect(history.undoCount, steps, reason: 'the document is not asked');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await pumpPastTheWait(tester);
+    expect(
+      session.requireActiveCut.canvasSize,
+      CanvasSize(width: before.width + 20, height: before.height),
+    );
+    expect(history.undoCount, steps + 1, reason: 'it landed as ONE step');
+
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+    expect(session.requireActiveCut.canvasSize, before);
   });
 
   testWidgets('an adjust left open on a cut the canvas no longer shows is let '

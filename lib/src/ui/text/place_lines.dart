@@ -56,6 +56,10 @@ String celPlaceLine(CelPlace place, {required FramePlaceLabel framePlace}) {
     ConteRowInkPlace(:final cutName, :final celName) =>
       '${strings.panelConte} · $cutName · $celName',
     EnvelopeInkPlace(:final cutName) => '${strings.panelEnvelope} · $cutName',
+    TimesheetInkPlace(:final cutName) =>
+      '${strings.panelTimesheet} · $cutName',
+    ViewerInkPlace(:final fileName) =>
+      '${strings.panelMediaViewer} · $fileName',
     GoneCelPlace() => strings.saveCelsLostGone,
   };
 }
@@ -130,6 +134,10 @@ String mediaAssetUseLine(
     layerName: layerName,
   ),
   FrameMediaUse(:final place) => celPlaceLine(place, framePlace: framePlace),
+  SheetPhotoMediaUse(:final place) => celPlaceLine(
+    place,
+    framePlace: framePlace,
+  ),
 };
 
 /// The rows that [layerId] in [cutId] shares its pictures with — every

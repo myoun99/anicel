@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../../models/pasteboard_bounds.dart';
+
 /// One rail column's vertical extent, in the floor's own coordinates.
 typedef CanvasFloorBand = ({double top, double bottom});
 
@@ -31,7 +33,6 @@ class CanvasFloorInsets extends InheritedWidget {
   const CanvasFloorInsets({
     super.key,
     required this.insets,
-    this.leftRailBand,
     this.rightRailBand,
     this.bottomOverlaySpan = 0,
     required super.child,
@@ -43,14 +44,15 @@ class CanvasFloorInsets extends InheritedWidget {
   /// because framing cannot put half a picture behind a panel.
   final EdgeInsets insets;
 
-  /// WHERE the side columns actually are, vertically.
+  /// WHERE the right column actually is, vertically.
   ///
   /// A rail panel keeps the height it was left at, so an open rail covers a
   /// band rather than an edge. Something deciding whether the rail is in the
   /// way of one small floating control has to ask about the band: stepping
   /// aside for the whole edge is what made the vertical scrollbar drift
   /// inward beside a short panel that was nowhere near it (유저, R3 #5).
-  final CanvasFloorBand? leftRailBand;
+  /// ↩️The left column's was published too, for the page strip on that
+  /// edge — gone under the bars (F-383).
   final CanvasFloorBand? rightRailBand;
 
   /// ⑩ (user, 2026-08-12): 「캔버스 패널 가로 스크롤바가 간편 오버레이와
@@ -63,8 +65,8 @@ class CanvasFloorInsets extends InheritedWidget {
   /// ⚠️Deliberately NOT part of [insets]. That one deflates the window the
   /// artist looks through, and adding this to it would shift the picture
   /// every time the panel folded. A control that must not be buried asks
-  /// this instead — the same distinction [leftRailBand] draws for the side
-  /// columns: where something IS, versus what the framing owes it.
+  /// this instead — the same distinction [rightRailBand] draws for the side
+  /// column: where something IS, versus what the framing owes it.
   final double bottomOverlaySpan;
 
   /// The cover for the floor [context] sits on, or null when it is not the
@@ -95,7 +97,6 @@ class CanvasFloorInsets extends InheritedWidget {
   @override
   bool updateShouldNotify(CanvasFloorInsets oldWidget) =>
       oldWidget.insets != insets ||
-      oldWidget.leftRailBand != leftRailBand ||
       oldWidget.rightRailBand != rightRailBand ||
       oldWidget.bottomOverlaySpan != bottomOverlaySpan;
 }
@@ -129,6 +130,8 @@ class CanvasStageColors extends InheritedWidget {
     required this.pasteboardArgb,
     this.backdropNone = false,
     this.pasteboardNone = false,
+    this.pasteboardSize = PasteboardSize.three,
+    this.pasteboardInUse = true,
     required super.child,
   });
 
@@ -144,6 +147,17 @@ class CanvasStageColors extends InheritedWidget {
   final bool backdropNone;
   final bool pasteboardNone;
 
+  /// The pasteboard's size and whether it is there at all (I-109), as the
+  /// project keeps them — the size stays kept while it is off, as a colour
+  /// does while its plane is none.
+  final PasteboardSize pasteboardSize;
+  final bool pasteboardInUse;
+
+  /// How far the pasteboard reaches past the paper — where its plane is
+  /// laid, and the wall every picture on the floor stands behind.
+  PasteboardReach get pasteboardReach =>
+      PasteboardReach.of(size: pasteboardSize, inUse: pasteboardInUse);
+
   static CanvasStageColors? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CanvasStageColors>();
 
@@ -152,7 +166,9 @@ class CanvasStageColors extends InheritedWidget {
       oldWidget.backdropArgb != backdropArgb ||
       oldWidget.pasteboardArgb != pasteboardArgb ||
       oldWidget.backdropNone != backdropNone ||
-      oldWidget.pasteboardNone != pasteboardNone;
+      oldWidget.pasteboardNone != pasteboardNone ||
+      oldWidget.pasteboardSize != pasteboardSize ||
+      oldWidget.pasteboardInUse != pasteboardInUse;
 }
 
 /// Whether [band] overlaps the vertical range [top]..[bottom].

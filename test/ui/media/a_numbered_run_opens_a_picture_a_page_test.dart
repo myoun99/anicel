@@ -89,6 +89,11 @@ void main() {
 
     expect(doc.pageCount, 3);
     expect(doc.framesPerSecond, isNull, reason: 'paged by hand, as a book');
+    expect(
+      doc.drawnAtAnySize,
+      isFalse,
+      reason: 'its pages are pictures: past their pixels, none more',
+    );
     expect(run.asked, [0]);
 
     await _draw(doc, 2);
@@ -163,6 +168,60 @@ void main() {
     run.last(0).releaseRender(0);
     (await reading).dispose();
     expect(run.last(0).disposals, 0);
+  });
+
+  test('🚨one passed over while a render read it goes once the render ends: '
+      'the run holds keptOpen again', () async {
+    const kept = PictureRunDocument.keptOpen;
+    final run = _Run(List.filled(kept + 1, _size));
+    final doc = await run.open();
+    for (var page = 1; page < kept; page += 1) {
+      await _draw(doc, page);
+    }
+    final reads = <Future<ui.Image>>[];
+    for (var page = 0; page < kept; page += 1) {
+      run.last(page).holdRender(0);
+      reads.add(doc.renderPage(page, width: 10, height: 5));
+    }
+    await pumpEventQueue();
+
+    await _draw(doc, kept);
+
+    expect(
+      [for (var page = 0; page <= kept; page += 1) run.last(page).disposals],
+      everyElement(0),
+      reason: 'every one but the newest is being read',
+    );
+
+    run.last(0).releaseRender(0);
+    (await reads.first).dispose();
+
+    expect(run.last(0).disposals, 1, reason: 'read no more, the oldest goes');
+    for (var page = 1; page < kept; page += 1) {
+      run.last(page).releaseRender(0);
+      (await reads[page]).dispose();
+    }
+    expect(
+      [for (var page = 1; page <= kept; page += 1) run.last(page).disposals],
+      everyElement(0),
+    );
+  });
+
+  test('a picture asked for again is the newest: the one asked for longest '
+      'ago goes in its place', () async {
+    const kept = PictureRunDocument.keptOpen;
+    final run = _Run(List.filled(kept + 1, _size));
+    final doc = await run.open();
+    for (var page = 1; page < kept; page += 1) {
+      await _draw(doc, page);
+    }
+
+    await _draw(doc, 0);
+    await _draw(doc, kept);
+
+    expect(run.last(0).disposals, 0, reason: 'asked for again since');
+    expect(run.last(1).disposals, 1);
+    expect(run.asked.where((page) => page == 0), hasLength(1));
   });
 
   test('one opening per picture, however many asks are out at once',

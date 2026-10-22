@@ -66,6 +66,17 @@ TimelineDrawingBlock? coveringDrawingBlockAt(
   return block;
 }
 
+/// Whether [frameIndex] is a HELD cell of a drawn block: covered past the
+/// block's head, where its drawing is held on rather than drawn. A ghost's
+/// cells are derived from its source, so none of them is held.
+bool isHeldCellAt(
+  SplayTreeMap<int, TimelineExposure> timeline,
+  int frameIndex,
+) {
+  final block = coveringDrawingBlockAt(timeline, frameIndex);
+  return block != null && !block.entry.ghost && frameIndex > block.startIndex;
+}
+
 /// The frame id exposed at [frameIndex]; `null` for empty cells.
 FrameId? exposedFrameIdAt(
   SplayTreeMap<int, TimelineExposure> timeline,

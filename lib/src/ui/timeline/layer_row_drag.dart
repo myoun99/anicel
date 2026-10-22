@@ -27,8 +27,11 @@ import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/drag_chip.dart';
 import '../widgets/drag_chip_overlay.dart';
+import 'axis_turn.dart'
+    show centerEndAlong, centerStartAlong, partAcross, sizeAlong, stripAcross;
 import 'layer_drop_policy.dart';
-import 'layer_label_controls.dart' show layerKindIcon;
+import 'layer_label_controls.dart'
+    show layerKindIcon, layerSectionLabelSlotWidth;
 import 'memo_token.dart' show ByIdentity;
 import 'property_lane_model.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
@@ -57,9 +60,12 @@ final class LayerRowSubject extends LayerRowDragSubject {
   final LayerId layerId;
 
   /// A file over the layer area raises a new row's caret in this lane too.
+  /// A storyboard S row's ([TrackSeRowSubject]) is a lane of its own
+  /// track's, never this one.
   @override
   bool sharesLaneWith(LayerRowDragSubject other) =>
-      other is LayerRowSubject || other is MediaPlacementSubject;
+      (other is LayerRowSubject && other is! TrackSeRowSubject) ||
+      other is MediaPlacementSubject;
 
   @override
   bool operator ==(Object other) =>
@@ -68,6 +74,27 @@ final class LayerRowSubject extends LayerRowDragSubject {
 
   @override
   int get hashCode => Object.hash(LayerRowSubject, layerId);
+}
+
+/// An S row of the STORYBOARD rail: a [LayerRowSubject] to the session —
+/// its drag, plan and commit are an SE row's wherever it is held — and a
+/// caret lane of its own TRACK on the rail.
+///
+/// 🚨F-336 (유저 10-10: 「다양한 각도에서 근본/구조적으로 드래그 가로줄관련
+/// 해결」): the storyboard lays one list of S rows per track, each counted
+/// from 0, and a plain [LayerRowSubject] shares its lane with every layer
+/// row — so a caret at the top of one track's S rows was drawn at the top
+/// of every other track's, and on the timeline's first row too. The
+/// timeline lays its S rows in the one list its layers are in, and keeps
+/// the plain subject.
+final class TrackSeRowSubject extends LayerRowSubject {
+  const TrackSeRowSubject(this.trackId, super.layerId);
+
+  final TrackId trackId;
+
+  @override
+  bool sharesLaneWith(LayerRowDragSubject other) =>
+      other is TrackSeRowSubject && other.trackId == trackId;
 }
 
 /// A FILE from the pool over the layer area — not a row (유저 2026-09-11:
@@ -122,7 +149,7 @@ final class TrackRowSubject extends LayerRowDragSubject {
 /// law carries it to every cut of the track (`LayerRowDrag`).
 ///
 /// Its own kind, as the V row's is: a caret raised for a seat belongs on its
-/// own track's conte rows, and a [LayerRowSubject] — the S rows' — would
+/// own track's conte rows, and a [LayerRowSubject] — a layer row's — would
 /// raise it among those too.
 final class ConteSeatRowSubject extends LayerRowDragSubject {
   const ConteSeatRowSubject(this.rowId);
@@ -432,7 +459,7 @@ class LayerRowDragTarget extends StatelessWidget {
     this.selectRowDeltaAt,
     this.pointerRowsAt,
     required this.child,
-    this.isLastRow = false,
+    this.drawsTheGapAfter = false,
     this.grabOffsetWithinRun = 0,
     this.onGripTaken,
     this.onGripReleased,
@@ -468,8 +495,8 @@ class LayerRowDragTarget extends StatelessWidget {
        grabOffsetWithinRun = 0,
        onGripTaken = null,
        onGripReleased = null,
-       slotBefore = 0,
-       isLastRow = false,
+       slotBefore = null,
+       drawsTheGapAfter = false,
        onCrossed = _neverCrosses,
        pointerRowsAt = null;
 
@@ -484,7 +511,13 @@ class LayerRowDragTarget extends StatelessWidget {
   /// The caret slot on this row's LEADING edge; the trailing edge is
   /// [slotBefore] + 1. Stated as a slot rather than an index because a
   /// caret lives between rows, not on one.
-  final int slotBefore;
+  ///
+  /// Null on a [LayerRowDragTarget.selectOnly] row, which stands in no list
+  /// a caret walks. 🚨F-336 (유저 10-10: 「s행의 제일 밑 레이어를 드래그로 s행
+  /// 제일 위로 이동하려하면 카메라섹션의 가로줄이 생김」): it said 0, so every
+  /// caret at the top of ANY list of its lane was drawn on it too — the
+  /// storyboard's camera and transition rows drew the S rows' top line.
+  final int? slotBefore;
 
   /// This row's extent along the rail (its height on the timeline, its
   /// width on the sheet) — the drag counts rows in these, never in an
@@ -555,9 +588,10 @@ class LayerRowDragTarget extends StatelessWidget {
   /// 간다」.
   final double Function(double offset)? pointerRowsAt;
 
-  /// Whether this is the last row of the rail — only it can show the
-  /// trailing caret, or two adjacent rows would both draw the same gap.
-  final bool isLastRow;
+  /// Whether this row shows the trailing caret — the line past it. Only
+  /// the row the next one does not draw it for may, or two adjacent rows
+  /// would both draw the same gap ([LayerRowCaret.drawsTheGapAfter]).
+  final bool drawsTheGapAfter;
 
   /// A5 (2026-08-17): the press landed here and its recognizer lives in
   /// this row's State — a host that windows its rows listens so it can
@@ -598,7 +632,7 @@ class LayerRowDragTarget extends StatelessWidget {
       onSelectCrossed: onSelectCrossed,
       selectRowDeltaAt: selectRowDeltaAt,
       pointerRowsAt: pointerRowsAt,
-      isLastRow: isLastRow,
+      drawsTheGapAfter: drawsTheGapAfter,
       grabOffsetWithinRun: grabOffsetWithinRun,
       onGripTaken: onGripTaken,
       onGripReleased: onGripReleased,
@@ -618,7 +652,7 @@ class _LayerRowDragBody extends StatefulWidget {
     required this.hooks,
     required this.onCrossed,
     required this.canReorder,
-    required this.isLastRow,
+    required this.drawsTheGapAfter,
     this.onSelectCrossed,
     this.selectRowDeltaAt,
     this.pointerRowsAt,
@@ -629,7 +663,7 @@ class _LayerRowDragBody extends StatefulWidget {
   });
 
   final LayerRowDragSubject subject;
-  final int slotBefore;
+  final int? slotBefore;
   final double rowExtent;
   final double grabOffsetWithinRun;
   final Axis axis;
@@ -650,7 +684,7 @@ class _LayerRowDragBody extends StatefulWidget {
 
   /// See [LayerRowDragTarget.grip].
   final List<DragChipItem> Function()? grip;
-  final bool isLastRow;
+  final bool drawsTheGapAfter;
   final Widget child;
 
   @override
@@ -719,9 +753,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     }
     _travelled = 0;
     final extent = widget.rowExtent;
-    final main = widget.axis == Axis.horizontal
-        ? localPosition.dy
-        : localPosition.dx;
+    final main = partAcross(widget.axis, localPosition);
     _pressOffset = main;
     // Measured in the RUN, not in the grabbed widget — see
     // [LayerRowDragTarget.grabOffsetWithinRun]. The two are the same box
@@ -883,7 +915,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   double _autoPanEdge(Offset globalPosition) => edgeAutoPanApply(
     context: context,
     globalPosition: globalPosition,
-    axis: widget.axis == Axis.horizontal ? Axis.vertical : Axis.horizontal,
+    axis: flipAxis(widget.axis),
   );
 
   void _update(DragUpdateDetails details) {
@@ -895,7 +927,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     }
     _chips?.moveTo(details.globalPosition);
     final delta = details.delta;
-    _travelled += widget.axis == Axis.horizontal ? delta.dy : delta.dx;
+    _travelled += partAcross(widget.axis, delta);
     _travelled += _autoPanEdge(details.globalPosition);
     if (widget.rowExtent <= 0) {
       return;
@@ -957,11 +989,13 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
             showing.onRowTarget != null &&
             widget.subject == LayerRowSubject(showing.onRowTarget!);
         final caretShowing = showing != null && showing.onRowTarget == null;
-        final leading = caretShowing && showing.caretSlot == widget.slotBefore;
+        final slot = widget.slotBefore;
+        final leading = caretShowing && showing.caretSlot == slot;
         final trailing =
             caretShowing &&
-            widget.isLastRow &&
-            showing.caretSlot == widget.slotBefore + 1;
+            widget.drawsTheGapAfter &&
+            slot != null &&
+            showing.caretSlot == slot + 1;
         final lifted = drag?.subject == widget.subject || _lifting;
         return Stack(
           clipBehavior: Clip.none,
@@ -1018,6 +1052,19 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     );
   }
 
+  /// Where the row's LAYER AREA starts: what a drop draws on a row is drawn
+  /// from here.
+  ///
+  /// 🗣️F-423② (유저 2026-10-20): 「ㅁㅁ 밖으로 안으로 등 가로선에 메시지도
+  /// 액션섹션에 잘려서 다 안보임. 가로선 안에 다 보이도록」. A rail row
+  /// lends its leading slot to the section zone, which is painted OVER the
+  /// rows' run (`SectionBandZone`) — so a notice hung 6px into the row went
+  /// under the 액션 band. The selection band starts past the zone for the
+  /// same reason (A2, 「레이어 영역만 칠하도록」). The sheet's columns
+  /// reserve no slot: their band is a strip of its own.
+  double get _layerAreaStart =>
+      widget.axis == Axis.horizontal ? layerSectionLabelSlotWidth : 0;
+
   /// The row that would SWALLOW the drop: an outline around the whole row
   /// rather than a line beside it (R5 #15).
   ///
@@ -1028,6 +1075,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   /// beyond moving has to be readable BEFORE the release.
   Widget _swallowHighlight(ColorScheme colorScheme, String? label) {
     return Positioned.fill(
+      left: _layerAreaStart,
       key: ValueKey<String>(
         'timeline-row-swallow-${_keyOf(widget.subject)}',
       ),
@@ -1043,9 +1091,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
           child: label == null
               ? null
               : Align(
-                  alignment: widget.axis == Axis.horizontal
-                      ? Alignment.centerRight
-                      : Alignment.bottomCenter,
+                  alignment: centerEndAlong(widget.axis),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: DecoratedBox(
@@ -1081,16 +1127,21 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     String? label,
   }) {
     final horizontal = widget.axis == Axis.horizontal;
+    final barSize = sizeAlong(
+      widget.axis,
+      along: double.infinity,
+      across: layerRowCaretThickness,
+    );
     final bar = Container(
-      width: horizontal ? double.infinity : layerRowCaretThickness,
-      height: horizontal ? layerRowCaretThickness : double.infinity,
+      width: barSize.width,
+      height: barSize.height,
       color: colorScheme.primary,
     );
     final content = label == null
         ? bar
         : Stack(
             clipBehavior: Clip.none,
-            alignment: horizontal ? Alignment.centerLeft : Alignment.topCenter,
+            alignment: centerStartAlong(widget.axis),
             children: [
               bar,
               // The drop does something structural, so it says so BEFORE
@@ -1140,15 +1191,15 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
               ),
             ],
           );
-    return Positioned(
+    return stripAcross(
+      widget.axis,
       key: ValueKey<String>(
         'timeline-row-caret-${atStart ? 'before' : 'after'}-'
         '${_keyOf(widget.subject)}',
       ),
-      left: horizontal ? 0 : (atStart ? -layerRowCaretThickness / 2 : null),
-      right: horizontal ? 0 : (atStart ? null : -layerRowCaretThickness / 2),
-      top: horizontal ? (atStart ? -layerRowCaretThickness / 2 : null) : 0,
-      bottom: horizontal ? (atStart ? null : -layerRowCaretThickness / 2) : 0,
+      across: -layerRowCaretThickness / 2,
+      fromEnd: !atStart,
+      alongStart: _layerAreaStart,
       child: content,
     );
   }
@@ -1332,7 +1383,7 @@ Widget layerRowDragWrapper({
     onGripTaken: onGripTaken,
     onGripReleased: onGripReleased,
     grip: grip,
-    isLastRow: caret.isLastRow,
+    drawsTheGapAfter: caret.drawsTheGapAfter,
     onCrossed: hooks == null
         ? (_, _, _) {}
         : (steps, onRow, inRow) {
@@ -1340,7 +1391,7 @@ Widget layerRowDragWrapper({
       // builds that moved no row, so the rows it was built over may carry
       // older layers than the ones the drag lands among.
       final drawn = LayerRowCaret.of(dragRows(), row.layer.id) ?? caret;
-      final slot = drawn.slotFor(steps);
+      final slot = drawn.slotFor(steps, inRow: inRow);
       final target = drawn.onRowLayer(onRow);
       if (target != null) {
         hooks.onRowTarget(drawn.layers, slot, target.id);
@@ -1349,7 +1400,7 @@ Widget layerRowDragWrapper({
       hooks.onUpdate(
         drawn.layers,
         slot,
-        pointerInRow: drawn.onRowLayer(inRow)?.id,
+        pointerInRow: drawn.layerUnder(inRow)?.id,
       );
     },
     onSelectCrossed: hooks?.onSelectBegin == null
@@ -1394,7 +1445,7 @@ typedef LayerRowDragInputs = ({
   void Function(List<TimelineDisplayRow> rows, int rowDelta)?
   onRowSelectionSpan,
   int? caretSlot,
-  bool? caretIsLastRow,
+  bool? caretDrawsTheGapAfter,
 });
 
 /// See [LayerRowDragInputs].
@@ -1410,7 +1461,7 @@ LayerRowDragInputs layerRowDragInputs({
     hooks: ByIdentity(hooks),
     onRowSelectionSpan: onRowSelectionSpan,
     caretSlot: caret?.slot,
-    caretIsLastRow: caret?.isLastRow,
+    caretDrawsTheGapAfter: caret?.drawsTheGapAfter,
   );
 }
 
@@ -1454,7 +1505,7 @@ Widget _laneSelectOnlyDragTarget(
     pointerRowsAt: wiring.reach.pointerRowsAt,
     axis: wiring.axis,
     hooks: hooks,
-    isLastRow: false,
+    drawsTheGapAfter: false,
     onCrossed: (_, _, _) {},
     onSelectCrossed: onSelectCrossed,
     child: child,
@@ -1546,7 +1597,7 @@ Widget _laneRowDragTarget(
     onGripTaken: wiring.onGripTaken,
     onGripReleased: wiring.onGripReleased,
     grip: () => [effectRowDragChip(subject.lane)],
-    isLastRow: slot == headers.length - 1,
+    drawsTheGapAfter: slot == headers.length - 1,
     // An fx chain has no "inside a row" to drop into — an effect holds
     // nothing — so the on-row band is ignored here and the caret stays
     // the only answer (R5 #15).

@@ -15,7 +15,7 @@ class _SurfacePaintPass {
   late final Paint? _layerPaint;
   late final double _canvasWidth;
   late final double _canvasHeight;
-  late final Rect _pasteboardRect;
+  late final Rect _storableRect;
   late final ActiveStrokeOverlayModel? _overlay;
   late final bool _overlayReplacesCoords;
   late final bool _overlayBlendsInLayer;
@@ -34,7 +34,7 @@ class _SurfacePaintPass {
   late final _CoordinatePicture _coordinates = _CoordinatePicture(this);
 
   /// The surface + live _overlay, onto a _canvas the CALLER has already
-  /// viewport-transformed and clipped to [_pasteboardRect].
+  /// viewport-transformed and clipped to [_storableRect].
   ///
   /// Split out so the editing _canvas's merged stack painter can draw the
   /// ACTIVE layer inside the composite tree — a folder composites into one
@@ -81,7 +81,7 @@ class _SurfacePaintPass {
     );
     _canvasWidth = _painter.surface.canvasSize.width.toDouble();
     _canvasHeight = _painter.surface.canvasSize.height.toDouble();
-    _pasteboardRect = _painter.pasteboardRect;
+    _storableRect = _painter.storableRect;
 
     _paintPaper();
 
@@ -111,7 +111,7 @@ class _SurfacePaintPass {
     _overlayReplacesCoords = _painter._overlayReplacesCoords;
     _overlayBlendsInLayer = _painter._overlayBlendsInLayer;
     if (_overlayBlendsInLayer) {
-      _canvas.saveLayer(_pasteboardRect, Paint());
+      _canvas.saveLayer(_storableRect, Paint());
     }
 
     _tileImagePaint = Paint()
@@ -127,7 +127,7 @@ class _SurfacePaintPass {
     }
     // R27 #2: the walk below is visible-only, so every coordinate it
     // reaches already shows — no separate visibility test is needed.
-    _visibleRect = _painter._visibleCanvasRect(_canvas, _pasteboardRect);
+    _visibleRect = _painter._visibleCanvasRect(_canvas, _storableRect);
 
     // DRAWING walks only the tile COORDINATES the view covers, not every
     // committed tile. This paint runs per stroke frame (the _overlay's
@@ -177,8 +177,7 @@ class _SurfacePaintPass {
       // opens an isolation layer for the STROKE's own blend; a ghost that
       // is not part of that stroke must not be inside it, or the stroke's
       // brush blend would apply to the preview as well.
-      _paintStampPreview();
-      _paintFloat();
+      _paintLandingPreviews();
     }
 
     // No pasteboard dim (user decision, Flash-style): off-_canvas artwork
@@ -307,6 +306,23 @@ class _SurfacePaintPass {
   void _paintOverlay() {
     if (_overlay != null) {
       _OverlayPass(this, _overlay).paint();
+    }
+  }
+
+  /// The stamp's ghost and the floats, cut at the pasteboard as what they
+  /// land as is: a landing is a tool's, and only a file's picture reaches
+  /// past the wall (F-374-Q8) — which a surface clipped wider for it
+  /// ([_storableRect]) would otherwise let a preview do as well.
+  void _paintLandingPreviews() {
+    final wider = _painter.surface.laidBounds != null;
+    if (wider) {
+      _canvas.save();
+      _canvas.clipRect(_painter.surface.pasteboard.rect);
+    }
+    _paintStampPreview();
+    _paintFloat();
+    if (wider) {
+      _canvas.restore();
     }
   }
 

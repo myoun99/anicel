@@ -25,9 +25,9 @@ enum TimesheetSheetKind {
   /// The 3-second strips a page lays side by side.
   final int strips;
 
-  /// The ACTION and the CELL blocks' columns a strip carries. A cut with
-  /// more cel layers grows its ACTION block past them; the CELL block
-  /// stays.
+  /// The ACTION and the CELL blocks' columns a strip carries. A block with
+  /// more cel rows grows past them (F-406: the CELL block by the ACTION
+  /// block's law).
   final int celColumns;
 
   /// Seconds of rows a strip holds, on either sheet.

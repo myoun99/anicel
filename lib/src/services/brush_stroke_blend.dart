@@ -3,6 +3,7 @@ import '../models/tiles_covering.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/separable_blend_mode.dart';
@@ -356,14 +357,7 @@ Uint8List preBlendStrokeOverlayPixels({
   // native kernel mirrors the same rule). Without this the straight
   // bytes differ where the base held α==0 junk RGB, even though both
   // display identically after premultiply.
-  for (var i = 0; i < pixelCount; i += 1) {
-    final o = i * 4;
-    if (result[o + 3] == 0) {
-      result[o] = 0;
-      result[o + 1] = 0;
-      result[o + 2] = 0;
-    }
-  }
+  zeroFullyClearPixels(result);
   return result;
 }
 

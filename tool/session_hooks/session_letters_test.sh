@@ -37,7 +37,7 @@ fresh() { rm -f "$STUB/argv" "$STUB/stdin" "$STUB/exit" "$STUB/answer"; }
 # --- a session that registered no 담당 is told once, at a start, and left ---
 fresh
 out="$(hook nobody start)"
-chk "등록 안 한 세션 · 시작 → 등록하는 법을 한 번 말한다" "$(printf '%s' "$out" | grep -c 'dart run tool/board_me.dart')" 1
+chk "등록 안 한 세션 · 시작 → 등록하는 법을 한 번 말한다" "$(printf '%s' "$out" | grep -c 'bash tool/run.sh board_me')" 1
 chk "그 말은 UserPromptSubmit 의 덧붙임 한 줄이다"       "$(printf '%s\n' "$out" | grep -c '^{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"')" 1
 chk "두 번째부터는 조용하다"                             "$(hook nobody start)" ""
 chk "끝에서는 처음이어도 말하지 않는다"                   "$(hook another stop)" ""

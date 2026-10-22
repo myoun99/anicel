@@ -495,7 +495,7 @@ void main() {
 
     test('and ONE path: the keys a name gathers walk one way through the '
         'key it is (I-89 ④)', () {
-      final handle = HandledPath(CanvasPoint(x: 4, y: 4));
+      const handle = JoinedPath(degrees: 45, ahead: 4, behind: 2);
       final subject = PropertyTrack<CanvasPoint>(
         keys: {
           0: PropertyKey(CanvasPoint(x: 0, y: 0), path: handle),

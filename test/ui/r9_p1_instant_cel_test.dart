@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -87,7 +88,7 @@ void main() {
       final hand = BrushToolState.defaults.copyWith(
         color: handColor,
         size: 77,
-        stabilizerStrength: 0.42,
+        correction: const BrushCorrection(stabilization: 42),
         blendMode: BrushBlendMode.multiply,
       );
 
@@ -122,7 +123,9 @@ void main() {
         BrushBlendMode.color,
         reason: 'the preset carries 通常 and the brush wears it',
       );
-      expect(applied.stabilizerStrength, closeTo(0.42, 1e-9), reason: 'P7');
+      // ↩️The stabilizer was the hand's too (P7); it is the brush's own now
+      // (F-418-Q6), so the preset's arrives with it.
+      expect(applied.correction, const BrushCorrection());
       expect(applied.tool, CanvasTool.brush);
     });
   });

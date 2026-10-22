@@ -2,6 +2,24 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
+/// The digits a decimal number is written in — [everyDigitIn]'s.
+const String decimalDigits = '0123456789';
+
+/// [shape] written with each of [digits] in turn: the numbers whose widest
+/// is the widest [shape] can be set, for a box that has to hold whatever
+/// number it will say. A face with proportional figures sets an 8 wider
+/// than a 1, so no one number is the measure, and one that mixes them is
+/// never wider than the widest of these.
+///
+/// 🚨ONE WALK OF THE DIGITS (F-383, 2026-10-17). The pill's zoom and angle
+/// readouts, the colour bar's channels and hex, the battery and the frame
+/// ruler each spelled the ten digits out for themselves, and the page
+/// turner's readout was about to be the sixth.
+List<String> everyDigitIn(
+  String Function(String digit) shape, {
+  String digits = decimalDigits,
+}) => [for (final digit in digits.split('')) shape(digit)];
+
 /// How lines of UI text measure where a [BuildContext] lays text out — its
 /// text scaler and its direction — in one style.
 ///

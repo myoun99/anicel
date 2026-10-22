@@ -11,6 +11,7 @@ import '../widgets/axis_bar_gesture.dart'
     show
         OwningHorizontalDragGestureRecognizer,
         OwningVerticalDragGestureRecognizer;
+import 'axis_turn.dart' show offsetAlong, partAlong, rectAlong;
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
 import '../../models/layer.dart';
@@ -255,14 +256,15 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
 }) {
   final targets = <TimelineRowChromeTarget>[];
   final patternSpans = <Rect>[];
-  final horizontal = axis == Axis.horizontal;
   final frameStartIndex = geometry.frameStartIndex;
   final frameEndIndexExclusive = geometry.frameEndIndexExclusive;
   final frameCellExtent = geometry.frameCellExtent;
 
-  Rect mainRect(double start, double extent) => horizontal
-      ? Rect.fromLTWH(start, 0, extent, crossAxisExtent)
-      : Rect.fromLTWH(0, start, crossAxisExtent, extent);
+  Rect mainRect(double start, double extent) => rectAlong(
+    axis,
+    along: (from: start, to: start + extent),
+    across: (from: 0, to: crossAxisExtent),
+  );
 
   for (final block in gripBlocks) {
     if (!frameRangesOverlap(
@@ -903,7 +905,7 @@ class _TimelineRowEditChromeLayerState
     _gripDrag.dragStartBehavior = DragStartBehavior.down;
     _gripDrag.onStart = (_) => _startGripDrag();
     _gripDrag.onUpdate = (details) => _updateGripDrag(
-      (_horizontal ? details.delta.dx : details.delta.dy) +
+      partAlong(widget.axis, details.delta) +
           _autoPanEdge(details.globalPosition),
     );
     _gripDrag.onEnd = (_) => _endGripDrag();
@@ -918,13 +920,13 @@ class _TimelineRowEditChromeLayerState
       final target = _pressed;
       final travel = now - down;
       return target is TimelineRowRunAddTarget &&
-          _addCountFor(target, _horizontal ? travel.dx : travel.dy) != 0;
+          _addCountFor(target, partAlong(widget.axis, travel)) != 0;
     };
     _addPan.onStart = (_) => _startAdd();
     _addPan.onUpdate = (details) {
       final panned = _autoPanEdge(details.globalPosition);
       _updateAdd(
-        details.delta + (_horizontal ? Offset(panned, 0) : Offset(0, panned)),
+        details.delta + offsetAlong(widget.axis, along: panned, across: 0),
       );
     };
     _addPan.onEnd = (_) => _endAdd();
@@ -1065,7 +1067,7 @@ class _TimelineRowEditChromeLayerState
     if (!_addDragging || target == null) {
       return;
     }
-    _addAccumulated += _horizontal ? delta.dx : delta.dy;
+    _addAccumulated += partAlong(widget.axis, delta);
     widget.runEdit?.onAddUpdate(_addCountFor(target, _addAccumulated));
   }
 

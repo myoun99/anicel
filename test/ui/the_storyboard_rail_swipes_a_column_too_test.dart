@@ -155,7 +155,7 @@ void main() {
     for (final id in const ['t1', 't2', 't3'])
       if (tester
               .appIconButton(
-                find.named('storyboard-se-lane-toggle-$id-1'),
+                find.named('storyboard-lane-toggle-$id-s1'),
               )
               .icon ==
           Icons.arrow_drop_down)
@@ -440,7 +440,7 @@ void main() {
     await pumpRail(tester);
     final twirls = [
       for (final id in const ['t1', 't2', 't3'])
-        find.named('storyboard-se-lane-toggle-$id-1'),
+        find.named('storyboard-lane-toggle-$id-s1'),
     ];
     for (final twirl in twirls) {
       expect(twirl, findsOneWidget, reason: 'the fixture mounts the twirl');

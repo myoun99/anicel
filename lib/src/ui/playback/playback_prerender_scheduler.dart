@@ -42,7 +42,7 @@ class PrerenderProgress {
 }
 
 /// The room playback's pictures have, asked by their maker before it makes
-/// one.
+/// one — and again once it has landed ([PlaybackPrerenderScheduler._landed]).
 abstract interface class PictureRoom {
   /// The bytes pictures may hold now.
   int get bytes;
@@ -78,7 +78,6 @@ class PlaybackPrerenderScheduler {
     required this.pictures,
     required this.resolveCut,
     this.room,
-    this.afterFrameCached,
     this.beforeCompose,
     this.idleDelay = const Duration(milliseconds: 400),
   });
@@ -90,9 +89,6 @@ class PlaybackPrerenderScheduler {
 
   /// Null = there is room for everything (a test that fills no budget).
   final PictureRoom? room;
-
-  /// Called after each composited frame (budget enforcement hook).
-  final void Function()? afterFrameCached;
 
   /// Fills what a frame's composite reads from OUTSIDE the cel store before
   /// the frame is composed — a movie kept as a reference is decoded here, so
@@ -356,7 +352,8 @@ class PlaybackPrerenderScheduler {
       }
       // Where the walk starts: the playhead, or — where the clock will not
       // wait — as far ahead of it as a picture takes to make.
-      final lead = math.min(demand.leadFor(_composeTime), length - 1);
+      final ahead = demand.leadFor(_composeTime);
+      final lead = math.min(ahead ?? 0, length - 1);
       List<DemandedPicture>? at(int index) =>
           index < length ? demand.picturesAt((lead + index) % length) : null;
       final pass = (at: at, stepAt: (int index) => (lead + index) % length);
@@ -429,15 +426,39 @@ class PlaybackPrerenderScheduler {
         await _wait(Duration.zero);
         continue;
       }
+      // 🚨THE ROOM IS ASKED FOR WHAT THE PICTURE WILL BE MADE AS (card
+      // playback-picture-weight-estimates): what its making reads first is
+      // read first, and each row is weighed by the plan its image is made
+      // by. 🔬Weighed as the canvas a row, a cut's head asked 1.5–2× what it
+      // weighs and one inked onto the pasteboard less (10-15, PC, a copy of
+      // the user's project, full level: 29.5MB asked for 15.9, 29.5 for
+      // 47.0) — and a room asked for more than it needs lets go of more.
+      await pictures.readIn(missing);
+      if (_isStale(generation)) {
+        return;
+      }
       final pictureBytes = pictures.bytesToMake(missing);
       final step = (lead + reached) % length;
       final madeRoom =
           room?.makeRoomFor(bytes: pictureBytes, step: step) ?? true;
-      // 🚨THE PICTURE UNDER THE PLAYHEAD IS MADE WHATEVER THE ROOM. It is the
-      // one a screen is about to show and the one a run that waits is
-      // waiting for: an allowance with no room for it — every picture held
-      // is on a screen — would stand that run for good. It is one picture.
-      if (!madeRoom && step != 0) {
+      // 🚨WHAT A RUN WAITS FOR IS MADE WHATEVER THE ROOM: an allowance with
+      // no room for it — every picture held is on a screen — would stand
+      // that run for good. Where the clock waits, the run stands BEFORE a
+      // frame that is not there (`playheadWay`, 유저 2026-10-15 F-365-Q1): it
+      // waits for the frame after the one under the playhead, or for that
+      // one while it is not there (a run put on it). Where the clock does
+      // not wait, the picture the walk starts on is the one a screen is
+      // about to show. The media viewer's walk asks for the page after the
+      // one on screen whatever the room for the same reason
+      // (`_ReadAhead.walk`).
+      // ↩️Only the picture the walk starts on was: under the playhead, which
+      // a run standing before the next frame already shows — and a picture
+      // bigger than half the room never got room beside it while the run
+      // waited for it for good (🔬10-15: cut 4's head weighs 47MB, under a
+      // 64MB line). Before that it was the picture under the playhead alone,
+      // which a walk that starts ahead of it never made: under a line that
+      // small a run that skips showed nothing new at all (F-365).
+      if (!madeRoom && reached > (ahead == null ? 1 : 0)) {
         // No more fits: what is held is the window.
         _progress.value = PrerenderProgress(cached: reached, total: reached);
         await _rest(generation);
@@ -467,8 +488,7 @@ class PlaybackPrerenderScheduler {
         await _wait(Duration.zero);
         continue;
       }
-      afterFrameCached?.call();
-      _landings.value += 1;
+      _landed(step);
       _changes.value += 1;
       // Yield so interactive work interleaves between pictures.
       await _wait(Duration.zero);
@@ -549,6 +569,33 @@ class PlaybackPrerenderScheduler {
         ? took
         : (_composeTime * 3 + took) ~/ 4;
     return true;
+  }
+
+  /// A picture made for [step] has landed: the room is asked again, by what
+  /// it does weigh, and whoever counts landings hears of it.
+  ///
+  /// 🚨WHAT THE WALK MADE, THE BUDGET KEEPS (F-365, 유저 2026-10-15 · iPad
+  /// · AMMI OP: 「재생전 렌더링은 3번컷 처음부분에서 막혀서 그이후로
+  /// 재생해도 재생안되고」). The room was made by what the picture was
+  /// weighed as before it was made — a row whose cel was not read yet, as
+  /// the canvas ([PlaybackPictures.bytesToMake]) — and a row inked out onto
+  /// the pasteboard weighs more. Asked again, the room lets go, as it did
+  /// before the picture was made, only of pictures wanted after it: the line is
+  /// overrun by what the estimates missed, no more, and the walk's next ask
+  /// finds no room and rests. ↩️A trim of everything but the frame under
+  /// the playhead ran here, and the picture just made — the one wanted
+  /// latest — was what it let go of: the walk found it missing, made it
+  /// again, and never rested; a run that renders first waits for the walk
+  /// to rest.
+  ///
+  /// ★The law the export holds its rows by ([HeldRows]: by what a row does
+  /// weigh, never letting go of one shown sooner). ⛔Not the media viewer's
+  /// `keeping` — the page that landed and nothing else: its room is asked by
+  /// the very size that lands. Here, keeping only what landed would let go
+  /// of the picture before it, and the walk would make the two in turn.
+  void _landed(int step) {
+    room?.makeRoomFor(bytes: 0, step: step);
+    _landings.value += 1;
   }
 
   bool _isStale(int generation) => _disposed || generation != _generation;
@@ -663,6 +710,10 @@ final class _AskedAhead {
       if (_onTheirWay.containsKey(key) || spoken.containsAll(parts)) {
         continue;
       }
+      // ⚠️Weighed by what is in hand, without reading first as the walk's
+      // own is: an ask ahead is made so as not to wait. A row whose cel is
+      // not read yet is weighed as the canvas, and the room is asked again
+      // by what it lands as ([PlaybackPrerenderScheduler._landed]).
       final bytes = scheduler.pictures.bytesToMake(picture);
       final step = pass.stepAt(look);
       if (!(scheduler.room?.makeRoomFor(bytes: pending + bytes, step: step) ??
@@ -677,8 +728,7 @@ final class _AskedAhead {
         _onTheirWay.remove(key);
         if (!scheduler._isStale(_generation)) {
           if (landed) {
-            scheduler.afterFrameCached?.call();
-            scheduler._landings.value += 1;
+            scheduler._landed(step);
           }
           scheduler._changes.value += 1;
         }

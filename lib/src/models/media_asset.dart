@@ -531,8 +531,9 @@ MediaAssetKind? mediaAssetKindForPath(String path) {
 }
 
 /// [path]'s file name: its last segment, of either separator style (the
-/// model stays dart:io-free). What names a FILE — a message about it, a
-/// window about it, a folder.
+/// model stays dart:io-free). What names a file WHERE IT LIES — a folder,
+/// a file to find again or to write. A window, a message or a label about
+/// the file shows it as the pool does ([mediaFileShownName]).
 String mediaFileName(String path) {
   final segments = path.split(RegExp(r'[\\/]'));
   final name = segments.isEmpty ? path : segments.last;
@@ -589,6 +590,19 @@ String mediaAssetDefaultName(String path) => mediaFileNameParts(path).name;
 /// was still placed under its file name.
 String mediaAssetNameFor(MediaAsset? entry, String path) =>
     entry?.name ?? mediaAssetDefaultName(path);
+
+/// How the file at [path] is SHOWN to a person — a window about it, a
+/// message about it, a label — when [entry] is its pool entry: by the
+/// entry's name, as the pool shows it (its extension stands in a column of
+/// its own there, and the viewer and the reference popover never showed
+/// it); a file the pool has not seen, by its file name.
+///
+/// 🗣️유저 2026-10-17 (F-376): 「미디어풀에서 이름바꾸고, 파일 타임라인등에
+/// 배치할때 파일이름 표시되는게 다 바꾸기 전 이름임 … 법 통일하면서 해결」.
+/// The placement named what it made by the pool ([mediaAssetNameFor]), and
+/// the windows and messages about the file rebuilt its name from the path.
+String mediaFileShownName(MediaAsset? entry, String path) =>
+    entry?.name ?? mediaFileName(path);
 
 /// Validates pool uniqueness: one entry per path.
 void validateMediaAssetPaths(List<MediaAsset> assets) {

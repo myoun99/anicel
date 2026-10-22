@@ -13,9 +13,9 @@ import 'package:anicel/src/services/selection_affine.dart';
 /// pixels" stops being a guarantee.
 ///
 /// The outline ([apply]) and the pixels (the resample fold) both read
-/// [SelectionAffine.cosTheta] and [SelectionAffine.sinTheta], so the ants
-/// and the picture cannot disagree about where the rotation went — which is
-/// exactly what a second copy of this table would let happen.
+/// [SelectionAffine.turn], so the ants and the picture cannot disagree
+/// about where the rotation went — which is exactly what a second copy of
+/// this table would let happen.
 void main() {
   final pivot = CanvasPoint(x: 100, y: 50);
 
@@ -36,36 +36,36 @@ void main() {
 
   group('the quarter turns are exact', () {
     test('0, 90, 180 and 270 read the table, not the library', () {
-      expect(at(rotationDegrees: 0).cosTheta, 1.0);
-      expect(at(rotationDegrees: 0).sinTheta, 0.0);
-      expect(at(rotationDegrees: 90).cosTheta, 0.0);
-      expect(at(rotationDegrees: 90).sinTheta, 1.0);
-      expect(at(rotationDegrees: 180).cosTheta, -1.0);
-      expect(at(rotationDegrees: 180).sinTheta, 0.0);
-      expect(at(rotationDegrees: 270).cosTheta, 0.0);
-      expect(at(rotationDegrees: 270).sinTheta, -1.0);
+      expect(at(rotationDegrees: 0).turn.cos, 1.0);
+      expect(at(rotationDegrees: 0).turn.sin, 0.0);
+      expect(at(rotationDegrees: 90).turn.cos, 0.0);
+      expect(at(rotationDegrees: 90).turn.sin, 1.0);
+      expect(at(rotationDegrees: 180).turn.cos, -1.0);
+      expect(at(rotationDegrees: 180).turn.sin, 0.0);
+      expect(at(rotationDegrees: 270).turn.cos, 0.0);
+      expect(at(rotationDegrees: 270).turn.sin, -1.0);
     });
 
     test('a full turn past them is still exact', () {
-      expect(at(rotationDegrees: 450).cosTheta, 0.0);
-      expect(at(rotationDegrees: 450).sinTheta, 1.0);
-      expect(at(rotationDegrees: 360).cosTheta, 1.0);
+      expect(at(rotationDegrees: 450).turn.cos, 0.0);
+      expect(at(rotationDegrees: 450).turn.sin, 1.0);
+      expect(at(rotationDegrees: 360).turn.cos, 1.0);
     });
 
     test('NEGATIVE quarter turns wrap into the table rather than off it', () {
-      expect(at(rotationDegrees: -90).cosTheta, 0.0);
+      expect(at(rotationDegrees: -90).turn.cos, 0.0);
       expect(
-        at(rotationDegrees: -90).sinTheta,
+        at(rotationDegrees: -90).turn.sin,
         -1.0,
         reason: 'a left-hand quarter turn is as exact as a right-hand one',
       );
-      expect(at(rotationDegrees: -180).cosTheta, -1.0);
+      expect(at(rotationDegrees: -180).turn.cos, -1.0);
     });
 
     test('anything in between goes to the library', () {
       final tilted = at(rotationDegrees: 45);
-      expect(tilted.cosTheta, closeTo(math.sqrt1_2, 1e-12));
-      expect(tilted.sinTheta, closeTo(math.sqrt1_2, 1e-12));
+      expect(tilted.turn.cos, closeTo(math.sqrt1_2, 1e-12));
+      expect(tilted.turn.sin, closeTo(math.sqrt1_2, 1e-12));
     });
   });
 

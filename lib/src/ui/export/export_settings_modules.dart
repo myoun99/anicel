@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../timeline/layer_label_controls.dart' show layerMarkChipText;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
+import '../text/pixel_size_label.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
@@ -370,32 +371,113 @@ class ExportFormatModule extends StatelessWidget {
     }
   }
 
-  /// The container pills. Choosing one lands on that container's first
-  /// WRITABLE codec when the current one is off there — picking MOV must
-  /// not leave a codec selected that MOV cannot hold.
-  Widget _containerRow() => ExportModuleRow(
-    label: AppText.strings.exVideo,
+  /// 형식: what the file is, picked from the app's one value list as the
+  /// codec is — first 동영상 or 이미지 where the tab writes both, then the
+  /// format beside it.
+  ///
+  /// 🗣️I-117 (유저 2026-10-21): 「형식 많아질테니 형식고르는건 기본적으로
+  /// 출력창에서 코덱 고르듯이 리스트팝오버로. 동영상이랑 이미지 둘다있으면
+  /// 먼저 둘중하나 리스트팝오버로 고르고, 그 옆에 해당에 맞는 팝오버 버튼
+  /// 뜸」. ↩️Two pill rows, 「동영상」 MP4 · MOV and 「이미지」 PNG · JPG · PSD —
+  /// seven still formats do not fit one.
+  ///
+  /// The format button stands whichever kind is chosen: what it lists is
+  /// what changes.
+  Widget _formatRow() => ExportModuleRow(
+    label: AppText.strings.exFormat,
     child: Align(
       alignment: Alignment.centerLeft,
-      child: PillStrip(
-        items: [
-          for (final container in capabilities.video.keys)
-            PillItem(
-              keyValue: 'export-format-container-${container.jsonValue}',
-              label: container.label,
-              selected: selection.isVideo && selection.container == container,
-              onTap: enabled && capabilities.isContainerEnabled(container)
-                  ? () => _change(_withContainer(container))
-                  : null,
-              tooltip: capabilities.isContainerEnabled(container)
-                  ? null
-                  : capabilities.reasonFor(
-                      container,
-                      capabilities.codecsFor(container).first,
-                    ),
-            ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (capabilities.hasVideo) ...[
+            _kindButton(),
+            const SizedBox(width: 4),
+          ],
+          if (selection.isVideo) _containerButton() else _stillButton(),
         ],
       ),
+    ),
+  );
+
+  static String _kindLabel(ExportMediaKind kind) => switch (kind) {
+    ExportMediaKind.video => AppText.strings.exVideo,
+    ExportMediaKind.still => AppText.strings.exImage,
+  };
+
+  /// Whether [kind] has a format this build can write.
+  bool _kindWritable(ExportMediaKind kind) => switch (kind) {
+    ExportMediaKind.video => capabilities.video.keys.any(
+      capabilities.isContainerEnabled,
+    ),
+    ExportMediaKind.still => capabilities.stills.any(
+      capabilities.isStillEnabled,
+    ),
+  };
+
+  Widget _kindButton() => PanelFlyoutButton(
+    key: const ValueKey<String>('export-format-kind'),
+    label: _kindLabel(selection.kind),
+    enabled: enabled,
+    entriesBuilder: () => ExportMediaKind.values.asFlyoutValueChoices(
+      current: selection.kind,
+      choiceOf: (kind) => PanelFlyoutChoice(
+        key: 'export-format-kind-${kind.jsonValue}',
+        label: _kindLabel(kind),
+        enabled: _kindWritable(kind),
+        warning: _kindWritable(kind)
+            ? null
+            : AppText.strings.exNotInThisBuild,
+      ),
+      onPicked: (kind) => _change(_withKind(kind)),
+    ),
+  );
+
+  /// [kind], landing on the format that kind last stood on — or, when that
+  /// one is off in this build, the first one that is on.
+  ExportFormatSelection _withKind(ExportMediaKind kind) {
+    if (kind == ExportMediaKind.video) {
+      final container = capabilities.isContainerEnabled(selection.container)
+          ? selection.container
+          : capabilities.video.keys.firstWhere(
+              capabilities.isContainerEnabled,
+              orElse: () => selection.container,
+            );
+      return _withContainer(container);
+    }
+    final still = capabilities.isStillEnabled(selection.stillFormat)
+        ? selection.stillFormat
+        : capabilities.stills.firstWhere(
+            capabilities.isStillEnabled,
+            orElse: () => selection.stillFormat,
+          );
+    return selection.copyWith(kind: kind, stillFormat: still);
+  }
+
+  /// The containers. Choosing one lands on that container's first WRITABLE
+  /// codec when the current one is off there — picking MOV must not leave a
+  /// codec selected that MOV cannot hold.
+  Widget _containerButton() => PanelFlyoutButton(
+    key: const ValueKey<String>('export-format-file'),
+    label: selection.container.label,
+    enabled: enabled,
+    entriesBuilder: () => capabilities.video.keys.asFlyoutValueChoices(
+      current: selection.container,
+      choiceOf: (container) {
+        final writable = capabilities.isContainerEnabled(container);
+        return PanelFlyoutChoice(
+          key: 'export-format-container-${container.jsonValue}',
+          label: container.label,
+          enabled: writable,
+          warning: writable
+              ? null
+              : capabilities.reasonFor(
+                  container,
+                  capabilities.codecsFor(container).first,
+                ),
+        );
+      },
+      onPicked: (container) => _change(_withContainer(container)),
     ),
   );
 
@@ -418,30 +500,23 @@ class ExportFormatModule extends StatelessWidget {
     return next;
   }
 
-  Widget _stillFormatRow() => ExportModuleRow(
-    label: AppText.strings.exImage,
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: PillStrip(
-        items: [
-          for (final still in capabilities.stills)
-            PillItem(
-              keyValue: 'export-format-still-${still.jsonValue}',
-              label: still.label,
-              selected: selection.isStill && selection.stillFormat == still,
-              onTap: enabled && capabilities.isStillEnabled(still)
-                  ? () => _change(
-                      selection.copyWith(
-                        kind: ExportMediaKind.still,
-                        stillFormat: still,
-                      ),
-                    )
-                  : null,
-              tooltip: capabilities.isStillEnabled(still)
-                  ? null
-                  : AppText.strings.exNotInThisBuild,
-            ),
-        ],
+  Widget _stillButton() => PanelFlyoutButton(
+    key: const ValueKey<String>('export-format-file'),
+    label: selection.stillFormat.label,
+    enabled: enabled,
+    entriesBuilder: () => capabilities.stills.asFlyoutValueChoices(
+      current: selection.stillFormat,
+      choiceOf: (still) {
+        final writable = capabilities.isStillEnabled(still);
+        return PanelFlyoutChoice(
+          key: 'export-format-still-${still.jsonValue}',
+          label: still.label,
+          enabled: writable,
+          warning: writable ? null : AppText.strings.exNotInThisBuild,
+        );
+      },
+      onPicked: (still) => _change(
+        selection.copyWith(kind: ExportMediaKind.still, stillFormat: still),
       ),
     ),
   );
@@ -565,8 +640,7 @@ class ExportFormatModule extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (capabilities.hasVideo) _containerRow(),
-        _stillFormatRow(),
+        _formatRow(),
         if (selection.isVideo && codecs.length > 1) _codecRow(codecs),
         if (showBitrate) _bitrateRow(),
         if (showQuality) _qualityRow(),
@@ -611,14 +685,16 @@ class ExportJpgQualityRow extends StatelessWidget {
 }
 
 /// What a PAPER DOCUMENT is written as — a timesheet's pages, a cut
-/// envelope, the conte's page images: PNG, or JPG at a quality
+/// envelope, the conte's page images: any still, JPG at a quality
 /// ([paperDocumentFormat]; 유저 2026-10-05: 「시트 그리고 png말고 jpg도
-/// 추가」).
+/// 추가」 · I-117, 10-21: 「새 출력형식으로서 BMP TGA TIFF WEBP」, and a PSD
+/// of its strata). A still this machine cannot write stays in the list,
+/// off, saying why — the Format module's law ([stillEnabled]).
 ///
 /// A document that has a format which is no picture — the timesheet's
-/// digital sheet, the conte's PDF — offers it in the same strip ([before] ·
-/// [after]), and the picture formats are lit only while a picture is what
-/// is written ([pictured]).
+/// digital sheet, the conte's PDF — offers it in the same list ([before] ·
+/// [after]), and the picture formats are marked only while a picture is
+/// what is written ([pictured]).
 class ExportPaperFormatModule extends StatelessWidget {
   const ExportPaperFormatModule({
     super.key,
@@ -626,12 +702,14 @@ class ExportPaperFormatModule extends StatelessWidget {
     required this.label,
     required this.image,
     required this.onImageChanged,
+    required this.stillEnabled,
     this.pictured = true,
     this.before = const [],
     this.after = const [],
   });
 
-  /// Leads every key of the module: `<keyPrefix>-png`, `-jpg`, `-quality`.
+  /// Leads every key of the module: the list's button `<keyPrefix>-file`,
+  /// its rows `-png`, `-jpg` …, and `-quality`.
   final String keyPrefix;
   final String label;
   final ExportFormatSelection image;
@@ -639,6 +717,10 @@ class ExportPaperFormatModule extends StatelessWidget {
   /// A picture format, picked — or its quality, moved. Null while the
   /// window is busy.
   final ValueChanged<ExportFormatSelection>? onImageChanged;
+
+  /// Whether this machine writes a still in a format — the answer the
+  /// Format module's list is greyed by ([ExportFormatCapabilities]).
+  final bool Function(ExportStillFormat format) stillEnabled;
   final bool pictured;
   final List<PillItem> before;
   final List<PillItem> after;
@@ -648,17 +730,74 @@ class ExportPaperFormatModule extends StatelessWidget {
       ? 'JPG · ${image.jpgQuality}'
       : image.stillFormat.label;
 
+  /// The format the button names: the picture's while a picture is written,
+  /// else the [before] or [after] format standing.
+  String get _shown {
+    if (pictured) {
+      return image.stillFormat.label;
+    }
+    for (final item in [...before, ...after]) {
+      if (item.selected) {
+        return item.label;
+      }
+    }
+    return image.stillFormat.label;
+  }
+
+  /// One list, as the Format module's is (I-117, 유저 2026-10-21: 「형식
+  /// 고르는건 기본적으로 출력창에서 코덱 고르듯이 리스트팝오버로」) — the
+  /// formats that are no picture where they stood, [before] and [after] the
+  /// pictures. ↩️A pill strip: PNG · JPG between them.
+  ///
+  /// [before] and [after] come as the window's pills ([PillItem]), so they
+  /// keep the window's law for a press while an export runs — their own
+  /// dead [PillItem.onTap] — and are listed as they are. Every row is then
+  /// one value of the app's one picker ([PanelFlyoutValueChoices]).
+  List<PanelFlyoutEntry> _entries() {
+    final changed = onImageChanged;
+    ({
+      String key,
+      String label,
+      bool current,
+      VoidCallback? pick,
+      bool writable,
+    })
+    listed(PillItem item) => (
+      key: item.keyValue,
+      label: item.label,
+      current: item.selected,
+      pick: item.onTap,
+      writable: true,
+    );
+    final rows = [
+      for (final item in before) listed(item),
+      for (final format in ExportStillFormat.values)
+        (
+          key: '$keyPrefix-${format.jsonValue}',
+          label: format.label,
+          current: pictured && image.stillFormat == format,
+          pick: changed == null
+              ? null
+              : () => changed(image.copyWith(stillFormat: format)),
+          writable: stillEnabled(format),
+        ),
+      for (final item in after) listed(item),
+    ];
+    return rows.asFlyoutValueChoices(
+      current: rows.where((row) => row.current).firstOrNull,
+      choiceOf: (row) => PanelFlyoutChoice(
+        key: row.key,
+        label: row.label,
+        enabled: row.writable && row.pick != null,
+        warning: row.writable ? null : AppText.strings.exNotInThisBuild,
+      ),
+      onPicked: (row) => row.pick?.call(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final changed = onImageChanged;
-    PillItem still(ExportStillFormat format) => PillItem(
-      keyValue: '$keyPrefix-${format.jsonValue}',
-      label: format.label,
-      selected: pictured && image.stillFormat == format,
-      onTap: changed == null
-          ? null
-          : () => changed(image.copyWith(stillFormat: format)),
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -666,13 +805,11 @@ class ExportPaperFormatModule extends StatelessWidget {
           label: label,
           child: Align(
             alignment: Alignment.centerLeft,
-            child: PillStrip(
-              items: [
-                ...before,
-                still(ExportStillFormat.png),
-                still(ExportStillFormat.jpg),
-                ...after,
-              ],
+            child: PanelFlyoutButton(
+              key: ValueKey<String>('$keyPrefix-file'),
+              label: _shown,
+              enabled: changed != null,
+              entriesBuilder: _entries,
             ),
           ),
         ),
@@ -769,15 +906,19 @@ class ExportSizeModule extends StatelessWidget {
   String _labelOf(ExportSizeMode mode) {
     final strings = AppText.strings;
     return switch (mode) {
-      ExportSizeMode.camera =>
-        strings.exCameraTemplate
-            .replaceAll('{w}', '${cameraSize.width}')
-            .replaceAll('{h}', '${cameraSize.height}'),
+      ExportSizeMode.camera => strings.exCameraTemplate.replaceAll(
+        '{size}',
+        pixelSizeLabel(cameraSize.width, cameraSize.height),
+      ),
       ExportSizeMode.canvas =>
         canvasSizes.length == 1
-            ? strings.exCanvasTemplate
-                  .replaceAll('{w}', '${canvasSizes.first.width}')
-                  .replaceAll('{h}', '${canvasSizes.first.height}')
+            ? strings.exCanvasTemplate.replaceAll(
+                '{size}',
+                pixelSizeLabel(
+                  canvasSizes.first.width,
+                  canvasSizes.first.height,
+                ),
+              )
             : strings.exCanvasPerCut,
     };
   }
@@ -811,16 +952,25 @@ class ExportSizeModule extends StatelessWidget {
 /// 🗣️F-221 (유저 2026-10-06): 「이름칸은 확장자랑 텍스트가 같이있는데 확장자는
 /// 따로 나눠서 편집불가하게 그냥 띄우기만하고, 이름만 딱 있도록. 그렇게
 /// 설정한대로 내보낼때 이름 지정되는 방식이지」.
+///
+/// 🗣️F-404 (유저 2026-10-19): the field opens EMPTY, and what the file is
+/// called while it stays so shows faintly behind it — 「텍스트로 인식안되는데
+/// 아무것도 안써져있으면 뒤에 흐리게 텍스트 보이게하는거」.
 class ExportFileNameModule extends StatelessWidget {
   const ExportFileNameModule({
     super.key,
     required this.controller,
+    required this.ghost,
     required this.extension,
     required this.enabled,
     required this.onChanged,
   });
 
   final TextEditingController controller;
+
+  /// What the file is called while nothing is typed — the name the run
+  /// writes then, shown behind the empty field.
+  final String ghost;
 
   /// The format's own, without its dot.
   final String extension;
@@ -841,6 +991,7 @@ class ExportFileNameModule extends StatelessWidget {
               key: const ValueKey<String>('export-file-name-field'),
               controller: controller,
               enabled: enabled,
+              decoration: InputDecoration(hintText: ghost),
               onChanged: (_) => onChanged(),
             ),
           ),
@@ -858,23 +1009,26 @@ class ExportFileNameModule extends StatelessWidget {
   }
 }
 
-/// Sequence numbering: `<base>_0001.<ext>`.
+/// Sequence numbering: `<base>_0001.<ext>` — the base empty until one is
+/// typed, and what the stills are called meanwhile behind it, as a lone
+/// file's name is ([ExportFileNameModule], F-404).
 class ExportSequenceNamingModule extends StatelessWidget {
   const ExportSequenceNamingModule({
     super.key,
     required this.naming,
+    required this.ghost,
     required this.enabled,
     required this.onChanged,
     required this.baseNameController,
   });
 
   final ExportSequenceNaming naming;
+
+  /// The base the stills are numbered under while none is typed.
+  final String ghost;
   final bool enabled;
   final ValueChanged<ExportSequenceNaming> onChanged;
   final TextEditingController baseNameController;
-
-  static String summarize(ExportSequenceNaming naming, String extension) =>
-      '${naming.baseName}_${'1'.padLeft(naming.digits, '0')}.$extension';
 
   @override
   Widget build(BuildContext context) {
@@ -888,11 +1042,9 @@ class ExportSequenceNamingModule extends StatelessWidget {
               key: const ValueKey<String>('export-naming-base-field'),
               controller: baseNameController,
               enabled: enabled,
-              onChanged: (value) => onChanged(
-                naming.copyWith(
-                  baseName: value.trim().isEmpty ? 'frame' : value.trim(),
-                ),
-              ),
+              decoration: InputDecoration(hintText: ghost),
+              onChanged: (value) =>
+                  onChanged(naming.copyWith(baseName: value.trim())),
             ),
           ),
         ),

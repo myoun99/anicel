@@ -91,6 +91,20 @@ class ActiveCutSpan {
   int get activeCutPlaybackFrameCount =>
       math.max(1, _project.activeCutOrNull?.duration ?? 1);
 
+  /// The active cut's rows whose frame 0 carries a block over from an
+  /// earlier cut, each with how far into that block it already is: the SE
+  /// rows' sounds ([TrackSeDisplay.trackSeSpillInLeadFrames]) and the
+  /// transition row's span ([Transitions.transitionSpillInLeadFrames]).
+  ///
+  /// The one map every surface mounting the cut's rows reads — the
+  /// timeline and the canvas's folded rows — so a block carried over is
+  /// laid out from where it starts in both (F-358). ↩️The timeline host
+  /// merged the two inline, and the folded rows read neither.
+  Map<LayerId, int> get activeCutSpillInLeadFrames => {
+    ..._trackSe.trackSeSpillInLeadFrames,
+    ..._transitions.transitionSpillInLeadFrames,
+  };
+
   /// How many frames the active cut is DRAWN for: its conte 尺 plus the
   /// のりしろ every transition span crossing one of its boundaries asks for.
   /// Equal to [activeCutPlaybackFrameCount] whenever nothing crosses.

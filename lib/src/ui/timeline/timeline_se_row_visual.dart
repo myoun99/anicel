@@ -9,14 +9,18 @@ import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
+import '../../models/track_se_window.dart' show seSoundRunsPast;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
 import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../media/media_asset_drop_target.dart';
+import '../text/dialogue_fit_layout.dart' show dialogueGlyphsShownIn;
 import '../text/dialogue_fit_paint.dart' show dialogueNaturalExtent;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
+import 'layer_label_controls.dart' show layerMarkColor;
+import 'se_crossing_mark_painter.dart';
 import 'timeline_block_word.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_beat_lines.dart';
@@ -40,16 +44,24 @@ bool layerKindUsesSeSheetCells(LayerKind kind) => kind == LayerKind.se;
 
 /// The name-box + fitted-dialogue overlays for every SE block intersecting
 /// the visible window; mirrors [timelineRowBlockEdgeGrips]' windowing math.
+///
+/// [spillInLeadFrames]: how far into its block the cut's frame 0 already
+/// is — a sound spilling in from an earlier cut. That block is laid out
+/// from where it really starts and seen from frame 0 on
+/// ([SeSpanVisual.shownFrom]), so its words stand where the track's own
+/// row has them (F-358). Each chip reads the frames free before its block
+/// on the row, the room it may stand in outside it ([seFramesFreeBefore]).
 List<Widget> timelineRowSeLabelOverlays({
   required Layer layer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
   required Axis axis,
+  int? spillInLeadFrames,
   String keyPrefix = 'timeline',
 }) {
   final overlays = <Widget>[];
   final blocks = drawingBlocks(layer.timeline);
-  for (final block in blocks) {
+  for (final (index, block) in blocks.indexed) {
     if (!frameRangesOverlap(
       block.startIndex,
       block.endIndexExclusive,
@@ -61,10 +73,11 @@ List<Widget> timelineRowSeLabelOverlays({
     final frame = layer.frameById(block.frameId);
     final dialogue = frame?.name;
     final seName = frame?.seName;
+    final lead = block.startIndex == 0 ? spillInLeadFrames ?? 0 : 0;
     overlays.add(
       TimelineFrameSpan(
         placement: TimelineFrameSpanPlacement(
-          startIndex: block.startIndex,
+          startIndex: block.startIndex - lead,
           endIndexExclusive: block.endIndexExclusive,
         ),
         child: IgnorePointer(
@@ -73,9 +86,12 @@ List<Widget> timelineRowSeLabelOverlays({
           ),
           child: SeSpanVisual(
             axis: axis,
-            frames: block.length,
+            frames: block.length + lead,
             dialogue: dialogue ?? '',
             seName: seName,
+            shownFrom: lead,
+            framesFreeBefore: seFramesFreeBefore(blocks, index),
+            paper: layerMarkColor(layer.mark),
           ),
         ),
       ),
@@ -90,12 +106,22 @@ List<Widget> timelineRowSeLabelOverlays({
 /// an earlier cut marks the cut start ("something precedes"; its start
 /// grip stands down — the real start lives in that cut). The storyboard's
 /// track-global strip shows the whole flow and carries no marks.
+///
+/// The cut's end is the line it is DRAWN to — its 尺 plus the のりしろ a
+/// transition asks ([drawnFrameCount], the timeline's blue line and the
+/// sheet's end line). 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든
+/// 뭐든 총합적인 엔드라인)」. ↩️It stood on the 尺, short of the margin.
+///
+/// Each mark straddles its boundary, centred across the row, and runs along
+/// the [axis] ([paintSeCrossingMark]) — so at the cut's start only its back
+/// half is the cut's (유저: 「물론 끝에만 보이게 되겟지」).
 List<Widget> timelineRowSeContinuationMarks({
   required Layer layer,
-  required int cutFrameCount,
+  required int drawnFrameCount,
   required bool spillsInAtStart,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
+  required Axis axis,
   String keyPrefix = 'timeline',
 }) {
   final marks = <Widget>[];
@@ -106,40 +132,40 @@ List<Widget> timelineRowSeContinuationMarks({
     }
     marks.add(
       TimelineFrameSpan(
-        // A fixed 14px glyph straddling the boundary — the one piece of SE
-        // chrome that must NOT scale with the zoom.
         placement: TimelineFrameSpanPlacement(
           startIndex: boundaryFrame,
-          mainInset: -7,
-          mainExtent: 14,
+          mainInset: -seCrossingMarkLength / 2,
+          mainExtent: seCrossingMarkLength,
         ),
         child: IgnorePointer(
           key: ValueKey<String>('$keyPrefix-se-crossing-${layer.id}-$suffix'),
-          child: const Center(
-            child: Text(
-              '~',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: timelineDrawingInkColor,
-              ),
-            ),
-          ),
+          child: CustomPaint(painter: _SeCrossingMarkPainter(axis)),
         ),
       ),
     );
   }
 
-  for (final block in drawingBlocks(layer.timeline)) {
-    if (spillsInAtStart && block.startIndex == 0) {
-      mark(0, 'start');
-    }
-    if (block.startIndex < cutFrameCount &&
-        block.endIndexExclusive > cutFrameCount) {
-      mark(cutFrameCount, 'end');
-    }
+  if (spillsInAtStart) {
+    mark(0, 'start');
+  }
+  if (seSoundRunsPast(layer, drawnFrameCount)) {
+    mark(drawnFrameCount, 'end');
   }
   return marks;
+}
+
+/// One `~`, in the middle of the strip it stands in.
+class _SeCrossingMarkPainter extends CustomPainter with RepaintOnProps {
+  const _SeCrossingMarkPainter(this.axis);
+
+  final Axis axis;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintSeCrossingMark(canvas, size.center(Offset.zero), axis);
+
+  @override
+  Object get props => axis;
 }
 
 /// Waveform strips for an SE row's audio, painted ABOVE the paper cells
@@ -162,18 +188,80 @@ List<Widget> timelineRowAudioOverlays({
   required Color color,
   int leadInAtStart = 0,
   String keyPrefix = 'timeline',
+}) => [
+  for (final strip in seRowAudioStrips(
+    layer,
+    window: (
+      startIndex: frameStartIndex,
+      endIndexExclusive: frameEndIndexExclusive,
+    ),
+    ink: (
+      axis: axis,
+      frameRate: frameRate,
+      audioPeaksFor: audioPeaksFor,
+      color: color,
+    ),
+    leadInAtStart: leadInAtStart,
+  ))
+    TimelineFrameSpan(
+      placement: TimelineFrameSpanPlacement(
+        startIndex: strip.startFrame,
+        endIndexExclusive: strip.endFrameExclusive,
+      ),
+      child: KeyedSubtree(
+        key: ValueKey<String>('$keyPrefix-audio-clip-${strip.keyName}'),
+        child: strip.strip,
+      ),
+    ),
+];
+
+/// One sound's waveform strip on an SE row ([seRowAudioStrips]): the frames
+/// it covers, the name it is keyed by, and the strip.
+typedef SeRowAudioStrip = ({
+  int startFrame,
+  int endFrameExclusive,
+  String keyName,
+  Widget strip,
+});
+
+/// How an SE row draws its sounds ([seRowAudioStrips]): the axis it lays
+/// them along, the rate its frames are counted at, each file's peaks, and
+/// the ink.
+typedef SeRowSoundInk = ({
+  Axis axis,
+  ProjectFrameRate frameRate,
+  AudioPeaks? Function(String filePath) audioPeaksFor,
+  Color color,
+});
+
+/// An SE row's waveform strips with the frames each covers and the name it
+/// is keyed by — what [timelineRowAudioOverlays] places on a cut's cells,
+/// and the storyboard's S row on the track's axis. One reading of a sound
+/// for both: where it starts, how much of it is heard, and its gain and
+/// fades drawn on it. Only the sounds over [window] when one is given —
+/// the whole row when none is.
+///
+/// ↩️The storyboard's S row read them on its own, and drew no gain and no
+/// fade (I-89 ① ⓕ, 2026-10-20).
+List<SeRowAudioStrip> seRowAudioStrips(
+  Layer layer, {
+  ({int startIndex, int endIndexExclusive})? window,
+  required SeRowSoundInk ink,
+  int leadInAtStart = 0,
 }) {
-  final overlays = <Widget>[];
+  final (:axis, :frameRate, :audioPeaksFor, :color) = ink;
+  final strips = <SeRowAudioStrip>[];
   for (final span in seAudioSpans(layer, leadInAtStart: leadInAtStart)) {
     // Windowed like every sibling builder: the open-ended SE display
     // clone carries every downstream sound now, and an off-window
     // waveform strip is layout weight nobody can see.
-    if (!frameRangesOverlap(
-      span.startFrame,
-      span.startFrame + span.lengthFrames,
-      frameStartIndex,
-      frameEndIndexExclusive,
-    )) {
+    if (window != null &&
+        !frameRangesOverlap(
+          span.startFrame,
+          span.startFrame + span.lengthFrames,
+          window.startIndex,
+          window.endIndexExclusive,
+        )) {
       continue;
     }
     final peaks = audioPeaksFor(span.clip.filePath);
@@ -190,35 +278,26 @@ List<Widget> timelineRowAudioOverlays({
     if (audibleFrames <= 0) {
       continue;
     }
-    overlays.add(
-      TimelineFrameSpan(
-        placement: TimelineFrameSpanPlacement(
-          startIndex: span.startFrame,
-          endIndexExclusive: span.startFrame + audibleFrames,
-        ),
-        child: KeyedSubtree(
-          key: ValueKey<String>(
-            '$keyPrefix-audio-clip-${layer.id}-${span.clipIndex}'
-            '-b${span.startFrame}',
-          ),
-          child: _AudioClipStrip(
-            peaks: peaks,
-            frameRate: frameRate,
-            // Frames, not pixels: the strip reads its own box to learn what
-            // a frame is worth, so a zoom step repaints it without a rebuild.
-            audibleFrames: audibleFrames,
-            axis: axis,
-            color: color,
-            leadingFrames: span.leadingFrames,
-            gain: span.clip.gain,
-            fadeInFrames: span.clip.fadeInFrames,
-            fadeOutFrames: span.clip.fadeOutFrames,
-          ),
-        ),
+    strips.add((
+      startFrame: span.startFrame,
+      endFrameExclusive: span.startFrame + audibleFrames,
+      keyName: '${layer.id}-${span.clipIndex}-b${span.startFrame}',
+      strip: _AudioClipStrip(
+        peaks: peaks,
+        frameRate: frameRate,
+        // Frames, not pixels: the strip reads its own box to learn what a
+        // frame is worth, so a zoom step repaints it without a rebuild.
+        audibleFrames: audibleFrames,
+        axis: axis,
+        color: color,
+        leadingFrames: span.leadingFrames,
+        gain: span.clip.gain,
+        fadeInFrames: span.clip.fadeInFrames,
+        fadeOutFrames: span.clip.fadeOutFrames,
       ),
-    );
+    ));
   }
-  return overlays;
+  return strips;
 }
 
 /// Red warning lines for takes that CLIPPED (REC1-D), tooltip-explained.
@@ -429,9 +508,7 @@ class _AudioClipStrip extends StatelessWidget {
     final waveform = ClipRect(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final main = axis == Axis.horizontal
-              ? constraints.maxWidth
-              : constraints.maxHeight;
+          final main = extentAlong(axis, constraints.biggest);
           return CustomPaint(
             painter: WaveformPainter(
               peaks: peaks,
@@ -460,31 +537,60 @@ class _AudioClipStrip extends StatelessWidget {
 /// block's start boundary).
 const double seNameBoxExtent = 16;
 
-/// How far the name chip runs along a block [mainExtent] long whose dialogue
-/// runs [dialogueExtent] at its natural size ([dialogueNaturalExtent]):
-/// [seNameBoxExtent] while the two fit side by side, and past that the chip
-/// narrows by the very ratio the dialogue does.
+/// Where an SE span's name chip stands along a block [mainExtent] long,
+/// whose dialogue runs [dialogueExtent] at its natural size
+/// ([dialogueNaturalExtent]), with [roomBefore] free on its row before it
+/// ([seFramesFreeBefore]): [chip] long, and [outside] the block — just
+/// before its start — when that room holds it whole; over the block's
+/// head, on its words, when it does not.
+///
+/// 🗣️F-358 (유저 2026-10-19): 「블록안에 이름있어서 대사가 1코마부터
+/// 시작하게 하고싶은데 방해되. 그래서 업계에서 실제로 하는데로 대사영역
+/// 바로앞. 즉 블록 앞부분 왼쪽에 이름두자. 블록 밖으로 나가게되는거지. s행
+/// 해당블록이 타임라인에서 맨 처음이거나해서 공간없으면 지금처럼 블록안에
+/// 넣는데 대사랑 완전겹치는거 감수」. The words run the block edge to edge
+/// from its first frame, named or not, and the name keeps out of their way.
+/// ↩️The chip took the block's head and the words began where it ended — a
+/// different frame at each zoom — and F-358-Q1 (10-18) made the head one
+/// frame, so the words began on the second.
 ///
 /// 🗣️F-224 (유저 2026-09-29): 「줌에 맞춰서 se블록의 대사 좌우 줄일때,
 /// 대사는 줄어들어가는데 이름칸은 줄어들기 시작하는게 늦어서 15%정도에서
 /// 이름칸만 100%랑 거의 비슷한 크기인데 대사만 줄어들고있음. 대사랑 이름칸이랑
-/// 동일하게 줄어들기시작하도록」. ↩️The chip kept its 16 until the block was
-/// under 32 and then took half of it — a ceiling read off an old threshold,
-/// not anyone's rule — while the dialogue beside it had been narrowing since
-/// the block got shorter than the two of them.
-double seNameBoxExtentIn(double mainExtent, {required double dialogueExtent}) {
-  final natural = seNameBoxExtent + dialogueExtent;
-  return mainExtent >= natural
-      ? seNameBoxExtent
-      : seNameBoxExtent * mainExtent / natural;
+/// 동일하게 줄어들기시작하도록」: the chip narrows by the very ratio the
+/// words do, from the zoom the block gets shorter than they are. ↩️The chip
+/// kept its 16 until the block was under 32 and then took half of it — a
+/// ceiling read off an old threshold, not anyone's rule — while the
+/// dialogue beside it had been narrowing since the block got shorter than
+/// the two of them.
+({double chip, bool outside}) seNameChipPlace(
+  double mainExtent, {
+  required double dialogueExtent,
+  required double roomBefore,
+}) {
+  final narrowed = dialogueExtent <= mainExtent
+      ? 1.0
+      : mainExtent / dialogueExtent;
+  final chip = seNameBoxExtent * narrowed;
+  return roomBefore >= chip
+      ? (chip: chip, outside: true)
+      : (chip: math.min(chip, mainExtent), outside: false);
 }
 
+/// How many frames lie free on a row before [blocks]' block at [index]:
+/// back to the end of the block before it, or to the row's frame 0 — the
+/// room its name chip may stand in, outside it ([seNameChipPlace]).
+int seFramesFreeBefore(List<TimelineDrawingBlock> blocks, int index) =>
+    blocks[index].startIndex -
+    (index == 0 ? 0 : blocks[index - 1].endIndexExclusive);
+
 /// The sheet's SE-entry writing, the real Toei way (R4, user-approved
-/// mockup v3): a compact INVERTED name chip flush against the block's
-/// start boundary (ink fill, paper-light writing) and the dialogue fitted
-/// over the rest of the span — no duration bar. Shared by the timeline rows,
-/// the X-sheet columns and the storyboard's synced SE track; paper comes from
-/// the cells underneath (or from [SePaperSpan] where there are none).
+/// mockup v3): a compact name chip at the block's start boundary and the
+/// dialogue fitted over the span — no duration bar. Where the chip stands
+/// is [seNameChipPlace]'s to say: just before the block, or over its head.
+/// Shared by the timeline rows, the X-sheet columns and the storyboard's
+/// synced SE track; paper comes from the cells underneath (or from
+/// [SePaperSpan] where there are none).
 ///
 /// 🚨I-43 (유저 2026-09-23): 「se는 왜 제안에서 엣지가 빨간색 남아있지? 그부분만
 /// 혹시모르니 잘 통일해주고」. v3 also closed the block's end with a short red
@@ -500,6 +606,9 @@ class SeSpanVisual extends StatelessWidget {
     required this.frames,
     required this.dialogue,
     this.seName,
+    this.shownFrom = 0,
+    this.framesFreeBefore = 0,
+    this.paper = timelineDrawingHeldColor,
   });
 
   final Axis axis;
@@ -510,6 +619,20 @@ class SeSpanVisual extends StatelessWidget {
   final int frames;
   final String dialogue;
   final String? seName;
+
+  /// How many of [frames] run before the window the span is seen through:
+  /// the cut a sound spilled into sees its block from its own frame 0 on,
+  /// the block laid out from where it really starts (F-358,
+  /// [dialogueGlyphsShownIn]). Zero shows the whole span.
+  final int shownFrom;
+
+  /// The frames free on the row before the block ([seFramesFreeBefore]):
+  /// the room the name chip may stand in, outside it ([seNameChipPlace]).
+  final int framesFreeBefore;
+
+  /// The block's own paper — its layer's mark (⑲). Outside the block the
+  /// chip has no paper under it, so it lays this one tinted as its own.
+  final Color paper;
 
   /// 🚨A ZOOM LAYS THE SPAN OUT AGAIN; IT DOES NOT BUILD IT AGAIN
   /// (zoom-step-lays-out-five-times-the-07-25-count, 10-12): how far the
@@ -524,39 +647,48 @@ class SeSpanVisual extends StatelessWidget {
     final seName = this.seName ?? '';
     final fit = _SeSpanFit(
       axis: axis,
+      frames: frames,
+      framesFreeBefore: framesFreeBefore,
       dialogue: dialogue,
       style: dialogueFitStyle(context, color: timelineDrawingInkColor),
     );
+    // The chip is the head frame's, and a window opens on a whole frame: one
+    // opening past the head never shows it.
+    final chipShown = seName.isNotEmpty && shownFrom <= 0;
     return CustomPaint(
-      painter: seName.isEmpty
-          ? null
-          : _SeNameGroundPainter(frames: frames, fit: fit),
+      painter: chipShown ? _SeNameGroundPainter(fit, paper: paper) : null,
       child: CustomMultiChildLayout(
         delegate: _SeSpanLayout(fit),
         children: [
-          if (seName.isNotEmpty)
-            LayoutId(
-              id: _SeSpanSlot.chip,
-              child: _SeNameBox(axis: axis, name: seName),
-            ),
           LayoutId(
             id: _SeSpanSlot.dialogue,
             child: DialogueFitText(
               text: dialogue,
               axis: axis,
               color: timelineDrawingInkColor,
+              shownFromPart: shownFrom <= 0 || frames <= 0
+                  ? 0
+                  : shownFrom / frames,
             ),
           ),
+          // Over the words where it has no room before the block: the name
+          // is what stays legible (F-358-Q1 「이름은 최대한 지금처럼 잘
+          // 보이고」).
+          if (chipShown)
+            LayoutId(
+              id: _SeSpanSlot.chip,
+              child: _SeNameBox(axis: axis, name: seName),
+            ),
         ],
       ),
     );
   }
 }
 
-/// How far an SE span's name chip runs along the box the span lies in:
-/// [seNameBoxExtentIn] of the box's length, against the dialogue's own
-/// length at its natural size across that box — measured once for each
-/// width across, not once for each zoom step.
+/// Where an SE span's chip stands along the box the span lies in
+/// ([seNameChipPlace]), against the dialogue's own length at its natural
+/// size across that box — measured once for each width across, not once
+/// for each zoom step.
 ///
 /// ↩️Narrow spans USED to DROP the name box instead of overflowing it (the
 /// storyboard's zoomed-out blocks can be slimmer than the box — same rule
@@ -564,18 +696,31 @@ class SeSpanVisual extends StatelessWidget {
 ///
 /// 🚨★★★F-93 (유저 2026-09-16): 「이름 상자를 버리는게아니야. 유지한채로 가로
 /// 길이만 작게하란거야」 — the chip STAYS and narrows, the way the dialogue
-/// glyphs beside it narrow rather than vanish (`wordCondensation`).
+/// glyphs narrow rather than vanish (`wordCondensation`).
 final class _SeSpanFit {
-  _SeSpanFit({required this.axis, required this.dialogue, required this.style});
+  _SeSpanFit({
+    required this.axis,
+    required this.frames,
+    required this.framesFreeBefore,
+    required this.dialogue,
+    required this.style,
+  });
 
   final Axis axis;
+
+  /// How many frames the block runs: the box over this is the live cell.
+  final int frames;
+
+  /// The frames free before the block on its row, which a box turns into
+  /// the chip's room ([SeSpanVisual.framesFreeBefore]).
+  final int framesFreeBefore;
   final String dialogue;
   final TextStyle style;
 
   double? _measuredAcross;
   double _dialogueExtent = 0;
 
-  double chipExtentIn(Size size) {
+  ({double chip, bool outside}) chipIn(Size size) {
     final across = extentAcross(axis, size);
     if (_measuredAcross != across) {
       _measuredAcross = across;
@@ -586,22 +731,28 @@ final class _SeSpanFit {
         maxCrossExtent: across,
       );
     }
-    return seNameBoxExtentIn(
-      extentAlong(axis, size),
+    final along = extentAlong(axis, size);
+    return seNameChipPlace(
+      along,
       dialogueExtent: _dialogueExtent,
+      roomBefore: frames <= 0 ? 0 : framesFreeBefore * along / frames,
     );
   }
 
   /// Whether [other] answers as this does for every box.
   bool answersAs(_SeSpanFit other) =>
-      axis == other.axis && dialogue == other.dialogue && style == other.style;
+      axis == other.axis &&
+      frames == other.frames &&
+      framesFreeBefore == other.framesFreeBefore &&
+      dialogue == other.dialogue &&
+      style == other.style;
 }
 
 enum _SeSpanSlot { chip, dialogue }
 
-/// The chip at the span's start and the dialogue over the rest of it, each
-/// centred across — as the flex that laid them did — the chip as long as
-/// the box says ([_SeSpanFit]).
+/// The words over the whole span and the chip where [seNameChipPlace]
+/// says — just before the span, or at its head — each centred across, as
+/// the flex that laid them did.
 class _SeSpanLayout extends MultiChildLayoutDelegate {
   _SeSpanLayout(this.fit);
 
@@ -611,7 +762,6 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
   void performLayout(Size size) {
     final axis = fit.axis;
     final across = extentAcross(axis, size);
-    final chip = hasChild(_SeSpanSlot.chip) ? fit.chipExtentIn(size) : 0.0;
     void lay(_SeSpanSlot slot, double from, double extent) {
       final laid = layoutChild(
         slot,
@@ -629,10 +779,11 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
       );
     }
 
+    lay(_SeSpanSlot.dialogue, 0, extentAlong(axis, size));
     if (hasChild(_SeSpanSlot.chip)) {
-      lay(_SeSpanSlot.chip, 0, chip);
+      final place = fit.chipIn(size);
+      lay(_SeSpanSlot.chip, place.outside ? -place.chip : 0, place.chip);
     }
-    lay(_SeSpanSlot.dialogue, chip, extentAlong(axis, size) - chip);
   }
 
   @override
@@ -640,8 +791,9 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
       !fit.answersAs(oldDelegate.fit);
 }
 
-/// The name chip's GROUND: the block's own paper, tinted over the chip's
-/// stretch — never a box of its own.
+/// The name chip's GROUND: over the block's head, the block's own paper
+/// tinted over the chip's stretch; just before the block, a paper of its
+/// own in the block's shape, the colour that tint gives the block's paper.
 ///
 /// 🗣️F-270 (유저 2026-10-03): 「se블록의 이름칸의 강조색으로 되어있는 바탕색,
 /// 바탕색 실루엣이 블록이랑 딱 맞춰서 꼭짓점이 동그랗게 되지않아서 바탕색
@@ -651,38 +803,59 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
 /// the BLOCK's box now and the paper's shape clips it
 /// ([timelineBlockPaperShape]) — so a short block the chip takes whole is
 /// round at its far end too, with nobody having to think of that case.
+///
+/// 🗣️F-358 (유저 2026-10-19): 「이름칸 색, 뒤가 밝은걸 기준으로 정한색이니까
+/// 그부분 잘 해결해주고」. The tint is a soft accent read OVER light paper;
+/// outside the block it would lie over the dark row instead. So it lays the
+/// colour it gives the paper, whole, on the block's corner — the chip reads
+/// the same on either side of the block's start.
 class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
-  const _SeNameGroundPainter({required this.frames, required this.fit});
+  const _SeNameGroundPainter(this.fit, {required this.paper});
 
-  /// The block's length in frames: the box over this is the live cell.
-  final int frames;
-
-  /// How far the chip runs ALONG the block, for the box it is painted in.
+  /// Where the chip stands and how far it runs, for the box it is painted
+  /// in.
   final _SeSpanFit fit;
+
+  /// The block's paper — what the tint is read over.
+  final Color paper;
 
   @override
   void paint(Canvas canvas, Size size) {
     final axis = fit.axis;
     final across = extentAcross(axis, size);
-    final extent = fit.chipExtentIn(size);
+    final along = extentAlong(axis, size);
+    final place = fit.chipIn(size);
+    // R6-②: soft accent tint (the full-strength accent read too loud);
+    // dark ink writing carries the contrast — matches the sheet.
+    final tint = AppColors.accent.withValues(alpha: 0.3);
+    if (place.outside) {
+      canvas.drawRRect(
+        timelineBlockPaperShape(
+          axis: axis,
+          along: place.chip,
+          rowExtent: across,
+          frameCellExtent: fit.frames <= 0 ? 0 : along / fit.frames,
+        ).shift(offsetAlong(axis, along: -place.chip, across: 0)),
+        Paint()..color = Color.alphaBlend(tint, paper),
+      );
+      return;
+    }
     canvas
       ..save()
       ..clipRRect(
         timelineBlockPaperShapeOver(
           axis: axis,
-          along: extentAlong(axis, size),
+          along: along,
           rowExtent: across,
-          frames: frames,
+          frames: fit.frames,
         ),
       )
       ..drawRect(
         Rect.fromPoints(
           Offset.zero,
-          offsetAlong(axis, along: extent, across: across),
+          offsetAlong(axis, along: place.chip, across: across),
         ),
-        // R6-②: soft accent tint (the full-strength accent read too loud);
-        // dark ink writing carries the contrast — matches the sheet.
-        Paint()..color = AppColors.accent.withValues(alpha: 0.3),
+        Paint()..color = tint,
       )
       ..restore();
   }
@@ -691,13 +864,20 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
   /// named here for a change of it to repaint. The chip's length is the
   /// box's: a box of a new size is painted again whatever these say.
   @override
-  Object get props =>
-      (fit.axis, fit.dialogue, fit.style, frames, AppColors.accent);
+  Object get props => (
+    fit.axis,
+    fit.frames,
+    fit.framesFreeBefore,
+    fit.dialogue,
+    fit.style,
+    paper,
+    AppColors.accent,
+  );
 }
 
-/// The chip's room and its name. How far it runs ALONG the block is the
-/// layout's to say ([_SeSpanLayout]): its [seNameBoxExtent], narrowed with
-/// the dialogue beside it (F-224).
+/// The chip's room and its name. Where it stands and how far it runs ALONG
+/// the block are the layout's to say ([_SeSpanLayout], [seNameChipPlace]): its
+/// [seNameBoxExtent], narrowed with the words (F-224).
 class _SeNameBox extends StatelessWidget {
   const _SeNameBox({required this.axis, required this.name});
 

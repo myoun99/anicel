@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
@@ -14,6 +15,7 @@ import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
@@ -29,7 +31,8 @@ import '../../helpers/settle_async.dart';
 ///
 ///  * one that runs in time (its pages advance by themselves, or it
 ///    sounds) stands on the transport;
-///  * a book turns its pages on the left;
+///  * a book turns its pages in the same band — ↩️on the left edge until
+///    F-383 (「알약말고 비디오파일일때 처럼 공간만들고」);
 ///  * a single picture has neither.
 ///
 /// And whatever it is, the file's name is written in one place.
@@ -52,7 +55,7 @@ void main() {
   Finder key(String suffix) => find.byKey(ValueKey<String>(suffix));
 
   const transport = 'canvas-transport';
-  const strip = 'canvas-page-strip';
+  const turner = 'media-viewer-page-readout';
 
   Future<void> pumpViewer(
     WidgetTester tester, {
@@ -79,14 +82,17 @@ void main() {
 
   /// A document of [pages] pages that turns them itself at
   /// [framesPerSecond], or a book when that is null — the PDF arm with a
-  /// fake behind it, which is how the bench reaches either.
+  /// fake behind it, which is how the bench reaches either — in [project].
   Future<void> openPages(
     WidgetTester tester, {
     required int pages,
     double? framesPerSecond,
     CanvasFloorInsets Function(Widget child)? onFloor,
+    Project? project,
   }) async {
-    session = EditorSessionManager(initialProject: createDefaultProject());
+    session = EditorSessionManager(
+      initialProject: project ?? createDefaultProject(),
+    );
     PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
       pageSizes: List<ui.Size>.filled(pages, const ui.Size(595, 842)),
       framesPerSecond: framesPerSecond,
@@ -95,7 +101,6 @@ void main() {
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/pages.pdf',
       kind: MediaAssetKind.pdf,
-      name: 'pages',
     );
     await tester.pumpAndSettle();
   }
@@ -108,7 +113,6 @@ void main() {
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/clip.mp4',
       kind: MediaAssetKind.video,
-      name: 'clip',
     );
     await settleLoadedPages(tester);
   }
@@ -139,7 +143,6 @@ void main() {
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/line.wav',
       kind: MediaAssetKind.audio,
-      name: 'line',
     );
     await tester.pumpAndSettle();
   }
@@ -153,32 +156,31 @@ void main() {
   }
 
   group('what it wears', () {
-    testWidgets('a document that turns its own pages stands on the '
-        'transport, and has no page strip', (tester) async {
+    testWidgets('a document that turns its own pages stands on its player, '
+        'and has no page turner', (tester) async {
       await openPages(tester, pages: 12, framesPerSecond: 24);
 
       expect(key(transport), findsOneWidget);
-      expect(key(strip), findsNothing, reason: '↩️it wore the left strip');
-      expect(key('media-viewer-previous-page-button'), findsNothing);
+      expect(key(turner), findsNothing, reason: '↩️it wore the page strip');
       expect(bar(tester).frameCount, 12);
       expect(bar(tester).range, isNull, reason: 'a viewer trims nothing');
     });
 
-    testWidgets('a book turns its pages on the left, and has no transport', (
-      tester,
-    ) async {
+    testWidgets('🗣️F-383: a book turns its pages in the band a movie\'s '
+        'player stands in, and has no player', (tester) async {
       await openPages(tester, pages: 3);
 
-      expect(key(strip), findsOneWidget);
+      expect(
+        find.descendant(of: key(transport), matching: key(turner)),
+        findsOneWidget,
+      );
       expect(key('media-viewer-next-page-button'), findsOneWidget);
-      expect(key(transport), findsNothing);
       expect(find.byType(TransportBar), findsNothing);
     });
 
     testWidgets('a single picture has neither', (tester) async {
       await openPages(tester, pages: 1);
 
-      expect(key(strip), findsNothing);
       expect(key(transport), findsNothing);
     });
 
@@ -188,7 +190,7 @@ void main() {
       await openSound(tester);
 
       expect(key(transport), findsOneWidget);
-      expect(key(strip), findsNothing);
+      expect(key(turner), findsNothing);
     });
 
     testWidgets('an empty viewer has neither, and writes no name', (
@@ -197,7 +199,6 @@ void main() {
       session = EditorSessionManager(initialProject: createDefaultProject());
       await pumpViewer(tester);
 
-      expect(key(strip), findsNothing);
       expect(key(transport), findsNothing);
       expect(key('canvas-document-name'), findsNothing);
     });
@@ -223,7 +224,7 @@ void main() {
       await press(tester, 'first');
       expect(slot.position.value, 0);
 
-      bar(tester).onSeek(7);
+      bar(tester).onSeek!(7);
       await tester.pump();
       expect(slot.position.value, 7);
     });
@@ -266,7 +267,7 @@ void main() {
       expect(frames, greaterThan(1));
 
       final half = frames ~/ 2;
-      bar(tester).onSeek(half);
+      bar(tester).onSeek!(half);
       await tester.pump();
       expect(bar(tester).currentFrame, half, reason: 'the pair round-trips');
 
@@ -288,7 +289,7 @@ void main() {
       expect(sound!.from, [0]);
 
       final frames = bar(tester).frameCount;
-      bar(tester).onSeek(frames ~/ 4);
+      bar(tester).onSeek!(frames ~/ 4);
       await tester.pump();
 
       expect(sound!.from, hasLength(2));
@@ -298,6 +299,81 @@ void main() {
       );
       expect(bar(tester).playing, isTrue);
       await press(tester, 'play');
+    });
+  });
+
+  // playback-waits-for-its-sound (유저 2026-10-16, se-fallback Q2: 「소리가
+  // 준비될 때까지 기다린다」) — the viewer by the canvas's law (`PlaybackWait`).
+  // ↩️A sound not conformed yet stood down: a movie played without it, and a
+  // sound alone did not play until the next press.
+  group('a run whose sound is on its way', () {
+    const look = Duration(milliseconds: 42);
+
+    testWidgets('🚨a movie stands where it was put until its sound comes, and '
+        'goes on with it — the sound started there', (tester) async {
+      await openMovie(tester);
+      slot.position.value = 3;
+      await tester.pump();
+      sound!.answers = const OutputComing();
+
+      await press(tester, 'play');
+      for (var each = 0; each < 6; each += 1) {
+        await tester.pump(look);
+      }
+      expect(bar(tester).playing, isTrue, reason: 'a run that waits plays');
+      expect(slot.position.value, 3, reason: 'it stands where it was put');
+      expect(sound!.prepares, greaterThan(1), reason: 'asked at every look');
+      expect(sound!.resumes, 0);
+
+      sound!.answers = RecordingViewerSound.armed;
+      await tester.pump(look);
+      expect(sound!.resumedFrom, [3 / 24]);
+      expect(slot.position.value, 3);
+      await press(tester, 'play');
+    });
+
+    testWidgets('🚨a movie whose sound will never come plays its pictures '
+        'without it', (tester) async {
+      await openMovie(tester);
+      sound!.answers = const OutputComing();
+      await press(tester, 'play');
+
+      sound!.answers = const OutputRefused();
+      await tester.pump(look);
+      await tester.pump(look);
+      expect(bar(tester).playing, isTrue);
+      expect(sound!.isCarrying, isFalse);
+      await press(tester, 'play');
+    });
+
+    testWidgets('🚨a sound waits for itself where it was put, and plays from '
+        'there once it comes', (tester) async {
+      await openSound(tester);
+      sound!.answers = const OutputComing();
+
+      await press(tester, 'play');
+      await tester.pump(look);
+      expect(bar(tester).playing, isTrue, reason: 'it waits');
+      expect(sound!.resumes, 0);
+
+      sound!.answers = RecordingViewerSound.armed;
+      await tester.pump(look);
+      expect(sound!.resumedFrom, [0]);
+      expect(bar(tester).playing, isTrue);
+      await press(tester, 'play');
+    });
+
+    testWidgets('🚨a sound that will never come ends the run — nothing says '
+        '「재생 중」 to the gate for silence', (tester) async {
+      await openSound(tester);
+      sound!.answers = const OutputComing();
+      await press(tester, 'play');
+      expect(bar(tester).playing, isTrue, reason: 'fixture: it waits');
+
+      sound!.answers = const OutputRefused();
+      await tester.pump(look);
+      expect(bar(tester).playing, isFalse);
+      expect(session!.playbackRig.transports.value, isFalse);
     });
   });
 
@@ -383,7 +459,6 @@ void main() {
         const MediaViewerRequest(
           path: 'C:/work/other.wav',
           kind: MediaAssetKind.audio,
-          name: 'other',
         ),
       );
       await tester.pumpAndSettle();
@@ -402,16 +477,27 @@ void main() {
   });
 
   group('the file\'s name', () {
-    testWidgets('is written whatever the document is — the asset\'s, or the '
-        'file\'s own', (tester) async {
-      await openPages(tester, pages: 12, framesPerSecond: 24);
-      expect(
-        find.descendant(
-          of: key('canvas-document-name'),
-          matching: find.text('pages'),
-        ),
-        findsOneWidget,
+    const pooled = 'C:/work/pages.pdf';
+    final inThePool = createDefaultProject().copyWith(
+      mediaAssets: [
+        MediaAsset(path: pooled, name: 'pages', kind: MediaAssetKind.pdf),
+      ],
+    );
+
+    Finder plate(String name) => find.descendant(
+      of: key('canvas-document-name'),
+      matching: find.text(name),
+    );
+
+    testWidgets('is written whatever the document is — as the pool shows '
+        'it, or the file\'s own', (tester) async {
+      await openPages(
+        tester,
+        pages: 12,
+        framesPerSecond: 24,
+        project: inThePool,
       );
+      expect(plate('pages'), findsOneWidget);
 
       slot.open(
         const MediaViewerRequest(
@@ -420,13 +506,48 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(
-        find.descendant(
-          of: key('canvas-document-name'),
-          matching: find.text('board_03.pdf'),
-        ),
-        findsOneWidget,
-      );
+      expect(plate('board_03.pdf'), findsOneWidget);
+    });
+
+    // 🗣️F-376 (유저 2026-10-17): 「미디어풀에서 이름바꾸고 … 파일이름
+    // 표시되는게 다 바꾸기 전 이름임」.
+    testWidgets('🚨a rename in the pool while the file is open reaches the '
+        'plate', (tester) async {
+      await openPages(tester, pages: 3, project: inThePool);
+      expect(plate('pages'), findsOneWidget);
+
+      session!.mediaPool.renameMediaAsset(pooled, '콘티');
+      await tester.pump();
+
+      expect(plate('콘티'), findsOneWidget);
+      expect(plate('pages'), findsNothing);
+    });
+
+    testWidgets('a session handed over is the one heard: the plate follows '
+        'the pool of the session the viewer stands in now', (tester) async {
+      await openPages(tester, pages: 3, project: inThePool);
+      final first = session!;
+      addTearDown(first.dispose);
+      session = EditorSessionManager(initialProject: inThePool);
+      await pumpViewer(tester);
+      await tester.pumpAndSettle();
+      expect(plate('pages'), findsOneWidget, reason: 'CONTROL');
+
+      session!.mediaPool.renameMediaAsset(pooled, '콘티');
+      await tester.pump();
+
+      expect(plate('콘티'), findsOneWidget);
+    });
+
+    testWidgets('a change that leaves the name as it was draws nothing: the '
+        'viewer hears the session for its name alone', (tester) async {
+      await openPages(tester, pages: 3, project: inThePool);
+      expect(tester.binding.hasScheduledFrame, isFalse, reason: 'CONTROL');
+
+      session!.notifyChanged();
+
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(plate('pages'), findsOneWidget);
     });
   });
 
@@ -447,28 +568,6 @@ void main() {
     expect(capsule.left, greaterThanOrEqualTo(panel.left + cover.left));
     expect(capsule.right, lessThanOrEqualTo(panel.right - cover.right));
     expect(capsule.bottom, lessThanOrEqualTo(panel.bottom - cover.bottom));
-  });
-
-  testWidgets('the floor\'s viewer turns its pages beside a rail lying on '
-      'its left edge, not under it', (tester) async {
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.binding.setSurfaceSize(const Size(1200, 700));
-    const cover = EdgeInsets.only(left: 200);
-    await openPages(
-      tester,
-      pages: 3,
-      onFloor: (child) => CanvasFloorInsets(
-        insets: cover,
-        leftRailBand: (top: 0, bottom: 700),
-        child: child,
-      ),
-    );
-
-    final panel = tester.getRect(key('canvas-editor-panel-shell'));
-    expect(
-      tester.getRect(key(strip)).left,
-      greaterThanOrEqualTo(panel.left + cover.left),
-    );
   });
 
   testWidgets('the floor\'s viewer pans beside a rail lying on its right '

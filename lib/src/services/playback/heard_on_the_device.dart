@@ -8,8 +8,8 @@ import 'frame_time_on_device.dart';
 /// moment a frame is shown: the line through the device's stair
 /// ([DeviceClockLine]) where it stands now, carried on at the device's
 /// rate to that moment on the device's clock ([FrameTimeOnDevice]), less
-/// what the device still holds to play — its latency — and with the user's
-/// own correction on top, folded into the lap last
+/// what the device still holds to play — its latency — and less the user's
+/// own correction, folded into the lap last
 /// ([DeviceClockLine.foldedIntoTheLap]).
 ///
 /// 🚨ONE READING for everything that puts a picture beside a device's
@@ -32,8 +32,8 @@ import 'frame_time_on_device.dart';
 /// 시작하는곳으로 재생헤드가 점프해버려서 거기서 재생되는 버그」). A
 /// playhead takes a reading that steps back for the lap wrapping
 /// (`playheadWay`): it walks on round the end, and where the clock waits for
-/// a picture it stands on the first frame not made yet — the green bar's
-/// edge. Every stage of this reading can step back: the line where its
+/// a picture it stands before the first frame not made yet — on the green
+/// bar's last. Every stage of this reading can step back: the line where its
 /// highest point grows old ([DeviceClockLine]), and the moment it is
 /// carried on to, which is estimated afresh at every look — when a run's
 /// scenes turn short after long ones the vblank claims start again on an
@@ -86,23 +86,60 @@ final class HeardOnTheDevice {
     required int latencySamples,
     required int userOffsetSamples,
   }) {
-    var count = _line.read(clock);
-    if (frameTime != null) {
-      final onTheDevice = _frameTime.onDevice(
-        deviceNowMicros: clock.nowMicros,
-        frameNowMicros: _frameClockNow(),
-        frameMicros: frameTime.inMicroseconds,
-      );
-      count +=
-          (onTheDevice - clock.nowMicros) *
-          _deviceRate ~/
-          Duration.microsecondsPerSecond;
-    }
+    final count =
+        _line.read(clock) + _playedUntilShown(clock.nowMicros, frameTime);
     // Taken off BEFORE the count is folded into the loop: the lap that is
     // heard is not the lap that is handed.
     final heard = _heardOf(count, latencySamples, userOffsetSamples);
     final furthest = _furthest = math.max(_furthest ?? heard, heard);
     return _line.foldedIntoTheLap(furthest);
+  }
+
+  /// The silence a run started at [deviceNowMicros] is to hand AHEAD of its
+  /// first sample, for that sample to be heard as the frame at [frameTime]
+  /// is shown: the samples the device plays until then, less what it holds
+  /// and the user's correction — what [heard] reads past the count at that
+  /// look. None where they come to more: the sample is heard after the
+  /// frame is shown then, and the frame stands until it is.
+  ///
+  /// 🚨THE RUN'S FIRST SAMPLE IS HEARD WITH ITS FIRST PICTURE (board
+  /// a-start-is-heard-ahead-of-its-first-picture — 유저 2026-10-08: 「소리
+  /// 싱크나 영상이 정확한 것이 제일 최우선」). A frame is shown refreshes
+  /// after the look that starts its run (two or three on Windows —
+  /// `frameShownAt`), often longer than the device takes to play what it is
+  /// handed. A run started ON its first sample was heard that much ahead of
+  /// its first picture: the first look read a frame or two on, and the
+  /// frames between were never shown — at every start, seek, wait's end and
+  /// clock put back. ⛔Not started on the sound from before the first
+  /// sample: that would be heard over the first picture.
+  int leadFor({
+    required int deviceNowMicros,
+    required Duration? frameTime,
+    required int latencySamples,
+    required int userOffsetSamples,
+  }) => math.max(
+    0,
+    _heardOf(
+      _playedUntilShown(deviceNowMicros, frameTime),
+      latencySamples,
+      userOffsetSamples,
+    ),
+  );
+
+  /// What the device plays from [deviceNowMicros] until the frame at
+  /// [frameTime] is shown — nothing without one.
+  int _playedUntilShown(int deviceNowMicros, Duration? frameTime) {
+    if (frameTime == null) {
+      return 0;
+    }
+    final onTheDevice = _frameTime.onDevice(
+      deviceNowMicros: deviceNowMicros,
+      frameNowMicros: _frameClockNow(),
+      frameMicros: frameTime.inMicroseconds,
+    );
+    return (onTheDevice - deviceNowMicros) *
+        _deviceRate ~/
+        Duration.microsecondsPerSecond;
   }
 
   /// The sample heard at [clock]'s own time, counted on through every lap —
@@ -117,7 +154,16 @@ final class HeardOnTheDevice {
   }) => _heardOf(_line.read(clock), latencySamples, userOffsetSamples);
 
   /// What is HEARD of a [count] handed: it trails the count by the device's
-  /// latency, and the user's own correction is on top.
+  /// latency, and by the user's own correction on top of it — sound that
+  /// reaches the ear later still, where no device says so.
+  ///
+  /// 🚨THE CORRECTION IS TAKEN OFF, AS THE LATENCY IS (board
+  /// av-offset-sign-is-backwards, 10-16). The settings say a positive one
+  /// shows the picture LATER, for sound that arrives late — a wireless hop,
+  /// a receiver — and sound that arrives late is an earlier sample heard.
+  /// ↩️It was added, from the first clock on (`audioClockFrame`, 07-21): a
+  /// positive setting showed the picture EARLIER, and wireless headphones
+  /// set as the settings say were twice as far out.
   static int _heardOf(int count, int latencySamples, int userOffsetSamples) =>
-      count - latencySamples + userOffsetSamples;
+      count - latencySamples - userOffsetSamples;
 }

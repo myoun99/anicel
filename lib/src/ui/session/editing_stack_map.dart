@@ -8,8 +8,8 @@ import '../../models/layer_id.dart';
 import '../../models/transform_pose.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cut_frame_composite_plan.dart';
-import '../../services/import/raster_cel_import.dart' show pictureMoved;
-import '../../services/layer_pose_matrix.dart' show LayerPlacement;
+import '../../services/layer_pose_matrix.dart'
+    show LayerPlacement, pictureMoved;
 import '../canvas/canvas_layer_stack_view.dart';
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, celPixelsRowOf;
@@ -121,12 +121,13 @@ class EditingStackMap {
   }
 
   /// [entry]'s placement, with the picture of a file it shows moved from
-  /// where its cel was LAID to where the row's reference fx stands it now
-  /// (I-68) — a value in flight on a lane or a box, or a value written whose
-  /// picture is still being laid again. Otherwise the plan's own.
+  /// where its cel was LAID to where the row's reference lays it
+  /// ([MediaReference.laid], I-68) — a movie's installed picture decoded
+  /// where its file was laid before. The plan's own placement moves it on
+  /// from there to where the fx stands it (F-374).
   ///
-  /// Where a cel was laid: a still's at the committed row's pose — its
-  /// picture is made anew in the same step that writes one — and a movie's
+  /// Where a cel was laid: a still's where the committed row lays it — its
+  /// picture is made anew in the same step that lays it — and a movie's
   /// wherever its installed picture was decoded.
   LayerPlacement? _whereTheFileStands(
     CutFrameCompositeEntry entry,
@@ -136,13 +137,13 @@ class EditingStackMap {
     final laid = shown == null
         ? null
         : _movieLaidAt(key) ??
-              cut.layers.byId(entry.layer.id)?.mediaReference?.pose;
-    if (shown == null || laid == null || laid == shown.pose) {
+              cut.layers.byId(entry.layer.id)?.mediaReference?.laid;
+    if (shown == null || laid == null || laid == shown.laid) {
       return entry.placement;
     }
     final moved = pictureMoved(
       from: laid,
-      to: shown.pose,
+      to: shown.laid,
       picture: shown.pictureSize,
     );
     if (moved == null) {

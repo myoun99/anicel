@@ -6,6 +6,7 @@ import 'layer.dart';
 import 'layer_link_registry.dart';
 import 'media_asset.dart';
 import 'media_viewer_bookmark.dart';
+import 'pasteboard_bounds.dart';
 import 'project_background.dart';
 import 'project_font_file.dart';
 import 'project_frame_rate.dart';
@@ -63,6 +64,8 @@ class Project {
     this.backdropNone = false,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.pasteboardNone = false,
+    this.pasteboardSize = PasteboardSize.three,
+    this.pasteboardInUse = true,
     this.timesheetInfo = TimesheetInfo.empty,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset> mediaAssets = const [],
@@ -142,7 +145,26 @@ class Project {
 
   /// Whether the pasteboard is ABSENT (F-114), as [backdropNone] is for the
   /// backdrop.
+  ///
+  /// ⚠️What is SHOWN where the pasteboard is — a checkerboard in place of
+  /// its colour. It moves no wall: a pasteboard not in use is
+  /// [pasteboardInUse].
   final bool pasteboardNone;
+
+  /// How big the pasteboard is: the whole stage's side as a multiple of
+  /// the paper's (I-109) — kept while the pasteboard is not in use, so
+  /// turning it back on finds the size it had.
+  final PasteboardSize pasteboardSize;
+
+  /// Whether this project has a pasteboard at all (I-109, 유저 2026-10-18:
+  /// 「페이스트보드 사용안함시 근본/구조적으로 사용 안하도록」): off, the wall
+  /// every tool and every picture stops at is the paper itself.
+  final bool pasteboardInUse;
+
+  /// How far past the paper this project's pictures reach — the one value
+  /// every wall in it is drawn from ([PasteboardReach.of]).
+  PasteboardReach get pasteboardReach =>
+      PasteboardReach.of(size: pasteboardSize, inUse: pasteboardInUse);
 
   /// Sheet-header text (title/episode/artist) the timesheet document reads.
   final TimesheetInfo timesheetInfo;
@@ -214,6 +236,11 @@ class Project {
     return null;
   }
 
+  /// How the file at [path] is shown to a person ([mediaFileShownName]):
+  /// as its entry in this pool has it, or by its file name.
+  String shownNameOfMedia(String path) =>
+      mediaFileShownName(mediaAssetByPath(path), path);
+
   Project copyWith({
     ProjectId? id,
     String? name,
@@ -226,6 +253,8 @@ class Project {
     bool? backdropNone,
     int? pasteboardArgb,
     bool? pasteboardNone,
+    PasteboardSize? pasteboardSize,
+    bool? pasteboardInUse,
     TimesheetInfo? timesheetInfo,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset>? mediaAssets,
@@ -250,6 +279,8 @@ class Project {
       backdropNone: backdropNone ?? this.backdropNone,
       pasteboardArgb: pasteboardArgb ?? this.pasteboardArgb,
       pasteboardNone: pasteboardNone ?? this.pasteboardNone,
+      pasteboardSize: pasteboardSize ?? this.pasteboardSize,
+      pasteboardInUse: pasteboardInUse ?? this.pasteboardInUse,
       timesheetInfo: timesheetInfo ?? this.timesheetInfo,
       cameraInstructions: cameraInstructions ?? this.cameraInstructions,
       mediaAssets: mediaAssets ?? this.mediaAssets,
@@ -285,6 +316,9 @@ class Project {
     if (pasteboardArgb != defaultProjectPasteboardArgb)
       'pasteboardArgb': pasteboardArgb,
     if (pasteboardNone) 'pasteboardNone': true,
+    if (pasteboardSize != PasteboardSize.three)
+      'pasteboardSize': pasteboardSize.name,
+    if (!pasteboardInUse) 'pasteboardOff': true,
     'timesheetInfo': timesheetInfo.toJson(),
     'cameraInstructions': cameraInstructions.toJson(),
     'mediaAssets': mediaAssets.map((asset) => asset.toJson()).toList(),
@@ -347,6 +381,10 @@ class Project {
       pasteboardArgb:
           (json['pasteboardArgb'] as int?) ?? defaultProjectPasteboardArgb,
       pasteboardNone: json['pasteboardNone'] == true,
+      pasteboardSize: PasteboardSize.values.byName(
+        json['pasteboardSize'] as String? ?? PasteboardSize.three.name,
+      ),
+      pasteboardInUse: json['pasteboardOff'] != true,
       timesheetInfo: json['timesheetInfo'] == null
           ? TimesheetInfo.empty
           : TimesheetInfo.fromJson(

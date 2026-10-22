@@ -1,3 +1,4 @@
+import '../../models/brush_frame_key.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
@@ -6,7 +7,12 @@ import '../../models/project.dart';
 import '../../models/timesheet_info.dart' show WorkPicture;
 import '../../models/track_id.dart';
 import '../persistence/cel_places.dart'
-    show DrawingCelPlace, RowDrawingPlaces, rowOwnerName;
+    show
+        CelPlace,
+        DrawingCelPlace,
+        RowDrawingPlaces,
+        celPlacesByKey,
+        rowOwnerName;
 import '../project_lookup.dart' show projectLayersWithOwners;
 
 /// Where a project uses a file of its media pool, by the names a person
@@ -70,9 +76,22 @@ final class WorkPictureMediaUse extends MediaAssetUse {
   final WorkPicture picture;
 }
 
+/// A sheet's ink whose picture carries the file as a photo (I-97) — a conte
+/// band, an envelope box, a timesheet page.
+final class SheetPhotoMediaUse extends MediaAssetUse {
+  const SheetPhotoMediaUse({required this.key, required this.place});
+
+  /// The ink the photo is on.
+  final BrushFrameKey key;
+
+  /// Where that ink is, by the names a person finds it by.
+  final CelPlace place;
+}
+
 /// Every use [project] has of the file at [asked] — the work's pictures,
-/// then its rows in the order the project holds them — lazily, so asking
-/// whether there is one stops at the first.
+/// then its rows in the order the project holds them, then the sheets'
+/// photos of it — lazily, so asking whether there is one stops at the
+/// first.
 ///
 /// A sound counts on a frame its row still holds (REC1-A): a link to a frame
 /// that is gone plays nothing anywhere, so it must not hold the pool
@@ -83,7 +102,15 @@ final class WorkPictureMediaUse extends MediaAssetUse {
 /// placement planners, the layer paste and the cut duplicate all write a
 /// cut's rows), so there is no row of the track a person could be sent to,
 /// or that a removal could delete.
-Iterable<MediaAssetUse> mediaAssetUsesOf(Project project, String asked) sync* {
+///
+/// [sheetPhotos] is what the sheets' ink names, by cel (I-97 —
+/// `SheetPhotoEdits.pathsByCel`): a photo lives in its ink's picture, which
+/// the project does not hold. A cel carrying the file twice is one use.
+Iterable<MediaAssetUse> mediaAssetUsesOf(
+  Project project,
+  String asked, {
+  Map<BrushFrameKey, List<String>> sheetPhotos = const {},
+}) sync* {
   final path = normalizedMediaPath(asked);
   for (final picture in WorkPicture.values) {
     if (picture.pathIn(project.timesheetInfo) case final used?
@@ -121,5 +148,15 @@ Iterable<MediaAssetUse> mediaAssetUsesOf(Project project, String asked) sync* {
         );
       }
     }
+  }
+  final onSheets = [
+    for (final MapEntry(:key, value: paths) in sheetPhotos.entries)
+      if (paths.contains(path)) key,
+  ];
+  if (onSheets.isEmpty) {
+    return;
+  }
+  for (final (key, place) in celPlacesByKey(project, onSheets)) {
+    yield SheetPhotoMediaUse(key: key, place: place);
   }
 }

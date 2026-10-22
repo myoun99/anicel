@@ -12,6 +12,7 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/last_stroke_slot.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/canvas_traces.dart';
 import 'package:anicel/src/ui/brush/cel_text_commands.dart';
 import 'package:anicel/src/ui/brush/confirm_verb.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
@@ -36,6 +37,7 @@ void main() {
   var landed = 0;
   final verb = ConfirmVerb(
     selection: selection,
+    traces: CanvasTraces([selection]),
     text: CelTextCommands(),
     lastStroke: lastStroke,
     tool: tool,
@@ -138,6 +140,30 @@ void main() {
     expect(applied, 0);
   });
 
+  test("a viewer's trace is heard by the doors that show 확정 (F-380)", () async {
+    final viewer = CanvasSelectionCommands();
+    final withAViewer = ConfirmVerb(
+      selection: selection,
+      traces: CanvasTraces([selection, viewer]),
+      text: CelTextCommands(),
+      lastStroke: lastStroke,
+      tool: tool,
+      transformOptions: options,
+      canvasAdjust: () => adjust,
+      landCanvasAdjust: () {},
+    );
+    // A channel tells on a microtask: what the canvas's had on its way is
+    // told before anything is listened for.
+    await Future<void>.delayed(Duration.zero);
+    var told = false;
+    withAViewer.changes.addListener(() => told = true);
+
+    viewer.addPolygonPoint(CanvasPoint(x: 0, y: 0));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(told, isTrue);
+  });
+
   test('🚨a text in hand is what a confirm lets go of — before 적용, before '
       'the last stroke: neither is laid down under it', () {
     final text = CelTextCommands();
@@ -154,6 +180,7 @@ void main() {
     text.bind(hand.tool);
     final withAText = ConfirmVerb(
       selection: selection,
+      traces: CanvasTraces([selection]),
       text: text,
       lastStroke: lastStroke,
       tool: tool,

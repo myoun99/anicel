@@ -1,5 +1,8 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -16,7 +19,10 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart'
+    show InputInspectorHost;
 import 'package:anicel/src/ui/envelope/cut_envelope_overlay.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
@@ -34,6 +40,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 /// 용지처럼」); before that the start window kept it all, unclipped, off
 /// the bottom of a timesheet's left half into the top of the right one.
 void main() {
+  tearDown(CanvasTouchContacts.reset);
   const cutId = CutId('cut-1');
 
   bool inkAt(BitmapSurface surface, Offset pixel) =>
@@ -98,25 +105,29 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: Align(
-              alignment: Alignment.topLeft,
-              child: SizedBox(
-                width: size.width,
-                height: size.height,
-                child: Stack(
-                  children: [
-                    ?under,
-                    TimesheetInkLayer(
-                      controller: controller,
-                      layout: layout,
-                      cutId: cutId,
-                      brushToolState:
-                          brush ?? ValueNotifier(BrushToolState.defaults),
-                      historyManager: history,
-                      viewport: CanvasViewport(),
-                      strokeActive: strokeActive,
-                    ),
-                  ],
+            // Under the app's one observer of every pointer, which counts the
+            // fingers resting on the glass (`CanvasTouchContacts`).
+            body: InputInspectorHost(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: size.width,
+                  height: size.height,
+                  child: Stack(
+                    children: [
+                      ?under,
+                      TimesheetInkLayer(
+                        controller: controller,
+                        layout: layout,
+                        cutId: cutId,
+                        brushToolState:
+                            brush ?? ValueNotifier(BrushToolState.defaults),
+                        historyManager: history,
+                        viewport: CanvasViewport(),
+                        strokeActive: strokeActive,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -129,11 +140,13 @@ void main() {
     Future<void> stroke(
       WidgetTester tester,
       Offset origin,
-      List<Offset> path,
-    ) async {
+      List<Offset> path, {
+      PointerDeviceKind kind = PointerDeviceKind.touch,
+    }) async {
       final gesture = await tester.startGesture(
         origin + path.first,
         pointer: 7,
+        kind: kind,
       );
       await tester.pump();
       for (final point in path.skip(1)) {
@@ -386,6 +399,92 @@ void main() {
         isTrue,
         reason: 'and the press still draws',
       );
+    });
+
+    // 🗣️I-121 (유저 2026-10-21): 「스냅 발생하면 쉬프트 떼기 전까지는
+    // 같은스냅」 — on the timesheet too: each window keeps the line its
+    // strokes' Shift locked onto, and the layer hears the keyboard for it.
+    group('the line Shift holds past the pen (I-121)', () {
+      /// A point of page 0's grid, [dx] and [dy] on from a corner of it.
+      Offset grid(double dx, double dy) => Offset(
+        layout.halfLeft(0, 0) + 30 + dx,
+        layout.halfRowsTop(0) + 30 + dy,
+      );
+
+      /// A stroke Shift locks onto the grid's diagonal, ending at (60, 60).
+      Future<void> alongTheDiagonal(WidgetTester tester, Offset origin) =>
+          stroke(tester, origin, [grid(0, 0), grid(30, 34), grid(62, 60)]);
+
+      testWidgets('🚨held through the pen-up, the next press lands on the '
+          'line the window kept', (tester) async {
+        final origin = await pumpSheet(tester);
+        final page = window('page-0');
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await alongTheDiagonal(tester, origin);
+        // (100, 120) falls across the diagonal at (110, 110).
+        await stroke(tester, origin, [grid(100, 120)]);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+        expect(inkUnder(page, grid(110, 110)), isTrue);
+        expect(inkUnder(page, grid(100, 120)), isFalse);
+      });
+
+      testWidgets('🚨Shift pressed anew between them is a new hold: the press '
+          'lands where it is', (tester) async {
+        final origin = await pumpSheet(tester);
+        final page = window('page-0');
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await alongTheDiagonal(tester, origin);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await stroke(tester, origin, [grid(100, 120)]);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+        expect(inkUnder(page, grid(100, 120)), isTrue);
+        expect(inkUnder(page, grid(110, 110)), isFalse);
+      });
+
+      // I-121-Q1: a finger's Shift (the switch on) let go is the key let go,
+      // and the layer — the lines' owner — hears it from the count of the
+      // fingers on the glass ([CanvasTouchContacts]).
+      testWidgets('🚨a finger holding Shift, lifted and laid down again, is a '
+          'new hold: the press lands where it is', (tester) async {
+        AppInput.settings.value = AppInputSettings.testCorpusBaseline
+            .copyWith(strokeFingerModifier: true);
+        addTearDown(
+          () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
+        );
+        final origin = await pumpSheet(tester);
+        final page = window('page-0');
+        // Beside the sheet, on the page under it — never a stroke's.
+        Future<TestGesture> rest(int pointer) async {
+          final finger = await tester.startGesture(
+            origin + Offset(layout.documentSize.width + 20, 10),
+            kind: PointerDeviceKind.touch,
+            pointer: pointer,
+          );
+          await tester.pump();
+          return finger;
+        }
+
+        var finger = await rest(9);
+        await stroke(tester, origin, [
+          grid(0, 0),
+          grid(30, 34),
+          grid(62, 60),
+        ], kind: PointerDeviceKind.stylus);
+        await finger.up();
+        await tester.pump();
+        finger = await rest(10);
+        await stroke(tester, origin, [
+          grid(100, 120),
+        ], kind: PointerDeviceKind.stylus);
+        await finger.up();
+        await tester.pump();
+
+        expect(inkUnder(page, grid(100, 120)), isTrue);
+        expect(inkUnder(page, grid(110, 110)), isFalse);
+      });
     });
   });
 

@@ -17,6 +17,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/the_classic_rail.dart';
@@ -336,6 +337,22 @@ void main() {
       reason: 'the window opens on the type the keys agree on',
     );
     expect(pill('hold').selected, isFalse);
+    // 🗣️F-366 (유저 2026-10-16): 「이런거 설명은 항목 헤더에 툴팁
+    // 띄워줬으면. 도착 출발 경로 이런거에도」 — each row's cap carries what the
+    // row means as its tooltip.
+    final strings = AppText.strings;
+    for (final (cap, help) in [
+      (strings.keySideIncoming, strings.keySideIncomingHelp),
+      (strings.keySideOutgoing, strings.keySideOutgoingHelp),
+      (strings.keyPath, strings.keyPathHelp),
+      (strings.keyRoving, strings.keyRovingHelp),
+    ]) {
+      expect(
+        find.descendant(of: find.byTooltip(help), matching: find.text(cap)),
+        findsOneWidget,
+        reason: cap,
+      );
+    }
 
     await tester.enterText(
       find.byKey(const ValueKey<String>('rename-frame-text-field')),
@@ -349,9 +366,11 @@ void main() {
     expect(pill('linear').selected, isFalse);
     // I-89 ④: and the path its position walks through it — smooth as the
     // key was made (I-89-Q10 B), a corner picked here.
-    final curved = find.byKey(const ValueKey<String>('rename-key-path-curved'));
+    final curved = find.byKey(
+      const ValueKey<String>('rename-key-path-autoBezier'),
+    );
     final corner = find.byKey(
-      const ValueKey<String>('rename-key-path-straight'),
+      const ValueKey<String>('rename-key-path-linear'),
     );
     await tester.ensureVisible(corner);
     expect(tester.widget<Pill>(curved).selected, isTrue, reason: '⛔전제');

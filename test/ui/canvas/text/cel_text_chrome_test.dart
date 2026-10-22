@@ -1,6 +1,7 @@
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
@@ -37,7 +38,7 @@ void main() {
   CelTextStage stageAt(double zoom, {LayerPlacement? placement}) =>
       CelTextStage(
         viewport: CanvasViewport(zoom: zoom),
-        canvasSize: celTextTestCanvas,
+        pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
         placement: placement,
       );
 

@@ -55,6 +55,7 @@ class CanvasViewportGestureLayer extends StatefulWidget {
     this.touchLocked = _never,
     this.rotationEnabled = true,
     this.turnAnchor,
+    this.hold,
     this.oneFingerAction,
     this.primaryPressPans = false,
     this.onInvokeAction,
@@ -121,6 +122,17 @@ class CanvasViewportGestureLayer extends StatefulWidget {
   /// middle, the anchor its own turn buttons use — asked as a turn begins.
   /// Null turns about this layer's middle: a layer pumped on its own.
   final ViewportPoint Function()? turnAnchor;
+
+  /// How the owner holds a view it is sent — at its paper's end (F-201),
+  /// under its lock on zooming in (I-27) — so the view a gesture goes on
+  /// from is the one on screen. Null holds none: a layer pumped on its own.
+  ///
+  /// 🚨Asked BEFORE a view is remembered (F-383, 2026-10-17). The layer
+  /// remembered the view it SENT, and a view held still at the paper's end
+  /// came back the same each time, so nothing told it the view had stopped:
+  /// the next drag began from where the hand had gone, and a drag back
+  /// walked all that way back before anything moved.
+  final CanvasViewport Function(CanvasViewport view)? hold;
 
   /// What ONE finger does here when this host answers the slot itself —
   /// null follows the user's slot ([AppInput.touchDragActionFor]). Two and
@@ -1054,7 +1066,8 @@ class _CanvasViewportGestureLayerState
 
   void _emit(CanvasViewport viewport) {
     final clamped = viewport.clamped();
-    _lastEmittedViewport = clamped;
-    widget.onViewportChanged(clamped);
+    final shown = widget.hold?.call(clamped) ?? clamped;
+    _lastEmittedViewport = shown;
+    widget.onViewportChanged(shown);
   }
 }

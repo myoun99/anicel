@@ -25,6 +25,23 @@ enum ViewHold {
 /// Written only by the shell's held keys (`EditorKeyHolds`).
 abstract final class CanvasViewHold {
   static final ValueNotifier<ViewHold?> held = ValueNotifier<ViewHold?>(null);
+
+  /// The hold in force as a PRESS reads it — the held keys asked again
+  /// first ([reask]), with the modifiers as they are held now.
+  ///
+  /// 🚨Not only when a key changes. On Windows a pen's or a finger's move
+  /// lets go of Shift in the engine's record with the key still down, and
+  /// the real release that comes after is never heard (`ModifierKeys`): a
+  /// turn let go of with no key event to say so would still turn the next
+  /// press (I-61).
+  static ViewHold? get atThePress {
+    reask?.call();
+    return held.value;
+  }
+
+  /// Asks the held keys again what they hold the view for — set by the
+  /// shell's held keys, the one writer of [held].
+  static VoidCallback? reask;
 }
 
 /// While a key of the view is held, [child] takes no pointer and the hand

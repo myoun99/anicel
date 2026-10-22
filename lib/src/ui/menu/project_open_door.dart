@@ -17,6 +17,7 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../dialogs/cloud_wait.dart';
 import '../editor_session_manager.dart';
+import '../import/import_warnings_notice.dart';
 import '../open_projects.dart';
 import '../session/project_file_door.dart' show readProjectFile;
 import '../session/clip_import_door.dart' show readClipProject;
@@ -322,14 +323,13 @@ final class ProjectOpenDoor {
     }
     projects.adopt(converted.session);
     if (converted.warnings.isNotEmpty) {
-      await showAppNotice(
+      await showImportWarnings(
         context,
         windowKey: ValueKey<String>(conversion.noticeKey),
-        title: AppText.strings.commonNotice,
-        message: converted.warnings
-            .take(6)
-            .map((warning) => warning.textFor(AppText.language))
-            .join('\n'),
+        warnings: [
+          for (final warning in converted.warnings)
+            warning.partsFor(AppText.language),
+        ],
       );
     }
   }

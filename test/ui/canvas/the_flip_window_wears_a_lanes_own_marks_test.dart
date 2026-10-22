@@ -10,12 +10,30 @@ import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_overlay.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_rows.dart' show flipHudLaneRow;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
+    show timelineLaneKeyMarkerSize, timelineLaneUnionKeyMarkerSize;
 
 /// I-89 ②: the flip window's key rows wear their lanes' own marks — the
 /// half for each side, the one drawing every key on the frame axis wears
-/// ([paintKeyMark]).
+/// ([paintKeyMark]) — at their lanes' own sizes, a frame's slot their cell
+/// (F-367).
 void main() {
-  test('a lane\'s row carries the mark of each key it draws', () {
+  // A frame's slot on the window's frame axis: its cell.
+  const slot = (
+    cross: FlipHudMetrics.rowExtent,
+    along: FlipHudMetrics.frameCellWidth,
+  );
+  final member = timelineLaneKeyMarkerSize(
+    slot.cross,
+    frameCellExtent: slot.along,
+  );
+  final union = timelineLaneUnionKeyMarkerSize(
+    slot.cross,
+    frameCellExtent: slot.along,
+  );
+
+  test('a lane\'s row carries the mark of each key it draws, and whether '
+      'it heads a group', () {
     final row = flipHudLaneRow(
       const PropertyLaneRow(
         laneId: 'position',
@@ -28,6 +46,20 @@ void main() {
     expect(
       [for (final run in row.runs) (run.startIndex, run.keyMark)],
       [(2, _heldOut), (5, KeyMark.linear)],
+    );
+    expect(row.isGroupHeader, isFalse);
+    expect(
+      flipHudLaneRow(
+        const PropertyLaneRow(
+          laneId: 'transform-group',
+          label: 'Transform',
+          keyMarks: {},
+          isGroupHeader: true,
+        ),
+        kind: LayerKind.camera,
+        withRuns: true,
+      ).isGroupHeader,
+      isTrue,
     );
   });
 
@@ -42,6 +74,7 @@ void main() {
             name: 'Transform',
             kind: LayerKind.camera,
             isLane: true,
+            isGroupHeader: true,
             holdsDrawings: false,
             runs: [
               const FlipHudRun(
@@ -77,14 +110,19 @@ void main() {
   test('the line stops at a hollow mark\'s box and goes on past it, as the '
       'panels\' does (I-89 ②)', () {
     final calls = paintedWith(KeyMark.mixed);
-    // The ring is the one key's path with nothing in its middle.
+    // The ring is the one key's path, a header's, with a gap round its
+    // middle (F-367-Q2) — the gap as tall as the box is, not as wide
+    // (F-367-Q4). The box is a float path's, hence the 1e-3.
     final ring = [
       for (final call in calls)
         if (call.memberName == #drawPath)
           call.positionalArguments[0] as Path,
     ].singleWhere((path) {
       final box = path.getBounds();
-      return (box.width - 9).abs() < 1e-6 && !path.contains(box.center);
+      return (box.width - union.width).abs() < 1e-3 &&
+          (box.height - union.height).abs() < 1e-3 &&
+          !path.contains(box.center + Offset(box.width * 0.36, 0)) &&
+          !path.contains(box.center + Offset(0, box.height * 0.36));
     });
     final clip = calls.indexWhere(clearing);
     expect(clip, isNot(-1), reason: 'the line is kept out of the ring');
@@ -129,23 +167,29 @@ void main() {
       baseTextStyle: const TextStyle(fontSize: 11),
     ).paint(canvas, FlipHudMetrics.sizeFor(FlipHudAxis.frame));
 
-    // The key's mark is the one path drawn in a key's 9px box.
+    // The key's mark is the one path drawn in a member key's box.
     final mark = [
       for (final call in canvas.invocations)
         if (call.invocation.memberName == #drawPath)
           call.invocation.positionalArguments[0] as Path,
     ].singleWhere((path) {
       final box = path.getBounds();
-      return (box.width - 9).abs() < 1e-6 && (box.height - 9).abs() < 1e-6;
+      return (box.width - member.width).abs() < 1e-3 &&
+          (box.height - member.height).abs() < 1e-3;
     });
-    final middle = mark.getBounds().center;
+    // A fifth of the box in from either of its upper corners.
+    final box = mark.getBounds();
+    Offset corner(double side) => box.center.translate(
+      side * box.width * 0.3,
+      -box.height * 0.3,
+    );
     expect(
-      mark.contains(middle + const Offset(3.5, -3.5)),
+      mark.contains(corner(1)),
       isTrue,
       reason: 'the side leaving holds: its half is a square',
     );
     expect(
-      mark.contains(middle + const Offset(-3.5, -3.5)),
+      mark.contains(corner(-1)),
       isFalse,
       reason: 'the side arriving is straight: its half is a diamond\'s',
     );

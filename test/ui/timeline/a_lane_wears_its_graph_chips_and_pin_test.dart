@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart'
     show VerticalWritingText;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart' show lanePinOf;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -345,13 +346,11 @@ void main() {
     /// The room it got in the tallest column, with graphs and without.
     final tallestName = <bool, double>{};
 
-    /// Each control that showed in a column and was gone from a taller one —
-    /// all but the navigator. ⚠️The navigator is asked of the value SHOWING
-    /// (the gate pays the value first, 2026-08-08): since the value turned,
-    /// as long as the rail's value cell is wide (10-11), it stands in a
-    /// column too short for the value and makes way when the value comes —
-    /// reported on the card of the round that turned it (board:
-    /// tool-settings-panel-tidy).
+    /// Each control that showed in a column and was gone from a taller one.
+    /// ↩️The navigator was left out of this from 10-11 to 10-16: it was
+    /// asked of the value SHOWING, so it stood in a column too short for the
+    /// value and made way when the value came (board:
+    /// xsheet-stood-navigator-comes-and-goes).
     final wentAgain = <String>[];
 
     /// The shortest column, from 60 up, that shows each of [keys].
@@ -390,7 +389,7 @@ void main() {
           final shown = handle(key).evaluate();
           if (first[key] == null && shown.isNotEmpty) {
             first[key] = height;
-          } else if (key != navigator && first[key] != null && shown.isEmpty) {
+          } else if (first[key] != null && shown.isEmpty) {
             wentAgain.add('$key at $height${graphs ? ', graphs' : ''}');
           }
         }
@@ -427,6 +426,12 @@ void main() {
     for (final key in [value, navigator, link]) {
       expect(carried[key], without[key], reason: key);
     }
+    expect(
+      carried[navigator],
+      greaterThan(carried[value]!),
+      reason: 'the gate pays the value first (2026-08-08): a column too '
+          'short for it stands no navigator either',
+    );
     expect(carried[link], greaterThan(carried[navigator]!));
     expect(carried[pin], greaterThan(carried[link]!));
     expect(carried[chip], greaterThan(carried[pin]!));
@@ -435,6 +440,77 @@ void main() {
       moreOrLessEquals(layerLanePinSlotWidth + layerLaneChipsSlotWidth),
       reason: 'a rail that draws no graph keeps no room for its pin and '
           'chips: the name has it',
+    );
+  });
+
+  testWidgets('a stood-up column pays only for what its lane has, and a '
+      'control stands the moment it fits', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final layer = Layer(id: _drawId, name: 'Drawing', frames: const []);
+    PropertyLaneRow scale({required bool value}) => PropertyLaneRow(
+      laneId: 'scale',
+      label: 'Scale',
+      keyMarks: const {0: KeyMark.linear},
+      valueLabel: value ? (_) => '100.0, 100.0' : null,
+    );
+    const value = 'xsheet-lane-value-draw-scale';
+    const navigator = 'xsheet-lane-key-toggle-draw-scale';
+
+    /// The shortest column, from 60 up, that stands [key] for [lane] — and
+    /// the room its name has there.
+    Future<({double at, double name})> firstStanding(
+      PropertyLaneRow lane,
+      String key,
+    ) async {
+      for (var height = 60.0; height <= 480; height += 1) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: TimelineLaneControlsRow(
+                  axis: Axis.vertical,
+                  keyPrefix: 'xsheet',
+                  layer: layer,
+                  lane: lane,
+                  laneEdit: PropertyLaneEditCallbacks(
+                    onToggleKeyAt: (_, _, _) {},
+                  ),
+                  metrics: XSheetTimelineGrid.defaultMetrics,
+                  width: XSheetTimelineGrid.defaultMetrics.layerRowHeight,
+                  height: height,
+                ),
+              ),
+            ),
+          ),
+        );
+        if (find.byKey(ValueKey<String>(key)).evaluate().isNotEmpty) {
+          final name = tester.getSize(
+            find.descendant(
+              of: _cell('xsheet', 'scale'),
+              matching: find.byType(VerticalWritingText),
+            ),
+          );
+          return (at: height, name: name.height);
+        }
+      }
+      fail('$key stood in no column up to 480');
+    }
+
+    final bare = await firstStanding(scale(value: false), navigator);
+    final valued = await firstStanding(scale(value: true), value);
+    expect(
+      bare.at,
+      lessThan(valued.at),
+      reason: 'a lane with no value pays nothing for one: its navigator '
+          'stands in a column too short for a value',
+    );
+    expect(
+      bare.name,
+      2 * timelineFrameCellWidth,
+      reason: 'the navigator stands in the first column it fits — the name '
+          'left exactly its floor of two frame rows, and not a pixel of it '
+          'spent',
     );
   });
 
@@ -520,12 +596,12 @@ void main() {
           find.byKey(ValueKey<String>('$grid-lane-chip-draw-position-0')),
         );
         expect(
-          horizontal ? chip.left : chip.top,
-          greaterThanOrEqualTo(horizontal ? name.right : name.bottom),
+          startAlong(axis, chip),
+          greaterThanOrEqualTo(endAlong(axis, name)),
           reason: '$axis: the chips stand at the end of the name',
         );
       }
-      return horizontal ? name.left - keys.right : name.top - keys.bottom;
+      return startAlong(axis, name) - endAlong(axis, keys);
     }
 
     for (final axis in Axis.values) {

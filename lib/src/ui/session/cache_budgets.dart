@@ -51,6 +51,9 @@ enum CacheBudgetLine {
 
   storyboardThumbnails({'storyboardThumbnails'}),
 
+  /// The sheets' media images — logos, covers, the photos on their ink.
+  sheetImages({'sheetImages'}),
+
   /// The engine's stamp and mask copies, split evenly between the two
   /// caches.
   nativeUploads({'nativeUploads'}),
@@ -105,7 +108,8 @@ enum CacheBudgetLine {
     ),
     CacheBudgetLine.playback => playbackCacheBudgetBytes,
     CacheBudgetLine.viewerPages ||
-    CacheBudgetLine.storyboardThumbnails => viewerRasterBytesFor(
+    CacheBudgetLine.storyboardThumbnails ||
+    CacheBudgetLine.sheetImages => viewerRasterBytesFor(
       physicalMemoryBytes: physicalMemoryBytes,
     ),
     CacheBudgetLine.nativeUploads => 2 * QaNativeEngine.stampUploadByteBudget,
@@ -127,7 +131,8 @@ enum CacheBudgetLine {
     CacheBudgetLine.undo => HistoryManager.retainedByteBudgetUnderPressure,
     CacheBudgetLine.playback => playbackCacheBudgetUnderPressureBytes,
     CacheBudgetLine.viewerPages ||
-    CacheBudgetLine.storyboardThumbnails => viewerPageBytesAtCap,
+    CacheBudgetLine.storyboardThumbnails ||
+    CacheBudgetLine.sheetImages => viewerPageBytesAtCap,
     CacheBudgetLine.sheetInk ||
     CacheBudgetLine.nativeUploads ||
     CacheBudgetLine.brushTips ||
@@ -185,6 +190,7 @@ class CacheBudgets {
   int get playback => this[CacheBudgetLine.playback];
   int get viewerPages => this[CacheBudgetLine.viewerPages];
   int get storyboardThumbnails => this[CacheBudgetLine.storyboardThumbnails];
+  int get sheetImages => this[CacheBudgetLine.sheetImages];
   int get nativeUploads => this[CacheBudgetLine.nativeUploads];
   int get brushTips => this[CacheBudgetLine.brushTips];
   int get liveStroke => this[CacheBudgetLine.liveStroke];

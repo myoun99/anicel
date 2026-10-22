@@ -27,6 +27,7 @@ import 'tiled_surface_compose.dart';
 import '../../services/composite_effect_paint.dart';
 import 'display_buffer_cache.dart';
 import 'display_resample.dart';
+import 'image_pieces.dart';
 import 'selection_float_overlay.dart';
 import 'subtree_image_composite.dart';
 import 'static_composite_bake.dart';
@@ -122,6 +123,12 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
   /// idempotent at Amount 100, which is exactly why it hid; at any lower
   /// Amount the two applications compound.
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
+
+  /// The CPU half — the leading colour keys, which the session puts on the
+  /// surface this row draws ([CanvasLayerImageRequest.sourceEffects]'s
+  /// split, for the row a pen is on).
+  List<ResolvedLayerEffect> get sourceEffects =>
+      splitSourceEffects(effects).source;
 }
 
 /// A [LiftedCel] as the view draws it: the painter its surface is shown by,
@@ -232,6 +239,7 @@ class CanvasLayerStackView extends StatefulWidget {
     required this.nodes,
     required this.imageCache,
     required this.canvasSize,
+    this.pasteboardReach = PasteboardReach.whole,
     required this.viewport,
     this.activeSurfacePainter,
     this.floatOverlay,
@@ -369,6 +377,11 @@ class CanvasLayerStackView extends StatefulWidget {
 
   final LayerFrameImageCache imageCache;
   final CanvasSize canvasSize;
+
+  /// How far past [canvasSize] the pictures here may reach (I-109): the
+  /// wall of their store — the project's for the floor's, whole for a
+  /// sheet's ink. Nothing past it is painted.
+  final PasteboardReach pasteboardReach;
   final CanvasViewport viewport;
 
   /// The below-stack paints the paper so the interactive view can skip its
@@ -397,21 +410,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// ([CanvasLayerStackView.run]): its images stay held until then.
   late List<CompositeNode<CanvasStackRow>> _shownNodes = widget.nodes;
 
-  /// Cels whose image could not be built, and the revision it failed at.
-  ///
-  /// Skipping the failure but FORGETTING it re-kicked the same broken
-  /// build on every rebuild — for a file-backed cel whose bytes are
-  /// unreachable that is a blocking open + throw per layer per sweep,
-  /// which is a hot loop on an old tablet where master paid it once and
-  /// then stopped drawing. The next CONTENT change (a new revision)
-  /// retries; the failure itself is reported rather than swallowed. Same
-  /// shape as the storyboard thumbnail store's, for the same reason.
-  /// ⚠️A NULLABLE value on purpose. A cel can fail before it has any
-  /// frame state at all, and recording nothing then would leave the retry
-  /// exactly as hot as it was: `null == null` keeps it skipped, and the
-  /// moment a revision appears the mismatch retries it.
-  final Map<BrushFrameKey, (int, int?)> _failedRevisions = {};
-
   /// The cel revision a held image was captured at.
   ///
   /// ⛔It rides INSIDE the held record rather than in a map beside it. A
@@ -421,31 +419,18 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   int? _revisionOf(BrushFrameKey key) =>
       widget.imageCache.frameStore.frameOrNull(key)?.sourceRevision;
 
-  /// What a failure is recorded AGAINST: the store's whole-content
-  /// generation, then the cel's own revision.
-  ///
-  /// ⚠️The generation is not decoration. A cel the FILESYSTEM refused
-  /// does not change when the file comes back, so keying a non-content
-  /// failure on a content revision alone would have left that row blank
-  /// for ever with nothing the user could do. The generation bumps on a
-  /// project OPEN — the one moment such a cel can plausibly have become
-  /// readable — so reopening is a real recovery instead of a ritual.
-  (int, int?) _failureKeyFor(BrushFrameKey key) => (
-    widget.imageCache.frameStore.celContentRevision.value,
-    widget.imageCache.frameStore.frameOrNull(key)?.sourceRevision,
-  );
+  /// Whether [key]'s cel could not be read at the content it holds now
+  /// ([LayerFrameImageCache.unreadable]) — a row skipped, not opened again.
+  bool _unreadable(BrushFrameKey key) => widget.imageCache.unreadable.has(key);
 
-  bool _shouldSkipFailed(BrushFrameKey key) =>
-      _failedRevisions.containsKey(key) &&
-      _failedRevisions[key] == _failureKeyFor(key);
-
-  void _noteFailure(
+  /// A row whose image could not be built, reported — the cache has noted
+  /// its cel ([LayerFrameImageCache.unreadable]).
+  void _reportFailure(
     BrushFrameKey key,
     Object error,
     StackTrace stack,
     String where,
   ) {
-    _failedRevisions[key] = _failureKeyFor(key);
     FlutterError.reportError(
       FlutterErrorDetails(
         exception: error,
@@ -474,6 +459,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     InputInspector.visible.addListener(_rebuildForInspector);
     widget.run?.landings.addListener(_takeWhatLanded);
     widget.imageCache.frameStore.addRekeyListener(_travelWithTheirCels);
+    widget.imageCache.frameStore.addCopyListener(_shareWithTheirCopies);
   }
 
   /// What this view holds of a cel is held under the key a rekey moved its
@@ -490,26 +476,50 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   ) {
     for (final (from, to) in pairs) {
       final held = _images[from];
-      if (held == null) {
-        continue;
+      if (held != null) {
+        _holdAlsoUnder(to, held, revision: held.revision);
       }
-      final there = _images.remove(to);
-      if (there != null) {
-        _dropImage(to, there);
-      }
-      widget.imageCache.retainPin(to, held.quality);
-      _holdImage(to, (
-        source: held.source,
-        clone: held.clone.clone(),
-        worldRect: held.worldRect,
-        extent: held.extent,
-        revision: held.revision,
-        quality: held.quality,
-        content: held.content,
-        madeFrom: held.madeFrom,
-        laidBack: LaidBackWhole(),
-      ));
     }
+  }
+
+  /// What this view holds of a cel is held for its COPY as well
+  /// ([BrushFrameStore.addCopyListener]) — the very pixels, so the same
+  /// picture: a row that turns to the copy draws it as it drew the source,
+  /// on the frame it turns (F-275). Only a picture of the source as it
+  /// stands is one of the copy, stamped with the copy's own revision.
+  void _shareWithTheirCopies(
+    List<(BrushFrameKey from, BrushFrameKey to)> pairs,
+  ) {
+    for (final (from, to) in pairs) {
+      final held = _images[from];
+      if (held != null && held.revision == _revisionOf(from)) {
+        _holdAlsoUnder(to, held, revision: _revisionOf(to));
+      }
+    }
+  }
+
+  /// [held] held under [to] as well, at [revision] — a clone, pinned there.
+  void _holdAlsoUnder(
+    BrushFrameKey to,
+    _HeldImage held, {
+    required int? revision,
+  }) {
+    final there = _images.remove(to);
+    if (there != null) {
+      _dropImage(to, there);
+    }
+    widget.imageCache.retainPin(to, held.quality);
+    _holdImage(to, (
+      source: held.source,
+      clone: held.clone.clones(),
+      worldRect: held.worldRect,
+      extent: held.extent,
+      revision: revision,
+      quality: held.quality,
+      content: held.content,
+      madeFrom: held.madeFrom,
+      laidBack: LaidBackWhole(),
+    ));
   }
 
   /// A picture of the run's landed: the rows it brought are taken, and the
@@ -547,6 +557,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         _travelWithTheirCels,
       );
       widget.imageCache.frameStore.addRekeyListener(_travelWithTheirCels);
+      oldWidget.imageCache.frameStore.removeCopyListener(
+        _shareWithTheirCopies,
+      );
+      widget.imageCache.frameStore.addCopyListener(_shareWithTheirCopies);
     }
     // The active row that left takes the image it was handed with it.
     final leftLineage = oldWidget.activeSurfacePainter?.lineage;
@@ -619,7 +633,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       return;
     }
     TilePyramid.instance.seed(active.lineage, (
-      image: held.clone.clone(),
+      pieces: held.clone.clones(),
       level: level,
       worldRect: held.worldRect,
       madeFrom: held.madeFrom,
@@ -630,7 +644,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // A6: the pin travels with the clone — held pixels are declared
     // pixels, and the declaration ends exactly when the hold does.
     widget.imageCache.releasePin(key, held.quality);
-    held.clone.dispose();
+    held.clone.disposeAll();
     held.laidBack.dispose();
     _imagesRevision += 1;
   }
@@ -656,7 +670,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   /// Handles a settle replaced ([_settleHeldImage]), kept until the build
   /// that replaces the painter drawing with them ([_releaseSettled]).
-  final List<ui.Image> _superseded = <ui.Image>[];
+  final List<ImagePiece> _superseded = <ImagePiece>[];
 
   /// [image] takes the place of [held] for [key] WITHOUT moving
   /// [_imagesRevision] — the third way into [_images], and the only one that
@@ -688,10 +702,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     _HeldImage held,
     LayerFrameImage image,
   ) {
-    _superseded.add(held.clone);
+    _superseded.addAll(held.clone);
     _images[key] = (
-      source: image.image,
-      clone: image.image.clone(),
+      source: image.pieces,
+      clone: image.pieces.clones(),
       worldRect: held.worldRect,
       extent: held.extent,
       revision: held.revision,
@@ -711,9 +725,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     if (_superseded.isEmpty) {
       return;
     }
-    for (final clone in _superseded) {
-      clone.dispose();
-    }
+    _superseded.disposeAll();
     _superseded.clear();
     _bake.invalidate();
   }
@@ -723,10 +735,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     InputInspector.visible.removeListener(_rebuildForInspector);
     widget.run?.landings.removeListener(_takeWhatLanded);
     widget.imageCache.frameStore.removeRekeyListener(_travelWithTheirCels);
+    widget.imageCache.frameStore.removeCopyListener(_shareWithTheirCopies);
     TilePyramid.instance.dropSeed(widget.activeSurfacePainter?.lineage);
     for (final entry in _images.entries) {
       widget.imageCache.releasePin(entry.key, entry.value.quality);
-      entry.value.clone.dispose();
+      entry.value.clone.disposeAll();
       entry.value.laidBack.dispose();
     }
     _images.clear();
@@ -780,7 +793,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     PlaybackQuality quality,
   ) {
     final held = _images[key];
-    if (held != null && identical(held.source, image.image)) {
+    if (held != null && identical(held.source, image.pieces)) {
       return false;
     }
     if (held != null && identical(held.content, image.content)) {
@@ -793,8 +806,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     if (held != null) _dropImage(key, held);
     widget.imageCache.retainPin(key, quality);
     _holdImage(key, (
-      source: image.image,
-      clone: image.image.clone(),
+      source: image.pieces,
+      clone: image.pieces.clones(),
       worldRect: image.worldRect,
       extent: image.extent,
       revision: revision,
@@ -871,10 +884,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         _dropImage(key, held);
       }
     }
-    // A row that left the stack takes its failure record with it — the
-    // note exists to stop a per-rebuild retry, not to remember cels this
-    // stack no longer shows.
-    _failedRevisions.removeWhere((key, _) => !kept.contains(key));
   }
 
   /// The cels whose images this view holds on to: the rows asked for, and
@@ -906,7 +915,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         !widget.imageCache.frameStore.celHasRenderableContent(
           layer.frameKey,
         ) ||
-        _shouldSkipFailed(layer.frameKey) ||
+        _unreadable(layer.frameKey) ||
         (widget.run?.gaveUpOn(layer) ?? false),
   );
 
@@ -923,7 +932,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       // lands here instead, out of a build/layout callback, and every
       // later layer in THIS sweep is skipped with it. One row's
       // unreachable cel is one row's.
-      if (_shouldSkipFailed(layer.frameKey)) {
+      if (_unreadable(layer.frameKey)) {
         continue;
       }
       // 🚨READ BEFORE THE PREPARE. The stamp has to name the revision the
@@ -945,14 +954,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           inkSuffices: layer.inkSuffices,
         );
       } on Object catch (error, stack) {
-        _noteFailure(layer.frameKey, error, stack, 'sync sweep');
+        _reportFailure(layer.frameKey, error, stack, 'sync sweep');
         continue;
       }
-      // The note means "the LAST attempt failed", not "one once did".
-      // Left standing it outlives the failure, and a project open reseeds
-      // every frame back to revision 1 — which makes an old note match
-      // again and skips a cel that builds perfectly well.
-      _failedRevisions.remove(layer.frameKey);
       if (image == null) {
         // 🚨★★★A COLD MISS IS NOT A LICENCE TO PAINT THE OLD PICTURE.
         //
@@ -1007,7 +1011,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// Null when the view unmounted mid-await; else whether the held
   /// image for [layer] changed.
   Future<bool?> _refreshLayerImage(CanvasLayerImageRequest layer) async {
-    if (_shouldSkipFailed(layer.frameKey)) {
+    if (_unreadable(layer.frameKey)) {
       return false;
     }
     // Read BEFORE the await — see the sync twin for why the order is
@@ -1027,11 +1031,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       if (!mounted) {
         return null;
       }
-      _noteFailure(layer.frameKey, error, stack, 'async pass');
+      _reportFailure(layer.frameKey, error, stack, 'async pass');
       return false;
     }
-    // Same as the sync twin: a success retires the note.
-    _failedRevisions.remove(layer.frameKey);
     if (!mounted) {
       return null;
     }
@@ -1174,6 +1176,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           // The PAINT half only, as the live row's: the lifted surface's
           // painter carries the row's leading keys.
           effects: request.paintEffects,
+          keys: request.sourceEffects,
         );
       case final CanvasLayerImageRequest request:
         final held = _images[request.frameKey];
@@ -1181,7 +1184,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           return null;
         }
         return _PaintImage(
-          image: held.clone,
+          pieces: held.clone,
           content: held.content,
           worldRect: held.worldRect,
           extent: held.extent,
@@ -1205,6 +1208,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           // The PAINT half only — like the cached row above. A leading
           // key is already on the surface this node draws.
           effects: active.paintEffects,
+          keys: active.sourceEffects,
         );
     }
   }
@@ -1322,6 +1326,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     final compositeKey = Object.hash(
       _imagesRevision,
       widget.canvasSize,
+      widget.pasteboardReach,
       widget.paintPaper,
       widget.paperBackground,
       _treeSignature(nodes),
@@ -1462,6 +1467,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           floatOverlay: widget.floatOverlay,
           liftedRows: _liftedRowsDrawn(),
           canvasSize: widget.canvasSize,
+          pasteboardReach: widget.pasteboardReach,
           viewport: widget.viewport,
           paintPaper: widget.paintPaper,
           paperBackground: widget.paperBackground,
@@ -1490,8 +1496,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 /// revision it was built from, and the quality — the level of the pyramid
 /// — it was asked at, which is what its pin is released at.
 typedef _HeldImage = ({
-  ui.Image source,
-  ui.Image clone,
+  List<ImagePiece> source,
+  List<ImagePiece> clone,
   Rect worldRect,
   // The rect the whole content image covers ([LayerFrameImage.extent]).
   Rect extent,
@@ -1551,7 +1557,7 @@ int _replayOpsOf(List<CompositeNode<_PaintRow>> list) {
 
 final class _PaintImage extends _PaintRow {
   const _PaintImage({
-    required this.image,
+    required this.pieces,
     required this.content,
     required this.worldRect,
     required this.extent,
@@ -1563,19 +1569,21 @@ final class _PaintImage extends _PaintRow {
     required this.effects,
   });
 
-  final ui.Image image;
+  /// The image and where its pixels belong — one piece, or several past the
+  /// side this engine holds (`piecesOver`).
+  final List<ImagePiece> pieces;
 
   /// The rect the whole content image covers — [worldRect] itself, or more
   /// when the cache stored the ink alone ([LayerFrameImage.extent]). What the
   /// row stands for when a folder asks how far its buffer reaches.
   final Rect extent;
 
-  /// Where the whole of [image] is kept once a draw lays it back — the held
+  /// Where the whole of [pieces] is kept once a draw lays it back — the held
   /// image's own. Out of [matches] and [signature]: it is [content]'s whole,
   /// so it changes exactly when [content] does.
   final LaidBackWhole laidBack;
 
-  /// What [image]'s pixels ARE ([LayerFrameImage.content]) — the one thing
+  /// What [pieces]' pixels ARE ([LayerFrameImage.content]) — the one thing
   /// [matches] and [signature] compare about the picture.
   ///
   /// ⛔Not `identical(image, …)`, which is what they compared until
@@ -1631,6 +1639,11 @@ sealed class _SurfaceRow extends _PaintRow {
   LayerPlacement? get placement;
   List<ResolvedLayerEffect> get effects;
 
+  /// The CPU half of the row's chain — the leading colour keys its cel is
+  /// shown through — which a float over it asks after
+  /// ([SelectionFloatPaint.shownOn]).
+  List<ResolvedLayerEffect> get keys;
+
   _SurfaceRowPaint get paint => (
     opacity: opacity,
     blendMode: blendMode,
@@ -1654,6 +1667,7 @@ final class _PaintActiveSurface extends _SurfaceRow {
     required this.blendMode,
     required this.placement,
     required this.effects,
+    required this.keys,
   });
 
   /// ㊱: the active row's display opacity. It reached the node all along and
@@ -1672,6 +1686,8 @@ final class _PaintActiveSurface extends _SurfaceRow {
   final LayerPlacement? placement;
   @override
   final List<ResolvedLayerEffect> effects;
+  @override
+  final List<ResolvedLayerEffect> keys;
 
   // ㊱: the alpha belongs in the repaint gate too — a slider drag changes
   // NOTHING else about this node, so leaving it out would paint the new
@@ -1683,11 +1699,17 @@ final class _PaintActiveSurface extends _SurfaceRow {
       opacity == other.opacity &&
       blendMode == other.blendMode &&
       placement == other.placement &&
-      listEquals(effects, other.effects);
+      listEquals(effects, other.effects) &&
+      listEquals(keys, other.keys);
 
   @override
-  int get signature =>
-      Object.hash(opacity, blendMode, placement, Object.hashAll(effects));
+  int get signature => Object.hash(
+    opacity,
+    blendMode,
+    placement,
+    Object.hashAll(effects),
+    Object.hashAll(keys),
+  );
 }
 
 /// A row a folder's move session holds lifted ([LiftedCel]): drawn by
@@ -1700,6 +1722,7 @@ final class _PaintLiftedSurface extends _SurfaceRow {
     required this.blendMode,
     required this.placement,
     required this.effects,
+    required this.keys,
   });
 
   final _LiftedRowPaint lifted;
@@ -1711,6 +1734,8 @@ final class _PaintLiftedSurface extends _SurfaceRow {
   final LayerPlacement? placement;
   @override
   final List<ResolvedLayerEffect> effects;
+  @override
+  final List<ResolvedLayerEffect> keys;
 
   // The surface and the float by IDENTITY, as an image is: the float's
   // value moves under the hand without this node changing, which is why a
@@ -1724,7 +1749,8 @@ final class _PaintLiftedSurface extends _SurfaceRow {
       opacity == other.opacity &&
       blendMode == other.blendMode &&
       placement == other.placement &&
-      listEquals(effects, other.effects);
+      listEquals(effects, other.effects) &&
+      listEquals(keys, other.keys);
 
   @override
   int get signature => Object.hash(
@@ -1734,6 +1760,7 @@ final class _PaintLiftedSurface extends _SurfaceRow {
     blendMode,
     placement,
     Object.hashAll(effects),
+    Object.hashAll(keys),
   );
 }
 
@@ -1900,6 +1927,7 @@ class _LayerStackPainter extends CustomPainter {
     required this.floatOverlay,
     this.liftedRows = const {},
     required this.canvasSize,
+    required this.pasteboardReach,
     required this.viewport,
     required this.paintPaper,
     required this.paperBackground,
@@ -1956,6 +1984,7 @@ class _LayerStackPainter extends CustomPainter {
   /// See [CanvasLayerStackView.liftedRows], as this build draws them.
   final Map<BrushFrameKey, _LiftedRowPaint> liftedRows;
   final CanvasSize canvasSize;
+  final PasteboardReach pasteboardReach;
   final CanvasViewport viewport;
   final bool paintPaper;
   final ProjectBackground paperBackground;
@@ -2288,6 +2317,7 @@ class _LayerStackPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _LayerStackPainter oldDelegate) {
     return oldDelegate.canvasSize != canvasSize ||
+        oldDelegate.pasteboardReach != pasteboardReach ||
         oldDelegate.viewport != viewport ||
         oldDelegate.paintPaper != paintPaper ||
         // The paper's COLOR is painted here (see the `paintPaper` branch), so
@@ -2337,3 +2367,9 @@ int debugCappedFallbacks = 0;
 /// — the reference a parity test compares the pictures against.
 @visibleForTesting
 bool debugDrawBufferPictures = true;
+
+/// Off, every recompose over carried pixels stands on its clip, as it did
+/// before F-287 — the reference a parity test compares the composite made
+/// apart against, and the engine the device probe measures it beside.
+@visibleForTesting
+bool debugRecomposeApart = true;

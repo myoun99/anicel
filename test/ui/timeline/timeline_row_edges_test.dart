@@ -7,6 +7,10 @@ import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/reference_lane_policy.dart'
+    show referenceGroupLaneId, referenceLaneDisplayOrder;
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart'
     show laneGroupOf;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -239,6 +243,18 @@ void main() {
       expect(laneGroupOf('transform-group'), isNull);
       expect(laneGroupOf(effectGroupLaneId(blur)), isNull);
       expect(laneGroupOf('se-audio'), isNull);
+    });
+
+    test('the two fixed groups\' lanes answer with their own header — the '
+        'reference fx\'s Position is not the transform\'s (F-374)', () {
+      for (final laneId in referenceLaneDisplayOrder) {
+        expect(laneGroupOf(laneId), referenceGroupLaneId, reason: laneId);
+      }
+      for (final laneId in seNameTagLaneDisplayOrder) {
+        expect(laneGroupOf(laneId), seNameTagGroupLaneId, reason: laneId);
+      }
+      expect(laneGroupOf(referenceGroupLaneId), isNull);
+      expect(laneGroupOf(seNameTagGroupLaneId), isNull);
     });
 
     test('only the pressed group\'s lanes take a seat', () {

@@ -5,7 +5,8 @@ import '../command.dart';
 /// Re-homes brush drawings to new store keys — the brush-store half of a
 /// cross-layer block move (R10-④b), composed with the layer timeline
 /// updates into one undo step. Undo replays the pairs reversed, so the
-/// drawings land back under their original keys.
+/// drawings land back under their original keys. The pairs are the ROWS'
+/// keys; the store resolves them ([BrushFrameStore.carryCels]).
 ///
 /// ⚠️THE PAIRS ARE DISJOINT, by construction rather than by a check: a
 /// frameId names one cel, so a cel appears in exactly one pair and no
@@ -25,11 +26,11 @@ class RekeyBrushFramesCommand implements Command {
 
   @override
   void execute() {
-    store.rekeyFrames(pairs);
+    store.carryCels(pairs);
   }
 
   @override
   void undo() {
-    store.rekeyFrames([for (final (from, to) in pairs) (to, from)]);
+    store.carryCels([for (final (from, to) in pairs) (to, from)]);
   }
 }

@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import '../../../models/bitmap_surface.dart';
 import '../../../models/bitmap_tile.dart';
 import '../../../models/brush_frame_key.dart';
-import '../../../models/canvas_size.dart';
 import '../../../models/cel_text.dart';
 import '../../../models/pasteboard_bounds.dart';
 import '../../../models/text_cel_style.dart';
@@ -36,7 +35,7 @@ final class CelTextShown {
     required this.content,
     required this.layout,
     required this.pixels,
-    required ({CanvasSize canvasSize, int tileSize}) grid,
+    required ({PasteboardWall pasteboard, int tileSize}) grid,
   }) : _grid = grid;
 
   final CelTextContent content;
@@ -45,7 +44,7 @@ final class CelTextShown {
   /// The pixels as the canvas draws them (`CelTextFloat`).
   final CelTextPixels pixels;
 
-  final ({CanvasSize canvasSize, int tileSize})? _grid;
+  final ({PasteboardWall pasteboard, int tileSize})? _grid;
 
   /// The pixels on the cel's own grid — what lands, and what a cel laid
   /// with this text shows.
@@ -59,7 +58,8 @@ final class CelTextShown {
       ? pixels.plate
       : celTextPlateMoved(
           pixels,
-          canvasSize: _grid.canvasSize,
+          canvasSize: _grid.pasteboard.canvas,
+          pasteboardReach: _grid.pasteboard.reach,
           tileSize: _grid.tileSize,
         );
 }
@@ -96,7 +96,7 @@ typedef CelTextMoveOrigin = ({
 class CelTextSession extends ChangeNotifier {
   CelTextSession({
     required this.key,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.tileSize,
     required CelText? standing,
     required CelTextContent content,
@@ -142,7 +142,9 @@ class CelTextSession extends ChangeNotifier {
 
   /// The cel the text is on.
   final BrushFrameKey key;
-  final CanvasSize canvasSize;
+
+  /// The wall of the cel the text is on — what its plate is cut at.
+  final PasteboardWall pasteboard;
   final int tileSize;
   final CelTextBaker _bake;
 
@@ -251,7 +253,7 @@ class CelTextSession extends ChangeNotifier {
       content: moved,
       layout: layoutCelText(moved, nextLetterStyle: _nextLetterStyle),
       pixels: (plate: origin.plate, dx: dx, dy: dy),
-      grid: (canvasSize: canvasSize, tileSize: tileSize),
+      grid: (pasteboard: pasteboard, tileSize: tileSize),
     );
     before.layout.dispose();
   }
@@ -266,7 +268,7 @@ class CelTextSession extends ChangeNotifier {
   /// Whether a text whose pixels can be anywhere in [ink] is inside the
   /// pasteboard where it stands AND ([dx], [dy]) from there.
   bool _movesWhole(Rect ink, {required int dx, required int dy}) {
-    final wall = canvasSize.pasteboardRect;
+    final wall = pasteboard.rect;
     bool inside(Rect rect) =>
         rect.left >= wall.left &&
         rect.top >= wall.top &&
@@ -305,7 +307,7 @@ class CelTextSession extends ChangeNotifier {
               ? const <TileCoord, BitmapTile>{}
               : await _bake(
                   layout,
-                  canvasSize: canvasSize,
+                  pasteboard: pasteboard,
                   tileSize: tileSize,
                   previous: _shown.plate,
                 );
@@ -317,6 +319,14 @@ class CelTextSession extends ChangeNotifier {
         if (_disposed) {
           layout.dispose();
           return;
+        }
+        // 🚨A WANT THAT WENT BACK TO WHAT IS ON SCREEN while this was being
+        // made — a step back given it up ([standBackOn]) — is no want of
+        // it: shown, it would flash for a frame before the screen went
+        // back.
+        if (!_stale && _wanted == _shown.content) {
+          layout.dispose();
+          continue;
         }
         _show(CelTextShown(content: content, layout: layout, plate: plate));
       }
@@ -477,6 +487,21 @@ class CelTextSession extends ChangeNotifier {
   void standOn(CelText? text) {
     _standing = text;
     _shownOver = null;
+    notifyListeners();
+  }
+
+  /// The cel carries [text] again — a step of the hold taken back, or one
+  /// still being set given up (F-377): the session stands on it and wants
+  /// it, shown with the very pixels the cel carries.
+  void standBackOn(CelText text) {
+    final before = _shown;
+    _standing = text;
+    _shownOver = null;
+    _wanted = text.content;
+    _stale = false;
+    _failure = null;
+    _showing.value = _shownOf(text, text.content, _nextLetterStyle);
+    before.layout.dispose();
     notifyListeners();
   }
 

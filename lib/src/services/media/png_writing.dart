@@ -22,13 +22,17 @@ const int pngRgb = 2;
 const int pngIndexed = 3;
 const int pngRgba = 6;
 
+/// The type of the chunk every PNG opens with: what [pngHeader] writes and
+/// `readPngHeader` looks for first.
+const String pngHeaderType = 'IHDR';
+
 /// IHDR of an 8-bit, uninterlaced [width] × [height] picture whose pixels
 /// are of [colourType] ([pngRgb], [pngIndexed] or [pngRgba]).
 Uint8List pngHeader({
   required int width,
   required int height,
   required int colourType,
-}) => pngChunk('IHDR', [
+}) => pngChunk(pngHeaderType, [
   ...pngUint32(width),
   ...pngUint32(height),
   8, // bit depth
@@ -138,7 +142,11 @@ final class PngImageData {
     }
     var best = 0;
     var bestCost = _filter(0, row);
-    for (var type = 1; type < _filterTypes.length; type += 1) {
+    // A filter that leaves nothing cannot be beaten — a tie goes to the
+    // lower — so the rest are not tried: on a page's flat paper, Up leaves
+    // nothing on every row but the first (🔬2026-10-20, an A4 page of the
+    // conte in the test VM: 190 → 115 ms, the same bytes).
+    for (var type = 1; type < _filterTypes.length && bestCost > 0; type += 1) {
       final cost = _filter(type, row);
       if (cost < bestCost) {
         bestCost = cost;
@@ -200,7 +208,7 @@ final class PngImageData {
           final left = i < bpp ? 0 : row[i - bpp];
           final up = above == null ? 0 : above[i];
           final upLeft = above == null || i < bpp ? 0 : above[i - bpp];
-          final f = (row[i] - _paeth(left, up, upLeft)) & 0xFF;
+          final f = (row[i] - pngPaeth(left, up, upLeft)) & 0xFF;
           into[i] = f;
           cost += f < 128 ? f : 256 - f;
         }
@@ -210,8 +218,9 @@ final class PngImageData {
 }
 
 /// The Paeth predictor: of [a] (left), [b] (up) and [c] (up-left), the one
-/// nearest to a + b − c, ties to the earlier.
-int _paeth(int a, int b, int c) {
+/// nearest to a + b − c, ties to the earlier — what a row is filtered by
+/// here, and unfiltered by when one is read (`readPngRows`).
+int pngPaeth(int a, int b, int c) {
   final p = a + b - c;
   final pa = (p - a).abs();
   final pb = (p - b).abs();

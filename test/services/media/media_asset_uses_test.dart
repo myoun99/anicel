@@ -3,6 +3,7 @@ import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -12,9 +13,11 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/media/media_asset_uses.dart';
+import 'package:anicel/src/services/persistence/cel_places.dart';
 import '../../helpers/reference_to.dart';
 
 /// 🚨★★★WHERE A POOL FILE IS USED IS ONE ANSWER (F-118).
@@ -99,6 +102,13 @@ void main() {
     ],
   );
 
+  /// Which sheet of which cut, in this test's own words.
+  String sheetSaid(CelPlace place) => switch (place) {
+    EnvelopeInkPlace(:final cutName) => 'envelope $cutName',
+    TimesheetInkPlace(:final cutName) => 'timesheet $cutName',
+    _ => 'elsewhere',
+  };
+
   String described(MediaAssetUse use) => switch (use) {
     WorkPictureMediaUse(:final picture) => 'work ${picture.name}',
     RowMediaUse(
@@ -118,6 +128,8 @@ void main() {
       'frame ${trackId.value}/${cutId?.value}/${layerId.value}/'
           '${frameId.value} = ${place.ownerName} · ${place.layerName} · '
           '${place.celName} @${place.blockStarts}',
+    SheetPhotoMediaUse(:final key, :final place) =>
+      'sheet ${key.frameId.value} = ${sheetSaid(place)}',
   };
 
   List<String> usesOf(String path) => [
@@ -153,6 +165,35 @@ void main() {
     expect(
       [for (final use in mediaAssetUsesOf(pictured, movie)) described(use)],
       ['work logo', 'work cover', ...usesOf(movie)],
+    );
+  });
+
+  test('🚨a sheet whose ink carries the file as a photo is a use of it '
+      '(I-97) — after the project\'s own, as the sheets stand, once a cel '
+      'however often the cel shows it', () {
+    const walk = 'C:/media/walk.mp4';
+    final sheets = {
+      timesheetInkPageKey(const CutId('c1'), 0): [walk],
+      envelopeInkBoxKey(const CutId('c2'), 'memo'): [walk, walk],
+      envelopeInkBoxKey(const CutId('c1'), 'memo'): ['C:/media/clap.wav'],
+      envelopeInkBoxKey(const CutId('c1'), 'cel'): ['C:/x.png', walk],
+    };
+
+    expect(
+      [
+        for (final use in mediaAssetUsesOf(
+          project,
+          movie,
+          sheetPhotos: sheets,
+        ))
+          described(use),
+      ],
+      [
+        ...usesOf(movie),
+        'sheet envelope-c1-cel = envelope C1',
+        'sheet envelope-c2-memo = envelope C2',
+        'sheet sheet-page-c1-p0 = timesheet C1',
+      ],
     );
   });
 

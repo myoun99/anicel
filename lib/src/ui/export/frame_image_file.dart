@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import '../../models/export_spec.dart';
+import '../../models/import/import_warning.dart' show ImportWarning;
+import '../../models/project_background.dart';
 import '../editor_session_manager.dart';
 import 'export_frame_renderer.dart';
 import 'export_plan.dart';
@@ -30,27 +32,33 @@ ExportFrameTask? frameUnderThePlayhead(EditorSessionManager session) {
 
 /// Where [writeFrameImage] writes its one file — a folder and the name in
 /// it — and, for a run that can be stopped and shows how far it has come,
-/// what it asks and tells on the way.
+/// what it asks and tells on the way; and who is told what the file, once
+/// written, left out ([ExportFrameRenderer.leftOutOfRows]).
 typedef FrameImageFile = ({
   String directory,
   String name,
   bool Function()? isCancelled,
   void Function(int completed, int total)? onProgress,
+  void Function(List<ImportWarning> leftOut)? onLeftOut,
 });
 
 /// Writes [task] as ONE still file under [spec] — its size, its layer FX,
-/// its format's ground and bytes. True when the file was written.
+/// its format's ground and bytes; a PSD, the cut's rows apart
+/// ([ExportFrameRenderer.frameRows]) — with [paper] laid under its rows
+/// ([ExportFrameRenderer.renderComposite]). True when the file was written.
 ///
 /// 🚨The image tab's one picture and 「다른 이름으로 저장」's are THIS call
 /// (backlog-21-Q7, 유저 2026-09-30: 「내보내기 「이미지」와 같은 깨끗한 한
 /// 장」) — the same picture because it is the same code, never two
-/// spellings that agree today.
+/// spellings that agree today. What each asks of it differs only in what it
+/// hands in: the spec, and the paper.
 Future<bool> writeFrameImage(
   EditorSessionManager session,
   ExportFrameTask task,
   ImageExportSpec spec,
-  FrameImageFile file,
-) async {
+  FrameImageFile file, {
+  ProjectBackground? paper,
+}) async {
   final renderer = ExportFrameRenderer.forFormat(
     session: session,
     format: spec.format,
@@ -58,12 +66,20 @@ Future<bool> writeFrameImage(
   );
   final summary = await const PngSequenceExportService().exportImages(
     count: 1,
-    renderImage: (_) => renderer.renderComposite(task, spec.sizeMode),
+    renderImage: (_) =>
+        renderer.renderComposite(task, spec.sizeMode, paper: paper),
     fileNameFor: (_) => file.name,
     directoryPath: file.directory,
-    encoderFor: (_) => stillEncoderFor(spec.format),
+    encoderFor: (_) => layeredEncoderFor(
+      spec.format,
+      () => renderer.frameRows(task, spec.sizeMode, paper: paper),
+    ),
     isCancelled: file.isCancelled,
     onProgress: file.onProgress,
   );
-  return summary.written == 1;
+  final written = summary.written == 1;
+  if (written) {
+    file.onLeftOut?.call(renderer.leftOutOfRows(task));
+  }
+  return written;
 }

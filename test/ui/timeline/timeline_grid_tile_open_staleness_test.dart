@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// The OPEN-STALENESS residency law (device report 2026-08-17: old-format
@@ -115,12 +116,12 @@ void main() {
     var landings = 0;
     store.revision.addListener(() => landings += 1);
     Future<void> waitForLandings(int n) async {
-      final deadline = DateTime.now().add(const Duration(seconds: 10));
-      while (landings < n) {
-        if (DateTime.now().isAfter(deadline)) {
-          fail('timed out waiting for tile landing #$n (have $landings)');
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 5));
+      final landed = await pollUntil(
+        () => landings >= n,
+        beat: const Duration(milliseconds: 5),
+      );
+      if (!landed) {
+        fail('timed out waiting for tile landing #$n (have $landings)');
       }
     }
 
@@ -146,6 +147,7 @@ void main() {
         }
         return hasContent;
       },
+      cannotRead: (_, _) => false,
       revision: revision,
     );
 

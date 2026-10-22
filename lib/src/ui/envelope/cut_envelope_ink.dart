@@ -119,10 +119,10 @@ bool _mountable(
 /// The envelope's ink windows, bottom-of-stack first.
 ///
 /// One per box that takes ink, in FORM order — so a box drawn later (an
-/// inner cell over the one it sits on) is hit first, matching
-/// [CutEnvelopeLayout.inkBoxAt]. There is no page window: the form has no
-/// margin, its cells meet, and what a stroke draws outside every inking
-/// box simply has nowhere to go.
+/// inner cell over the one it sits on) is hit first ([sheetInkOwnerAt]),
+/// a stroke's and a dropped photo's alike. There is no page window: the
+/// form has no margin, its cells meet, and what a stroke draws outside
+/// every inking box simply has nowhere to go.
 List<SheetInkWindow> envelopeInkWindows(
   CutEnvelopeLayout layout,
   CutId ownerCutId,

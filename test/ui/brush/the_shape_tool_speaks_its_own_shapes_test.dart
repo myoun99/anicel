@@ -3,6 +3,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 import 'package:anicel/src/ui/brush/tool_choice.dart';
@@ -296,8 +297,14 @@ void main() {
 
   group('the drag', () {
     MarqueeDrag drag(CanvasShapeKind kind, CanvasPoint from, CanvasPoint to) =>
-        MarqueeDrag(pointer: 1, shapeKind: kind, before: null, at: from)
-          ..update(to);
+        MarqueeDrag(
+          pointer: 1,
+          shapeKind: kind,
+          before: null,
+          at: from,
+          guides: CutGuides(),
+          zoom: 1,
+        )..update(to);
 
     test('a line is its two ends: no outline, an open path, and the trail '
         'the ants draw while it is dragged', () {

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -19,17 +20,28 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/playback/audio_scrubber.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
+import '../../helpers/device_paced.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The audio scrub, driven for real on the null backend: each crossed
 /// frame plays exactly its slice of the mix; release silences; playback
 /// owning the device refuses the gesture; a silent cut never arms; a scrub
-/// that crosses into another cut hears that cut.
-Project _project({bool withSound = true}) => Project(
+/// that crosses into another cut hears that cut; a sound that streams is
+/// heard wherever a drag goes.
+Project _project({
+  bool withSound = true,
+  int frames = 10,
+  String sound = 'tone.wav',
+}) => Project(
   id: const ProjectId('scrub-project'),
   name: 'Scrub',
   createdAt: DateTime.utc(2026, 7, 21),
@@ -41,7 +53,7 @@ Project _project({bool withSound = true}) => Project(
         Cut(
           id: const CutId('cut-a'),
           name: 'A',
-          duration: 10,
+          duration: frames,
           canvasSize: const CanvasSize(width: 640, height: 360),
           layers: const [],
         ),
@@ -60,14 +72,14 @@ Project _project({bool withSound = true}) => Project(
               ),
             ],
             timeline: {
-              0: const TimelineExposure.drawing(
-                FrameId('se-frame'),
-                length: 10,
+              0: TimelineExposure.drawing(
+                const FrameId('se-frame'),
+                length: frames,
               ),
             },
             audioClips: [
               AudioClip(
-                filePath: 'tone.wav',
+                filePath: sound,
                 frameId: const FrameId('se-frame'),
               ),
             ],
@@ -184,17 +196,6 @@ AudioConformStore _residentStore() => AudioConformStore(
   log: (_) {},
 );
 
-Future<bool> _waitFor(bool Function() check, {int millis = 3000}) async {
-  final deadline = DateTime.now().add(Duration(milliseconds: millis));
-  while (DateTime.now().isBefore(deadline)) {
-    if (check()) {
-      return true;
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-  }
-  return check();
-}
-
 void main() {
   final libraryPath = nativeEngineLibraryPathOrNull();
   final available = libraryPath != null;
@@ -252,17 +253,23 @@ void main() {
     // Frame 3 at 10fps/48k = samples [14400, 19200).
     scrubber.onScrubFrame(3);
     expect(scrubber.isArmed, isTrue);
-    expect(await _waitFor(() => device.positionSamples >= 14400), isTrue);
+    expect(
+      await waitOnTheDevice(device, () => device.positionSamples >= 14400),
+      isTrue,
+    );
     // The slice runs out on its own at the frame boundary.
-    expect(await _waitFor(() => !device.isPlaying), isTrue);
+    expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
     expect(device.positionSamples, lessThanOrEqualTo(19200));
 
     // The next crossed frame re-arms the same uploaded schedule.
     scrubber.onScrubFrame(7);
-    expect(await _waitFor(() => device.positionSamples >= 33600), isTrue);
+    expect(
+      await waitOnTheDevice(device, () => device.positionSamples >= 33600),
+      isTrue,
+    );
 
     scrubber.onScrubEnd();
-    expect(await _waitFor(() => !device.isPlaying), isTrue);
+    expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
     expect(scrubber.isArmed, isFalse);
     scrubber.dispose();
     controller.dispose();
@@ -370,7 +377,10 @@ void main() {
       standIn(const CutId('cut-b'));
       scrubber.onScrubFrame(3);
       expect(scrubber.isArmed, isTrue, reason: 'cut B has sound of its own');
-      expect(await _waitFor(() => device.positionSamples >= 14400), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples >= 14400),
+        isTrue,
+      );
       scrubber.onScrubEnd();
     }, skip: skip);
 
@@ -387,7 +397,7 @@ void main() {
       standIn(const CutId('cut-b'));
       scrubber.onScrubFrame(5);
       expect(scrubber.isArmed, isFalse);
-      expect(await _waitFor(() => !device.isPlaying), isTrue);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
       scrubber.onScrubEnd();
     }, skip: skip);
   });
@@ -432,7 +442,10 @@ void main() {
       // Frame 3 at 10fps/48k = samples [14400, 19200).
       scrubber.onScrubTrackFrame(3);
       expect(scrubber.isArmed, isTrue);
-      expect(await _waitFor(() => device.positionSamples >= 14400), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples >= 14400),
+        isTrue,
+      );
       scrubber.onScrubEnd();
     }, skip: skip);
 
@@ -449,7 +462,10 @@ void main() {
       // Frame 13 = samples [62400, 67200).
       scrubber.onScrubTrackFrame(13);
       expect(scrubber.isArmed, isTrue);
-      expect(await _waitFor(() => device.positionSamples >= 62400), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples >= 62400),
+        isTrue,
+      );
       scrubber.onScrubEnd();
     }, skip: skip);
   });
@@ -480,4 +496,113 @@ void main() {
     controller.dispose();
     store.dispose();
   }, skip: skip);
+
+  group('🚨a sound past two minutes streams from a window, and a scrub hears '
+      'it wherever the drag goes (scrub-recentres-by-its-own-rule)', () {
+    late Directory directory;
+
+    setUp(() async {
+      directory = await Directory.systemTemp.createTemp('qa-scrub-stream');
+    });
+
+    tearDown(() => deleteTempQuietly(directory));
+
+    // Ten seconds past the line where a conform stays on disk, at 10 fps:
+    // frame 1000 is a hundred seconds in.
+    const frames = (conformStreamingThresholdSeconds + 10) * 10;
+
+    /// A scrubber over 'long.wav', which streams from a conform on disk
+    /// whose every sample is 0.25.
+    Future<AudioScrubber> scrubbing() async {
+      const samples = (conformStreamingThresholdSeconds + 10) * 48000;
+      final path = '${directory.path}/long.conform';
+      File(path).writeAsBytesSync(
+        encodeConform(
+          samples: Float32List(samples)..fillRange(0, samples, 0.25),
+          channels: 1,
+          sampleRate: 48000,
+        ),
+      );
+      final store = AudioConformStore(
+        resolveConformPath: (_) => path,
+        runner: (request) async => ConformResult(
+          outcome: ConformOutcome.built,
+          conformBytes: mediaAppFileSource(path),
+          channels: 1,
+          sampleRate: 48000,
+          frames: samples,
+        ),
+        log: (_) {},
+      );
+      addTearDown(store.dispose);
+      store.resultFor('long.wav');
+      await pumpEventQueue();
+      expect(store.isStreaming('long.wav'), isTrue, reason: 'fixture');
+      final project = _project(frames: frames, sound: 'long.wav');
+      final controller = buildController(project);
+      addTearDown(controller.dispose);
+      final scrubber = AudioScrubber(
+        controller: controller,
+        resolveFrameRate: () => const ProjectFrameRate.integer(10),
+        resolveProject: () => project,
+        conformStore: store,
+        resolveDevice: () => QaAudioDevice.instance,
+      );
+      addTearDown(scrubber.dispose);
+      return scrubber;
+    }
+
+    test('🚨a drag backwards past the window\'s trailing edge is '
+        'heard', () async {
+      final device = openNullDevice();
+      final scrubber = await scrubbing();
+      scrubber.onScrubFrame(1000);
+      expect(scrubber.isArmed, isTrue);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
+      device.stop(); // and the meter reads silence again
+
+      scrubber.onScrubFrame(950);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
+
+      expect(
+        device.peakFor(0),
+        closeTo(0.25, 0.01),
+        reason: 'five seconds behind where the window stood: ↩️the scrubber '
+            'moved it only past half the playing lead (15 s) either way, and '
+            'this slice played silence',
+      );
+      scrubber.onScrubEnd();
+    }, skip: skip);
+
+    test('a scrub\'s window reaches a second behind and two ahead — and moves '
+        'once a drag is past half its lead', () async {
+      final device = openNullDevice();
+      final scrubber = await scrubbing();
+      final window = scrubber.debugWindow;
+
+      scrubber.onScrubFrame(1000);
+      expect(window.reach, AudioStreamingWindow.scrubbing);
+      expect(window.centerSample, 1000 * 4800);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
+      // Five seconds on, the device holds nothing to play.
+      device.play(startSample: 1050 * 4800, stopSample: 1051 * 4800);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
+      expect(
+        device.peakFor(0),
+        0,
+        reason: 'three seconds were read where the drag stood — ↩️the '
+            'playing reach read thirty-two',
+      );
+      scrubber.onScrubFrame(1010); // a second on: half the lead
+      expect(window.centerSample, 1000 * 4800);
+      scrubber.onScrubFrame(1011);
+      expect(
+        window.centerSample,
+        1011 * 4800,
+        reason: '↩️the playing reach — 32 s read at every move — would move '
+            'it only fifteen seconds on',
+      );
+      scrubber.onScrubEnd();
+    }, skip: skip);
+  });
 }

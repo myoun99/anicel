@@ -8,7 +8,6 @@ import '../models/camera_instruction.dart' show CameraInstructionDef;
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
-import '../models/layer_kind.dart';
 import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
@@ -19,6 +18,7 @@ import 'timeline/se_layer_mixer.dart';
 import 'brush/transform_tool_options.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
+import 'range_move_asking_first.dart';
 import 'session/session_legend_callbacks.dart';
 import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
@@ -84,8 +84,6 @@ class TimelineTabHost extends StatefulWidget {
     this.onSetRowFilter,
     this.collapsedAttachBaseIds = const {},
     this.onToggleAttachGroup,
-    this.cameraViewEnabled,
-    this.cameraDimOpacity,
     this.onRevealOnionSkinPanel,
     this.transformOptions,
   });
@@ -168,13 +166,6 @@ class TimelineTabHost extends StatefulWidget {
   final Set<LayerId> collapsedAttachBaseIds;
   final ValueChanged<LayerId>? onToggleAttachGroup;
 
-  /// Unified layer controls: the CAMERA row's visibility button and opacity
-  /// slider drive the camera-view overlay state (workspace-owned notifiers,
-  /// shared with the canvas and the camera panel). Null keeps the camera
-  /// row's controls on the plain layer flags.
-  final ValueNotifier<bool>? cameraViewEnabled;
-  final ValueNotifier<double>? cameraDimOpacity;
-
   /// The workspace's onion-panel reveal (UI-R17 #5): open when hidden,
   /// flash-in-place when already open. Null hides the legend entry.
   final VoidCallback? onRevealOnionSkinPanel;
@@ -210,6 +201,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// pass and defeat their repaint gating.
   late final TimelineCelContentSource _celContent = TimelineCelContentSource(
     hasContent: _session.layerStack.celHasContentForLayer,
+    cannotRead: _session.layerStack.celCannotBeReadForLayer,
     revision: _session.layerStack.celTintRevision,
   );
 
@@ -387,9 +379,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   /// The preview inside the instance dialogs follows the visible
   /// orientation (Axis policy in miniature).
-  Axis get _previewAxis => widget.orientation == TimelineOrientation.horizontal
-      ? Axis.horizontal
-      : Axis.vertical;
+  Axis get _previewAxis => widget.orientation.axis;
 
   Future<void> _activateCellEditor(LayerId layerId, int frameIndex) =>
       activateCellOnDoubleTap(
@@ -439,83 +429,28 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     );
   }
 
-  /// Camera display-copy cache (UI-R20 #4): the per-build copyWith used
-  /// to churn the camera layer's identity on EVERY host rebuild, so the
-  /// camera row (rail + cells) missed its identity memos and rebuilt per
-  /// session notify. Same source + same overlay state = the SAME copy.
-  Layer? _cameraCopySource;
-  bool? _cameraCopyVisible;
-  late Layer _cameraCopy;
-
-  Layer _cameraDisplayLayer(Layer layer, bool visible) {
-    if (identical(_cameraCopySource, layer) && _cameraCopyVisible == visible) {
-      return _cameraCopy;
-    }
-    final copy = layer.copyWith(isVisible: visible);
-    _cameraCopySource = layer;
-    _cameraCopyVisible = visible;
-    _cameraCopy = copy;
-    return copy;
-  }
-
-  /// R27 #9: the camera row's opacity source. The dim is a VIEW notifier,
-  /// so the slider subscribes to it directly instead of the value riding
-  /// a display-copy through a host rebuild — a drag now repaints one
-  /// slider, not the whole timeline (the "카메라레이어 불투명도 너무 느림"
-  /// report). Every other row keeps its model opacity.
-  ValueListenable<double>? _cameraDimOverrideFor(LayerId layerId) {
-    final dim = widget.cameraDimOpacity;
-    if (dim == null || _kindOf(layerId) != LayerKind.camera) {
-      return null;
-    }
-    return dim;
-  }
-
-  /// Layers as DISPLAYED (unified layer controls): the camera row mirrors
-  /// the camera-view overlay state on its visibility icon — the same
-  /// notifier the canvas and the camera panel share. The DIM is deliberately
-  /// not folded in here (R27 #9): it reaches the slider through
-  /// [_cameraDimOverrideFor], so a dim drag never invalidates this list.
   /// The layer stack as the GRIDS should render it — display clones for
   /// the rows whose cells are not their own.
   ///
   /// R10 puts the folder band here, which is the one seam both grids read:
   /// the X-sheet has always sent folder columns to the shared cells row
   /// and drawn them blank, so the clone lights that column with no X-sheet
-  /// edit at all. Same rule the camera and SE clones live under — it never
-  /// leaves the display path, because commands re-read the real layer by
-  /// id.
-  List<Layer> _displayLayers() {
-    final view = widget.cameraViewEnabled;
-    return [
-      for (final layer in _session.layers)
-        if (layer.kind.groupsLayers)
-          _session.folderBands.folderBandLayerFor(layer)
-        else if (view != null && layer.kind == LayerKind.camera)
-          _cameraDisplayLayer(layer, view.value)
-        else
-          layer,
-    ];
-  }
-
-  LayerKind? _kindOf(LayerId layerId) {
-    for (final layer in _session.layers) {
-      if (layer.id == layerId) {
-        return layer.kind;
-      }
-    }
-    return null;
-  }
+  /// edit at all. Same rule the SE clones live under — it never leaves the
+  /// display path, because commands re-read the real layer by id.
+  ///
+  /// ↩️The camera row was cloned here too, wearing the window's camera view
+  /// on its eye, until its eye became its own (F-363).
+  List<Layer> _displayLayers() => [
+    for (final layer in _session.layers)
+      if (layer.kind.groupsLayers)
+        _session.folderBands.folderBandLayerFor(layer)
+      else
+        layer,
+  ];
 
   /// The rail rows' buttons as a press asks them — spread over the row
-  /// selection when the pressed row is in it. The camera row's eye and
-  /// slider drive the camera view (R4 #4: its dim is already cheap and
-  /// live, so it applies on the drag as on the release).
-  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(
-    _session,
-    cameraView: widget.cameraViewEnabled,
-    cameraDim: widget.cameraDimOpacity,
-  );
+  /// selection when the pressed row is in it.
+  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(_session);
 
   @override
   Widget build(BuildContext context) => RailSweepHistory(
@@ -530,8 +465,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     // layer, rulers, lane values, counter) subscribe, so the grids'
     // hundreds of cells stay untouched frame to frame. The prerender
     // progress listenable repaints the rulers' green bars the same way.
-    // The camera-view notifiers keep the camera row's unified controls
-    // live.
     //
     // Touching this panel makes it the one the frame-axis verbs answer to
     // (user, 2026-08-05). A row pick is no longer the only way to move the
@@ -547,9 +480,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       ),
       child: ListenableBuilder(
         listenable: Listenable.merge([
-          ?widget.cameraViewEnabled,
-          // The camera DIM is NOT here (R27 #9): its slider subscribes to it
-          // directly, so a drag repaints one control instead of the panel.
           // Live take preview (REC1-C): the armed SE lane swaps identity at
           // most once per FRAME while recording — this panel-scoped rebuild
           // is the notify-free channel (R12-B: ticks never notify the
@@ -754,8 +684,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               final layer = _session.layerById(layerId);
               return layer != null && movieSourceShortfall(_session, layer) > 0;
             },
-            // Kind-dispatched (unified layer controls): the camera row drives
-            // the camera-view notifiers, every other row the layer flags.
             onToggleLayerVisibility: _rowPresses.toggleVisibility,
             onLayerOpacityChanged: _rowPresses.previewOpacity,
             onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
@@ -819,7 +747,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                       frameDelta: frameDelta,
                       targetLayerId: targetLayerId,
                     ),
-                onEnd: _session.rangeMove.endFrameRangeMoveDrag,
+                onEnd: () => unawaited(
+                  releaseRangeMoveAskingFirst(context, _session),
+                ),
                 onCancel: _session.rangeMove.cancelFrameRangeMoveDrag,
               ),
             ),
@@ -859,8 +789,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // instead of leaving a one-cell band behind.
               onTapClear: _session.clearLaneRangeSelection,
               onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
-              onMoveUpdate: (frameDelta) =>
-                  _session.laneMove.updateLaneRangeMoveDrag(frameDelta: frameDelta),
+              onMoveUpdate: (frameDelta, {values}) => _session.laneMove
+                  .updateLaneRangeMoveDrag(
+                    frameDelta: frameDelta,
+                    values: values,
+                  ),
               onMoveEnd: _session.laneMove.endLaneRangeMoveDrag,
               onMoveCancel: _session.laneMove.cancelLaneRangeMoveDrag,
             ),
@@ -937,8 +870,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // back off the document when a step lands, and the legend's
             // 「all」 is one step.
             laneOpenOf: _session.layerSwitches.isLayerLanesOpen,
-            laneGroupOnOf: _session.layerSwitches.isLayerTransformOn,
+            laneGroupOnOf: _session.laneVerbs.isLaneGroupOn,
             layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
+            layerOnTimesheetOf: _session.layerSwitches.isLayerOnTimesheet,
             onToggleLayerLanes: widget.onToggleLayerLanes,
             hiddenSections: widget.hiddenSections,
             onToggleSection: widget.onToggleSection,
@@ -953,23 +887,17 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             masterOpacityValue: _session.opacityVerbs.lastMasterOpacity,
             // R27 #6: the blend mode reads and commits from the LABEL now.
             onLayerBlendModeSelected: _rowPresses.pickBlendMode,
-            // R27 #9: the camera row's opacity IS the camera-view dim
-            // notifier — handing it to the slider keeps a drag off the host.
-            layerOpacityOverrideOf: _cameraDimOverrideFor,
             // Blocks carrying over from the previous cut (UI-R7 #6): the
             // spill block's start grip stands down, a sound's cut start
             // draws `~` and its waveform starts that far in (F-113) — and
             // the transition row's mark answers the same way.
-            spillInLeadFrames: {
-              ..._session.trackSe.trackSeSpillInLeadFrames,
-              ..._session.transitions.transitionSpillInLeadFrames,
-            },
+            spillInLeadFrames:
+                _session.activeCutSpan.activeCutSpillInLeadFrames,
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.
             // What its legend opens, for a key on this panel (I-40).
-            onLegendMenus: (menus) =>
-                _session.railLegends.publish(WorkingPanel.timeline, menus),
+            legendHand: _session.railLegends.handOf(WorkingPanel.timeline),
             legend: sessionLegendCallbacks(
               _session,
               rowFilter: widget.rowFilter,
@@ -1208,13 +1136,14 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // an empty cell or a ghost — a seek moves it, and a seek is no notify.
       // The timeline context's answer, read where it comes from.
       session.blockNaming.timelineTargets != null,
-      // The Add button gates on the active layer's kind + cell state.
-      // NOTE: these two move together with the can* getters above in every
-      // reachable scenario, so the guard test cannot isolate them — they are
-      // listed because the Add button genuinely reads them, not because a
-      // test proves each one.
-      session.activeLayer?.kind,
-      session.cells.hasActiveNonNegativeCell,
+      // The Add button's own answer, read where it comes from.
+      // 🚨F-338 (유저 2026-10-11): 「프레임 추가버튼 활성화된채로
+      // 트랜지션레이어 가면 추가버튼 다른 블록있는 OL있는곳가던 뭐하던
+      // 활성화된채」. ↩️This entry was the row's kind and whether its cell
+      // was on the axis — which the transition row's gate does not move
+      // with: a seek from a free cell onto an O.L's mark changed neither,
+      // and the cached bar kept a ＋ whose press made nothing there.
+      session.cellInstances.canCreateInstance,
       // Edit Instance means THAT LANE'S KEY while you stand on a lane row,
       // an enablement no layer kind can answer. The row you stand on
       // publishes through its OWN notifier without a session notify, which

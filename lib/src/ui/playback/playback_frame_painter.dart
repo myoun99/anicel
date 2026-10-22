@@ -54,6 +54,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     this.paperBackground,
     this.pasteboardColor,
     this.pasteboardNone = false,
+    this.pasteboardReach = PasteboardReach.whole,
     this.checkersAbsentPlanes = false,
     this.paintPaper = true,
     this.paintLetterbox = true,
@@ -117,6 +118,10 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   /// Whether the pasteboard is ABSENT (F-114) — [pasteboardColor] is then
   /// the kept colour, and nothing of it is painted.
   final bool pasteboardNone;
+
+  /// How far the pasteboard reaches past the paper (I-109): the unit seen
+  /// through no camera, and where the camera sees the apron.
+  final PasteboardReach pasteboardReach;
 
   /// Whether an absent plane — the paper ([ProjectBackground.none]) or the
   /// pasteboard ([pasteboardNone]) — shows the checkerboard where it would
@@ -215,18 +220,29 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     // far as its pasteboard reaches — the plane and what is drawn on it
     // thin with the paper (conte-playback-hides-the-pasteboard). ↩️It was
     // the canvas there, while the film was cut at the canvas's edge.
-    final unit = frameRect ?? canvasSize.pasteboardRect;
+    final unit = frameRect ?? canvasSize.pasteboardAt(pasteboardReach).rect;
 
     if (pose != null && pasteboardColor != null) {
       // The stage's apron: the camera sees the pasteboard wherever it
       // reaches past the paper — part of the cut unit, so it fades with
       // it. An ABSENT pasteboard (F-114) is the checkerboard on screen and
       // nothing at all anywhere else.
+      //
+      // Only as far as it reaches (I-109): past its wall the camera sees
+      // what lies under the cut, as the canvas shows the backdrop there —
+      // and with the pasteboard off, the paper alone. ↩️It filled the whole
+      // frame, wherever the wall stood.
+      canvas.save();
+      canvas.clipPath(
+        (Path()..addRect(canvasSize.pasteboardAt(pasteboardReach).rect))
+            .transform(cameraProjectionMatrix(pose, cameraFrameSize!).storage),
+      );
       if (!pasteboardNone) {
         canvas.drawRect(frameRect!, Paint()..color = pasteboardColor!);
       } else if (checkersAbsentPlanes) {
         paintAlphaCheckerboard(canvas, frameRect!);
       }
+      canvas.restore();
     }
     // The canvas seen whole stands in for the editing stack's paper — the
     // blank canvas is this — so it cuts the canvas's boundary the way the
@@ -261,7 +277,17 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
         // whole (🧪10-13: 15,008 pixels at 1, none at a half).
         canvas.saveLayer(null, Paint()..color = alphaOnly(imageOpacity));
       }
-      paintSeNameTags(canvas, tags: seNameTags, canvasSize: canvasSize);
+      paintSeNameTags(
+        canvas,
+        tags: seNameTags,
+        canvasSize: canvasSize,
+        // Device pixels per canvas pixel under the view and, through the
+        // camera, its projection — whose turn keeps scale, so its zoom is
+        // the whole of it (as `renderThroughCamera` reads it).
+        rasterScale:
+            displayScaleOf(resolvedViewport?.zoom ?? 1, devicePixelRatio) *
+            (pose?.zoom.abs() ?? 1),
+      );
       if (thinning) {
         canvas.restore();
       }
@@ -288,6 +314,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     paperBackground,
     pasteboardColor,
     pasteboardNone,
+    pasteboardReach,
     checkersAbsentPlanes,
     paintPaper,
     paintLetterbox,

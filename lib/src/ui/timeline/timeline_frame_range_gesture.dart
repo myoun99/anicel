@@ -12,6 +12,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
+import 'axis_turn.dart' show offsetAlong, partAcross, partAlong;
 import 'berth_row.dart' show rowAddressNow;
 import 'property_lane_model.dart';
 import 'timeline_double_tap.dart';
@@ -21,7 +22,7 @@ import 'timeline_frame_coordinate_policy.dart' show frameAtVisibleX;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
-import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
+import 'transform_lane_policy.dart' show laneSelectionPicksKey;
 
 /// A range drag that finished under the finger: tell the session how it
 /// ended, and hand the grip back.
@@ -351,7 +352,7 @@ class _TimelineFrameRangeGestureLayerState
 
   @override
   int _frameAt(Offset localPosition) => widget.geometry.value.cellAt(
-    widget.axis == Axis.horizontal ? localPosition.dx : localPosition.dy,
+    partAlong(widget.axis, localPosition),
   );
 
   @override
@@ -398,9 +399,9 @@ class _TimelineFrameRangeGestureLayerState
     _anchorIndex = frame;
     // A SELECT holds its row too: the cross-axis auto-pan can slide the
     // window past the anchor, and an unpinned anchor's recognizer would
-    // dispose and freeze the drag mid-sweep.
+    // dispose and freeze the drag mid-sweep. Its band waits for its first
+    // step ([_selectHeadStepped]).
     widget.callbacks.onGripTaken?.call(row);
-    widget.callbacks.onSelectUpdate(row, frame, frame, 0);
   }
 
   /// The pointer's cross-axis offset from THIS row's top (Excel cross-row
@@ -410,7 +411,7 @@ class _TimelineFrameRangeGestureLayerState
   /// Raw pixels, not a row count: dividing by this row's height would
   /// assume every other row matches it (R9 #25).
   double _crossOffsetAt(Offset localPosition) {
-    return widget.axis == Axis.horizontal ? localPosition.dy : localPosition.dx;
+    return partAcross(widget.axis, localPosition);
   }
 
   void _updateDrag(DragUpdateDetails details) {
@@ -422,7 +423,6 @@ class _TimelineFrameRangeGestureLayerState
     // one row-level gesture all four surfaces share. What was scrolled
     // joins the travel below, or the drag freezes the moment the view
     // starts moving under the pointer.
-    final horizontal = widget.axis == Axis.horizontal;
     _scrolledMain += edgeAutoPanApply(
       context: context,
       globalPosition: details.globalPosition,
@@ -431,7 +431,7 @@ class _TimelineFrameRangeGestureLayerState
     final appliedCross = edgeAutoPanApply(
       context: context,
       globalPosition: details.globalPosition,
-      axis: horizontal ? Axis.vertical : Axis.horizontal,
+      axis: flipAxis(widget.axis),
     );
     _scrolledCross += appliedCross;
     switch (_mode) {
@@ -440,23 +440,24 @@ class _TimelineFrameRangeGestureLayerState
       case _RangeDragMode.select:
         final local =
             details.localPosition +
-            (horizontal
-                ? Offset(_scrolledMain, _scrolledCross)
-                : Offset(_scrolledCross, _scrolledMain));
-        _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
-        widget.callbacks.onSelectUpdate(
-          _dragRow,
-          _anchorIndex,
-          _frameAt(local),
-          _crossOffsetAt(local),
-        );
+            offsetAlong(
+              widget.axis,
+              along: _scrolledMain,
+              across: _scrolledCross,
+            );
+        final head = _frameAt(local);
+        final cross = _crossOffsetAt(local);
+        if (!_selectHeadStepped(_anchorIndex, head, cross)) {
+          return;
+        }
+        widget.callbacks.onSelectUpdate(_dragRow, _anchorIndex, head, cross);
       case _RangeDragMode.move:
         // MOVE accumulates deltas, so only THIS step's applied pan joins —
         // details.delta is stated in the global frame and never sees the
         // content move. `_scrolledMain` was just incremented by exactly
         // this step's main-axis application.
-        _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
-        _crossDelta += horizontal ? details.delta.dy : details.delta.dx;
+        _mainDelta += partAlong(widget.axis, details.delta);
+        _crossDelta += partAcross(widget.axis, details.delta);
         final frames = commaDragFrameDelta(
           accumulatedDelta: _mainDelta + _scrolledMain,
           frameCellExtent: widget.geometry.value.frameCellExtent,
@@ -670,7 +671,10 @@ class TimelineLaneRangeHooks {
   final VoidCallback onTapClear;
 
   final bool Function() onMoveBegin;
-  final void Function(int frameDelta) onMoveUpdate;
+
+  /// A move step: the selection [frameDelta] frames along — and, carried
+  /// by a header graph's key, its keys' [values] (I-3 ②).
+  final void Function(int frameDelta, {LaneKeyValues? values}) onMoveUpdate;
   final VoidCallback onMoveEnd;
   final VoidCallback onMoveCancel;
 }
@@ -750,7 +754,10 @@ class TimelineLaneRangeCallbacks {
   final VoidCallback onTapClear;
 
   final bool Function() onMoveBegin;
-  final void Function(int frameDelta) onMoveUpdate;
+
+  /// A move step: the selection [frameDelta] frames along — and, carried
+  /// by a header graph's key, its keys' [values] (I-3 ②).
+  final void Function(int frameDelta, {LaneKeyValues? values}) onMoveUpdate;
   final VoidCallback onMoveEnd;
   final VoidCallback onMoveCancel;
 }
@@ -810,9 +817,7 @@ class _TimelineLaneRangeGestureLayerState
   // nothing where the widget rebuilds anyway.
   @override
   int _frameAt(Offset localPosition) => frameAtVisibleX(
-    visibleX: widget.axis == Axis.horizontal
-        ? localPosition.dx
-        : localPosition.dy,
+    visibleX: partAlong(widget.axis, localPosition),
     frameStartIndex: widget.frameStartIndex,
     frameCellWidth: widget.frameCellExtent,
     leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
@@ -830,16 +835,16 @@ class _TimelineLaneRangeGestureLayerState
   TimelineRowAddress get _rowAddress =>
       LaneRowAddress(widget.layer.id, widget.laneId);
 
+  // R26 #3 follow-up: the HEADER band counts as inside a whole-group
+  // selection, so one drag on it grabs every member lane's keys (user rule:
+  // "한번에 잡아 이동" — the shared band-row predicate).
   @override
-  bool _pressedInSelection(int frame) {
-    final selection = widget.callbacks.selection.value;
-    // R26 #3 follow-up: the HEADER band counts as inside a whole-group
-    // selection, so one drag on it grabs every member lane's keys (user
-    // rule: "한번에 잡아 이동" — the shared band-row predicate).
-    return selection != null &&
-        laneSelectionCoversBandRow(selection, widget.layer.id, widget.laneId) &&
-        selection.contains(frame);
-  }
+  bool _pressedInSelection(int frame) => laneSelectionPicksKey(
+    widget.callbacks.selection.value,
+    widget.layer.id,
+    widget.laneId,
+    frame,
+  );
 
   @override
   Axis get _dragAxis => widget.axis;
@@ -864,13 +869,6 @@ class _TimelineLaneRangeGestureLayerState
     _mode = _RangeDragMode.select;
     _anchorIndex = frame;
     widget.callbacks.onGripTaken?.call(_rowAddress);
-    widget.callbacks.onSelectUpdate(
-      widget.layer.id,
-      widget.laneId,
-      frame,
-      frame,
-      0,
-    );
   }
 
   /// The pointer's cross-axis offset from THIS lane row's top (R26 #3
@@ -878,7 +876,7 @@ class _TimelineLaneRangeGestureLayerState
   /// row's height would assume every other row matches it (R9 #25, and
   /// the storyboard rail is exactly where that fails).
   double _crossOffsetAt(Offset localPosition) {
-    return widget.axis == Axis.horizontal ? localPosition.dy : localPosition.dx;
+    return partAcross(widget.axis, localPosition);
   }
 
   void _updateDrag(DragUpdateDetails details) {
@@ -887,7 +885,6 @@ class _TimelineLaneRangeGestureLayerState
     }
     // D42: the same edge auto-pan fold as the cells layer — the lane
     // family closes the matrix.
-    final horizontal = widget.axis == Axis.horizontal;
     _scrolledMain += edgeAutoPanApply(
       context: context,
       globalPosition: details.globalPosition,
@@ -896,7 +893,7 @@ class _TimelineLaneRangeGestureLayerState
     _scrolledCross += edgeAutoPanApply(
       context: context,
       globalPosition: details.globalPosition,
-      axis: horizontal ? Axis.vertical : Axis.horizontal,
+      axis: flipAxis(widget.axis),
     );
     switch (_mode) {
       case _RangeDragMode.none:
@@ -904,19 +901,25 @@ class _TimelineLaneRangeGestureLayerState
       case _RangeDragMode.select:
         final local =
             details.localPosition +
-            (horizontal
-                ? Offset(_scrolledMain, _scrolledCross)
-                : Offset(_scrolledCross, _scrolledMain));
-        _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
+            offsetAlong(
+              widget.axis,
+              along: _scrolledMain,
+              across: _scrolledCross,
+            );
+        final head = _frameAt(local);
+        final cross = _crossOffsetAt(local);
+        if (!_selectHeadStepped(_anchorIndex, head, cross)) {
+          return;
+        }
         widget.callbacks.onSelectUpdate(
           widget.layer.id,
           widget.laneId,
           _anchorIndex,
-          _frameAt(local),
-          _crossOffsetAt(local),
+          head,
+          cross,
         );
       case _RangeDragMode.move:
-        _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
+        _mainDelta += partAlong(widget.axis, details.delta);
         final frames = commaDragFrameDelta(
           accumulatedDelta: _mainDelta + _scrolledMain,
           frameCellExtent: widget.frameCellExtent,
@@ -1006,14 +1009,14 @@ class _TimelineLaneRangeGestureLayerState
         // 안한흔적**」
         //
         // ⛔THE CELLS FAMILY HAD THIS RULE AND THIS ONE DID NOT. Both layers
-        // publish the ANCHOR span the moment the eager pan starts
-        // (`onSelectUpdate(frame, frame)`) — that is what makes a drag paint
-        // from its first pixel. The cells layer then clears it on the
-        // RELEASE when the press turns out to be a tap
-        // (`TimelineFrameRangeCallbacks.onTapClear`, T10: 「클릭하고 떼면 뭐든
-        // 비우게」). The lane band never got that half, so every click left a
-        // one-cell band behind: the same gesture, two grammars, decided by
-        // whether you happened to press an fx row.
+        // published the ANCHOR span the moment the eager pan started, and
+        // the cells layer cleared it on the RELEASE when the press turned
+        // out to be a tap (`TimelineFrameRangeCallbacks.onTapClear`, T10:
+        // 「클릭하고 떼면 뭐든 비우게」). The lane band never got that half,
+        // so every click left a one-cell band behind: the same gesture, two
+        // grammars, decided by whether you happened to press an fx row.
+        // (F-316: neither shows a band before its first step now —
+        // [_selectHeadStepped].)
         //
         // A real drag never settles into a tap, so select drags are
         // untouched; a press INSIDE the selection is the MOVE's (see
@@ -1113,11 +1116,21 @@ mixin _RangeDragFirstStep {
   bool _dragStepped = false;
 
   /// A SELECT whose head stands on [head], [cross] across its row: stepped
-  /// once that is not the cell it was pressed on ([anchor], this row).
-  void _noteSelectHead(int anchor, int head, double cross) {
+  /// once that is not the cell it was pressed on ([anchor], this row) — and
+  /// shown from that step on, never before it.
+  ///
+  /// 🗣️F-316 (유저 2026-10-08): 「어느정도 움직여서 선택범위 ui
+  /// 작동했는데 취소될때가 많음 … 작동하면 작동하도록」. ↩️The band was
+  /// shown as soon as the pan won — a mouse's at one pixel, a pen's at 18px
+  /// of tremble — while the release asked this step whether the press had
+  /// been a tap, and a tap clears (T10, H24): what had been shown went. One
+  /// question answers both now — a press that has not stepped shows
+  /// nothing, and one that has is no tap.
+  bool _selectHeadStepped(int anchor, int head, double cross) {
     if (head != anchor || cross < 0 || cross >= _dragRowExtent) {
       _dragStepped = true;
     }
+    return _dragStepped;
   }
 
   /// A MOVE now [frames] and [rows] from where it began: stepped once
@@ -1138,17 +1151,16 @@ mixin _RangeDragFirstStep {
   /// row ([timelineRowStepDelta]), which on any row 24px or taller lies past
   /// the 18px hit slop — the slop comes first there.
   bool _firstStepAt(Offset down, Offset now) {
-    final horizontal = _dragAxis == Axis.horizontal;
     final pressed = _frameAt(down);
     if (_pressedInSelection(pressed)) {
       final travel = now - down;
       return commaDragFrameDelta(
-            accumulatedDelta: horizontal ? travel.dx : travel.dy,
+            accumulatedDelta: partAlong(_dragAxis, travel),
             frameCellExtent: _dragCellExtent,
           ) !=
           0;
     }
-    final crossNow = horizontal ? now.dy : now.dx;
+    final crossNow = partAcross(_dragAxis, now);
     return _frameAt(now) != pressed ||
         crossNow < 0 ||
         crossNow >= _dragRowExtent;

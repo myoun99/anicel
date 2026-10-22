@@ -24,7 +24,9 @@ import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/ui/media/viewer_sound.dart';
 import 'package:anicel/src/ui/playback/audio_device_transport.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/native_engine_path.dart';
@@ -33,8 +35,9 @@ import '../../helpers/temp_dir.dart';
 /// 🚨AN ARM READS NO WINDOW IT ALREADY HOLDS (play-press-first-frame-stall
 /// Ⓐ, 10-15). A sound past two minutes streams from disk through a window
 /// two seconds behind and thirty ahead. An arm — the press, a run going on,
-/// a seek — re-centres it only where the window does not hold the arm
-/// point, by the rule that moves it under a playing stream. ↩️Every arm
+/// a seek, the media viewer's sound picked up anywhere — re-centres it only
+/// where the window does not hold the arm point, by the rule that moves it
+/// under a playing stream (`AudioStreamingWindow.cover`). ↩️Every arm
 /// re-centred, and a run going on from where its press had just centred
 /// the window read it off the disk and copied it twice: 🔬66ms and a GC on
 /// the AMMI OP press.
@@ -67,9 +70,9 @@ void main() {
     deleteTempQuietly(directory);
   });
 
-  test('a run going on from where its press centred the window, and a seek '
-      'inside it, read nothing — a seek past it reads the window there',
-      () async {
+  /// The null device open at [deviceRate], and a store whose `long.wav`
+  /// streams from disk.
+  Future<_WindowCountingStore> streamingStore() async {
     final device = QaAudioDevice.instance!;
     expect(
       device.open(sampleRate: deviceRate, channels: 2, useNullBackend: true),
@@ -100,7 +103,13 @@ void main() {
     store.resultFor('long.wav');
     await pumpEventQueue();
     expect(store.isStreaming('long.wav'), isTrue, reason: 'fixture');
+    return store;
+  }
 
+  test('a run going on from where its press centred the window, and a seek '
+      'inside it, read nothing — a seek past it reads the window there',
+      () async {
+    final store = await streamingStore();
     final controller = CanvasPlaybackController(
       resolveProject: () => _project,
       resolveActiveCutId: () => const CutId('cut'),
@@ -130,6 +139,35 @@ void main() {
     controller.seekToGlobalFrame(290); // a second behind the new centre
     expect(store.windowsRead, 2, reason: 'a step back inside reads nothing');
     controller.stop();
+  }, skip: skip);
+
+  test('🚨the media viewer\'s sound, put back past its window\'s trailing '
+      'edge, reads the window there — and picks up inside it reading '
+      'nothing (F-364-every-picture-even-when-late-Q1 a)', () async {
+    final store = await streamingStore();
+    final sound = ViewerSound(
+      conformStore: store,
+      resolveDevice: () => QaAudioDevice.instance,
+    );
+    addTearDown(sound.stop);
+
+    expect(
+      sound.play('long.wav', fromSeconds: 60),
+      isA<OutputArmed>(),
+      reason: 'fixture',
+    );
+    expect(store.windowsRead, 1, reason: 'the press centres it, once');
+
+    sound.resume(59); // a second back — a run going on, a short put-back
+    expect(store.windowsRead, 1, reason: 'it holds a second back');
+
+    sound.resume(50); // a run put back as far as the app was late
+    expect(
+      store.windowsRead,
+      2,
+      reason: 'ten seconds back is past its trailing two: ↩️it played out of '
+          'the window as it stood — silence',
+    );
   }, skip: skip);
 }
 

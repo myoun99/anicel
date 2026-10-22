@@ -55,18 +55,14 @@ class _CanvasPanelText implements CelTextToolHost {
   int? get brushColour => _state.widget.brushToolState?.value.color;
 
   @override
-  HistoryMark? get historyMark =>
-      _state.widget.historyManager?.gestures.mark;
+  HistoryGestures? get gestures => _state.widget.historyManager?.gestures;
 
   @override
-  void run(
-    Command command, {
-    HistoryMark? withCelMadeSince,
-    Set<String> setIn = const {},
-  }) {
+  void run(Command command, {Set<String> setIn = const {}}) {
     final history = _state.widget.historyManager;
     // ONE entry of history either way: the registering of a face rides
-    // INSIDE the text's step, so the fold below still counts two.
+    // INSIDE the text's step, so a run the step is written in counts it
+    // one (`HistoryRun.write`).
     final step =
         _state.widget.textCommands?.landingWith?.call(command, setIn) ??
         command;
@@ -75,30 +71,6 @@ class _CanvasPanelText implements CelTextToolHost {
       return;
     }
     history.execute(step);
-    if (withCelMadeSince != null) {
-      _foldWithItsCel(history, withCelMadeSince);
-    }
-  }
-
-  /// The text just filed and the cel its press made, as ONE step — I-10's
-  /// answer for a stroke (유저 2026-08-30: merged), said of a text: one
-  /// Ctrl+Z after typing on an empty frame leaves the frame empty again.
-  ///
-  /// The cel was filed when the press came up, a step of its own, as a tap
-  /// leaves it (`AutoFrameForStroke.flushAutoFrameForStroke`) — the text is
-  /// typed long after, so it cannot ride the press as a stroke does. The
-  /// two are folded once the text lands ([HistoryGestures.foldSince]).
-  ///
-  /// ⛔ONLY WHILE THEY ARE THE TWO ENTRIES FILED SINCE [since], exactly.
-  /// `foldSince` folds a whole run, and anything filed between the cel and
-  /// its text is somebody else's edit: folded in, one Ctrl+Z would take
-  /// that back with the text. Left apart they are two steps, each still
-  /// undone in the order it was made.
-  void _foldWithItsCel(HistoryManager history, HistoryMark since) {
-    final now = history.gestures.mark;
-    if (now.pushed - since.pushed == 2 && now.retracted == since.retracted) {
-      history.gestures.foldSince(since, 'Set text on a new frame');
-    }
   }
 
   @override
@@ -108,24 +80,26 @@ class _CanvasPanelText implements CelTextToolHost {
     }
   }
 
-  /// The verb a save takes to land what this canvas has IN FLIGHT
+  /// What a save lands of what this canvas has IN FLIGHT
   /// (`LiveStrokeLanding`): [stroke] — the drawing view's own, the stroke
   /// the pen is in the middle of — and beside it the text in hand, landed
-  /// as it is shown and kept in hand ([CelTextTool.landShown]). Null while
-  /// the view that owns [stroke] is gone: there is no canvas then.
+  /// as it is shown and kept in hand ([CelTextTool.landShown]). Nothing
+  /// while the view that owns [stroke] is gone: there is no canvas then.
+  /// Answers whether anything landed.
   ///
   /// One verb because it is one question — 「what has not reached the cel
   /// yet」 — and the door that asks it is one
   /// (`ProjectFileDoor._settleWorkInFlight`): a second kind of work in
   /// flight that had its own way to the save would be the fifth call site
   /// that door's comment says it exists to prevent.
-  StrokeLander? landerBeside(StrokeLander? stroke) => stroke == null
-      ? null
-      : () {
-          final strokeLanded = stroke();
-          final textLanded = tool.landShown();
-          return strokeLanded || textLanded;
-        };
+  bool landBeside(StrokeLander? stroke) {
+    if (stroke == null) {
+      return false;
+    }
+    final strokeLanded = stroke();
+    final textLanded = tool.landShown();
+    return strokeLanded || textLanded;
+  }
 
   /// The cel a press sets a text on or takes one from — null where none
   /// is under the playhead, or its row takes no marks.
@@ -138,7 +112,6 @@ class _CanvasPanelText implements CelTextToolHost {
     return (
       key: coordinator.activeFrameKey,
       coordinator: coordinator,
-      canvasSize: _state.widget.canvasSize,
       cacheInvalidationSink: _state.widget.cacheInvalidationSink,
     );
   }
@@ -265,7 +238,7 @@ class _CanvasPanelText implements CelTextToolHost {
   ) {
     final (:pixels, under: _, :above) = floating;
     // The pasteboard: what crosses it is cut there, as it is on the cel.
-    final wall = on.surface.canvasSize.pasteboardRect;
+    final wall = on.surface.pasteboard.rect;
     return CelTextFloat(
       held: SelectionFloatPaint(
         surface: _heldPainter(pixels.plate, on),
@@ -291,12 +264,14 @@ class _CanvasPanelText implements CelTextToolHost {
     if (kept != null && identical(kept.of, plate) && kept.fx == on.fx) {
       return kept.painter;
     }
-    final painter = _floatPainter(
+    final painter = floatPainter(
       celTextPlateSurface(
         plate,
         canvasSize: on.surface.canvasSize,
+        pasteboardReach: on.surface.pasteboardReach,
         tileSize: on.surface.tileSize,
       ),
+      _state.widget.activeSourceEffects,
     );
     _held = (of: plate, fx: on.fx, painter: painter);
     return painter;
@@ -313,12 +288,14 @@ class _CanvasPanelText implements CelTextToolHost {
     if (kept != null && identical(kept.of, above) && kept.fx == on.fx) {
       return kept.painter;
     }
-    final painter = _floatPainter(
+    final painter = floatPainter(
       BitmapSurface(
         canvasSize: on.surface.canvasSize,
+        pasteboardReach: on.surface.pasteboardReach,
         tileSize: on.surface.tileSize,
         texts: above,
       ),
+      _state.widget.activeSourceEffects,
     );
     _above = (of: above, fx: on.fx, painter: painter);
     return painter;
@@ -326,34 +303,17 @@ class _CanvasPanelText implements CelTextToolHost {
 
   ({Object of, String fx, BitmapSurfacePainter painter})? _above;
 
-  /// A painter of what floats: drawn in its row's own space by the painter
-  /// it floats over, so it brings no paper and is nobody's cel.
-  BitmapSurfacePainter _floatPainter(BitmapSurface surface) =>
-      BitmapSurfacePainter(
-        surface: celSurfaceAsShown(surface, _state.widget.activeSourceEffects),
-        showTransparentBackground: false,
-        lineage: TilePyramid.noLineage,
-      );
-
   Widget layer() => Positioned.fill(
     child: CelTextToolLayer(
       tool: tool,
       stage: CelTextStage(
         viewport: _state._viewportState._viewport,
-        canvasSize: _state.widget.canvasSize,
+        pasteboard: _state._stagePasteboard,
         placement: _state.widget.interactiveContentPose,
       ),
       cel: cel,
-      // 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE DOES (I-10).
-      // On a frame with no cel the drawing view stands down in place and
-      // asks — but this layer is over it and takes the press, so it asks in
-      // the view's stead. Where a cel IS there and its row takes no marks,
-      // or nothing stands here at all, the host's own listener speaks
-      // (`MainCanvasBrushHost`), and a second question would say it twice.
-      onPressNeedsCel:
-          _state.widget.coordinator != null && !_state.widget.celEditable
-          ? _state.widget.onPressNeedsCel
-          : null,
+      onPressNeedsCel: _state._markDoorOverTheView,
+      markMakesItsOwnCel: _state.widget.markMakesItsOwnCel,
       onDragActive: (active) => _state._textDragActive = active,
       oneFingerAction: _state.widget.oneFingerAction,
     ),

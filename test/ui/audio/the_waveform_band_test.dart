@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/audio/waveform_painter.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show rectAlong;
 
 /// The waveform band — nothing named it (the audit's untested-file pass,
 /// 2026-09-05).
@@ -272,9 +273,11 @@ void main() {
         // Whole pixels, so no column is half the clip's own edge.
         const from = 20;
         const to = 44;
-        final clip = axis == Axis.horizontal
-            ? Rect.fromLTRB(from.toDouble(), 0, to.toDouble(), size)
-            : Rect.fromLTRB(0, from.toDouble(), size, to.toDouble());
+        final clip = rectAlong(
+          axis,
+          along: (from: from.toDouble(), to: to.toDouble()),
+          across: (from: 0, to: size),
+        );
         final whole = await paint(band);
         final clipped = await paintUnder(band, clip);
 

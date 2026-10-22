@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/set_toggle.dart';
+import '../input/control_press_claim.dart';
 import '../widgets/content_scrollbar.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
 
@@ -103,24 +105,55 @@ class ToolSettingsSection extends StatelessWidget {
   }
 }
 
+/// A GROUP of settings inside a section, as the section lists its rows: its
+/// header, and then [rows] — unless the group is folded.
+///
+/// 🗣️Every group folds (유저 2026-10-20, F-418-Q10 「모든 그룹 머리가
+/// 접힌다」), from its header. A brush remembers its folds as its own; the
+/// other tools, each its own ([ToolSettingsFolds]).
+///
+/// ⚠️Rows, not a widget around them: the brush's panel keeps each row it
+/// built while that row shows the same thing, and it finds them by their
+/// place in one flat list.
+List<Widget> toolSettingsGroup(
+  String label, {
+  bool first = false,
+  required ToolSettingsFold fold,
+  required List<Widget> rows,
+}) => [
+  ToolSettingsGroupHeader(label, first: first, fold: fold),
+  if (!fold.folded) ...rows,
+];
+
 /// The header of a GROUP of settings inside a section — the CSP category
 /// rule: a small header over each group, a hairline separating it from the
-/// group above.
+/// group above — and what folds the group away and opens it again: a press
+/// on it, on the app's one press law ([ControlPressClaim]), wearing the
+/// export window's arrows.
 ///
 /// The brush's settings wrote it; the text tool's are grouped the same way
 /// (글자 · 상자, the layout 유저 took on 2026-10-06), so it stands beside the
 /// shell the sections share rather than in the brush's own file.
 class ToolSettingsGroupHeader extends StatelessWidget {
-  const ToolSettingsGroupHeader(this.label, {super.key, this.first = false});
+  const ToolSettingsGroupHeader(
+    this.label, {
+    super.key,
+    this.first = false,
+    required this.fold,
+  });
 
   final String label;
 
   /// Whether nothing stands above it: the first group wears no hairline.
   final bool first;
 
+  /// Whether the group is folded, and what folds it or opens it.
+  final ToolSettingsFold fold;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final dim = theme.colorScheme.onSurfaceVariant;
     return Padding(
       padding: EdgeInsets.only(top: first ? 0 : 8, bottom: 4),
       child: Column(
@@ -136,10 +169,25 @@ class ToolSettingsGroupHeader extends StatelessWidget {
                 color: theme.colorScheme.outlineVariant,
               ),
             ),
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          ControlPressClaim(
+            onPressed: fold.onToggle,
+            child: InkWell(
+              onTap: silentPress(fold.onToggle),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: theme.textTheme.labelSmall?.copyWith(color: dim),
+                    ),
+                  ),
+                  Icon(
+                    fold.folded ? Icons.chevron_right : Icons.expand_more,
+                    size: 14,
+                    color: dim,
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -147,6 +195,46 @@ class ToolSettingsGroupHeader extends StatelessWidget {
     );
   }
 }
+
+/// Which groups of each tool that is not a brush are folded — each tool its
+/// own (F-418-Q10), for as long as the app runs, as those tools' other
+/// settings are kept.
+///
+/// A brush keeps its folds itself (`BrushSettings.folded`).
+abstract final class ToolSettingsFolds {
+  static final Map<String, ValueNotifier<Set<String>>> _byTool = {};
+
+  static ValueNotifier<Set<String>> _of(String tool) =>
+      _byTool.putIfAbsent(tool, () => ValueNotifier(const {}));
+
+  /// [build]s a section of [tool] — again each time one of its groups folds
+  /// or opens — handed each group's fold by its name.
+  ///
+  /// [tool] names the TOOL, not the section: the ruler shows a section per
+  /// guide, and every guide's groups fold as the ruler's (「자는 도구마다」).
+  static Widget listen(
+    String tool,
+    Widget Function(ToolSettingsFold Function(String group) foldOf) build,
+  ) {
+    final folds = _of(tool);
+    return ValueListenableBuilder<Set<String>>(
+      valueListenable: folds,
+      builder: (context, folded, _) => build(
+        (group) => (
+          folded: folded.contains(group),
+          onToggle: () => folds.value = toggledSet(folds.value, group),
+        ),
+      ),
+    );
+  }
+
+  /// Every tool's groups open again — a test's fresh start.
+  @visibleForTesting
+  static void reset() => _byTool.clear();
+}
+
+/// Whether a group of settings is folded, and what folds it or opens it.
+typedef ToolSettingsFold = ({bool folded, VoidCallback onToggle});
 
 /// THE preview at the top of the tool settings panel — one box, one size,
 /// whichever tool is showing.

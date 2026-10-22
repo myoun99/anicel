@@ -1,5 +1,3 @@
-import '../../services/project_lookup.dart'
-    show cutIdOfLayer, layerAnywhereOrNull;
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
@@ -10,9 +8,12 @@ import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_layer_transform_enabled_command.dart';
+import '../../services/commands/update_track_effects_command.dart';
 import '../timeline/effect_lane_editing.dart'
     show effectsWithAdded, effectsWithEnabledToggled, effectsWithGroupReset;
+import '../timeline/effect_lane_policy.dart' show effectGroupLaneId;
 import 'active_cut_edits.dart';
+import 'row_written_by_id.dart';
 import 'session_roles.dart';
 
 /// The EFFECTS AND THE FX SWITCHES — the effect chains a layer or a track
@@ -28,12 +29,18 @@ class EffectsAndFx {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutEdits activeCut,
+    required Command? Function(LayerId row, String laneId) laneGroupShown,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _activeCut = activeCut;
+       _activeCut = activeCut,
+       _laneGroupShown = laneGroupShown;
 
   final ActiveCutEdits _activeCut;
+
+  /// The step that shows a row's lane group — its lanes twirled down and
+  /// the group open among them; null where it already shows (F-396).
+  final Command? Function(LayerId row, String laneId) _laneGroupShown;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -52,7 +59,7 @@ class EffectsAndFx {
     List<LayerEffect> effects, {
     String description = 'Edit layer effects',
   }) => _activeCut.onCutOfRowQuietly(
-    cutIdOfLayer(_project.repository.requireProject(), layerId),
+    layerId,
     (cutId) => _project.cutCommandCoordinator.updateLayerEffects(
       cutId: cutId,
       layerId: layerId,
@@ -79,7 +86,9 @@ class EffectsAndFx {
   }
 
   /// Appends a fresh effect of [kind] (every parameter at its default, so
-  /// adding one changes nothing until a value moves) to the active row.
+  /// adding one changes nothing until a value moves) to the active row —
+  /// and shows it: the row's lanes twirled down and the effect's header
+  /// open, in the same undo step ([_laneGroupShown], F-396).
   ///
   /// ⚠️Built from the row that HOLDS the chain, not from the active row: an
   /// SE row's active row is its cut's projection, whose keys sit on the
@@ -101,10 +110,18 @@ class EffectsAndFx {
       ),
       kind: kind,
     );
-    updateLayerEffects(
+    final description = 'Add ${kind.label}';
+    _activeCut.onCutOfRowQuietly(
       layer.id,
-      effectsWithAdded(layer.effects, effect),
-      description: 'Add ${kind.label}',
+      (cutId) => _project.historyManager.executeAsOneStep(description, [
+        ..._project.cutCommandCoordinator.layerEffectsCommands(
+          cutId: cutId,
+          layerId: layer.id,
+          effects: effectsWithAdded(layer.effects, effect),
+          description: description,
+        ),
+        ?_laneGroupShown(layer.id, effectGroupLaneId(effect.id)),
+      ]),
     );
   }
 
@@ -129,7 +146,7 @@ class EffectsAndFx {
   /// independent bypass: some groups on, some off, and tapping resolves the
   /// whole row one way.
   LayerFxState layerFxState(LayerId layerId) {
-    final layer = _fxRow(layerId);
+    final layer = _project.rowWrittenById(layerId);
     if (layer == null) {
       return LayerFxState.on;
     }
@@ -160,12 +177,12 @@ class EffectsAndFx {
   /// can have its transform bypassed while a colour effect still runs —
   /// the master's [LayerFxState.mixed] answer cannot decide the pose.
   bool isLayerTransformFxEnabled(LayerId layerId) =>
-      _fxRow(layerId)?.transformEnabled ?? true;
+      _project.rowWrittenById(layerId)?.transformEnabled ?? true;
 
   /// The MASTER toggle: off unless the row is already fully off, in which
   /// case it turns everything back on. ONE undo step for the whole row.
   void toggleLayerFx(LayerId layerId) {
-    final layer = _fxRow(layerId);
+    final layer = _project.rowWrittenById(layerId);
     if (layer == null) {
       return;
     }
@@ -175,7 +192,7 @@ class EffectsAndFx {
 
   /// The TRANSFORM group header's own switch (R8).
   void toggleLayerTransformFx(LayerId layerId) {
-    final layer = _fxRow(layerId);
+    final layer = _project.rowWrittenById(layerId);
     if (layer == null) {
       return;
     }
@@ -195,7 +212,7 @@ class EffectsAndFx {
     required bool enabled,
     String description = 'Toggle transform FX',
   }) {
-    final layer = _fxRow(layerId);
+    final layer = _project.rowWrittenById(layerId);
     final command = layer == null
         ? null
         : _transformSwitch(layer, enabled: enabled, description: description);
@@ -206,24 +223,6 @@ class EffectsAndFx {
     // Not a structural cut edit — see [_setLayerFxSwitches].
     _changes.notifyChanged();
   }
-
-  // ⛔The row an FX edit addresses is [ProjectAccess.commitLayerById] — the
-  // row every layer op commits against, a track-owned SE row's GLOBAL form
-  // and not its cut's projection. A private `fxSwitchLayerById` restated it
-  // as 「cut layer, else the SE row」 and asked the cut FIRST, which hands
-  // back the projection: a chain built from it lands on the track at the
-  // cut's frames (se-row-fx-write-path's third pin).
-  //
-  // 🚨AND WHERE THAT KNOWS NOTHING, THE ROW WHEREVER IT LIVES
-  // (other-track-s-row-fx-and-mixer, measured 2026-09-25): the storyboard
-  // rail carries every track's S rows, and `commitLayerById` answers a
-  // track row from the ACTIVE track alone — another track's fx read
-  // 「on」 forever and its press did nothing. The model walk returns the
-  // global form too, never a projection. `commitLayerById` itself stays
-  // as it is: its timing callers work inside the active cut's window.
-  Layer? _fxRow(LayerId layerId) =>
-      _project.commitLayerById(layerId) ??
-      layerAnywhereOrNull(_project.repository.requireProject(), layerId);
 
   /// The command that sets [layer]'s transform switch, or null when the
   /// row has none or it already reads [enabled].
@@ -259,9 +258,7 @@ class EffectsAndFx {
       // A track-owned SE row lives in no cut: its chain is addressed from
       // the cut the user stands in, as every other FX edit of it is
       // ([updateLayerEffects]).
-      final cutId =
-          cutIdOfLayer(_project.repository.requireProject(), layer.id) ??
-          _project.activeCutId;
+      final cutId = _activeCut.cutOfRow(layer.id);
       if (cutId == null) {
         continue;
       }
@@ -340,6 +337,8 @@ class EffectsAndFx {
   /// Adds an effect to the V row's chain. Ids are minted the way a layer's
   /// are (the lane address embeds them, so two adds in one session must not
   /// collide) — off the TRACK id, since that is what carries the chain.
+  /// Shown as a layer's is: the row's lanes — its lane carrier's — and
+  /// the effect's header open in the same undo step (F-396).
   void addEffectToTrack(TrackId trackId, EffectKind kind) {
     final track = _project.trackById(trackId);
     if (track == null) {
@@ -353,11 +352,21 @@ class EffectsAndFx {
       ),
       kind: kind,
     );
-    updateTrackEffects(
-      trackId,
-      effectsWithAdded(track.effects, effect),
-      description: 'Add ${kind.label}',
-    );
+    final description = 'Add ${kind.label}';
+    _project.historyManager.executeAsOneStep(description, [
+      UpdateTrackEffectsCommand(
+        repository: _project.repository,
+        trackId: trackId,
+        effects: effectsWithAdded(track.effects, effect),
+        description: description,
+      ),
+      ?_laneGroupShown(
+        trackTransformLaneCarrierId(trackId),
+        effectGroupLaneId(effect.id),
+      ),
+    ]);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// Runs one `effectsWith*` transform over [trackId]'s chain and banks it
@@ -427,14 +436,20 @@ class EffectsAndFx {
     _changes.notifyChanged();
   }
 
-  /// The effect chain a lane/fx-header address names: a real layer's, or the
+  /// The effect chain a lane/fx-header address names: a real layer's — the
+  /// row a write of it addresses ([RowWrittenById.rowWrittenById]) — or the
   /// V TRACK's through the carrier id (R4b). Null when neither exists.
+  ///
+  /// 🗣️I-89 ①ⓓ: the conte rail re-orders an S row's chain on every track
+  /// (유저 2026-10-13 「같은 법으로」). ↩️It asked the active cut's rows
+  /// alone, so another track's S row found no chain and its drag did
+  /// nothing — the fx switch's own trap, measured 09-25.
   List<LayerEffect>? effectChainOf(LayerId layerId) {
     final trackId = trackIdOfTransformLaneCarrier(layerId);
     if (trackId != null) {
       return _project.trackById(trackId)?.effects;
     }
-    return _project.layerById(layerId)?.effects;
+    return _project.rowWrittenById(layerId)?.effects;
   }
 
   /// Bypasses or restores EVERY layer's fx — the legend's bulk flyout,

@@ -1,9 +1,10 @@
-import 'dart:io';
-
+import 'package:analyzer/dart/analysis/features.dart';
+import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/dart_sources.dart';
-import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨EVERY TEST THAT WAITS OUT THE WAIT WINDOW ENDS BY STOPPING PLAYBACK'S
 /// WARMER — see `pumpPastTheWaitWindow`.
@@ -15,74 +16,133 @@ import '../../helpers/project_scratch_folder.dart';
 /// in 8 on one master, 1 in 8 on another lane of it, every one at the
 /// warmer's step between two pictures). Twenty-three tests waited out the
 /// window that day, and not one of them stopped it.
+///
+/// 🚨A HELPER A TEST WAITS THROUGH IS HELD TO IT TOO, and stops the warmer
+/// itself — once, for every test that waits through it (card
+/// warmer-scan-sees-helpers, 2026-10-16). The scan read only `testWidgets`
+/// bodies, so a test that waited inside a helper was never asked: 10-10's
+/// `place()` was one, and the import window's two `runImport`s left five
+/// tests ending with the warmer running.
 void main() {
-  /// Each `testWidgets(…)` under [dir] — `'test'` spelled out, for the
-  /// affected-tests selector — that waits out the window, as 「file:line」,
-  /// with whether its body stops the warmer.
-  Map<String, bool> windowTestsUnder(String dir) => {
-    for (final file in dartFilesUnder(dir))
-      for (final (line, body) in _testWidgetsCalls(file.readAsStringSync()))
-        if (body.contains('pumpPastTheWaitWindow(tester)'))
-          '${file.path.replaceAll(r'\', '/')}:$line': body.contains(
-            'prerenderScheduler.cancel()',
-          ),
-  };
-
-  test('the scan: a test is its whole call, a skip after its body too', () {
-    final folder = Directory.systemTemp.createTempSync('warmer-scan');
-    deleteAfterSessionEnds(folder);
-    // ⚠️Spelled with a stand-in: this file is under `test` too, and a
-    // fixture written out as calls would be read as three tests of its own.
-    File('${folder.path}/a_test.dart').writeAsStringSync('''
+  test('the scan: a test or a helper that waits, each asked once — a '
+      'closure handed on is its function\'s', () {
+    // A string, so the scan reading this file sees none of it as calls.
+    const source = '''
 void main() {
-  TW('stops', (tester) async {
+  testWidgets('stops', (tester) async {
     await pumpPastTheWaitWindow(tester);
     s.playbackRig.prerenderScheduler.cancel();
   });
-  TW('forgets', (tester) async {
+  testWidgets('forgets', (tester) async {
     await pumpPastTheWaitWindow(tester);
   }, skip: false);
-  TW('never waits', (tester) async {});
+  testWidgets('never waits', (tester) async {});
+  Future<void> placeAndStop(WidgetTester tester) async {
+    await pumpPastTheWaitWindow(tester);
+    s.playbackRig.prerenderScheduler.cancel();
+  }
+  Future<void> placeAndForget(WidgetTester tester) async {
+    await pumpPastTheWaitWindow(tester);
+  }
+  testWidgets('waits through a helper', (tester) async {
+    await placeAndForget(tester);
+  });
+  testWidgets('waits in a closure it hands on', (tester) async {
+    await tester.runAsync(() => pumpPastTheWaitWindow(tester));
+    s.playbackRig.prerenderScheduler.cancel();
+  });
 }
-'''.replaceAll('TW(', 'testWidgets('));
+''';
 
-    expect(windowTestsUnder(folder.path).values.toList(), [true, false]);
+    expect(waitersIn('x.dart', source), {
+      'x.dart:2': true,
+      'x.dart:6': false,
+      'x.dart:10': true,
+      'x.dart:14': false,
+      'x.dart:20': true,
+    });
   });
 
+  late final waiters = windowWaitersUnder('test');
+
   test('⛔premise: the scan finds the family', () {
-    expect(windowTestsUnder('test'), hasLength(greaterThanOrEqualTo(23)));
+    // 41 on 2026-10-16: the tests and the helpers they wait through.
+    expect(waiters, hasLength(greaterThanOrEqualTo(41)));
   });
 
   test('🚨and every one of them stops the warmer', () {
     expect(
       [
-        for (final MapEntry(:key, :value) in windowTestsUnder('test').entries)
+        for (final MapEntry(:key, :value) in waiters.entries)
           if (!value) key,
       ],
       isEmpty,
-      reason: 'end the body with session.playbackRig.prerenderScheduler'
-          '.cancel() — see pumpPastTheWaitWindow',
+      reason: 'end it with session.playbackRig.prerenderScheduler.cancel() '
+          '— a helper for every test that waits through it — see '
+          'pumpPastTheWaitWindow',
     );
   });
 }
 
-/// Every `testWidgets(…)` call in [text]: the line it starts on and its
-/// whole text, the arguments after the body included.
-Iterable<(int, String)> _testWidgetsCalls(String text) sync* {
-  var from = 0;
-  while (true) {
-    final at = text.indexOf('testWidgets(', from);
-    if (at < 0) return;
-    from = at + 1;
-    var depth = 0;
-    for (var i = at + 'testWidgets'.length; i < text.length; i++) {
-      final c = text[i];
-      if (c == '(') depth++;
-      if (c == ')' && --depth == 0) {
-        final line = '\n'.allMatches(text.substring(0, at)).length + 1;
-        yield (line, text.substring(at, i + 1));
-        break;
+/// Each function under [dir] — `'test'` spelled out, for the affected-tests
+/// selector — that waits out the window, as 「file:line」, with whether it
+/// stops the warmer.
+///
+/// Only a file that names the wait is parsed: a parse of every file under
+/// `test` was 2.8 s of this file's run, and the wait is called by name.
+Map<String, bool> windowWaitersUnder(String dir) => {
+  for (final file in dartFilesUnder(dir))
+    if (file.readAsStringSync() case final source
+        when source.contains('pumpPastTheWaitWindow'))
+      ...waitersIn(file.path.replaceAll(r'\', '/'), source),
+};
+
+/// The functions in [source] that call `pumpPastTheWaitWindow`, by the line
+/// they start on, with whether their text stops the warmer: a `testWidgets`
+/// body (its line is the call's), or a function or method a test waits
+/// through. A closure handed to anything else — a `runAsync`, a tear-down —
+/// is the function's it was written in.
+Map<String, bool> waitersIn(String path, String source) {
+  final unit = parseString(
+    content: source,
+    featureSet: FeatureSet.latestLanguageVersion(),
+    throwIfDiagnostics: false,
+  ).unit;
+  final waits = _Waits();
+  unit.accept(waits);
+  return {
+    for (final waiter in waits.found)
+      '$path:${unit.lineInfo.getLocation(waiter.offset).lineNumber}': source
+          .substring(waiter.offset, waiter.end)
+          .contains('prerenderScheduler.cancel()'),
+  };
+}
+
+class _Waits extends RecursiveAstVisitor<void> {
+  final Set<AstNode> found = {};
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (node.methodName.name == 'pumpPastTheWaitWindow') {
+      final waiter = _waiterOf(node);
+      if (waiter != null) {
+        found.add(waiter);
       }
     }
+    super.visitMethodInvocation(node);
+  }
+
+  /// The `testWidgets(…)` call whose body [node] is in, or the function or
+  /// method it is in — whichever is nearer.
+  static AstNode? _waiterOf(AstNode node) {
+    for (var at = node.parent; at != null; at = at.parent) {
+      if (at is FunctionDeclaration || at is MethodDeclaration) {
+        return at;
+      }
+      if (at is MethodInvocation && at.methodName.name == 'testWidgets') {
+        return at;
+      }
+    }
+    return null;
   }
 }

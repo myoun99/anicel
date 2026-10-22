@@ -5,10 +5,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
+import 'package:anicel/src/models/conte/conte_ink_windows.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -22,6 +24,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_asset.dart' show normalizedMediaPath;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
@@ -30,6 +33,7 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
@@ -40,8 +44,13 @@ import 'package:anicel/src/ui/export/export_conte_render.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/sheet_painting.dart' show pictureOutline;
+import '../../helpers/cel_photo_fixture.dart';
+import '../../helpers/checker_sampling.dart';
 import '../../helpers/conte_book.dart';
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/pdf_content.dart';
+import '../../helpers/sheet_image_runs.dart';
+import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The Conte export tab (work-order step 6): the picture conte as one
@@ -59,6 +68,10 @@ void main() {
     AppExport.settings.value = AppExportSettings();
     deleteTempQuietly(temp);
   });
+
+  // The project's name — what the conte's files are called while nobody
+  // names them (F-404).
+  const sheet = 'Conte Export';
 
   Layer storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
     id: LayerId('$cutId-sb'),
@@ -84,7 +97,7 @@ void main() {
   /// font fallback is exercised for real.
   Project project({CutCamera? camera40}) => Project(
     id: const ProjectId('conte-export'),
-    name: 'Conte Export',
+    name: sheet,
     cameraSize: const CanvasSize(width: 32, height: 18),
     createdAt: DateTime.utc(2026, 7, 29),
     tracks: [
@@ -251,6 +264,93 @@ void main() {
     });
   });
 
+  testWidgets('a photo on a cell\'s ink prints from its file, sampled for '
+      'the pixels the page is rendered at — the screen\'s law (I-97)', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final source = buildConteSheetSource(project());
+      final page = layoutConteSheet(
+        source,
+        metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
+      ).first;
+      final metrics = page.metrics;
+      final cell = page.cells.first;
+      final key = conteInkRowKey(CutId(cell.cutId), cell.source.inkId!);
+      final placement = conteInkMarks(
+        page,
+        metrics,
+      ).firstWhere((ink) => ink.key == key).placement;
+      final slot = contePictureSlot(cell, metrics);
+      // On the band, beside the cell's picture.
+      final beside = placement.pixelOf(Offset(slot.right + 30, slot.center.dy));
+      final file = await checkerImage(16);
+      addTearDown(file.dispose);
+
+      /// The reds about the photo, the page rendered at [size] of its
+      /// paper's pixels — a pixel of its ink one of them at 1x — and a
+      /// pixel of the file [perPixel] of them.
+      Future<List<int>> printed({
+        required double size,
+        required double perPixel,
+        List<({String path, int? width})>? asks,
+      }) async {
+        final photo = photoOf(
+          1,
+          center: CanvasPoint(x: beside.dx, y: beside.dy),
+          size: const CanvasSize(width: 16, height: 16),
+          scale: perPixel / size,
+        );
+        final images = sheetImageRunOf({
+          photo.reference.assetPath: file,
+        }, asks: asks);
+        addTearDown(images.dispose);
+        final rendered = await renderContePageImage(
+          page: page,
+          source: source,
+          words: conteWordsIn(AppLanguage.ja),
+          images: images,
+          inkPhotosFor: (asked) => [if (asked == key) photo],
+          outputSize: CanvasSize(
+            width: (2480 * size).round(),
+            height: (3508 * size).round(),
+          ),
+        );
+        try {
+          final shown = placement.paperOf(beside) * metrics.paperScale * size;
+          return await redsAround(
+            rendered,
+            shown.dx.round(),
+            shown.dy.round(),
+          );
+        } finally {
+          rendered.dispose();
+        }
+      }
+
+      // Either side of the display law's line, one: a scale handed in a
+      // quarter wrong crosses it.
+      final full = await printed(size: 1, perPixel: 1.25);
+      expect(full, containsAll([0, 255]), reason: 'LIVENESS: the file');
+      expect(
+        full.every(isPure),
+        isTrue,
+        reason: 'a pixel of the file over one of the page\'s: hard-edged',
+      );
+      expect(
+        (await printed(size: 0.5, perPixel: 0.75)).any(isGrey),
+        isTrue,
+        reason: 'under one: smoothed',
+      );
+      // And READ for those pixels: a file drawn at a fifth of its own is
+      // asked for at the ladder's quarter of its width — the width the
+      // screen asks at the same size — never whole.
+      final asks = <({String path, int? width})>[];
+      await printed(size: 1, perPixel: 0.2, asks: asks);
+      expect(asks, [(path: photoOf(1).reference.assetPath, width: 4)]);
+    });
+  });
+
   testWidgets('a page image is paper from its first row to its last — the '
       'page is A4 in points and the image A4 in pixels, a hair apart in '
       'shape, and the page lies centred in it (F-294)', (tester) async {
@@ -333,8 +433,8 @@ void main() {
     );
   });
 
-  testWidgets('the dialog\'s Conte tab exports conte.pdf into the chosen '
-      'location', (tester) async {
+  testWidgets('the dialog\'s Conte tab exports the project\'s PDF into the '
+      'chosen location', (tester) async {
     final session = EditorSessionManager(initialProject: project());
     addTearDown(session.dispose);
     await tester.binding.setSurfaceSize(const Size(1120, 660));
@@ -360,13 +460,13 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
 
-    final pdf = File('${temp.path}${Platform.pathSeparator}conte.pdf');
+    final pdf = File('${temp.path}${Platform.pathSeparator}$sheet.pdf');
     expect(pdf.existsSync(), isTrue);
     expect(isPdf(pdf.readAsBytesSync()), isTrue);
     final status = tester.widget<Text>(
       find.byKey(const ValueKey<String>('export-status')),
     );
-    expect(status.data, contains('conte.pdf'));
+    expect(status.data, contains('$sheet.pdf'));
   });
 
   testWidgets('🗣️the PDF carries every cell\'s picture at the camera frame\'s '
@@ -399,7 +499,7 @@ void main() {
     await tester.pump();
 
     final sizes = pdfImageSizes(
-      File('${temp.path}${Platform.pathSeparator}conte.pdf').readAsBytesSync(),
+      File('${temp.path}${Platform.pathSeparator}$sheet.pdf').readAsBytesSync(),
     );
     expect(sizes, isNotEmpty, reason: 'fixture: the cells print pictures');
     expect(sizes.toSet(), {(32, 18)});
@@ -451,7 +551,7 @@ void main() {
     await tester.pump();
 
     final sizes = pdfImageSizes(
-      File('${temp.path}${Platform.pathSeparator}conte.pdf').readAsBytesSync(),
+      File('${temp.path}${Platform.pathSeparator}$sheet.pdf').readAsBytesSync(),
     );
     expect(
       sizes.toSet(),
@@ -483,10 +583,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -498,7 +595,7 @@ void main() {
         .toList();
     expect(
       files,
-      containsAll(['conte_p1.png', 'conte_p2.png', 'conte_p3.png']),
+      containsAll(['${sheet}_p1.png', '${sheet}_p2.png', '${sheet}_p3.png']),
       reason: 'the whole book: the cover, its blank back, then the body',
     );
     expect(
@@ -538,10 +635,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -552,42 +646,21 @@ void main() {
           if (file.path.endsWith('.png'))
             file.path.split(Platform.pathSeparator).last,
       },
-      {'conte_p1.png', 'conte_p2.png'},
+      {'${sheet}_p1.png', '${sheet}_p2.png'},
     );
   });
 
-  testWidgets('the page images carry the cover\'s picture and the logo the '
-      'panel prints — the pages name them, the export reads them', (
+  testWidgets('🎯the export prints the sheet in the form the work keeps — '
+      'the digital one\'s picture column against its cut column', (
     tester,
   ) async {
-    Future<String> solidPng(String name, Color color) async {
-      final recorder = ui.PictureRecorder();
-      ui.Canvas(recorder).drawPaint(Paint()..color = color);
-      final picture = recorder.endRecording();
-      final image = await picture.toImage(8, 8);
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      picture.dispose();
-      image.dispose();
-      final file = File('${temp.path}${Platform.pathSeparator}$name');
-      await file.writeAsBytes(data!.buffer.asUint8List());
-      return file.path;
-    }
-
-    final (cover, logo) = (await tester.runAsync(
-      () async => (
-        await solidPng('cover.png', const Color(0xFF00FF00)),
-        await solidPng('logo.png', const Color(0xFF0000FF)),
-      ),
-    ))!;
-    final session = EditorSessionManager(
-      initialProject: project().copyWith(
-        timesheetInfo: TimesheetInfo.empty.copyWith(
-          coverImagePath: () => cover,
-          logoAssetPath: () => logo,
-        ),
-      ),
-    );
+    // 유저 2026-10-21 (I-118): 「디지털식? … 컷번호 항목도 본문인 화면쪽이랑
+    // 붙어있고」 — chosen in the panel, printed as the panel shows it.
+    final session = EditorSessionManager(initialProject: project());
     addTearDown(session.dispose);
+    session.updateTimesheetInfo(
+      session.timesheetInfo.copyWith(conteForm: ConteSheetForm.digital),
+    );
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -606,10 +679,109 @@ void main() {
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    // Where the analog sheet leaves paper between its cut box and the
+    // table, the digital one's silhouette stands: half its border in from
+    // the cut column's edge, halfway down the first row.
+    const digital = ConteSheetMetrics(form: ConteSheetForm.digital);
+    const analog = ConteSheetMetrics();
+    final x = digital.cutColumnRight + digital.silhouetteBorder / 2;
+    expect(
+      x,
+      inExclusiveRange(analog.cutColumnRight, analog.pictureLeft),
+      reason: 'fixture: paper on the analog sheet',
+    );
+    final pixel = await tester.runAsync(() async {
+      final bytes = File(
+        '${temp.path}${Platform.pathSeparator}${sheet}_p3.png',
+      ).readAsBytesSync();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final image = (await codec.getNextFrame()).image;
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final scale = digital.paperScale;
+      final at =
+          ((digital.rowTop(0) + digital.rowHeight / 2) * scale).round() *
+              image.width +
+          (x * scale).round();
+      image.dispose();
+      codec.dispose();
+      return data!.getUint32(at * 4);
+    });
+    expect(
+      pixel,
+      0x101010FF,
+      reason: 'the silhouette\'s black, RGBA — not the analog sheet\'s paper',
+    );
+  });
+
+  testWidgets('the page images and the PDF carry the cover\'s picture and '
+      'the logo the panel prints — the pages name them, the export reads '
+      'them through the project: carried, their originals gone', (
+    tester,
+  ) async {
+    Future<String> solidPng(String name, Color color, int side) async {
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(recorder).drawPaint(Paint()..color = color);
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(side, side);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      picture.dispose();
+      image.dispose();
+      final file = File('${temp.path}${Platform.pathSeparator}$name');
+      await file.writeAsBytes(data!.buffer.asUint8List());
+      return normalizedMediaPath(file.path);
+    }
+
+    final (cover, logo) = (await tester.runAsync(
+      () async => (
+        await solidPng('cover.png', const Color(0xFF00FF00), 8),
+        await solidPng('logo.png', const Color(0xFF0000FF), 6),
+      ),
+    ))!;
+    final session = EditorSessionManager(
+      initialProject: project().copyWith(
+        timesheetInfo: TimesheetInfo.empty.copyWith(
+          coverImagePath: () => cover,
+          logoAssetPath: () => logo,
+        ),
+      ),
+      mediaStagingStore: MediaStagingStore(
+        directoryPath: '${temp.path}/Staged',
+      ),
+    );
+    addTearDown(session.dispose);
+    // THE CARRIED COPY WINS: what prints is the project's copy, and the
+    // files the paths name are gone.
+    await tester.runAsync(
+      () => session.mediaPool.importMediaFiles([
+        cover,
+        logo,
+      ], copyIntoProject: true),
+    );
+    File(cover).deleteSync();
+    File(logo).deleteSync();
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
     );
     await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -644,17 +816,26 @@ void main() {
           words: conteWordsIn(AppLanguage.ja),
         ).whereType<SheetImage>().single.slot;
     final onCover = await pageAt(
-      'conte_p1.png',
+      '${sheet}_p1.png',
       imageOn(0).center.dx,
       imageOn(0).center.dy,
     );
     expect(onCover, (0, 255, 0), reason: 'the cover picture ships');
     final onBody = await pageAt(
-      'conte_p3.png',
+      '${sheet}_p3.png',
       imageOn(2).center.dx,
       imageOn(2).center.dy,
     );
     expect(onBody, (0, 0, 255), reason: 'and so does the logo');
+
+    // The PDF carries each whole, at its own pixels.
+    await pickPaperFormat(tester, 'export-conteformat', 'pdf');
+    await tester.runAsync(state.export);
+    await tester.pump();
+    final pdf = File(
+      '${temp.path}${Platform.pathSeparator}$sheet.pdf',
+    ).readAsBytesSync();
+    expect(pdfImageSizes(pdf), containsAll([(8, 8), (6, 6)]));
   });
 
   testWidgets('a page image is the page at its paper\'s own pixels, as PNG '
@@ -682,10 +863,7 @@ void main() {
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
 
     /// A PNG's width from its IHDR — the first chunk, big-endian at 16.
     int pngWidth(String name) {
@@ -698,22 +876,19 @@ void main() {
     // 100%크기인채로 출력해야」).
     await tester.runAsync(state.export);
     await tester.pump();
-    expect(pngWidth('conte_p3.png'), 2480);
+    expect(pngWidth('${sheet}_p3.png'), 2480);
     expect(
       find.byKey(const ValueKey<String>('export-contescale-2')),
       findsNothing,
       reason: 'the scale row is gone',
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-jpg')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'jpg');
     expect(state.debugSpecs.conte.format, ExportConteFormat.pageImage);
     expect(state.debugSpecs.conte.image.stillFormat, ExportStillFormat.jpg);
     await tester.runAsync(state.export);
     await tester.pump();
-    final jpg = File('${temp.path}${Platform.pathSeparator}conte_p3.jpg');
+    final jpg = File('${temp.path}${Platform.pathSeparator}${sheet}_p3.jpg');
     expect(jpg.existsSync(), isTrue);
     expect(
       jpg.readAsBytesSync().take(3),
@@ -777,16 +952,13 @@ void main() {
     await tester.pump();
 
     // The page image, at 1×: the paper's pixels, `paperScale` to a point.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-png')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
     await tester.runAsync(state.export);
     await tester.pump();
     final image = (await tester.runAsync(
       () => decodeImageFromList(
         File(
-          '${temp.path}${Platform.pathSeparator}conte_p${body + 1}.png',
+          '${temp.path}${Platform.pathSeparator}${sheet}_p${body + 1}.png',
         ).readAsBytesSync(),
       ),
     ))!;
@@ -811,10 +983,7 @@ void main() {
     );
 
     // The PDF: the picture's outline, exactly, cut out of the band's ink.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-conteformat-pdf')),
-    );
-    await tester.pump();
+    await pickPaperFormat(tester, 'export-conteformat', 'pdf');
     await tester.runAsync(state.export);
     await tester.pump();
     final outline = [
@@ -831,11 +1000,123 @@ void main() {
         );
     expect(
       pdfClosedPaths(
-        File('${temp.path}${Platform.pathSeparator}conte.pdf')
+        File('${temp.path}${Platform.pathSeparator}$sheet.pdf')
             .readAsBytesSync(),
         then: 'W*',
       ).where(isTheOutline),
       hasLength(1),
+    );
+  });
+
+  testWidgets('a photo laid on a cell\'s ink rides the page image and the '
+      'PDF, drawn from its file where it was laid (I-97)', (tester) async {
+    final session = EditorSessionManager(initialProject: project());
+    addTearDown(session.dispose);
+    final book = layoutConteBook(
+      buildConteSheetSource(session.repository.requireProject()),
+      metrics: ConteSheetMetrics(
+        cameraAspect: session.camera.cameraFrameAspect,
+      ),
+    );
+    final body = book.indexWhere((page) => page.cells.isNotEmpty);
+    final page = book[body];
+    final m = page.metrics;
+    final cell = page.cells.first;
+    final key = conteInkRowKey(CutId(cell.cutId), cell.source.inkId!);
+    final placement = conteInkMarks(
+      page,
+      m,
+    ).firstWhere((ink) => ink.key == key).placement;
+    final slot = contePictureSlot(cell, m);
+    // On the band, beside the cell's picture.
+    final beside = placement.pixelOf(Offset(slot.right + 30, slot.center.dy));
+    final path = (await tester.runAsync(
+      () => writeSolidPng(
+        temp,
+        'pool/photo.png',
+        width: 4,
+        height: 4,
+        rgba: 0x00FFFFFF,
+      ),
+    ))!;
+    // No handwriting: the photo alone, 4×4 of its own at four times — 16
+    // of the ink's pixels about [beside].
+    session.renderCaches.conteInkRowStore.storeBakedSurface(
+      key,
+      BitmapSurface(
+        canvasSize: CanvasSize(
+          width: (m.bodyWidth * m.paperScale).ceil(),
+          height: (m.bodyHeight * m.paperScale).ceil(),
+        ),
+        tileSize: 8,
+        tiles: const {},
+      ).withPhotos([
+        photoOf(
+          1,
+          path: path,
+          center: CanvasPoint(x: beside.dx, y: beside.dy),
+          size: const CanvasSize(width: 4, height: 4),
+          scale: 4,
+        ),
+      ]),
+    );
+
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+
+    // The page image, at 1×: a pixel of the ink is one of the page's.
+    await pickPaperFormat(tester, 'export-conteformat', 'png');
+    await tester.runAsync(state.export);
+    await tester.pump();
+    final image = (await tester.runAsync(
+      () => decodeImageFromList(
+        File(
+          '${temp.path}${Platform.pathSeparator}${sheet}_p${body + 1}.png',
+        ).readAsBytesSync(),
+      ),
+    ))!;
+    addTearDown(image.dispose);
+    final shown = placement.paperOf(beside) * m.paperScale;
+    final (r, g, b) = (await tester.runAsync(
+      () => pixelAt(image, shown.dx.round(), shown.dy.round()),
+    ))!;
+    expect(r, lessThan(40), reason: 'cyan, from the file');
+    expect((g, b), (255, 255));
+
+    // The PDF: the file whole, its first row from the photo's corner.
+    await pickPaperFormat(tester, 'export-conteformat', 'pdf');
+    await tester.runAsync(state.export);
+    await tester.pump();
+    final pdf = File(
+      '${temp.path}${Platform.pathSeparator}$sheet.pdf',
+    ).readAsBytesSync();
+    expect(pdfImageSizes(pdf), contains((4, 4)));
+    final corner = placement.paperOf(beside - const Offset(8, 8));
+    expect(
+      pdfImageCorners(pdf).map((laid) => laid.topLeft),
+      contains(
+        predicate<Offset>(
+          (laid) =>
+              (laid - Offset(corner.dx, m.pageHeight - corner.dy)).distance <
+              0.01,
+        ),
+      ),
     );
   });
 

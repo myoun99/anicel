@@ -91,8 +91,8 @@ class _InteractiveCanvasBuild {
     // paperless VOID: no editable cel, no layer content, no paper.
     _inGap = !_isPlaybackActive && session.editingSession.playheadInGap;
     // The camera overlay authors the ACTIVE cut's pose — with no cut (a
-    // gap parking) there is nothing to author and reading the pose would
-    // throw (requireActiveCut).
+    // gap parking) there is nothing to author (↩️ nor would reading the pose
+    // throw: `displayedCameraPose` is null there).
     //
     // It survives a SCRUB (only `_isPlaybackActive` gates the overlay builder),
     // and that is the whole answer to the ruler-drag framing: the overlay was
@@ -276,11 +276,15 @@ class _InteractiveCanvasBuild {
         ? const <CanvasManipulator>{}
         : canvasManipulatorsForLane(standingLane);
     final boxGrabbable = manipulators.contains(CanvasManipulator.transformBox);
+    final crossGrabbable = manipulators.contains(
+      CanvasManipulator.anchorPoint,
+    );
     // The box frames the layer's INK — or, on a blank cel, the canvas
-    // (the transform tool's own rule, [CanvasSelectionShape.wholePicture]).
+    // (the transform tool's own rule, [CanvasSelectionShape.wholePicture]),
+    // which stands in for the picture under the cross as well (F-387).
     // Resolved only when something will use it: the scan is memoized on
     // the surface, but asking at all costs a frame lookup.
-    final inkBounds = boxGrabbable && activeLayer != null
+    final inkBounds = (boxGrabbable || crossGrabbable) && activeLayer != null
         ? session.renderCaches.layerContentBoundsAt(
             activeLayer,
             session.currentFrameIndex,
@@ -292,15 +296,15 @@ class _InteractiveCanvasBuild {
       activeLayer: activeLayer,
       boxGrabbable: boxGrabbable,
       inkBounds: inkBounds,
-      crossGrabbable: manipulators.contains(CanvasManipulator.anchorPoint),
+      crossGrabbable: crossGrabbable,
       referenceBox: _referenceBoxShown(activeLayer, standing, tool),
       isCameraLayerActive: isCameraLayerActive,
-      walksAPath: switch (standingLane) {
+      pathLane: switch (standingLane) {
         final lane? => switch (transformPropertyOfLaneId(lane)) {
-          final property? => walksAPath(property),
-          null => false,
+          final property? when walksAPath(property) => property,
+          _ => null,
         },
-        null => false,
+        null => null,
       },
     );
     return MainCanvasBrushHost(
@@ -390,11 +394,10 @@ class _InteractiveCanvasBuild {
       // R13-3: a live stroke holds the prerender warmer — composite
       // warming never shares the UI/raster threads with drawing.
       onStrokeInputActiveChanged: session.setBrushInputActive,
-      // The canvas hands the session its stroke lander so a SAVE can land
-      // the pen before it snapshots — the same registration shape
-      // `onCoordinatorChanged` above uses.
-      onStrokeLanderChanged: (lander) =>
-          session.liveStrokeLanding.lander = lander,
+      // The canvas holds up, in the session's hand, what a SAVE lands
+      // before it snapshots — counted, not the last word ([ViewHand]:
+      // a view built anew comes up before the old one goes down).
+      strokeLander: session.liveStrokeLanding.lander,
       // A selection drag holds the prerender's warming. ↩️F-196: it also
       // blocked seeks and cut switches (R15-⑤) — only a stroke does now.
       onSelectionInteractionChanged: (active) => active
@@ -420,6 +423,10 @@ class _InteractiveCanvasBuild {
       onPressNeedsCel: () {
         return _state._pressNeedsCel(tool, session);
       },
+      // 🗣️I-113: a held cell is a place a mark makes its own cel, as the ＋
+      // does there, when the toggle is on — the auto frame's own answer,
+      // asked at the press.
+      markMakesItsOwnCel: () => session.autoFrame.markMakesItsOwnCel,
       onStrokeNeedsCel: () => _state._strokeNeedsCel(session),
       takeStrokePrefixCommand: session.autoFrame.takeAutoFrameForStroke,
       onAutoFrameSettled: session.autoFrame.flushAutoFrameForStroke,
@@ -471,6 +478,30 @@ class _InteractiveCanvasBuild {
       ),
       onPasteboardColorChanged: session.projectSettings.setPasteboardColor,
       onPasteboardNone: session.projectSettings.setPasteboardNone,
+      // Behind the canvas size's wait window: each cuts every picture past
+      // the wall it moves (F-432).
+      onPasteboardSizeChanged: (size) => unawaited(
+        resizeBehindTheWaitWindow(
+          context,
+          () => session.projectSettings.setPasteboardSize(size),
+          title: AppText.strings.pasteboardTitle,
+          ahead: (report) => session.projectSettings.cutPasteboardAhead(
+            size: size,
+            report: report,
+          ),
+        ),
+      ),
+      onPasteboardInUseChanged: (inUse) => unawaited(
+        resizeBehindTheWaitWindow(
+          context,
+          () => session.projectSettings.setPasteboardInUse(inUse),
+          title: AppText.strings.pasteboardTitle,
+          ahead: (report) => session.projectSettings.cutPasteboardAhead(
+            inUse: inUse,
+            report: report,
+          ),
+        ),
+      ),
       onBackdropColorChanged: session.projectSettings.setProjectBackdrop,
       onBackdropNone: session.projectSettings.setProjectBackdropNone,
       onEyedropperPick: (color) => _state.widget.onBrushToolStateChanged?.call(
@@ -525,6 +556,8 @@ class _InteractiveCanvasBuild {
           title: AppText.strings.commonNotice,
           message: AppText.strings.noticeFillRegionOpen,
         ),
+        // The apron reaches as far as the pasteboard does (I-109).
+        pasteboardReach: session.repository.requireProject().pasteboardReach,
       ),
       // The SHAPE fill's pieces. No cut, no frame, no surfaces: a
       // drawn outline is filled whatever is under it, so it never
@@ -672,6 +705,7 @@ class _InteractiveCanvasBuild {
       background: session.projectSettings.projectBackground,
       pasteboardColor: Color(project.pasteboardArgb),
       pasteboardNone: project.pasteboardNone,
+      pasteboardReach: project.pasteboardReach,
       // The view the frame is drawn through — the one its rows were made
       // for ([CanvasLook.qualityAt]).
       child: _stackView(
@@ -780,6 +814,8 @@ class _InteractiveCanvasBuild {
             )
           : null,
       canvasSize: _canvasSize,
+      pasteboardReach:
+          frame.session.repository.requireProject().pasteboardReach,
       viewport: viewport,
       // R16-⑥: no cut in a gap — no paper (per-cut papers
       // make anything else confusing; the void is the truth).
@@ -861,10 +897,9 @@ class _InteractiveCanvasBuild {
               context,
               throughCamera: shot != null,
             ),
-          if (editing && frame.walksAPath)
-            _state._positionPath(frame, viewport),
-          if (editing && _cameraOverlayVisible)
-            _state._cameraPath(frame, viewport),
+          if (frame.pathLane case final property? when editing)
+            _state._rowPath(frame, property, viewport, _canvasSize),
+          if (editing) _state._cameraPath(frame, viewport),
           if (editing && _cameraOverlayVisible)
             _state._cameraOverlay(frame.session, viewport),
         ],
@@ -950,14 +985,14 @@ class _InteractiveCanvasBuild {
           adjust: adjust,
           pose: pose,
           viewport: viewport,
-          canvasSize: _canvasSize,
+          pasteboard: session.pasteboardOf(_canvasSize),
           onLand: land,
         ),
       ),
       _ => CanvasAdjustLayer(
         adjust: adjust,
         viewport: viewport,
-        canvasSize: _canvasSize,
+        pasteboard: session.pasteboardOf(_canvasSize),
         onLand: land,
       ),
     };
@@ -1003,15 +1038,22 @@ class _InteractiveCanvasBuild {
     if (layer == null || !(frame.boxGrabbable || frame.crossGrabbable)) {
       return const SizedBox.shrink();
     }
-    if (layer.kind == LayerKind.se) {
-      return _state._seBox(
-        frame,
-        viewport,
-        _canvasSize,
-        _seNameTagsShown(frame.session),
-      );
-    }
-    return _state._layerBox(frame, viewport, _canvasSize);
+    return _state._layerBox(
+      frame,
+      viewport,
+      _canvasSize,
+      picture: layer.kind == LayerKind.se
+          ? _EditorCanvasAreaState._sePicture(
+              frame.session,
+              layer,
+              _seNameTagsShown(frame.session),
+              _canvasSize,
+            )
+          : _EditorCanvasAreaState._layerPicture(
+              frame,
+              frame.session.pasteboardOf(_canvasSize),
+            ),
+    );
   }
 
   /// The cut FADE still follows the cursor (R9-C: fx ALWAYS reflects — dark
@@ -1081,7 +1123,7 @@ class _HostFrame {
     required this.crossGrabbable,
     required this.referenceBox,
     required this.isCameraLayerActive,
-    required this.walksAPath,
+    required this.pathLane,
   });
 
   final EditorSessionManager session;
@@ -1104,23 +1146,27 @@ class _HostFrame {
   /// file it shows, where its reference says (`_referenceBoxShown`).
   final bool referenceBox;
 
-  /// The active layer's ink at the playhead, while [boxGrabbable].
+  /// The active layer's ink at the playhead, while [boxGrabbable] or
+  /// [crossGrabbable] — null on a cel that shows nothing.
   final ({int left, int top, int rightExclusive, int bottomExclusive})?
   inkBounds;
   final bool isCameraLayerActive;
 
-  /// One stands on the active layer's lane whose keys walk a path — its
-  /// position — where the box that moves its keys is: the path is drawn,
-  /// and its handles worked (I-89-Q9).
-  final bool walksAPath;
+  /// The active layer's lane one stands on, where its keys walk a path —
+  /// its position or its anchor point — and the box that moves its keys
+  /// is: its path is drawn, and its handles worked (I-89-Q9). Null on any
+  /// other lane.
+  final TransformPropertyId? pathLane;
 
-  /// Whether the row's box takes every press on the canvas, rather than its
-  /// cross, corners and a path's knobs alone ([RowTransformBox.claimsCanvas]).
+  /// Which presses on the canvas the row's box takes: every one, or its
+  /// cross, corners and a path's knobs alone ([RowTransformBox.presses]).
   ///
   /// 🗣️F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」: standing on the
   /// row, the box takes the empty canvas under every tool but the two that
   /// draw an area on it — a selection is not stopped by the kind of row
   /// you stand on.
-  bool get boxClaimsCanvas =>
-      tool != CanvasTool.select && tool != CanvasTool.cut;
+  RowBoxPresses get boxPresses =>
+      tool == CanvasTool.select || tool == CanvasTool.cut
+      ? RowBoxPresses.handles
+      : RowBoxPresses.viewport;
 }

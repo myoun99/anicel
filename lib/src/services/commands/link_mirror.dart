@@ -166,16 +166,22 @@ List<({CutId cutId, LayerId layerId})> _rowsAtOnePlace<P extends Object>(
   return const [];
 }
 
-/// 🚨A TRACK'S CAMERAS WEAR ONE HEAD TOO — ITS NAME AND ITS FX SWITCH (I-73
-/// ④).
+/// 🚨A TRACK'S CAMERAS WEAR ONE HEAD TOO — ITS NAME, ITS FX SWITCH, ITS EYE
+/// AND ITS OPACITY (I-73 ④, F-363).
 ///
 /// 유저 2026-10-09: 「그럼 카메라행도 글로벌? 콘티행처럼 머리 같도록
-/// 할까하는데」, and of the head that drew (I-73-camera-row-Q1): 「좋은데
-/// 색라벨은 컷마다 있는게 좋을거같은데」. The storyboard draws a track's
-/// cameras as ONE row, so the row's name and its fx switch — the camera
-/// work on or off — are one for every cut of the track. ⛔The colour label
-/// stays each cut's own: the row draws each cut's keys and line in it. The
-/// eye and the opacity are the camera VIEW's, no layer's at all.
+/// 할까하는데. 눈 불투명도는 물론 통일하고」, and of the head that drew
+/// (I-73-camera-row-Q1): 「좋은데 색라벨은 컷마다 있는게 좋을거같은데」. The
+/// storyboard draws a track's cameras as ONE row, so the row's name, its fx
+/// switch — the camera work on or off — and its eye and opacity — the
+/// camera view on or off, and how dark it lays the outside of the frame —
+/// are one for every cut of the track. ⛔The colour label stays each cut's
+/// own: the row draws each cut's keys and line in it.
+///
+/// ↩️The eye and the opacity were the camera VIEW's, no layer's at all: two
+/// notifiers the window held, which no file kept. 유저 2026-10-15 (F-363):
+/// 「카메라 불투명도는 레이어랑 통일. 레이어가 눈이랑 불투명도 바꾸면 언두
+/// 저장되니까. 기본적으로 레이어 버튼은 그게 기준」.
 ///
 /// Every (cut, camera row) of the track [layerId]'s camera stands on — the
 /// row itself first. Empty for any other row.
@@ -212,7 +218,8 @@ List<({CutId cutId, LayerId layerId})> cameraHeadTargets(
 /// conte row of the track it is linked to.
 ///
 /// [cameraHead]: whether the field is one a track's cameras wear as one as
-/// well — the name, the transform switch and the twirl, and not the label.
+/// well — the name, the transform switch, the twirl and the static opacity,
+/// and not the label.
 List<({CutId cutId, LayerId layerId})> headMirrorTargets(
   Project project, {
   required CutId cutId,
@@ -223,7 +230,11 @@ List<({CutId cutId, LayerId layerId})> headMirrorTargets(
   // registry keys a row's group by its own cut, and would call a row
   // addressed under another one unlinked.
   final reached = [
-    (cutId: cutIdOfLayer(project, layerId) ?? cutId, layerId: layerId),
+    (
+      // Never null: [cutId] is stood in.
+      cutId: cutWritingRow(project, layerId, standing: cutId)!,
+      layerId: layerId,
+    ),
   ];
   final seen = {reached.first};
   for (var index = 0; index < reached.length; index += 1) {
@@ -258,6 +269,19 @@ List<LayerId> headMirrorRows(
   ))
     target.layerId,
 ];
+
+/// The rows an EYE write to [layerIds] lands on, once each: each row alone
+/// — a row's eye is each use's own (T9, `UpdateLayerDisplayCommand`), and a
+/// track's conte rows have theirs laid by its structure (F-343) — but for a
+/// CAMERA, every camera of its track ([cameraHeadTargets]), whose head the
+/// eye is (F-363).
+List<LayerId> eyeMirrorRows(Project project, Iterable<LayerId> layerIds) => {
+  for (final layerId in layerIds)
+    ...switch (cameraHeadTargets(project, layerId)) {
+      [] => [layerId],
+      final cameras => [for (final camera in cameras) camera.layerId],
+    },
+}.toList();
 
 /// The rows that EXIST as one with ([cutId], [layerId]) — what a delete
 /// takes together.

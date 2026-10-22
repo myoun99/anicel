@@ -520,9 +520,10 @@ class LayerBlendModeChip extends StatelessWidget {
       context,
       _blendWordStyle(context),
     ).lineGrowthOf(TextMeasure.everyScript);
-    return SizedBox(
-      width: vertical ? 20 + growth : slotExtent,
-      height: vertical ? slotExtent : 20 + growth,
+    return sizedAlong(
+      axis,
+      along: slotExtent,
+      across: 20 + growth,
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
@@ -565,8 +566,8 @@ class LayerBlendModeChip extends StatelessWidget {
 ///
 /// Almost every layer kind shows the opacity slider (unified layer controls
 /// — "레이어는 싹 다 공통화"): compositing cels use it directly, the CAMERA
-/// row's slider drives the camera-view DIM opacity, and instruction rows
-/// carry the same control for entrance parity.
+/// row's is its own opacity — the camera view's dim (F-363) — and
+/// instruction rows carry the same control for entrance parity.
 ///
 /// ⛔The TRANSITION row does not. It is the one row that carries no picture
 /// of its own — it says WHEN two cuts cross-dissolve — so there is nothing
@@ -594,6 +595,22 @@ bool layerKindShowsOpacityControl(LayerKind kind) =>
 /// a VISIBILITY toggle, which is a different verb (apply this O.L / F.O on
 /// playback or do not).
 bool layerKindShowsFxToggle(LayerKind kind) => kind != LayerKind.transition;
+
+/// Whether a row WEARS its own fx switch: its kind shows one
+/// ([layerKindShowsFxToggle]) and it authors its own composite. An attach
+/// row and its 공정 organizer folder wear their BASE's
+/// (`attachRowWearsBaseComposite`, R9), whose switch governs what they
+/// show.
+///
+/// 🚨ONE ANSWER for the row's switch, the column sweep and a press spread
+/// across the row selection — a row the one passes by, all three pass by.
+/// ↩️The sweep and the spread asked the kind alone, and flipped an attach
+/// row's own switch: a flag nothing reads, on a row with no switch to show
+/// it.
+bool layerRowWearsFxSwitch(
+  LayerKind kind, {
+  required bool wearsBaseComposite,
+}) => layerKindShowsFxToggle(kind) && !wearsBaseComposite;
 
 /// The ONE style a row's NAME is written in — the timeline rail's row, the
 /// x-sheet's column, and the storyboard's V and S rows.
@@ -1184,16 +1201,8 @@ class LayerMarkChip extends StatelessWidget {
     // axis, so the two have to agree.
     final horizontal = axis == Axis.horizontal;
     final plates = [
-      SizedBox(
-        width: horizontal ? layerMarkSlotWidth : null,
-        height: horizontal ? null : layerMarkSlotWidth,
-        child: _markTrigger(context),
-      ),
-      SizedBox(
-        width: horizontal ? layerTakeSlotWidth : null,
-        height: horizontal ? null : layerTakeSlotWidth,
-        child: _takeTrigger(context),
-      ),
+      alongBox(axis, layerMarkSlotWidth, child: _markTrigger(context)),
+      alongBox(axis, layerTakeSlotWidth, child: _takeTrigger(context)),
     ];
     // 🚨STRETCH ON THE CROSS AXIS. The plate is `SizedBox.expand` — it fills
     // the slot edge to edge (⑳, 「패딩 절대 금지」) — so it needs a BOUNDED
@@ -1597,7 +1606,7 @@ class _LabelPlate extends StatelessWidget {
         // 「x시트는 가로쓰기 가로표기로 **위에 LO 아래에 작감**」, and on the
         // rail 「평범하게 **왼쪽에 LO 오른쪽에 작감**」. Same list, laid the
         // way each surface is read.
-        direction: axis == Axis.horizontal ? Axis.horizontal : Axis.vertical,
+        direction: axis,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (final text in shown)

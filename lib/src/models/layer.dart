@@ -21,6 +21,7 @@ import 'layer_process.dart';
 import 'media_reference.dart';
 import 'non_negative_index_map.dart';
 import 'se_name_tag.dart';
+import 'storyboard_coverage.dart' show storyboardConteStart;
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'timeline_run_behavior.dart';
@@ -663,6 +664,22 @@ bool layerCoversWithoutGaps(Layer layer) =>
     layer.kind.coversWithoutGaps &&
     !(layer.kind.isSingletonPerCut && isAttachedLayer(layer));
 
+/// The first frame a block of [layer] may stand on — what a block moved,
+/// a cel made and a cel pasted all ask.
+///
+/// 0 on every row but one that TILES its cut ([layerCoversWithoutGaps]),
+/// whose blocks start where its conte does: a cut an O.L arrives into keeps
+/// its panels after the のりしろ it owes ([storyboardConteStart], F-227) —
+/// the frames in front are its first panel held back, not room for a panel.
+///
+/// 🗣️F-339 (유저 2026-10-11): 「OL있어서 콘티레이어의 앞부분에 서있을때
+/// 프레임 추가버튼 활성화되고 눌러도 아무반응없는데 추가나 붙여넣기나
+/// 관련로직 해당부분에서 못하게 하는게 맞는거같은데」. ↩️Only the move asked
+/// it: the ＋ and the paste took the held-back frames for room, and the
+/// conte's write folded what they made back onto its first panel.
+int layerBlockFloor(Layer layer) =>
+    layerCoversWithoutGaps(layer) ? storyboardConteStart(layer.timeline) : 0;
+
 /// Whether [layers] already hold the ONE row a singleton kind allows a cut
 /// ([LayerKind.isSingletonPerCut]).
 ///
@@ -713,7 +730,7 @@ bool layerKindEligibleForTimesheetToggle(LayerKind kind) => !kind.groupsLayers;
 bool layerCarriesTimesheetToggle(Layer layer) =>
     layerKindEligibleForTimesheetToggle(layer.kind) && !isAttachedLayer(layer);
 
-/// D24: whether this layer prints an ACTION cel column — the ONE gate the
+/// D24: whether this layer prints a cel column — the ONE gate the
 /// printed timesheet, the cut envelope's cel counts and the XDTS export
 /// all read (three inline copies of `animation && onTimesheet` used to
 /// drift apart). The real sheets keep BG/BOOK picture rows out of the
@@ -734,6 +751,17 @@ bool layerTakesSheetCelColumn(Layer layer) =>
     layer.kind == LayerKind.animation &&
     layer.onTimesheet;
 
+/// F-406: whether this layer's cel column is the timesheet's CELL block's
+/// rather than its ACTION block's — a row whose colour label is 動画 or
+/// 仕上げ, whatever its revise (유저 2026-10-19: 「색라벨 공정이 동화면
+/// 타임시트용지패널의 CELL란에 표시하도록. 액션란에는 표시안함. 동화의 어떤
+/// 수정공정이던 CELL란표시」 · 10-21, F-431: 「시아게 공정쪽 레이어도
+/// 동일하게 CELL란에 등록」).
+bool layerTakesTheCelBlock(Layer layer) => switch (layer.mark.process) {
+  LayerProcess.inbetween || LayerProcess.finish => true,
+  _ => false,
+};
+
 /// D24 후반: whether this layer marks a BOOK on the sheet — an image row
 /// whose colour label is 美術, whatever its revise and whatever its name
 /// (유저 2026-09-26: 「이름 bg든 북이든 구별없이 이미지레이어면서 미술이면
@@ -746,6 +774,17 @@ bool layerMarksSheetBook(Layer layer) =>
     layer.kind == LayerKind.image &&
     layer.onTimesheet &&
     layer.mark.process == LayerProcess.art;
+
+/// Whether this layer's lines print on paper — an SE row with its sheet
+/// switch on: the timesheet's SE column, the XDTS export and the conte
+/// sheet's dialogue all read it.
+///
+/// 🗣️F-345 (유저 2026-10-12): 「se트랙 타임시트off시, 콘티용지패널에도 대사
+/// 안적도록」. ↩️The conte sheet read every SE row, switch or not.
+bool layerPrintsSheetLines(Layer layer) =>
+    layerCarriesTimesheetToggle(layer) &&
+    layer.kind == LayerKind.se &&
+    layer.onTimesheet;
 
 /// The block [layer]'s lane holds that somebody AUTHORED — its first drawing
 /// that is not a ghost — or null when the row stands empty.

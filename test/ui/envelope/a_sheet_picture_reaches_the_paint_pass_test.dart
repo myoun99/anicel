@@ -3,7 +3,14 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/sheet/sheet_image_cache.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/the_file_itself.dart';
+
+/// The cache the workspace makes, over files that are only themselves.
+SheetImageCache readingFiles() => SheetImageCache(
+  read: (path, width) => readSheetImage(theFileItself, path, width),
+);
 
 /// 🚨★★★A SHEET'S PICTURE HAS TO REACH THE PAINT PASS — the logo on the
 /// envelope and the conte, the conte's cover picture.
@@ -45,20 +52,13 @@ void main() {
     return file.path;
   }
 
-  /// Real time, not pumped time: the decode is off in the engine.
-  Future<void> settle(bool Function() done) async {
-    for (var i = 0; i < 200 && !done(); i += 1) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
-  }
-
   testWidgets('the first ask MISSES, and the image is there when it says so', (
     tester,
   ) async {
     await tester.runAsync(() async {
       final path = await writePng('logo.png');
       var loaded = 0;
-      final cache = SheetImageCache()..addListener(() => loaded += 1);
+      final cache = readingFiles()..addListener(() => loaded += 1);
       addTearDown(cache.dispose);
 
       expect(
@@ -70,7 +70,7 @@ void main() {
       );
       expect(loaded, 0, reason: 'nothing has landed yet');
 
-      await settle(() => loaded > 0);
+      await pollUntil(() => loaded > 0);
 
       expect(loaded, 1, reason: 'the host has to be told exactly once');
       expect(
@@ -88,12 +88,12 @@ void main() {
       // Otherwise every paint reads the disk again for a picture whose file
       // went away — a decode per frame that can never succeed.
       var loaded = 0;
-      final cache = SheetImageCache()..addListener(() => loaded += 1);
+      final cache = readingFiles()..addListener(() => loaded += 1);
       addTearDown(cache.dispose);
       final missing = '${dir.path}/gone.png';
 
       expect(cache.imageFor(missing), isNull);
-      await settle(() => loaded > 0);
+      await pollUntil(() => loaded > 0);
 
       expect(
         cache.imageFor(missing),
@@ -115,14 +115,14 @@ void main() {
     await tester.runAsync(() async {
       final path = await writePng('logo.png');
       var loaded = 0;
-      final cache = SheetImageCache()..addListener(() => loaded += 1);
+      final cache = readingFiles()..addListener(() => loaded += 1);
       addTearDown(cache.dispose);
 
       // The same frame can paint a box twice; a second decode would be work
       // for nothing and would hand back a second image nobody disposes.
       cache.imageFor(path);
       cache.imageFor(path);
-      await settle(() => loaded > 0);
+      await pollUntil(() => loaded > 0);
 
       expect(loaded, 1, reason: 'one decode, one notification');
     });

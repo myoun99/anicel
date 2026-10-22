@@ -1,9 +1,9 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
+
+import '../../helpers/painted_glyph_boxes.dart';
 
 /// F-93 — a dialogue glyph keeps to its cell.
 ///
@@ -17,49 +17,8 @@ import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 /// timeline's SE rows and the storyboard's both draw; down a column it
 /// paints through `paintDialogueFitColumn`, the printed sheet's own call.
 ///
-/// ⚠️The oracle is the box each glyph is PAINTED in, read off a canvas that
-/// follows the transforms. The centres were right all along — a test on the
-/// layout's numbers passes while the painter draws wide glyphs around them.
-class _PaintedBoxes implements Canvas {
-  final boxes = <Rect>[];
-  final _saved = <Matrix4>[];
-  var _transform = Matrix4.identity();
-
-  @override
-  void save() => _saved.add(_transform.clone());
-
-  @override
-  void restore() => _transform = _saved.removeLast();
-
-  @override
-  void translate(double dx, double dy) =>
-      _transform = _transform.multiplied(Matrix4.translationValues(dx, dy, 0));
-
-  @override
-  void rotate(double radians) =>
-      _transform = _transform.multiplied(Matrix4.rotationZ(radians));
-
-  @override
-  void scale(double sx, [double? sy]) => _transform = _transform.multiplied(
-    Matrix4.diagonal3Values(sx, sy ?? sx, 1),
-  );
-
-  @override
-  void drawParagraph(ui.Paragraph paragraph, Offset offset) => boxes.add(
-    MatrixUtils.transformRect(
-      _transform,
-      offset & Size(paragraph.maxIntrinsicWidth, paragraph.height),
-    ),
-  );
-
-  @override
-  int getSaveCount() => _saved.length + 1;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => null;
-}
-
-/// The boxes [SeSpanVisual]'s dialogue paints its glyphs in, over a block
+/// ⚠️The oracle is the box each glyph is PAINTED in ([PaintedGlyphBoxes]):
+/// the boxes [SeSpanVisual]'s dialogue paints its glyphs in, over a block
 /// of [size].
 Future<List<Rect>> _paintedGlyphs(
   WidgetTester tester, {
@@ -84,7 +43,7 @@ Future<List<Rect>> _paintedGlyphs(
     of: find.byType(DialogueFitText),
     matching: find.byType(CustomPaint),
   );
-  final canvas = _PaintedBoxes();
+  final canvas = PaintedGlyphBoxes();
   tester
       .widget<CustomPaint>(glyphs)
       .painter!

@@ -6,8 +6,7 @@ import '../../models/timeline_coverage.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import 'active_cut_controllers.dart';
 import 'cell_verbs.dart';
-import 'drags/exposure_edge_drag.dart'
-    show CutSyncCapture, commitWithCutSync, cutSyncResizeFor, cutSyncSnapshotFor, ridesCutLength;
+import 'drags/exposure_edge_drag.dart' show commitKeepingTheCutOnItsRow;
 import 'range_selections.dart';
 import 'session_roles.dart';
 import 'camera.dart';
@@ -112,9 +111,9 @@ class ExposureVerbs {
   /// 🚨T3 rename: this was `cutExposureAtCurrentFrame` while 「잘라내기」 was
   /// a word nothing in the app used. Now that [FrameClipboard.cutRunAtCurrentFrame] exists,
   /// two different verbs would answer to "cut". The UI never said 「cut」
-  /// here — the button is `×` (`blank-exposure-button`, tooltip `tlBlankX`)
-  /// — so the code name follows the button and the new verb takes the word
-  /// the user gave it.
+  /// here — the button is `×` (`blank-exposure-button`, which the user
+  /// calls 「비우기」, I-58) — so the code name follows the button and the
+  /// new verb takes the word the user gave it.
   void blankExposureAtCurrentFrame() {
     final banded = _blankableSpanForSelection();
     if (banded.isNotEmpty) {
@@ -267,10 +266,7 @@ class ExposureVerbs {
     Map<LayerId, Map<int, int>> newLengthsByLayer,
   ) {
     final controller = _controllers.timelineController;
-    final cut = _project.activeCutOrNull;
     final edits = <({Layer before, Layer after})>[];
-    CutSyncCapture? sync;
-    Layer? syncedRow;
     for (final MapEntry(key: layerId, value: lengths)
         in newLengthsByLayer.entries) {
       final before = _project.commitLayerById(layerId);
@@ -284,25 +280,16 @@ class ExposureVerbs {
         continue;
       }
       edits.add((before: before, after: after));
-      if (sync == null && cut != null && ridesCutLength(before)) {
-        sync = cutSyncSnapshotFor(project: _project, cut: cut, row: before);
-        syncedRow = after;
-      }
     }
-    final resize = sync == null || syncedRow == null
-        ? null
-        : cutSyncResizeFor(project: _project, sync: sync, afterRow: syncedRow);
-    if (sync == null || resize == null) {
+    if (!commitKeepingTheCutOnItsRow(
+      project: _project,
+      controller: controller,
+      edits: edits,
+      description: 'Set comma exposure',
+    )) {
       controller.retimeBlocksForLayers(newLengthsByLayer);
       return;
     }
-    commitWithCutSync(
-      controller: controller,
-      edits: edits,
-      sync: sync,
-      resize: resize,
-      description: 'Set comma exposure',
-    );
     _changes.refreshAfterCutCommand();
   }
 }

@@ -14,12 +14,13 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/view_hand.dart';
 
 /// 🚨★★★**THE CANVAS HANDS OUT THE ONE VERB A SAVE NEEDS, AND TAKES IT
 /// BACK.** `ProjectFileDoor` lands the pen before it snapshots so that
 /// pressing Ctrl+S mid-stroke puts that line in that file — but it can only
-/// do that if a mounted canvas published a lander, and only safely if a
-/// gone canvas published null.
+/// do that if a mounted canvas held up a lander, and only safely if a
+/// gone canvas put it down.
 ///
 /// ⚠️`a_manual_save_lands_the_pen_first_test` pins what the DOOR does with
 /// the lander, and it sets one by hand. That is the half this file does
@@ -46,12 +47,31 @@ void main() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 
-  late StrokeLander? published;
+  late ViewHand<StrokeLander> landers;
+  late ViewHand<ShapeShow> shapes;
   late List<BrushStrokeCommitData> commits;
   late List<bool> strokeActive;
 
-  Future<void> pumpInk(WidgetTester tester, {bool mounted = true}) async {
+  /// [wrapped] puts the view under a parent of another kind, so Flutter
+  /// builds it anew in the same frame — as the main canvas panel's opacity
+  /// wrap once did each time the row's opacity crossed 1 (F-419).
+  Future<void> pumpInk(
+    WidgetTester tester, {
+    bool mounted = true,
+    bool wrapped = false,
+  }) async {
     final store = BrushFrameEditSessionStore(canvasSize: canvasSize);
+    final view = InteractiveBrushEditCanvasView(
+      key: const ValueKey<String>('ink'),
+      celNow: () => store.getOrCreate(key).canvasState.currentSurface,
+      layerId: const LayerId('layer'),
+      frameId: const FrameId('frame'),
+      inputSettings: BrushEditCanvasInputSettings.new,
+      onSourceStrokeCommitted: commits.add,
+      strokeLander: landers,
+      shapeShow: shapes,
+      onActiveStrokeChanged: strokeActive.add,
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -60,19 +80,11 @@ void main() {
             child: SizedBox(
               width: 200,
               height: 200,
-              child: mounted
-                  ? InteractiveBrushEditCanvasView(
-                      key: const ValueKey<String>('ink'),
-                      celNow: () =>
-                          store.getOrCreate(key).canvasState.currentSurface,
-                      layerId: const LayerId('layer'),
-                      frameId: const FrameId('frame'),
-                      inputSettings: BrushEditCanvasInputSettings.new,
-                      onSourceStrokeCommitted: commits.add,
-                      onStrokeLanderChanged: (lander) => published = lander,
-                      onActiveStrokeChanged: strokeActive.add,
-                    )
-                  : const SizedBox.shrink(),
+              child: switch ((mounted, wrapped)) {
+                (false, _) => const SizedBox.shrink(),
+                (true, false) => view,
+                (true, true) => Opacity(opacity: 1, child: view),
+              },
             ),
           ),
         ),
@@ -81,17 +93,18 @@ void main() {
   }
 
   setUp(() {
-    published = null;
+    landers = ViewHand();
+    shapes = ViewHand();
     commits = <BrushStrokeCommitData>[];
     strokeActive = <bool>[];
   });
 
-  testWidgets('a mounted canvas publishes its lander, and a gone one '
-      'publishes null', (tester) async {
+  testWidgets('a mounted canvas holds up its lander, and a gone one '
+      'puts it down', (tester) async {
     await pumpInk(tester);
 
     expect(
-      published,
+      landers.now,
       isNotNull,
       reason: 'a save with nothing published cannot land the pen at all',
     );
@@ -99,12 +112,48 @@ void main() {
     await pumpInk(tester, mounted: false);
 
     expect(
-      published,
+      landers.now,
       isNull,
       reason: '⛔a lander left standing after the view goes would land a '
           'stroke into rasterizer tiles that have already gone back to the '
           'engine',
     );
+  });
+
+  // 🗣️F-419 (유저 2026-10-21: 「선 레이어 불투명도 100에서 80정도로
+  // 내렷다가 100으로 올리니 안그려지기 시작했어」): a canvas built anew comes
+  // up before the one it replaces goes down, and the old one's goodbye
+  // must not take the new one's lander — or its shape — away.
+  testWidgets('a canvas built anew in place of another leaves the new '
+      'one\'s lander up', (tester) async {
+    await pumpInk(tester);
+    final first = landers.now;
+    await pumpInk(tester, wrapped: true);
+
+    expect(landers.now, isNotNull, reason: 'the old goodbye came last');
+    expect(
+      identical(landers.now, first),
+      isFalse,
+      reason: 'it is the new view\'s',
+    );
+  });
+
+  // The shape tool's hand goes up and down beside the lander: the view
+  // that came up last keeps it, and a gone view leaves none — a show
+  // whose view is gone would lay a shape into tiles already given back.
+  testWidgets('a canvas holds up its shape show the same way', (
+    tester,
+  ) async {
+    await pumpInk(tester);
+    final first = shapes.now;
+    expect(first, isNotNull, reason: 'a mounted canvas shows the shape');
+
+    await pumpInk(tester, wrapped: true);
+    expect(shapes.now, isNotNull, reason: 'the old goodbye came last');
+    expect(identical(shapes.now, first), isFalse);
+
+    await pumpInk(tester, mounted: false);
+    expect(shapes.now, isNull, reason: 'a gone canvas puts it down');
   });
 
   testWidgets('🚨★★★and the published lander really lands the stroke — the '
@@ -125,7 +174,7 @@ void main() {
       reason: 'fixture premise: nothing has landed while the pen is down',
     );
 
-    final landed = published!();
+    final landed = landers.now!();
 
     expect(landed, isTrue, reason: 'it had dabs to land');
     expect(
@@ -152,7 +201,7 @@ void main() {
       'the teardown', (tester) async {
     await pumpInk(tester);
 
-    expect(published!(), isFalse);
+    expect(landers.now!(), isFalse);
     expect(commits, isEmpty);
     expect(
       strokeActive,

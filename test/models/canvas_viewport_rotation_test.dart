@@ -23,6 +23,18 @@ void main() {
       flipHorizontal: true,
     ),
     CanvasViewport(rotationDegrees: 450, flipHorizontal: true),
+    // ⛔The vertical flip came after these were written, and with none of
+    // them upside down either way in could forget it and nothing knew
+    // (mutants lived, 2026-10-19).
+    CanvasViewport(flipVertical: true),
+    CanvasViewport(
+      zoom: 1.5,
+      panX: -21,
+      panY: 64,
+      rotationDegrees: 37,
+      flipHorizontal: true,
+      flipVertical: true,
+    ),
   ];
 
   final assortedPoints = [
@@ -58,6 +70,22 @@ void main() {
     expect(mapped.y, closeTo(14, epsilon));
   });
 
+  test('90° + vertical flip lands exactly — the flip before the turn', () {
+    // flip: (3,4) → (3,−4); rotate 90° cw (y-down): (x,y) → (−y,x) =
+    // (4,3); zoom 2 → (8,6); pan (10,20) → (18,26). Turned first and then
+    // flipped, it would land at (2,14).
+    final viewport = CanvasViewport(
+      zoom: 2,
+      panX: 10,
+      panY: 20,
+      rotationDegrees: 90,
+      flipVertical: true,
+    );
+    final mapped = viewport.canvasToViewport(CanvasPoint(x: 3, y: 4));
+    expect(mapped.x, closeTo(18, epsilon));
+    expect(mapped.y, closeTo(26, epsilon));
+  });
+
   test('rotation without flip lands exactly', () {
     // rotate 90° cw: (3,4) → (−4,3); zoom 1, pan 0.
     final viewport = CanvasViewport(rotationDegrees: 90);
@@ -77,6 +105,7 @@ void main() {
           anchor: anchor,
         ),
         viewport.flippedAround(anchor: anchor),
+        viewport.flippedVerticalAround(anchor: anchor),
       ]) {
         final after = next.viewportToCanvas(anchor);
         expect(after.x, closeTo(before.x, 1e-6), reason: '$viewport → $next');
@@ -134,11 +163,11 @@ void main() {
       rotationDegrees: -30,
       flipHorizontal: true,
     );
-    final restored = CanvasViewport.fromJson(viewport.toJson());
+    final restored = CanvasViewport.fromJson(viewport.toJson())!;
     expect(restored, viewport);
 
     // A legacy payload (no rotation keys) loads level and unflipped.
-    final legacy = CanvasViewport.fromJson({'zoom': 2.0, 'panX': 3.0});
+    final legacy = CanvasViewport.fromJson({'zoom': 2.0, 'panX': 3.0})!;
     expect(legacy.rotationDegrees, 0);
     expect(legacy.flipHorizontal, isFalse);
   });

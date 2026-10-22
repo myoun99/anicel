@@ -17,6 +17,11 @@ void main() {
     expect(budgets.undo, HistoryManager.retainedByteBudget);
     expect(budgets.playback, 600 * mb);
     expect(budgets.viewerPages, 1536 * mb ~/ 6);
+    expect(
+      budgets.sheetImages,
+      budgets.viewerPages,
+      reason: 'the sheets\' media images take one viewer\'s share (I-97)',
+    );
     expect(budgets.nativeUploads, 640 * mb);
     expect(budgets.tileImages, 512 * mb);
   });
@@ -70,6 +75,11 @@ void main() {
     final starved = budgets.toAllowance(1);
     expect(starved.drawings, BrushFrameStore.hotCelFloorBytes);
     expect(starved.undo, HistoryManager.retainedByteBudgetUnderPressure);
+    expect(
+      starved.sheetImages,
+      starved.viewerPages,
+      reason: 'a viewer\'s floor too (I-97)',
+    );
     expect(starved.total, CacheBudgets.floors.total);
     expect(
       CacheBudgets.floors.total,

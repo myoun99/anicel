@@ -18,6 +18,7 @@ import '../timeline/timeline_cell_exposure_state.dart';
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, cutShowingDragPreview;
 import 'active_cut_controllers.dart';
+import 'drags/exposure_edge_drag.dart' show commitSpliceKeepingTheCutOnItsRow;
 import 'independent_clip_mint.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
@@ -94,6 +95,12 @@ class FrameVerbs {
   /// the canvas itself. What the gizmos that edit that pose stand in.
   LayerPlacement? layerParentPlacement(LayerId layerId) =>
       _atThePlayhead(layerId, layerParentPlacementAt);
+
+  /// Where [layerId]'s REFERENCE FX stands its file's picture from at the
+  /// playhead ([layerReferenceSpaceAt]) — the space the reference's box
+  /// frames the fx's values in (F-374). Null = the canvas itself.
+  LayerPlacement? layerReferenceSpace(LayerId layerId) =>
+      _atThePlayhead(layerId, layerReferenceSpaceAt);
 
   /// [placement] asked of [layerId]'s row in the open cut at the playhead —
   /// null with no cut open or no such row.
@@ -227,17 +234,26 @@ class FrameVerbs {
           : ClipLanding.ownDrawings,
       ids: _frameIds,
     );
-    _controllers.timelineController.spliceRunsForLayers(
-      runs: [
-        (
-          layerId: layer.id,
-          index: block.endIndexExclusive,
-          liftCount: 0,
-          clip: placed.clip,
-          bornFrames: placed.born,
-          bornSounds: placed.bornSounds,
-        ),
-      ],
+    // The duplicate only lengthens its row: the cut it moves grows past the
+    // playhead, never under it, so the cut command's tidy-up is not owed —
+    // it drops the frame selection, which nobody asked a duplicate to do
+    // (F-264 found the same on the shove).
+    final controller = _controllers.timelineController;
+    commitSpliceKeepingTheCutOnItsRow(
+      project: _project,
+      controller: controller,
+      edits: controller.splicedLayers(
+        runs: [
+          (
+            layerId: layer.id,
+            index: block.endIndexExclusive,
+            liftCount: 0,
+            clip: placed.clip,
+            bornFrames: placed.born,
+            bornSounds: placed.bornSounds,
+          ),
+        ],
+      ),
       description: linked ? 'Link duplicate frames' : 'Duplicate frames',
     );
     final cut = _project.activeCutOrNull;

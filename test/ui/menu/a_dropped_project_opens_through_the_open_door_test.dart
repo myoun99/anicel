@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
@@ -14,7 +13,9 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/os_file_drop.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/wait_window.dart';
 
 /// F-247 (유저 2026-09-30): 「드래그앤드롭으로 외부파일 임포트시 확장자?에
 /// 맞도록. anicel이면 배치창이아니라 새 프로젝트로 열도록. tvpp도 똑같이」.
@@ -78,34 +79,16 @@ void main() {
     return tester.widget<EditorTopStrip>(find.byType(EditorTopStrip)).projects;
   }
 
-  /// [paths] dropped on the middle of the window, as the plugin hears it.
-  Future<void> drop(WidgetTester tester, List<String> paths) async {
-    final at = tester.getCenter(find.byType(EditorWorkspace));
-    const codec = StandardMethodCodec();
-    Future<void> hear(String method, Object arguments) =>
-        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
-          'desktop_drop',
-          codec.encodeMethodCall(MethodCall(method, arguments)),
-          (_) {},
-        );
-    await hear('entered', <double>[at.dx, at.dy]);
-    await hear('updated', <double>[at.dx, at.dy]);
-    await hear('performOperation', paths);
-    await tester.pump();
-    await tester.pump();
-  }
+  /// [paths] dropped on the middle of the window — the drawing floor.
+  Future<void> drop(WidgetTester tester, List<String> paths) =>
+      osDrop(tester, paths, at: tester.getCenter(find.byType(EditorWorkspace)));
 
-  const patience = Duration(seconds: 60);
-
-  /// Pumps real time until [done] says so, or [patience] has run out.
+  /// Lends the disk real time and the test clock a beat, by turns, until
+  /// [done] says so, or [settleAsync]'s patience has run out — the open's
+  /// linger passed in one step ([settleBehindTheWaitWindow]; ↩️walked 50ms
+  /// a frame until 10-20).
   Future<void> until(WidgetTester tester, bool Function() done) async {
-    final deadline = DateTime.now().add(patience);
-    while (!done() && DateTime.now().isBefore(deadline)) {
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
-    }
+    await settleBehindTheWaitWindow(tester, done);
     await tester.pump();
   }
 

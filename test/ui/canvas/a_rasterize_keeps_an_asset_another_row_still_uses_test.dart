@@ -57,7 +57,7 @@ void main() {
     expect(s.mediaPool.mediaAssets, hasLength(1));
 
     s.selectLayer(referring.first.id);
-    s.editingCanvas.rasterizeActiveLayer();
+    s.editingCanvas.rasterizeLayerReferences([referring.first.id]);
     expect(
       s.mediaPool.mediaAssets,
       hasLength(1),
@@ -74,7 +74,7 @@ void main() {
     );
 
     s.selectLayer(referring.last.id);
-    s.editingCanvas.rasterizeActiveLayer();
+    s.editingCanvas.rasterizeLayerReferences([referring.last.id]);
     expect(
       s.mediaPool.mediaAssets,
       hasLength(1),

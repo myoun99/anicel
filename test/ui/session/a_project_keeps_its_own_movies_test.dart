@@ -15,6 +15,7 @@ import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/opened_session.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/staged_carry.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 /// Audit 2026-09-24, card `carried-bytes-audit-0924` ①.
@@ -96,11 +97,7 @@ void main() {
     // anything (audit 09-25): the import is what staged it.
     expect(staged, isNotNull, reason: 'the premise: the import staged it');
     bool followed() => !File(staged!).existsSync();
-    for (var i = 0; i < 60 && !followed(); i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-    }
+    await tester.runAsync(() => pollUntil(followed));
     expect(followed(), isTrue, reason: 'the premise');
     return session;
   }

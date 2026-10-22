@@ -27,6 +27,12 @@ import '../helpers/project_scratch_folder.dart';
 /// cel rather than over its tiles (`celSourceEffectsOverStraight`,
 /// F-344-Q3). It is the same pass and the same hazard, so it is held to the
 /// same seam.
+///
+/// And a third: a live stroke shows its result in place of the cel's tile
+/// at every coordinate it changes, so the result is shown as the tile the
+/// cel will show there — one tile (`celTileWithSourceEffects`), or its
+/// bytes before they are one (card a-stroke-on-a-keyed-row-shows-its-tiles-
+/// unkeyed: a keyed sheet's ground showed bare under the pen).
 void main() {
   const seam = 'lib/src/services/cel_surface_as_shown.dart';
   const keysPass = 'lib/src/services/cel_source_effect_pass.dart';
@@ -35,7 +41,17 @@ void main() {
   const doors = {
     'celSurfaceWithSourceEffects(':
         'BitmapSurface celSurfaceWithSourceEffects(',
+    'celTileWithSourceEffects(': 'BitmapTile celTileWithSourceEffects(',
     'celSourceEffectsOverStraight(': 'void celSourceEffectsOverStraight(',
+  };
+
+  /// How many roads in the seam open each door: a cel, one of its tiles,
+  /// and bytes that are no tile yet — a landing text's region and a live
+  /// stroke's tile.
+  const roads = {
+    'celSurfaceWithSourceEffects(': 1,
+    'celTileWithSourceEffects(': 1,
+    'celSourceEffectsOverStraight(': 2,
   };
 
   /// The lines of [source] that CALL [door] — a mention in a comment is not
@@ -67,21 +83,39 @@ void main() {
     );
   });
 
-  test('the seam lays the texts and keys what they made — once each', () {
+  test('the seam lays the texts and keys what they made — once a road', () {
     final source = File(seam).readAsStringSync();
+    final flat = source.replaceAll(RegExp(r'\s+'), '');
 
     for (final door in doors.keys) {
-      expect(callsIn(source, door), hasLength(1), reason: door);
+      expect(callsIn(source, door), hasLength(roads[door]), reason: door);
     }
+    const order =
+        'the order is the order they exist in: the texts are part of the '
+        'picture, the keys filter that picture';
     expect(
       source.contains(
         'celSurfaceWithSourceEffects(celSurfaceWithTextsLaid(surface), '
         'effects)',
       ),
       isTrue,
-      reason:
-          'the order is the order they exist in: the texts are part of the '
-          'picture, the keys filter that picture',
+      reason: order,
+    );
+    expect(
+      flat,
+      contains(
+        'celTileWithSourceEffects(plates==null?tile:'
+        'celTileWithPlatesLaid(tile,plates,tileSize)!,effects,tileSize,)',
+      ),
+      reason: 'a tile: $order',
+    );
+    expect(
+      flat,
+      contains(
+        'layPlatesOverStraight(straight,plates,tileSize);}'
+        'celSourceEffectsOverStraight(straight,effects);',
+      ),
+      reason: 'a live tile\'s bytes: $order',
     );
   });
 
@@ -99,6 +133,7 @@ void main() {
       'void draw() {\n'
       '  // celSurfaceWithSourceEffects(surface, effects) is the old seam\n'
       '  final shown = celSurfaceWithSourceEffects(surface, effects);\n'
+      '  final keyed = celTileWithSourceEffects(tile, effects, 8);\n'
       '  celSourceEffectsOverStraight(bytes, effects);\n'
       '}\n',
     );
@@ -110,9 +145,10 @@ void main() {
 
     final found = straysUnder(planted.path, allowed: const {});
 
-    expect(found, hasLength(2), reason: 'a call of each door, and a comment');
+    expect(found, hasLength(3), reason: 'a call of each door, and a comment');
     expect(found, everyElement(contains('a_route.dart')));
     expect(found.first, contains('final shown = '));
+    expect(found[1], contains('celTileWithSourceEffects(tile'));
     expect(found.last, contains('celSourceEffectsOverStraight(bytes'));
   });
 }

@@ -22,6 +22,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/media_asset.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/se_name_tag.dart';
 import '../../models/project.dart';
 import '../../models/property_track.dart' show PropertyKey;
@@ -35,10 +36,11 @@ import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
 import '../brush_frame_store.dart';
 import '../clipboard/layer_copy_payload.dart';
-import '../command.dart' show Command, oneStepOf;
+import '../command.dart' show Command, WorkAhead, oneStepOf;
 import '../history_manager.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
+import '../reference_move_carried.dart';
 import 'cut_command_input_planner.dart';
 import 'convert_to_linked_cut_command.dart';
 import 'convert_to_linked_cut_plan.dart';
@@ -63,7 +65,6 @@ import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
 import 'link_duplicate_layer_command.dart';
 import 'unlink_layer_command.dart';
-import 'paste_layer_command.dart';
 import 'rename_cut_command.dart';
 import 'update_cut_durations_command.dart';
 import 'reorder_cut_command.dart';
@@ -79,10 +80,11 @@ import 'update_cut_staff_name_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
 import 'update_track_effects_command.dart';
-import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_se_name_tag_command.dart';
+import 'update_layer_reference_fx_command.dart';
 import 'update_layer_timeline_command.dart';
+import 'update_layer_transform_enabled_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
@@ -92,6 +94,7 @@ import 'update_layer_timesheet_command.dart';
 import 'update_layer_transform_command.dart';
 import 'update_media_assets_command.dart';
 import 'update_project_background_command.dart';
+import 'set_project_pasteboard_command.dart';
 import 'update_project_stage_colors_command.dart';
 import 'update_timesheet_info_command.dart';
 import 'update_exposure_memo_command.dart';
@@ -187,6 +190,17 @@ class CutCommandCoordinator {
     canvasSize: canvasSize,
     anchor: anchor,
   );
+  Future<void> resizeCutCanvasAhead({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
+    void Function(double done)? report,
+  }) => _cuts.resizeCutCanvasAhead(
+    cutId: cutId,
+    canvasSize: canvasSize,
+    anchor: anchor,
+    report: report,
+  );
   void placeCutCanvas({
     required CutId cutId,
     required CanvasSize canvasSize,
@@ -195,6 +209,17 @@ class CutCommandCoordinator {
     cutId: cutId,
     canvasSize: canvasSize,
     contentOffset: contentOffset,
+  );
+  Future<void> placeCutCanvasAhead({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    required ({double dx, double dy}) contentOffset,
+    void Function(double done)? report,
+  }) => _cuts.placeCutCanvasAhead(
+    cutId: cutId,
+    canvasSize: canvasSize,
+    contentOffset: contentOffset,
+    report: report,
   );
   void renameCut({required CutId cutId, required String newName}) =>
       _cuts.renameCut(cutId: cutId, newName: newName);
@@ -226,10 +251,6 @@ class CutCommandCoordinator {
     CutId? cutId,
     TimesheetSheetKind? kind,
   }) => _cuts.setTimesheetFormat(info: info, cutId: cutId, kind: kind);
-  void updateCutThumbnailFrame({
-    required CutId cutId,
-    required int? frameIndex,
-  }) => _cuts.updateCutThumbnailFrame(cutId: cutId, frameIndex: frameIndex);
   void reorderCut({
     required TrackId trackId,
     required CutId cutId,
@@ -442,6 +463,13 @@ class CutCommandCoordinator {
     required CutId originCutId,
     required CutId targetCutId,
   }) => _links.convertCutToLinked(
+    originCutId: originCutId,
+    targetCutId: targetCutId,
+  );
+  WorkAhead? convertCutToLinkedAhead({
+    required CutId originCutId,
+    required CutId targetCutId,
+  }) => _links.convertCutToLinkedAhead(
     originCutId: originCutId,
     targetCutId: targetCutId,
   );
@@ -745,8 +773,10 @@ class CutCommandCoordinator {
       insertionIndex: insertionIndex,
     );
 
+    // A pasted row is an added row: in a 겸용 cut its siblings get it too
+    // (F-398).
     historyManager.execute(
-      PasteLayerCommand(
+      plannedAddLayerCommand(
         repository: repository,
         cutId: cutId,
         layer: plan.layer,
@@ -761,9 +791,12 @@ class CutCommandCoordinator {
     );
   }
 
-  /// RASTERIZE (§6-f): nulls the layer's media reference — the pixels are
-  /// already its cels. The asset stays in the pool (유저 2026-09-11: 「구워도
-  /// 풀에 남음」). One undo step; no-op on non-reference layers.
+  /// RASTERIZE (§6-f): nulls the media reference of every use of the
+  /// layer's cels ([referenceLetGo], F-374-Q10) — the pixels are already
+  /// their cels — once each use's reference fx's move is its own
+  /// ([letReferencesGo]). The asset stays in the pool (유저 2026-09-11:
+  /// 「구워도 풀에 남음」). One undo step; no-op on non-reference layers,
+  /// and where a cel has to take the picture first, or the uses wait.
   void rasterizeLayerReference({
     required CutId cutId,
     required LayerId layerId,
@@ -776,13 +809,83 @@ class CutCommandCoordinator {
     if (layer.mediaReference == null) {
       return;
     }
-    historyManager.execute(
-      RasterizeLayerReferenceCommand(
-        repository: repository,
-        cutId: cutId,
-        layerId: layerId,
-      ),
+    final way = referenceLetGoOf(cutId: cutId, layerId: layerId);
+    if (way is ReferenceMoveCarried && !way.bakes) {
+      historyManager.runAsOneStep(
+        'Rasterize layer',
+        () => letReferencesGo(way),
+      );
+    }
+  }
+
+  /// How RASTERIZE keeps where [layerId] shows its file ([referenceLetGo]),
+  /// asked of the project: every use of its cels — its 겸용 link group, or
+  /// the row alone ([linkMirrorTargets]) — and whether a row that wears
+  /// their head and is none of them keeps keys of its own.
+  ReferenceLetGo referenceLetGoOf({
+    required CutId cutId,
+    required LayerId layerId,
+  }) {
+    final project = repository.requireProject();
+    final uses = linkMirrorTargets(project, cutId: cutId, layerId: layerId);
+    Layer rowAt(({CutId cutId, LayerId layerId}) at) =>
+        requireLayer(project, cutId: at.cutId, layerId: at.layerId);
+    return referenceLetGo(
+      uses: [
+        for (final use in uses)
+          (cut: requireCut(project, use.cutId), layer: rowAt(use)),
+      ],
+      othersKeepKeys:
+          headMirrorTargets(
+                project,
+                cutId: cutId,
+                layerId: layerId,
+                cameraHead: true,
+              )
+              .where((row) => !uses.contains(row))
+              .any((row) => rowAt(row).transformTrack.isNotEmpty),
     );
+  }
+
+  /// F-374-Q3 · Q10: every use's reference fx's move carried into its own
+  /// transform — [way]'s tracks through the transform's one write — and the
+  /// switch they share through the switch's (F-374-Q7 ①): what a rasterize
+  /// does before it lets the references go, a still's or a movie's.
+  void carryReferenceMoves(ReferenceMoveCarried way) {
+    for (final (:use, :track, asShown: _) in way.uses) {
+      updateLayerTransformTrack(
+        cutId: use.cut.id,
+        layerId: use.layer.id,
+        transformTrack: track,
+        description: 'Rasterize layer',
+      );
+    }
+    if (way.switchOn) {
+      historyManager.execute(
+        UpdateLayerTransformEnabledCommand(
+          repository: repository,
+          layerId: way.uses.first.use.layer.id,
+          transformEnabled: true,
+          description: 'Rasterize layer',
+        ),
+      );
+    }
+  }
+
+  /// [way]'s uses let go of their references once their moves are their own
+  /// ([carryReferenceMoves]) — the end of a still's rasterize, keyed or
+  /// baked. A movie's references go with the cels that replace its one.
+  void letReferencesGo(ReferenceMoveCarried way) {
+    carryReferenceMoves(way);
+    for (final (:use, track: _, asShown: _) in way.uses) {
+      historyManager.execute(
+        RasterizeLayerReferenceCommand(
+          repository: repository,
+          cutId: use.cut.id,
+          layerId: use.layer.id,
+        ),
+      );
+    }
   }
 
   // ── the project setting commands: their own object ──────────────────
@@ -802,6 +905,19 @@ class CutCommandCoordinator {
       _projectSettings.setProjectPasteboard(argb);
   void setProjectPasteboardNone() =>
       _projectSettings.setProjectPasteboardNone();
+  void setProjectPasteboardSize(PasteboardSize size) =>
+      _projectSettings.setProjectPasteboardSize(size);
+  void setProjectPasteboardInUse(bool inUse) =>
+      _projectSettings.setProjectPasteboardInUse(inUse);
+  Future<void> cutProjectPasteboardAhead({
+    PasteboardSize? size,
+    bool? inUse,
+    void Function(double done)? report,
+  }) => _projectSettings.cutProjectPasteboardAhead(
+    size: size,
+    inUse: inUse,
+    report: report,
+  );
 
   /// Executes [command] only when [read] of [subject] does not already
   /// answer [value].
@@ -966,18 +1082,43 @@ class CutCommandCoordinator {
   }) {
     // Anywhere lookup, like the audio clips above — SE rows are TRACK
     // fixtures and the cut-scoped read throws for them.
-    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
+    final layer = _requireLayerAnywhere(layerId);
     if (layer.kind != LayerKind.se) {
       throw StateError('Name tags belong on SE layers only.');
     }
-    if (layer.seNameTag == seNameTag) {
-      return;
-    }
-    historyManager.execute(
-      UpdateSeNameTagCommand(
+    _executeIfChanged(
+      subject: layer,
+      value: seNameTag,
+      read: (layer) => layer.seNameTag,
+      command: (_) => UpdateSeNameTagCommand(
         repository: repository,
         layerId: layerId,
         seNameTag: seNameTag,
+        description: description,
+      ),
+    );
+  }
+
+  /// Replaces a reference row's REFERENCE FX keys (F-374); one undo step,
+  /// no-op when unchanged. Where the file's pixels are laid is left as it
+  /// is.
+  void updateLayerReferenceFx({
+    required LayerId layerId,
+    required TransformTrack fx,
+    String description = 'Edit layer reference',
+  }) {
+    final layer = _requireLayerAnywhere(layerId);
+    if (layer.mediaReference == null) {
+      throw StateError('A reference fx belongs on a row that shows a file.');
+    }
+    _executeIfChanged(
+      subject: layer,
+      value: fx,
+      read: (layer) => layer.mediaReference!.fx,
+      command: (_) => UpdateLayerReferenceFxCommand(
+        repository: repository,
+        layerId: layerId,
+        fx: fx,
         description: description,
       ),
     );

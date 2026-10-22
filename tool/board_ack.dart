@@ -1,8 +1,8 @@
 // Leaves something the gate named alone, with the reason — or takes that
 // back.
 //
-//   dart run tool/board_ack.dart "$ANICEL_BOARD" <key> <reason…>
-//   dart run tool/board_ack.dart "$ANICEL_BOARD" --drop <key>
+//   bash tool/run.sh board_ack "$ANICEL_BOARD" <key> <reason…>
+//   bash tool/run.sh board_ack "$ANICEL_BOARD" --drop <key>
 //
 // <key> is the card id or the PR number the complaint named. Every word after
 // it is the reason; the line is dated by the clock of the machine that holds

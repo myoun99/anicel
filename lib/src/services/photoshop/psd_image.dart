@@ -2,6 +2,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import '../import/cel_picture.dart';
 import '../straight_rgba_image.dart';
 import 'psd_reader.dart';
 
@@ -21,6 +22,18 @@ Future<ui.Image> decodePsdCompositeImage(Uint8List bytes) async {
   final composite = await readPsdComposite(bytes);
   return decodeStraightRgbaImage(
     rgba: composite.rgba,
+    width: composite.width,
+    height: composite.height,
+  );
+}
+
+/// The composite as a picture an import lays on cels ([pictureOfPixels]):
+/// longer on a side than this device's engine hands back, never made one
+/// GPU image.
+Future<CelPicture> decodePsdCompositePicture(Uint8List bytes) async {
+  final composite = await readPsdComposite(bytes);
+  return pictureOfPixels(
+    composite.rgba,
     width: composite.width,
     height: composite.height,
   );

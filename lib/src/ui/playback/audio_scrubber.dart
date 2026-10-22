@@ -17,6 +17,8 @@
 /// there, exactly as it was before this class existed.
 library;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
@@ -73,13 +75,19 @@ class AudioScrubber {
   int _deviceRate = 0;
 
   /// Streaming state (AUDIO-PRO R6): the gesture's mix is kept so the
-  /// window can re-center when a long drag leaves it. The same object the
-  /// transport owns, which is what keeps scrub and playback on one
-  /// geometry.
-  final AudioStreamingWindow _window = AudioStreamingWindow();
+  /// window can re-center when a drag leaves it. The same object the
+  /// transport owns — one upload, and one law for when a window moves —
+  /// over the reach a scrub needs ([AudioStreamingWindow.scrubbing]).
+  final AudioStreamingWindow _window = AudioStreamingWindow(
+    reach: AudioStreamingWindow.scrubbing,
+  );
 
   /// Whether the current gesture is playing sound (test surface).
   bool get isArmed => _armed;
+
+  /// The window the gesture streams out of (test surface).
+  @visibleForTesting
+  AudioStreamingWindow get debugWindow => _window;
 
   /// A scrub move that CHANGED the frame: plays that frame's slice.
   ///
@@ -114,13 +122,14 @@ class AudioScrubber {
       return;
     }
     final startSample = _rate.frameToSample(frame, _deviceRate);
-    // A drag that left the streaming window re-centers it — a small
-    // synchronous read, same budget as the gesture's first upload.
-    if (_window.hasStreaming &&
-        (startSample - _window.centerSample).abs() >
-            (AudioStreamingWindow.aheadSeconds * _deviceRate) ~/ 2) {
-      _uploadWindow(startSample);
-    }
+    // A drag the window wants centred on again — by its own law — moves it
+    // there before the slice plays: a small read where the drag stands.
+    _window.cover(
+      startSample,
+      device: _device,
+      conformStore: conformStore,
+      deviceRate: _deviceRate,
+    );
     _device!.play(
       startSample: startSample,
       stopSample: _rate.frameToSample(frame + 1, _deviceRate),
@@ -166,7 +175,10 @@ class AudioScrubber {
     if (device == null) {
       return;
     }
-    final armed = armAudioOutput(
+    // Not armed — its sound on its way, kicked by the lookups or an open,
+    // or no output at all — this gesture stays visual: a drag is the hand's,
+    // and a scrub does not wait for its sound as a run does.
+    if (armAudioOutput(
       device: device,
       conformStore: conformStore,
       window: _window,
@@ -174,26 +186,13 @@ class AudioScrubber {
       rate: _rate,
       centerFrame: frame,
       preferredDeviceName: resolveOutputDeviceName?.call(),
-    );
-    if (armed == null) {
-      return;
+    ) case OutputArmed(:final deviceRate)) {
+      _deviceRate = deviceRate;
+      _device = device;
+      _armed = true;
+      _stoodDown = false;
     }
-    _deviceRate = armed.deviceRate;
-    if (!armed.uploaded) {
-      return; // kicked by the lookups; this gesture stays visual
-    }
-    _device = device;
-    _armed = true;
-    _stoodDown = false;
   }
-
-  /// Moves the streaming window to [centerSample]. False uploads nothing.
-  bool _uploadWindow(int centerSample) => _window.upload(
-    device: _device,
-    conformStore: conformStore,
-    deviceRate: _deviceRate,
-    centerSample: centerSample,
-  );
 
   void dispose() => _letGo();
 }

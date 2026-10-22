@@ -76,10 +76,13 @@ import '../../tool/refactor/clone_scan.dart';
 /// 88 → 89 (2026-09-11, I-14 — the media viewer's cut). The new pair is
 /// named:
 ///
-///     76 tokens
-///       lib/src/services/import/raster_cel_import.dart
-///         rasterizeImageToSurface
+///     59 tokens
+///       lib/src/services/import/raster_cel_import.dart  _laidBlock
 ///       lib/src/services/media/viewer_document.dart  cropImageRgba
+///
+/// (76 tokens and `rasterizeImageToSurface` until 2026-10-18, when a lay
+/// went a block of tiles at a time — F-374-Q8 ⑦ — and the raster moved
+/// into the block's own function. Still the pair, still the reading.)
 ///
 /// They ARE one algorithm — draw an image into a recorded picture the
 /// target's size, rasterize it and read it back as straight RGBA, giving
@@ -87,7 +90,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// the candidate.
 ///
 /// ⛔It is not merged, because it is the SECOND. The import's is the middle
-/// of a function that places, clips and slices into tiles; the cut's is the
+/// of a function that places and slices a block into tiles; the cut's is the
 /// whole of one that copies a box 1:1. A shared helper would take the
 /// paint's filter and the canvas's translation as arguments for a shape
 /// seen twice. ⛔Nor is the cut read another way to keep the count: reading
@@ -340,8 +343,134 @@ import '../../tool/refactor/clone_scan.dart';
 /// takes folders out and keeps what they held merges the walk.
 /// 🔬Measured on the lane against F-360's lane (`9760c59bc`, at 86): this
 /// one added, none gone.
+///
+/// 87 → 88 (2026-10-15, F-363-Q2 — the legend's Show all · Hide all pass
+/// the camera). The new pair is named:
+///
+///     51 tokens
+///       lib/src/ui/session/layer_switch_verbs.dart
+///         LayerSwitchVerbs.setAllLayersVisibility
+///       lib/src/ui/session/opacity_verbs.dart
+///         OpacityVerbs.setAllLayersOpacity
+///
+/// The reading DISMISSES the run: it is the comprehension every legend bulk
+/// press spells — the active cut's rows its column reaches, less those
+/// already there, handed to the controller as one batch — and the eye's
+/// filter took the opacity's shape when it learned to pass the camera. The
+/// law in it is WHICH rows a press reaches, and that is one place already:
+/// the kind table's columns (`hasPictureEye` · `hasPictureOpacity` — two
+/// questions on purpose, the transition answers them apart). The SE mute
+/// and the bar's commit spell the same comprehension over their own rows.
+/// ⛔A shared helper would take the column and the field as hooks and only
+/// name the comprehension, reading worse with no law moved.
+/// 🔬Measured on the lane against master (`8929cc433`, at 87): this one
+/// added, none gone.
+///
+/// 88 → 89 (2026-10-16, storyboard-thumbnails-let-go-by-the-one-order — the
+/// storyboard's pictures let go by the one order). The new pair is named:
+///
+///     63 tokens
+///       lib/src/ui/sheet/sheet_image_cache.dart
+///         SheetImageCache._letGoBeyondBudget
+///       lib/src/ui/storyboard_cut_thumbnail_store.dart
+///         StoryboardCutThumbnailStore._letGoBeyondBudget
+///
+/// The reading CONFIRMS it: both hold a map of pictures on one viewer's
+/// share of the device and let go by the one order a budget lets go by
+/// (`letGoLeastRecentlyUsed` — the thumbnails had written it out as a while
+/// loop of their own, which this lane took away). What they share past the
+/// call is the bookkeeping: the map in the order it was asked, the count of
+/// what it holds, a picture's cost. ⛔Not merged: the SECOND, and the rule
+/// of three holds — the sheet's cache gives a picture back at once and the
+/// thumbnails after the next frame, forgetting its signature with it, so a
+/// shared body would take both as hooks invented for a shape seen twice.
+/// 🔜The third map of pictures on a viewer's share merges the bookkeeping
+/// (the map, the count, the stand-in at another width, the memory warning)
+/// and lowers this back.
+/// 🔬Measured on the lane against master (`8d4b7c1fa`, at 88): this one
+/// added, none gone.
+///
+/// 89 → 88 (2026-10-16, every-bounded-cache-is-one-lru — every bounded
+/// cache lets go by one LRU). The pair named above is gone: both caches
+/// keep an `Lru` (core), and the bookkeeping they shared past the call —
+/// the map in the order it was asked, the count of what it holds, a
+/// picture's cost — is the `Lru`'s now, as it is the tip masks', the live
+/// stroke's results' and the rail's glyphs'. What stays theirs is what
+/// differs: the stand-in at another width and the memory warning.
+/// 🔬Measured on the lane against master (`8d4b7c1fa`, at 88): the same 88
+/// pairs, none added, none gone.
+///
+/// 88 → 89 (2026-10-17, the-masks-are-baked-and-locks-said — CLIP STUDIO's
+/// layer masks come in baked). The new pair is named:
+///
+///     75 tokens
+///       lib/src/services/import/clip_offscreen.dart
+///         clipColourRgba
+///       lib/src/services/import/clip_offscreen.dart
+///         clipMaskPlane
+///
+/// The reading CONFIRMS it: both lay a picture CLIP STUDIO keeps in
+/// 256-pixel blocks onto one plane by the same walk — a block's place by
+/// its number on the grid, its pixels cut at the picture's right and bottom
+/// edges. What differs is a block's inside and the plane where none is: a
+/// colour block is an alpha plane and then B · G · R · unused, turned to
+/// straight RGBA over transparency; a mask's block is the plane itself,
+/// over the mask's outside value. ⛔Not merged: the SECOND, and the rule of
+/// three holds — a shared walk would take the pixel's writing and the empty
+/// plane as hooks invented for a shape seen twice. 🔜The third picture read
+/// out of these blocks merges the walk and lowers this back.
+/// 🔬Measured on the lane against master (`4c997b9cc`, at 88): this one
+/// added, none gone.
+///
+/// 89 → 88 (2026-10-20, a-picture-past-the-texture-limit-is-decoded
+/// -squashed — a picture past the engine's side is read by the app). Its
+/// reader would have added three, and adds none: a PNG is unfiltered by the
+/// Paeth predictor the writer filters by (`pngPaeth`), a picture's straight
+/// RGBA is read back one way (`straightRgbaOf`, whose third writer this
+/// was), and a palette entry is copied as the four bytes it is. The read
+/// back made one took a standing pair with it:
+///
+///     lib/src/services/import/raster_cel_import.dart  _laidBlock
+///     lib/src/services/media/viewer_document.dart     cropImageRgba
+///
+/// 🔬Measured on the lane against master (`9705c2b3a`, at 89): none added,
+/// that one gone.
+///
+/// 88 → 87 (2026-10-20, a-name-tag-value-is-a-key — F-407: a typed member
+/// keys as an fx's parameter does). Keying always left the name tag's
+/// typed number one walk with the transform's opacity: parse the number
+/// with its `%`, key it at the frame. It was not two — twelve value
+/// columns each read their typed number back by their own
+/// `double.tryParse(…replaceAll('%', '')…)`, each with its own units. One
+/// reader now stands beside the one writer (`columnValueOf` by
+/// `columnValueText`), and its two-number form (`columnPairOf`) took a
+/// standing pair with it:
+///
+///     lib/src/ui/timeline/scale_lane_form.dart      TwoScales.scrubbed
+///     lib/src/ui/timeline/transform_lane_policy.dart scrubTransformLaneValue
+///
+/// 🔬Measured on the lane against master (`942ad5e5c`, at 88): none added,
+/// that one gone.
+///
+/// 87 → 88 (2026-10-17, frame-picture-indicator — the storyboard's bar
+/// joins its runs, red or not, in a function of its own; 88 → 89 where the
+/// lane was cut, and 89 → 90 over the masks' pair once it stood on master,
+/// before master took two pairs away). The new pair is named:
+///
+///     40 tokens
+///       lib/src/core/convex_clip.dart  _keptBy
+///       lib/src/ui/storyboard_playhead_mapping.dart  storyboardReadyRuns
+///
+/// The reading DISMISSES it: an empty list, then an index walk that reads
+/// the list at the index — a polygon clipped against one edge, and the
+/// storyboard's stretches walked to their owners' ready runs. Nothing the
+/// two compute is the same; the run showed when the local function that
+/// stood between the list and the walk went out of it (`_append`).
+/// 🔬Measured on the lane against its base (`ebefaea8b`, at 88): this one
+/// added, none gone. Measured again on the lane over master (`d13d76aa6`,
+/// at 89): 90, this one added, none gone.
 void main() {
-  const ceiling = 87;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

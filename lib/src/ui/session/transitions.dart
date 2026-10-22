@@ -320,9 +320,18 @@ class Transitions {
       names.rowNamed(track, track.transitionLayer, olWord: olWord),
       cutStart: cutStart,
       duration: duration,
-      // The SHEET counts its rows from the cut's place, as its sound
-      // columns do (`SheetSources`) — its own projection, not this lane's.
-      lead: 0,
+      // 🗣️I-73-ol-sheet-columns: the sheet's rows are the cut's own frames,
+      // as the cut view's columns are — from the のりしろ an O.L arriving
+      // into it asks, the one its rows and sound columns count from
+      // (`SheetSources`, over the same spans). Not [_openCutLead]: the
+      // sheet may print another cut (F-90). ↩️It counted from the cut's
+      // place, as the sound columns did — both the のりしろ above the
+      // pictures they go with.
+      lead: cutTransitionHandles(
+        cutStart: cutStart,
+        cutEnd: cutStart + duration,
+        spans: activeTrackTransitionSpans,
+      ).head,
     );
     if (crossing.isEmpty) {
       return display;

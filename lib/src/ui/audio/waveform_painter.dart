@@ -102,14 +102,8 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     // frame, more than all the rest of its paint. What the clip hides, no
     // picture of this paint can show, so not drawing it moves no pixel.
     final clip = canvas.getLocalClipBounds();
-    final shownFrom = math.max(
-      0.0,
-      axis == Axis.horizontal ? clip.left : clip.top,
-    );
-    final shownTo = math.min(
-      mainExtent,
-      axis == Axis.horizontal ? clip.right : clip.bottom,
-    );
+    final shownFrom = math.max(0.0, startAlong(axis, clip));
+    final shownTo = math.min(mainExtent, endAlong(axis, clip));
     if (shownTo <= shownFrom) {
       return;
     }

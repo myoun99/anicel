@@ -39,12 +39,66 @@ CelTextRange celTextLettersSpokenFor(
         end: math.max(selectionStart, selectionEnd),
       );
 
+/// A run of a text's paragraphs, counted from the first: from [first] up to
+/// and including [last].
+typedef CelTextParagraphRange = ({int first, int last});
+
+/// The paragraphs [letters] are in, each with the break that ends it — and,
+/// when they run to the text's end, the last, which after a break there
+/// has no letter. No letters at all are in the paragraph they stand in.
+///
+/// 🚨★★★WHAT A PARAGRAPH SETTING — the alignment, the line pitch — SPEAKS
+/// FOR is the paragraphs of the letters a letter setting speaks for
+/// ([celTextLettersSpokenFor]): THE ONE RULE, read a paragraph at a time.
+/// With none selected, every paragraph; with some, those they touch.
+CelTextParagraphRange celTextParagraphsOf(
+  CelTextContent content,
+  CelTextRange letters,
+) {
+  final length = content.text.length;
+  RangeError.checkValidRange(letters.start, letters.end, length);
+  return (
+    first: content.paragraphAt(letters.start),
+    last: letters.end == length
+        ? content.paragraphs.length - 1
+        : content.paragraphAt(math.max(letters.start, letters.end - 1)),
+  );
+}
+
+/// [content] with each paragraph of [range] set as [change] makes of how it
+/// was set — every one keeps what [change] leaves alone.
+CelTextContent celTextReparagraphed(
+  CelTextContent content, {
+  required CelTextParagraphRange range,
+  required CelTextParagraph Function(CelTextParagraph paragraph) change,
+}) {
+  // From a paragraph there is, to one there is at or after it.
+  RangeError.checkValidRange(
+    range.first,
+    range.last,
+    content.paragraphs.length - 1,
+  );
+  return content.copyWith(
+    paragraphs: [
+      for (final (index, paragraph) in content.paragraphs.indexed)
+        if (index < range.first || index > range.last)
+          paragraph
+        else
+          change(paragraph),
+    ],
+  );
+}
+
 /// [content] with the letters of [range] gone and [letters] in their place.
 ///
 /// What is typed wears what was there: over a selection, the first letter
 /// it replaces; between letters, the one before it — at the very start,
 /// the first. Only a text with NO letters has nothing to go by, and there
 /// they wear [nextLetterStyle].
+///
+/// And the paragraphs it makes are set as the one it is typed into — where
+/// [range] begins: a break typed splits that paragraph into two set alike,
+/// and a break taken out joins two as the first of them was set.
 CelTextContent celTextWithLetters(
   CelTextContent content, {
   required CelTextRange range,
@@ -61,11 +115,19 @@ CelTextContent celTextWithLetters(
   } else {
     style = _styleAt(content, range.start == 0 ? 0 : range.start - 1);
   }
+  final first = content.paragraphAt(range.start);
+  final last = content.paragraphAt(range.end);
   return content.copyWith(
     spans: [
       ..._cut(content.spans, 0, range.start),
       CelTextSpan(text: letters, style: style),
       ..._cut(content.spans, range.end, length),
+    ],
+    paragraphs: [
+      ...content.paragraphs.take(first),
+      for (var made = 0; made <= '\n'.allMatches(letters).length; made++)
+        content.paragraphs[first],
+      ...content.paragraphs.skip(last + 1),
     ],
   );
 }

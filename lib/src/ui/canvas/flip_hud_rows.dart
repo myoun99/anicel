@@ -21,11 +21,19 @@ import 'flip_hud_model.dart';
 /// [celNameAt] prints a block's cel name; a transition span prints its
 /// writing, else the name of the term [spanDefById] finds for it, else the
 /// raw id when that term was deleted (the row's own fallback).
+/// [unionKeys] are the keys the panel draws on the row itself — the CAMERA
+/// row's union ([flipHudKeyRun]) — at the union's size, as the panels draw
+/// them.
+///
+/// ↩️The camera row came out an empty band: a camera layer holds no
+/// drawings, and its keys are its cut's camera track's, not the layer's,
+/// while both rails draw the union on it (B4).
 FlipHudRow flipHudLayerRow(
   Layer layer, {
   required bool withRuns,
   required String? Function(Layer layer, int frame) celNameAt,
   required CameraInstructionDef? Function(String instructionId)? spanDefById,
+  List<FlipHudRun> unionKeys = const [],
 }) {
   final runs = <FlipHudRun>[];
   if (withRuns) {
@@ -65,11 +73,14 @@ FlipHudRow flipHudLayerRow(
         );
       }
     }
-    runs.sort((a, b) => a.startIndex.compareTo(b.startIndex));
+    runs
+      ..addAll(unionKeys)
+      ..sort((a, b) => a.startIndex.compareTo(b.startIndex));
   }
   return FlipHudRow(
     name: layer.name,
     kind: layer.kind,
+    isGroupHeader: withRuns && unionKeys.isNotEmpty,
     runs: runs,
     // The cells painter's own rule for the X: only rows that hold
     // drawings print one, and SE columns stay blank between entries.
@@ -86,26 +97,32 @@ FlipHudRow flipHudLaneRow(
   required LayerKind kind,
   required bool withRuns,
 }) {
-  final keys = withRuns
-      ? (lane.keyedFrames.toList()..sort())
-      : const <int>[];
   return FlipHudRow(
     name: lane.label,
     kind: kind,
     isLane: true,
+    isGroupHeader: lane.isGroupHeader,
     // A key row has no cels, so it prints no timesheet X — the same
     // reason the cells painter withholds one there.
     holdsDrawings: false,
-    runs: [
-      for (final frame in keys)
-        FlipHudRun(
-          startIndex: frame,
-          length: 1,
-          keyMark: lane.keyMarkAt(frame),
-        ),
-    ],
+    runs: withRuns
+        ? [
+            for (final frame in lane.keyedFrames.toList()..sort())
+              flipHudKeyRun(lane, frame),
+          ]
+        : const [],
   );
 }
+
+/// [lane]'s key at its [frame] as a run of the window, standing [at] on the
+/// window's axis — the lane's own frame, unless the rail lays the lane's
+/// cut further along it (the storyboard's camera row).
+FlipHudRun flipHudKeyRun(PropertyLaneRow lane, int frame, {int? at}) =>
+    FlipHudRun(
+      startIndex: at ?? frame,
+      length: 1,
+      keyMark: lane.keyMarkAt(frame),
+    );
 
 /// A track's V ROW in the flip window: its CUTS on the track's axis — the
 /// blocks the V row's flip steps through — each by its name.

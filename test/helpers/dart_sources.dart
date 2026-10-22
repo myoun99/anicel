@@ -9,9 +9,16 @@ import 'dart:io';
 /// folder that did not exist; the walk FAILS on one instead — a scan whose
 /// folder was renamed must go red, not quietly measure nothing (「빈 것을
 /// 쟀다」).
-Iterable<File> dartFilesUnder(String dir) sync* {
+Iterable<File> dartFilesUnder(String dir) =>
+    filesUnder(dir).where((file) => file.path.endsWith('.dart'));
+
+/// Every file under [dir], at any depth and of any kind — for a scan of
+/// what the scripts and workflows say, where the Dart filter sees nothing.
+/// The one walk [dartFilesUnder] filters, so it fails on a missing folder
+/// too.
+Iterable<File> filesUnder(String dir) sync* {
   for (final entity in Directory(dir).listSync(recursive: true)) {
-    if (entity is File && entity.path.endsWith('.dart')) yield entity;
+    if (entity is File) yield entity;
   }
 }
 

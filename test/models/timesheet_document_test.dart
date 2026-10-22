@@ -26,11 +26,13 @@ Layer _layer(
   List<Frame> frames = const [],
   Map<int, TimelineExposure>? timeline,
   String? attachedTo,
+  LayerMark mark = LayerMark.none,
 }) {
   return Layer(
     id: LayerId(id),
     name: id,
     kind: kind,
+    mark: mark,
     onTimesheet: onTimesheet,
     frames: frames,
     timeline: timeline ?? const {},
@@ -149,8 +151,8 @@ void main() {
 
   group('TimesheetDocument columns', () {
     test('onTimesheet animation layers fill the ACTION slots in order, headed '
-        'by their real names; unbacked slots and the CELL block print no '
-        'placeholder letters', () {
+        'by their real names; unbacked slots print no placeholder letters, '
+        'and the CELL block, with no 動画 row, prints nothing', () {
       final document = _document(
         _cut(
           layers: [
@@ -177,21 +179,19 @@ void main() {
           .where((column) => column.kind == TimesheetColumnKind.cel)
           .toList();
       expect(celColumns, hasLength(8), reason: 'CELL form columns');
-      // The CELL headers mirror the ACTION layer names (UI-R10 #10); the
-      // content stays blank handwriting space.
-      expect(celColumns[0].label, 'Line');
-      expect(celColumns[1].label, 'Color');
-      expect(celColumns[2].label, isEmpty);
       expect(
         celColumns.every(
           (column) =>
+              column.label.isEmpty &&
               column.layerName == null &&
               column.cells.every(
                 (cell) => cell.kind == TimesheetCellKind.empty,
               ),
         ),
         isTrue,
-        reason: 'headers only — no backing layer, no content',
+        reason:
+            'F-406-Q1: the ACTION rows\' names are not mirrored over the '
+            'CELL block any more',
       );
       expect(
         document.columns
@@ -205,6 +205,151 @@ void main() {
             .map((column) => column.label),
         ['1', '2'],
       );
+    });
+
+    group('🎯F-406 — a 動画 row prints in the CELL block (유저 2026-10-19: '
+        '「색라벨 공정이 동화면 타임시트용지패널의 CELL란에 표시하도록. '
+        '액션란에는 표시안함. 동화의 어떤 수정공정이던 CELL란표시」)', () {
+      final frames = [
+        Frame(
+          id: const FrameId('f1'),
+          duration: 1,
+          name: '1',
+          strokes: const [],
+        ),
+        Frame(id: const FrameId('f2'), duration: 1, strokes: const []),
+      ];
+      final timeline = {
+        0: const TimelineExposure.drawing(FrameId('f1'), length: 3),
+        5: const TimelineExposure.drawing(FrameId('f2'), length: 2),
+      };
+      const inbetween = LayerMark(process: LayerProcess.inbetween);
+      List<TimesheetColumn> block(
+        TimesheetDocument document,
+        TimesheetColumnKind kind,
+      ) => [
+        for (final column in document.columns)
+          if (column.kind == kind) column,
+      ];
+      List<(TimesheetCellKind, String?)> printed(TimesheetColumn column) => [
+        for (final cell in column.cells) (cell.kind, cell.label),
+      ];
+
+      test('in its own place among the 動画 and 仕上げ rows, whatever its '
+          'revise — and not in the ACTION block, which lays the rest in '
+          'turn', () {
+        // F-431 (유저 2026-10-21): 「시아게 공정쪽 레이어도 동일하게
+        // CELL란에 등록」.
+        final document = _document(
+          _cut(
+            layers: [
+              _layer('IB', mark: inbetween),
+              _layer('Line'),
+              _layer(
+                'IB-check',
+                mark: const LayerMark(
+                  process: LayerProcess.inbetween,
+                  revise: LayerRevise.inbetweenCheck,
+                ),
+              ),
+              _layer('Color', mark: const LayerMark(process: LayerProcess.key)),
+              _layer(
+                'Paint',
+                mark: const LayerMark(process: LayerProcess.finish),
+              ),
+              _layer(
+                'Paint-check',
+                mark: const LayerMark(
+                  process: LayerProcess.finish,
+                  revise: LayerRevise.cellCheck,
+                ),
+              ),
+            ],
+          ),
+        );
+
+        expect(
+          [
+            for (final column in block(document, TimesheetColumnKind.action))
+              column.label,
+          ].take(3),
+          ['Line', 'Color', ''],
+        );
+        expect(
+          [
+            for (final column in block(document, TimesheetColumnKind.cel))
+              (column.label, column.layerName),
+          ].take(5),
+          [
+            ('IB', 'IB'),
+            ('IB-check', 'IB-check'),
+            ('Paint', 'Paint'),
+            ('Paint-check', 'Paint-check'),
+            ('', null),
+          ],
+        );
+      });
+
+      test('by the ACTION block\'s law — the cells it would print there, '
+          'and the drag preview it would take there', () {
+        Cut cutOf(LayerMark mark) => _cut(
+          layers: [
+            _layer('IB', mark: mark, frames: frames, timeline: timeline),
+          ],
+          duration: 8,
+        );
+        final asAction = block(
+          _document(cutOf(LayerMark.none)),
+          TimesheetColumnKind.action,
+        ).first;
+        final asCell = block(
+          _document(cutOf(inbetween)),
+          TimesheetColumnKind.cel,
+        ).first;
+
+        expect(printed(asCell), printed(asAction));
+        expect(
+          printed(asAction).first,
+          (TimesheetCellKind.drawing, '1'),
+          reason: 'premise: the row prints something',
+        );
+        expect(asCell.layerId, const LayerId('IB'));
+        expect(asCell.previewCellsBuilder, isNotNull);
+      });
+
+      test('only the ACTION block marks the books among its rows — the CELL '
+          'block marks none, its rows laid like the ACTION block\'s '
+          '(F-430)', () {
+        final document = _document(
+          _cut(
+            layers: [
+              _layer('A'),
+              _layer('IB1', mark: inbetween),
+              Layer(
+                id: const LayerId('book'),
+                name: 'BOOK',
+                kind: LayerKind.image,
+                mark: const LayerMark(process: LayerProcess.art),
+                frames: [
+                  Frame(
+                    id: const FrameId('book-f'),
+                    duration: 1,
+                    name: '2',
+                    strokes: const [],
+                  ),
+                ],
+              ),
+              _layer('IB2', mark: inbetween),
+              _layer('B'),
+            ],
+          ),
+        );
+        expect(document.books, [(boundary: 1, label: 'BOOK2')]);
+        final firstCell = document.columns.indexWhere(
+          (column) => column.kind == TimesheetColumnKind.cel,
+        );
+        expect(document.columns[firstCell].label, 'IB1');
+      });
     });
 
     test('an image row stays off the ACTION block even with its sheet '
@@ -412,9 +557,10 @@ void main() {
       expect(cells[3].kind, TimesheetCellKind.emptyRunStart);
       expect(
         cells[4].kind,
-        TimesheetCellKind.empty,
+        TimesheetCellKind.emptyRunSpan,
         reason: 'one X per empty run',
       );
+      expect(cells[4].spanOffset, 1, reason: 'counted from the X (F-430)');
     });
 
     test('SE columns carry the name/dialogue label and never mark X runs', () {
@@ -450,7 +596,9 @@ void main() {
       // SE columns stay blank between entries on paper — no X anywhere.
       expect(
         seColumn.cells.where(
-          (cell) => cell.kind == TimesheetCellKind.emptyRunStart,
+          (cell) =>
+              cell.kind == TimesheetCellKind.emptyRunStart ||
+              cell.kind == TimesheetCellKind.emptyRunSpan,
         ),
         isEmpty,
       );
@@ -642,8 +790,32 @@ void main() {
 
       final cells = _firstActionColumn(document).cells;
       expect(cells[0].kind, TimesheetCellKind.emptyRunStart);
+      expect(cells[9].kind, TimesheetCellKind.emptyRunSpan);
       expect(cells[10].kind, TimesheetCellKind.empty);
       expect(cells[143].kind, TimesheetCellKind.empty);
+    });
+
+    // F-430: 「액션란이랑 셀란 늘림선 따로따로 적용가능하게」.
+    test('each block draws its stretch line by its own threshold; the SE '
+        'and camera columns draw none', () {
+      final document = _document(
+        _cut(layers: [_layer('A')]),
+        info: const TimesheetInfo(
+          exposureBarThreshold: 2,
+          cellExposureBarThreshold: 5,
+        ),
+      );
+
+      expect(document.stretchLineFrom(TimesheetColumnKind.action), 2);
+      expect(document.stretchLineFrom(TimesheetColumnKind.cel), 5);
+      expect(document.stretchLineFrom(TimesheetColumnKind.se), isNull);
+      expect(document.stretchLineFrom(TimesheetColumnKind.camera), isNull);
+      expect(
+        _document(_cut(layers: [_layer('A')])).stretchLineFrom(
+          TimesheetColumnKind.cel,
+        ),
+        TimesheetInfo.defaultCellExposureBarThreshold,
+      );
     });
 
     test('camera keyframes land in the first camera column with spans', () {
@@ -788,14 +960,17 @@ void main() {
       canvasSize: const CanvasSize(width: 100, height: 100),
     );
 
-    TimesheetDocument sheet({List<TransitionSpan> spans = const []}) =>
-        TimesheetDocument.fromCut(
-          cut: cut,
-          projectName: 'p',
-          fps: fps,
-          cutStartFrame: cutStart,
-          transitionSpans: spans,
-        );
+    TimesheetDocument sheet({
+      List<TransitionSpan> spans = const [],
+      List<Layer> trackSeLayers = const [],
+    }) => TimesheetDocument.fromCut(
+      cut: cut,
+      projectName: 'p',
+      fps: fps,
+      cutStartFrame: cutStart,
+      transitionSpans: spans,
+      trackSeLayers: trackSeLayers,
+    );
 
     test('no transition means no のりしろ — the sheet is the conte 尺', () {
       final document = sheet();
@@ -821,6 +996,78 @@ void main() {
       expect(document.drawnFrameCount, 3 * fps + 12);
       expect(document.durationLabel, '3+0');
       expect(document.drawnDurationLabel, '3+12');
+    });
+
+    // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
+    // 엔드라인)」.
+    test('🚨F-358: a sound crosses the cut\'s end at the line the sheet is '
+        'drawn to — one ending inside the のりしろ does not', () {
+      // An O.L across the cut's END at 120 reaches 12 frames past it: the
+      // sheet is drawn to local 84, its 尺 72.
+      bool crosses(int start, int length) {
+        final sound = Layer(
+          id: const LayerId('track-se'),
+          name: 'S1',
+          kind: LayerKind.se,
+          frames: [
+            Frame(id: const FrameId('s'), duration: length, strokes: const []),
+          ],
+          timeline: {
+            start: TimelineExposure.drawing(
+              const FrameId('s'),
+              length: length,
+            ),
+          },
+        );
+        final column = sheet(
+          spans: const [
+            (start: 108, length: 24, mark: CameraInstructionMarkType.ol),
+          ],
+          trackSeLayers: [sound],
+        ).columns.firstWhere((c) => c.kind == TimesheetColumnKind.se);
+        return column.crossesCutEnd;
+      }
+
+      expect(crosses(100, 26), isFalse, reason: 'local [52, 78) ends by 84');
+      expect(crosses(110, 30), isTrue, reason: 'local [62, 92) runs past 84');
+    });
+
+    // 🗣️I-73-ol-sheet-columns · F-358 (유저 2026-10-17): 「컷 엔드라인(OL
+    // 여백이든 뭐든 총합적인 엔드라인) 넘어가는건 안보이게하고」.
+    test('🚨a sound in the のりしろ is the sheet\'s, on the row of the cut\'s '
+        'own frame it plays at — one past the drawn end is not', () {
+      // O.L-s across both ends: the cut's own frame 0 is the track's 36,
+      // twelve before its place, and it is drawn to its own 96 — the
+      // track's 132, twelve past its end.
+      final sounds = Layer(
+        id: const LayerId('track-se'),
+        name: 'S1',
+        kind: LayerKind.se,
+        frames: [
+          for (final id in ['head', 'tail', 'past'])
+            Frame(id: FrameId(id), duration: 2, strokes: const []),
+        ],
+        timeline: const {
+          40: TimelineExposure.drawing(FrameId('head'), length: 2),
+          125: TimelineExposure.drawing(FrameId('tail'), length: 2),
+          134: TimelineExposure.drawing(FrameId('past'), length: 2),
+        },
+      );
+      final column = sheet(
+        spans: const [
+          (start: 36, length: 24, mark: CameraInstructionMarkType.ol),
+          (start: 108, length: 24, mark: CameraInstructionMarkType.ol),
+        ],
+        trackSeLayers: [sounds],
+      ).columns.firstWhere((c) => c.kind == TimesheetColumnKind.se);
+
+      expect(
+        [
+          for (var row = 0; row < column.cells.length; row += 1)
+            if (column.cells[row].kind == TimesheetCellKind.drawing) row,
+        ],
+        [4, 89],
+      );
     });
 
     test('a sheet without transitions prints one number, as it always did', () {

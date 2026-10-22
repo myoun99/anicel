@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
@@ -49,6 +50,16 @@ void main() {
         BrushToolState(size: double.infinity).size,
         BrushToolState.defaultSize,
       );
+    });
+
+    // 🗣️size-rack-0-7-under-the-brush-floor (유저 2026-10-12 「브러시
+    // 사이즈 최소치만 0.1까지 내림」, 10-17 「1px밑으로 안내려가는데」).
+    test('a brush reaches a tenth of a pixel, and a size under one is kept '
+        'as it is set', () {
+      expect(BrushToolState.minSize, 0.1);
+      expect(BrushToolState(size: 0.7).size, 0.7, reason: 'the rack\'s first');
+      expect(BrushToolState.defaults.withActiveSize(0.3).size, 0.3);
+      expect(BrushToolState.defaults.withActiveSize(0.05).size, 0.1);
     });
 
     test('public constructor always stores clamped opacity', () {
@@ -236,10 +247,11 @@ void main() {
     // back into the default, so the round-trip equality below fails loudly
     // instead of passing on default==default (the trap the old, partial
     // version of this test walked into). What is NOT carried into
-    // BrushSettings is what is not a brush parameter — `tool` and
-    // `stabilizerStrength` (hand feel) — so they stay at their defaults
-    // here. ⛔The blend used to be on that list under R26 #10 and is not
-    // any more: it is a carried field like every other, and it is below.
+    // BrushSettings is what is not a brush parameter — `tool` — so it stays
+    // at its default here. ⛔The blend used to be on that list under R26 #10
+    // and is not any more: it is a carried field like every other, and it is
+    // below. ⛔So is the stabilizer, which was on it as hand feel (P7) — the
+    // brush's own `correction` now (F-418-Q6).
     BrushTipMask maskFor(String id) => BrushTipMask(
       id: id,
       size: 2,
@@ -259,10 +271,8 @@ void main() {
       hardnessPressureCurve: BrushPressureCurve.identity(),
       roundness: 0.4,
       angleDegrees: 60,
-      tipMask: maskFor('tip'),
+      tips: [maskFor('tip')],
       rotationMode: BrushTipRotationMode.direction,
-      sizeJitter: 0.2,
-      opacityJitter: 0.3,
       angleJitter: 0.4,
       scatterRadiusRatio: 0.5,
       scatterCount: 3,
@@ -276,6 +286,7 @@ void main() {
       textureScale: 1.2,
       textureDensity: 0.9,
       blendMode: BrushBlendMode.multiply,
+      correction: const BrushCorrection(stabilization: 33),
     );
 
     test('every carried field survives toBrushSettings/fromBrushSettings', () {
@@ -300,8 +311,6 @@ void main() {
       expect(input.angleDegrees, state.angleDegrees);
       expect(input.tipMask, state.tipMask);
       expect(input.rotationMode, state.rotationMode);
-      expect(input.sizeJitter, state.sizeJitter);
-      expect(input.opacityJitter, state.opacityJitter);
       expect(input.angleJitter, state.angleJitter);
       expect(input.scatterRadiusRatio, state.scatterRadiusRatio);
       expect(input.scatterCount, state.scatterCount);
@@ -312,6 +321,7 @@ void main() {
       expect(input.textureScale, state.textureScale);
       expect(input.textureDensity, state.textureDensity);
       expect(input.blendMode, state.blendMode);
+      expect(input.correction, state.correction);
     });
 
     // 🗣️board `a-brush-picked-wears-the-texture-of-the-one-before` (유저

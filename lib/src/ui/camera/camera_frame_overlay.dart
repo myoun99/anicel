@@ -6,6 +6,7 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/transform_track.dart' show TransformPose;
 import '../../services/camera_frame_corners.dart'
     show cameraFrameCornersInCanvas;
@@ -140,9 +141,9 @@ class CameraFrameBox extends StatelessWidget {
     super.key,
     required this.pose,
     required this.cameraFrameSize,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.viewport,
-    required this.claimsCanvas,
+    required this.presses,
     required this.onCancelled,
     this.move,
     this.zoom,
@@ -153,10 +154,10 @@ class CameraFrameBox extends StatelessWidget {
   final CameraPose pose;
   final CanvasSize cameraFrameSize;
 
-  /// The cut's canvas — the stage the turn keeps to.
-  final CanvasSize canvasSize;
+  /// The wall of the cut's canvas — the stage the turn keeps to.
+  final PasteboardWall pasteboard;
   final CanvasViewport viewport;
-  final bool claimsCanvas;
+  final RowBoxPresses presses;
   final VoidCallback onCancelled;
   final RowBoxLanding<CanvasPoint>? move;
   final RowBoxLanding<double>? zoom;
@@ -187,9 +188,9 @@ class CameraFrameBox extends StatelessWidget {
         zoom: 1 / pose.zoom,
         rotationDegrees: pose.rotationDegrees,
       ),
-      canvasSize: canvasSize,
+      pasteboard: pasteboard,
       viewport: viewport,
-      claimsCanvas: claimsCanvas,
+      presses: presses,
       // The frame's own hairline is the outline ([CameraFrameOverlay]).
       outlined: false,
       onCancelled: onCancelled,

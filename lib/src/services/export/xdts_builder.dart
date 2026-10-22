@@ -5,6 +5,7 @@ import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/sheet_sources.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/transition_geometry.dart';
 
 /// Builds an XDTS (exchange digital time sheet, OpenToonz/Toei) document
 /// for one cut, straight from the unified timeline model.
@@ -41,6 +42,12 @@ String buildXdtsContent({
   /// to the cut, spill-in synthesized, starts past the cut end clipped.
   List<Layer> trackSeLayers = const [],
   int cutStartFrame = 0,
+
+  /// The track's transition spans (GLOBAL axis): the のりしろ an O.L
+  /// arriving into the cut asks puts its own frame 0 — the cel tracks'
+  /// first — that much before [cutStartFrame], and the DIALOG tracks count
+  /// from there too (I-73-ol-sheet-columns).
+  List<TransitionSpan> transitionSpans = const [],
 }) {
   // The SAME projection the print timesheet reads (the comment below the
   // parameter list has promised this all along).
@@ -48,8 +55,16 @@ String buildXdtsContent({
     cut: cut,
     trackSeLayers: trackSeLayers,
     cutStartFrame: cutStartFrame,
+    transitionSpans: transitionSpans,
   );
-  final duration = sources.playbackFrameCount;
+  // The rows the printed sheet DRAWS: its conte 尺 and the のりしろ an O.L
+  // asks of either side (I-73-ol-xdts-duration — 저장 2026-10-20, by the
+  // sheet's 「컷 엔드라인(OL여백이든 뭐든 총합적인 엔드라인)」). The XDTS
+  // has no column to say O.L in, so it is handed every row drawn rather
+  // than lose what is on the のりしろ. ↩️It ran the conte 尺, and a cut an
+  // O.L arrives into — its own frame 0 that much before its conte — lost
+  // its last のりしろ rows, the pictures and the sounds on them.
+  final duration = sources.drawnFrameCount;
   final celLayers = sources.celLayers;
   final seLayers = [for (final slot in sources.seLayers) slot.layer];
   final instructionLayers = sources.instructionLayers;

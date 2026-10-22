@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../timeline/axis_turn.dart' show extentAlong, startAlong;
 import '../widgets/app_scrollbar_lane.dart';
 import 'canvas_view_limit.dart';
 
@@ -25,7 +26,7 @@ class CanvasViewportPanMetrics {
     this.limit,
   }) : visibleExtent = limit == null
            ? _visibleExtent(axis, editorViewportSize)
-           : finiteNonNegativeExtent(_along(axis, limit.window).extent) {
+           : finiteNonNegativeExtent(extentAlong(axis, limit.window.size)) {
     final limit = this.limit;
     if (limit != null) {
       // A canvas with a LIMIT (F-201): the bar spans the paper and nothing
@@ -33,7 +34,7 @@ class CanvasViewportPanMetrics {
       // the two places the view stops ([viewHeldTo]).
       final bounds = viewportSpan(axis, viewport, limit.rect);
       scaledContentExtent = finiteNonNegativeExtent(bounds.extent);
-      _contentOffset = bounds.start - _along(axis, limit.window).start;
+      _contentOffset = bounds.start - startAlong(axis, limit.window);
     } else {
       // The canvas content's viewport-space AABB (pan excluded): under
       // rotation/flip the panbar tracks the rotated silhouette, not the
@@ -93,16 +94,6 @@ class CanvasViewportPanMetrics {
         : viewport.copyWith(panY: -clamped - _contentOffset);
   }
 
-  /// [rect]'s span along [axis], in its own coordinates.
-  static ({double start, double extent}) _along(Axis axis, Rect rect) =>
-      axis == Axis.horizontal
-      ? (start: rect.left, extent: rect.width)
-      : (start: rect.top, extent: rect.height);
-
-  static double _visibleExtent(Axis axis, Size editorViewportSize) {
-    final source = axis == Axis.horizontal
-        ? editorViewportSize.width
-        : editorViewportSize.height;
-    return finiteNonNegativeExtent(source);
-  }
+  static double _visibleExtent(Axis axis, Size editorViewportSize) =>
+      finiteNonNegativeExtent(extentAlong(axis, editorViewportSize));
 }

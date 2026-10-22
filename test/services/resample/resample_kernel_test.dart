@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/turn_trig.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 
 import 'coverage_truth.dart';
@@ -207,38 +208,23 @@ Uint8List _hairlines(int size) {
 /// on the source centre — otherwise a reduction throws most of the picture
 /// out of frame and an ink count measures the crop instead of the kernel.
 ///
-/// Quarter turns take their cos and sin from a TABLE, because the product
-/// path does: `SelectionAffine.cosTheta` exists precisely so that 90° is
-/// `cos == 0` rather than 6.1e-17. Computing them here with `math.cos`
-/// would leave `b` and `d` a hair off zero, miss the kernel's exact
-/// branch, and quietly test a path the app never runs.
+/// Quarter turns take their cos and sin from the TABLE, because the product
+/// path does: [PlaneTurn] reads it precisely so that 90° is `cos == 0`
+/// rather than 6.1e-17. Computing them here with `math.cos` would leave
+/// `b` and `d` a hair off zero, miss the kernel's exact branch, and quietly
+/// test a path the app never runs. ↩️This helper kept a copy of the table
+/// of its own, one more place for a quarter turn to come apart.
 ResampleTransform _reduceAbout(
   double degrees,
   double scale,
   int srcSize,
   int dstSize,
 ) {
-  final turn = ((degrees % 360) + 360) % 360;
-  final quarter = turn % 90 == 0;
-  final radians = degrees * math.pi / 180;
-  final cos = quarter
-      ? (turn == 0
-            ? 1.0
-            : turn == 180
-            ? -1.0
-            : 0.0)
-      : math.cos(radians);
-  final sin = quarter
-      ? (turn == 90
-            ? 1.0
-            : turn == 270
-            ? -1.0
-            : 0.0)
-      : math.sin(radians);
-  final a = cos / scale;
-  final b = sin / scale;
-  final d = -sin / scale;
-  final e = cos / scale;
+  final turn = PlaneTurn(degrees);
+  final a = turn.cos / scale;
+  final b = turn.sin / scale;
+  final d = -turn.sin / scale;
+  final e = turn.cos / scale;
   final dstCentre = dstSize / 2;
   final srcCentre = srcSize / 2;
   return ResampleTransform(

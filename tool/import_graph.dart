@@ -37,7 +37,7 @@ final _directive = RegExp(
 /// the tests that DO name a file.
 final _sourceReference = RegExp('''['"](lib/[A-Za-z0-9_/.\\-]*\\.dart)['"]''');
 
-/// Every path under a source root — `lib`, `test`, `tool` — that [source]
+/// Every path under a root a test reads ([kTextRoots]) that [source]
 /// spells as a string: a directory a scan walks (`'lib'`, `'test'`,
 /// `'lib/src/ui'`, the static head of `'lib/src/$layer'`) or a file it reads
 /// (`'tool/lane.sh'`, a fixture). What is there is read as TEXT, so a change
@@ -59,6 +59,12 @@ final _sourceReference = RegExp('''['"](lib/[A-Za-z0-9_/.\\-]*\\.dart)['"]''');
 /// the test reading `tool/lane.sh` never ran for a change to the script.
 /// One law now — any root, a directory or a file, any extension.
 ///
+/// 🚨AND THE PLATFORM FOLDERS (2026-10-20). The roots were `lib`, `test`
+/// and `tool` while any change under `windows/` and the rest ran the whole
+/// suite; when that blanket went (유저 tests-crowd-the-machine-Q6), the
+/// tests that read `windows/runner/flutter_window.cpp` and the like would
+/// have gone unselected for the very change they read.
+///
 /// ⚠️A PREFIX, NOT A PARSE. Any literal that starts the way a source path
 /// does counts, whatever it is handed to — `Directory(…)`, `File(…)`, the
 /// shared `dartFilesUnder(…)`, a `const` for any of them — and an
@@ -75,8 +81,17 @@ Set<String> pathsReadAsText(String source) => {
   for (final match in _sourcePathLiteral.allMatches(source)) match.group(1)!,
 };
 
+/// The roots a test reads a file under by spelling its path
+/// ([pathsReadAsText]): the Dart sources, and the platform folders the
+/// app's shells live in.
+const kTextRoots = [
+  'lib', 'test', 'tool', //
+  'android', 'ios', 'linux', 'macos', 'windows',
+];
+
 final _sourcePathLiteral = RegExp(
-  r'''['"]((?:lib|test|tool)(?:/[A-Za-z0-9_/.\-]*)?)(?:\$[^'"]*)?['"]''',
+  '''['"]((?:${kTextRoots.join('|')})(?:/[A-Za-z0-9_/.\\-]*)?)'''
+  r'''(?:\$[^'"]*)?['"]''',
 );
 
 /// The repo-relative Dart files [source] (living at [from]) depends on.
@@ -120,20 +135,90 @@ Map<String, Set<String>> buildImportGraph({
   return graph;
 }
 
-/// Everything [start] can reach through [graph], however far away.
+/// The roots the import graph is walked from, for the selection and the
+/// result records alike. `tool/` too: a tool test reaches what its tool
+/// imports — until 2026-10-19 the walk stopped at the tool a test named,
+/// and a change to `tool/flutter_room.dart` selected none of the line's
+/// tests that run through `tool/test_queue.dart`.
+const kGraphRoots = ['lib', 'test', 'tool'];
+
+/// Everything [start] can reach through [graph] — however far away, or no
+/// more than [within] imports from it.
 ///
 /// ⚠️Excludes [start] itself unless something it reaches imports it back.
-Set<String> closureOf(String start, Map<String, Set<String>> graph) {
+Set<String> closureOf(
+  String start,
+  Map<String, Set<String>> graph, {
+  int? within,
+}) {
   final seen = <String>{};
-  final queue = <String>[start];
-  while (queue.isNotEmpty) {
-    final current = queue.removeLast();
-    for (final next in graph[current] ?? const <String>{}) {
-      if (seen.add(next)) queue.add(next);
-    }
+  var step = [start];
+  for (var away = 1; step.isNotEmpty; away++) {
+    if (within != null && away > within) break;
+    step = [
+      for (final current in step)
+        for (final next in graph[current] ?? const <String>{})
+          if (seen.add(next)) next,
+    ];
   }
   return seen;
 }
+
+/// What a file reads: the file and every file its imports reach, and every
+/// path one of those spells to read as text ([pathsReadAsText]).
+typedef Reach = ({Set<String> files, Set<String> prefixes});
+
+/// The [Reach] of each file asked — one law for what a test depends on,
+/// asked by the selection (`selectTests`) and by the green record
+/// (`Inputs.of`). ↩️Until 10-20 each walked it on its own: the record read
+/// the helpers' text reads and the selection read only the test's, so a
+/// test whose helper reads `tool/lane.sh` was keyed on the script and never
+/// chosen by a change to it.
+class Reaches {
+  Reaches(this.imports, this.read, {this.within});
+
+  final Map<String, Set<String>> imports;
+  final String Function(String path) read;
+
+  /// How many imports from a file its reach goes — every one when null:
+  /// the selection before a lane lands asks the near ones only
+  /// (`kNearImports`), the green record and the wide check every one.
+  final int? within;
+
+  final _texts = <String, Set<String>>{};
+  final _of = <String, Reach>{};
+
+  /// ⛔A file under `lib/` reads no path: it is the app's code, run where
+  /// no checkout exists, and a literal there is a word — the `'tool'` key
+  /// of `tool_choice.dart` once made every test that reaches it read all
+  /// of `tool/` (10-20, 392 files for a change to one tool).
+  Reach of(String start) => _of.putIfAbsent(start, () {
+    final files = {start, ...closureOf(start, imports, within: within)};
+    return (
+      files: files,
+      prefixes: {
+        for (final file in files)
+          if (!file.startsWith('lib/')) ..._textsOf(file),
+      },
+    );
+  });
+
+  Set<String> _textsOf(String file) => _texts.putIfAbsent(file, () {
+    try {
+      return pathsReadAsText(read(file));
+    } on FileSystemException {
+      // A file an edge names that is gone reads nothing.
+      return const {};
+    }
+  });
+}
+
+/// Whether one of [changed] lies in [reach]: one of its files, or under a
+/// path it reads.
+bool reachesAny(Reach reach, Set<String> changed) => changed.any(
+  (file) =>
+      reach.files.contains(file) || reach.prefixes.any(file.startsWith),
+);
 
 /// For each file in [graph], which of [starts] can reach it.
 ///

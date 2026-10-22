@@ -19,6 +19,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/services/memory_allowance.dart';
 import 'package:anicel/src/services/playback/editor_cache_invalidation_hub.dart';
 import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
@@ -330,13 +331,15 @@ void main() {
     expect(store.thumbnailFor(cut(), 0, shownHeight: 60), same(small));
   });
 
-  testWidgets('layer visibility change re-renders', (tester) async {
-    var renderCount = 0;
+  testWidgets('layer visibility change re-renders — and the picture it '
+      'replaces is let go of once the next frame has painted', (tester) async {
+    final rendered = <ui.Image>[];
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _, _) {
-        renderCount += 1;
-        return tinyImage();
+      render: (_, _, _, _) async {
+        final image = await tinyImage();
+        rendered.add(image);
+        return image;
       },
     );
     addTearDown(store.dispose);
@@ -348,9 +351,12 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     // The retired first image disposes on the next frame.
+    tester.binding.scheduleFrame();
     await tester.pump();
 
-    expect(renderCount, 2);
+    expect(rendered, hasLength(2));
+    expect(rendered.first.debugDisposed, isTrue, reason: 'the one replaced');
+    expect(rendered.last.debugDisposed, isFalse, reason: 'the one held');
   });
 
   testWidgets('hub brush-frame events invalidate the cut', (tester) async {
@@ -681,6 +687,44 @@ void main() {
       expect(store.thumbnailFor(cut(), 0, shownHeight: 72), isNotNull);
     });
 
+    testWidgets('a picture the budget lets go of is disposed once the next '
+        'frame has painted — a panel may draw it until then', (tester) async {
+      final rendered = <ui.Image>[];
+      final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
+        render: (_, _, _, _) async {
+          final image = await tinyImage();
+          rendered.add(image);
+          return image;
+        },
+      );
+      addTearDown(store.dispose);
+
+      await tester.runAsync(() async {
+        for (final frame in [0, 1, 2, 3, 4]) {
+          store.thumbnailFor(cut(), frame, shownHeight: 72);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      expect(rendered, hasLength(5));
+      expect(
+        rendered.first.debugDisposed,
+        isFalse,
+        reason: 'let go, but not before the next frame',
+      );
+
+      // The landing's notify repaints the panels that ask, which is what
+      // puts the next frame in — no panel listens here, so it is asked for.
+      tester.binding.scheduleFrame();
+      await tester.pump();
+      expect(rendered.first.debugDisposed, isTrue, reason: 'let go of');
+      expect(
+        [for (final image in rendered.skip(1)) image.debugDisposed],
+        everyElement(isFalse),
+        reason: 'the four that fit are held',
+      );
+    });
+
     testWidgets('a picture asked for again is kept over one that was not', (
       tester,
     ) async {
@@ -736,6 +780,25 @@ void main() {
         ..respondToMemoryPressure();
       expect(store.thumbnailBytes, 16, reason: 'never below one page');
       await tester.pump();
+    });
+
+    testWidgets('a lowered allowance is given back at the next landing — a '
+        'landing with no picture too', (tester) async {
+      final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
+        // Frame 9 has nothing to draw.
+        render: (_, frame, _, _) async =>
+            frame == 9 ? null : await tinyImage(),
+      );
+      addTearDown(store.dispose);
+      addTearDown(() => MemoryAllowance.factor.value = 1);
+
+      await ask(tester, store, [0, 1, 2, 3]);
+      expect(store.thumbnailBytes, 64);
+      MemoryAllowance.factor.value = 0.5;
+      await ask(tester, store, [9]);
+
+      expect(store.thumbnailBytes, 32, reason: 'the halved allowance');
     });
 
     testWidgets('disposing tells the census nothing is held', (tester) async {

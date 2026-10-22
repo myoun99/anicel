@@ -49,8 +49,6 @@ void main() {
     frames: const [],
     timeline: const {},
   );
-  final overrideA = ValueNotifier<double>(1);
-  final overrideB = ValueNotifier<double>(1);
   final previewA = ValueNotifier<({Set<LayerId> layerIds, double opacity})?>(
     null,
   );
@@ -69,7 +67,6 @@ void main() {
     AttachedPlacement? attachArrow,
     bool sourceIsShort = false,
     bool memberAttached = false,
-    ValueListenable<double>? opacityOverride,
     ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
     opacityDragPreview,
     TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
@@ -101,7 +98,6 @@ void main() {
         isLayerSoloed: (_) => soloed,
         attachArrowPlacementOf: (_) => attachArrow,
         layerSourceIsShortOf: (_) => sourceIsShort,
-        layerOpacityOverrideOf: (_) => opacityOverride,
         opacityDragPreview: opacityDragPreview,
       ),
       layers: [row, member(attached: memberAttached), base],
@@ -127,8 +123,8 @@ void main() {
       facts(fold: (has: true, expanded: false, onToggle: (_) {})),
     );
     expect(
-      facts(opacityOverride: overrideA, opacityDragPreview: previewA),
-      facts(opacityOverride: overrideA, opacityDragPreview: previewA),
+      facts(opacityDragPreview: previewA),
+      facts(opacityDragPreview: previewA),
     );
   });
 
@@ -143,7 +139,6 @@ void main() {
     'attachArrow': () => facts(attachArrow: AttachedPlacement.below),
     'isReferenceSourceShort': () => facts(sourceIsShort: true),
     'wearsBaseComposite': () => facts(memberAttached: true),
-    'opacityOverride': () => facts(opacityOverride: overrideB),
     'opacityDragPreview': () => facts(opacityDragPreview: previewB),
     'layerRowHeight': () => facts(
       metrics: TimelineGridMetrics.defaults.copyWith(layerRowHeight: 40),

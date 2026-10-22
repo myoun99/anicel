@@ -19,13 +19,13 @@ void main() {
       renderedFrames: 10,
       cellWidth: 8,
       readyRunsIn: (start, end) => [
-        (startIndex: start, endIndexExclusive: end),
+        (startIndex: start, endIndexExclusive: end, unreadable: false),
       ],
     );
 
     expect(
       painter.readyRuns(),
-      [(startIndex: 0, endIndexExclusive: 10)],
+      [(startIndex: 0, endIndexExclusive: 10, unreadable: false)],
       reason: 'a 4-frame cut whose ruler renders 10 frames paints green '
           'across all 10 when every frame answers ready',
     );
@@ -42,7 +42,7 @@ void main() {
       renderedFrames: 10,
       cellWidth: 8,
       readyRunsIn: (start, end) => [
-        (startIndex: start, endIndexExclusive: end),
+        (startIndex: start, endIndexExclusive: end, unreadable: false),
       ],
     );
     final canvas = TestRecordingCanvas();

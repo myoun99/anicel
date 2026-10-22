@@ -5,6 +5,7 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/drawing_guide.dart' show DrawingGuide;
 import '../../models/export_overrides.dart';
 import '../../models/export_spec.dart';
 import '../../models/frame.dart';
@@ -48,6 +49,7 @@ class ExportCelGroupTask {
     this.listedUnder,
     this.overlays = const [],
     this.cameraLaid = false,
+    this.guidesLaid = false,
   });
 
   /// The cut this cel is COMPOSITED in — the one that SHOWS it: its rows
@@ -123,7 +125,23 @@ class ExportCelGroupTask {
   /// and direction ([ExportCelsCutDelta.cameraOver]) — the camera of
   /// [listedCut], the cut the hand laid it in, as a direction is.
   final bool cameraLaid;
+
+  /// Whether the cut's guides are laid over this cel, above every member
+  /// and direction ([ExportCelsCutDelta.guidesOver]) — the guides of
+  /// [listedCut], the cut the hand laid them in, as the camera's work is.
+  final bool guidesLaid;
 }
+
+/// The guides a drawing of [cut] wears where the hand lays them
+/// ([ExportCelGroupTask.guidesLaid]): the perspective guides the canvas
+/// shows, in the order the cut keeps them.
+///
+/// 🗣️I-105-Q1 (유저 2026-10-16): 「캔버스에 보이는 가이드 전부」 — 「다만
+/// 대칭 가이드는 무시. 퍼스가이드만 그림에 얹음」.
+List<DrawingGuide> exportLaidGuidesOf(Cut cut) => [
+  for (final guide in cut.guides.perspectiveGuides)
+    if (guide.visible) guide,
+];
 
 /// A direction drawing laid over a cel: the direction row's drawing, in the
 /// cut it was picked in — the one the window lists the cel in, where its
@@ -163,11 +181,15 @@ class ExportCelSheet extends ExportListSheet {
   /// picture that goes out under its row's name alone.
   final String celName;
 
-  /// What its BLOCK reads: its number, its row's name where it has none,
-  /// and of a direction's drawing what its block says alone (`T.U`) — a
-  /// block is one cell wide (drawn so in the F-289 mock, and of the band's
-  /// buttons 유저 2026-10-06: 「버튼엔 지시이름만 넣자. T.U 이렇게하고
-  /// 툴팁으로 T.U_A-B 이렇게」).
+  /// What its BLOCK reads: its number, and of a direction's drawing what its
+  /// block says alone (`T.U`) — a block is one cell wide (drawn so in the
+  /// F-289 mock, and of the band's buttons 유저 2026-10-06: 「버튼엔 지시이름만
+  /// 넣자. T.U 이렇게하고 툴팁으로 T.U_A-B 이렇게」). Nothing where it has no
+  /// name.
+  ///
+  /// 🗣️F-395 (유저 2026-10-18): 「이미지레이어등 프레임이름없으면 스샷처럼
+  /// 블록에 레이어이름을 적는데, 그게아니라 이름 없는건 없는거니까 블록도 이름
+  /// 없는상태이도록」. ↩️It read its row's name.
   @override
   final String word;
 
@@ -179,7 +201,8 @@ class ExportCelSheet extends ExportListSheet {
 
   /// The picture: the cel that is written, for a planned drawing — or, for
   /// one that is [refused], the bare drawing, drawn nowhere: it carries what
-  /// the hand did to it ([skipped], [directionLaid], [cameraLaid]).
+  /// the hand did to it ([skipped], [directionLaid], [cameraLaid],
+  /// [guidesLaid]).
   ///
   /// ↩️It was the drawing by itself over its cut's paper — what the preview
   /// showed of a row that was off, while a row whose files can be none was
@@ -199,6 +222,9 @@ class ExportCelSheet extends ExportListSheet {
 
   @override
   bool get cameraLaid => look.cameraLaid;
+
+  @override
+  bool get guidesLaid => look.guidesLaid;
 
   @override
   String get idValue => frame.id.value;
@@ -238,9 +264,10 @@ String celGroupPreviewKey(
       '${over.cut.id.value}/${over.layer.id.value}/${over.frame.id.value}',
   ].join(',');
   final camera = task.cameraLaid ? task.listedCut.id.value : '-';
+  final guides = task.guidesLaid ? task.listedCut.id.value : '-';
   return 'celgroup:${task.cut.id.value}:${task.baseLayer.id.value}:'
-      '${task.baseFrame.id.value}:$members:$overlays:$camera:$sizeMode:'
-      '$backgroundKey:${applyLayerFx ? 'fx' : 'raw'}';
+      '${task.baseFrame.id.value}:$members:$overlays:$camera:$guides:'
+      '$sizeMode:$backgroundKey:${applyLayerFx ? 'fx' : 'raw'}';
 }
 
 class ExportCelGroupPlan {
@@ -538,7 +565,7 @@ Iterable<_RowCel> _celsOf(Layer axis, CameraInstructionSet terms) sync* {
           row: axis,
           frame: frame,
           celName: celName,
-          word: celName.isEmpty ? axis.name : celName,
+          word: celName,
         );
       }
     }
@@ -549,7 +576,7 @@ Iterable<_RowCel> _celsOf(Layer axis, CameraInstructionSet terms) sync* {
       row: axis,
       frame: frame,
       celName: directionCelName(says, terms),
-      word: says == null ? axis.name : _directionWord(says, terms),
+      word: says == null ? '' : _directionWord(says, terms),
     );
   }
 }
@@ -602,7 +629,9 @@ List<ExportDirectionDrawing> exportDirectionDrawingsOf(
       for (final drawing in _celsOf(row, terms))
         (
           ref: (row: row.id, cel: drawing.frame.id),
-          name: drawing.word,
+          // The button names what it lays, where its block reads nothing
+          // (F-395 took the row's name off the BLOCK alone).
+          name: drawing.word.isEmpty ? row.name : drawing.word,
           fullName: drawing.celName.isEmpty ? row.name : drawing.celName,
         ),
 ];
@@ -766,38 +795,39 @@ ExportCelGroupTask _cel(
   _CutRun cut,
   _RowCel listed, {
   required String fileName,
-}) => ExportCelGroupTask(
-  cut: placed.shown.cut,
-  baseLayer: placed.shown.bundle.axis,
-  listedUnder: placed.shown.cut.id == cut.cut.id
-      ? null
-      : (cut: cut.cut, axis: listed.row),
-  members: placed.shown.bundle.members,
-  memberFrames: placed.frames,
-  baseFrame: placed.baseFrame,
-  celName: listed.celName,
-  fileName: fileName,
-  skipped: _turnedOff(cut, listed.row, listed.frame),
-  overlays: _overlaysOn(cut, listed.row, listed.frame),
-  cameraLaid: _cameraLaidOn(cut, listed.row, listed.frame),
-);
+}) {
+  final ref = (row: listed.row.id, cel: listed.frame.id);
+  final delta = cut.delta;
+  // Whether the hand put it in one of [cut]'s list's sets: turned it off
+  // ([ExportCelsCutDelta.skippedCels]), or laid the camera's work
+  // ([ExportCelsCutDelta.cameraOver]) or the guides
+  // ([ExportCelsCutDelta.guidesOver]) over it.
+  bool held(Set<ExportCelRef>? cels) => cels?.contains(ref) ?? false;
+  return ExportCelGroupTask(
+    cut: placed.shown.cut,
+    baseLayer: placed.shown.bundle.axis,
+    listedUnder: placed.shown.cut.id == cut.cut.id
+        ? null
+        : (cut: cut.cut, axis: listed.row),
+    members: placed.shown.bundle.members,
+    memberFrames: placed.frames,
+    baseFrame: placed.baseFrame,
+    celName: listed.celName,
+    fileName: fileName,
+    skipped: held(delta?.skippedCels),
+    overlays: _overlaysOn(cut, listed.row, ref),
+    cameraLaid: held(delta?.cameraOver),
+    guidesLaid: held(delta?.guidesOver),
+  );
+}
 
-/// Whether the hand turned [frame] of [row] off in [cut]'s list.
-bool _turnedOff(_CutRun cut, Layer row, Frame frame) =>
-    cut.delta?.skippedCels.contains((row: row.id, cel: frame.id)) ?? false;
-
-/// Whether the hand laid the camera's work over [frame] of [row] in [cut]'s
-/// list ([ExportCelsCutDelta.cameraOver]).
-bool _cameraLaidOn(_CutRun cut, Layer row, Frame frame) =>
-    cut.delta?.cameraOver.contains((row: row.id, cel: frame.id)) ?? false;
-
-/// The direction drawings laid over [frame] of [row]
+/// The direction drawings laid over [cel] of [row]
 /// ([ExportCelsCutDelta.directionOver]), in the order [cut]'s cut stacks
 /// its direction rows and each row holds its drawings. A direction that is
 /// no longer in the cut is not laid — and nothing is laid over a direction
 /// row's own drawing.
-List<ExportCelOverlay> _overlaysOn(_CutRun cut, Layer row, Frame frame) {
-  final laid = cut.delta?.directionsOver((row: row.id, cel: frame.id));
+List<ExportCelOverlay> _overlaysOn(_CutRun cut, Layer row, ExportCelRef cel) {
+  final laid = cut.delta?.directionsOver(cel);
   if (laid == null || laid.isEmpty || row.kind == LayerKind.instruction) {
     return const [];
   }
@@ -1031,14 +1061,17 @@ Iterable<ExportDocumentSheet> _documentsOf(
   }
 }
 
-/// The cuts [entry] stands for: its own under the cut scope — and under the
-/// project scope every cut of its 겸용 group, in track order (the group is
-/// walked once, from its owner, and each of its cuts keeps a timesheet of
-/// its own).
+/// The cuts [entry] stands for: every cut of its 겸용 group, in track order,
+/// under either scope — each keeps a timesheet of its own.
+///
+/// 🗣️F-415 (유저 2026-10-19): 「셀 소재는 정상적으로 겸용컷 다 등록되서
+/// 출력되는데 타임시트는 현재컷 타임시트만 출력리스트에 올라가있음. 타임시트던
+/// 컷봉투던 뭐던 다 겸용컷 다 소재 출력리스트에 올라가야함」. ↩️Under the cut
+/// scope it was the cut stood on alone — a rule no one had asked for, which
+/// split the group the export treats as one cut (2026-09-09: 「겸용컷은
+/// 하나라는 느낌이야」).
 List<Cut> _cutsOf(_CutRun entry) =>
-    entry.run.spec.scope == ExportScopeKind.project
-    ? linkedCutGroupInTrackOrder(entry.run.project, cutId: entry.cut.id)
-    : [entry.cut];
+    linkedCutGroupInTrackOrder(entry.run.project, cutId: entry.cut.id);
 
 /// The files of [document], listed in [entry]'s cut. Each answers to the
 /// delta of the cut the document is OF: the file turned off there — its

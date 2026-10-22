@@ -228,11 +228,11 @@ void main() {
           ),
         );
 
-    Map<LayerRowDragSubject, (int, bool)> caretLines(WidgetTester tester) => {
+    Map<LayerRowDragSubject, (int?, bool)> caretLines(WidgetTester tester) => {
       for (final target in tester.widgetList<LayerRowDragTarget>(
         find.byType(LayerRowDragTarget),
       ))
-        target.subject: (target.slotBefore, target.isLastRow),
+        target.subject: (target.slotBefore, target.drawsTheGapAfter),
     };
 
     for (final sheet in [false, true]) {

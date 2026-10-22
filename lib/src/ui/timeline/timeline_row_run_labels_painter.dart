@@ -236,9 +236,11 @@ class TimelineRowRunLabelsPainter extends CustomPainter
       // over its own block, never into the neighbour's.
       final blockStart = _edge(label.startIndex);
       final blockEnd = _edge(label.endIndexExclusive);
-      final blockRect = axis == Axis.horizontal
-          ? Rect.fromLTRB(blockStart, 0, blockEnd, crossAxisExtent)
-          : Rect.fromLTRB(0, blockStart, crossAxisExtent, blockEnd);
+      final blockRect = rectAlong(
+        axis,
+        along: (from: blockStart, to: blockEnd),
+        across: (from: 0, to: crossAxisExtent),
+      );
       canvas.save();
       canvas.clipRect(blockRect);
       // R10: CENTRED on the block's last cell along the frame axis, and
@@ -254,9 +256,11 @@ class TimelineRowRunLabelsPainter extends CustomPainter
       final lastCellStart = _edge(label.endIndexExclusive - 1);
       final slot = (
         axis: axis,
-        room: axis == Axis.horizontal
-            ? Rect.fromLTRB(blockStart, 0, blockEnd, paper)
-            : Rect.fromLTRB(0, blockStart, paper, blockEnd),
+        room: rectAlong(
+          axis,
+          along: (from: blockStart, to: blockEnd),
+          across: (from: 0, to: paper),
+        ),
         cellStart: lastCellStart,
         cellExtent: blockEnd - lastCellStart,
         growth: TimelineBlockWordGrowth.towardBlockStart,
@@ -301,9 +305,11 @@ class TimelineRowRunLabelsPainter extends CustomPainter
       final blockEnd = _edge(label.endIndexExclusive);
       nodes.add(
         CustomPainterSemantics(
-          rect: axis == Axis.horizontal
-              ? Rect.fromLTRB(blockStart, 0, blockEnd, crossAxisExtent)
-              : Rect.fromLTRB(0, blockStart, crossAxisExtent, blockEnd),
+          rect: rectAlong(
+            axis,
+            along: (from: blockStart, to: blockEnd),
+            across: (from: 0, to: crossAxisExtent),
+          ),
           properties: SemanticsProperties(
             label: label.text,
             textDirection: TextDirection.ltr,

@@ -22,8 +22,14 @@ abstract interface class PlaybackPictures {
   /// Remembers that making [picture] threw at the content it has now.
   void noteFailure(DemandedPicture picture);
 
-  /// The bytes making [picture] would add.
+  /// The bytes making [picture] would add — what its parts will be made as,
+  /// where what they are made of is in hand ([readIn]).
   int bytesToMake(DemandedPicture picture);
+
+  /// Reads in what making [picture] reads first, so [bytesToMake] weighs it
+  /// by what it will be made as. Never throws: what will not read is said by
+  /// [make].
+  Future<void> readIn(DemandedPicture picture);
 
   /// The bytes [picture] holds that [seen] has not counted, which it adds to
   /// [seen]: a walk weighs the window it has passed over by this, each

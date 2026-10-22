@@ -30,6 +30,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
+import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
@@ -39,6 +40,8 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
         LayerRowSubject,
         TimelineRowDragHooks;
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
+    show TimelineLayerControlsRow;
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
@@ -160,6 +163,18 @@ Future<void> _pumpPanel(
   await tester.pumpAndSettle();
 }
 
+/// [_project] with a chain of one effect on its track — the V row's lanes,
+/// so it draws a twirl: a row with nothing to twirl down draws none, as
+/// every row of the timeline's.
+Project _projectWithAChain() => _project(
+  trackEffects: [
+    LayerEffect.defaults(
+      id: const EffectId('lane-blur'),
+      kind: EffectKind.blur,
+    ),
+  ],
+);
+
 // `_expandVTransform` went with the V row's Transform group: the chevron opens
 // the row's fx chain now, and an effect group opens by its own header.
 
@@ -173,17 +188,7 @@ void main() {
     // A track effect gives the V row lanes: the sweep turns the rows that
     // have some, as the timeline's turns its layers' (F-360 — a twirl is the
     // row's, and one with nothing under it is nothing to write).
-    await _pumpPanel(
-      tester,
-      project: _project(
-        trackEffects: [
-          LayerEffect.defaults(
-            id: const EffectId('lane-blur'),
-            kind: EffectKind.blur,
-          ),
-        ],
-      ),
-    );
+    await _pumpPanel(tester, project: _projectWithAChain());
 
     const laneToggle = ValueKey<String>('legend-lanes-toggle');
     const seLane = ValueKey<String>('storyboard-se-lane-row-0-1-se-audio');
@@ -219,20 +224,26 @@ void main() {
     expect(vRowOpen(), isFalse);
   });
 
-  testWidgets('an S row\'s twirl is the timeline\'s, and stands as tall as '
-      'the row\'s cells, as its InkWell did', (tester) async {
+  testWidgets('an S row\'s twirl is the timeline row\'s, in the box its type '
+      'button stands in', (tester) async {
     await _pumpPanel(tester, project: _project());
-    final twirl = find.named('storyboard-se-lane-toggle-lane-track-1');
-    final typeCell = find.named('storyboard-layer-type-button-lane-track-s1');
+    final twirl = find.named('storyboard-lane-toggle-lane-se');
+    final typeCell = find.named('storyboard-layer-type-button-lane-se');
+    expect(
+      find.ancestor(
+        of: twirl,
+        matching: find.byType(TimelineLayerControlsRow),
+      ),
+      findsOneWidget,
+      reason: 'the S row is the timeline\'s own row (I-89 ①)',
+    );
+    // ↩️It stood as tall as the row's cells, as this rail's own label's
+    // InkWell had: the rail's control box now, as the conte and camera
+    // heads beside it stand in.
     expect(
       tester.getSize(twirl).height,
       tester.getSize(typeCell).height,
-      reason: 'both are handed the row\'s height',
-    );
-    expect(
-      tester.getSize(twirl).height,
-      greaterThan(24),
-      reason: '⛔CONTROL: the row is taller than a rail row\'s 24',
+      reason: 'both stand in the rail\'s control box',
     );
     expect(
       tester.appIconButton(twirl).tooltip,
@@ -246,10 +257,10 @@ void main() {
     // The mixed state: with a single S row twirled open by hand, the button
     // must not re-toggle row by row — that would open the V row and close
     // the S row in the same tap, which is what a blind sweep does.
-    await _pumpPanel(tester, project: _project());
+    await _pumpPanel(tester, project: _projectWithAChain());
 
     await tester.tap(
-      find.named('storyboard-se-lane-toggle-lane-track-1'),
+      find.named('storyboard-lane-toggle-lane-se'),
     );
     await tester.pumpAndSettle();
     expect(
@@ -277,12 +288,19 @@ void main() {
 
   testWidgets('the V row\'s chevron opens its fx chain and NO Transform group '
       '— a track row does not own one', (tester) async {
-    await _pumpPanel(tester, project: _project());
+    await _pumpPanel(tester, project: _projectWithAChain());
     await tester.tap(
       find.named('storyboard-track-lane-toggle-lane-track'),
     );
     await tester.pumpAndSettle();
 
+    expect(
+      find.named(
+        'storyboard-lane-group-toggle-v-track:lane-track-fx-group:lane-blur',
+      ),
+      findsOneWidget,
+      reason: 'its lanes are its fx chain',
+    );
     expect(
       find.named(
         'storyboard-lane-group-toggle-v-track:lane-track-transform-group',
@@ -391,7 +409,7 @@ void main() {
     );
 
     await tester.tap(
-      find.named('storyboard-se-lane-toggle-lane-track-1'),
+      find.named('storyboard-lane-toggle-lane-se'),
     );
     await tester.pumpAndSettle();
     expect(
@@ -473,7 +491,7 @@ void main() {
     );
 
     await tester.tap(
-      find.named('storyboard-se-lane-toggle-lane-track-1'),
+      find.named('storyboard-lane-toggle-lane-se'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -509,7 +527,7 @@ void main() {
     );
 
     await tester.tap(
-      find.named('storyboard-se-lane-toggle-lane-track-1'),
+      find.named('storyboard-lane-toggle-lane-se'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -603,6 +621,44 @@ void main() {
       ),
       findsNothing,
     );
+  });
+
+  // I-89 ① ⓕ (2026-10-20): the timeline SE row's own strips. ↩️The row
+  // read its sounds on its own, and drew no gain and no fade.
+  testWidgets('an S row\'s sound wears its gain and its fades, as the '
+      'timeline row\'s does', (tester) async {
+    await _pumpPanel(
+      tester,
+      project: _project(
+        seLayers: [
+          _seLayer().copyWith(
+            audioClips: [
+              AudioClip(
+                filePath: 'voice.wav',
+                frameId: const FrameId('lane-f'),
+                gain: 0.5,
+                fadeInFrames: 2,
+                fadeOutFrames: 3,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    final strip = find.descendant(
+      of: find.byKey(
+        const ValueKey<String>('storyboard-audio-clip-lane-se-0-b0'),
+      ),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is CustomPaint && widget.painter is WaveformPainter,
+      ),
+    );
+    final painter =
+        tester.widget<CustomPaint>(strip).painter! as WaveformPainter;
+
+    expect(painter.gain, 0.5);
+    expect(painter.fadeInFrames, 2);
+    expect(painter.fadeOutFrames, 3);
   });
 
   group('timeline-parity S rows (R4-⑨ 완벽통일)', () {
@@ -722,7 +778,7 @@ void main() {
       );
 
       await tester.tap(
-        find.named('storyboard-se-lane-toggle-lane-track-1'),
+        find.named('storyboard-lane-toggle-lane-se'),
       );
       await tester.pumpAndSettle();
 

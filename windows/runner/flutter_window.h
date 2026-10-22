@@ -7,8 +7,17 @@
 #include <flutter/method_channel.h>
 
 #include <memory>
+#include <vector>
 
+#include "launch_splash.h"
 #include "win32_window.h"
+
+// What a second Anicel hands the running one (main.cpp): the running window
+// carries kRunningWindowProp from its first frame on, and takes the paths in
+// a WM_COPYDATA tagged kHandedFilesTag — UTF-8, each one ended by a NUL.
+// flutter_window.cpp's kHandedFilesChannel says why.
+inline constexpr wchar_t kRunningWindowProp[] = L"Anicel.TakesHandedFiles";
+inline constexpr ULONG_PTR kHandedFilesTag = 0x414E4345;  // 'ANCE'
 
 // A window that does nothing but host a Flutter view.
 class FlutterWindow : public Win32Window {
@@ -33,6 +42,48 @@ class FlutterWindow : public Win32Window {
   // and off everywhere else. The channel's constants say why.
   void ListenForTheIme(HWND view);
 
+  // Lets Dart put this window full screen and back (I-103-Q2). The
+  // channel's constants say why.
+  void ListenForFullScreen();
+
+  // Lets Dart say its launch stages on the splash (I-106).
+  void ListenForLaunchStages();
+
+  // Puts this window full screen over its monitor, or back where it stood,
+  // and says on the channel which it is now.
+  void SetFullScreen(bool on);
+
+  // Lets Dart hand back where the last run left this window, and hears
+  // where it stands (I-116). The channel's constants say why.
+  void ListenForPlace();
+
+  // Puts this window's normal rect at |normal|, maximized or not — hidden
+  // still until the first frame, which shows it so.
+  void SetPlace(const RECT& normal, bool maximized);
+
+  // Says on the channel where this window stands, unless it is hidden,
+  // minimized or full screen.
+  void SayPlace();
+
+  // Says to Dart the paths a second Anicel handed this window in |data|.
+  void SayHandedFiles(const COPYDATASTRUCT& data);
+
+  // The view's key messages on their way to the engine: a modifier Windows
+  // has let go of is let go of in the engine too (F-411). The constants by
+  // kLetGoWithWindows say why.
+  static LRESULT CALLBACK LetGoWithWindows(HWND view, UINT message,
+                                           WPARAM wparam, LPARAM lparam,
+                                           UINT_PTR id, DWORD_PTR window);
+
+  // A modifier key-down handed to the engine and not yet let go of: the key
+  // and its shape — the scan code and the extended bit, which name the
+  // physical key the engine records.
+  struct HeldModifier {
+    WPARAM key;
+    LPARAM shape;
+  };
+  std::vector<HeldModifier> held_modifiers_;
+
   // The project to run.
   flutter::DartProject project_;
 
@@ -43,8 +94,40 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       ime_channel_;
 
+  // Where Dart asks for full screen, and hears what the window did.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      window_channel_;
+
+  // Where Dart hands the window its place back, and hears where it stands.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      place_channel_;
+
+  // Where Dart says its launch stages.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      launch_channel_;
+
+  // Where Dart hears the files a second Anicel handed this window.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      files_channel_;
+
+  // Whether the window covers its monitor, and how it stood before — its
+  // place, its size, whether it was maximized, and its frame's style.
+  bool full_screen_ = false;
+  WINDOWPLACEMENT placement_before_full_screen_ = {sizeof(WINDOWPLACEMENT)};
+  LONG_PTR style_before_full_screen_ = 0;
+
+  // Whether the first frame shows the window maximized, as the last run
+  // left it; whether a placement is being handed back right now; whether
+  // the user is dragging the frame.
+  bool show_maximized_ = false;
+  bool placing_ = false;
+  bool sizing_ = false;
+
   // Whether the app has drawn a frame, and so has someone to answer a close.
   bool app_can_answer_ = false;
+
+  // Stands on screen from before the engine starts until its first frame.
+  LaunchSplash launch_splash_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

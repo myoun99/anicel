@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart' show CustomPainter, RendererBinding;
 import 'package:flutter/scheduler.dart';
 
 import '../../core/bake_once_lru.dart';
+import '../../models/rgba_image_bytes.dart';
 import '../../services/straight_rgba_image.dart' show uploadRawRgba;
 import '../quiet_turns.dart';
 
@@ -527,8 +528,13 @@ final class BakedWords {
 
   final BakeOnceLru<_Bake, ui.Image?> _images = BakeOnceLru(
     capacity: _capacity,
+    costOf: (image) =>
+        image == null ? 0 : estimatedImageBytes(image.width, image.height),
     retire: (image) => image?.dispose(),
   );
+
+  /// What the baked words' pictures weigh resident, for the memory census.
+  int get imageBytes => _images.held;
 
   /// Each word's latest bake, whatever its narrowing — what the word is
   /// drawn from while the bake for a new narrowing is in flight.

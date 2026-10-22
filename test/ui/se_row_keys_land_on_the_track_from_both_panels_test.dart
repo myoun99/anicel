@@ -123,12 +123,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final track = session.activeTrack.id.value;
     final se = session.activeTrack.seLayers.first.id.value;
-    await _tapVisible(
-      tester,
-      find.named('storyboard-se-lane-toggle-$track-1'),
-    );
+    await _tapVisible(tester, find.named('storyboard-lane-toggle-$se'));
     await _tapVisible(
       tester,
       find.named('storyboard-lane-group-toggle-$se-transform-group'),

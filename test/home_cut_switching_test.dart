@@ -109,13 +109,17 @@ void main() {
     await tester.pumpWidget(const AnicelApp());
     final second = await createSecondCutWithADrawingRow(tester);
     await showStoryboardPanel(tester);
+    // The panel's own reading, as the window shows it: this test's subject,
+    // where the probes read the session the panel is handed.
+    StoryboardPanel panel() =>
+        tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
 
-    expect(await activeCutIdOf(tester), CutId(second));
+    expect(panel().activeCutId, CutId(second));
 
     await switchToCut(tester, 'default-cut-1');
 
-    await expectActiveCutName(tester, '1');
-    expect(await activeCutIdOf(tester), const CutId('default-cut-1'));
+    expect(panel().activeCutId, const CutId('default-cut-1'));
+    expect(requireCutBlock(tester, 'default-cut-1').title, '1');
   });
 
   testWidgets('new frame after switching to Cut 2 stays scoped to Cut 2', (

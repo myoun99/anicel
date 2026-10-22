@@ -7,19 +7,23 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
+import '../../core/signed_memo.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_cells_agreement.dart';
 import '../../models/layer_id.dart';
+import '../../models/rgba_image_bytes.dart';
 import '../../native/qa_native_engine.dart';
 import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
 import '../quiet_turns.dart';
+import 'axis_turn.dart' show endAlong, offsetAlong, startAlong;
 import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import 'timeline_grid_tile_ops.dart';
 import 'timeline_tile_raster_source.dart';
 import '../../core/bake_once_lru.dart';
+import '../../core/lru.dart';
 
 /// The drawing rows' SUBSTRATE tile store (UI-R18 O7 T2, R18-T).
 ///
@@ -96,9 +100,31 @@ class TimelineGridTileStore {
   /// eviction starts.
   static const int capacity = 768;
 
-  final LinkedHashMap<String, _TileEntry> _entries =
-      LinkedHashMap<String, _TileEntry>();
-  final Map<String, _TileRequest> _pending = <String, _TileRequest>{};
+  /// How many tiles it keeps: [capacity] — lowered by a test that lands a
+  /// few past it, where 769 would be as many real rasters. ⚠️TEST ONLY.
+  @visibleForTesting
+  int debugCapacity = capacity;
+
+  /// The tiles, the least recently asked for first — bounded by how many,
+  /// and weighed for [tileImageBytes].
+  late final Lru<String, _TileEntry> _entries = Lru(
+    entryCap: () => debugCapacity,
+    costOf: (entry) =>
+        estimatedImageBytes(entry.image.width, entry.image.height),
+    letGo: (_, entry) => entry.image.dispose(),
+  );
+
+  /// What the tiles' pictures weigh resident, for the memory census.
+  int get tileImageBytes => _entries.held;
+
+  /// The spans asked for and not rastered yet, the latest ask last — past
+  /// 32 the oldest ask is turned away into [_starved]. The order a bounded
+  /// cache lets go by, and so the one that keeps it.
+  late final Lru<String, _TileRequest> _pending = Lru(
+    limit: () => 32,
+    letGo: (_, turnedAway) => _starved[turnedAway.row] = turnedAway,
+  );
+
   bool _drainScheduled = false;
 
   /// The latest painter each row's paint asked through, with the device
@@ -337,21 +363,10 @@ class TimelineGridTileStore {
 
   /// The tile at [key], made the newest in the cache: a span asked for —
   /// shown, or warmed to be — is one about to be shown.
-  _TileEntry? _touched(String key) {
-    final entry = _entries.remove(key);
-    if (entry != null) {
-      _entries[key] = entry;
-    }
-    return entry;
-  }
+  _TileEntry? _touched(String key) => _entries.use(key);
 
   void _enqueue(String key, _TileRequest request) {
-    _pending.remove(key);
-    _pending[key] = request;
-    while (_pending.length > 32) {
-      final turnedAway = _pending.remove(_pending.keys.first)!;
-      _starved[turnedAway.row] = turnedAway;
-    }
+    _pending.keep(key, request);
     if (!_drainScheduled) {
       _drainScheduled = true;
       // Off the paint phase; microtasks run before the next frame, so a
@@ -381,7 +396,7 @@ class TimelineGridTileStore {
     _drainsRunning += 1;
     try {
       while (_pending.isNotEmpty) {
-        final request = _pending.remove(_pending.keys.first)!;
+        final request = _pending.take(_pending.keys.first)!;
         if (!await _rasterAndLand(engine, request, epoch, warm: false)) {
           return;
         }
@@ -440,8 +455,7 @@ class TimelineGridTileStore {
     if (rastered == null) {
       return true;
     }
-    _entries.remove(key)?.image.dispose();
-    _entries[key] = _TileEntry(
+    final landed = _TileEntry(
       substrateGeneration: request.painter.substrateGeneration,
       layer: request.painter.layer,
       coverageIdentity: request.painter.coverageIdentity,
@@ -469,9 +483,7 @@ class TimelineGridTileStore {
       framesPerSecond: request.painter.framesPerSecond,
       image: rastered.image,
     );
-    while (_entries.length > capacity) {
-      _entries.remove(_entries.keys.first)!.image.dispose();
-    }
+    _entries.keep(key, landed)?.image.dispose();
     revision.value += 1;
     if (!warm || _askedWhileWarm.remove(key)) {
       // A row whose tile lands asks again for itself when it repaints —
@@ -814,9 +826,8 @@ class TimelineGridTileStore {
     // so a tile is exactly as long as the cells it holds at any zoom.
     final first = painter.cellRectFor(request.spanStartIndex);
     final last = painter.cellRectFor(request.spanEndIndexExclusive - 1);
-    final spanExtent = horizontal
-        ? last.right - first.left
-        : last.bottom - first.top;
+    final spanExtent =
+        endAlong(painter.axis, last) - startAlong(painter.axis, first);
     final width = (spanExtent * dpr).ceil();
     final height = (painter.crossAxisExtent * dpr).ceil();
     if (width <= 0 || height <= 0) {
@@ -915,9 +926,12 @@ class TimelineGridTileStore {
     required double devicePixelRatio,
   }) {
     final dpr = devicePixelRatio;
-    final horizontal = painter.axis == Axis.horizontal;
-    final originRect = painter.cellRectFor(spanStartIndex);
-    final originMain = horizontal ? originRect.left : originRect.top;
+    final axis = painter.axis;
+    final toLocal = offsetAlong(
+      axis,
+      along: -startAlong(axis, painter.cellRectFor(spanStartIndex)),
+      across: 0,
+    );
 
     final glyphCells = <_TileGlyph>[];
     // F-96: a word may start before the span and grow into it, so the
@@ -932,9 +946,7 @@ class TimelineGridTileStore {
       final mark = model.mark;
       if (mark != null) {
         final place = painter.inbetweenMarkLayoutFor(frameIndex);
-        final center = horizontal
-            ? place.center.translate(-originMain, 0)
-            : place.center.translate(0, -originMain);
+        final center = place.center + toLocal;
         _emitInbetweenMark(
           writer,
           mark,
@@ -966,9 +978,7 @@ class TimelineGridTileStore {
         rgba: timelineGridPackRgba(ink),
         key: _glyphKey(model.glyph, style, bake),
         bake: bake,
-        origin: horizontal
-            ? layout.origin.translate(-originMain, 0)
-            : layout.origin.translate(0, -originMain),
+        origin: layout.origin + toLocal,
       ));
     }
     // The holds' lines: the box the classic pass strokes, as a capsule —
@@ -981,7 +991,7 @@ class TimelineGridTileStore {
         TimelineGridTileOp.cornerBottomRight;
     final startCap =
         TimelineGridTileOp.cornerTopLeft |
-        (horizontal
+        (axis == Axis.horizontal
             ? TimelineGridTileOp.cornerBottomLeft
             : TimelineGridTileOp.cornerTopRight);
     final endCap = everyCorner & ~startCap;
@@ -989,9 +999,7 @@ class TimelineGridTileStore {
       spanStartIndex,
       spanEndIndexExclusive,
     )) {
-      final box = horizontal
-          ? line.box.shift(Offset(-originMain, 0))
-          : line.box.shift(Offset(0, -originMain));
+      final box = line.box.shift(toLocal);
       writer.rrectFill(
         box.left * dpr,
         box.top * dpr,
@@ -1397,18 +1405,15 @@ class _TileEntry {
 
 /// [firstCellThatMayDiffer] of the pair a row's tiles ask about together —
 /// every span of the row asks it of the same two instances.
-int? _agreementOf(Layer baked, Layer next) {
-  final known = _agreements[baked];
-  if (known != null && identical(known.next, next)) {
-    return known.differs;
-  }
-  final differs = firstCellThatMayDiffer(baked, next);
-  _agreements[baked] = (next: next, differs: differs);
-  return differs;
-}
+int? _agreementOf(Layer baked, Layer next) => _agreements.resolve(
+  baked,
+  next,
+  () => firstCellThatMayDiffer(baked, next),
+);
 
-final Expando<({Layer next, int? differs})> _agreements = Expando(
+final SignedMemo<Layer, int?> _agreements = SignedMemo(
   'tile agreement',
+  same: identical,
 );
 
 /// The per-raster transient atlas (a vertical stack of the span's
@@ -1460,10 +1465,11 @@ TimelineRowSubstrate timelineGridEmitSubstrate(
   required double devicePixelRatio,
 }) {
   final horizontal = painter.axis == Axis.horizontal;
-  final originRect = painter.cellRectFor(spanStartIndex);
-  final toLocal = horizontal
-      ? Offset(-originRect.left, 0)
-      : Offset(0, -originRect.top);
+  final toLocal = offsetAlong(
+    painter.axis,
+    along: -startAlong(painter.axis, painter.cellRectFor(spanStartIndex)),
+    across: 0,
+  );
   // 🚨D43-2 재개 (유저 2026-08-22: 「아직도 레이어행에만 그리드 없거든?」)
   // taught this: the emitter is a SECOND reader of the painter's contract,
   // and the painter's own tests stay green when it drops an answer. So it

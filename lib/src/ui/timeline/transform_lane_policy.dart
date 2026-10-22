@@ -166,6 +166,9 @@ List<PropertyLaneRow> cameraPropertyLanes(
 /// (AE display units: Position and Anchor Point in canvas px, Scale as its
 /// [scaleForm] prints it, Rotation in clockwise degrees, Opacity ·100 %);
 /// null hides the values, and the curve with them.
+///
+/// [laneIdOf] names each member's row: a reference's fx is these lanes
+/// under ids of its own (F-374, `reference:position`, …).
 List<PropertyLaneRow> transformPropertyLanes(
   TransformTrack track, {
   required ScaleLaneForm scaleForm,
@@ -173,13 +176,14 @@ List<PropertyLaneRow> transformPropertyLanes(
   TransformPose Function(double time)? poseAt,
   CanvasPoint Function(double time)? anchorAt,
   double Function(double time)? opacityAt,
+  String Function(String laneId) laneIdOf = _itsOwnLaneId,
 }) {
   const point = [LaneCurvePalette.across, LaneCurvePalette.down];
   return [
     transformGroupHeaderLane,
     if (includeAnchorAndOpacity)
       _lane(
-        'anchor-point',
+        laneIdOf('anchor-point'),
         AppText.strings.tlLaneAnchorPoint,
         track.anchorPoint,
         _reading(
@@ -191,9 +195,10 @@ List<PropertyLaneRow> transformPropertyLanes(
         ),
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('anchor-point', label, delta),
+        walks: pathKeySpace,
       ),
     _lane(
-      'position',
+      laneIdOf('position'),
       AppText.strings.tlLanePosition,
       track.position,
       _reading(
@@ -204,10 +209,10 @@ List<PropertyLaneRow> transformPropertyLanes(
       ),
       scrubValue: (label, delta) =>
           scrubTransformLaneValue('position', label, delta),
-      walks: positionKeySpace,
+      walks: pathKeySpace,
     ),
     _lane(
-      'scale',
+      laneIdOf('scale'),
       AppText.strings.tlLaneScale,
       track.scale,
       _reading(
@@ -226,7 +231,7 @@ List<PropertyLaneRow> transformPropertyLanes(
       linkable: scaleForm.links,
     ),
     _lane(
-      'rotation',
+      laneIdOf('rotation'),
       AppText.strings.tlLaneRotation,
       track.rotation,
       _reading(
@@ -240,7 +245,7 @@ List<PropertyLaneRow> transformPropertyLanes(
     ),
     if (includeAnchorAndOpacity)
       _lane(
-        'opacity',
+        laneIdOf('opacity'),
         AppText.strings.tlLaneOpacity,
         track.opacity,
         _reading(
@@ -254,6 +259,8 @@ List<PropertyLaneRow> transformPropertyLanes(
       ),
   ];
 }
+
+String _itsOwnLaneId(String laneId) => laneId;
 
 /// What a lane's value column prints and the line a header graph draws it
 /// by (I-89 ③), off ONE reading of its value — so the two cannot come to
@@ -378,6 +385,21 @@ bool laneSelectionCoversBandRow(
   return selection.coversLane(layerId, laneId);
 }
 
+/// Whether the lane selection holds [laneId]'s key cell at [frame] on
+/// [layerId] ([laneSelectionCoversBandRow]): what a lane's band takes a
+/// press there to MOVE rather than select, what its key mark rings for,
+/// and what a header graph's key does both by (I-3) — so what reads as
+/// picked is what a drag carries, wherever the key is drawn.
+bool laneSelectionPicksKey(
+  TimelineLaneSelection? selection,
+  LayerId layerId,
+  String laneId,
+  int frame,
+) =>
+    selection != null &&
+    laneSelectionCoversBandRow(selection, layerId, laneId) &&
+    selection.contains(frame);
+
 // A folder's FX lanes used to carry a `folder-fx:<folderId>:<base>`
 // ADDRESS in the lane id, so the one laneEdit callback set could route
 // commits into a folder table the layer path could not reach. A folder is
@@ -403,33 +425,26 @@ String? scrubTransformLaneValue(
   String currentLabel,
   Offset dragDelta,
 ) {
-  double? parse(String raw) =>
-      double.tryParse(raw.replaceAll('%', '').replaceAll('°', '').trim());
   switch (laneId) {
     case 'position':
     case 'anchor-point':
-      final parts = currentLabel.split(',');
-      if (parts.length != 2) {
-        return null;
-      }
-      final x = parse(parts[0]);
-      final y = parse(parts[1]);
-      if (x == null || y == null) {
-        return null;
-      }
-      return '${columnValueText(x + dragDelta.dx)}, ${columnValueText(y + dragDelta.dy)}';
+      return switch (columnPairOf(currentLabel)) {
+        (final x, final y) =>
+          '${columnValueText(x + dragDelta.dx)}, ${columnValueText(y + dragDelta.dy)}',
+        null => null,
+      };
     case 'rotation':
-      final degrees = parse(currentLabel);
+      final degrees = columnValueOf(currentLabel);
       if (degrees == null) {
         return null;
       }
-      return '${columnValueText(degrees + dragDelta.dx * 0.5)}°';
+      return '${columnValueText(scrubbedNumber(degrees, dragDelta))}°';
     case 'opacity':
-      final percent = parse(currentLabel);
+      final percent = columnValueOf(currentLabel);
       if (percent == null) {
         return null;
       }
-      final scrubbed = (percent + dragDelta.dx * 0.5).clamp(0.0, 100.0);
+      final scrubbed = scrubbedNumber(percent, dragDelta).clamp(0.0, 100.0);
       return '${columnValueText(scrubbed)}%';
   }
   return null;

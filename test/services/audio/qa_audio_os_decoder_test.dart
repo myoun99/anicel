@@ -25,6 +25,10 @@ import '../../helpers/project_scratch_folder.dart';
 /// hand-waving: the rate and channel count must come back exactly, the
 /// length within AAC's priming/padding slack, the mid-file peak near the
 /// encoded amplitude.
+///
+/// Beside it, a movie's uncompressed sound, which the engine reads itself on
+/// every platform (board mac-reads-no-movie-pcm): where a movie's sound
+/// starts is one law whichever of the two read it.
 void main() {
   final libraryPath = nativeEngineLibraryPathOrNull();
   final available = libraryPath != null;
@@ -169,50 +173,37 @@ void main() {
     );
   }, skip: skip);
 
-  test('a movie\'s uncompressed sound is never dr_mp3\'s — and where the OS '
-      'stack reads it, it lands sample for sample', () {
+  test('a movie\'s uncompressed sound is never dr_mp3\'s — the engine reads '
+      'it itself, on every platform', () {
     // 🚨The head decides who may try (user 10-09, board
     // sound-lands-on-its-exact-sample-Q2). This movie's quiet half is what
-    // dr_mp3 synced on before it did: 1,920 frames of noise at 44.1 kHz,
-    // and the OS stack — which reads it exactly — was never asked.
+    // dr_mp3 synced on before it did: 1,920 frames of noise at 44.1 kHz.
+    // 🚨And no OS stack is asked (board mac-reads-no-movie-pcm): AudioToolbox
+    // read nothing of this movie on the macOS CI runner (10-15), where Media
+    // Foundation read it exactly — the C range test pins each way a writer
+    // stores such a sound, and the control below what this one holds.
     final decoder = QaAudioDecoder.instance;
     expect(decoder, isNotNull);
-    final samples = _roomToneThenTone();
-    final decoded = decodeAudioBytes(pcmMovie(samples));
+    final decoded = decodeAudioBytes(pcmMovie(_roomToneThenTone()));
 
     expect(
       decoded?.format,
       isNot(QaAudioFormat.mp3),
       reason: 'a QuickTime head must keep dr_mp3 away from the movie',
     );
-    if (Platform.isLinux) {
-      expect(decoded, isNull, reason: 'no OS stack to read it here');
-      return;
-    }
-    if (_movieUnreadHere(decoded)) {
-      return;
-    }
-    expect(decoded, isNotNull, reason: 'Media Foundation reads it');
-    expect(decoded!.format, QaAudioFormat.os);
+    expect(decoded, isNotNull, reason: 'the engine reads it on every platform');
+    expect(decoded!.format, QaAudioFormat.moviePcm);
     expect(decoded.sampleRate, 48000);
     expect(decoded.channels, 2);
-    expect(decoded.length, samples.length ~/ 2, reason: 'not a frame more');
-    // Uncompressed: every sample is the one written, so the first lands on
-    // frame 0 and the tone on its own frame.
-    for (var index = 0; index < samples.length; index += 1) {
-      final got = (decoded.samples[index] * 32768).round();
-      if (got != samples[index]) {
-        fail('sample $index is $got, written ${samples[index]}');
-      }
-    }
   }, skip: skip);
 
   // -------------------------------------------------------------------------
   // 🚨★★★WHERE A SOUND STARTS (user 10-09, board
   // sound-lands-on-its-exact-sample-Q3 · Q4). An encoder puts frames of its
   // own before the sound; the file says how many, and the engine takes
-  // exactly those off — whichever OS stack decoded it. The C range test
-  // pins the MP3 half (a LAME tag, and the standard 1,105 without one).
+  // exactly those off — whichever decoder read it, an OS stack or the
+  // engine's own movie reader. The C range test pins the MP3 half (a LAME
+  // tag, and the standard 1,105 without one).
 
   test('a movie\'s edit list says where its sound starts — taken to the '
       'frame, uncompressed so nothing smears, however the movie is laid '
@@ -235,16 +226,15 @@ void main() {
         'after a timecode track with an edit list of its own',
         pcmMovie(samples, edits: [plays], timecodeFirst: true),
       ),
+      (
+        // Where it starts is the sound's clock, how long it plays the
+        // movie's.
+        'on QuickTime\'s movie clock of 600',
+        pcmMovie(samples, edits: [plays], movieScale: 600),
+      ),
     ]) {
       final decoded = decodeAudioBytes(movie);
-      if (Platform.isLinux) {
-        expect(decoded, isNull, reason: '$shape: no OS stack to read it here');
-        continue;
-      }
-      if (_movieUnreadHere(decoded)) {
-        return;
-      }
-      expect(decoded, isNotNull, reason: '$shape: Media Foundation reads it');
+      expect(decoded, isNotNull, reason: '$shape: the engine reads it');
       expect(decoded!.length, 24000, reason: '$shape: it plays 24,000 frames');
       for (var index = 0; index < 24000 * 2; index += 1) {
         final got = (decoded.samples[index] * 32768).round();
@@ -315,6 +305,70 @@ void main() {
     }
   }, skip: skip);
 
+  test('🎯a movie that says it only in the note iTunes leaves starts where '
+      'the note says — Apple\'s 2,112, not the standard, and for as long as '
+      'it says (Q3: 「말하면 그 값」)', () {
+    // Against the same movie saying nothing, whose sound starts where the
+    // edit list says (the test above) and runs to its end.
+    final silent = _renamed(fixtureBytes(), ['moov', 'trak', 'edts'], 'free');
+    final standard = decodeAudioBytes(silent);
+    for (final (shape, bytes, length) in [
+      ('in ISO\'s meta', _withITunesNote(silent, _appleNote), 20962),
+      (
+        'in QuickTime\'s meta',
+        _withITunesNote(silent, _appleNote, fullBox: false),
+        20962,
+      ),
+      (
+        // A length of 0 says none: it runs to the end too.
+        'with no length in it',
+        _withITunesNote(
+          silent,
+          _appleNote.replaceFirst('00000000000051E2', '0' * 16),
+        ),
+        null,
+      ),
+    ]) {
+      final told = decodeAudioBytes(bytes);
+      if (Platform.isLinux) {
+        expect((standard, told), (null, null), reason: shape);
+        continue;
+      }
+      expect(standard, isNotNull);
+      expect(told, isNotNull, reason: '$shape: a note is no reason to refuse');
+      expect(
+        told!.length,
+        length ?? standard!.length - 1088,
+        reason: '$shape: it plays what it says',
+      );
+      final channels = standard!.channels;
+      for (var index = 0; index < told.length * channels; index += 1) {
+        if (told.samples[index] != standard.samples[index + 1088 * channels]) {
+          fail('$shape: sample $index is not the standard\'s '
+              '${index + 1088 * channels}');
+        }
+      }
+    }
+  }, skip: skip);
+
+  test('⚠️where the sound track has an edit list, the edit list says it — a '
+      'note beside it is not read', () {
+    final said = decodeAudioFile(fixturePath);
+    final both = decodeAudioBytes(_withITunesNote(fixtureBytes(), _appleNote));
+    if (Platform.isLinux) {
+      expect((said, both), (null, null));
+      return;
+    }
+    expect(said, isNotNull);
+    expect(both, isNotNull);
+    expect(both!.length, said!.length);
+    for (var index = 0; index < said.length * said.channels; index += 1) {
+      if (both.samples[index] != said.samples[index]) {
+        fail('sample $index is not the edit list\'s');
+      }
+    }
+  }, skip: skip);
+
   test('🎯unless Media Foundation wrote it: the mark its writer leaves keeps '
       'the standard off — the same movie without the mark starts one AAC '
       'frame later (user 10-09, Q7: 「윈도 기록기의 표지가 있으면 걷지 '
@@ -342,18 +396,37 @@ void main() {
       'nothing — its format has no delay to take', () {
     final samples = _roomToneThenTone();
     final decoded = decodeAudioBytes(pcmMovie(samples));
-    if (Platform.isLinux) {
-      expect(decoded, isNull);
-      return;
-    }
-    if (_movieUnreadHere(decoded)) {
-      return;
-    }
-    expect(decoded!.length, samples.length ~/ 2);
+    expect(decoded!.length, samples.length ~/ 2, reason: 'not a frame more');
+    // Every sample is the one written, so the first lands on frame 0 and the
+    // tone on its own frame.
     for (var index = 0; index < samples.length; index += 1) {
       final got = (decoded.samples[index] * 32768).round();
       if (got != samples[index]) {
         fail('sample $index is $got, written ${samples[index]}');
+      }
+    }
+  }, skip: skip);
+
+  test('🔬AAC in a QuickTime movie decodes as the m4a does — or says this '
+      'stack does not read a QuickTime movie\'s AAC either (board '
+      'mac-reads-no-movie-pcm: whether a Mac refuses a movie\'s PCM for the '
+      'sound or for the movie)', () {
+    final m4a = decodeAudioFile(fixturePath);
+    final movie = decodeAudioBytes(_quickTimeBranded(fixtureBytes()));
+    if (Platform.isLinux) {
+      expect((m4a, movie), (null, null));
+      return;
+    }
+    expect(m4a, isNotNull);
+    if (movie == null && !Platform.isWindows) {
+      markTestSkipped('this OS stack does not read a QuickTime movie\'s AAC');
+      return;
+    }
+    expect(movie, isNotNull, reason: 'Media Foundation reads a QuickTime one');
+    expect(movie!.length, m4a!.length);
+    for (var index = 0; index < m4a.length * m4a.channels; index += 1) {
+      if (movie.samples[index] != m4a.samples[index]) {
+        fail('sample $index is not the m4a\'s');
       }
     }
   }, skip: skip);
@@ -443,7 +516,7 @@ void main() {
       edits: [(from: 480, keep: 24000)],
     );
     for (final (what, bytes) in [
-      if (!_movieUnreadHere(decodeAudioBytes(movie))) ('a movie\'s PCM', movie),
+      ('a movie\'s PCM', movie),
       ('an m4a', fixtureBytes()),
       ('an ogg', File('test/fixtures/tone.ogg').readAsBytesSync()),
     ]) {
@@ -873,8 +946,7 @@ void main() {
     );
     final framed = framedMovie('test/fixtures/tone_with_video.mp4');
     for (final (what, span) in [
-      if (!_movieUnreadHere(decodeAudioBytes(movie)))
-        ('a movie\'s PCM', written('pcm.mov', movie)),
+      ('a movie\'s PCM', written('pcm.mov', movie)),
       ('an m4a', written('tone.m4a', fixtureBytes())),
       (
         'an ogg',
@@ -948,18 +1020,6 @@ Uint8List wav16(Float32List samples, {int channels = 1, int rate = 48000}) {
   ]);
 }
 
-/// Whether [decoded] — a movie's PCM — went unread by the OS stack this runs
-/// on: said as a skip, never passed over. Media Foundation reads it (measured
-/// 10-06 · 10-09) and Linux has no stack to (its tests say so); AudioToolbox
-/// on the macOS CI runner does not (10-15).
-bool _movieUnreadHere(QaDecodedAudio? decoded) {
-  if (decoded != null || Platform.isWindows || Platform.isLinux) {
-    return false;
-  }
-  markTestSkipped('this OS stack does not read a movie\'s PCM');
-  return true;
-}
-
 /// One second of 48 kHz stereo: half a second of room tone — the few steps
 /// either side of zero a quiet stretch of a recording has — then a 440 Hz
 /// tone at -6 dB.
@@ -980,11 +1040,9 @@ Int16List _roomToneThenTone() {
   return samples;
 }
 
-/// [bytes] with the box at [path] — each the first box of that type inside
-/// the one before it, from the file's top level — renamed [to], its size
-/// kept: a `free` box, which every reader skips, takes what it said away
-/// and moves no other byte.
-Uint8List _renamed(Uint8List bytes, List<String> path, String to) {
+/// Where the box at [path] starts in [bytes] — each the first box of that
+/// type inside the one before it, from the file's top level.
+int _boxAt(Uint8List bytes, List<String> path) {
   final data = ByteData.sublistView(bytes);
   var start = 0;
   var end = bytes.length;
@@ -1006,7 +1064,86 @@ Uint8List _renamed(Uint8List bytes, List<String> path, String to) {
     start = at + 8;
     end = at + data.getUint32(at);
   }
+  return at;
+}
+
+/// [bytes] with the box at [path] ([_boxAt]) renamed [to], its size kept: a
+/// `free` box, which every reader skips, takes what it said away and moves
+/// no other byte.
+Uint8List _renamed(Uint8List bytes, List<String> path, String to) {
+  final at = _boxAt(bytes, path);
   return Uint8List.fromList(bytes)..setRange(at + 4, at + 8, to.codeUnits);
+}
+
+/// The m4a [bytes] as a QuickTime movie — every brand of its `ftyp`
+/// QuickTime's (`qt  `), as an iPhone's or QuickTime's movie says — with its
+/// user data set aside (`free`), whose `meta` is ISO's shape. Every other
+/// byte is the m4a's: the boxes its sound is read by are the same in both.
+Uint8List _quickTimeBranded(Uint8List bytes) {
+  final ftyp = _boxAt(bytes, ['ftyp']);
+  final end = ftyp + ByteData.sublistView(bytes).getUint32(ftyp);
+  final branded = _renamed(bytes, ['moov', 'udta'], 'free');
+  // The major brand, then the compatible ones after the minor version.
+  for (final at in [ftyp + 8, for (var at = ftyp + 16; at < end; at += 4) at]) {
+    branded.setRange(at, at + 4, 'qt  '.codeUnits);
+  }
+  return branded;
+}
+
+/// The gapless note Apple's encoder would leave on the fixture's sound: 2,112
+/// frames before it (0x840) and 20,962 of it (0x51E2) — the fixture's own
+/// sound from its 1,088th frame on, since its encoder put 1,024 there.
+const _appleNote = ' 00000000 00000840 000001DE 00000000000051E2 00000000 '
+    '00000000 00000000 00000000 00000000 00000000 00000000 00000000';
+
+/// The loudness note iTunes leaves ahead of the gapless one — words of
+/// hexadecimal too: a reading that took it for the gapless note would start
+/// the sound 331 frames in (0x14B).
+const _appleLoudness = ' 0000014B 0000014B 00000C26 00000C26 00000000 '
+    '00000000 00007F2F 00007F2F 00000000 00000000';
+
+/// [bytes] — a movie whose movie box comes last, so that growing it moves no
+/// sample — with its user data set aside (`free`) and new user data at the
+/// movie box's end: a metadata list holding iTunes' loudness note and then
+/// its gapless note, [text], as iTunes writes them. Its `meta` is ISO's,
+/// with four bytes of version and flags, or QuickTime's, without
+/// ([fullBox]).
+Uint8List _withITunesNote(Uint8List bytes, String text, {bool fullBox = true}) {
+  final moov = _boxAt(bytes, ['moov']);
+  final moovEnd = moov + ByteData.sublistView(bytes).getUint32(moov);
+  expect(moovEnd, bytes.length, reason: 'fixture: the movie box is last');
+  List<int> box(String type, List<int> body) => [
+    ...(ByteData(4)..setUint32(0, 8 + body.length)).buffer.asUint8List(),
+    ...type.codeUnits,
+    ...body,
+  ];
+  const flags = [0, 0, 0, 0];
+  List<int> note(String name, String says) => box('----', [
+    ...box('mean', [...flags, ...'com.apple.iTunes'.codeUnits]),
+    ...box('name', [...flags, ...name.codeUnits]),
+    ...box('data', [0, 0, 0, 1, ...flags, ...says.codeUnits]),
+  ]);
+  final udta = box('udta', [
+    ...box('meta', [
+      if (fullBox) ...flags,
+      ...box('hdlr', [
+        ...flags,
+        ...flags,
+        ...'mdirappl'.codeUnits,
+        ...List.filled(9, 0),
+      ]),
+      ...box('ilst', [
+        ...note('iTunNORM', _appleLoudness),
+        ...note('iTunSMPB', text),
+      ]),
+    ]),
+  ]);
+  final grown = Uint8List.fromList([
+    ..._renamed(bytes, ['moov', 'udta'], 'free'),
+    ...udta,
+  ]);
+  ByteData.sublistView(grown).setUint32(moov, moovEnd - moov + udta.length);
+  return grown;
 }
 
 /// The lag, within [range] frames either way, at which [decoded]'s first

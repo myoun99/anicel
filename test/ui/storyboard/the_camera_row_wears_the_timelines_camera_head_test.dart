@@ -36,10 +36,11 @@ import '../../helpers/named_finders.dart';
 /// 행 머리 부품 그대로(칩 · 아이콘 · Camera · fx · 눈 · 값)」.
 ///
 /// The camera row's head is the timeline's own camera row, on the camera
-/// layer of the cut the session stands in: its eye is the camera VIEW and
-/// its slider the view's DIM, as on the timeline's rail. The rail's other
-/// readers — the filter, the ↑/↓ walk, the flip window, the standing wash,
-/// the section toggle — take the row as one of the track's rows.
+/// layer of the cut the session stands in: its eye and its slider are that
+/// layer's — the camera view's switch and its dim (F-363) — worn by every
+/// camera of the track. The rail's other readers — the filter, the ↑/↓
+/// walk, the flip window, the standing wash, the section toggle — take the
+/// row as one of the track's rows.
 ///
 /// Cuts a [0, 24) and b [24, 48), four frames of gap, then c [52, 64).
 void main() {
@@ -82,8 +83,6 @@ void main() {
 
   Future<EditorSessionManager> pumpPanel(
     WidgetTester tester, {
-    ValueNotifier<bool>? cameraView,
-    ValueNotifier<double>? cameraDim,
     TimelineRowFilter rowFilter = TimelineRowFilter.none,
     StoryboardRowsChannel? rowsChannel,
     void Function(EditorSessionManager session)? before,
@@ -122,8 +121,6 @@ void main() {
                     : {...hidden, section};
                 session.standing.keepStandingShown();
               },
-              cameraViewEnabled: cameraView,
-              cameraDimOpacity: cameraDim,
             ),
           ),
         ),
@@ -217,37 +214,58 @@ void main() {
       expect(head(tester).active, isTrue);
     });
 
-    testWidgets('its eye and its slider are the camera view\'s', (
-      tester,
-    ) async {
-      final view = ValueNotifier<bool>(false);
-      final dim = ValueNotifier<double>(0.4);
-      addTearDown(view.dispose);
-      addTearDown(dim.dispose);
-      await pumpPanel(
+    testWidgets('🚨its eye and its slider are its camera\'s — written to every '
+        'camera of the track as one undo, and read by the camera view '
+        '(F-363)', (tester) async {
+      final session = await pumpPanel(
         tester,
-        cameraView: view,
-        cameraDim: dim,
         before: (session) => standIn(session, 30),
       );
-
-      expect(eyeOn(tester), isFalse, reason: 'the view is off');
-      expect(head(tester).opacityOverride, same(dim));
+      List<Layer> cameras() => [
+        for (final cut
+            in session.repository.requireProject().tracks.single.cuts)
+          cut.layers.cameraLayer!,
+      ];
+      expect(eyeOn(tester), isTrue, reason: '⛔전제: the cameras are seen');
 
       await tester.tap(find.named('storyboard-layer-visibility-b-cam'));
       await tester.pumpAndSettle();
-      expect(view.value, isTrue, reason: 'the eye turned the VIEW on');
-      expect(eyeOn(tester), isTrue);
+      expect([for (final camera in cameras()) camera.isVisible], [
+        false,
+        false,
+        false,
+      ], reason: '「눈 불투명도는 물론 통일」 — one eye a track');
+      expect(eyeOn(tester), isFalse);
+      expect(session.cameraViewMode.enabled.value, isFalse);
 
-      // The slider, pressed as the ROW (the 10-10 audit), still dims the
-      // view rather than reaching for a layer's own opacity.
+      // The slider, pressed as the ROW (the 10-10 audit): a drag the view
+      // follows, a release the layers take.
       final slider = tester.widget<FieldSlider>(
         find.named('storyboard-layer-opacity-b-cam'),
       );
       slider.onChanged!(0.7);
-      expect(dim.value, 0.7);
-      slider.onChangeEnd!(0.8);
-      expect(dim.value, 0.8);
+      await tester.pump();
+      expect(session.cameraViewMode.dim.value, 0.7);
+      expect(
+        tester
+            .widget<FieldSlider>(find.named('storyboard-layer-opacity-b-cam'))
+            .value,
+        0.7,
+        reason: 'the head follows the drag preview, as every head does',
+      );
+      expect([for (final camera in cameras()) camera.opacity], [1, 1, 1]);
+      slider.onChangeEnd!(0.3);
+      await tester.pumpAndSettle();
+      expect([for (final camera in cameras()) camera.opacity], [0.3, 0.3, 0.3]);
+      expect(session.cameraViewMode.dim.value, 0.3);
+
+      session.undo();
+      session.undo();
+      await tester.pumpAndSettle();
+      expect([
+        for (final camera in cameras()) (camera.isVisible, camera.opacity),
+      ], [(true, 1), (true, 1), (true, 1)], reason: 'one undo each');
+      expect(eyeOn(tester), isTrue);
     });
 
     testWidgets('in a gap it keeps its slots and the name the track\'s '
@@ -341,10 +359,15 @@ void main() {
       );
       final snapshot = channel.snapshotFor(FlipHudAxis.row)!;
       expect(snapshot.rows.first.name, 'Camera b');
+      // ↩️It drew nothing, as the timeline's camera row did, until both drew
+      // their cut's keys, as both rails do (B4, 68b5d343b): each cut's key
+      // on its frame 0, where the track has it.
       expect(
-        snapshot.rows.first.runs,
-        isEmpty,
-        reason: 'the timeline\'s camera row\'s window draws no blocks either',
+        [
+          for (final run in snapshot.rows.first.runs)
+            (run.startIndex, run.keyMark != null),
+        ],
+        [(0, true), (24, true), (52, true)],
       );
       expect(snapshot.rowIndex, 0, reason: 'the row stood on');
     });

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import 'lane_graph.dart' show laneGraphFoldedExtent, laneGraphMostExtent;
 import 'lane_graph_seats.dart' show timelineGraphBlocks;
@@ -48,10 +49,19 @@ class TimelineSectionRun {
 
 /// Groups [rows] into consecutive section runs (lane rows belong to their
 /// layer's section).
-List<TimelineSectionRun> timelineSectionRuns(List<TimelineDisplayRow> rows) {
+List<TimelineSectionRun> timelineSectionRuns(List<TimelineDisplayRow> rows) =>
+    timelineSectionRunsOf(rows, (row) => row.layer.kind);
+
+/// Groups [rows] into consecutive runs of one section, each row's read off
+/// its kind ([kindOf]) — a display row's, or a layer's in the list a row
+/// drag seats among (F-423).
+List<TimelineSectionRun> timelineSectionRunsOf<T>(
+  List<T> rows,
+  LayerKind Function(T row) kindOf,
+) {
   final runs = <TimelineSectionRun>[];
   for (var index = 0; index < rows.length; index += 1) {
-    final section = timelineSectionForLayerKind(rows[index].layer.kind);
+    final section = timelineSectionForLayerKind(kindOf(rows[index]));
     if (runs.isNotEmpty &&
         runs.last.section == section &&
         runs.last.startRowIndex + runs.last.rowCount == index) {

@@ -27,7 +27,7 @@ class ExportJob {
     required this.id,
     required this.spec,
     required this.destination,
-    required this.fileName,
+    required this.typedName,
     required this.createdAt,
     this.status = ExportJobStatus.queued,
     this.completed = 0,
@@ -45,9 +45,11 @@ class ExportJob {
   /// outgrown is asked again when the queue is run (F-221).
   final ExportDestination destination;
 
-  /// The single-file name for video/image jobs; null when the job writes a
-  /// file set (sequences, cels, sheets).
-  final String? fileName;
+  /// What was typed for the lone file of a video, an image or a PDF job —
+  /// empty when nothing was, and the file is called what the export covers
+  /// as it is in the form (F-404); null when the job writes a file set
+  /// (stills, cels, sheets).
+  final String? typedName;
 
   final DateTime createdAt;
   final ExportJobStatus status;
@@ -64,7 +66,7 @@ class ExportJob {
   ExportJob copyWith({
     ExportTabSpec? spec,
     ExportDestination? destination,
-    Object? fileName = _unset,
+    Object? typedName = _unset,
     ExportJobStatus? status,
     int? completed,
     int? total,
@@ -73,9 +75,9 @@ class ExportJob {
     id: id,
     spec: spec ?? this.spec,
     destination: destination ?? this.destination,
-    fileName: identical(fileName, _unset)
-        ? this.fileName
-        : fileName as String?,
+    typedName: identical(typedName, _unset)
+        ? this.typedName
+        : typedName as String?,
     createdAt: createdAt,
     status: status ?? this.status,
     completed: completed ?? this.completed,
@@ -110,14 +112,14 @@ class ExportQueueModel extends ChangeNotifier {
   ExportJob enqueue({
     required ExportTabSpec spec,
     required ExportDestination destination,
-    String? fileName,
+    String? typedName,
     DateTime Function() now = DateTime.now,
   }) {
     final job = ExportJob(
       id: _nextId,
       spec: spec,
       destination: destination,
-      fileName: fileName,
+      typedName: typedName,
       createdAt: now(),
     );
     _nextId += 1;

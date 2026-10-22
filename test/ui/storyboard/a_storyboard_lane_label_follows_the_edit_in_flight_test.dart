@@ -91,9 +91,8 @@ void main() {
   testWidgets('an S row\'s value, scrubbed on the storyboard, moves its label '
       'before the release — and writes nothing until it', (tester) async {
     final session = await pumpStoryboard(tester);
-    final track = session.activeTrack.id.value;
     final se = session.activeTrack.seLayers.first.id.value;
-    await tapNamed(tester, 'storyboard-se-lane-toggle-$track-1');
+    await tapNamed(tester, 'storyboard-lane-toggle-$se');
     await tapNamed(tester, 'storyboard-lane-group-toggle-$se-transform-group');
     final value = 'storyboard-lane-value-$se-rotation';
     final before = label(tester, value);

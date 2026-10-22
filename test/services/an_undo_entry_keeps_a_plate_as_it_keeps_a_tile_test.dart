@@ -185,7 +185,7 @@ void main() {
       expect(snapshot.isParked, isTrue);
       expect(snapshot.residentBytes, 0);
 
-      final back = snapshot.surfaceOver(live)!;
+      final back = snapshot.surfaceOver(() => live)!;
 
       expect(back, before);
       expect(back.texts.single.plate[a], same(shared));
@@ -211,7 +211,7 @@ void main() {
       expect(snapshot.residentBytes, 0, reason: '⛔fixture: all shared');
 
       expect(await snapshot.park(), isTrue);
-      final back = snapshot.surfaceOver(live)!;
+      final back = snapshot.surfaceOver(() => live)!;
 
       expect(back.texts.single.content.text, 'before');
       expect(back.texts.single.plate[b], same(plate));
@@ -236,7 +236,7 @@ void main() {
 
       expect(await snapshot.park(), isTrue);
 
-      expect(snapshot.surfaceOver(live), before);
+      expect(snapshot.surfaceOver(() => live), before);
     });
 
     test('⛔it refuses rather than hand back a text with a hole in it: a '
@@ -252,16 +252,20 @@ void main() {
       expect(await snapshot.park(), isTrue);
 
       expect(
-        snapshot.surfaceOver(carrying({b: tile(3)})),
+        snapshot.surfaceOver(() => carrying({b: tile(3)})),
         isNull,
         reason: 'the shared plate tile is gone',
       );
       expect(
-        snapshot.surfaceOver(drawingOf({a: ink})),
+        snapshot.surfaceOver(() => drawingOf({a: ink})),
         isNull,
         reason: 'the text is gone',
       );
-      expect(snapshot.surfaceOver(live), before, reason: 'and still whole');
+      expect(
+        snapshot.surfaceOver(() => live),
+        before,
+        reason: 'and still whole',
+      );
     });
 
     test('the step parked and then undone sets the text back as it was', () async {

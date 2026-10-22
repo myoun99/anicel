@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/settle_async.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -614,12 +615,7 @@ bool _isPrint(Color color) =>
 
 /// Every asynchronous build the last change set off, landed and drawn.
 Future<void> _settle(WidgetTester tester) async {
-  for (var round = 0; round < 10; round += 1) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 20)),
-    );
-    await tester.pump();
-  }
+  await lendBothClocks(tester, rounds: 10);
   await tester.pumpAndSettle();
 }
 

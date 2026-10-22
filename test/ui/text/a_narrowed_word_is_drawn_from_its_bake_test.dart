@@ -12,7 +12,10 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/text/word_bake.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
 
+import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/dart_sources.dart';
+import '../../helpers/settle_async.dart';
+import '../../helpers/source_body.dart';
 import '../../helpers/word_bakes.dart';
 
 /// F-224 — a narrowed word is drawn from its bake.
@@ -104,24 +107,6 @@ Future<Color> _inkOf(void Function(Canvas) paint, Size size) async {
 
 String _squash(String s) => s.replaceAll(RegExp(r'\s+'), '');
 
-/// The body of class [name] in [source], braces matched.
-String _classBody(String source, String name) {
-  final head = RegExp('class $name\\b').firstMatch(source)!;
-  final open = source.indexOf('{', head.end);
-  var depth = 0;
-  for (var i = open; i < source.length; i += 1) {
-    if (source[i] == '{') {
-      depth += 1;
-    } else if (source[i] == '}') {
-      depth -= 1;
-      if (depth == 0) {
-        return source.substring(open, i + 1);
-      }
-    }
-  }
-  return source.substring(open);
-}
-
 void main() {
   testWidgets('a word narrowed under the legible size is drawn from its '
       'bake once it lands, and only such a word', (tester) async {
@@ -159,11 +144,27 @@ void main() {
     expect(strip, paintsExactlyCountTimes(#drawImageRect, 0));
 
     final before = painted.value;
+    final weighed = BakedWords.instance.imageBytes;
     await pumpUntilAWordBakeLands(tester);
     expect(
       painted.value,
       before + 1,
       reason: 'its painter paints again when the bake lands',
+    );
+    // 🧮The memory census reads what the bake weighs: its picture, the
+    // narrowed box and its one-pixel margin at 4 bytes a pixel (card
+    // census-misses-bake-once-images).
+    expect(
+      BakedWords.instance.imageBytes - weighed,
+      ((word.width * fit.x).ceil() + 2) *
+          ((word.height * fit.y).ceil() + 2) *
+          4,
+    );
+    expect(
+      collectMemoryCensusWhereTexturesAreRam(
+        const [],
+      ).items.singleWhere((item) => item.id == 'textImages').bytes,
+      BakedWords.instance.imageBytes,
     );
     expect(strip, paints..drawImageRect());
     expect(strip, paintsExactlyCountTimes(#drawParagraph, 0));
@@ -337,12 +338,7 @@ void main() {
         ),
       ),
     );
-    for (var i = 0; i < 400 && held.length < 2; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 5)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => held.length >= 2);
     expect(held.length, 2, reason: 'fixture: both words reached the upload');
     final narrow = held[0].width < held[1].width ? 0 : 1;
     final shortBefore = short.value;
@@ -419,12 +415,7 @@ void main() {
         ),
       ),
     );
-    for (var i = 0; i < 400 && uploads < 2; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 5)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => uploads >= 2);
     expect(
       uploads,
       2,
@@ -515,12 +506,11 @@ void main() {
     // What the paint laid out is let go: the bake holds its recording.
     word.dispose();
     final before = BakedWords.instance.debugLandingFrames;
-    for (var i = 0; i < 10; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 5)),
-      );
-      await tester.pump();
-    }
+    await lendBothClocks(
+      tester,
+      rounds: 10,
+      beat: const Duration(milliseconds: 5),
+    );
     expect(
       BakedWords.instance.debugLandingFrames,
       before,
@@ -598,12 +588,7 @@ void main() {
     void paintIt(Canvas canvas) =>
         paintFittedText(canvas, word, Offset.zero, (x: 0.25, y: 1.0));
     expect(paintIt, paints..paragraph());
-    for (var i = 0; i < 400 && refused == 0; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 5)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => refused > 0);
     expect(refused, 1, reason: 'fixture: the bake reached the upload');
     await tester.pump();
     expect(paintIt, paints..paragraph());
@@ -788,7 +773,7 @@ void main() {
       );
       // ⛔The mixin's paint is what makes the painter the one waiting; a
       // painter that paints itself draws its stand-ins for nobody.
-      final body = _classBody(source, painter);
+      final body = sourceBodyOf(source, RegExp('class $painter\\b'));
       expect(
         body,
         contains('void paintWords(Canvas canvas, Size size)'),

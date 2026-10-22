@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -20,12 +19,14 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
+import 'package:anicel/src/services/import/cel_picture.dart'
+    show debugPictureSideLimit;
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import '../../helpers/temp_dir.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨★★★A CEL THAT BECOMES THE ACTIVE ROW BELOW 100% SHOWS WHAT IT SHOWED A
 /// FRAME AGO, AND MAKES NOTHING IN THAT FRAME (2026-09-24, board
@@ -61,14 +62,6 @@ void main() {
 
   final screen = GlobalKey();
 
-  late Directory tempDir;
-
-  setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('anicel-entering-the-slot');
-  });
-
-  tearDown(() => deleteTempQuietly(tempDir));
-
   /// A tile whose pixels are opaque gradients on the left three quarters of
   /// the cel and nothing on the rest — so every level texel is a real mean
   /// of four different pixels, and some blocks are part ink, part empty.
@@ -94,31 +87,19 @@ void main() {
   /// A store holding [key]'s cel as a FILE-BACKED entry — the image cache
   /// refuses a cel without a drawing state at its first gate.
   BrushFrameStore storeWithTheCel() {
-    final blob = AnicelCelBlob.encode(
-      AnicelCelEntry.fromSurface(
-        key,
-        BitmapSurface(
-          canvasSize: canvasSize,
-          tileSize: tileSize,
-          tiles: {
-            for (var ty = 0; ty < 2; ty += 1)
-              for (var tx = 0; tx < 4; tx += 1)
-                TileCoord(x: tx, y: ty): tileAt(tx, ty),
-          },
-        ),
+    final store = BrushFrameStore();
+    keepInAFile(store, {
+      key: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {
+          for (var ty = 0; ty < 2; ty += 1)
+            for (var tx = 0; tx < 4; tx += 1)
+              TileCoord(x: tx, y: ty): tileAt(tx, ty),
+        },
       ),
-    );
-    final file = File('${tempDir.path}/cel.bin')..writeAsBytesSync(blob.bytes);
-    return BrushFrameStore()
-      ..restoreFromFile({
-        key: AnicelCelFileRef(
-          filePath: file.path,
-          dataOffset: 0,
-          length: blob.bytes.length,
-          canvasSize: canvasSize,
-          tileSize: tileSize,
-        ),
-      });
+    });
+    return store;
   }
 
   /// The surface a canvas paints the cel from — the same tile objects the
@@ -195,16 +176,6 @@ void main() {
     return true;
   }
 
-  /// Lets the asynchronous pass land the row's image.
-  Future<void> landEverything(WidgetTester tester) async {
-    for (var i = 0; i < 6; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 30)),
-      );
-      await tester.pump();
-    }
-  }
-
   BitmapSurfacePainter painterOf(BitmapSurface surface, Object lineage) =>
       BitmapSurfacePainter(
         surface: surface,
@@ -241,10 +212,9 @@ void main() {
       ),
     );
     await pumpStack(tester, images, active: false);
-    await landEverything(tester);
     expect(
-      blank(await onScreen(tester)),
-      isFalse,
+      await settleAsync(tester, () async => !blank(await onScreen(tester))),
+      isTrue,
       reason: 'fixture: the row is on screen from its image',
     );
     final surface = surfaceOf(store);
@@ -289,43 +259,65 @@ void main() {
     );
   });
 
-  testWidgets('🚨and what it draws is the very picture the pyramid makes — '
-      'byte for byte', (tester) async {
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final store = storeWithTheCel();
-    final images = LayerFrameImageCache(frameStore: store);
-    addTearDown(images.dispose);
-    const seeded = 'entering-seeded';
-    const made = 'entering-made';
-    addTearDown(() => TilePyramid.instance.drop(seeded));
-    addTearDown(() => TilePyramid.instance.drop(made));
+  // And from a picture held in pieces (board
+  // a-cel-past-the-device-side-composes-smaller): at a side of 8 texels the
+  // row's image at half (32×16) is 4 × 2 pieces, so every block is drawn
+  // from the four it lies across.
+  for (final (inPieces, side) in [('', null), (', from its pieces', 8)]) {
+    testWidgets('🚨and what it draws is the very picture the pyramid makes — '
+        'byte for byte$inPieces', (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final wholeSide = debugPictureSideLimit;
+      debugPictureSideLimit = side ?? wholeSide;
+      addTearDown(() => debugPictureSideLimit = wholeSide);
+      final store = storeWithTheCel();
+      final images = LayerFrameImageCache(frameStore: store);
+      addTearDown(images.dispose);
+      final seeded = 'entering-seeded$side';
+      final made = 'entering-made$side';
+      addTearDown(() => TilePyramid.instance.drop(seeded));
+      addTearDown(() => TilePyramid.instance.drop(made));
 
-    final entered = await enterTheSlot(tester, images, store, seeded);
-    expect(TilePyramid.instance.debugTileCountOf(seeded), 0);
+      final entered = await enterTheSlot(tester, images, store, seeded);
+      expect(TilePyramid.instance.debugTileCountOf(seeded), 0);
+      expect(
+        images
+            .validImageOrNull(
+              key,
+              PlaybackQuality.forLevel(1),
+              canvasSize: canvasSize,
+              sourceEffects: const [],
+            )
+            ?.pieces,
+        hasLength(side == null ? 1 : 8),
+        reason: 'fixture',
+      );
 
-    // The same cel as the active row in a stack that held no image of it:
-    // no seed, so the pyramid makes every block.
-    await pumpStack(
-      tester,
-      images,
-      active: true,
-      painter: painterOf(entered.surface, made),
-      stackKey: UniqueKey(),
-    );
-    expect(
-      TilePyramid.instance.debugTileCountOf(made),
-      2,
-      reason: 'fixture: the pyramid made both blocks this time',
-    );
-    expect(
-      await onScreen(tester),
-      entered.bytes,
-      reason: 'a level of the whole image and the halving of its blocks are '
-          'the same means — the seed may change how the frame is made, never '
-          'what it shows',
-    );
-  });
+      // The same cel as the active row in a stack that held no image of it:
+      // no seed, so the pyramid makes every block.
+      await pumpStack(
+        tester,
+        images,
+        active: true,
+        painter: painterOf(entered.surface, made),
+        stackKey: UniqueKey(),
+      );
+      expect(
+        TilePyramid.instance.debugTileCountOf(made),
+        2,
+        reason: 'fixture: the pyramid made both blocks this time',
+      );
+      expect(
+        await onScreen(tester),
+        entered.bytes,
+        reason:
+            'a level of the whole image and the halving of its blocks are '
+            'the same means — the seed may change how the frame is made, '
+            'never what it shows',
+      );
+    });
+  }
 
   testWidgets('a block whose tile changed is made; the block beside it is '
       'still drawn from the image', (tester) async {

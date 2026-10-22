@@ -24,7 +24,8 @@ void main() {
       isEmpty,
       reason:
           'walk with `dartFilesUnder(dir)` — it filters to Dart files and '
-          'FAILS on a missing folder, where a copy quietly counts nothing. '
+          'FAILS on a missing folder, where a copy quietly counts nothing '
+          '(`filesUnder(dir)` for a scan of scripts and workflows). '
           'A walk that is not a source scan goes in the ledger, with why',
     );
   });

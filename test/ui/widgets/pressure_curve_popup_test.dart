@@ -21,7 +21,7 @@ void main() {
                   key: const ValueKey<String>('open-curve'),
                   onPressed: () => showPressureCurvePopup(
                     context,
-                    title: 'Size',
+                    target: BrushPressureTarget.size,
                     initialCurves: {
                       BrushInputSource.pressure: BrushPressureCurve.identity(),
                     },

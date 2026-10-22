@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -14,11 +15,13 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
+import 'package:anicel/src/ui/media/media_drop_verdict.dart';
 import 'package:anicel/src/ui/timeline/layer_drop_policy.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
     show timelineLayerRowHeight;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/named_finders.dart';
@@ -64,6 +67,37 @@ void main() {
         newRowInsertionForSlot(stack: stack, displayRows: shown, slot: 3),
         0,
       );
+    });
+
+    // 🗣️F-372 (유저 2026-10-17): 「액션란에 레이어 하나도 없을때 해당
+    // 빈공간에 끌면 … 아무 반응없음. 해당영역에 넣는거 가능하게」.
+    test('🚨a drawing section with no row is still a place — the one gap '
+        'where it stands: the rail\'s foot, the sheet\'s head', () {
+      final camera = row('Cam', kind: LayerKind.camera);
+      final transition = row('Tr', kind: LayerKind.transition);
+      final se1 = row('S1', kind: LayerKind.se);
+      final se2 = row('S2', kind: LayerKind.se);
+      // A track's rows are no rows of the cut's stack.
+      final rail = [camera, transition, se2, se1];
+      final sheet = [se1, se2, transition, camera];
+
+      List<int?> gaps(List<Layer> stack, List<Layer> shown) => [
+        for (var slot = 0; slot <= shown.length; slot += 1)
+          newRowInsertionForSlot(stack: stack, displayRows: shown, slot: slot),
+      ];
+      expect(gaps([camera], rail), [null, null, null, null, 0]);
+      expect(gaps([camera], sheet), [0, null, null, null, null]);
+      expect(
+        gaps(const [], [transition, se2, se1]),
+        [null, null, null, 0],
+        reason: 'a cut with no row of its own',
+      );
+      expect(
+        gaps(const [], [se2, se1]),
+        [null, null, null],
+        reason: 'one section cannot say which way the list runs',
+      );
+      expect(gaps(const [], const []), [null], reason: 'nor can no row');
     });
 
     test('never between a base and its rider', () {
@@ -267,6 +301,188 @@ void main() {
     expect(s.layerRowDragVerbs.inFlight.value, isNull);
     expect(
       find.byKey(const ValueKey<String>('timeline-row-caret-before-A')),
+      findsNothing,
+    );
+  });
+
+  // 🗣️F-372 (유저 2026-10-17): 「액션란에 레이어 하나도 없을때 해당 빈공간에
+  // 끌면 금지마크도 안떠서 가능한건가싶은데 이미지 그립한거 드롭해도 아무
+  // 반응없음. 해당영역에 넣는거 가능하게」.
+  testWidgets('🚨with no ACTION row, a picture let go in the room under the '
+      'rail\'s rows — where ACTION stands — says yes, raises the caret there '
+      'and is a new layer at the foot of the stack', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const png = r'C:\art\bg.png';
+    const dragSourceKey = ValueKey<String>('test-media-drag-source');
+    final verdict = ValueNotifier<bool?>(null);
+    addTearDown(verdict.dispose);
+    (List<Layer>, int, String)? placed;
+    final base = createDefaultProject();
+    final s = EditorSessionManager(
+      initialProject: base.copyWith(
+        tracks: [
+          for (final track in base.tracks)
+            track.copyWith(
+              cuts: [
+                for (final cut in track.cuts)
+                  cut.copyWith(
+                    layers: [
+                      for (final layer in cut.layers)
+                        if (timelineSectionForLayerKind(layer.kind) !=
+                            TimelineSection.drawing)
+                          layer,
+                    ],
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+    addTearDown(s.dispose);
+    expect(s.requireActiveCut.layers, isNotEmpty, reason: 'CONTROL: a camera');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MediaDropVerdictScope(
+            verdict: verdict,
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 40,
+                  child: Draggable<MediaAssetDragData>(
+                    data: const MediaAssetDragData(path: png, name: 'bg.png'),
+                    dragAnchorStrategy: pointerDragAnchorStrategy,
+                    feedback: const SizedBox(width: 8, height: 8),
+                    child: Container(
+                      key: dragSourceKey,
+                      width: 40,
+                      height: 40,
+                      color: const Color(0xFF888888),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ListenableBuilder(
+                    listenable: s,
+                    builder: (context, _) => TimelineTabHost(
+                      session: s,
+                      orientation: TimelineOrientation.horizontal,
+                      onOrientationChanged: (_) {},
+                      pixelsPerFrame: 48,
+                      onPixelsPerFrameChanged: (_) {},
+                      showSeconds: false,
+                      onShowSecondsChanged: (_) {},
+                      onPlaceMediaAssetBetweenLayers: (layers, slot, path) =>
+                          placed = (layers, slot, path),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final foot = tester
+        .getRect(
+          find.namedWhere((name) => name.startsWith('timeline-rail-row-')).last,
+        )
+        .bottom;
+    final rail = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-placement-entrance')),
+    );
+    final room = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-placement-room')),
+    );
+    expect(
+      (rail.bottom, room.left, room.top, room.right),
+      (foot, rail.left, foot, rail.right),
+      reason: '⛔D43-2: the rows stop where they end — the room under them '
+          'is an entrance of its own, the rail\'s width',
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(dragSourceKey)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    // Right under the last row and well below it: anywhere in the room is
+    // past the rows, the foot.
+    final carets = <int?>[];
+    for (final below in [2.0, 120.0]) {
+      await gesture.moveTo(Offset(rail.left + 40, foot + below));
+      await tester.pump();
+      expect(verdict.value, isTrue, reason: 'the chip says yes $below under');
+      carets.add(s.layerRowDragVerbs.inFlight.value?.caretSlot);
+    }
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final (layers, slot, path) = placed!;
+    expect(path, png);
+    expect(slot, layers.length, reason: 'the gap under the last row');
+    expect(carets, [slot, slot], reason: 'the caret stood where it lands');
+    expect(s.layerSlotSpotFor(layers, slot, png), const LayerSlotSpot(0));
+  });
+
+  testWidgets('a body its rows overfill has no room under them — the rows '
+      'are all the layer area there is', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final s = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('full-project'),
+        name: 'Full Project',
+        createdAt: DateTime.utc(2026, 10, 17),
+        tracks: [
+          Track(
+            id: const TrackId('full-track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('full-cut'),
+                name: 'Full Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  for (var index = 0; index < 40; index += 1) row('L$index'),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(s.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TimelineTabHost(
+            session: s,
+            orientation: TimelineOrientation.horizontal,
+            onOrientationChanged: (_) {},
+            pixelsPerFrame: 48,
+            onPixelsPerFrameChanged: (_) {},
+            showSeconds: false,
+            onShowSecondsChanged: (_) {},
+            onPlaceMediaAssetBetweenLayers: (_, _, _) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final rows = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-placement-entrance')),
+    );
+    final body = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
+    );
+    expect(rows.height, greaterThan(body.height), reason: 'CONTROL');
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-placement-room')),
       findsNothing,
     );
   });

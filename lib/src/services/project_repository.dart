@@ -38,10 +38,13 @@ import '../models/transform_track.dart';
 import '../models/track.dart';
 import '../models/track_conte_laying.dart'
     show
+        ConteHeadPut,
         conteFillsGiven,
+        conteHeadsPut,
         cutWithoutConteFills,
         isConteFill,
-        projectWithItsContesLaid;
+        projectWithItsContesLaid,
+        withConteHeadTakenOff;
 import '../models/track_transitions.dart'
     show drawnFrameCountOf, transitionHandlesByCut;
 import '../models/transition_geometry.dart' show CutTransitionHandles;
@@ -67,6 +70,11 @@ typedef _Settled = ({
   CutTransitionHandles handles,
   LayerId? conteRowId,
 });
+
+/// What one [ProjectRepository.asOneConteWrite]'s laying made that the
+/// write's undo must take back: the rows it gave the cuts, and the heads it
+/// put on rows that joined a conte.
+typedef ConteWriteMade = ({Set<LayerId> fills, List<ConteHeadPut> heads});
 
 /// [cut] with [layer] inserted at [index] (appended when null) — the cut a
 /// row joins, and the one a conte picture draws through while the row its
@@ -117,8 +125,9 @@ class ProjectRepository {
 
   /// [body]'s writes as ONE write of the tracks' contes (F-343): the
   /// structure is laid once, after the last of them, against the cuts as
-  /// they stood before the first — and the rows that laying gave the cuts
-  /// ([isConteFill]) are what comes back.
+  /// they stood before the first — and what that laying made is what comes
+  /// back: the rows it gave the cuts ([isConteFill]) and the heads it put on
+  /// rows that joined a conte ([conteHeadsPut]).
   ///
   /// 🚨A step that takes a row out of every cut's conte writes cut by cut
   /// (`DeleteLayerCommand`), and its undo puts them back the same way. Laid
@@ -130,12 +139,13 @@ class ProjectRepository {
   /// (`ConteStepScope`).
   ///
   /// Inside another, it is that one's: the outer laying lays it.
-  Set<LayerId> asOneConteWrite(void Function() body) {
+  ConteWriteMade asOneConteWrite(void Function() body) {
     if (_conteStart != null) {
       body();
-      return const {};
+      return (fills: const {}, heads: const []);
     }
     final before = _currentProject;
+    Project? written;
     _conteStart = _settled;
     try {
       body();
@@ -143,12 +153,19 @@ class ProjectRepository {
       final against = _conteStart!;
       _conteStart = null;
       if (_currentProject case final project?) {
+        written = project;
         final pass = _settle(project, memo: _settled, laidAgainst: against);
         _settled = pass.settled;
         _currentProject = pass.project;
       }
     }
-    return conteFillsGiven(before, _currentProject);
+    final laid = _currentProject;
+    return (
+      fills: conteFillsGiven(before, laid),
+      heads: written == null || laid == null
+          ? const []
+          : conteHeadsPut(before, written, laid),
+    );
   }
 
   /// The cuts as the write before the first of an [asOneConteWrite]'s left
@@ -180,6 +197,23 @@ class ProjectRepository {
           ? project
           : project.copyWith(tracks: tracks);
     });
+  }
+
+  /// Takes off each head of [heads] — heads the structure put on rows that
+  /// joined a conte, by [asOneConteWrite]'s answer — from the row it was put
+  /// on ([withConteHeadTakenOff]).
+  ///
+  /// The undo of the step whose laying put them owes it (`ConteStepScope`):
+  /// the step's own undo takes the row out of the conte, and no laying
+  /// lays a row that is in none.
+  void takeOffConteHeads(List<ConteHeadPut> heads) {
+    for (final put in heads) {
+      _mutateLayerInCut(
+        put.cutId,
+        put.laid.id,
+        (row) => withConteHeadTakenOff(row, put),
+      );
+    }
   }
 
   void updateProject(Project Function(Project project) update) {

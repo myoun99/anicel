@@ -15,9 +15,10 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+
+import '../helpers/storyboard_host.dart';
 
 /// The storyboard's S rows select like every other frame-axis row.
 ///
@@ -84,18 +85,9 @@ Project _project() => Project(
   ],
 );
 
-Future<void> _openStoryboard(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 700));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
-}
+/// The conte as its tab hosts it ([pumpStoryboardHost]).
+Future<void> _openStoryboard(WidgetTester tester) =>
+    pumpStoryboardHost(tester, _project(), surface: const Size(1400, 700));
 
 double _pixelsPerFrame(WidgetTester tester) =>
     tester.widget<StoryboardPanel>(find.byType(StoryboardPanel)).pixelsPerFrame;

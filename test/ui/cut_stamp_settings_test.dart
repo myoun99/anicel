@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../helpers/settle_async.dart';
 import '../helpers/tool_setting_action_probe.dart';
 
 CutPiece _piece({int scalePercent = 100, bool flipHorizontal = false}) {
@@ -434,15 +435,10 @@ void main() {
       );
       expect(seen.first, isFalse, reason: 'the first frame has no image yet');
       // Let the real upload complete, then take the frame it asked for. The
-      // loop is for the engine's sake, not the widget's: the upload was
+      // wait is for the engine's sake, not the widget's: the upload was
       // started from inside the fake-async zone, so how many real turns its
       // callback needs is not something this test should pretend to know.
-      for (var attempt = 0; attempt < 20 && seen.last == false; attempt += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-      }
+      await settleAsync(tester, () => seen.last);
       expect(seen.last, isTrue, reason: 'and the decode arrives right after');
     });
   });

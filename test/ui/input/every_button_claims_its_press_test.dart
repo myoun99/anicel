@@ -3,11 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import '../../../tool/source_brackets.dart';
 import '../../helpers/dart_sources.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_twirls.dart';
@@ -80,19 +82,23 @@ void main() {
     // reads the claim. Wrapping it would make the value decline its own
     // drag, which is the shape of H19: one flag answering two questions.
     '-lane-value-': 'its drag is its own verb (a scrub)',
-    // The row BODY, not a control. The drag that starts here is the row
-    // reorder — `storyboard-track-select-` is where the V row's move begins
-    // (#1349), so a claim here would undo that round.
-    'storyboard-se-label-': 'row body',
-    'storyboard-transition-label-': 'row body',
-    'storyboard-track-select-': 'row body',
+    // ↩️The storyboard rail's row bodies stood here — the S, transition and
+    // V rows' — until their tap became a raw pointer region over an arena
+    // hold, which this scan reads no more than it reads the timeline
+    // rows'. Why no claim goes on the V row's body is said where it is
+    // built (`_StoryboardLabelShell._surface`).
+    //
     // 🚨THE ROW'S DRAG IS ITS REORDER, and the reorder listener sits ABOVE
     // it. `ReorderableListView` puts a `ReorderableDragStartListener` around
     // the whole row, so the claim's absorbers — mounted INSIDE — take the
     // arena first and the library could no longer be reordered at all
     // (measured: three `brush_preset_panel_test` cases went red the moment
-    // this row was wrapped). Same shape as the storyboard rows above.
+    // this row was wrapped).
     'brush-preset-chip-': 'its drag is its own verb (a reorder)',
+    // And a brush's tip in its tips' strip, in that list's own grid: the
+    // strip's drag is how the tips are put in order (F-176-Q3 「끌어서
+    // 순서」).
+    'brush-tip-turn-at-': 'its drag is its own verb (a reorder)',
     // 🚨AND THE PEG STRIP OWNS ITS VERTICAL DRAG, one level up: 「the strip
     // owns the vertical drag; each column owns its tap」 says so in the
     // panel's own comment. A claim inside the column ate that drag and the
@@ -167,55 +173,21 @@ void main() {
     'lib/src/ui/workspace/workspace_brush_presets.dart': 1,
   };
 
-  /// The control's OWN named arguments, with everything nested inside them
-  /// dropped: `onTap: silentPress(open)` reads `onTap: silentPress()`, and a
-  /// child's `onTap:` further down is not this control's and is not read.
-  /// [column] is just past the control's opening parenthesis.
-  String ownArguments(List<String> lines, int row, int column) {
-    final own = StringBuffer();
-    var depth = 1;
-    for (var r = row; r < lines.length; r++) {
-      final text = lines[r];
-      String? quote;
-      for (var c = r == row ? column : 0; c < text.length; c++) {
-        final char = text[c];
-        if (quote != null) {
-          if (char == r'\') {
-            c++;
-          } else if (char == quote) {
-            quote = null;
-          }
-          continue;
-        }
-        if (char == "'" || char == '"') {
-          quote = char;
-        } else if (char == '/' && text.startsWith('//', c)) {
-          break;
-        } else if ('([{'.contains(char)) {
-          if (depth == 1) {
-            own.write(char);
-          }
-          depth++;
-        } else if (')]}'.contains(char)) {
-          depth--;
-          if (depth == 0) {
-            return own.toString();
-          }
-          if (depth == 1) {
-            own.write(char);
-          }
-        } else if (depth == 1) {
-          own.write(char);
-        }
-      }
-      own.write(' ');
-    }
-    return own.toString();
-  }
+  /// The control's OWN arguments — each whole, its comments out — of the
+  /// call whose `(` is at [open] in [text]: a child's `onTap:` further down
+  /// sits inside one of them and is not read as this control's.
+  /// ↩️What they held was dropped (`onTap: silentPress(open)` read
+  /// `onTap: silentPress()`), and that read a callback WITH a body as the
+  /// empty `() {}` — silent. Each argument whole, asked from its name, says
+  /// what it is (10-18: none of the claimed controls read differently).
+  List<String> ownArguments(String text, int open) => [
+    for (final argument in callArguments(text, open) ?? const <String>[])
+      withoutComments(argument).trim(),
+  ];
 
   /// Every control the scan counts, the claim that wraps it (null when none
   /// does) and its own arguments — the ONE walk both scans below read.
-  List<({String site, String family, String? parent, String arguments})>
+  List<({String site, String family, String? parent, List<String> arguments})>
   scannedControls() {
     final button = RegExp(
       '(^|[^A-Za-z])(IconButton|TextButton|InkWell|GestureDetector|'
@@ -246,9 +218,23 @@ void main() {
     // read straight past it and called the grid's own surface a bare button.
     final surface = RegExp(r'onTap: \(\) \{\}');
     final controls =
-        <({String site, String family, String? parent, String arguments})>[];
+        <
+          ({
+            String site,
+            String family,
+            String? parent,
+            List<String> arguments,
+          })
+        >[];
     for (final path in everyUiFile()) {
       final lines = File(path).readAsLinesSync();
+      final text = lines.join('\n');
+      final lineStarts = <int>[];
+      var lineStart = 0;
+      for (final line in lines) {
+        lineStarts.add(lineStart);
+        lineStart += line.length + 1;
+      }
       for (var i = 0; i < lines.length; i++) {
         final line = lines[i];
         if (line.trimLeft().startsWith('//')) {
@@ -271,7 +257,7 @@ void main() {
         // A menu entry with `enabled: false` is a label or a row of knobs —
         // pressing it picks nothing, so it is not a button either. Its OWN
         // arguments only: a knob inside it is read as a control of its own.
-        final arguments = ownArguments(lines, i, control.end);
+        final arguments = ownArguments(text, lineStarts[i] + control.end - 1);
         if (family == 'PopupMenuItem' && arguments.contains('enabled: false')) {
           continue;
         }
@@ -371,15 +357,16 @@ void main() {
     // `silentChange(`. It went with the Material switches it silenced (the
     // app's one boolean replaced them, guide-sym ⑥⑧), and with it its
     // spelling here.
+    // An argument is asked from its start: its name is the callback's.
     final live = RegExp(
-      r'\bon(Tap|TapUp|DoubleTap|LongPress|Pressed|Changed|Selected|'
+      '^on(Tap|TapUp|DoubleTap|LongPress|Pressed|Changed|Selected|'
       'SelectionChanged):'
       r'(?!\s*(silentPress\(|null\b|\(\)\s*\{\s*\}|'
       r'\(_\)\s*\{\s*\}))',
     );
     final riding = [
       for (final control in scannedControls())
-        if (control.parent != null && live.hasMatch(control.arguments))
+        if (control.parent != null && control.arguments.any(live.hasMatch))
           control.site,
     ];
     expect(
@@ -518,6 +505,11 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
+    // An effect on the track, so its V row has lanes to twirl down and draws
+    // the twirl — a row with none draws none.
+    session.effectsAndFx.updateTrackEffects(session.activeTrack.id, [
+      LayerEffect(id: const EffectId('glow'), kind: EffectKind.blur),
+    ]);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -542,10 +534,18 @@ void main() {
     await tester.pumpAndSettle();
 
     var pointer = 55;
+    // The S row is the timeline's own row (I-89 ①): its twirl is named by
+    // its layer, as the timeline's is.
+    final seRow = session.repository
+        .requireProject()
+        .tracks
+        .first
+        .seLayers
+        .first;
     for (final (id, finder) in [
-      for (final name in const [
+      for (final name in [
         'storyboard-track-lane-toggle-default-track',
-        'storyboard-se-lane-toggle-default-track-1',
+        'storyboard-lane-toggle-${seRow.id}',
       ])
         (name, find.named(name)),
       for (final key in const ['legend-lanes-toggle', 'legend-mute'])

@@ -89,7 +89,12 @@ void main() {
     expect(find.text('only-here'), findsOneWidget);
     expect(find.text('Added to this cut (1)'), findsOneWidget);
     expect(find.text('only-there'), findsOneWidget);
-    expect(find.textContaining('Undo restores both cuts.'), findsOneWidget);
+    // ↩️「both cuts」: since the conversion reaches each side's family
+    // (491813562 · f42a6f5c2), undo restores every cut it touched.
+    expect(
+      find.textContaining('Undo restores every cut the conversion touched.'),
+      findsOneWidget,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('convert-linked-cut-confirm-button')),

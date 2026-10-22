@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -370,6 +371,327 @@ void main() {
       [for (final layer in document.root.children) (layer.name, layer.kind)],
       [('words', ClipLayerKind.lettering), ('plain', ClipLayerKind.raster)],
     );
+    expect(
+      document.resolution,
+      72,
+      reason: 'a point a pixel where the file names no resolution',
+    );
+  });
+
+  group('F-370-Q3: a text layer\'s texts', () {
+    /// A file whose layer 2 is a text layer: [texts] its string and
+    /// attributes, then its arrays'; layer 3 a raster beside it. Offscreen
+    /// 300 is its declared render's, 301 its thumbnail, 302 · 303 name it
+    /// alone and 304 names layer 3.
+    String writeTexts(
+      List<(String, Uint8List)> texts, {
+      List<Uint8List>? settings,
+    }) {
+      final strings = [for (final (text, _) in texts) utf8.encode(text)];
+      final attributes = settings ?? [for (final (_, set) in texts) set];
+      final attribute = offscreenAttributeBytes(
+        width: 8,
+        height: 8,
+        columns: 1,
+        rows: 1,
+      );
+      final database = databaseBytes((db) {
+        db.execute(clipSchema);
+        for (final column in [
+          'Layer ADD COLUMN TextLayerType INTEGER',
+          'Layer ADD COLUMN TextLayerString BLOB',
+          'Layer ADD COLUMN TextLayerAttributes BLOB',
+          'Layer ADD COLUMN TextLayerStringArray BLOB',
+          'Layer ADD COLUMN TextLayerAttributesArray BLOB',
+          'Offscreen ADD COLUMN LayerId INTEGER',
+          'Canvas ADD COLUMN CanvasResolution REAL',
+        ]) {
+          db.execute('ALTER TABLE $column');
+        }
+        db
+          ..execute(
+            'CREATE TABLE LayerThumbnail(_PW_ID INTEGER PRIMARY KEY, '
+            'MainId INTEGER, ThumbnailOffscreen INTEGER)',
+          )
+          ..execute(
+            'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+            'CanvasRootFolder, CanvasResolution) VALUES (1, 64, 32, 1, 350)',
+          )
+          ..execute(
+            'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+            "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+          )
+          ..execute(
+            'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+            'LayerNextIndex, LayerRenderMipmap, TextLayerType, '
+            'TextLayerString, TextLayerAttributes, TextLayerStringArray, '
+            'TextLayerAttributesArray) '
+            "VALUES (2, 'words', 800, 0, 3, 100, 2, ?, ?, ?, ?)",
+            [
+              strings.first,
+              attributes.first,
+              clipTextArrayBytes(strings.sublist(1)),
+              clipTextArrayBytes(attributes.sublist(1)),
+            ],
+          )
+          ..execute(
+            'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder) '
+            "VALUES (3, 'plain', 1, 0)",
+          )
+          ..execute('''
+            INSERT INTO Mipmap(MainId, BaseMipmapInfo) VALUES (100, 200);
+            INSERT INTO MipmapInfo(MainId, ThisScale, Offscreen, NextIndex)
+              VALUES (200, 100, 300, 0);
+            INSERT INTO LayerThumbnail(MainId, ThumbnailOffscreen)
+              VALUES (1, 301);
+          ''');
+        final offscreen = db.prepare(
+          'INSERT INTO Offscreen(MainId, LayerId, Attribute, BlockData) '
+          'VALUES (?, ?, ?, ?)',
+        );
+        for (final (id, layer) in [
+          (303, 2),
+          (300, 2),
+          (304, 3),
+          (302, 2),
+          (301, 2),
+        ]) {
+          offscreen.execute([id, layer, attribute, externalId(id)]);
+        }
+        offscreen.close();
+      });
+      return write(database, const {});
+    }
+
+    test('🎯its string and attributes, then each of their arrays\' — its '
+        'pictures the offscreens that name it ALONE, in their order — and '
+        'the canvas\'s resolution the file\'s', () {
+      final one = Uint8List.fromList([1, 0, 0, 0, 0, 0, 0, 0]);
+      final two = Uint8List.fromList([2, 0, 0, 0, 0, 0, 0, 0]);
+      final three = Uint8List.fromList([3, 0, 0, 0, 0, 0, 0, 0]);
+      final document = readClipDocument(
+        writeTexts([('one', one), ('二', two), ('three', three)]),
+        scratch: folder,
+      );
+
+      final words = document.root.children.first;
+      expect(words.kind, ClipLayerKind.lettering);
+      expect([for (final text in words.texts) text.text], [
+        'one',
+        '二',
+        'three',
+      ]);
+      expect([for (final text in words.texts) text.attributes], [
+        one,
+        two,
+        three,
+      ]);
+      expect(
+        [for (final picture in words.textPictures) picture.blocksId],
+        [externalId(302), externalId(303)],
+        reason: 'not its render\'s (300), its thumbnail (301), or another '
+            'layer\'s (304)',
+      );
+      expect(document.root.children.last.texts, isEmpty);
+      expect(document.resolution, 350);
+      expect(document.warnings, isEmpty);
+    });
+
+    test('texts and settings that do not pair are said, and the pairs '
+        'kept', () {
+      final set = Uint8List.fromList([9, 0, 0, 0, 0, 0, 0, 0]);
+      final document = readClipDocument(
+        writeTexts([('a', set), ('b', set)], settings: [set]),
+        scratch: folder,
+      );
+
+      final words = document.root.children.first;
+      expect([for (final text in words.texts) text.text], ['a']);
+      expect(document.warnings, [
+        'text layer 2 holds 2 texts and 1 settings for them',
+      ]);
+    });
+  });
+
+  test('F-370: a layer\'s colour is its DrawColorMain… — each channel by its '
+      'top byte — and a layer the file names none for has none', () {
+    final database = databaseBytes((db) {
+      db
+        ..execute(clipSchema)
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          'LayerNextIndex, DrawColorMainRed, DrawColorMainGreen, '
+          "DrawColorMainBlue) VALUES (2, 'paper', 1584, 0, 3, ?, ?, ?)",
+          // The bytes under the top one are not the colour's.
+          [0x20202020, 0x40FFFFFF, 0x60000000],
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder) '
+          "VALUES (3, 'plain', 1, 0)",
+        );
+    });
+
+    final document = readClipDocument(
+      write(database, const {}),
+      scratch: folder,
+    );
+
+    expect(
+      [for (final layer in document.root.children) layer.mainColour],
+      [0xFF204060, null],
+    );
+  });
+
+  test('a layer\'s effects are on where its LayerEffectInfo turns one on or '
+      'its layer colour is — a paper\'s colour is none — and LayerClip '
+      'clips it', () {
+    final database = databaseBytes((db) {
+      db
+        ..execute(clipSchema)
+        ..execute('ALTER TABLE Layer ADD COLUMN LayerEffectInfo BLOB')
+        ..execute('ALTER TABLE Layer ADD COLUMN DrawColorEnable INTEGER')
+        ..execute('ALTER TABLE Layer ADD COLUMN LayerClip INTEGER')
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        );
+      final layer = db.prepare(
+        'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+        'LayerNextIndex, LayerEffectInfo, DrawColorEnable, LayerClip, '
+        'DrawColorMainRed, DrawColorMainGreen, DrawColorMainBlue) '
+        'VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)',
+      );
+      const red = [0xFFFFFFFF, 0, 0];
+      layer
+        ..execute([2, 'paper', 1584, 3, null, 1, null, ...red])
+        ..execute([3, 'tinted', 1, 4, null, 1, null, ...red])
+        // A colour once set and switched off again: the file keeps it.
+        ..execute([4, 'untinted', 1, 5, null, null, null, ...red])
+        ..execute([
+          5, 'bordered', 1, 6,
+          layerEffectInfoBytes(on: {'EffectEdge'}), null, null,
+          null, null, null,
+        ])
+        ..execute([
+          6, 'switched off', 1, 7, layerEffectInfoBytes(), null, null,
+          null, null, null,
+        ])
+        ..execute([7, 'clipped', 1, 0, null, null, 1, null, null, null])
+        ..close();
+    });
+
+    final document = readClipDocument(
+      write(database, const {}),
+      scratch: folder,
+    );
+
+    expect(
+      [
+        for (final layer in document.root.children)
+          (layer.name, layer.effectsOn, layer.clipped),
+      ],
+      [
+        ('paper', false, false),
+        ('tinted', true, false),
+        ('untinted', false, false),
+        ('bordered', true, false),
+        ('switched off', false, false),
+        ('clipped', false, true),
+      ],
+    );
+  });
+
+  test('🎯a layer\'s mask is the one CLIP STUDIO applies — a '
+      'LayerLayerMaskMipmap with LayerVisibility\'s bit 2 on, standing at '
+      'LayerOffset + LayerMaskOffset + LayerMaskOffscrOffset (MoArt\'s '
+      'reading); one switched off is none — and LayerLock locks it', () {
+    final attribute = offscreenAttributeBytes(
+      width: 4,
+      height: 4,
+      columns: 1,
+      rows: 1,
+      colourChannels: 0,
+    );
+    final database = databaseBytes((db) {
+      db.execute(clipSchema);
+      for (final column in [
+        'LayerLayerMaskMipmap',
+        'LayerMaskOffsetX',
+        'LayerMaskOffsetY',
+        'LayerMaskOffscrOffsetX',
+        'LayerMaskOffscrOffsetY',
+        'LayerLock',
+      ]) {
+        db.execute('ALTER TABLE Layer ADD COLUMN $column INTEGER');
+      }
+      db
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        );
+      final layer = db.prepare(
+        'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+        'LayerNextIndex, LayerVisibility, LayerOffsetX, LayerOffsetY, '
+        'LayerLayerMaskMipmap, LayerMaskOffsetX, LayerMaskOffsetY, '
+        'LayerMaskOffscrOffsetX, LayerMaskOffscrOffsetY, LayerLock) '
+        'VALUES (?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      );
+      layer
+        ..execute([2, 'masked', 3, 3, 10, 20, 100, 1, 2, 300, 400, 0])
+        ..execute([3, 'mask off', 4, 1, 10, 20, 100, 1, 2, 300, 400, 0])
+        ..execute([4, 'not held', 5, 2, 0, 0, 101, 0, 0, 0, 0, 0])
+        ..execute([5, 'locked', 6, 1, 0, 0, 0, 0, 0, 0, 0, 16])
+        ..execute([6, 'bare', 0, 3, 0, 0, 0, 0, 0, 0, 0, 0])
+        ..close();
+      db.execute('''
+        INSERT INTO Mipmap(MainId, BaseMipmapInfo) VALUES (100, 200);
+        INSERT INTO MipmapInfo(MainId, ThisScale, Offscreen, NextIndex)
+          VALUES (200, 100, 300, 0);
+      ''');
+      db.prepare(
+          'INSERT INTO Offscreen(MainId, Attribute, BlockData) '
+          'VALUES (?, ?, ?)',
+        )
+        ..execute([300, attribute, externalId(1)])
+        ..close();
+    });
+
+    final document = readClipDocument(
+      write(database, const {}),
+      scratch: folder,
+    );
+    final [masked, off, notHeld, _, bare] = document.root.children;
+
+    expect((masked.mask?.left, masked.mask?.top), (311, 422));
+    expect(masked.mask?.source?.attribute, attribute);
+    expect(masked.mask?.source?.blocksId, externalId(1));
+    expect(off.mask, isNull, reason: 'CLIP STUDIO does not apply it either');
+    expect(notHeld.mask, isNotNull, reason: 'on, and said when it comes in');
+    expect(notHeld.mask?.source, isNull);
+    expect(bare.mask, isNull, reason: 'bit 2 with no mask names none');
+    expect([for (final layer in document.root.children) layer.locked], [
+      false,
+      false,
+      false,
+      true,
+      false,
+    ]);
   });
 
   test('🎯a sound layer holds its sound — the chunk its file is in, its name '

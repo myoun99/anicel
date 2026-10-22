@@ -22,7 +22,8 @@ import '../../helpers/export_preview_probe.dart';
 /// panel, and such a panel wears what its document is — 「이 캔버스
 /// 베이스패널은 형식에 따라 나누기로하자 … pdf면 타임시트나 콘티용지패널이랑
 /// 같은 알약쓰고, 한장짜리면 그 알약조차 없애고, 동영상같은거면 아래에
-/// 재생ui 넣고」.
+/// 재생ui 넣고」. ↩️The book's pill stood on the left edge; it lies in the
+/// player's band now (F-383: 「알약말고 비디오파일일때 처럼 공간만들고」).
 ///
 /// The panel alone, over documents made here: what it wears, the pixels it
 /// asks a page at, what it shows while a page is on its way, and its run.
@@ -53,7 +54,7 @@ void main() {
 
   const small = CanvasSize(width: 64, height: 36);
   const transport = ValueKey<String>('canvas-transport');
-  const strip = ValueKey<String>('canvas-page-strip');
+  const turner = ValueKey<String>('export-preview-page-readout');
   final loading = find.byKey(const ValueKey<String>('export-preview-loading'));
 
   /// A document of [pages] pages whose renders wait for [land].
@@ -159,20 +160,23 @@ void main() {
           as ViewportPagesPainter;
 
   group('the panel wears what its document is', () {
-    testWidgets('🚨one that runs stands on the transport; a book turns its '
-        'pages on the left; a single picture has neither', (tester) async {
+    testWidgets('🚨one that runs stands on its player, a book on its page '
+        'turner in the same band; a single picture has neither', (
+      tester,
+    ) async {
       await pump(tester, document());
       expect(find.byKey(transport), findsOneWidget);
-      expect(find.byKey(strip), findsNothing);
+      expect(tester.exportTransportBar, findsOneWidget);
+      expect(find.byKey(turner), findsNothing);
 
       await pump(tester, document(shape: ExportPreviewShape.book, pages: 3));
-      expect(find.byKey(transport), findsNothing);
-      expect(find.byKey(strip), findsOneWidget);
+      expect(find.byKey(transport), findsOneWidget);
+      expect(tester.exportTransportBar, findsNothing);
+      expect(find.byKey(turner), findsOneWidget);
 
       await pump(tester, document(shape: ExportPreviewShape.single, pages: 3));
-      expect(find.byKey(transport), findsNothing);
       expect(
-        find.byKey(strip),
+        find.byKey(transport),
         findsNothing,
         reason: 'the drawings of a row are each ONE picture — what turns '
             'from one to the next is the list under the panel',
@@ -233,7 +237,6 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(transport), findsNothing);
-      expect(find.byKey(strip), findsNothing);
       expect(
         find.byKey(const ValueKey<String>('canvas-document-name')),
         findsNothing,
@@ -299,7 +302,14 @@ void main() {
 
       final (_, asked) = asks.single;
       final scale = asked.width / large.width;
-      expect(scale, viewerRenderScaleFor(coverage, const Size(4000, 3000)));
+      expect(
+        scale,
+        viewerRenderScaleFor(
+          coverage,
+          const Size(4000, 3000),
+          drawnAtAnySize: false,
+        ),
+      );
       expect(scale, greaterThanOrEqualTo(coverage));
       expect(scale, lessThan(1));
       expect(asked.height, (large.height * scale).round());
@@ -545,7 +555,7 @@ void main() {
       expect(tester.exportTransport.currentFrame, 1);
     });
 
-    testWidgets('a book\'s page is turned on its cluster', (tester) async {
+    testWidgets('a book\'s page is turned on its page turner', (tester) async {
       await pump(tester, document(shape: ExportPreviewShape.book, pages: 3));
       await tester.tap(
         find.byKey(const ValueKey<String>('export-preview-next-page-button')),

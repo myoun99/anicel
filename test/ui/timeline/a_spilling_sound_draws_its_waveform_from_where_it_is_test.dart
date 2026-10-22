@@ -64,7 +64,7 @@ void main() {
             body: Material(
               child: TimelineFrameCellsRow(
                 layer: _spillingRow(),
-                playbackFrameCount: 6,
+                drawnFrameCount: 6,
                 geometry: testFrameGeometry(
                   frameCellExtent: 48,
                   frameEndIndexExclusive: 10,
@@ -95,6 +95,15 @@ void main() {
       0,
       reason: 'a block that starts in this cut is drawn from the file start',
     );
+  });
+
+  testWidgets('a frame of the row\'s sound is drawn as long as a frame cell '
+      '— along the row, not across it', (tester) async {
+    await pumpCellsRow(tester);
+    const strip = ValueKey<String>('timeline-audio-clip-se-1-0-b0');
+    // Cells 48 along and the row 52 across: the two sides differ, so a
+    // strip that measured the wrong one draws its sound at another scale.
+    expect(_painterUnder(tester, find.byKey(strip)).pixelsPerFrame, 48);
   });
 
   testWidgets('🚨the audio lane\'s editing strip starts there too, on top of '

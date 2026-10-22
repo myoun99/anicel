@@ -1,6 +1,7 @@
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_editing_controller.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_field.dart';
@@ -36,23 +37,36 @@ void main() {
     double? wrapWidth,
     double turn = 0,
     TextCelAlign align = TextCelAlign.left,
+    List<TextCelAlign>? aligns,
+    List<CelTextParagraph>? paragraphs,
     bool vertical = false,
-  }) => CelTextContent(
-    spans: spans,
-    anchor: CanvasPoint(x: x, y: y),
-    wrapWidth: wrapWidth,
-    rotationDegrees: turn,
-    align: align,
-    lineHeight: 1,
-    vertical: vertical,
-  );
+    double letterWidth = 1,
+  }) {
+    final each =
+        paragraphs ??
+        [
+          for (final aligned in aligns ?? const <TextCelAlign>[])
+            CelTextParagraph(align: aligned, lineHeight: 1),
+        ];
+    return CelTextContent(
+      spans: spans,
+      anchor: CanvasPoint(x: x, y: y),
+      wrapWidth: wrapWidth,
+      rotationDegrees: turn,
+      align: each.isEmpty ? align : null,
+      lineHeight: each.isEmpty ? 1 : null,
+      paragraphs: each.isEmpty ? null : each,
+      vertical: vertical,
+      letterWidth: letterWidth,
+    );
+  }
 
   CelTextSpan run(String words, [TextLetterStyle style = small]) =>
       CelTextSpan(text: words, style: style);
 
   final stage = CelTextStage(
     viewport: CanvasViewport(zoom: 2, panX: 10, panY: 20),
-    canvasSize: celTextTestCanvas,
+    pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
     placement: null,
   );
 
@@ -65,16 +79,19 @@ void main() {
     WidgetTester tester,
     CelTextContent content, {
     double textScale = 1,
+    TextSelection? selection,
+    CelTextContent? shownAs,
   }) async {
     final letters = CelTextEditingController(
       content: content,
       nextLetterStyle: small,
+      selection: selection,
     );
     addTearDown(letters.dispose);
     mounted = letters;
     final focus = FocusNode();
     addTearDown(focus.dispose);
-    final layout = layoutCelText(content, nextLetterStyle: small);
+    final layout = layoutCelText(shownAs ?? content, nextLetterStyle: small);
     addTearDown(layout.dispose);
     final log = <String>[];
     await tester.pumpWidget(
@@ -138,6 +155,73 @@ void main() {
 
     expect(layout.block.height, 16, reason: '⛔fixture: two lines');
     expect(field.size.height, layout.block.height);
+  });
+
+  testWidgets('🚨a box of letters drawn at HALF their width breaks its lines '
+      'where the canvas breaks them: it holds twice as many a line '
+      '(text-letters-lean-and-underline ⑥)', (tester) async {
+    // 「abcd」 is 32 wide at its own width, 16 at half of it: one line in a
+    // box 16 wide — where at its own width it is two.
+    final (:field, :layout, log: _) = await pumpField(
+      tester,
+      said([run('abcd')], wrapWidth: 16, letterWidth: 0.5),
+    );
+
+    expect(layout.block.height, 8, reason: '⛔fixture: one line');
+    expect(field.size.height, layout.block.height);
+  });
+
+  // ⚠️Not the paragraph a break opens at the END while it has no letter:
+  // a field's one painter sets that line as the break's run makes it
+  // (`celTextFieldSpan`).
+  testWidgets('🚨its lines are the canvas\'s a paragraph at a time: each as '
+      'tall as ITS pitch — at a size and pitches of no whole pixels', (
+    tester,
+  ) async {
+    const odd = TextLetterStyle(fontSize: 8.3);
+    for (final (words, pitches) in [
+      ('ab\ncd\nef', [1.37, 1.37, 1.37]),
+      ('ab\ncd\nef', [2.0, 1.0, 1.37]),
+    ]) {
+      final (:field, :layout, log: _) = await pumpField(
+        tester,
+        said(
+          [run(words, odd)],
+          paragraphs: [
+            for (final pitch in pitches) CelTextParagraph(lineHeight: pitch),
+          ],
+        ),
+      );
+
+      expect(
+        field.size.height,
+        closeTo(layout.block.height, 1e-9),
+        reason: '「$words」 at $pitches',
+      );
+    }
+  });
+
+  testWidgets('a letter of a text drawn at half its width is half as wide on '
+      'the panel: the IME composes beside the caret the canvas shows', (
+    tester,
+  ) async {
+    final (:field, layout: _, log: _) = await pumpField(
+      tester,
+      said([run('ab')], x: 6, y: 9, letterWidth: 0.5),
+    );
+
+    final origin = MatrixUtils.transformPoint(
+      field.getTransformTo(null),
+      Offset.zero,
+    );
+    expect(origin.dx, closeTo(6 * 2 + 10, 1e-9));
+    // 「ab」 is set 16 wide and drawn 8: sixteen screen pixels at a zoom of
+    // two.
+    final right = MatrixUtils.transformPoint(
+      field.getTransformTo(null),
+      const Offset(16, 0),
+    );
+    expect(right.dx - origin.dx, closeTo(16, 1e-9));
   });
 
   testWidgets('a text that grows is not forced to the width it is given: '
@@ -252,6 +336,21 @@ void main() {
       expect(along.dy - origin.dy, closeTo(32, 1e-9));
     });
 
+    testWidgets('🚨a box of them breaks its field\'s lines where a column '
+        'ends — at the box\'s own length, however wide its letters are drawn '
+        '(text-letters-lean-and-underline ⑥)', (tester) async {
+      // 「あい」 fills a column 16 long, and 「う」 starts the next: the
+      // letters' width is ACROSS a column, never along it. (Letters a
+      // column may part between: it never parts a word of Latin ones.)
+      final (:field, :layout, log: _) = await pumpField(
+        tester,
+        said([run('あいう')], wrapWidth: 16, vertical: true, letterWidth: 0.5),
+      );
+
+      expect(layout.wrapPlaces, [2], reason: '⛔fixture: two columns');
+      expect(field.size.height, 16, reason: 'two lines of 8');
+    });
+
     /// 「あい」 in the first column, 「うえ」 in the one to its left.
     Future<void> pumpTwoColumns(WidgetTester tester, {int caret = 0}) async {
       await pumpField(tester, said([run('あい\nうえ')], vertical: true));
@@ -270,6 +369,14 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
       expect(mounted.selection, const TextSelection.collapsed(offset: 0));
+    });
+
+    testWidgets('down at the text\'s end stays there', (tester) async {
+      await pumpTwoColumns(tester, caret: 5);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+
+      expect(mounted.selection, const TextSelection.collapsed(offset: 5));
     });
 
     testWidgets('🚨UP is the letter before, one press a letter — in the '
@@ -347,17 +454,239 @@ void main() {
       );
     });
 
-    testWidgets('⛔CONTROL: in LINES the arrows are the field\'s own — down '
-        'is the line below', (tester) async {
+    testWidgets('🚨a caret between two digits set side by side goes LEFT to '
+        'the column after too — as far down it', (tester) async {
+      // 「12」 is one cell, its digits side by side; 「あい」 the next column.
+      await pumpField(tester, said([run('12\nあい')], vertical: true));
+      mounted.selection = const TextSelection.collapsed(offset: 1);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+
+      // Beside 「あ」, in the column after: not in the pair's own (0 to 2),
+      // and not the text's end (5) as if there were no column there.
+      expect(mounted.selection.extentOffset, inInclusiveRange(3, 4));
+    });
+
+    testWidgets('⛔CONTROL: in LINES down is the line below — and not the '
+        'next letter, which is what down is in columns', (tester) async {
       await pumpField(tester, said([run('あい\nうえ')]));
       mounted.selection = const TextSelection.collapsed(offset: 1);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
 
-      // Past the break (offset 2): on the second line, wherever the field
-      // stands the caret there — and not the next letter, which is what
-      // down is in columns.
-      expect(mounted.selection.extentOffset, greaterThan(2));
+      // After 「あ」, 8 along: after 「う」, on the second line.
+      expect(mounted.selection.extentOffset, 4);
+    });
+  });
+
+  // text-letters-lean-and-underline ④: a text's paragraphs are aligned each
+  // its own way, and a field aligns all its lines by one.
+  group('🚨a text in LINES whose paragraphs are aligned unlike', () {
+    testWidgets('down and up go where the lines are SHOWN: into a paragraph '
+        'set to the right, where its letters stand', (tester) async {
+      // In a box of 100: 「abcd」 from 0, 「ab」 set to the right, from 84.
+      await pumpField(
+        tester,
+        said(
+          [run('abcd\nab')],
+          wrapWidth: 100,
+          aligns: [TextCelAlign.left, TextCelAlign.right],
+        ),
+      );
+      mounted.selection = const TextSelection.collapsed(offset: 1);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      // 8 along is nearest the second line's start — where the field's own
+      // line, set from the left, would have had it after 「a」 (6).
+      expect(mounted.selection.extentOffset, 5);
+
+      mounted.selection = const TextSelection.collapsed(offset: 7);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      // From 100 along: the first line's end.
+      expect(mounted.selection.extentOffset, 4);
+    });
+
+    testWidgets('🚨the field is aligned as the paragraph the CARET is in — '
+        'where the IME\'s window looks', (tester) async {
+      TextAlign alignedAs() => tester
+          .widget<EditableText>(find.byType(EditableText, skipOffstage: false))
+          .textAlign;
+
+      // The caret starts at the text's end, in its last paragraph.
+      await pumpField(
+        tester,
+        said(
+          [run('ab\ncd')],
+          wrapWidth: 100,
+          aligns: [TextCelAlign.left, TextCelAlign.right],
+        ),
+      );
+      expect(alignedAs(), TextAlign.right);
+      await pumpField(
+        tester,
+        said(
+          [run('ab\ncd')],
+          wrapWidth: 100,
+          aligns: [TextCelAlign.right, TextCelAlign.center],
+        ),
+      );
+      expect(alignedAs(), TextAlign.center);
+    });
+
+    testWidgets('a field built before its letters have a caret — a field\'s '
+        'own −1 — is aligned as its first paragraph', (tester) async {
+      await pumpField(
+        tester,
+        said(
+          [run('ab\ncd')],
+          wrapWidth: 100,
+          aligns: [TextCelAlign.right, TextCelAlign.center],
+        ),
+        selection: const TextSelection.collapsed(offset: -1),
+      );
+
+      expect(
+        tester
+            .widget<EditableText>(
+              find.byType(EditableText, skipOffstage: false),
+            )
+            .textAlign,
+        TextAlign.right,
+      );
+    });
+  });
+
+  group('the arrows ACROSS the lines', () {
+    testWidgets('🚨keep their aim: down past a short line, and on, comes back '
+        'as far along as it set out', (tester) async {
+      await pumpField(tester, said([run('abcd\nab\nabcd')]));
+      mounted.selection = const TextSelection.collapsed(offset: 4);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      expect(mounted.selection.extentOffset, 7, reason: '「ab」 ends at 16');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      expect(mounted.selection.extentOffset, 12, reason: '32 along again');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      expect(mounted.selection.extentOffset, 4);
+    });
+
+    testWidgets('⛔a caret put elsewhere aims from where it stands', (
+      tester,
+    ) async {
+      await pumpField(tester, said([run('abcd\nab\nabcd')]));
+      mounted.selection = const TextSelection.collapsed(offset: 4);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+
+      mounted.selection = const TextSelection.collapsed(offset: 6);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+
+      // After 「a」, 8 along.
+      expect(mounted.selection.extentOffset, 9);
+    });
+
+    testWidgets('up on the first line is the text\'s start, down on the last '
+        'its end', (tester) async {
+      await pumpField(tester, said([run('ab\ncd')]));
+      mounted.selection = const TextSelection.collapsed(offset: 1);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      expect(mounted.selection.extentOffset, 0);
+      mounted.selection = const TextSelection.collapsed(offset: 4);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      expect(mounted.selection.extentOffset, 5);
+    });
+
+    testWidgets('with Shift the END of the selection goes there', (
+      tester,
+    ) async {
+      await pumpField(tester, said([run('ab\ncd')]));
+      mounted.selection = const TextSelection.collapsed(offset: 1);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+      expect(mounted.selection.baseOffset, 1);
+      expect(mounted.selection.extentOffset, 4);
+    });
+
+    testWidgets('🚨a line as tall as its LARGEST letter is crossed whole: '
+        'down from beside a small one is the line below', (tester) async {
+      // 「A」 at 16 makes the first line 16 tall; after 「b」 at 8 the caret
+      // is not.
+      await pumpField(tester, said([run('A', large), run('b\ncdefg')]));
+      mounted.selection = const TextSelection.collapsed(offset: 2);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+
+      // 24 along: after 「e」 — and not the text's end, as if the line below
+      // were not there.
+      expect(mounted.selection.extentOffset, 6);
+    });
+
+    // In a box of 50, 「aa bbbbbb」 wraps after its space: 「aa 」 over
+    // 「bbbbbb」 — ONE paragraph of two lines.
+    testWidgets('🚨in a paragraph a box wrapped, up from its second line is '
+        'its first', (tester) async {
+      await pumpField(tester, said([run('aa bbbbbb')], wrapWidth: 50));
+      mounted.selection = const TextSelection.collapsed(offset: 5);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+
+      // After 「bb」, 16 along: after 「aa」.
+      expect(mounted.selection.extentOffset, 2);
+    });
+
+    testWidgets('🚨up to where the line above WRAPPED stands at that line\'s '
+        'end, not at the head of the one below — with Shift too', (
+      tester,
+    ) async {
+      await pumpField(tester, said([run('aa bbbbbb')], wrapWidth: 50));
+      mounted.selection = const TextSelection.collapsed(offset: 9);
+
+      // From 48 along: past the first line's letters, at its end.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      expect(
+        mounted.selection,
+        const TextSelection.collapsed(
+          offset: 3,
+          affinity: TextAffinity.upstream,
+        ),
+      );
+
+      // ⚠️A ranged selection reads the affinity of its end off its
+      // direction, so which line the first press landed on is told by the
+      // second: from the first line's end it goes to the text's start —
+      // from the second line's head it would stay where it is.
+      mounted.selection = const TextSelection.collapsed(offset: 9);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      expect(mounted.selection.extentOffset, 3);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      expect(
+        mounted.selection,
+        const TextSelection(baseOffset: 9, extentOffset: 0),
+      );
+    });
+
+    testWidgets('🚨one pressed before the text on the canvas has caught up '
+        'with a letter just typed is answered off the text as shown', (
+      tester,
+    ) async {
+      // The field holds 「ab\ncde」; the canvas still shows 「ab\ncd」.
+      await pumpField(
+        tester,
+        said([run('ab\ncde')]),
+        shownAs: said([run('ab\ncd')]),
+      );
+      mounted.selection = const TextSelection.collapsed(offset: 6);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+
+      // From the shown text's end, 16 along: the first line's end.
+      expect(mounted.selection.extentOffset, 2);
     });
   });
 

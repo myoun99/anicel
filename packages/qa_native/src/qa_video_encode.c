@@ -101,6 +101,7 @@ QA_EXPORT int32_t qa_video_export_error(char* out, int32_t capacity) {
 #include <mferror.h>
 
 #include "qa_video_hardware_law.h"
+#include "qa_win_media_foundation.h"
 
 typedef struct {
   IMFSinkWriter* writer;
@@ -117,7 +118,6 @@ typedef struct {
   int32_t sample_rate;
   int32_t channels;
   int32_t open;
-  int32_t mf_started;
   int32_t codec;
 } qa_video_win_state;
 
@@ -127,10 +127,6 @@ static void qa_video_win_teardown(void) {
   if (g_win_video.writer != NULL) {
     IMFSinkWriter_Release(g_win_video.writer);
     g_win_video.writer = NULL;
-  }
-  if (g_win_video.mf_started) {
-    MFShutdown();
-    g_win_video.mf_started = 0;
   }
   g_win_video.open = 0;
 }
@@ -150,7 +146,7 @@ QA_EXPORT int32_t qa_video_export_probe(int32_t container, int32_t codec) {
   if (codec != QA_VIDEO_CODEC_HEVC) {
     return 0;
   }
-  if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) {
+  if (!qa_win_media_foundation_up()) {
     return 0;
   }
   MFT_REGISTER_TYPE_INFO out_type;
@@ -169,7 +165,6 @@ QA_EXPORT int32_t qa_video_export_probe(int32_t container, int32_t codec) {
     }
     CoTaskMemFree(activates);
   }
-  MFShutdown();
   return SUCCEEDED(hr) && count > 0;
 }
 
@@ -209,11 +204,10 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
   g_win_video.channels = channels;
   g_win_video.codec = codec;
 
-  if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) {
+  if (!qa_win_media_foundation_up()) {
     qa_video_set_error("video export: Media Foundation failed to start");
     return 0;
   }
-  g_win_video.mf_started = 1;
 
   WCHAR wide_path[1024];
   if (MultiByteToWideChar(CP_UTF8, 0, utf8_path, -1, wide_path, 1024) == 0) {

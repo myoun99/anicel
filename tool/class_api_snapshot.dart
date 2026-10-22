@@ -21,6 +21,8 @@
 // not an API change, and only the name list says so plainly.
 import 'dart:io';
 
+import 'source_brackets.dart';
+
 void main(List<String> args) {
   final positional = args.where((a) => !a.startsWith('--')).toList();
   if (positional.length < 2) {
@@ -46,6 +48,11 @@ void main(List<String> args) {
 }
 
 /// Every member declaration of [className], sorted, bodies omitted.
+///
+/// What is code is read the one way (`tool/source_brackets.dart`): a string
+/// or a comment is skipped whole, however many lines it runs over — braces
+/// inside it are not code braces. ↩️It was read a line at a time, and a
+/// string over many lines had its later lines read as code.
 List<String> _members(List<String> lines, String className) {
   var i = lines.indexWhere(
     (l) =>
@@ -59,23 +66,33 @@ List<String> _members(List<String> lines, String className) {
     exit(3);
   }
 
+  final text = lines.join('\n');
+  final starts = <int>[];
+  var offset = 0;
+  for (final line in lines) {
+    starts.add(offset);
+    offset += line.length + 1;
+  }
+
   var brace = 0;
   var paren = 0;
-  var inBlockComment = false;
   final members = <String>[];
   String? sig; // signature collected so far (null = between members)
   var sigDone = false; // terminator seen; now waiting for the member's end
   var blockBodied = false; // ended at `{`, so the member ends at its `}`
 
-  for (; i < lines.length; i++) {
-    final line = lines[i];
-    final trimmed = line.trim();
+  var at = starts[i];
+  while (i < lines.length) {
+    final lineEnd = starts[i] + lines[i].length;
+    // A member starts on a line of its own — not one a string or a comment
+    // ran on to.
+    final trimmed = lines[i].trim();
     final isCode =
         trimmed.isNotEmpty &&
         !trimmed.startsWith('//') &&
         !trimmed.startsWith('/*') &&
         !trimmed.startsWith('*');
-    if (sig == null && isCode && brace == 1 && paren == 0 && !inBlockComment) {
+    if (at == starts[i] && sig == null && isCode && brace == 1 && paren == 0) {
       sig = '';
       sigDone = false;
       blockBodied = false;
@@ -83,43 +100,17 @@ List<String> _members(List<String> lines, String className) {
 
     final buf = StringBuffer();
     var ended = false;
-    for (var c = 0; c < line.length; c++) {
-      final ch = line[c];
-      final next = c + 1 < line.length ? line[c + 1] : '';
-      if (inBlockComment) {
-        if (ch == '*' && next == '/') {
-          inBlockComment = false;
-          c++;
-        }
+    while (at < lineEnd) {
+      final past = pastNonCode(text, at);
+      if (past > at) {
+        // A literal is kept as its quotes alone; a comment is prose.
+        final quote = text[at];
+        if (quote != '/' && sig != null && !sigDone) buf.write(quote * 2);
+        at = past;
         continue;
       }
-      if (ch == '/' && next == '/') break; // line comment: prose, not code
-      if (ch == '/' && next == '*') {
-        inBlockComment = true;
-        c++;
-        continue;
-      }
-      if (ch == "'" || ch == '"') {
-        // Skip the literal whole: braces inside it are not code braces.
-        final quote = ch;
-        final triple = line.startsWith(quote * 3, c) ? quote * 3 : null;
-        if (sig != null && !sigDone) buf.write(ch);
-        c += triple != null ? 3 : 1;
-        while (c < line.length) {
-          if (line[c] == r'\') {
-            c += 2;
-            continue;
-          }
-          if (triple != null && line.startsWith(triple, c)) {
-            c += 2;
-            break;
-          }
-          if (triple == null && line[c] == quote) break;
-          c++;
-        }
-        if (sig != null && !sigDone) buf.write(quote);
-        continue;
-      }
+      final ch = text[at];
+      at += 1;
 
       if (ch == '{') brace++;
       if (ch == '}') brace--;
@@ -139,7 +130,7 @@ List<String> _members(List<String> lines, String className) {
         } else if (ch == ';') {
           sigDone = true;
           ended = brace == 1 && paren == 0;
-        } else if (ch == '>' && c > 0 && line[c - 1] == '=') {
+        } else if (ch == '>' && at >= 2 && text[at - 2] == '=') {
           sigDone = true;
         }
         continue;
@@ -160,6 +151,12 @@ List<String> _members(List<String> lines, String className) {
     }
 
     if (brace == 0 && members.isNotEmpty) break; // class closed
+
+    // On to the next line — past the ones a string or a comment ran over.
+    while (i < lines.length && at >= starts[i] + lines[i].length) {
+      i += 1;
+    }
+    if (i < lines.length && at < starts[i]) at = starts[i];
   }
 
   members.sort();

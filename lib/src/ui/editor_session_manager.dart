@@ -8,8 +8,9 @@ import '../services/font_library_service.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
+import '../services/media/sheet_photo_edits.dart';
 import '../services/project_lookup.dart'
-    show brushFrameKeyIn, cutIdOfLayer, cutPositionOf;
+    show brushFrameKeyIn, cutPositionOf, cutWritingRow, rowPoseSpace;
 import '../models/app_language.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_memory_settings.dart';
@@ -18,6 +19,7 @@ import 'session/drags/media_placement_drag.dart';
 import 'canvas/after_frame_once.dart';
 import 'session/attach_fx_confirm.dart';
 import 'session/canvas_adjust.dart';
+import 'session/sheet_photo_hold.dart';
 import 'session/editor_app_settings.dart';
 import 'session/editor_voice_recording.dart';
 import '../models/app_accents.dart';
@@ -48,6 +50,7 @@ import 'timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import 'import/import_file_settings.dart' show importBakeAllowed;
 import '../models/timesheet_info.dart';
 import '../models/timesheet_sheet_kind.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/project.dart';
 import '../models/pill_subject.dart';
 import '../models/timeline_selection_kind.dart';
@@ -76,6 +79,7 @@ import 'session/history_pictures.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
+import '../services/command.dart' show WorkAhead;
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
@@ -101,6 +105,7 @@ import 'timeline/timeline_frame_ruler_painter.dart'
 import 'session/live_stroke_landing.dart';
 import 'session/pixel_editing.dart';
 import 'session/session_roles.dart';
+import 'session/media_file_views.dart';
 import 'session/media_fingerprint_ledger.dart';
 import 'session/media_grant_ledger.dart';
 import 'session/media_pool.dart';
@@ -124,6 +129,7 @@ import 'session/folder_bands.dart';
 import 'session/visibility_solo.dart';
 import 'session/transitions.dart';
 import 'session/camera.dart';
+import 'session/camera_view_mode.dart';
 import 'session/cut_under_playhead.dart';
 import 'session/playhead_cursors.dart';
 import 'session/frame_scrub.dart';
@@ -142,6 +148,7 @@ import 'session/storyboard_rows.dart';
 import 'session/app_clipboard.dart';
 import 'session/frame_clipboard.dart';
 import 'session/layer_clipboard.dart';
+import 'session/key_clipboard.dart';
 import 'session/active_cut_controllers.dart';
 import 'session/layer_stack.dart';
 import 'session/layer_verbs.dart';
@@ -248,6 +255,12 @@ class EditorSessionManager extends ChangeNotifier
     // F-360: the rows' folds as the opened file holds them, before any
     // history change asks again.
     railView.readFolds(repository.currentProject);
+    // F-363: the camera view is the camera row's eye and opacity — read
+    // again on every change, and on every move of a slider, which no change
+    // carries.
+    addListener(cameraViewMode.read);
+    opacityVerbs.dragPreview.addListener(cameraViewMode.read);
+    cameraViewMode.read();
     layerStack.attach();
     // Every cache's budget, from this device's laws and the allowance a
     // person chose — set now, and again whenever the allowance moves.
@@ -673,12 +686,12 @@ class EditorSessionManager extends ChangeNotifier
                         frameIndex
                   : null,
         // Where the clock does not wait for a picture, one is started
-        // where the playhead will be when it lands. Where it waits, the
-        // frame under the playhead is the one to make.
+        // where the playhead will be when it lands. Where it waits there is
+        // no lead: what the run waits for is the warmer's to make.
         lead: (composeTime) =>
             playbackRig.playbackMode == PlaybackMode.skipFrames
             ? projectSettings.projectFrameRate.frameAtElapsed(composeTime)
-            : 0,
+            : null,
       ),
     );
   }
@@ -736,6 +749,7 @@ class EditorSessionManager extends ChangeNotifier
   // would be a second name for the same verb (round 8, G4).
   late final FrameClipboard clipboard = FrameClipboard(board: _appClipboard.frames, project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
   late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore, rowSelection: rowSelectionVerbs);
+  late final KeyClipboard keyClipboard = KeyClipboard(board: _appClipboard.keys, laneVerbs: laneVerbs, changes: this);
 
   /// What the boards above hold — the APP's, handed to every open project
   /// by the shell (I-7, 유저 2026-09-26: 「탭사이에 복사나 붙여넣기 뭐든
@@ -830,7 +844,7 @@ class EditorSessionManager extends ChangeNotifier
   /// and a pin.
   List<LayerId> rowsFoldingWith(LayerId row) {
     final project = repository.requireProject();
-    final cutId = cutIdOfLayer(project, row) ?? activeCutId;
+    final cutId = cutWritingRow(project, row, standing: activeCutId);
     return cutId == null
         ? [row]
         : headMirrorRows(
@@ -850,6 +864,12 @@ class EditorSessionManager extends ChangeNotifier
   /// panel's scroll (F-267) — held here for the zoom's reason (I-7).
   late final PanelViewMemory panelViews = PanelViewMemory();
 
+  /// The page and the framing each file was left at in the viewers (F-382)
+  /// — held here, not on the window that holds the viewers, for the zoom's
+  /// reason (I-7): what a project's references were left at is that
+  /// project's.
+  late final MediaFileViews mediaFileViews = MediaFileViews();
+
   /// Where this project's CANVAS is framed — its zoom, pan and turn; null
   /// until something frames it, which the canvas resolves to the identity
   /// at read time.
@@ -868,6 +888,19 @@ class EditorSessionManager extends ChangeNotifier
   /// This project's canvas being resized on the canvas (I-79) — the size
   /// window opens it, the canvas shows its box and pill.
   final CanvasAdjust canvasAdjust = CanvasAdjust();
+
+  /// The photos on this project's sheets (I-97), as the pool and a hand
+  /// edit them.
+  late final SheetPhotoEdits sheetPhotoEdits = SheetPhotoEdits(
+    () => renderCaches.sheetInkStores,
+  );
+
+  /// This project's photo held on a sheet (I-97-Q3) — its box up and its
+  /// pill under it.
+  late final SheetPhotoHold sheetPhotoHold = SheetPhotoHold(
+    edits: sheetPhotoEdits,
+    history: historyManager,
+  );
 
   // Where the user stands (Round 6): cut, row and layer.
   late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, selectTrackCutAtPlayhead: selectTrackCutAtPlayhead, brushInputActive: brushInputActive, sessionDisposed: () => disposed, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
@@ -1213,7 +1246,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/pixel_verbs.dart), carved out of the cell verbs
   // when I-55 doubled the family. Callers name it, as they name [cells].
-  late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels);
+  late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels, solo: visibilitySolo);
 
   // ── the rail legends: what each panel's header opens, for a key (I-40) ──
   final RailLegends railLegends = RailLegends();
@@ -1568,6 +1601,11 @@ class EditorSessionManager extends ChangeNotifier
     brushInputActive.dispose,
     dragPreview.dispose,
     canvasAdjust.dispose,
+    sheetPhotoHold.dispose,
+    // F-363's two listeners come off before the slider's notifier goes.
+    () => opacityVerbs.dragPreview.removeListener(cameraViewMode.read),
+    () => removeListener(cameraViewMode.read),
+    cameraViewMode.dispose,
     opacityVerbs.dispose,
     onionSkin.dispose,
     cutVerbs.dispose,
@@ -1672,6 +1710,7 @@ class EditorSessionManager extends ChangeNotifier
   // handed to each of them; a collaborator that builds its own is a
   // second envelope waiting to drift.
   late final ActiveCutEdits _activeCutEdits = ActiveCutEdits(
+    project: this,
     selection: this,
     timeline: this,
     changes: this,
@@ -1687,7 +1726,6 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     timeline: this,
-    controllers: activeCutControllers,
     storyboardRows: storyboardRows,
     activeCut: _activeCutEdits,
     placement: cutPlacement,
@@ -1707,6 +1745,17 @@ class EditorSessionManager extends ChangeNotifier
 
     return null;
   }
+
+  /// [canvas] out as far as the project's pasteboard reaches (I-109): the
+  /// wall every picture on the floor stands behind.
+  PasteboardWall pasteboardOf(CanvasSize canvas) =>
+      canvas.pasteboardAt(repository.requireProject().pasteboardReach);
+
+  /// The wall of the cut on screen ([pasteboardOf]). Null in a gap.
+  PasteboardWall? get activePasteboardOrNull => switch (activeCutOrNull) {
+    final cut? => pasteboardOf(cut.canvasSize),
+    null => null,
+  };
 
   /// The active cut, THROWING when none is selected (gap state) — every
   /// caller is a conscious decision that a cut must exist here (UI-R9 #3
@@ -1796,6 +1845,15 @@ class EditorSessionManager extends ChangeNotifier
     transitions: transitions,
   );
 
+  /// The camera view — the camera row's eye and opacity as the canvas and
+  /// the bars read them (F-363; session/camera_view_mode.dart).
+  late final CameraViewMode cameraViewMode = CameraViewMode(
+    project: this,
+    selection: this,
+    opacity: opacityVerbs,
+    switches: layerSwitches,
+  );
+
   // The frame verbs (Round 6): the playhead's frame and what stands there.
   late final FrameVerbs frameVerbs = FrameVerbs(
     project: this,
@@ -1843,6 +1901,9 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     activeCut: _activeCutEdits,
+    laneGroupShown: (row, laneId) => activeCutControllers.layerController
+        .twirls
+        .laneGroupShownCommand(row, laneId),
   );
 
   // `activeCutCanvasPoseSample` retired with the V row's transform: there is
@@ -1870,15 +1931,12 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     currentRow: () => standing.currentRow,
     sessionDisposed: () => disposed,
+    activeCut: _activeCutEdits,
     // The camera's one write, not the camera — see
-    // `LaneVerbs._updateActiveCutCameraTrack`.
-    updateActiveCutCameraTrack: (track, {required description}) =>
-        camera.updateActiveCutCameraTrack(track, description: description),
+    // `LaneVerbs._updateCameraTrack`.
+    updateCameraTrack: (cameraRow, track, {required description}) =>
+        camera.updateCameraTrack(cameraRow, track, description: description),
     previewFormsOf: (row) => trackSe.previewFormsOf(row),
-    // The door's one write of a reference fx (I-68) — it lays the file
-    // again, which the doors own.
-    reposeReference: (layerId, pose) =>
-        importDoors.reposeReference(layerId: layerId, pose: pose),
   );
 
   // The single-key lane naming verbs (`laneKeyName`, `laneHasKeyAt`,
@@ -1911,11 +1969,12 @@ class EditorSessionManager extends ChangeNotifier
         CanvasPoint(x: space.width / 2, y: space.height / 2);
   }
 
-  /// The space [layer] is posed in ([LayerKind.poseSpace]): the shot, or
-  /// the open cut's canvas.
-  CanvasSize _poseSpaceOf(Layer layer) => layer.kind.poseSpace(
-    shot: camera.cameraFrameSize,
-    canvas: requireActiveCut.canvasSize,
+  /// The space [layer] is posed in ([rowPoseSpace]): the shot, or the
+  /// canvas of the cut writing it.
+  CanvasSize _poseSpaceOf(Layer layer) => rowPoseSpace(
+    repository.requireProject(),
+    layer,
+    standing: activeCutId,
   )!;
 
   // --- Visibility solo mode (session view state, not persisted) ------------
@@ -2059,11 +2118,8 @@ class EditorSessionManager extends ChangeNotifier
   void undo() {
     _settleAndAdopt();
     final here = standingPlace;
-    final there = historyManager.undoPlace;
-    if (here != null &&
-        there != null &&
-        standing.isElsewhere(there, from: here)) {
-      historyManager.leaveWalkBack(WalkBack(() => standing.standOn(here)));
+    if (_walkTo(undo: true) case final there?) {
+      historyManager.leaveWalkBack(WalkBack(() => standing.standOn(here!)));
       standing.standOn(there);
       return;
     }
@@ -2080,11 +2136,7 @@ class EditorSessionManager extends ChangeNotifier
   /// first, and the walk an undo left behind takes the user back.
   void redo() {
     _settleAndAdopt();
-    final here = standingPlace;
-    final there = historyManager.redoPlace;
-    if (here != null &&
-        there != null &&
-        standing.isElsewhere(there, from: here)) {
+    if (_walkTo(undo: false) case final there?) {
       standing.standOn(there);
       return;
     }
@@ -2092,6 +2144,29 @@ class EditorSessionManager extends ChangeNotifier
       undo: false,
       apply: () => _stepHistory(historyManager.redo),
     );
+  }
+
+  /// What the next [undo] — or, with [undo] false, [redo] — works out
+  /// ahead of its step ([HistoryManager.workAhead]): null where the press
+  /// only walks to the edit (I-41), or the step works nothing out. Settled
+  /// first, as the press is, so it is asked of the step the press takes.
+  WorkAhead? historyStepAhead({required bool undo}) {
+    _settleAndAdopt();
+    return _walkTo(undo: undo) == null
+        ? historyManager.workAhead(undo: undo)
+        : null;
+  }
+
+  /// Where the next [undo] — or redo — walks the user instead of stepping:
+  /// the place its edit was made, while the user stands elsewhere (I-41).
+  StandingPlace? _walkTo({required bool undo}) {
+    final here = standingPlace;
+    final there = undo ? historyManager.undoPlace : historyManager.redoPlace;
+    return here != null &&
+            there != null &&
+            standing.isElsewhere(there, from: here)
+        ? there
+        : null;
   }
 
   /// ⚠️BEFORE the walk is decided, not inside the step. The last edit has
@@ -2284,8 +2359,15 @@ class EditorSessionManager extends ChangeNotifier
   // ── the layer marks: their own object, in their own file ────────────
   //
   // A collaborator (session/layer_marks.dart): the ● a row wears at a
-  // frame — one row or every swept one.
-  late final LayerMarks layerMarks = LayerMarks(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits);
+  // frame — one row or every swept one — and every n koma down a block.
+  late final LayerMarks layerMarks = LayerMarks(
+    project: this,
+    selection: this,
+    changes: this,
+    controllers: activeCutControllers,
+    activeCut: _activeCutEdits,
+    rangeSelections: rangeSelections,
+  );
 
   // ── the instructions: their own object, in their own file ───────────
   //
@@ -2379,7 +2461,6 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     landing: importLanding,
     holdBytes: projectFile.holdMediaBytes,
-    holdCarriedBytes: mediaPool.holdCarriedBytes,
   );
 
   // The TVPaint door (session/tvpp_import_door.dart). A .tvpp opens AS A
@@ -3484,6 +3565,7 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     conforms: audioConformStore,
     fingerprints: mediaFingerprints,
+    sheetPhotos: sheetPhotoEdits,
   );
 
   // ── the fonts registered with the project: their own object ─────────
@@ -3518,6 +3600,7 @@ class EditorSessionManager extends ChangeNotifier
     timelineZoom: timelineZoom,
     panelViews: panelViews,
     laneGraphs: railView.laneGraphs,
+    mediaFileViews: mediaFileViews,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not

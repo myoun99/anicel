@@ -77,8 +77,8 @@ void main() {
           outTop: outTop,
         );
 
-        final cos = affine.cosTheta;
-        final sin = affine.sinTheta;
+        final cos = affine.turn.cos;
+        final sin = affine.turn.sin;
         final invSx = 1 / affine.sx;
         final invSy = 1 / affine.sy;
         for (var i = 0; i < 5; i += 1) {
@@ -103,6 +103,54 @@ void main() {
       expect(worst, lessThan(1e-6));
     });
 
+    // ⛔The trials above never move the anchor, so they cannot tell the
+    // translation the composite APPLIES from the user's tx/ty — the two
+    // differ by what turning about a moved cross costs
+    // ([SelectionAffine.appliedTx]), and a fold that read tx lived as a
+    // mutant (2026-10-19). The oracle is the outline's own way back: the
+    // pixels go where the ants go.
+    test('a turn about a MOVED anchor lands where the outline does', () {
+      final random = math.Random(20261019);
+      var worst = 0.0;
+      for (var trial = 0; trial < 200; trial += 1) {
+        final affine = SelectionAffine(
+          pivot: CanvasPoint(
+            x: random.nextDouble() * 400 - 200,
+            y: random.nextDouble() * 400 - 200,
+          ),
+          sx: 0.5 + random.nextDouble() * 1.5,
+          sy: 0.5 + random.nextDouble() * 1.5,
+          rotationDegrees: random.nextDouble() * 720 - 360,
+          tx: random.nextDouble() * 200 - 100,
+          ty: random.nextDouble() * 200 - 100,
+          anchorX: random.nextDouble() * 200 - 100,
+          anchorY: random.nextDouble() * 200 - 100,
+        );
+        final srcLeft = random.nextDouble() * 200 - 100;
+        final srcTop = random.nextDouble() * 200 - 100;
+        final outLeft = random.nextInt(400) - 200;
+        final outTop = random.nextInt(400) - 200;
+        final folded = selectionAffineResampleTransform(
+          affine: affine,
+          srcLeft: srcLeft,
+          srcTop: srcTop,
+          outLeft: outLeft,
+          outTop: outTop,
+        );
+        for (var i = 0; i < 5; i += 1) {
+          final ox = random.nextInt(64);
+          final oy = random.nextInt(64);
+          final source = affine.applyInverse(
+            CanvasPoint(x: outLeft + ox + 0.5, y: outTop + oy + 0.5),
+          );
+          final got = kernelSample(folded, ox, oy);
+          worst = math.max(worst, (got.u - (source.x - srcLeft - 0.5)).abs());
+          worst = math.max(worst, (got.v - (source.y - srcTop - 0.5)).abs());
+        }
+      }
+      expect(worst, lessThan(1e-6));
+    });
+
     test('a quarter turn is EXACT, not merely close', () {
       // math.cos(pi/2) is 6.1e-17. Left alone it moves every destination
       // pixel centre a hair off its source pixel centre, and "rotating by
@@ -113,8 +161,8 @@ void main() {
           pivot: CanvasPoint(x: 8, y: 8),
           rotationDegrees: degrees,
         );
-        expect(affine.cosTheta.abs(), anyOf(0.0, 1.0), reason: '$degrees');
-        expect(affine.sinTheta.abs(), anyOf(0.0, 1.0), reason: '$degrees');
+        expect(affine.turn.cos.abs(), anyOf(0.0, 1.0), reason: '$degrees');
+        expect(affine.turn.sin.abs(), anyOf(0.0, 1.0), reason: '$degrees');
         final folded = selectionAffineResampleTransform(
           affine: affine,
           srcLeft: 4,
@@ -134,7 +182,7 @@ void main() {
         pivot: CanvasPoint(x: 8, y: 8),
         rotationDegrees: 89.999,
       );
-      expect(near.cosTheta, isNot(0.0));
+      expect(near.turn.cos, isNot(0.0));
     });
   });
 

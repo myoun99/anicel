@@ -675,7 +675,7 @@ ENGINE_STAMP=build/native_standalone/.built-from
 # goes to stderr, because `open` prints the lane's path as its only output.
 ensure_engine() {
   local c="$1" out rc
-  out="$(dart "$ROOT/tool/native_engine_provenance.dart" check "$c")"
+  out="$(bash "$ROOT/tool/run.sh" native_engine_provenance check "$c")"
   rc=$?
   [ "$rc" -eq 0 ] && return 0
   [ "$rc" -eq 1 ] || {
@@ -740,6 +740,13 @@ cmd_engine() {
 # Refusal 5, runnable on its own. The header says why each step is there.
 cmd_native() {
   local name="${1:-}"; [ -n "$name" ] || die "native needs a name"
+  # $2 is `gates` when a land's gates ask (refusal 5): their parity run takes
+  # no place in the machine's line, as their architecture tests take none
+  # (유저 10-08 「착지 게이트는 이 넷에 세지 않는다」 — and a land waiting in
+  # the line would hold the land's turn). Asked alone, it is a session's
+  # test run and stands in the line (`affected_tests.dart`, `lineFor`).
+  local line=
+  [ "${2:-}" = gates ] && line=--outside-the-line
   name="$(lane_named "$name")" || exit 1
   local p; p="$(lane_path "$name")"
   require_worktree "$p"
@@ -769,7 +776,13 @@ cmd_native() {
   }
   (cd "$p" && bash tool/native_parity_tests.sh >"$list") \
     || die "the parity selector chose nothing — see tool/native_parity_tests.sh"
-  (cd "$p" && QA_REQUIRE_NATIVE=1 xargs flutter test --no-pub <"$list") >>"$log" 2>&1 || {
+  # By the run plan, as every list run goes: the collector pins alone and
+  # last (`tool/affected_tests.dart`, `filesListed`). The runner beside this
+  # script, as `ensure_engine` asks the provenance tool beside it: `gate`
+  # runs on a lane as it stands, and one cut before --files-from existed
+  # would ignore the flag and run a selection of its own.
+  (cd "$p" && QA_REQUIRE_NATIVE=1 bash "$ROOT/tool/run.sh" affected_tests \
+    --files-from "$list" ${line:+"$line"}) >>"$log" 2>&1 || {
     tr '\r' '\n' <"$log" | grep -a '\[E\]' | head -10 >&2
     die "parity is red against the engine this lane just built — this is refusal 5; the whole log: $log"
   }
@@ -812,7 +825,7 @@ HELD_TURN=
 room_first() {
   local flag= seen rc told=
   [ "$1" = land ] && flag=--land
-  until seen="$(dart "$ROOT/tool/flutter_room.dart" ${flag:+"$flag"} 2>&1)"; do
+  until seen="$(bash "$ROOT/tool/run.sh" flutter_room ${flag:+"$flag"} 2>&1)"; do
     rc=$?
     [ "$rc" -eq 1 ] || die "the machine's room could not be measured — nothing was launched
   $seen"
@@ -839,27 +852,45 @@ at_idle() {
 # lane as it stands: the same lines, so a stamp vouches for exactly what a
 # land would have measured. $3 says which of the two is asking, for the
 # room alone.
+# ⚡ANALYZE AND THE ARCHITECTURE TESTS RUN TOGETHER (유저 2026-10-18,
+# tests-crowd-the-machine-Q2 「착지 게이트만 예외로 동시에」 — the one
+# exception to CLAUDE.md's 「같은 워크트리 동시 금지」). Measured on the idle
+# main PC that night: analyze held about one core for 77s, and the
+# architecture tests queued on one compiler for 93s. One after the other a
+# land paid both; side by side it pays the longer. They share no file:
+# analyze writes nothing under build/, and the gates run on a furnished tree.
+# Each one's output is KEPT, so a red one is shown without being run again
+# — the old shape ran a red gate a second time just to print it.
 gates() {
-  local name="$1" p="$2"
+  local name="$1" p="$2" out analyze architecture analyzed tested
   room_first "${3:-}"
   at_idle
-  echo "lane: flutter analyze (no arguments)"
-  (cd "$p" && flutter analyze) >/dev/null 2>&1 || {
-    (cd "$p" && flutter analyze) | tail -20 >&2
+  out="$(mktemp -d "${TMPDIR:-/tmp}/lane-gates.XXXXXX")"
+  echo "lane: flutter analyze (no arguments) and flutter test test/architecture, together"
+  (cd "$p" && flutter analyze) > "$out/analyze" 2>&1 &
+  analyze=$!
+  (cd "$p" && flutter test test/architecture) > "$out/architecture" 2>&1 &
+  architecture=$!
+  wait "$analyze"; analyzed=$?
+  wait "$architecture"; tested=$?
+  if [ "$analyzed" -ne 0 ]; then
+    tail -20 "$out/analyze" >&2
+    rm -rf "$out"
     die "analyze is not clean — this is refusal 3"
-  }
-
-  echo "lane: flutter test test/architecture"
-  (cd "$p" && flutter test test/architecture) >/dev/null 2>&1 || {
-    (cd "$p" && flutter test test/architecture) | grep -A4 '\[E\]' | head -20 >&2
+  fi
+  if [ "$tested" -ne 0 ]; then
+    grep -A4 '\[E\]' "$out/architecture" | head -20 >&2
+    rm -rf "$out"
     die "the architecture gate is red
   A 'grew past' failure is the lane's. A 'ceiling is slack' failure is the
   trunk's: land the lane, then lower the ceiling to the measured number."
-  }
+  fi
+  rm -rf "$out"
 
-  # Refusal 5. Only a lane that touched the C pays for it.
+  # Refusal 5. Only a lane that touched the C pays for it — its parity run
+  # outside the machine's line, as the architecture tests above run.
   if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/qa_native/src)" ]; then
-    cmd_native "$name"
+    cmd_native "$name" gates
   fi
 }
 

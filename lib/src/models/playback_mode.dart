@@ -18,10 +18,12 @@ enum PlaybackMode {
   /// until now, and DaVinci Resolve's default.
   skipFrames,
 
-  /// The clock stands on the frame until its picture is there, and then
-  /// goes on: the playhead never passes a picture that was not shown. THE
-  /// DEFAULT (「기본값 모든그림」) — what bothered was 「재생했는데 재생바는
-  /// 지나가고있는데 그림이 없어서 비어있다」.
+  /// The clock stands before the frame until its picture is there — on
+  /// the last frame shown (유저 2026-10-15, F-365-Q1) — and then goes on
+  /// onto it: the playhead never passes a picture that was not shown, nor
+  /// stands over one it does not have. THE DEFAULT (「기본값 모든그림」) —
+  /// what bothered was 「재생했는데 재생바는 지나가고있는데 그림이 없어서
+  /// 비어있다」.
   everyPicture,
 
   /// The clock stands until what lies ahead is there — every frame the run

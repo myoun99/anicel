@@ -502,17 +502,17 @@ class HistoryManager extends ChangeNotifier {
 
   /// Whether [onBeforeUndoRedo] would adopt something RIGHT NOW.
   ///
-  /// Asked by a step that WAITED for its pictures (the UI's
-  /// HistoryPictures): work the user began after pressing — a lift, an
-  /// open transform box — is theirs, and a late step that adopted it would
-  /// land it out from under their hand.
+  /// Asked by a step that WAITED while its work ran ahead ([workAhead]):
+  /// work the user began after pressing — a lift, an open transform box — is
+  /// theirs, and a late step that adopted it would land it out from under
+  /// their hand.
   bool Function()? pendingBeforeUndoRedo;
 
   /// Counts every change to the stacks — a push, a step, a clear, a shed.
   ///
-  /// A step that waited is honoured only while this has not moved: one
-  /// applied over a history that moved on would undo something the user
-  /// never asked to undo.
+  /// A step that waited ([pendingBeforeUndoRedo]) is honoured only while
+  /// this has not moved: one applied over a history that moved on would
+  /// undo something the user never asked to undo.
   int get revision => _revision;
   int _revision = 0;
 
@@ -529,18 +529,23 @@ class HistoryManager extends ChangeNotifier {
     required bool undo,
     required bool Function(BrushFrameKey key) wants,
   }) {
-    final stack = undo ? _undoStack : _redoStack;
     final cels = CelsAhead(wants: wants);
-    if (stack.isNotEmpty) {
-      final next = stack.last;
-      // ⚠️The cast is not ceremony — see [_parkDeepEnd].
-      if (next is PictureRestoringCommand) {
-        (next as PictureRestoringCommand).readAhead(cels, undo: undo);
-      }
-    }
+    _next<PictureRestoringCommand>(undo: undo)?.readAhead(cels, undo: undo);
     // What came back is RAM again, and the budget says whether it stays.
     _trimRetainedBytes();
     return cels.cels;
+  }
+
+  /// What the next undo — or redo, with [undo] false — works out off the UI
+  /// thread before it is taken ([WorksAheadCommand]); null when nothing.
+  WorkAhead? workAhead({required bool undo}) =>
+      _next<WorksAheadCommand>(undo: undo)?.workAhead(undo: undo);
+
+  /// The next undo — or redo, with [undo] false — when it is a [T].
+  T? _next<T>({required bool undo}) {
+    final next = (undo ? _undoStack : _redoStack).lastOrNull;
+    // ⚠️The cast is not ceremony — see [_parkDeepEnd].
+    return next is T ? next as T : null;
   }
 
   /// Every tile an entry DEEPER than the next step holds alone, with where
@@ -681,17 +686,22 @@ class HistoryGestures {
   /// ⛔Nothing at or below [since] is touched. False when the gesture has
   /// nothing of its own left to take.
   bool retractSince(HistoryMark since) {
-    final stack = _history._undoStack;
-    if (stack.length <= since.depth) {
+    if (!keepsSince(since)) {
       return false;
     }
-    final command = stack.removeLast();
+    final command = _history._undoStack.removeLast();
     _history._made.undo(command);
     dropPayloadsOf([command]);
     _retracted += 1;
     _history._changed();
     return true;
   }
+
+  /// Whether the stack holds an entry above [since] for [retractSince] to
+  /// take back — asked by an undo door before it opens, which must not
+  /// take anything to find out.
+  bool keepsSince(HistoryMark since) =>
+      _history._undoStack.length > since.depth;
 
   /// Folds every entry pushed since [since] into ONE — for a gesture that
   /// writes across many events, which [HistoryManager.runAsOneStep]'s

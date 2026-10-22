@@ -182,11 +182,10 @@ Path blockEdgeGripPath(
   required Axis axis,
   required BlockEdgeGripRound round,
 }) {
-  final horizontal = axis == Axis.horizontal;
-  final a0 = horizontal ? box.left : box.top;
-  final a1 = horizontal ? box.right : box.bottom;
-  final c0 = horizontal ? box.top : box.left;
-  final c1 = horizontal ? box.bottom : box.right;
+  final a0 = startAlong(axis, box);
+  final a1 = endAlong(axis, box);
+  final c0 = startAcross(axis, box);
+  final c1 = endAcross(axis, box);
   final start = edge == TimelineBlockEdge.start;
   // (u, v): how far in from the block's corner — along the frame axis, and
   // across the row.

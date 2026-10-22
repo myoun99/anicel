@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
@@ -36,6 +37,26 @@ import '../../helpers/library_source.dart';
 const _trackId = TrackId('lane-track');
 const _se1 = LayerId('lane-se-1');
 const _se2 = LayerId('lane-se-2');
+const _se3 = LayerId('lane-se-3');
+const _celA = LayerId('cel');
+const _celB = LayerId('cel-b');
+
+/// A cut row holding one three-frame drawing from frame 0.
+Layer _cel(LayerId id) => Layer(
+  id: id,
+  name: id.value,
+  frames: [
+    Frame(
+      id: FrameId('${id.value}-f'),
+      duration: 3,
+      name: '',
+      strokes: const [],
+    ),
+  ],
+  timeline: {
+    0: TimelineExposure.drawing(FrameId('${id.value}-f'), length: 3),
+  },
+);
 
 Project _project() => Project(
   id: const ProjectId('lane-project'),
@@ -51,14 +72,7 @@ Project _project() => Project(
           name: '1',
           duration: 12,
           canvasSize: const CanvasSize(width: 32, height: 32),
-          layers: [
-            Layer(
-              id: const LayerId('cel'),
-              name: 'A',
-              frames: const [],
-              timeline: const {},
-            ),
-          ],
+          layers: [_cel(_celA), _cel(_celB)],
         ),
       ],
       seLayers: [
@@ -82,6 +96,22 @@ Project _project() => Project(
           id: _se2,
           name: 'S2',
           kind: LayerKind.se,
+          frames: [
+            Frame(
+              id: const FrameId('se-two'),
+              duration: 3,
+              name: 'Two!',
+              strokes: const [],
+            ),
+          ],
+          timeline: const {
+            2: TimelineExposure.drawing(FrameId('se-two'), length: 3),
+          },
+        ),
+        Layer(
+          id: _se3,
+          name: 'S3',
+          kind: LayerKind.se,
           frames: const [],
           timeline: const {},
         ),
@@ -96,6 +126,18 @@ void main() {
     addTearDown(session.dispose);
     return session;
   }
+
+  /// Where an S row's sounds start, on the track.
+  List<int> soundStarts(EditorSessionManager session, LayerId id) => session
+      .repository
+      .requireProject()
+      .tracks
+      .single
+      .seLayers
+      .firstWhere((layer) => layer.id == id)
+      .timeline
+      .keys
+      .toList();
 
   void selectLaneAnchoredBand(EditorSessionManager session) {
     session.updateTrackRowRangeSelectionByFrame(
@@ -123,6 +165,20 @@ void main() {
         reason: 'a cut row belongs to no layer: its blocks are cuts',
       );
     });
+
+    // F-87 (유저 2026-10-18): 「fx를 넘어서 뭐든 선택된 대상으로」 — what a
+    // SELECTION holds on a row is the other question, and a lane's answer
+    // to it is never its layer.
+    test('and whose BLOCKS it holds: a lane holds none', () {
+      expect(const LayerRowAddress(_se1).blockLayerId, _se1);
+      expect(
+        const LaneRowAddress(_se1, 'position').blockLayerId,
+        isNull,
+        reason: 'a lane holds keys — its layer\'s sounds are its layer '
+            'row\'s',
+      );
+      expect(const TrackRowAddress(_trackId).blockLayerId, isNull);
+    });
   });
 
   group('a band anchored on a LANE row still moves', () {
@@ -139,12 +195,17 @@ void main() {
         session.rangeMove.beginTrackRangeMoveDrag(_se1),
         isTrue,
         reason:
-            'the anchor is a lane row of S1, so the move machine reads '
-            'S1. Refusing here is the silent re-select',
+            'the anchor is a lane row of S1 and the band holds S2\'s '
+            'sound. Refusing here is the silent re-select',
       );
     });
 
-    test('and the lane row does not cost the span its own layer', () {
+    // ↩️It read 「the lane row does not cost the span its own layer」 and
+    // asserted that S1's sound slid: a band over S1's LANE moved S1's
+    // sound, which no row of the band holds. H20 (유저 2026-08-23):
+    // 「선택한 곳만 움직이게하라고」, and F-87 (10-18).
+    test('and what it moves is what its rows hold — the lane is not its '
+        'layer\'s sound', () {
       final session = sessionFor();
       selectLaneAnchoredBand(session);
 
@@ -152,19 +213,126 @@ void main() {
       session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _se1);
       session.rangeMove.endFrameRangeMoveDrag();
 
-      final se1 = session.repository
-          .requireProject()
-          .tracks
-          .single
-          .seLayers
-          .firstWhere((layer) => layer.id == _se1);
       expect(
-        se1.timeline.keys.toList(),
+        soundStarts(session, _se2),
         [3],
-        reason:
-            'S1 owns the sound, the anchor row is one of S1 lanes, and '
-            'the move slid it a frame. A dropped lane row leaves the sound '
-            'where it was',
+        reason: 'S2\'s row was swept, and its sound slid a frame — along '
+            'its own row: the hand never left the row it grabbed',
+      );
+      expect(
+        soundStarts(session, _se1),
+        [2],
+        reason: 'only S1\'s LANE was swept — its sound stays where it was',
+      );
+    });
+
+    // The push is the move's other verb: it shoves what the rows hold.
+    test('and what it pushes is what its rows hold', () {
+      final session = sessionFor();
+      selectLaneAnchoredBand(session);
+
+      session.blockShift.pushFrames(1);
+
+      expect(
+        soundStarts(session, _se2),
+        [3],
+        reason: 'S2\'s row was swept: its sound is shoved a frame',
+      );
+      expect(
+        soundStarts(session, _se1),
+        [2],
+        reason: 'only S1\'s LANE was swept — its sound stays',
+      );
+    });
+
+    // F-87: the band is grabbed by a row that is not the row it moves, so
+    // the hop is the HAND's — measured from the row it grabbed (R27 #8)
+    // and carried to the band's row, not read as where that row lands.
+    test('a hand moved one row down carries the band\'s row one row down',
+        () {
+      final session = sessionFor();
+      selectLaneAnchoredBand(session);
+
+      expect(session.rangeMove.beginTrackRangeMoveDrag(_se1), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: _se2,
+      );
+      session.rangeMove.endFrameRangeMoveDrag();
+
+      expect(
+        soundStarts(session, _se3),
+        [2],
+        reason: 'the hand went from S1 down to S2, so S2\'s sound goes one '
+            'row down too — onto S3',
+      );
+      expect(soundStarts(session, _se2), isEmpty);
+      expect(soundStarts(session, _se1), [2], reason: 'never in the band');
+    });
+
+    test('on the cut too: grabbed by A\'s lane, B\'s block slides along B',
+        () {
+      final session = sessionFor();
+      session.updateFrameRangeSelectionDrag(
+        layerId: _celA,
+        anchorIndex: 0,
+        headIndex: 2,
+        headLayerId: _celB,
+        spanRows: const [
+          LaneRowAddress(_celA, 'position'),
+          LayerRowAddress(_celB),
+        ],
+      );
+
+      expect(session.rangeMove.beginFrameRangeMoveDrag(_celA), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 1,
+        targetLayerId: _celA,
+      );
+      session.rangeMove.endFrameRangeMoveDrag();
+
+      List<int> blockStarts(LayerId id) => [
+        for (final block in drawingBlocks(
+          session.commitLayerById(id)!.timeline,
+        ))
+          block.startIndex,
+      ];
+      expect(
+        blockStarts(_celB),
+        [1],
+        reason: 'B\'s row was swept: its block slides a frame along B — '
+            'not onto A, the row the hand grabbed',
+      );
+      expect(blockStarts(_celA), [0], reason: 'only A\'s LANE was swept');
+    });
+
+    // The other half of the anchor's law: the first row whose blocks were
+    // swept stands in only for an anchor that holds none.
+    test('a band anchored on a LAYER row keeps that row as its anchor when '
+        'it moves', () {
+      final session = sessionFor();
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: _se2,
+        anchorGlobalFrame: 2,
+        headGlobalFrame: 4,
+        anchorRow: const LayerRowAddress(_se2),
+        spanRows: const [LayerRowAddress(_se1), LayerRowAddress(_se2)],
+      );
+
+      expect(session.rangeMove.beginTrackRangeMoveDrag(_se2), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 1,
+        targetLayerId: _se2,
+      );
+      session.rangeMove.endFrameRangeMoveDrag();
+
+      expect(soundStarts(session, _se1), [3]);
+      expect(soundStarts(session, _se2), [3]);
+      expect(
+        session.trackFrameRangeSelection.value?.anchorRow,
+        const LayerRowAddress(_se2),
+        reason: 'the band was drawn from S2, and single-row flows read the '
+            'anchor alone — not S1, the first row it holds',
       );
     });
   });
@@ -213,13 +381,20 @@ void main() {
 
     test('$builder asks the address, never its type', () {
       final text = source(builder);
+      // ↩️F-87: isInSelection asks the ROW itself now — the band's
+      // `coversRow`, the law the storyboard's rail presses by — so a swept
+      // lane is inside the band whether or not its layer's row was swept.
       expect(
         RegExp(r'row\.owningLayerId').allMatches(text).length,
-        greaterThanOrEqualTo(3),
+        greaterThanOrEqualTo(2),
         reason:
-            'isInSelection, onSelectUpdate and onMoveBegin each need '
-            'it — a builder that keeps one type test keeps one third of the '
-            'bug',
+            'onSelectUpdate and onMoveBegin each need it — a builder that '
+            'keeps one type test keeps half of the bug',
+      );
+      expect(
+        text,
+        contains('selection.coversRow(row)'),
+        reason: 'isInSelection asks the row, not its layer',
       );
       expect(
         text,

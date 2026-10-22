@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
@@ -338,6 +339,45 @@ void main() {
       reason: 'the rows too — along the OTHER axis',
     );
     expect(back.layerAxisOffsets['xsheet']!.value, 72);
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+    reopened.dispose();
+  });
+
+  test('🚨each file comes back at the page and the framing it was left at in '
+      'the viewers — through the append too — and none of it is an edit '
+      '(F-382, 유저 2026-10-17: 「해당 파일에 저장한단느낌」)', () async {
+    const conte = 'C:/work/conte.pdf';
+    final s = EditorSessionManager(initialProject: twoCuts());
+    final framing = CanvasViewport(zoom: 2, panX: -40, panY: 12.5);
+    s.mediaFileViews
+      ..rememberPage(conte, 3)
+      ..rememberFraming(conte, viewer: 'media-viewer-sub', framing: framing);
+    expect(
+      s.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'looking at a reference is no edit — its view rides beside the '
+          'project',
+    );
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.mediaFileViews.rememberPage(conte, 4);
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    final views = reopened.mediaFileViews;
+    expect(views.pageOf(conte), 4);
+    expect(views.framingOf(conte, viewer: 'media-viewer-sub'), framing);
+    expect(
+      views.framingOf(conte, viewer: 'media-viewer'),
+      isNull,
+      reason: 'the framing is the viewer\'s — the other never framed it',
+    );
     expect(reopened.projectFile.hasUnsavedChanges, isFalse);
     reopened.dispose();
   });

@@ -8,11 +8,13 @@ import 'package:flutter/services.dart' show TextSelection;
 import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
 import '../../../services/cel_text_box_edits.dart';
+import '../../../services/input/modifier_keys.dart';
 import '../../../services/input/pen_sidecars.dart';
 import '../../../services/transform_box_law.dart';
 import '../../text/cel_text_layout.dart';
 import '../../timeline/axis_turn.dart' show extentAcross, extentAlong;
 import '../box_press.dart';
+import '../canvas_touch_contacts.dart';
 import 'cel_text_session.dart';
 import 'cel_text_stage.dart';
 import 'cel_text_tool.dart';
@@ -65,8 +67,9 @@ class CelTextScene {
 ///   the same code answers whatever is there — as a stroke's press on an
 ///   empty frame is still that stroke, `_BrushEditCelPress`).
 /// · A text by its LETTERS: inside it → the caret, and dragged a selection
-///   · on another text → confirm, take that one · on nothing → confirm and
-///   let go.
+///   — or with Ctrl held, or a finger on the glass, the box's: dragged it
+///   moves (I-96) · on another
+///   text → confirm, take that one · on nothing → confirm and let go.
 /// · A text by its BOX — the one order every box on the canvas keeps
 ///   ([boxPressAt], F-222): its cross → the cross is carried · a corner →
 ///   scale · a side edge (a box only) → its width · inside → move, or let
@@ -123,6 +126,13 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
   final artwork = pressed.artwork;
   final layout = session.shown.layout;
   if (layout.boxContains(artwork)) {
+    // 🗣️I-96 (유저 2026-10-12): 「편집중이던 뭐던 컨트롤 누르고 상자 이동
+    // 가능하도록. ae에도 있던 기능인거같은데」 — with it held the press is
+    // the box's, as it is with the text held by its box: dragged, it
+    // carries the text, and the letters stay held.
+    if (_carriesTheBox(pressed.event)) {
+      return _InsidePress(pressed.event, artwork, held: true);
+    }
     final at = layout.positionAt(artwork).offset;
     scene.tool.typeAt(TextSelection.collapsed(offset: at));
     return _LetterPress(pressed.event, base: at);
@@ -131,6 +141,20 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
     scene.tool.confirm();
     return null;
   });
+}
+
+/// Whether Ctrl is held — ⌘ on a Mac or an iPad, where Ctrl is ⌘
+/// (`canvasRotateHold`'s note) — or a finger rests on the glass beside
+/// [event], a tablet's Ctrl. Asked as the press goes down.
+///
+/// 🗣️I-96-Q3 (유저 2026-10-16, a): 「손가락도 — 늘 켜짐(변형 · 도형처럼)」 —
+/// no switch, as the transform handle's finger and the shape's have none.
+/// ⚠️Its cost was named with the answer: a palm on the glass while the pen
+/// picks letters carries the box instead.
+bool _carriesTheBox(PointerDownEvent event) {
+  return ModifierKeys.isControlPressed ||
+      ModifierKeys.isMetaPressed ||
+      CanvasTouchContacts.aFingerDownBesides(event.pointer);
 }
 
 CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
@@ -481,8 +505,8 @@ final class _ScalePress extends _BoxEditPress {
 }
 
 /// On an edge of a box its letters run between: its room, in whole pixels,
-/// by how far the hand has gone along the letters' own way
-/// ([celTextLettersWay]).
+/// by how far the hand has gone along the letters' own way, read in the
+/// text's own frame ([celTextTravelAlong]).
 final class _WidthPress extends _BoxEditPress {
   _WidthPress(
     super.event,
@@ -496,10 +520,7 @@ final class _WidthPress extends _BoxEditPress {
 
   @override
   void _move(CelTextScene scene, Offset local, Offset artwork) {
-    final way = celTextLettersWay(start);
-    final along =
-        (artwork.dx - this.artwork.dx) * way.dx +
-        (artwork.dy - this.artwork.dy) * way.dy;
+    final along = celTextTravelAlong(start, artwork - this.artwork).letters;
     final width = start.wrapWidth!;
     scene.tool.showEdit(
       celTextBoxWidened(
@@ -513,7 +534,7 @@ final class _WidthPress extends _BoxEditPress {
 
 /// On an edge of a box its lines stack between: how tall it is at least, in
 /// whole pixels, by how far the hand has gone the way they stack
-/// ([celTextStackingWay]) — never less than its lines, [lettersDepth] tall
+/// ([celTextTravelAlong]) — never less than its lines, [lettersDepth] tall
 /// (F-317).
 final class _DepthPress extends _BoxEditPress {
   _DepthPress(
@@ -530,10 +551,7 @@ final class _DepthPress extends _BoxEditPress {
 
   @override
   void _move(CelTextScene scene, Offset local, Offset artwork) {
-    final way = celTextStackingWay(start);
-    final along =
-        (artwork.dx - this.artwork.dx) * way.dx +
-        (artwork.dy - this.artwork.dy) * way.dy;
+    final along = celTextTravelAlong(start, artwork - this.artwork).stacking;
     final height = celTextBoxDepth(start, lettersDepth: lettersDepth);
     scene.tool.showEdit(
       celTextBoxDeepened(

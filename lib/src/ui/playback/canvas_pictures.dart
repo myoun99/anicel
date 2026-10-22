@@ -4,8 +4,10 @@ import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
 import '../../models/rgba_image_bytes.dart';
+import '../../services/cel_content_notes.dart';
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart' show CanvasLayerImageRequest;
+import '../canvas/image_pieces.dart';
 import '../quiet_turns.dart';
 import 'layer_frame_image_cache.dart';
 import 'playback_pictures.dart';
@@ -49,24 +51,20 @@ class CanvasPictures implements PlaybackPictures {
   /// a cut draws its frames at more than one.
   final PlaybackQuality Function(Cut cut, int frameIndex) qualityAt;
 
-  /// Rows whose image could not be made, and the store generation and cel
-  /// revision they failed at — the canvas's own `_failedRevisions`, kept by
-  /// the maker: one unreachable cel is not opened again on every walk, and a
-  /// run is not held for a row that will not come. The next change of the
-  /// cel's content, or a project opened again, is looked at afresh.
-  final Map<BrushFrameKey, (int, int?)> _failed = {};
-
-  (int, int?) _failureKeyOf(BrushFrameKey key) => (
-    layerImages.frameStore.celContentRevision.value,
-    layerImages.frameStore.frameOrNull(key)?.sourceRevision,
-  );
+  /// Rows that gave nothing to make at the content they hold now — a cel
+  /// with pixels that cannot be drawn at this canvas size, or a row of a
+  /// frame whose making stopped before its rows (the movie its cels show
+  /// could not be read) — noted so a walk does not make them again, and a
+  /// run is not held for a row that will not come. A cel that could not be
+  /// read is the cache's ([LayerFrameImageCache.unreadable]).
+  late final CelContentNotes _gaveNothing =
+      CelContentNotes.orTheStoresContent(layerImages.frameStore);
 
   /// Whether [row]'s image could not be made at the content it has now — a
   /// frame showing it waits for nothing more of it.
-  bool gaveUpOn(CanvasLayerImageRequest row) {
-    final failed = _failed[row.frameKey];
-    return failed != null && failed == _failureKeyOf(row.frameKey);
-  }
+  bool gaveUpOn(CanvasLayerImageRequest row) =>
+      layerImages.unreadable.has(row.frameKey) ||
+      _gaveNothing.has(row.frameKey);
 
   LayerFrameImage? _held(
     CanvasLayerImageRequest row,
@@ -84,6 +82,15 @@ class CanvasPictures implements PlaybackPictures {
       _held(row, cut, level) != null ||
       !layerImages.frameStore.celHasRenderableContent(row.frameKey);
 
+  /// The rows of [rows] still to make at [level]: not there, and not given
+  /// up on — what [make] makes, [partsToMake] names, [bytesToMake] weighs
+  /// and [readIn] reads, and what a frame [failed] has none of.
+  Iterable<CanvasLayerImageRequest> _toMake(
+    List<CanvasLayerImageRequest> rows,
+    Cut cut,
+    PlaybackQuality level,
+  ) => rows.where((row) => !_rowIsThere(row, cut, level) && !gaveUpOn(row));
+
   @override
   bool has(DemandedPicture picture) {
     final level = qualityAt(picture.cut, picture.frameIndex);
@@ -99,21 +106,31 @@ class CanvasPictures implements PlaybackPictures {
   Set<Object> partsToMake(DemandedPicture picture) {
     final level = qualityAt(picture.cut, picture.frameIndex);
     return {
-      for (final row in rowsOf(picture.cut, picture.frameIndex))
-        if (!_rowIsThere(row, picture.cut, level) && !gaveUpOn(row))
-          (row.frameKey, level),
+      for (final row in _toMake(
+        rowsOf(picture.cut, picture.frameIndex),
+        picture.cut,
+        level,
+      ))
+        (row.frameKey, level),
     };
   }
 
   /// Nothing of the frame is still to come: every row not there is one that
   /// could not be made.
   @override
-  bool failed(DemandedPicture picture) {
-    final level = qualityAt(picture.cut, picture.frameIndex);
-    return rowsOf(picture.cut, picture.frameIndex).every(
-      (row) => _rowIsThere(row, picture.cut, level) || gaveUpOn(row),
-    );
-  }
+  bool failed(DemandedPicture picture) => _toMake(
+    rowsOf(picture.cut, picture.frameIndex),
+    picture.cut,
+    qualityAt(picture.cut, picture.frameIndex),
+  ).isEmpty;
+
+  /// Whether a cel [picture] shows could not be read at the content it has
+  /// now ([LayerFrameImageCache.unreadable]) — the ruler's bar paints the
+  /// frame red once nothing more of it is to come ([failed]).
+  bool cannotRead(DemandedPicture picture) => rowsOf(
+    picture.cut,
+    picture.frameIndex,
+  ).any((row) => layerImages.unreadable.has(row.frameKey));
 
   /// Every row of [picture] still to come is given up on. A row that threw
   /// in [make] is recorded there, and its siblings made past it — so what
@@ -122,30 +139,55 @@ class CanvasPictures implements PlaybackPictures {
   @override
   void noteFailure(DemandedPicture picture) {
     final level = qualityAt(picture.cut, picture.frameIndex);
-    for (final row in rowsOf(picture.cut, picture.frameIndex)) {
-      if (!_rowIsThere(row, picture.cut, level)) {
-        _failed[row.frameKey] = _failureKeyOf(row.frameKey);
-      }
+    for (final row in _toMake(
+      rowsOf(picture.cut, picture.frameIndex),
+      picture.cut,
+      level,
+    )) {
+      _gaveNothing.note(row.frameKey);
     }
   }
 
-  /// The rows not there, each the canvas at the level — an estimate, made
-  /// before a pixel is read: an image covers its cel's TILES, so a canvas
-  /// that is no whole number of tiles, or a row inked out on the pasteboard,
-  /// makes a bigger one, and a row inked in a corner a smaller one. The trim
-  /// after each landing measures what was made.
+  /// What making [picture] adds: each row still to make weighed by the plan
+  /// its image is made by ([LayerFrameImageCache.plannedBytes]) where its
+  /// cel is in hand — [readIn] brings it there — and else as the canvas at
+  /// the level: an image covers its cel's tiles, so a row inked in a corner
+  /// weighs less than that, and one inked out onto the pasteboard more.
   @override
   int bytesToMake(DemandedPicture picture) {
-    final level = qualityAt(picture.cut, picture.frameIndex);
-    final size = scaledCanvasSize(picture.cut.canvasSize, level);
+    final cut = picture.cut;
+    final level = qualityAt(cut, picture.frameIndex);
+    final canvas = scaledCanvasSize(cut.canvasSize, level);
     var bytes = 0;
-    for (final row in rowsOf(picture.cut, picture.frameIndex)) {
-      if (!_rowIsThere(row, picture.cut, level)) {
-        bytes += estimatedImageBytes(size.width, size.height);
-      }
+    for (final row in _toMake(rowsOf(cut, picture.frameIndex), cut, level)) {
+      bytes +=
+          layerImages.plannedBytes(
+            row.frameKey,
+            level,
+            canvasSize: cut.canvasSize,
+            inkSuffices: row.inkSuffices,
+          ) ??
+          estimatedImageBytes(canvas.width, canvas.height);
     }
     return bytes;
   }
+
+  /// Reads in what making [picture] reads first — the cel of each row still
+  /// to make, all at once, off the UI thread ([LayerFrameImageCache.readIn])
+  /// — so [bytesToMake] weighs every row by the plan it is made by. A cel
+  /// that will not read is weighed as the canvas, and its making says why.
+  @override
+  Future<void> readIn(DemandedPicture picture) {
+    final cut = picture.cut;
+    final level = qualityAt(cut, picture.frameIndex);
+    return _readIn(_toMake(rowsOf(cut, picture.frameIndex), cut, level), cut);
+  }
+
+  Future<void> _readIn(Iterable<CanvasLayerImageRequest> rows, Cut cut) =>
+      Future.wait([
+        for (final row in rows)
+          layerImages.readIn(row.frameKey, canvasSize: cut.canvasSize),
+      ]);
 
   /// A held cel is one part however many frames show it.
   @override
@@ -155,7 +197,7 @@ class CanvasPictures implements PlaybackPictures {
     for (final row in rowsOf(picture.cut, picture.frameIndex)) {
       final held = _held(row, picture.cut, level);
       if (held != null && seen.add((row.frameKey, level))) {
-        bytes += estimatedImageBytes(held.image.width, held.image.height);
+        bytes += held.pieces.estimatedBytes;
       }
     }
     return bytes;
@@ -193,22 +235,12 @@ class CanvasPictures implements PlaybackPictures {
     final cut = picture.cut;
     final rows = rowsOf(cut, picture.frameIndex);
     if (!shouldAbort()) {
-      for (final row in rows) {
-        if (!_rowIsThere(row, cut, level) && !gaveUpOn(row)) {
-          unawaited(
-            layerImages.frameStore.thawAhead(
-              row.frameKey,
-              canvasSize: cut.canvasSize,
-            ),
-          );
-        }
-      }
+      unawaited(_readIn(_toMake(rows, cut, level), cut));
     }
     (Object, StackTrace)? thrown;
-    for (final row in rows) {
-      if (_rowIsThere(row, cut, level) || gaveUpOn(row)) {
-        continue;
-      }
+    // Asked of each row as its turn comes: the rows before it may have
+    // landed it — a cel two rows show — or given it up.
+    for (final row in _toMake(rows, cut, level)) {
       final LayerFrameImage? image;
       try {
         image = await layerImages.prepare(
@@ -225,7 +257,6 @@ class CanvasPictures implements PlaybackPictures {
           ),
         );
       } on Object catch (error, stack) {
-        _failed[row.frameKey] = _failureKeyOf(row.frameKey);
         thrown ??= (error, stack);
         continue;
       }
@@ -236,7 +267,7 @@ class CanvasPictures implements PlaybackPictures {
         // A cel with pixels that cannot be drawn at this canvas size — the
         // canvas's own miss of the same name, which it leaves to the next
         // pass. A maker that left it would make it again on every walk.
-        _failed[row.frameKey] = _failureKeyOf(row.frameKey);
+        _gaveNothing.note(row.frameKey);
       }
     }
     if (thrown case (final error, final stack)) {

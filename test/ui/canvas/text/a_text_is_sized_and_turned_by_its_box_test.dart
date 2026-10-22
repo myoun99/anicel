@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../helpers/cel_text_tool_harness.dart';
+import '../../../helpers/key_chords.dart';
 
 /// 🚨★★★A TEXT HELD BY ITS BOX (R9-rest) — the real app, a real mouse.
 ///
@@ -95,6 +96,58 @@ void main() {
     final back = celOf(tester).texts.single.content;
     expect(back.spans.single.style.fontSize, 48);
     expect(back.anchor, CanvasPoint(x: c.dx, y: c.dy));
+  });
+
+  // 🗣️F-377 (유저 2026-10-17): 「변형중 언두가 직전변형 취소라던가. 끝나면
+  // 한번에 취소라던가 하듯이 변형 상태는 모두 기본적으로 그걸 따르도록.
+  // 텍스트 변형이든 뭐든」.
+  testWidgets('🗣️F-377: Ctrl+Z takes back what the box did a step at a time '
+      'while it holds the text — and let go, what it did is ONE step', (
+    tester,
+  ) async {
+    final c = await hiInHandByItsBox(tester);
+    final history = sessionOf(tester).historyManager;
+    final steps = history.undoCount;
+    // Inside the box and off the cross in its middle, which a press ON
+    // carries instead (R9-rest-Q2).
+    await dragFrom(
+      tester,
+      Offset(c.dx + 10, c.dy + 30),
+      Offset(c.dx + 30, c.dy + 30),
+    );
+    await dragFrom(
+      tester,
+      Offset(c.dx + 30, c.dy + 40),
+      Offset(c.dx + 30, c.dy + 70),
+    );
+    // The corner, carried with the text, taken twice as far from the
+    // centre.
+    await dragFrom(
+      tester,
+      Offset(c.dx + 128, c.dy + 102),
+      Offset(c.dx + 188, c.dy + 144),
+    );
+    expect(history.undoCount, steps + 3, reason: '⛔전제: a step each');
+
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+    await pumpFrames(tester);
+
+    final carried = celOf(tester).texts.single.content;
+    expect(carried.spans.single.style.fontSize, 48, reason: 'the corner back');
+    expect(carried.anchor, CanvasPoint(x: c.dx + 20, y: c.dy + 30));
+    expect(textToolOf(tester).hold, CelTextHold.box, reason: 'still in hand');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await pumpFrames(tester);
+    expect(textToolOf(tester).session, isNull, reason: '⛔전제: let go');
+    expect(history.undoCount, steps + 1, reason: 'its carries are ONE step');
+
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+    await pumpFrames(tester);
+    expect(
+      celOf(tester).texts.single.content.anchor,
+      CanvasPoint(x: c.dx, y: c.dy),
+    );
   });
 
   // 🗣️F-342 (유저 2026-10-12): 「마지막으로 사용한 크기값 기억해서 그거대로

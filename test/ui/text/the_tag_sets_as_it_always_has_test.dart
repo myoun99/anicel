@@ -133,4 +133,27 @@ void main() {
     expect(pixel(right, 75, 30), clear);
     expect(pixel(right, 65, 16), ink, reason: 'the long line: from 60');
   });
+
+  test('a line under the letters lies under THEM, wherever the tag '
+      'stands', () async {
+    // 「a b」 at size 10 from 100: its space — where a line under the
+    // letters shows on its own, the test font inking only the letters'
+    // boxes — runs from 110 to 120.
+    final bytes = await drawn(
+      tag(
+        'a b',
+        style: const TextCelStyle(
+          fontSize: 10,
+          underline: true,
+          align: TextCelAlign.left,
+        ),
+        position: const ui.Offset(100, 10),
+      ),
+    );
+
+    expect([
+      for (var y = 10; y < 30; y += 1)
+        if (pixel(bytes, 115, y)[3] != 0) y,
+    ], isNotEmpty);
+  });
 }

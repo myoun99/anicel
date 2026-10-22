@@ -52,6 +52,25 @@ void main() {
     tiles: {for (final t in tiles) t.coord: t.tile},
   );
 
+  // 🧪F-432: undoing a pasteboard turned off thawed every cel it had cut,
+  // to read the cel as it stands — 3.5 s on S5_BA — for snapshots that
+  // never needed it.
+  test('a snapshot still in RAM never asks for the cel as it stands', () {
+    final picture = surfaceOf([tileOf(0, 11)]);
+    final snapshot = UndoSurfaceSnapshot(
+      key: keyOf('f'),
+      snapshot: picture,
+      sharedWith: null,
+    );
+    expect(
+      identical(
+        snapshot.surfaceOver(() => fail('a resident snapshot asked')),
+        picture,
+      ),
+      isTrue,
+    );
+  });
+
   group('a snapshot moves the tiles it ALONE holds', () {
     test('parking frees exactly the unshared tiles, and the shared ones '
         'keep their identity', () async {
@@ -72,7 +91,7 @@ void main() {
       expect(snapshot.residentBytes, 0);
       expect(snapshot.isParked, isTrue);
 
-      final back = snapshot.surfaceOver(surfaceOf([shared]))!;
+      final back = snapshot.surfaceOver(() => surfaceOf([shared]))!;
       expect(back.tiles.length, 2);
       // ⛔The shared tile must come back as the SAME OBJECT: writing it
       // would have copied bytes that were not going anywhere, and reading
@@ -115,12 +134,15 @@ void main() {
         reason: 'and yet it is holding no picture any more',
       );
       expect(
-        snapshot.surfaceOver(null),
+        snapshot.surfaceOver(() => null),
         isNull,
         reason: 'which is exactly what "let go" has to mean',
       );
       expect(
-        identical(snapshot.surfaceOver(live)!.tileAt(shared.coord), shared.tile),
+        identical(
+          snapshot.surfaceOver(() => live)!.tileAt(shared.coord),
+          shared.tile,
+        ),
         isTrue,
         reason: 'and the cel gives the same tile object back',
       );
@@ -139,7 +161,7 @@ void main() {
 
       await snapshot.park();
       final back = snapshot
-          .surfaceOver(null)!
+          .surfaceOver(() => null)!
           .tileAt(TileCoord(x: -1, y: 0))!;
       expect(back.pixels, tile.pixels);
     });
@@ -159,7 +181,7 @@ void main() {
       for (final path in _volatilePaths().difference(before)) {
         File(path).deleteSync();
       }
-      expect(snapshot.surfaceOver(null), isNull);
+      expect(snapshot.surfaceOver(() => null), isNull);
     });
 
     test('reading it back removes the file — a session of undos must not '
@@ -174,7 +196,7 @@ void main() {
       final mine = _volatilePaths().difference(before);
       expect(mine, hasLength(1));
 
-      expect(snapshot.surfaceOver(null), isNotNull);
+      expect(snapshot.surfaceOver(() => null), isNotNull);
 
       expect(File(mine.single).existsSync(), isFalse);
       expect(snapshot.isParked, isFalse);
@@ -192,7 +214,7 @@ void main() {
       final mine = _volatilePaths().difference(before);
       UndoSurfaceSnapshot.dropAll([snapshot]);
       expect(mine.every((path) => !File(path).existsSync()), isTrue);
-      expect(snapshot.surfaceOver(null), isNull);
+      expect(snapshot.surfaceOver(() => null), isNull);
     });
   });
 
@@ -236,8 +258,8 @@ void main() {
     test('and both come back', () async {
       final session = pairOf();
       await session.pair.park();
-      final before = session.pair.before.surfaceOver(session.after)!;
-      final after = session.pair.after.surfaceOver(session.before)!;
+      final before = session.pair.before.surfaceOver(() => session.after)!;
+      final after = session.pair.after.surfaceOver(() => session.before)!;
       expect(before.tiles.length, 2);
       expect(after.tiles.length, 2);
       expect(
@@ -262,12 +284,12 @@ void main() {
       await session.pair.park();
 
       expect(
-        session.pair.before.surfaceOver(null),
+        session.pair.before.surfaceOver(() => null),
         isNull,
         reason: 'with nothing to take the shared tiles from, it refuses',
       );
       expect(
-        session.pair.before.surfaceOver(surfaceOf([tileOf(9, 9)])),
+        session.pair.before.surfaceOver(() => surfaceOf([tileOf(9, 9)])),
         isNull,
         reason: 'a base that cannot answer for a shared coord is refused too',
       );

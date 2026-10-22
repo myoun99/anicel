@@ -3,6 +3,10 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
+import 'reference_lane_policy.dart'
+    show referenceGroupLaneId, referenceLaneDisplayOrder;
+import 'se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
 import 'transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
 
@@ -63,16 +67,25 @@ bool currentRowIsInsideGroup(
 ///
 /// The membership is the lane-id grammar, which is why it can live in a
 /// widget: an effect's members carry its id (`fx:<effectId>:<param>` under
-/// `fx-group:<effectId>`), and the transform group's members are the named
+/// `fx-group:<effectId>`), the transform group's members are the named
 /// transform lanes — the camera row's included, the row being that group's
-/// header (㉙). The light a header wears while you stand inside it and the
-/// graph a header opens over its lanes (I-89 ③) ask it alike.
+/// header (㉙) — and the two fixed groups' carry theirs (`reference:` under
+/// the reference fx, `name-tag:` under the name tag; F-374: the reference
+/// fx is an fx like every other, and I-68-Q1 made the two one law). The
+/// light a header wears while you stand inside it and the graph a header
+/// opens over its lanes (I-89 ③) ask it alike.
 String? laneGroupOf(String laneId) {
   final effect = parseEffectLaneId(laneId);
   if (effect != null) {
     return effect.parameterId == null
         ? null
         : effectGroupLaneId(effect.effectId);
+  }
+  if (referenceLaneDisplayOrder.contains(laneId)) {
+    return referenceGroupLaneId;
+  }
+  if (seNameTagLaneDisplayOrder.contains(laneId)) {
+    return seNameTagGroupLaneId;
   }
   return transformLaneDisplayOrder.contains(laneId)
       ? transformGroupHeaderLane.laneId

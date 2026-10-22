@@ -234,8 +234,8 @@ void main() {
           'build-time bake would still answer the 24px size here',
     );
     expect(
-      timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 8),
-      lessThan(timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24)),
+      timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 8).width,
+      lessThan(timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24).width),
       reason: 'and the two answers genuinely differ, so this is not vacuous',
     );
   });

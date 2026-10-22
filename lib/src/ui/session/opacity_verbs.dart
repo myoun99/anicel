@@ -182,8 +182,10 @@ class OpacityVerbs {
   }
 
   /// The master-bar preview/commit (R4 #6): [layerIds] = the rows the rail
-  /// currently DISPLAYS (filter-passing), computed by the grid. Camera
-  /// stays untouched (its slider is the camera-view dim).
+  /// currently DISPLAYS (filter-passing), computed by the grid — the
+  /// picture rows ([LayerKind.hasPictureOpacity]). A row's own slider
+  /// previews here too, the camera's among them: the camera view's dim
+  /// follows it (`CameraViewMode`, F-363).
   void previewLayersOpacity(Set<LayerId> layerIds, double opacity) {
     dragPreview.value = (
       layerIds: _withLinkedRowsOfThisCut(layerIds),
@@ -234,13 +236,13 @@ class OpacityVerbs {
     _changes.notifyChanged();
   }
 
-  /// Resets every opacity-bearing layer back to fully opaque. The camera
-  /// row's slider is the camera-view DIM (a host notifier), not layer
-  /// opacity — it stays untouched.
+  /// Resets every picture-opacity layer back to fully opaque
+  /// ([setAllLayersOpacity]).
   void resetAllLayersOpacity() => setAllLayersOpacity(1.0);
 
   /// Sets every picture-opacity layer's opacity to [opacity] (the legend's
-  /// numeric bulk set). Camera stays untouched (its slider is the dim).
+  /// numeric bulk set). The camera's opacity is the camera view's dim, no
+  /// picture's ([LayerKind.hasPictureOpacity]).
   void setAllLayersOpacity(double opacity) {
     final clamped = opacity.clamp(0.0, 1.0).toDouble();
     _controllers.layerController.setLayersOpacity(

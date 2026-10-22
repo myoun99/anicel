@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/services/import/cel_picture.dart'
+    show debugPictureSideLimit;
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
@@ -145,6 +147,15 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // thaw's each have theirs). Deleting one would leave the road production
   // takes there with no coverage at all.
   debugWorkersRunHere = true;
+  // The fake clock once more: the side this device's engine hands a picture
+  // back at is measured once, through the engine (`pictureSideLimit`), and
+  // on a `testWidgets` clock the answer never comes back — not even one
+  // already measured (🔬a throwaway probe, 2026-10-20: 16 ms with the real
+  // clock lent, then fifty pumps and no answer). Every picture a widget
+  // test imported waited behind it, its wait window up for good. So it is
+  // named: what the test engine measures, 65536 — it cuts no picture a test
+  // makes. A test that stands at another side puts this one back.
+  debugPictureSideLimit = 1 << 16;
   // The same fake clock again: a compose that makes tile pictures in turn
   // gives way through a turn of the REAL event queue (a port message),
   // which a `testWidgets` clock never waits — a test that settles a cold

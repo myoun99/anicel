@@ -22,6 +22,7 @@ import 'timeline/timeline_grid_metrics.dart'
     show timelineLayerRowGrowthIn;
 import 'brush/transform_tool_options.dart';
 import 'editor_session_manager.dart';
+import 'range_move_asking_first.dart';
 import 'session/session_legend_callbacks.dart';
 import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
@@ -32,6 +33,7 @@ import 'storyboard_panel.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
 import 'timeline/timeline_section_policy.dart' show TimelineSection;
+import 'timeline/lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
@@ -76,10 +78,10 @@ class StoryboardTabHost extends StatefulWidget {
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
     this.onToggleLaneGroupKey,
+    this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
     this.rowsChannel,
     this.transformOptions,
-    this.cameraViewEnabled,
-    this.cameraDimOpacity,
   });
 
   /// The legend's row filter, shared with the timeline and the sheet
@@ -109,6 +111,12 @@ class StoryboardTabHost extends StatefulWidget {
   /// here as on the timeline's rail (I-73 ④ⓔ).
   final Set<String> expandedLaneGroupKeys;
   final ValueChanged<String>? onToggleLaneGroupKey;
+
+  /// …and the header graphs standing open over them, the same state and
+  /// verbs ([TimelineTabHost.laneGraphs]): a graph opened here is open on
+  /// the timeline's rail, and the other way round (I-89 ①).
+  final LaneGraphsView laneGraphs;
+  final LaneGraphVerbs? laneGraphVerbs;
 
   /// Where the panel hands its stacked rows to the shell's walkers — see
   /// [StoryboardPanel.rowsChannel].
@@ -181,15 +189,6 @@ class StoryboardTabHost extends StatefulWidget {
   /// window should do.
   final void Function(String path, ImportLayerSpot spot)? onPlaceMediaAsset;
 
-  /// The camera row's head is the timeline's camera row (I-73 ④): its eye is
-  /// the camera VIEW and its slider the view's DIM — the canvas's and the
-  /// camera panel's own notifiers, the ones [TimelineTabHost] is handed for
-  /// its camera row. ↩️Not this host's business from R28 #1 (the toggle went
-  /// beside the transport, then to the 문턱) until the storyboard had a
-  /// camera row; the 문턱's toggle is still the workspace's.
-  final ValueNotifier<bool>? cameraViewEnabled;
-  final ValueNotifier<double>? cameraDimOpacity;
-
   @override
   State<StoryboardTabHost> createState() => _StoryboardTabHostState();
 }
@@ -198,14 +197,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   EditorSessionManager get _session => widget.session;
 
   /// The rows' buttons as a press asks them — the timeline rail's own
-  /// wiring, spread over the row selection when the pressed row is in it;
-  /// the camera row's eye and slider drive the camera view, as on the
-  /// timeline's rail.
-  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(
-    _session,
-    cameraView: widget.cameraViewEnabled,
-    cameraDim: widget.cameraDimOpacity,
-  );
+  /// wiring, spread over the row selection when the pressed row is in it.
+  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(_session);
 
   /// The view cluster, kept by what it shows across this host's rebuilds —
   /// the timeline panel's keep (F-244 ⑧).
@@ -226,6 +219,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   // track's — they read the track channel now, as the V rows' labels do.
   // #844's point survives on that channel: the labels subscribe, and a
   // committed seek repaints those cells instead of rebuilding the panel.
+
+  /// F-357: the unworked-block tint's fact for the conte row, which crosses
+  /// every cut, and the red of a cel that cannot be read (as the timeline's
+  /// rows wear it) — and their event, bound once like the timeline host's
+  /// (a fresh record per build would re-subscribe the row's painter).
+  late final ConteCelContent _conteCelContent = (
+    holdsAPicture: _session.layerStack.celHoldsAPicture,
+    cannotBeRead: _session.layerStack.celCannotBeRead,
+    revision: _session.layerStack.celTintRevision,
+  );
 
   /// Whatever can change a frame's cached-ness — warm progress AND pixel
   /// edits (composites self-validate by signature, so an edit raises no
@@ -462,6 +465,28 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     );
   }
 
+  /// The cells' double tap on a LANE (유저 2026-09-11: 「…싹 법 하나로
+  /// 통일」) — the timeline's own door ([activateCellOnDoubleTap]: a key
+  /// opens, an empty cell is keyed) on the layer in hand, at the cell the
+  /// double click names ([globalFrame]). The first click stood on the frame
+  /// under the pointer, and under a pixel a cell the double click names the
+  /// pixel's ([timelineDoubleTapAim]), so it lands there first — as the
+  /// timeline's door seeks its own frame.
+  ///
+  /// ↩️It forked by itself on this rail's Edit and ＋, and answered where
+  /// the first click had stood (I-89 ① ⓕ, 2026-10-20).
+  Future<void> _activateLaneCell(int globalFrame) async {
+    if (_session.editingGlobalFrame != globalFrame) {
+      _session.selectGlobalFrame(globalFrame);
+    }
+    await activateCellOnDoubleTap(
+      context,
+      _session,
+      layerId: _session.activeLayer?.id,
+      frameIndex: _session.currentFrameIndex,
+    );
+  }
+
   /// I-48: a double click on a layer's label renames the rows its first
   /// press acted on — the timeline rail's door, on this rail's rows.
   VoidCallback _renameOnLabelDoubleClick(LayerId pressed) =>
@@ -655,13 +680,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               child: Offstage(
                 offstage: PanelCollapsedScope.of(context),
                 child: ListenableBuilder(
-                  // …and the camera VIEW, which the camera row's eye shows
-                  // and which is no session notify (the timeline host hears
-                  // it the same way).
-                  listenable: Listenable.merge([
-                    _session.voiceRecording.voiceRecordPreviewLane,
-                    ?widget.cameraViewEnabled,
-                  ]),
+                  listenable: _session.voiceRecording.voiceRecordPreviewLane,
                   builder: (context, _) => StoryboardPanel(
                     project: _session.repository.requireProject(),
                     rowFilter: widget.rowFilter,
@@ -673,8 +692,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     expandedLaneGroupKeys: widget.expandedLaneGroupKeys,
                     onToggleLaneGroupKey: widget.onToggleLaneGroupKey,
+                    laneGraphs: widget.laneGraphs,
+                    laneGraphVerbs: widget.laneGraphVerbs,
+                    laneGraphsNow: () => _session.railView.laneGraphs.value,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                     dragPreview: _session.dragPreview,
+                    conteCelContent: _conteCelContent,
                     // ↩️While playing, this named the PLAYING cut and the
                     // stop caught the active cut up; a run's crossing lands
                     // the cut it reaches since I-57 ②, so they are one.
@@ -741,6 +764,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         seekStoryboardGlobalFrame(_session, frame);
                       }
                     },
+                    // And the press that stood INSIDE the selection and
+                    // turned out to be a tap lets it go — the timeline
+                    // rail's verb, as is (T10's second half).
+                    onSettledPress: _session.clearTimelineSelections,
                     labelDoubleClick: _renameOnLabelDoubleClick,
                     onSelectTrack: (trackId) =>
                         _session.standOnRow(TrackRowAddress(trackId)),
@@ -828,7 +855,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                               frameDelta: frameDelta,
                               targetLayerId: targetLayerId,
                             ),
-                        onEnd: _session.rangeMove.endFrameRangeMoveDrag,
+                        onEnd: () => unawaited(
+                          releaseRangeMoveAskingFirst(context, _session),
+                        ),
                         onCancel: _session.rangeMove.cancelFrameRangeMoveDrag,
                       ),
                     ),
@@ -940,19 +969,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           ),
                       // H18: the cells family's release rule, here too.
                       onTapClear: _session.clearLaneRangeSelection,
-                      // The cells' double tap on a lane (유저 2026-09-11:
-                      // 「…싹 법 하나로 통일」), through this rail's own two
-                      // verbs — its Edit for a key, its ＋ for an empty cell.
-                      onActivateAt: (layerId, laneId, globalFrame) {
-                        if (_session.laneVerbs.canNameLaneKeys) {
-                          unawaited(editActiveInstance(context, _session));
-                        } else {
-                          _toolbarPanel.createInstance();
-                        }
-                      },
+                      onActivateAt: (_, _, globalFrame) =>
+                          unawaited(_activateLaneCell(globalFrame)),
                       onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
-                      onMoveUpdate: (frameDelta) => _session
-                          .laneMove.updateLaneRangeMoveDrag(frameDelta: frameDelta),
+                      onMoveUpdate: (frameDelta, {values}) => _session
+                          .laneMove
+                          .updateLaneRangeMoveDrag(
+                            frameDelta: frameDelta,
+                            values: values,
+                          ),
                       onMoveEnd: _session.laneMove.endLaneRangeMoveDrag,
                       onMoveCancel: _session.laneMove.cancelLaneRangeMoveDrag,
                     ),
@@ -991,6 +1016,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           layer.id,
                           lane.laneId,
                         ),
+                    laneGroupOnOf: _session.laneVerbs.isLaneGroupOn,
                     poseDisplaySize: _session.camera.cameraFrameSize,
                     // No onSetCutFade: the fade handles went with the V row's
                     // transform. F.I/F.O spans on the transition row are the
@@ -1032,14 +1058,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // their blend is that rail's own verb.
                     onLayerBlendModeSelected: _rowPresses.pickBlendMode,
                     // The timeline's rail legend on this panel too (UI-R5): the
-                    // same session-backed bulk flyouts + master opacity bar; the
-                    // row solos stand down (the storyboard rail is track-global,
-                    // no row filter here).
+                    // same session-backed bulk flyouts, solos and master
+                    // opacity bar (#904: every chip). ↩️The row solos stood
+                    // down here, with no row filter, until then.
                     visibilitySoloEnabled: _session.visibilitySolo.layerVisibilitySoloEnabled,
                     // What its legend opens, for a key on this panel (I-40).
-                    onLegendMenus: (menus) => _session.railLegends.publish(
+                    legendHand: _session.railLegends.handOf(
                       WorkingPanel.storyboard,
-                      menus,
                     ),
                     legend: sessionLegendCallbacks(
                       _session,
@@ -1089,7 +1114,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                               frameDelta: frameDelta,
                               targetLayerId: targetLayerId,
                             ),
-                        onEnd: _session.rangeMove.endFrameRangeMoveDrag,
+                        onEnd: () => unawaited(
+                          releaseRangeMoveAskingFirst(context, _session),
+                        ),
                         onCancel: _session.rangeMove.cancelFrameRangeMoveDrag,
                       ),
                     ),
@@ -1148,7 +1175,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onEditConteBlock: _editConteBlock,
                     // The CAMERA row (I-73 ④): a press stands in the cut it
                     // names, a double click is the timeline camera row's, and
-                    // its head is that row's — eye and slider on the view.
+                    // its head is that row's.
                     onCameraCutPress: _pressCameraCut,
                     onEditCameraCell: () => unawaited(_editCameraCell()),
                     // A projection row's lane labels read the cut stood in
@@ -1157,8 +1184,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     cutFrameCursor: _session.playheadCursors.cutFrame,
                     onSeekCutFrame: (cutId, ownFrame) =>
                         seekStoryboardCutFrame(_session, cutId, ownFrame),
-                    cameraViewEnabled: widget.cameraViewEnabled,
-                    cameraDimOpacity: widget.cameraDimOpacity,
                   ),
                 ),
               ),

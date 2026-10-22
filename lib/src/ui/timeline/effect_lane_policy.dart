@@ -89,12 +89,15 @@ List<PropertyLaneRow> effectPropertyLanes(
         // parameter.
         groupEnabled: effect.enabled,
         // The header carries its members' key union (UI-R20 #13), so one
-        // glance finds the effect's keys while it stays collapsed — and
-        // with the marks they wear, the same union the Transform header
-        // draws ([unionKeyMarks]).
+        // glance finds the effect's keys while it stays collapsed — with
+        // the marks they wear and the names they carry, the same unions the
+        // Transform header draws ([unionKeyMarks], [unionKeyNames]).
         keyMarks: unionKeyMarks([
           for (final parameter in effect.parameters.values)
             keyMarksOf(parameter.track),
+        ]),
+        keyNames: unionKeyNames([
+          for (final parameter in effect.parameters.values) parameter.track,
         ]),
         showsKeyNavigator: false,
         isGroupHeader: true,
@@ -182,12 +185,7 @@ String formatEffectLaneValue(EffectParameterSpec spec, double value) {
 /// parse failure (the editor then ignores the input, like the transform
 /// lanes).
 double? parseEffectLaneValue(EffectParameterSpec spec, String input) {
-  final raw = input
-      .replaceAll('°', '')
-      .replaceAll('px', '')
-      .replaceAll('%', '')
-      .trim();
-  final value = double.tryParse(raw);
+  final value = columnValueOf(input);
   if (value == null) {
     return null;
   }
@@ -206,5 +204,8 @@ String? scrubEffectLaneValue(
   if (current == null) {
     return null;
   }
-  return formatEffectLaneValue(spec, spec.clamp(current + dragDelta.dx * 0.5));
+  return formatEffectLaneValue(
+    spec,
+    spec.clamp(scrubbedNumber(current, dragDelta)),
+  );
 }

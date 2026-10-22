@@ -16,8 +16,10 @@ part of 'cel_text_layout.dart';
 /// and the block hangs from it — its TOP RIGHT corner for a box, whose
 /// columns run [CelTextContent.wrapWidth] long; and for a text that grows,
 /// the point its columns are set about: their top, their middle or their
-/// bottom as [CelTextContent.align] says (left · centre · right, read down
-/// the column), at the first column's right.
+/// bottom as [CelTextContent.standsBy] says (left · centre · right, read
+/// down the column), at the first column's right. Each column's cells
+/// stand down the box the text is set in ([_placed]) as ITS paragraph's
+/// [CelTextParagraph.align] says.
 ///
 /// ⚠️ONE PAINTER A CELL, A PASS. A cell is drawn turned, shifted or scaled
 /// on its own, so the engine's one paragraph cannot hold them — and making
@@ -66,7 +68,7 @@ class _ColumnsSetting implements _TextSetting {
     this._measured,
     this._letters,
     this.block,
-  );
+  ) : _lines = _columnLinesOf(_columns);
 
   /// Every cell of the text, in reading order.
   final List<_ColumnCell> _cells;
@@ -82,6 +84,9 @@ class _ColumnsSetting implements _TextSetting {
   /// cell is not that pass's to draw.
   final CanvasLetterPasses<List<_HeldCellPainter?>> _letters;
 
+  /// The lines the letters wear, down their columns.
+  final CanvasLetterLines _lines;
+
   /// The columns' block: as long as the longest column — or as the box, for
   /// a text that wraps — and as wide as its columns.
   @override
@@ -95,12 +100,19 @@ class _ColumnsSetting implements _TextSetting {
   void paint(ui.Canvas canvas, {required ui.Rect within}) => _letters.paint(
     canvas,
     within: within,
+    lines: _lines,
     draw: (painters) {
       for (final (index, cell) in _cells.indexed) {
         final held = painters[index];
         if (held == null) {
           continue;
         }
+        // Drawn as wide as the text says ([_ColumnCell.letterWidth]) WHERE
+        // IT STANDS: the renderer narrows about the frame's x = 0, so the
+        // cell is brought back to its middle.
+        canvas
+          ..save()
+          ..translate((1 - cell.letterWidth) * cell.centre.dx, 0);
         paintVerticalTextCell(
           canvas,
           cell.cell,
@@ -110,7 +122,9 @@ class _ColumnsSetting implements _TextSetting {
           // A cel is paper: its letters are set for its own pixels, never
           // drawn from a bake made for the screen's.
           setWord: paintScaledText,
+          narrowing: (x: cell.letterWidth, y: 1),
         );
+        canvas.restore();
       }
     },
   );
@@ -120,6 +134,25 @@ class _ColumnsSetting implements _TextSetting {
   @override
   ui.Rect caretRect(TextPosition position) {
     final offset = position.offset;
+    final column = _columnOf(offset);
+    for (final cell in column.cells) {
+      if (offset >= cell.start && offset < cell.end) {
+        return cell.caretAt(offset, _fillOf(cell));
+      }
+    }
+    return ui.Rect.fromLTWH(column.left, column.endsAt, column.width, 0);
+  }
+
+  /// From its column's left to its right — the whole column's, which a
+  /// caret between two digits set side by side is not.
+  @override
+  ({double from, double to}) lineAcross(TextPosition position) {
+    final column = _columnOf(position.offset);
+    return (from: column.left, to: column.left + column.width);
+  }
+
+  /// The column a caret at [offset] stands in.
+  _Column _columnOf(int offset) {
     for (final column in _columns) {
       if (offset < column.start || offset > column.end) {
         continue;
@@ -129,15 +162,9 @@ class _ColumnsSetting implements _TextSetting {
       if (offset == column.end && column.wrapped) {
         continue;
       }
-      for (final cell in column.cells) {
-        if (offset >= cell.start && offset < cell.end) {
-          return cell.caretAt(offset, _fillOf(cell));
-        }
-      }
-      return ui.Rect.fromLTWH(column.left, column.endsAt, column.width, 0);
+      return column;
     }
-    final last = _columns.last;
-    return ui.Rect.fromLTWH(last.left, last.endsAt, last.width, 0);
+    return _columns.last;
   }
 
   /// One box per cell the letters run over — the whole of its place down
@@ -220,6 +247,7 @@ class _ColumnCell {
     required this.cell,
     required this.start,
     required this.style,
+    required this.letterWidth,
   });
 
   /// Its place among the text's cells — and so among each pass's painters.
@@ -231,6 +259,15 @@ class _ColumnCell {
   final int start;
 
   final TextLetterStyle style;
+
+  /// How wide its letters are drawn ACROSS the column, as a share of how
+  /// they are set — the text's ([CelTextContent.letterWidth]) — in their
+  /// place: the middle of the column, which stands where it does.
+  ///
+  /// 🗣️유저 2026-10-18 (text-letters-lean-and-underline-Q3): 「글자만
+  /// 좁아지고 열 간격은 그대로」 — the letters alone, as a typesetter's
+  /// condensed type is; the columns as far apart as their pitch says.
+  final double letterWidth;
 
   /// Where its letters end in the text.
   int get end => start + cell.text.length;
@@ -301,18 +338,25 @@ class _ColumnCell {
 
   /// How far across the cell the place [offset] stands, for the digits of
   /// a pair set side by side.
-  double _acrossTo(int offset, TextPainter fill) {
-    final width = fill.width * _fit.scale;
-    final from = room.center.dx - width / 2;
-    return from +
-        fill
-                .getOffsetForCaret(
-                  TextPosition(offset: offset - start),
-                  ui.Rect.zero,
-                )
-                .dx *
-            _fit.scale;
-  }
+  double _acrossTo(int offset, TextPainter fill) =>
+      _pairLeft(fill) +
+      fill
+              .getOffsetForCaret(
+                TextPosition(offset: offset - start),
+                ui.Rect.zero,
+              )
+              .dx *
+          _acrossScale;
+
+  /// How wide the digits of a pair set side by side are drawn across the
+  /// column, as a share of how they are set: their fit to it, as wide as
+  /// the text's letters are drawn.
+  double get _acrossScale => _fit.scale * letterWidth;
+
+  /// Where the digits of a pair set side by side begin across the cell:
+  /// centred in it.
+  double _pairLeft(TextPainter fill) =>
+      room.center.dx - fill.width * _acrossScale / 2;
 
   bool get _sideBySide => cell.form == VerticalGlyphForm.tateChuYoko;
 
@@ -362,8 +406,7 @@ class _ColumnCell {
     }
     final inPainter = _sideBySide
         ? ui.Offset(
-            (local.dx - (room.center.dx - fill.width * _fit.scale / 2)) /
-                _fit.scale,
+            (local.dx - _pairLeft(fill)) / _acrossScale,
             fill.height / 2,
           )
         : ui.Offset((local.dy - room.top) / _fit.scale, fill.height / 2);
@@ -380,6 +423,7 @@ class _Column {
     required this.end,
     required this.wrapped,
     required this.width,
+    required this.paragraph,
   });
 
   final List<_ColumnCell> cells;
@@ -395,6 +439,9 @@ class _Column {
 
   /// How wide it is: the pitch of its largest letter.
   final double width;
+
+  /// The paragraph it is a column of: where its cells stand down it.
+  final CelTextParagraph paragraph;
 
   /// How far its cells run down it.
   double get length => cells.fold(0, (sum, cell) => sum + cell.advance);
@@ -426,6 +473,7 @@ List<_ColumnCell> _columnCellsOf(CelTextContent content) {
             cell: cell,
             start: at + within,
             style: span.style,
+            letterWidth: content.letterWidth,
           ),
         );
         within += cell.text.length;
@@ -446,9 +494,13 @@ List<_Column> _columnsOf(
 ) {
   final breaker = _ColumnBreaker(content, cells, nextLetterStyle);
   var start = 0;
-  for (final paragraph in content.text.split('\n')) {
-    breaker.breakParagraph(start, start + paragraph.length);
-    start += paragraph.length + 1;
+  for (final (index, letters) in content.text.split('\n').indexed) {
+    breaker.breakParagraph(
+      start,
+      start + letters.length,
+      content.paragraphs[index],
+    );
+    start += letters.length + 1;
   }
   return breaker.columns;
 }
@@ -473,10 +525,15 @@ class _ColumnBreaker {
   /// The first cell no column holds yet.
   int _next = 0;
 
+  /// The paragraph [breakParagraph] is breaking: its columns are as wide as
+  /// ITS pitch says.
+  late CelTextParagraph _paragraph;
+
   /// Breaks the paragraph of the letters from [start] up to [end] — the
   /// break that ends it, or the text's end — into its columns: one at
   /// least, though it holds no letter.
-  void breakParagraph(int start, int end) {
+  void breakParagraph(int start, int end, CelTextParagraph paragraph) {
+    _paragraph = paragraph;
     final limit = _content.wrapWidth;
     var column = <_ColumnCell>[];
     var columnStart = start;
@@ -546,7 +603,8 @@ class _ColumnBreaker {
         start: start,
         end: end,
         wrapped: wrapped,
-        width: largest * _content.lineHeight,
+        width: largest * _paragraph.lineHeight,
+        paragraph: _paragraph,
       ),
     );
   }
@@ -566,8 +624,64 @@ class _ColumnBreaker {
   }
 }
 
+/// THE LINES OF A TEXT SET IN COLUMNS — down each column, as far as the
+/// letters that wear them run in it: the one under the letters on their
+/// RIGHT, as a column's side line is drawn (傍線, where the marks of the
+/// letters being composed stand too — [_ColumnsSetting.marksBeside]), and
+/// the one through them down the middle. The white space a column ends
+/// with hangs past it bare, as it does past a line's end
+/// (`canvasLetterLinesOf`).
+///
+/// ⚠️THE FACE'S NUMBERS SAY HOW THICK, NOT WHERE. Where a face puts its
+/// lines is said of letters standing on a baseline, and a column has none:
+/// its letters stand centred across it, each in its own way — upright,
+/// lying down, a pair side by side. So the side line hugs the right edge of
+/// a letter's square, outside it, and the strikethrough runs down the
+/// square's middle — each as thick as the face asked for says
+/// ([CanvasLetterFaces.linesOf]).
+CanvasLetterLines _columnLinesOf(List<_Column> columns) {
+  final lines = CanvasLetterLinesBuilder();
+  for (final column in columns) {
+    final inked = column.cells.lastIndexWhere((cell) => !cell.isSpace);
+    for (final cell in column.cells.take(inked + 1)) {
+      final letters = cell.style;
+      if (!letters.underline && !letters.strikethrough) {
+        continue;
+      }
+      final face = CanvasLetterFaces.current.linesOf(letters.fontFamily);
+      final size = letters.fontSize;
+      final room = cell.room;
+      final middle = room.center.dx;
+      if (letters.underline) {
+        // Outside the letter's square — as wide as it is drawn.
+        final inner = middle + size * cell.letterWidth / 2;
+        lines.under(
+          letters,
+          ui.Rect.fromLTRB(
+            inner,
+            room.top,
+            inner + face.underlineThickness * size,
+            room.bottom,
+          ),
+        );
+      }
+      if (letters.strikethrough) {
+        final half = face.strikethroughThickness * size / 2;
+        lines.through(
+          letters,
+          ui.Rect.fromLTRB(middle - half, room.top, middle + half, room.bottom),
+        );
+      }
+    }
+  }
+  return lines.build();
+}
+
 /// Places [columns] — and their cells — in the text's own frame, and
-/// answers their block.
+/// answers their block: each column's cells down it as its paragraph's
+/// alignment says, in the box the text is set in — a box's own, or for a
+/// text that grows the one it would be made ([celTextBoxLengthPast]), so
+/// that swap moves no letter however its paragraphs are aligned.
 ui.Rect _placed(CelTextContent content, List<_Column> columns) {
   final width = columns.fold<double>(0, (sum, column) => sum + column.width);
   final longest = columns.fold<double>(
@@ -576,25 +690,18 @@ ui.Rect _placed(CelTextContent content, List<_Column> columns) {
   );
   final limit = content.wrapWidth;
   final height = limit ?? longest;
+  final boxLength = limit ?? celTextBoxLengthPast(longest);
+  final standsBy = content.standsBy.shareBefore;
   // A box hangs from its anchor; a text that grows stands about it.
-  final top = limit != null
-      ? 0.0
-      : switch (content.align) {
-          TextCelAlign.left => 0.0,
-          TextCelAlign.center => -height / 2,
-          TextCelAlign.right => -height,
-        };
+  final top = limit != null ? 0.0 : -height * standsBy;
+  // Its box begins what of it is past the block — or half of that — before
+  // the block does, as the text stands; a box is its block.
+  final boxTop = top - (boxLength - height) * standsBy;
   var right = 0.0;
   for (final column in columns) {
     column.left = right - column.width;
-    final room = height - column.length;
-    var down =
-        top +
-        switch (content.align) {
-          TextCelAlign.left => 0.0,
-          TextCelAlign.center => room / 2,
-          TextCelAlign.right => room,
-        };
+    final room = boxLength - column.length;
+    var down = boxTop + room * column.paragraph.align.shareBefore;
     for (final cell in column.cells) {
       cell.room = ui.Rect.fromLTWH(
         column.left,

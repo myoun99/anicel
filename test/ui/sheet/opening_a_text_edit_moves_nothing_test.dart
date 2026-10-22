@@ -300,5 +300,19 @@ void main() {
         isEmpty,
       );
     });
+
+    testWidgets('the name box: its one line is typed on its printed glyphs, '
+        'centred as printed (I-112)', (tester) async {
+      await pumpSheet(tester);
+      session.cutVerbs.setActiveCutSheetArtist('大川ユキ');
+      await tester.pumpAndSettle();
+      final box = tester.getRect(
+        find.byKey(const ValueKey<String>('timesheet-name-edit-p0')),
+      );
+      expect(
+        await openAndCompare(tester, box: box, field: field),
+        isEmpty,
+      );
+    });
   });
 }

@@ -4,6 +4,7 @@ import '../session/canvas_adjust.dart';
 import '../../services/last_stroke_slot.dart';
 import 'brush_tool_state.dart';
 import 'canvas_selection_commands.dart';
+import 'canvas_traces.dart';
 import 'cel_text_commands.dart';
 import 'transform_tool_options.dart';
 
@@ -23,6 +24,7 @@ import 'transform_tool_options.dart';
 class ConfirmVerb {
   ConfirmVerb({
     required this.selection,
+    required this.traces,
     required this.text,
     required this.lastStroke,
     required this.tool,
@@ -41,6 +43,9 @@ class ConfirmVerb {
 
   final CanvasSelectionCommands selection;
 
+  /// Every canvas's polygon trace — the canvas's and each viewer's (F-380).
+  final CanvasTraces traces;
+
   /// The text the canvas holds (R9-rest).
   final CelTextCommands text;
   final LastStrokeSlot lastStroke;
@@ -54,6 +59,7 @@ class ConfirmVerb {
   /// Everything [canConfirm] depends on.
   Listenable get changes => Listenable.merge([
     selection,
+    traces.changes,
     text,
     lastStroke,
     tool,
@@ -73,9 +79,9 @@ class ConfirmVerb {
     }
     // An open polygon outline is the newest thing a confirm can be closing,
     // and it is what the user is looking at (유저 확정 — 폴리곤 확정은 확정
-    // 버튼으로).
-    if (selection.hasOpenPolygon) {
-      return selection.closePolygon;
+    // 버튼으로) — on the canvas or in a viewer.
+    if (traces.open case final trace?) {
+      return trace.closePolygon;
     }
     // R9-rest: a text held by its box is what the user is in the middle
     // of, and confirming it lets go of it — what a click away does. (Held

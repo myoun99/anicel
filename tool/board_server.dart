@@ -127,19 +127,28 @@ List<File>? _liveSources;
 /// previous one. No rebuild, no notice, nothing to look at. That is exactly
 /// the failure the self-replace above was written to end, one level down.
 ///
-/// ⚠️ONE LEVEL is the whole graph here: each entry imports `board_model.dart`
-/// and that imports nothing of ours. Derived rather than listed, because a
-/// listed name is a word somebody has to remember — and this file has spent
-/// the day removing those.
+/// 🆕EVERY LEVEL, NOT ONE (2026-10-18, card tests-crowd-the-machine). One
+/// level was the whole graph only for the two board exes; `tool/run.sh` now
+/// builds any tool, and `board_ack` reaches `board_model` through
+/// `board_check`. The imports are followed until nothing new turns up.
+/// Derived rather than listed, because a listed name is a word somebody has
+/// to remember.
 ///
-/// ⛔THE SAME RULE LIVES IN `board_up.sh` (`sources_of`), because that is what
-/// WRITES the stamp. Two spellings of one rule: change both or neither.
+/// ⛔THE SAME RULE LIVES IN `tool/exe_stamp.sh` (`sources_of`), because that
+/// is what WRITES the stamp. Two spellings of one rule: change both or
+/// neither — the order included (theirs is `LC_ALL=C sort`, by byte).
 List<File> sourcesOfEntry(File entry) {
-  final dir = entry.parent.path;
+  final dir = entry.parent.path.replaceAll('\\', '/');
+  final imports = RegExp(r"^import '([A-Za-z0-9_]+\.dart)'", multiLine: true);
   final out = <String>{entry.path.replaceAll('\\', '/')};
-  final imports = RegExp(r"^import '([A-Za-z0-9_]+\.dart)';", multiLine: true);
-  for (final m in imports.allMatches(entry.readAsStringSync())) {
-    out.add('${dir.replaceAll('\\', '/')}/${m.group(1)}');
+  final open = [...out];
+  while (open.isNotEmpty) {
+    final file = File(open.removeLast());
+    if (!file.existsSync()) continue;
+    for (final m in imports.allMatches(file.readAsStringSync())) {
+      final path = '$dir/${m.group(1)}';
+      if (out.add(path)) open.add(path);
+    }
   }
   final paths = out.toList()..sort();
   return [for (final p in paths) File(p)];
@@ -281,10 +290,10 @@ Future<void> main(List<String> args) async {
     gitRoot: _flag(args, '--git') ?? Directory.current.path,
     door: asked.door,
   );
-  HttpServer server;
+  Stream<HttpRequest> requests;
   try {
-    // ⚠️The address is the door's and is worked out nowhere else.
-    server = await HttpServer.bind(doorListensOn(asked.door), port);
+    // ⚠️The addresses are the door's and are worked out nowhere else.
+    requests = (await listenAt(doorListensOn(asked.door), port)).requests;
   } on SocketException catch (e) {
     stderr.writeln('port $port is not available (${e.osError?.message}). '
         'Another board server is probably already running.');
@@ -298,7 +307,17 @@ Future<void> main(List<String> args) async {
   stdout.writeln('records:   $_recordsPath');
   stdout.writeln('shots:     $_shotsDir');
 
-  await answerAll(server);
+  // What the first page needs, read before anyone asks: the records — kept
+  // open, this process reads them all its life ([BoardRecords.keepOpen]) —
+  // the gate's answer, which a session's Stop asks first after a rebuild
+  // (🧪10-19: 275~437ms cold, then 2ms — the only lines in the slow log) —
+  // and the two slow answers ([_Stale]) on their way.
+  BoardRecords.of(File(_recordsPath)).keepOpen();
+  _board();
+  _checked();
+  unawaited(_prs());
+  unawaited(_checkouts());
+  await answerAll(requests);
 }
 
 /// Makes this isolate the server of the board in [records], behind [door].
@@ -324,22 +343,102 @@ void boardIs({
   _findOwnSource();
 }
 
-/// Answers [server]'s requests, one at a time and in the order they came.
+/// Listens at every one of [addresses] on one port — [port], or the one the
+/// first was given when [port] is 0 — and hands back their requests as one
+/// stream, for [answerAll] to take one at a time whichever door they came by.
+///
+/// ⚠️Only the first must be had: the rest are this machine's other spellings
+/// of the same door ([doorListensOn]), and a machine without them loses a
+/// slower connect, not the board.
+Future<({int port, Stream<HttpRequest> requests})> listenAt(
+  List<InternetAddress> addresses,
+  int port,
+) async {
+  final first = await HttpServer.bind(addresses.first, port);
+  final servers = [first];
+  for (final address in addresses.skip(1)) {
+    try {
+      servers.add(await HttpServer.bind(address, first.port));
+    } on SocketException catch (e) {
+      stderr.writeln('board: not listening at ${address.address} too '
+          '(${e.osError?.message})');
+    }
+  }
+  final requests = StreamController<HttpRequest>(
+    onCancel: () =>
+        Future.wait([for (final s in servers) s.close(force: true)]),
+  );
+  for (final server in servers) {
+    server.listen(requests.add, onError: requests.addError);
+  }
+  return (port: first.port, requests: requests.stream);
+}
+
+/// Answers [requests], one at a time and in the order they came.
 ///
 /// ⚠️ONE AT A TIME is why a record written here cannot land inside another:
 /// each request is answered whole before the next is taken.
-Future<void> answerAll(HttpServer server) async {
-  await for (final request in server) {
-    try {
-      await _handle(request);
-    } on Object catch (e) {
-      stderr.writeln('board: request failed: $e');
-      _noteFailed(request, e);
-      request.response.statusCode = 500;
-      await request.response.close();
-    }
+Future<void> answerAll(Stream<HttpRequest> requests) =>
+    inLine(requests, _answer);
+
+Future<void> _answer(HttpRequest request) async {
+  final took = Stopwatch()..start();
+  try {
+    await _handle(request);
+  } on Object catch (e) {
+    stderr.writeln('board: request failed: $e');
+    _noteFailed(request, e);
+    request.response.statusCode = 500;
+    await request.response.close();
+  }
+  if (took.elapsed > _kSlowRequest) {
+    noteRequestFailure(
+      File('${File(_recordsPath).parent.path}/$kSlowRequestLog'),
+      '${DateTime.now().toIso8601String()} ${request.method} '
+      '${request.uri.path} ${took.elapsedMilliseconds}ms',
+    );
   }
 }
+
+/// Takes [items] one at a time, in the order they came: [handle] finishes
+/// one before the next is taken — unless it steps out of the line
+/// ([outOfLine]) to wait on something that is not the line's.
+Future<void> inLine<T>(
+  Stream<T> items,
+  Future<void> Function(T item) handle,
+) async {
+  await for (final item in items) {
+    final out = Completer<void>();
+    await Future.any([
+      runZoned(() => handle(item), zoneValues: {_stepOut: out}),
+      out.future,
+    ]);
+  }
+}
+
+final _stepOut = Object();
+
+/// [slow], waited on out of the line ([inLine]): the items behind it are
+/// taken meanwhile. 🧪10-19: right after a rebuild the first page waited
+/// 4.4s on the first `git` of thirty-one checkouts, and every submit and
+/// every session's gate stood behind it — 2.9s for an answer that takes 2ms.
+/// ⚠️Only for a wait that writes no record after it: what follows runs
+/// between the line's own awaits.
+Future<T> outOfLine<T>(Future<T> slow) {
+  final out = Zone.current[_stepOut] as Completer<void>?;
+  if (out != null && !out.isCompleted) out.complete();
+  return slow;
+}
+
+/// Past this a request leaves a line in [kSlowRequestLog]. Every request
+/// waits for the ones before it, so one slow answer is everybody's; and the
+/// board answers from memory now ([BoardRecords]), so a slow one is a
+/// regression with its path written down — the next 「보드가 느려」 starts
+/// from that file instead of from a guess (10-19).
+const _kSlowRequest = Duration(milliseconds: 250);
+
+/// Beside [kRequestFailureLog], kept the same way.
+const kSlowRequestLog = '.board_server.slow.log';
 
 /// The file a request that broke the server leaves its line in, beside the
 /// records — this machine's, like the flags.
@@ -730,7 +829,7 @@ Future<void> _handle(HttpRequest req) async {
       // 🆕「이 빌드로 시험 중」: what master is right now, and when — the build
       // verification is grouped by.
       case '/build':
-        final commit = _master();
+        final commit = await _master();
         _append({
           'kind': 'build',
           'id': 'build-${_now().substring(0, 19).replaceAll(':', '')}',
@@ -771,7 +870,7 @@ Future<void> _handle(HttpRequest req) async {
       case '/purge':
         _purge('${body['id']}');
       case '/refresh':
-        await _ghStale.force();
+        await outOfLine(_ghStale.force());
       case '/shot':
         _saveShot(body);
       default:
@@ -802,7 +901,7 @@ Future<void> _handle(HttpRequest req) async {
     req.response
       ..headers.contentType = ContentType.json
       ..headers.set('Cache-Control', 'no-store')
-      ..write(jsonEncode(data));
+      ..write(_listText(data));
     await req.response.close();
     return;
   }
@@ -820,13 +919,13 @@ Future<void> _handle(HttpRequest req) async {
     req.response
       ..headers.contentType = ContentType.text
       ..headers.set('Cache-Control', 'no-store')
-      ..write(boardCheckComplaints(File(_recordsPath)));
+      ..write(_checked());
     await req.response.close();
     return;
   }
   if (path == '/api/records') {
     final asked = recordsAsked(
-      File(_recordsPath).readAsLinesSync(),
+      BoardRecords.of(File(_recordsPath)),
       id: req.uri.queryParameters['id'],
       since: req.uri.queryParameters['since'],
     );
@@ -1026,30 +1125,53 @@ document.getElementById('door').addEventListener('submit', function(e){
 /// The records a tool asked for, as the lines they are: one card's (its
 /// questions with it) by [id], or everything stamped at or after [since].
 /// Null when it asked for neither — the whole file is not an answer.
-String? recordsAsked(Iterable<String> lines, {String? id, String? since}) {
+String? recordsAsked(BoardRecords records, {String? id, String? since}) {
   if (id == null && since == null) return null;
   final out = StringBuffer();
-  for (final line in lines) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty) continue;
-    Map<String, dynamic> json;
-    try {
-      json = jsonDecode(trimmed) as Map<String, dynamic>;
-    } on Object catch (_) {
-      continue;
-    }
-    final lineId = '${json['id'] ?? ''}';
-    if (id != null && lineId != id && !lineId.startsWith('$id-Q')) continue;
-    if (since != null && '${json['ts'] ?? ''}'.compareTo(since) < 0) continue;
-    out.writeln(trimmed);
+  for (final line in records.textOf((line) =>
+      (id == null || line.id == id || line.id.startsWith('$id-Q')) &&
+      (since == null || line.ts.compareTo(since) >= 0))) {
+    out.writeln(line);
   }
   return out.toString();
 }
 
+/// The gate's judgement, kept per reading of the records and of the acks.
+/// Every session asks at the end of every turn, on both machines (the Stop
+/// hook), and almost always about a board that has not moved since the last
+/// one asked. ⚠️Per minute too: the gate reads the clock (a claim lapses, a
+/// stamp stops being in the future).
+({Object key, String text})? _gate;
+
+String _checked() {
+  final records = File(_recordsPath);
+  final acks = gateAckFile(records).statSync();
+  final key = (
+    BoardRecords.of(records).stamp,
+    acks.size,
+    acks.modified,
+    DateTime.now().millisecondsSinceEpoch ~/ 60000,
+  );
+  final held = _gate;
+  if (held != null && held.key == key) return held.text;
+  final text = boardCheckComplaints(records);
+  _gate = (key: key, text: text);
+  return text;
+}
+
 /// The commit master is at now, short — what a build marks.
-String _master() {
+Future<String> _master() => _git(_gitRoot, ['rev-parse', '--short', 'master']);
+
+/// What `git -C [dir] [args]` printed, trimmed — or empty when it failed.
+/// 🚨★★★NEVER `Process.runSync` IN THIS FILE: a request waits for every
+/// request before it, so a process run in one stops the whole board. 🧪10-19:
+/// [_readCheckouts] ran sixty-two of them in a row on a refresh 「in the
+/// background」 that was not — 5~7s inside whichever request came 20s after
+/// the last, the 10s submit the user measured by hand.
+/// `the_board_answers_from_memory_test` keeps it out.
+Future<String> _git(String dir, List<String> args) async {
   try {
-    final r = Process.runSync('git', ['-C', _gitRoot, 'rev-parse', '--short', 'master'],
+    final r = await Process.run('git', ['-C', dir, ...args],
         stdoutEncoding: utf8);
     return r.exitCode == 0 ? (r.stdout as String).trim() : '';
   } on Object catch (_) {
@@ -1121,16 +1243,7 @@ String _intake(Map<String, dynamic> body) {
 bool _purge(String id) {
   final entry = _board().where((e) => e.id == id);
   if (entry.isEmpty || entry.first.state != 'inbox') return false;
-  final kept = File(_recordsPath).readAsLinesSync().where((line) {
-    final t = line.trim();
-    if (t.isEmpty) return false;
-    try {
-      return (jsonDecode(t) as Map<String, dynamic>)['id'] != id;
-    } on Object catch (_) {
-      return true; // unreadable lines are somebody else's problem, not ours
-    }
-  });
-  File(_recordsPath).writeAsStringSync('${kept.join('\n')}\n');
+  BoardRecords.of(File(_recordsPath)).rewriteWithout(id);
   for (final f in Directory(_shotsDir).listSync()) {
     final name = f.path.split(RegExp(r'[\\/]')).last;
     if (name.startsWith('$id-')) f.deleteSync();
@@ -1225,18 +1338,28 @@ class _Gh {
 /// ⚠️A failed refresh keeps the last good value rather than blanking it: the
 /// board saying nothing is worse than the board being a minute old, and `gh`
 /// failing outright already has its own banner.
+///
+/// 🚨★★★「BEHIND」 ONLY IF [_fetch] WAITS ON REAL WORK. An `async` function
+/// runs synchronously up to its first `await`, so a fetch made of
+/// `Process.runSync` ran whole inside [_refresh]'s call — inside the request
+/// that noticed the window had lapsed. 🧪10-19: the checkouts were that fetch
+/// from the day this class was written; 5~7s per lapse once there were
+/// thirty-one worktrees. See [_git].
 class _Stale<T> {
   _Stale(this._fetch);
 
   final Future<T> Function() _fetch;
   T? _value;
+  Future<T>? _first;
   DateTime _at = DateTime.fromMillisecondsSinceEpoch(0);
   bool _busy = false;
 
-  /// Only the FIRST caller of all ever waits.
+  /// Only the FIRST callers of all ever wait — on one fetch, which [main]
+  /// starts before the first request comes, and out of the line
+  /// ([outOfLine]).
   Future<T> get() async {
     final held = _value;
-    if (held == null) return _store(await _fetch());
+    if (held == null) return _store(await outOfLine(_first ??= _fetch()));
     if (DateTime.now().difference(_at).inSeconds >= _ghCacheSeconds) _refresh();
     return held;
   }
@@ -1373,37 +1496,38 @@ final _gitStale = _Stale<List<_Checkout>>(_readCheckouts);
 Future<List<_Checkout>> _checkouts() => _gitStale.get();
 
 Future<List<_Checkout>> _readCheckouts() async {
-  String run(String dir, List<String> args) {
-    try {
-      final r = Process.runSync('git', ['-C', dir, ...args],
-          stdoutEncoding: utf8);
-      return r.exitCode == 0 ? (r.stdout as String).trim() : '';
-    } on Object catch (_) {
-      return '';
-    }
-  }
-
-  final list = run(_gitRoot, ['worktree', 'list', '--porcelain']);
-  final out = <_Checkout>[];
+  final list = await _git(_gitRoot, ['worktree', 'list', '--porcelain']);
+  final named = <(String, String)>[];
   String? path;
   for (final line in const LineSplitter().convert(list)) {
     if (line.startsWith('worktree ')) {
       path = line.substring(9).trim();
     } else if (line.startsWith('branch ') && path != null) {
-      final branch = line.substring(7).replaceFirst('refs/heads/', '').trim();
-      final counts = run(path, [
-        'rev-list', '--left-right', '--count', 'origin/master...HEAD',
-      ]).split(RegExp(r'\s+'));
-      final dirty = run(path, ['status', '--porcelain']);
-      out.add(_Checkout(
-        path,
-        branch,
-        counts.length > 1 ? (int.tryParse(counts[1]) ?? 0) : 0,
-        counts.isNotEmpty ? (int.tryParse(counts[0]) ?? 0) : 0,
-        dirty.isEmpty ? 0 : const LineSplitter().convert(dirty).length,
-      ));
+      named.add(
+          (path, line.substring(7).replaceFirst('refs/heads/', '').trim()));
       path = null;
     }
+  }
+  Future<_Checkout> read((String, String) checkout) async {
+    final (path, branch) = checkout;
+    final counts = (await _git(path, [
+      'rev-list', '--left-right', '--count', 'origin/master...HEAD',
+    ])).split(RegExp(r'\s+'));
+    final dirty = await _git(path, ['status', '--porcelain']);
+    return _Checkout(
+      path,
+      branch,
+      counts.length > 1 ? (int.tryParse(counts[1]) ?? 0) : 0,
+      counts.isNotEmpty ? (int.tryParse(counts[0]) ?? 0) : 0,
+      dirty.isEmpty ? 0 : const LineSplitter().convert(dirty).length,
+    );
+  }
+
+  // Four at a time: thirty-one checkouts at once would be sixty-two `git`
+  // processes on the disk the tests are using.
+  final out = <_Checkout>[];
+  for (var i = 0; i < named.length; i += 4) {
+    out.addAll(await Future.wait(named.skip(i).take(4).map(read)));
   }
   return out;
 }
@@ -1550,29 +1674,9 @@ Map<String, dynamic>? moveRecord({
 /// ⛔No timer and no push: the board changes when a person acts on it or
 /// reloads it (유저 2026-08-31: 「그냥 새로고침 누르면 갱신되도록」).
 
-/// The file as last read. ⚠️Re-read when it changes, and after a minute even
-/// if it did not: 하는 중 expires by the clock ([wentQuiet]), not by a write.
-({int size, DateTime modified, DateTime at, List<BoardCard> cards})? _held;
-
-List<BoardCard> _board() {
-  final file = File(_recordsPath);
-  final stat = file.statSync();
-  final held = _held;
-  if (held != null &&
-      held.size == stat.size &&
-      held.modified == stat.modified &&
-      DateTime.now().difference(held.at) < const Duration(minutes: 1)) {
-    return held.cards;
-  }
-  final cards = readBoard(file);
-  _held = (
-    size: stat.size,
-    modified: stat.modified,
-    at: DateTime.now(),
-    cards: cards,
-  );
-  return cards;
-}
+/// The board as the records say it now — read on from where the last request
+/// stopped ([BoardRecords]).
+List<BoardCard> _board() => readBoard(File(_recordsPath));
 
 /// What every body renderer reads besides its own card — set before any body
 /// is drawn.
@@ -1692,6 +1796,10 @@ Map<String, Object?> _headOf(BoardCard e, Set<int> openPrs) {
     'created': e.created,
     'updated': e.updated,
     'gap': _isGap(e),
+    'ai': switch (aiVerdictOf(e)) {
+      final v? => {'v': v.verdict, 'd': v.day},
+      null => null,
+    },
     'prs': [
       for (final n in e.prs) {'n': n, 'state': _prState[n] ?? ''},
     ],
@@ -1736,22 +1844,23 @@ Future<Map<String, Object?>> _boardJson() async {
   final entries = _board();
   final gh = await _prs();
   final gits = await _checkouts();
+  // One clock for the whole list, to the minute — see [_rowOf].
+  final now = DateTime.fromMillisecondsSinceEpoch(
+      DateTime.now().millisecondsSinceEpoch ~/ 60000 * 60000);
+  final key = (entries, gh, gits, now);
+  final held = _list;
+  if (held != null && held.key == key) return held.list;
   _prepare(entries, gh);
   final openPrs = {
     for (final pr in gh.prs)
       if (pr.state == 'OPEN') pr.number,
   };
-  final since = DateTime.now().subtract(_doneShows);
-  final heads = <Map<String, Object?>>[];
-  for (final e in [...entries.where(_isCard), ..._standIns(entries, gh)]) {
-    if (_ended(statusOf(e))) {
-      final at = DateTime.tryParse(e.updated);
-      if (at == null || at.isBefore(since)) continue;
-    }
-    heads.add(_headOf(e, openPrs));
-  }
-  return {
-    'cards': heads,
+  final since = now.subtract(_doneShows);
+  final list = {
+    'cards': [
+      for (final e in [...entries.where(_isCard), ..._standIns(entries, gh)])
+        ?_rowOf(e, gh, openPrs, since),
+    ],
     'builds': [
       for (final b in buildsOf(entries)) {'ts': b.ts, 'commit': b.commit},
     ],
@@ -1778,9 +1887,45 @@ Future<Map<String, Object?>> _boardJson() async {
     ],
     'ghOk': gh.ok,
     'bad': badLines,
-    'letters': lettersShown(entries, DateTime.now()),
+    'letters': lettersShown(entries, now),
   };
+  _list = (key: key, list: list);
+  return list;
 }
+
+/// The list as last worked out — the same while the board, the PRs and the
+/// checkouts are the same readings and the minute has not turned.
+({Object key, Map<String, Object?> list})? _list;
+
+/// [list] as the page reads it, encoded once per list.
+String _listText(Map<String, Object?> list) =>
+    _encoded[list] ??= jsonEncode(list);
+final _encoded = Expando<String>();
+
+/// A card's row in the list, or null for a finished card past its two weeks
+/// — kept on the card itself. 🚨A card no write reached is the SAME object
+/// from one reading to the next ([BoardRecords]), so its row is too, and the
+/// list works out only the rows that moved (유저 10-19: 「남은 비용도
+/// 개선가능한가?」). ⚠️Per PR answer and per minute as well: a row reads
+/// the PRs' states and the clock.
+Map<String, Object?>? _rowOf(
+  BoardCard e,
+  _Gh gh,
+  Set<int> openPrs,
+  DateTime since,
+) {
+  final key = (gh, since);
+  final held = _rows[e];
+  if (held != null && held.key == key) return held.row;
+  final at = DateTime.tryParse(e.updated);
+  final gone =
+      _ended(statusOf(e)) && (at == null || at.isBefore(since));
+  final row = gone ? null : _headOf(e, openPrs);
+  _rows[e] = (key: key, row: row);
+  return row;
+}
+
+final _rows = Expando<({Object key, Map<String, Object?>? row})>();
 
 /// What the 「전달」 view reads: every letter still waiting for the 담당 it
 /// names, and the others of the last two weeks.
@@ -1794,8 +1939,16 @@ Future<Map<String, Object?>> _boardJson() async {
 /// something the board knows. Its readers are listed instead.
 List<Map<String, Object?>> lettersShown(List<BoardCard> entries, DateTime now) {
   final since = now.subtract(_doneShows);
-  return [
-    for (final letter in lettersOf(entries))
+  return [for (final card in entries) ..._lettersOn(card, since)];
+}
+
+/// One card's rows of [lettersShown], kept on the card the way [_rowOf]
+/// keeps its row.
+List<Map<String, Object?>> _lettersOn(BoardCard card, DateTime since) {
+  final held = _letters[card];
+  if (held != null && held.since == since) return held.rows;
+  final rows = [
+    for (final letter in lettersOf([card]))
       if (_letterShows(letter.entry, since))
         {
           'card': letter.card.foldedInto ?? letter.card.id,
@@ -1811,14 +1964,18 @@ List<Map<String, Object?>> lettersShown(List<BoardCard> entries, DateTime now) {
           ],
         },
   ];
+  _letters[card] = (since: since, rows: rows);
+  return rows;
 }
+
+final _letters = Expando<({DateTime since, List<Map<String, Object?>> rows})>();
 
 bool _letterWaits(BoardLog letter) =>
     letter.to != kEveryone && !letter.readBy.containsKey(letter.to);
 
 bool _letterShows(BoardLog letter, DateTime since) {
   if (_letterWaits(letter)) return true;
-  final at = DateTime.tryParse(letter.ts);
+  final at = letter.time;
   return at != null && !at.isBefore(since);
 }
 
@@ -1931,7 +2088,7 @@ String _article(BoardCard e, Set<int> openPrs) {
 /// are drawn by the script from [_boardJson] and `/card`.
 String _shell(Map<String, Object?> boot) {
   // `</` would end the script tag; `<\/` is the same string to JSON.
-  final data = jsonEncode(boot).replaceAll('</', r'<\/');
+  final data = _listText(boot).replaceAll('</', r'<\/');
   return '<!doctype html><html lang="ko"><head><meta charset="utf-8">'
       '<meta name="viewport" content="width=device-width,initial-scale=1">'
       '<title>Anicel 보드</title><style>${_css()}</style></head><body>'
@@ -2551,12 +2708,12 @@ var S = {view: remember('view') || 'me', q: '', owner: null, area: null,
          sel: null, more: {}, picked: new Set(), old: null};
 
 var STATUS = {triage:'분류 대기', backlog:'백로그', discussion:'대화 중',
-  todo:'할 일', doing:'진행 중', verify:'검증', known:'알려진 문제', done:'완료',
-  canceled:'취소'};
+  todo:'할 일', doing:'진행 중', verify:'검증', known:'알려진 문제', records:'기록',
+  done:'완료', canceled:'취소'};
 var PRIOS = ['긴급', '높음', '보통', '낮음', ''];
 var VIEWS = [['me','나에게 온 것'], ['doing','진행 중'], ['todo','할 일'],
   ['discussion','대화 중'], ['backlog','백로그'], ['triage','분류 대기'],
-  ['known','알려진 문제'], ['done','완료'], ['letters','전달'],
+  ['known','알려진 문제'], ['records','기록'], ['done','완료'], ['letters','전달'],
   ['system','시스템']];
 var PAGE = 60;
 
@@ -2669,8 +2826,8 @@ function groupsFor(view){
         return live(c) && c.status !== 'triage' && c.me; }).sort(oldest('updated'))},
     ];
   }
-  if (view === 'known') {
-    return [{t:'알려진 문제', rows: pool.filter(function(c){ return c.status === 'known'; }).sort(newest('updated'))}];
+  if (view === 'known' || view === 'records') {
+    return [{t: STATUS[view], rows: pool.filter(function(c){ return c.status === view; }).sort(newest('updated'))}];
   }
   if (view === 'done') {
     return [
@@ -2703,6 +2860,8 @@ function countFor(view){
 // a card with one part landed and another still to do read there exactly
 // like a finished one. The fact is the head's (`workLeft`): in the card's
 // own list the news is the check, in the 검증 list it is the work.
+var AI_WORD = {evidence: '🤖검증완료 · 증거', done: '🤖검증완료', failed: '🤖검증 실패', user: '👤유저 확인 필요'};
+var AI_TONE = {evidence: 'ok', done: 'ok', failed: 'bad', user: 'run'};
 function flagsOf(c, g){
   var f = [];
   if (c.q.length) f.push(['decide', '결정 필요' + (c.q.length > 1 ? ' ' + c.q.length : ''), 'run']);
@@ -2710,6 +2869,9 @@ function flagsOf(c, g){
   if (c.me && c.status !== 'triage') f.push(['me', '제 차례', 'live']);
   if (c.arrival) f.push(['arrival', c.arrival, c.arrival === '대답' ? 'ok' : 'bad']);
   if (c.gap) f.push(['gap', '카드 없음', 'bad']);
+  // The AI hands-on verdict (law-검증, 유저 2026-10-22: 「카드 안누르고도
+  // 어떤결과인지」) — the head's `ai`, read from the card's newest verdict line.
+  if (c.ai) f.push(['ai', AI_WORD[c.ai.v] + ' ' + c.ai.d, AI_TONE[c.ai.v]]);
   return f;
 }
 
@@ -2721,7 +2883,7 @@ function rowHtml(c, g){
   var when = c.checks ? c.since : c.updated;
   var a = age(when);
   var pick = g.pick
-    ? '<input type="checkbox" class="pick" data-pick="' + esc(c.id) + '"' + (S.picked.has(c.id) ? ' checked' : '') + '>'
+    ? '<label class="pickcell"><input type="checkbox" class="pick" data-pick="' + esc(c.id) + '"' + (S.picked.has(c.id) ? ' checked' : '') + '></label>'
     : '<span class="dot s-' + c.status + '" title="' + STATUS[c.status] + '"></span>';
   var prio = c.prio && skip.indexOf('prio') < 0 ? '<span class="pri p' + prioRank(c.prio) + '">' + esc(c.prio) + '</span>' : '';
   var areas = c.areas.slice(0, 2).map(function(t){ return '<span class="chip">' + esc(t) + '</span>'; }).join('');
@@ -3151,6 +3313,10 @@ document.addEventListener('click', function(e){
   }
   var ok = e.target.closest('[data-confirm]');
   if (ok) { confirmGroup(ok); return; }
+  // The cell round the box is the box (유저 2026-10-22: 「체크 여러개 클릭하는데
+  // 3번에 한번꼴로 그 카드로 들어가져」): the label hands its click on to the
+  // box, which comes back here as its own click — never the row's.
+  if (e.target.closest(".pickcell") && !e.target.closest("[data-pick]")) return;
   var pk = e.target.closest('[data-pick]');
   if (pk) { if (pk.checked) S.picked.add(pk.dataset.pick); else S.picked.delete(pk.dataset.pick);
     renderList(); return; }
@@ -3234,6 +3400,7 @@ font-variant-numeric:tabular-nums}
 .s-discussion{background:transparent;box-shadow:inset 0 0 0 1.5px var(--run)}
 .s-doing{background:var(--live)}.s-verify{background:var(--run)}
 .s-known{background:var(--bad)}.s-done{background:var(--ok)}
+.s-records{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line2)}
 .s-canceled{background:var(--line2)}.s-system{background:var(--line2)}
 .s-letters{background:var(--live)}
 .facet h3{margin:0 0 6px;font-size:11px;letter-spacing:.08em;color:var(--ink3);font-weight:600}
@@ -3254,12 +3421,14 @@ position:sticky;top:0;background:var(--bg);z-index:1}
 .note{font-size:11.5px;color:var(--ink3)}
 .gh .picks{margin-left:auto;display:flex;align-items:center;gap:6px}
 .none{margin:0;padding:6px 18px 8px;font-size:12.5px;color:var(--ink3)}
-.row{display:grid;grid-template-columns:14px 104px minmax(0,1fr) auto;gap:10px;
+.row{display:grid;grid-template-columns:18px 104px minmax(0,1fr) auto;gap:10px;
 align-items:center;padding:7px 18px;border-top:1px solid var(--line);cursor:pointer}
 .row.static{cursor:default}
 .row:hover{background:var(--sunk)}
 .row[aria-selected="true"]{background:var(--card);box-shadow:inset 3px 0 0 var(--live)}
-.row .pick{margin:0}
+.row .pickcell{align-self:stretch;display:flex;align-items:center;justify-content:center;
+margin:-7px -10px -7px -18px;padding:0 10px 0 18px;cursor:default}
+.row .pick{margin:0;width:18px;height:18px;cursor:pointer}
 .rid{font-family:var(--mono);font-size:12px;color:var(--ink3);overflow:hidden;
 text-overflow:ellipsis;white-space:nowrap}
 .rt{min-width:0;display:flex;align-items:center;gap:6px}
@@ -3305,7 +3474,7 @@ body.reading .detail{display:block;position:fixed;inset:0;z-index:5;border-left:
 .app,body.reading .app{grid-template-columns:minmax(0,1fr)}
 .rail{border-right:0;border-bottom:1px solid var(--line);max-height:40vh}
 .views{flex-direction:row;flex-wrap:wrap}
-.row{grid-template-columns:14px minmax(0,1fr) auto}
+.row{grid-template-columns:18px minmax(0,1fr) auto}
 .rid,.own{display:none}
 }
 /* ---- a card's body, as the board has always drawn it */

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/cel_photo.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
@@ -13,6 +14,7 @@ import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../repaint_props.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart'
     show SheetInkOnScreen, sheetInkAbovePicture;
 import '../sheet_painting.dart';
@@ -66,6 +68,7 @@ class ContePagePainter extends CustomPainter
     this.effectiveRatio = 1.0,
     this.layers,
     this.inkImageFor,
+    this.inkPhotosFor,
     this.inkSurfaceFor,
     this.liveInkKeys = const {},
     this.picturesOverInk = const [],
@@ -105,8 +108,10 @@ class ContePagePainter extends CustomPainter
   /// still a conte).
   final SheetPictureLookup? pictureFor;
 
-  /// A media image by its asset path — the company logo.
-  final ui.Image? Function(String assetPath)? imageFor;
+  /// A media image by its asset path — the company logo, and the files the
+  /// ink's photos are drawn from (I-97).
+  @override
+  final SheetImageLookup? imageFor;
 
   /// Which strata to draw; null draws every one. [SheetPaintLayer] is the
   /// three sheets' shared vocabulary.
@@ -117,6 +122,10 @@ class ContePagePainter extends CustomPainter
   /// an EXPORT, which has no view to draw it through. Null (the resolver or
   /// the image) draws no ink.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// The photos laid on one window's ink (I-97), for an export, beside its
+  /// raster — each drawn from its file by [imageFor].
+  final List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor;
 
   /// The sheet ink's surface for one window key, ON SCREEN: printed as the
   /// brush's live window paints it ([SheetInkOnScreen], F-215), so the
@@ -154,6 +163,7 @@ class ContePagePainter extends CustomPainter
         pictureFor: pictureFor,
         imageFor: imageFor,
         inkImageFor: inkImageFor,
+        inkPhotosFor: inkPhotosFor,
         liveInkKeys: liveInkKeys,
       ),
       picturesOverInk: picturesOverInk,
@@ -167,7 +177,7 @@ class ContePagePainter extends CustomPainter
       ),
       printed,
     );
-    if (layers?.contains(SheetPaintLayer.ink) ?? true) {
+    if (drawsSheetLayer(layers, SheetPaintLayer.ink)) {
       printInkAsLive(
         canvas,
         size,
@@ -189,10 +199,10 @@ class ContePagePainter extends CustomPainter
   }
 
   @override
-  // pictureFor/imageFor/inkImageFor are deliberately absent: fresh closures
-  // every build, and comparing them made every rebuild a full-page
-  // repaint. What they answer arrives through `repaint` — a landed
-  // thumbnail or logo, a stroke or its undo.
+  // pictureFor/imageFor/inkImageFor/inkPhotosFor are deliberately absent:
+  // fresh closures every build, and comparing them made every rebuild a
+  // full-page repaint. What they answer arrives through `repaint` — a
+  // landed thumbnail or logo, a stroke or its undo.
   //
   // ⛔Compared by what it PRINTS, not by what it was built from: the page
   // and the source are new objects after any change to the project, and
@@ -212,7 +222,7 @@ class ContePagePainter extends CustomPainter
   /// live window is showing.
   List<SheetMark> _printed() => [
     for (final mark in marks())
-      if ((layers?.contains(mark.layer) ?? true) &&
+      if (drawsSheetLayer(layers, mark.layer) &&
           !(mark is SheetInk && liveInkKeys.contains(mark.key)))
         mark,
   ];

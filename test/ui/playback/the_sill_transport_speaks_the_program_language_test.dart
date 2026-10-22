@@ -135,6 +135,61 @@ void main() {
     }
   }
 
+  /// T29's count left of the play button (F-365-Q2: 「건너뛴 프레임 수를 재생
+  /// 버튼 왼쪽에 빨갛게」) said `'$n dropped'` in every language.
+  testWidgets('the drop count says how many in the program language', (
+    tester,
+  ) async {
+    Future<String> said(AppLanguage language) async {
+      AppText.settings.value = AppLanguageSettings(programLanguage: language);
+      final controller = CanvasPlaybackController(
+        resolveProject: project,
+        resolveActiveCutId: () => const CutId('cut'),
+        resolveActiveTrackId: () => const TrackId('track'),
+        resolveFrameRate: () => const ProjectFrameRate.integer(10),
+      )..attachTicker(const TestVSync());
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PlaybackTransportControls(
+              key: UniqueKey(),
+              controller: controller,
+              scope: PlaybackScope.activeCut,
+            ),
+          ),
+        ),
+      );
+      controller.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+      // One gap straight to 300ms: frames 1 and 2 gone over.
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(controller.droppedFrames, 2, reason: '⛔premise');
+      final words = tester
+          .widget<Text>(
+            find.byKey(const ValueKey<String>('playback-dropped-indicator')),
+          )
+          .data!;
+      controller.stop();
+      controller.detachTicker();
+      await tester.pump();
+      return words;
+    }
+
+    final words = {
+      for (final language in [AppLanguage.en, AppLanguage.ja, AppLanguage.ko])
+        language: await said(language),
+    };
+    expect(
+      words.values.toSet(),
+      hasLength(3),
+      reason: 'the count says the same thing in two languages: $words',
+    );
+    for (final said in words.values) {
+      expect(said, contains('2'), reason: 'and says how many');
+    }
+  });
+
   testWidgets('each button says which of its two states it is in', (
     tester,
   ) async {

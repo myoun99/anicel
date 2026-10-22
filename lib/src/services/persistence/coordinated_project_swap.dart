@@ -62,13 +62,7 @@ Future<void> replaceProjectFileCoordinated({
       for (final entry in snapshot.fileRefs.entries)
         if (!dirtyAgain.contains(entry.key) &&
             namesTheSameFile(entry.value.filePath, from))
-          entry.key: AnicelCelFileRef(
-            filePath: to,
-            dataOffset: entry.value.dataOffset,
-            length: entry.value.length,
-            canvasSize: entry.value.canvasSize,
-            tileSize: entry.value.tileSize,
-          ),
+          entry.key: entry.value.movedTo(filePath: to),
     };
     if (moved.isNotEmpty) {
       store.adoptSavedFile(moved, dirtyTicksAtSnapshot: snapshot.dirtyTicks);

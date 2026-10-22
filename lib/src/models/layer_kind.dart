@@ -44,6 +44,7 @@ enum LayerKind {
     filtersBelow: false,
     composites: true,
     hasPictureOpacity: true,
+    hasPictureEye: true,
     hasLayerTransform: true,
     hasTransformFxSwitch: true,
     hasLayerEffects: true,
@@ -70,6 +71,7 @@ enum LayerKind {
     filtersBelow: false,
     composites: true,
     hasPictureOpacity: true,
+    hasPictureEye: true,
     hasLayerTransform: true,
     hasTransformFxSwitch: true,
     hasLayerEffects: true,
@@ -116,6 +118,7 @@ enum LayerKind {
     filtersBelow: false,
     composites: true,
     hasPictureOpacity: true,
+    hasPictureEye: true,
     hasLayerTransform: true,
     hasTransformFxSwitch: true,
     hasLayerEffects: true,
@@ -150,6 +153,7 @@ enum LayerKind {
     filtersBelow: false,
     composites: true,
     hasPictureOpacity: true,
+    hasPictureEye: true,
     hasLayerTransform: true,
     hasTransformFxSwitch: true,
     hasLayerEffects: true,
@@ -184,6 +188,7 @@ enum LayerKind {
     filtersBelow: false,
     composites: true,
     hasPictureOpacity: true,
+    hasPictureEye: true,
     hasLayerTransform: true,
     hasTransformFxSwitch: true,
     hasLayerEffects: true,
@@ -223,6 +228,7 @@ enum LayerKind {
     filtersBelow: false,
     composites: true,
     hasPictureOpacity: true,
+    hasPictureEye: true,
     hasLayerTransform: true,
     hasTransformFxSwitch: true,
     hasLayerEffects: true,
@@ -273,6 +279,8 @@ enum LayerKind {
     // Answering true here is what made "set all layers" try to write a row
     // the cut does not own.
     hasPictureOpacity: false,
+    // Its eye is whether its fades play (B5③) — the picture's.
+    hasPictureEye: true,
     // Nothing of the TRANSITION row's own to move — it is notation on the
     // track's axis.
     hasLayerTransform: false,
@@ -309,6 +317,7 @@ enum LayerKind {
     filtersBelow: false,
     composites: false,
     hasPictureOpacity: false,
+    hasPictureEye: false,
     hasLayerTransform: false,
     // The CAMERA row is in: its transform lives on [Cut.camera] rather than
     // on the row, but the switch that bypasses that work is still the row's
@@ -359,6 +368,7 @@ enum LayerKind {
     // rather than fade (Photoshop's rule), so the bulk-opacity commands
     // may write it like any other row's.
     hasPictureOpacity: true,
+    hasPictureEye: true,
     // An ADJUSTMENT row has no picture of its own to move, and moving what
     // it filters is not something a transform could mean — its twirl-down
     // shows the Effects groups alone.
@@ -395,6 +405,7 @@ enum LayerKind {
     required this.filtersBelow,
     required this.composites,
     required this.hasPictureOpacity,
+    required this.hasPictureEye,
     required this.hasLayerTransform,
     required this.hasTransformFxSwitch,
     required this.hasLayerEffects,
@@ -511,10 +522,25 @@ enum LayerKind {
   final bool composites;
 
   /// Whether this kind's [Layer.opacity] is the row's own picture opacity —
-  /// the thing the master-opacity bar and "set all layers" write. The camera
-  /// row's slider drives the camera-view DIM instead (a display notifier, not
-  /// layer state), so bulk opacity edits must not touch it.
+  /// the thing the master-opacity bar and "set all layers" write. The
+  /// camera's is the camera view's DIM instead — how dark the view lays the
+  /// outside of the frame — which the bulk opacity edits leave alone, as the
+  /// bulk eye switches leave its eye ([hasPictureEye], F-363-Q2). ↩️It was a
+  /// display notifier the window held, not layer state at all, until F-363
+  /// made it the camera row's own.
   final bool hasPictureOpacity;
+
+  /// Whether this kind's eye is the row's own showing — the thing the
+  /// legend's Show all · Hide all and its solo switch flip. The
+  /// camera's is the camera VIEW instead (F-363), which they leave alone:
+  /// 🗣️F-363-Q2 (유저 2026-10-15) 「카메라는 빼고 — 그림 행만」 — it changes
+  /// by its own row's eye, the camera view button and its key, and a
+  /// selection that holds the camera row.
+  ///
+  /// ⛔Not [hasPictureOpacity], though the camera answers both alike: the
+  /// transition's eye is whether its fades play, and it has no picture
+  /// opacity at all.
+  final bool hasPictureEye;
 
   /// Whether this kind authors its transform through [Layer.transformTrack].
   /// The camera moves through the cut's camera track instead, so writing a

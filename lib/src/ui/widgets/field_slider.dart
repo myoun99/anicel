@@ -3,8 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 
+import '../../services/input/modifier_keys.dart';
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/app_strings.dart';
@@ -603,7 +603,7 @@ class _FieldSliderState extends State<FieldSlider> {
   /// over as a drag's release is — one complete edit.
   void _typed(String text) {
     setState(() => _typing = false);
-    final typed = double.tryParse(text.trim());
+    final typed = columnValueOf(text);
     if (typed == null || !_enabled) {
       return;
     }
@@ -655,13 +655,6 @@ class _FieldSliderState extends State<FieldSlider> {
 
   bool get _enabled => widget.onChanged != null;
 
-  bool get _shiftHeld {
-    final keys = HardwareKeyboard.instance.logicalKeysPressed;
-    return keys.contains(LogicalKeyboardKey.shiftLeft) ||
-        keys.contains(LogicalKeyboardKey.shiftRight) ||
-        keys.contains(LogicalKeyboardKey.shift);
-  }
-
   void _emit(double value) => widget.onChanged?.call(value);
 
   void _handleDown(DragDownDetails details) {
@@ -686,7 +679,7 @@ class _FieldSliderState extends State<FieldSlider> {
     }
     final current = _gestureT ?? widget._tFor(widget.value);
     setState(() {
-      if (_shiftHeld) {
+      if (ModifierKeys.isShiftPressed) {
         _gestureT = (current + _deltaT(details.delta) / 10).clamp(0.0, 1.0);
       } else {
         _gestureT = _trackT(details.localPosition);
@@ -796,7 +789,7 @@ class _FieldSliderState extends State<FieldSlider> {
     final value = widget._stepFrom(
       widget.value,
       direction,
-      fine: _shiftHeld,
+      fine: ModifierKeys.isShiftPressed,
     );
     if (value == null) {
       return;
@@ -904,7 +897,7 @@ class _FieldSliderState extends State<FieldSlider> {
     );
 
     Widget bar = _TrackExtentProbe(
-      vertical: _vertical,
+      axis: widget.axis,
       onExtent: _takeTrackExtent,
       child: DecoratedBox(
         decoration: FieldSlider.frameOf(widget.height, enabled: _enabled),
@@ -917,9 +910,9 @@ class _FieldSliderState extends State<FieldSlider> {
               originT: _originFraction,
               accent: _asDrawn(accent),
             ),
-            child: SizedBox(
-              width: _vertical ? widget.height : null,
-              height: _vertical ? null : widget.height,
+            child: acrossBox(
+              widget.axis,
+              widget.height,
               child: _vertical
                   ? RotatedBox(quarterTurns: 1, child: inner)
                   : inner,
@@ -1163,10 +1156,13 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
     // same fact twice.
     final fill = Paint()..color = accent;
     if (far > near) {
+      final extent = far - near;
       canvas.drawRect(
-        axis == Axis.horizontal
-            ? Rect.fromLTWH(near, 0, far - near, size.height)
-            : Rect.fromLTWH(0, near, size.width, far - near),
+        rectAlong(
+          axis,
+          along: (from: near, to: near + extent),
+          across: (from: 0, to: extentAcross(axis, size)),
+        ),
         fill,
       );
     }
@@ -1191,17 +1187,17 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
 /// for nothing when the bar is only repainted.
 class _TrackExtentProbe extends SingleChildRenderObjectWidget {
   const _TrackExtentProbe({
-    required this.vertical,
+    required this.axis,
     required this.onExtent,
     required super.child,
   });
 
-  final bool vertical;
+  final Axis axis;
   final ValueChanged<double> onExtent;
 
   @override
   _RenderTrackExtentProbe createRenderObject(BuildContext context) =>
-      _RenderTrackExtentProbe(vertical: vertical, onExtent: onExtent);
+      _RenderTrackExtentProbe(axis: axis, onExtent: onExtent);
 
   @override
   void updateRenderObject(
@@ -1209,32 +1205,30 @@ class _TrackExtentProbe extends SingleChildRenderObjectWidget {
     _RenderTrackExtentProbe renderObject,
   ) {
     renderObject
-      ..vertical = vertical
+      ..axis = axis
       ..onExtent = onExtent;
   }
 }
 
 class _RenderTrackExtentProbe extends RenderProxyBox {
-  _RenderTrackExtentProbe({
-    required bool vertical,
-    required this.onExtent,
-  }) : _vertical = vertical;
+  _RenderTrackExtentProbe({required Axis axis, required this.onExtent})
+    : _axis = axis;
 
   ValueChanged<double> onExtent;
 
-  bool get vertical => _vertical;
-  bool _vertical;
-  set vertical(bool value) {
-    if (_vertical == value) {
+  Axis get axis => _axis;
+  Axis _axis;
+  set axis(Axis value) {
+    if (_axis == value) {
       return;
     }
-    _vertical = value;
+    _axis = value;
     markNeedsLayout();
   }
 
   @override
   void performLayout() {
     super.performLayout();
-    onExtent(_vertical ? constraints.maxHeight : constraints.maxWidth);
+    onExtent(extentAlong(_axis, constraints.biggest));
   }
 }

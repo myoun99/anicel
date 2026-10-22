@@ -6,8 +6,8 @@ import '../helpers/dart_sources.dart';
 
 /// 🚨ONE CONVERSION OF THE CANVAS TO A RECT.
 ///
-/// `PasteboardBounds.canvasRect`, beside the `pasteboardRect` F-85 made the
-/// one conversion for the pasteboard. Until the 2026-09-15 audit the canvas
+/// `PasteboardBounds.canvasRect`, beside the `PasteboardWall.rect` F-85 made
+/// the one conversion for the pasteboard. Until the 2026-09-15 audit the canvas
 /// rect was typed out from the size in eleven places across seven files —
 /// all of them agreeing, which is exactly what a behaviour test cannot tell
 /// from one law.

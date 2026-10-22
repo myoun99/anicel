@@ -14,6 +14,8 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
+import '../session/sheet_photo_hold.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart';
 import '../sheet/sheet_ink_controller.dart';
 import 'conte_picture_ink.dart';
@@ -122,6 +124,27 @@ List<SheetInkWindow> conteInkWindows(
   ];
 }
 
+/// Every window the pen is heard through over [pages] — each page's bands
+/// moved to where it lies in the book's stack ([conteInkWindows]), and
+/// [pictureWindows] above them all — bottom of the stack first. ONE list
+/// for the ink layer and the photo drop: a pool picture dropped on the
+/// sheet lands where a stroke started there writes (I-97).
+List<SheetWindow> conteSheetWindows(
+  List<ConteShownPage> pages, {
+  required List<SheetPictureWindow> pictureWindows,
+  String Function(ContePlacedCell cell)? unwrittenInkIdOf,
+  String? Function(ContePlacedCell cell)? refusalOf,
+}) => [
+  for (final (:page, :at) in pages)
+    for (final window in conteInkWindows(
+      page,
+      unwrittenInkIdOf: unwrittenInkIdOf,
+      refusalOf: refusalOf,
+    ))
+      window.shiftedBy(at),
+  ...pictureWindows,
+];
+
 /// The conte's ink input/display stack: every window hosts the SAME
 /// interactive brush view the drawing canvas uses, windowed onto its
 /// surface by a derived viewport ([SheetInkLayer]) — the sheet's own ink
@@ -142,6 +165,9 @@ class ConteInkLayer extends StatelessWidget {
     this.unwrittenInkIdOf,
     this.refusalOf,
     this.beforeLanding,
+    this.imageFor,
+    this.imageRepaint,
+    this.photoHold,
   });
 
   final ConteInkController controller;
@@ -187,19 +213,22 @@ class ConteInkLayer extends StatelessWidget {
   /// step.
   final ValueChanged<SheetWindow>? beforeLanding;
 
+  /// Forwarded to [SheetInkLayer.imageFor] and [SheetInkLayer.imageRepaint].
+  final SheetImageLookup? imageFor;
+  final Listenable? imageRepaint;
+
+  /// Forwarded to [SheetInkLayer.photoHold].
+  final SheetPhotoHold? photoHold;
+
   @override
   Widget build(BuildContext context) {
     return SheetInkLayer(
-      windows: [
-        for (final (:page, :at) in pages)
-          for (final window in conteInkWindows(
-            page,
-            unwrittenInkIdOf: unwrittenInkIdOf,
-            refusalOf: refusalOf,
-          ))
-            window.shiftedBy(at),
-        ...pictureWindows,
-      ],
+      windows: conteSheetWindows(
+        pages,
+        pictureWindows: pictureWindows,
+        unwrittenInkIdOf: unwrittenInkIdOf,
+        refusalOf: refusalOf,
+      ),
       keyPrefix: 'conte',
       viewport: viewport,
       brushToolState: brushToolState,
@@ -231,6 +260,9 @@ class ConteInkLayer extends StatelessWidget {
           cacheInvalidationSink: cacheInvalidationSink,
         );
       },
+      imageFor: imageFor,
+      imageRepaint: imageRepaint,
+      photoHold: photoHold,
     );
   }
 }

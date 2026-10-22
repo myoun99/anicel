@@ -30,42 +30,9 @@ import 'transform_track.dart';
 Map<int, KeyMark> transformKeyMarkUnion(TransformTrack track) =>
     unionKeyMarks(track.lanes.map(keyMarksOf));
 
-/// The union header's NAME at each frame.
-///
-/// ㉚ (user, 2026-08-12): 「유니언 그룹 이름 규칙 — 해당 인덱스 멤버들 이름이
-/// 같으면 그 이름 그대로, 다르면 `...`」.
-///
-/// Two edges the rule does not spell out, decided here so they are visible
-/// and cheap to reverse:
-/// - a frame where NO keyed member is named gets no entry at all. `...`
-///   means "several different names"; over a set with none it would be
-///   noise where the row used to print nothing.
-/// - a frame where one member is named and another is not DIFFERS, so it
-///   reads `...`. The alternative — letting the lone name speak for the
-///   group — would claim the whole union carries a name that only one lane
-///   actually has.
-Map<int, String> transformKeyNameUnion(TransformTrack track) {
-  final tracks = track.lanes;
-  final names = <int, String>{};
-  for (final frame in track.keyedFrames) {
-    // Only the lanes that actually hold a key here get a vote.
-    final memberNames = <String?>[
-      for (final member in tracks)
-        if (member.keys.containsKey(frame)) member.keys[frame]!.name,
-    ];
-    if (memberNames.every((name) => name == null)) {
-      continue;
-    }
-    final first = memberNames.first;
-    names[frame] = first != null && memberNames.every((name) => name == first)
-        ? first
-        : unionMixedKeyName;
-  }
-  return names;
-}
-
-/// What a union prints where its members disagree (㉚).
-const String unionMixedKeyName = '...';
+/// The transform group header's names — its members' ([unionKeyNames]).
+Map<int, String> transformKeyNameUnion(TransformTrack track) =>
+    unionKeyNames(track.lanes);
 
 /// The NAME [track]'s keys carry where they are written on a picture — the
 /// one its lanes agree on ([transformKeyNameUnion]); a key whose lanes

@@ -196,12 +196,32 @@ class _CutCommands {
     placeCutCanvas(
       cutId: cutId,
       canvasSize: canvasSize,
-      contentOffset: anchor.contentOffset(
-        from: _coordinator._requireCut(cutId).canvasSize,
-        to: canvasSize,
-      ),
+      contentOffset: _anchored(cutId, canvasSize, anchor),
     );
   }
+
+  /// What [resizeCutCanvas] will make of the pictures kept in files, worked
+  /// out ahead ([placeCutCanvasAhead]).
+  Future<void> resizeCutCanvasAhead({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
+    void Function(double done)? report,
+  }) => placeCutCanvasAhead(
+    cutId: cutId,
+    canvasSize: canvasSize,
+    contentOffset: _anchored(cutId, canvasSize, anchor),
+    report: report,
+  );
+
+  ({double dx, double dy}) _anchored(
+    CutId cutId,
+    CanvasSize canvasSize,
+    CanvasResizeAnchor anchor,
+  ) => anchor.contentOffset(
+    from: _coordinator._requireCut(cutId).canvasSize,
+    to: canvasSize,
+  );
 
   /// [cutId]'s canvas at [canvasSize], the picture moved by [contentOffset]
   /// ([ResizeCutCanvasCommand.contentOffset]) — no step when neither
@@ -217,21 +237,59 @@ class _CutCommands {
     _requirePositive(canvasSize);
     _coordinator._executeIfChanged(
       subject: _coordinator._requireCut(cutId),
-      value: (
-        canvasSize,
-        contentOffset.dx.roundToDouble(),
-        contentOffset.dy.roundToDouble(),
-      ),
-      read: (cut) => (cut.canvasSize, 0.0, 0.0),
-      command: (_) => ResizeCutCanvasCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        canvasSize: canvasSize,
-        contentOffset: contentOffset,
-        brushFrameStore: _coordinator.brushFrameStore,
-      ),
+      value: _placing(canvasSize, contentOffset),
+      read: _placed,
+      command: (_) => _resize(cutId, canvasSize, contentOffset),
     );
   }
+
+  /// What [placeCutCanvas] will make of the cut's pictures, worked out ahead
+  /// — the very work its redo has ahead of it
+  /// ([ResizeCutCanvasCommand.workAhead]): for a wait window to hold up
+  /// while it runs, hearing through [report] how much is done — nothing
+  /// where the place changes nothing, as no step is taken there.
+  Future<void> placeCutCanvasAhead({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    required ({double dx, double dy}) contentOffset,
+    void Function(double done)? report,
+  }) async {
+    final placing = _placing(canvasSize, contentOffset);
+    if (_placed(_coordinator._requireCut(cutId)) == placing) {
+      return;
+    }
+    final ahead = _resize(cutId, canvasSize, contentOffset).workAhead(
+      undo: false,
+    );
+    await ahead?.run(report ?? (_) {});
+  }
+
+  /// The step [placeCutCanvas] takes — and asks what it works out ahead.
+  ResizeCutCanvasCommand _resize(
+    CutId cutId,
+    CanvasSize canvasSize,
+    ({double dx, double dy}) contentOffset,
+  ) => ResizeCutCanvasCommand(
+    repository: _coordinator.repository,
+    cutId: cutId,
+    canvasSize: canvasSize,
+    contentOffset: contentOffset,
+    brushFrameStore: _coordinator.brushFrameStore,
+  );
+
+  /// What [placeCutCanvas] asks of a cut, in whole pixels — and [_placed],
+  /// what a cut already answers: the step is taken where the two differ.
+  static _CanvasPlace _placing(
+    CanvasSize canvasSize,
+    ({double dx, double dy}) contentOffset,
+  ) => (
+    size: canvasSize,
+    dx: contentOffset.dx.roundToDouble(),
+    dy: contentOffset.dy.roundToDouble(),
+  );
+
+  static _CanvasPlace _placed(Cut cut) =>
+      (size: cut.canvasSize, dx: 0.0, dy: 0.0);
 
   static void _requirePositive(CanvasSize canvasSize) {
     if (canvasSize.width <= 0 || canvasSize.height <= 0) {
@@ -376,22 +434,6 @@ class _CutCommands {
     );
   }
 
-  /// Pins the storyboard thumbnail to a cut-local frame (null = back to the
-  /// first frame); one undo step.
-  void updateCutThumbnailFrame({
-    required CutId cutId,
-    required int? frameIndex,
-  }) => _coordinator._executeIfChanged(
-    subject: _coordinator._requireCut(cutId),
-    value: frameIndex,
-    read: (cut) => cut.metadata.thumbnailFrameIndex,
-    command: (_) => UpdateCutThumbnailFrameCommand(
-      repository: _coordinator.repository,
-      cutId: cutId,
-      frameIndex: frameIndex,
-    ),
-  );
-
   /// Moves ONE cut to [newIndex] — the left/right nudge buttons' form of
   /// the order edit, stated as the resulting order so both forms share a
   /// command.
@@ -518,3 +560,7 @@ class _CutCommands {
     );
   }
 }
+
+/// A cut's canvas size and how far its picture is moved on it, in whole
+/// pixels ([_CutCommands.placeCutCanvas]).
+typedef _CanvasPlace = ({CanvasSize size, double dx, double dy});

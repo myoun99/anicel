@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/brush_group.dart';
+import '../../services/input/modifier_keys.dart';
 import '../brush/brush_press.dart';
 import '../brush/brush_tool_state.dart';
 import '../input/control_press_claim.dart'
@@ -96,7 +97,6 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     if (isModifierKey(key)) {
       return KeyEventResult.handled;
     }
-    final pressed = HardwareKeyboard.instance;
     widget.bindings.setActivators(actionId, [
       // An arrow for a move on the sheet is kept as the timeline reads it
       // (F-241), so it turns again on the other sheet.
@@ -104,10 +104,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         actionId,
         SingleActivator(
           key,
-          control: pressed.isControlPressed,
-          shift: pressed.isShiftPressed,
-          alt: pressed.isAltPressed,
-          meta: pressed.isMetaPressed,
+          control: ModifierKeys.isControlPressed,
+          shift: ModifierKeys.isShiftPressed,
+          alt: ModifierKeys.isAltPressed,
+          meta: ModifierKeys.isMetaPressed,
         ),
       ),
     ]);

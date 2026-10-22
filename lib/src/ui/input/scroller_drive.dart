@@ -19,8 +19,7 @@ class ScrollerDrive {
   ScrollHoldController? _hold;
   Drag? _drag;
 
-  double _along(Offset offset) =>
-      position.axis == Axis.horizontal ? offset.dx : offset.dy;
+  double _along(Offset offset) => partAlong(position.axis, offset);
 
   Offset _onTheAxis(double value) =>
       offsetAlong(position.axis, along: value, across: 0);

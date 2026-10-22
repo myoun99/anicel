@@ -145,8 +145,7 @@ void main() {
     final canvas = Canvas(recorder);
     drawPosedLayerImage(
       canvas,
-      image: source,
-      worldRect: const Rect.fromLTWH(0, 0, 32, 32),
+      pieces: [(image: source, worldRect: const Rect.fromLTWH(0, 0, 32, 32))],
       extent: const Rect.fromLTWH(0, 0, 32, 32),
       placement: null,
       opacity: 1,

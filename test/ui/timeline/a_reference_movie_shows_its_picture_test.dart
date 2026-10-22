@@ -4,6 +4,12 @@
 // the playback warmer — standing where the file was placed; positions that
 // show one movie frame share one decode, a movie that will not open leaves
 // its span empty, and closing the session puts every movie back.
+//
+// A hydrate that never answers must FAIL here, not hang the suite — the
+// playback warmer waits on it before every frame, so a hang is a warmer
+// that stops for good. ↩️Each waited thirty seconds of the file's own
+// until 2026-10-17; each waits `patiently` now, at the one ceiling (board
+// `a-test-awaits-a-future-with-a-ceiling-of-its-own`).
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -21,12 +27,8 @@ import 'package:anicel/src/ui/import/import_file_settings.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
-
-/// A hydrate that never answers must FAIL here, not hang the suite — the
-/// playback warmer waits on it before every frame, so a hang is a warmer
-/// that stops for good.
-const Duration _answersWithin = Duration(seconds: 30);
 
 /// A reader that will not open anything — a take that is not there.
 class _Refusing extends FakeVideoBackend {
@@ -141,12 +143,14 @@ void main() {
     final cut = s.requireActiveCut;
 
     await tester.runAsync(() async {
-      await Future.wait([
-        s.movieCels.hydrate(cut, 2),
-        s.movieCels.hydrate(cut, 3),
-      ]).timeout(_answersWithin);
-      await s.movieCels.hydrate(cut, 4).timeout(_answersWithin);
-      await s.movieCels.hydrate(cut, 5).timeout(_answersWithin);
+      await patiently(
+        Future.wait([
+          s.movieCels.hydrate(cut, 2),
+          s.movieCels.hydrate(cut, 3),
+        ]),
+      );
+      await patiently(s.movieCels.hydrate(cut, 4));
+      await patiently(s.movieCels.hydrate(cut, 5));
     });
 
     expect(pictureAt(s, layer, 2), isNotNull);
@@ -180,7 +184,7 @@ void main() {
     );
 
     await tester.runAsync(
-      () => s.movieCels.hydrate(s.requireActiveCut, 0).timeout(_answersWithin),
+      () => patiently(s.movieCels.hydrate(s.requireActiveCut, 0)),
     );
 
     expect(
@@ -229,12 +233,12 @@ void main() {
         cutId: s.requireActiveCut.id,
         aroundFrameIndex: 10,
       );
-      final deadline = DateTime.now().add(_answersWithin);
-      while (pictureAt(s, layer, 10) == null) {
-        if (DateTime.now().isAfter(deadline)) {
-          fail('the warmer composed frame 10 without its movie picture');
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 20));
+      final pictured = await pollUntil(
+        () => pictureAt(s, layer, 10) != null,
+        beat: const Duration(milliseconds: 20),
+      );
+      if (!pictured) {
+        fail('the warmer composed frame 10 without its movie picture');
       }
     });
 
@@ -255,7 +259,7 @@ void main() {
     s.repository.replaceLayer(layer: gone);
 
     await tester.runAsync(
-      () => s.movieCels.hydrate(s.requireActiveCut, 0).timeout(_answersWithin),
+      () => patiently(s.movieCels.hydrate(s.requireActiveCut, 0)),
     );
 
     expect(pictureAt(s, gone, 0), isNull);
@@ -271,7 +275,7 @@ void main() {
     await place(tester, s);
 
     await tester.runAsync(() async {
-      await s.movieCels.hydrate(s.requireActiveCut, 0).timeout(_answersWithin);
+      await patiently(s.movieCels.hydrate(s.requireActiveCut, 0));
       expect(reader.opened, hasLength(2), reason: 'the import, the canvas');
       // A token is its reader's: whoever answers for movies NOW did not
       // open this one, and must not be the one asked to close it.

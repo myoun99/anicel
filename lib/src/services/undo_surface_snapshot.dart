@@ -3,7 +3,10 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
+import '../models/cel_photo.dart';
 import '../models/cel_text.dart';
+import '../models/dirty_region.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/compress_in_worker.dart';
@@ -149,7 +152,9 @@ class UndoSurfaceSnapshot {
     required BitmapSurface snapshot,
     required BitmapSurface? sharedWith,
   }) : _canvasSize = snapshot.canvasSize,
+       _pasteboardReach = snapshot.pasteboardReach,
        _tileSize = snapshot.tileSize,
+       _laidBounds = snapshot.laidBounds,
        _surface = snapshot,
        _owned = snapshot.keptTilesNotSharedWith(sharedWith);
 
@@ -158,7 +163,15 @@ class UndoSurfaceSnapshot {
   final BrushFrameKey key;
 
   final CanvasSize _canvasSize;
+
+  /// The wall the picture stood behind (I-109), kept with its size.
+  final PasteboardReach _pasteboardReach;
   final int _tileSize;
+
+  /// Where a file's picture lies on it (F-374-Q8), kept with the two sizes
+  /// and for theirs: four numbers, no tile. A picture put back without it
+  /// would refuse its own tiles past the wall.
+  final DirtyRegion? _laidBounds;
 
   /// What each text of the picture SAYS, bottom → top — kept HERE through
   /// a park, with the two sizes above: a picture put back together without
@@ -179,6 +192,11 @@ class UndoSurfaceSnapshot {
   /// reason: only a snapshot that has let go of its picture needs them
   /// apart from it.
   List<_SaidText>? _texts;
+
+  /// The picture's photos (I-97), kept here beside [_texts] and for its
+  /// reason: they are no tiles, so nothing parked brings them back. Each is
+  /// a few numbers — the pool file stays where it is.
+  List<CelPhoto>? _photos;
 
   /// WHERE the tiles somebody else is holding are — places only: which
   /// tile of the picture, never the tile.
@@ -305,7 +323,13 @@ class UndoSurfaceSnapshot {
   ///
   /// ⚠️A read-ahead ([readAhead]) is ADOPTED here rather than read a second
   /// time — but only against the very surface it leaned on ([_ahead]).
-  BitmapSurface? surfaceOver(BitmapSurface? live) {
+  ///
+  /// ★[live] is ASKED, and only by a parked snapshot: a resident one is
+  /// its own answer. The cel as it stands can be a cel kept in a file, and
+  /// asking would thaw it — 🧪F-432, S5_BA: undoing a pasteboard turned
+  /// off thawed the 92 cels it had cut, 3.5 s on the UI thread, to read
+  /// pictures the undo already held.
+  BitmapSurface? surfaceOver(BitmapSurface? Function() live) {
     // ⛔THE DROP COMES FIRST, and [drop]'s own doc is why: it「stays a
     // valid snapshot afterwards — one that answers null」. Without this
     // the shared half would still assemble, and a snapshot whose owned
@@ -322,9 +346,10 @@ class UndoSurfaceSnapshot {
       return null;
     }
     final ahead = _ahead;
-    final read = ahead != null && _leanedOn(ahead, live)
+    final liveNow = live();
+    final read = ahead != null && _leanedOn(ahead, liveNow)
         ? (surface: ahead.surface, owned: ahead.owned)
-        : _readBack(live);
+        : _readBack(liveNow);
     _ahead = null;
     if (read == null) {
       return null;
@@ -453,7 +478,8 @@ class UndoSurfaceSnapshot {
 
   /// The picture [kept] is the tiles of: the drawing's as its tiles, and
   /// each text — what it says pinned in [_texts] — with the plate tiles
-  /// kept for it. A text none are kept for is a text with no plate.
+  /// kept for it. A text none are kept for is a text with no plate. Its
+  /// photos are the ones pinned in [_photos].
   BitmapSurface _pictureOf(Map<KeptTilePlace, BitmapTile> kept) {
     final drawing = <TileCoord, BitmapTile>{};
     final plates = <int, Map<TileCoord, BitmapTile>>{};
@@ -466,6 +492,7 @@ class UndoSurfaceSnapshot {
     }
     return BitmapSurface(
       canvasSize: _canvasSize,
+      pasteboardReach: _pasteboardReach,
       tileSize: _tileSize,
       tiles: drawing,
       texts: [
@@ -476,6 +503,8 @@ class UndoSurfaceSnapshot {
             plate: plates[text.id] ?? const {},
           ),
       ],
+      photos: _photos ?? const [],
+      laidBounds: _laidBounds,
     );
   }
 
@@ -547,13 +576,15 @@ class UndoSurfaceSnapshot {
     // ⚠️The picture as it would be with these tiles alone: a cel's own
     // stream, so an owned plate tile goes out under its text and comes
     // back under it.
-    _pinTexts();
-    final body = encodeCelEntryFromSurface(key, _pictureOf(owned));
+    _pinTextsAndPhotos();
+    final picture = _pictureOf(owned);
+    final body = encodeCelEntryFromSurface(key, picture);
     final compressed = await compressAnicelPayloadInWorker(body);
     final blob = AnicelCelBlob.fromCompressedBody(
       key: key,
       canvasSize: _canvasSize,
       tileSize: _tileSize,
+      photoPaths: celPhotoPaths(picture.photos),
       codec: compressed.codec,
       body: compressed.bytes,
     );
@@ -600,7 +631,7 @@ class UndoSurfaceSnapshot {
     final surface = _surface;
     if (surface != null) {
       final owned = _owned;
-      _pinTexts();
+      _pinTextsAndPhotos();
       _sharedPlaces = {
         for (final place in surface.keptTiles.keys)
           if (owned == null || !owned.containsKey(place)) place,
@@ -610,16 +641,18 @@ class UndoSurfaceSnapshot {
     _surface = null;
   }
 
-  /// Pins what each text SAYS ([_texts]) while the picture is still here
-  /// to be read — once, by whichever needs it first: the park, which writes
-  /// the picture's own stream, or the letting go.
-  void _pinTexts() {
+  /// Pins what each text SAYS ([_texts]) and the photos ([_photos]) while
+  /// the picture is still here to be read — once, by whichever needs them
+  /// first: the park, which writes the picture's own stream, or the letting
+  /// go.
+  void _pinTextsAndPhotos() {
     final surface = _surface;
     if (surface != null) {
       _texts ??= [
         for (final text in surface.texts)
           (id: text.id, content: text.content),
       ];
+      _photos ??= surface.photos;
     }
   }
 

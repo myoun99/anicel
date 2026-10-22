@@ -1,16 +1,17 @@
 // The door a delivery FOLDER comes in through — the field's structure,
-// not a file: symbol layers with named cels, `_BG`/`_BOOK` pictures,
-// archived-process attach folders, and the 겸용컷 follow-up.
+// not a file: symbol layers with named cels, their corrections as attach
+// rows, and `_BG`/`_BOOK` pictures.
 //
 // Its own object since round 8 (G1, 2026-09-06).
 
 import 'dart:io';
 
+import '../../models/import/cut_folder_edits.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../models/media_asset.dart';
+import '../../services/commands/cut_command_input_planner.dart'
+    show planAddLayersCommandInput;
 import '../../services/commands/import_media_command.dart';
-import '../../services/editing/default_cut_helpers.dart'
-    show defaultCutCanvasSize;
 import '../../services/import/cut_folder_listing.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/import/raster_cel_import.dart';
@@ -30,16 +31,13 @@ class CutFolderImportDoor {
     required TimelineAccess timeline,
     required ImportLanding landing,
     required HoldMediaBytes holdBytes,
-    required Future<void> Function(Iterable<MediaAsset> arriving)
-    holdCarriedBytes,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _renderCaches = renderCaches,
        _timeline = timeline,
        _landing = landing,
-       _holdBytes = holdBytes,
-       _holdCarriedBytes = holdCarriedBytes;
+       _holdBytes = holdBytes;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -48,31 +46,32 @@ class CutFolderImportDoor {
   final TimelineAccess _timeline;
   final ImportLanding _landing;
 
-  /// Where a file's bytes are — the project's own copy first — and the
-  /// holding of what arrives carried ([MediaPool.holdCarriedBytes]): the
-  /// two questions every placement door asks (`ProjectImportDoors`), asked
-  /// here too. 🪦A folder imported again baked its cels from the files on
-  /// disk and staged a second copy of what the project already carried
+  /// Where a file's bytes are — the project's own copy first: the question
+  /// every placement door asks (`ProjectImportDoors`), asked here too.
+  /// 🪦A folder imported again baked its cels from the files on disk
   /// (audit 2026-09-24).
   final HoldMediaBytes _holdBytes;
-  final Future<void> Function(Iterable<MediaAsset> arriving)
-  _holdCarriedBytes;
 
   /// Imports a CUT FOLDER (the field's delivery structure) parsed by
-  /// [parseCutFolder]: one fully-formed cut — symbol layers with named
-  /// cels one comma each, `_BG`/`_BOOK` picture layers, archived-process
-  /// attach folders when opted in — plus reference registrations, in one
-  /// undo. Multi-cut folders (rule H) follow up with linked-cut creation
-  /// per extra number (the field 겸용컷; separate undo steps).
-  /// Returns the parse-and-plan warnings, or null when nothing imported.
+  /// [parseCutFolder], as the import window answered it ([edits]) — the
+  /// folder's ONE fully-formed cut, or under 「커스텀」 each row where its
+  /// 넣을 곳 says: a new layer of the open cut, or a cut of its own
+  /// ([planCutFolderImport]) — symbol layers with named cels one comma
+  /// each, their corrections as attach rows, `_BG`/`_BOOK` picture layers,
+  /// all in one undo. 🗣️F-429-Q3 (유저 10-21): 「겸용컷으로 읽는 로직 삭제.
+  /// 항상 한 컷으로만 들어오는느낌」 — a folder naming several cuts is one
+  /// cut too. Returns the parse-and-plan warnings, or null when nothing
+  /// imported.
+  ///
+  /// The folder's timesheet scans and reference movie are not this door's:
+  /// the window lists them as files of their own and registers or places
+  /// each as its row says (F-429-Q4).
   ///
   /// [onProgress] hears each scan baked — the import window's wait counts
   /// them (F-282-Q1).
   Future<List<ImportWarning>?> importCutFolder({
     required String folderPath,
-    required bool copyIntoProject,
-    CutFolderParseConfig config = const CutFolderParseConfig(),
-    MediaFitMode fit = MediaFitMode.contain,
+    CutFolderEdits edits = const CutFolderEdits(),
     void Function(int baked, int total)? onProgress,
   }) async {
     final directory = Directory(folderPath);
@@ -92,121 +91,89 @@ class CutFolderImportDoor {
     } on FileSystemException {
       return null; // Unreadable folder (permissions, vanished share).
     }
-    final parsed = parseCutFolderAt(
-      folderPath,
-      entries: entries,
-      config: config,
-    );
+    final parsed = parseCutFolderAt(folderPath, entries: entries);
 
-    final canvasSize =
-        _project.activeCutOrNull?.canvasSize ?? defaultCutCanvasSize;
+    final openCut = _project.activeCutOrNull;
     final plan = planCutFolderImport(
       parsed: parsed,
-      resolveFile: (relativePath) => '$folderPath/$relativePath',
-      canvasSize: canvasSize,
+      edits: edits,
+      resolveFile: (relativePath) => cutFolderFilePath(folderPath, relativePath),
+      openCut: openCut,
       mint: _landing.idMint(),
     );
-    if (plan.bakes.isEmpty && plan.assets.isEmpty) {
+    if (plan.bakes.isEmpty) {
       return plan.warnings;
     }
 
-    // A cut folder's reference registrations follow the import's
-    // carry-or-reference choice like any other file. The planner cannot
-    // know it — it is given a folder, not a window — so the answer is
-    // stamped on the way out.
-    //
-    // 🚨 It used to be stamped as a COPY into `.assets/Media` and nothing
-    // else, which meant the pool entry itself said `carried: false`: the
-    // one thing the save reads. The first save after a folder import left
-    // every 参考 scan OUTSIDE the archive, and only a reopen put it right
-    // (the old `sourcePath` spelling of the same answer).
-    //
-    // 🪦This paragraph used to end「the kind still sets the ceiling above
-    // this, so a delivery's 참고영상 stays a reference either way」. That
-    // ceiling died 2026-08-14 — the kind only picks the import window's
-    // DEFAULT now, and a movie carries if the person says so.
-    //
-    // Each carried one is a carry of its own ([mintMediaCarry]).
-    final registeredAssets = [
-      for (final asset in plan.assets)
-        if (copyIntoProject)
-          asset.copyWith(carriedAs: mintMediaCarry(asset.path))
-        else
-          asset,
-    ];
-    // ⛔Awaited BEFORE the command that registers them. The isolate that
-    // secures these bytes is the reason this is a `Future` at all, and
-    // letting the registration overtake it is the one thing carrying must
-    // not do.
-    await _holdCarriedBytes(registeredAssets);
-
+    // The rows joining the open cut go in as every new row of it does —
+    // on top, with their copies in its 겸용 siblings (F-398).
+    final joining = plan.openCutLayers;
     _project.historyManager.execute(
       ImportMediaCommand(
         repository: _project.repository,
         editingSession: _timeline.editingSession,
         trackId: _selection.selectedTrackId,
-        newCuts: [plan.cut],
-        assetAdditions: registeredAssets,
+        newCuts: plan.cuts,
+        targetCutId: joining.isEmpty ? null : openCut?.id,
+        newLayers: joining,
+        layerPlans: joining.isEmpty || openCut == null
+            ? const []
+            : planAddLayersCommandInput(
+                project: _project.repository.requireProject(),
+                cutId: openCut.id,
+                layers: joining,
+              ),
         description: 'Import folder ${mediaFileName(folderPath)}',
       ),
     );
 
-    final bakedCut = _project.cutById(plan.cut.id);
-    if (bakedCut != null) {
-      // Each file bakes exactly once — decode, bake, dispose, so the
-      // peak stays ONE image no matter how large the folder (the
-      // measured folders run past 100 scanned cels).
-      for (final (index, bake) in plan.bakes.indexed) {
-        onProgress?.call(index, plan.bakes.length);
-        final List<DecodedImageFrame> frames;
-        try {
-          frames = await decodeImageFrames(
-            await readHeldMediaBytes(_holdBytes, bake.sourceFile),
-          );
-        } on Object {
-          continue; // Unreadable file — the cel stays empty.
-        }
-        if (frames.isEmpty) {
-          continue;
-        }
-        try {
-          final surface = await rasterizeImageToSurface(
-            image: frames.first.image,
-            canvas: bakedCut.canvasSize,
-            placement: fitPlacement(
-              frames.first.image,
-              bakedCut.canvasSize,
-              fit,
-            ),
-          );
-          bakeCelSurface(
-            _renderCaches.brushFrameStore,
-            _project.brushFrameKeyForCut(
-              bakedCut,
-              bake.layerId,
-              bake.frameId,
-            ),
-            surface,
-          );
-        } finally {
-          for (final frame in frames) {
-            frame.image.dispose();
-          }
-        }
-      }
-    }
-
-    // Rule H: the folder's extra cut numbers become 겸용컷 copies of the
-    // imported cut, sharing its cel banks.
-    for (final extraNumber in plan.extraCutNumbers) {
-      _project.cutCommandCoordinator.createLinkedCut(
-        sourceCutId: plan.cut.id,
-        name: extraNumber,
-      );
+    // Each file bakes exactly once — decode, bake, dispose, so the peak
+    // stays ONE image no matter how large the folder (the measured folders
+    // run past 100 scanned cels).
+    for (final (index, bake) in plan.bakes.indexed) {
+      onProgress?.call(index, plan.bakes.length);
+      await _bake(bake, plan.fits[bake.layerId]!);
     }
 
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
     return plan.warnings;
+  }
+
+  /// [bake]'s file laid on its cut's canvas with [fit] and baked into its
+  /// cel — an unreadable file leaves the cel empty.
+  Future<void> _bake(PlannedCelBake bake, MediaFitMode fit) async {
+    final cut = _project.cutById(bake.cutId);
+    if (cut == null) {
+      return;
+    }
+    final List<DecodedImageFrame> frames;
+    try {
+      frames = await decodeImageFrames(
+        await readHeldMediaBytes(_holdBytes, bake.sourceFile),
+      );
+    } on Object {
+      return;
+    }
+    try {
+      final picture = frames.firstOrNull?.picture;
+      if (picture == null) {
+        return;
+      }
+      final surface = await layCelPicture(
+        picture: picture,
+        canvas: cut.canvasSize,
+        placement: fitPlacement(picture.size, cut.canvasSize, fit),
+      );
+      bakeCelSurface(
+        _renderCaches.brushFrameStore,
+        _project.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
+        surface,
+      );
+    } finally {
+      for (final frame in frames) {
+        frame.picture.dispose();
+      }
+    }
   }
 }

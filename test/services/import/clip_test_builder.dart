@@ -236,6 +236,95 @@ Uint8List _section(String name, List<int> fields) => (BytesBuilder()
       ..add(fields))
     .toBytes();
 
+/// A layer's `LayerEffectInfo` in the shape one sample's held (memory
+/// `csp-clip-format-notes` §2 — s12, 10-17): every record it had, each
+/// setting at the sample's value — CLIP STUDIO's defaults, so a word read
+/// one place off lands on one that is not 0 — with the switches of the
+/// effects named in [on] set, and the tone's own settings at
+/// [reflectOpacity] and [posterize] — the records named in [without] left
+/// out.
+Uint8List layerEffectInfoBytes({
+  Set<String> on = const {},
+  int reflectOpacity = 1,
+  int posterize = 0,
+  Set<String> without = const {},
+}) {
+  int switchOf(String name) => on.contains(name) ? 1 : 0;
+  // A record's body as words — led by their size, counting itself, when
+  // [sized] (every record but the two oldest).
+  (String, Uint8List) record(
+    String name,
+    List<int> body, {
+    bool sized = true,
+  }) => (
+    name,
+    _section(name, [
+      if (sized) ..._be32(4 * (body.length + 1)),
+      for (final word in body) ..._be32(word),
+    ]),
+  );
+  List<int> f64(double value) {
+    final bits = ByteData(8)..setFloat64(0, value);
+    return [bits.getUint32(0), bits.getUint32(4)];
+  }
+
+  final records = [
+    record('EffectEdge', [
+      switchOf('EffectEdge'),
+      ...f64(3),
+      0xFFFFFFFF,
+      0xFFFFFFFF,
+      0xFFFFFFFF,
+    ], sized: false),
+    record('EffectTone', [
+      switchOf('EffectTone'),
+      ...f64(200),
+      1,
+      0,
+      20,
+      ...f64(60),
+      1,
+      0,
+      45,
+      30,
+      ...List.filled(7, 0),
+    ], sized: false),
+    record('EffectTextureMap', [
+      switchOf('EffectTextureMap'),
+      30,
+      0x80808080,
+    ]),
+    record('EffectApplyOpacity', [reflectOpacity]),
+    record('EffectToneAreaColor', [111, 215, 241]),
+    record('EffectTonePosterize', [posterize, 2, 60, 50, 120, 30]),
+    record('EffectWaterEdge', [
+      switchOf('EffectWaterEdge'),
+      ...f64(5),
+      ...f64(50),
+      ...f64(20),
+      ...f64(10),
+    ]),
+    record('EffectLine', [
+      switchOf('EffectLine'),
+      1,
+      0xF0F0F0F0,
+      ...List.filled(25, 0),
+    ]),
+  ];
+  // The sample's three words after the last record, their sense unknown.
+  final tail = [..._be32(0), ..._be32(1), ..._be32(200)];
+  final body = [
+    for (final (name, bytes) in records)
+      if (!without.contains(name)) ...bytes,
+    ...tail,
+  ];
+  return (BytesBuilder()
+        ..add(_be32(8 + body.length))
+        ..add(_be32(2))
+        ..add(body))
+      .toBytes();
+}
+
 /// An `Offscreen.Attribute` for a [width] × [height] picture in a
 /// [columns] × [rows] grid of blocks.
 Uint8List offscreenAttributeBytes({
@@ -377,7 +466,9 @@ const clipSchema = '''
     LayerRenderOffscrOffsetY INTEGER, LayerFirstChildIndex INTEGER,
     LayerNextIndex INTEGER, LayerRenderMipmap INTEGER,
     ResizableOriginalMipmap INTEGER, ResizableImageInfo BLOB,
-    DrawToRenderOffscreenType INTEGER, AnimationFolder INTEGER);
+    DrawToRenderOffscreenType INTEGER, AnimationFolder INTEGER,
+    DrawColorMainRed INTEGER, DrawColorMainGreen INTEGER,
+    DrawColorMainBlue INTEGER);
   CREATE TABLE Mipmap(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
     BaseMipmapInfo INTEGER);
   CREATE TABLE MipmapInfo(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
@@ -521,3 +612,189 @@ CmtSpec clipNodeSpec({
 /// A track document holding [clips].
 CmtSpec clipTrackSpec(List<CmtSpec> clips) =>
     CmtSpec('celsysdocument', 'null', children: clips);
+
+/// One run of a text's letters in a style of its own, as
+/// [clipTextAttributesBytes] writes it: [colour] and [scale] its own where
+/// given, [face] where not empty.
+typedef ClipTextRunSpec = ({
+  int start,
+  int length,
+  bool bold,
+  bool italic,
+  (int, int, int)? colour,
+  double? scale,
+  String face,
+});
+
+/// A stretch of a text's letters and the one-byte value parameters 12 · 16
+/// · 20 give it (an alignment, an underline, a strike).
+typedef ClipTextFlagSpec = ({int start, int length, int value});
+
+/// A text's `TextLayerAttributes` the way the format notes lay them out
+/// (memory `csp-clip-format-notes` 6-1 §13): `u32 LE id · u32 LE size ·
+/// bytes`, a parameter each — what `clip_lettering.dart` reads. [box] null
+/// writes none; [corners] null writes the box's own, square, measured from
+/// the canvas's top-left, and [withCorners] false none; [textAlign]
+/// (parameter 35) and [pictureOffset] (72) null write none.
+Uint8List clipTextAttributesBytes({
+  ({int x0, int y0, int x1, int y1})? box = (x0: 0, y0: 0, x1: 10, y1: 10),
+  double points = 12,
+  (int, int, int) colour = (0, 0, 0),
+  String face = 'Face',
+  ({int width, int height})? boxSize,
+  List<ClipTextRunSpec> runs = const [],
+  List<ClipTextFlagSpec> aligns = const [],
+  List<({int start, int length, double spacing})> spacings = const [],
+  List<ClipTextFlagSpec> underlines = const [],
+  List<ClipTextFlagSpec> strikes = const [],
+  double across = 100,
+  List<int>? corners,
+  bool withCorners = true,
+  int textFlags = 0,
+  int? textAlign,
+  (int, int)? pictureOffset,
+}) {
+  final out = BytesBuilder();
+  void parameter(int id, Uint8List body) => out
+    ..add(_le32(id))
+    ..add(_le32(body.length))
+    ..add(body);
+  Uint8List flags(List<ClipTextFlagSpec> stretches) {
+    final data = ByteData(4 + 14 * stretches.length)
+      ..setUint32(0, stretches.length, Endian.little);
+    for (final (k, stretch) in stretches.indexed) {
+      data
+        ..setInt32(4 + 14 * k, stretch.start, Endian.little)
+        ..setUint32(8 + 14 * k, stretch.length, Endian.little)
+        ..setUint8(16 + 14 * k, stretch.value);
+    }
+    return data.buffer.asUint8List();
+  }
+
+  if (runs.isNotEmpty) {
+    final body = BytesBuilder()..add(_le32(runs.length));
+    for (final run in runs) {
+      final data = ByteData(32 + 2 * run.face.length)
+        ..setInt32(0, run.start, Endian.little)
+        ..setUint32(4, run.length, Endian.little)
+        ..setUint32(8, 28 + 2 * run.face.length, Endian.little)
+        ..setUint8(12, (run.bold ? 1 : 0) | (run.italic ? 2 : 0))
+        ..setUint8(
+          13,
+          (run.colour == null ? 0 : 1) | (run.scale == null ? 0 : 2),
+        )
+        // What a run keeps here when its scale is not its own is not
+        // read: something no scale would be.
+        ..setFloat64(20, run.scale ?? 250, Endian.little)
+        ..setUint16(28, run.face.length, Endian.little);
+      if (run.colour case (final r, final g, final b)) {
+        data
+          ..setUint16(14, r * 257, Endian.little)
+          ..setUint16(16, g * 257, Endian.little)
+          ..setUint16(18, b * 257, Endian.little);
+      }
+      for (final (c, unit) in run.face.codeUnits.indexed) {
+        data.setUint16(30 + 2 * c, unit, Endian.little);
+      }
+      body.add(data.buffer.asUint8List());
+    }
+    parameter(11, body.toBytes());
+  }
+  if (aligns.isNotEmpty) {
+    parameter(12, flags(aligns));
+  }
+  if (spacings.isNotEmpty) {
+    final data = ByteData(4 + 30 * spacings.length)
+      ..setUint32(0, spacings.length, Endian.little);
+    for (final (k, stretch) in spacings.indexed) {
+      data
+        ..setInt32(4 + 30 * k, stretch.start, Endian.little)
+        ..setUint32(8 + 30 * k, stretch.length, Endian.little)
+        ..setUint32(12 + 30 * k, 18, Endian.little)
+        ..setFloat64(26 + 30 * k, stretch.spacing, Endian.little);
+    }
+    parameter(13, data.buffer.asUint8List());
+  }
+  if (underlines.isNotEmpty) {
+    parameter(16, flags(underlines));
+  }
+  if (strikes.isNotEmpty) {
+    parameter(20, flags(strikes));
+  }
+  parameter(
+    26,
+    (ByteData(32)..setFloat64(16, across, Endian.little)).buffer.asUint8List(),
+  );
+  if (face.isNotEmpty) {
+    parameter(31, utf8.encode(face));
+  }
+  parameter(
+    32,
+    (ByteData(4)..setInt32(0, (points * 100).round(), Endian.little)).buffer
+        .asUint8List(),
+  );
+  parameter(33, _le32(textFlags));
+  final (r, g, b) = colour;
+  parameter(
+    34,
+    Uint8List.fromList([
+      // A channel is its top byte; the bytes under it are not the colour's.
+      for (final channel in [r, g, b]) ..._le32(channel << 24 | 0x123456),
+    ]),
+  );
+  if (textAlign != null) {
+    parameter(35, _le32(textAlign));
+  }
+  if (pictureOffset case (final x, final y)) {
+    parameter(
+      72,
+      (ByteData(8)
+            ..setInt32(0, x, Endian.little)
+            ..setInt32(4, y, Endian.little))
+          .buffer
+          .asUint8List(),
+    );
+  }
+  if (box != null) {
+    final data = ByteData(16);
+    for (final (k, value) in [box.x0, box.y0, box.x1, box.y1].indexed) {
+      data.setInt32(4 * k, value, Endian.little);
+    }
+    parameter(42, data.buffer.asUint8List());
+    final size =
+        boxSize ?? (width: box.x1 - box.x0, height: box.y1 - box.y0);
+    parameter(
+      63,
+      (ByteData(8)
+            ..setInt32(0, size.width, Endian.little)
+            ..setInt32(4, size.height, Endian.little))
+          .buffer
+          .asUint8List(),
+    );
+    // Clockwise from the top-left, in hundredths of a pixel.
+    final square = [
+      for (final (x, y) in [
+        (box.x0, box.y0),
+        (box.x1, box.y0),
+        (box.x1, box.y1),
+        (box.x0, box.y1),
+      ]) ...[x * 100, y * 100],
+    ];
+    final data64 = ByteData(32);
+    for (final (k, value) in (corners ?? square).indexed) {
+      data64.setInt32(4 * k, value, Endian.little);
+    }
+    if (withCorners) {
+      parameter(64, data64.buffer.asUint8List());
+    }
+  }
+  return out.toBytes();
+}
+
+/// [parts] as a text layer's `…Array` column keeps its second text on:
+/// `u32 LE length · bytes`, again and again.
+Uint8List clipTextArrayBytes(List<List<int>> parts) => (BytesBuilder()
+      ..add([
+        for (final part in parts) ...[..._le32(part.length), ...part],
+      ]))
+    .toBytes();

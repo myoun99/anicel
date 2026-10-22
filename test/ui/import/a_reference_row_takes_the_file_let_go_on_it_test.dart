@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/timeline/timeline_silhouette_painter.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/three_frame_gif.dart';
 import '../../helpers/named_finders.dart';
 
@@ -100,7 +101,7 @@ void main() {
               if (!carryNext)
                 MediaAsset(
                   path: paths.next,
-                  name: 'next',
+                  name: mediaAssetDefaultName(paths.next),
                   kind:
                       mediaAssetKindForPath(paths.next) ?? MediaAssetKind.image,
                 ),
@@ -210,12 +211,7 @@ void main() {
 
   /// Lets the swap's read and bake land.
   Future<void> settle(WidgetTester tester, bool Function() done) async {
-    for (var tries = 0; tries < 100 && !done(); tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, done);
     await tester.pumpAndSettle();
   }
 
@@ -315,7 +311,8 @@ void main() {
       next: 'broken.png',
       nextBytes: const [1, 2, 3, 4],
     );
-    const said = 'broken.png: could not read the file.';
+    // Named as the pool names it (F-376).
+    const said = 'broken: could not read the file.';
 
     await dragOnto(tester, row, next);
     await settle(tester, () => find.text(said).evaluate().isNotEmpty);
@@ -332,13 +329,13 @@ void main() {
       'drop says THAT, not that the file did not read', (tester) async {
     final (:session, :row, :next) = await open(tester, oldGifFrame: 1);
     expect(row.frames.single.filePicture, 1, reason: 'premise');
-    const said = 'next.png: the file has no picture 2.';
+    const said = 'next: the file has no picture 2.';
 
     await dragOnto(tester, row, next);
     await settle(tester, () => find.text(said).evaluate().isNotEmpty);
 
     expect(find.text(said), findsOneWidget);
-    expect(find.text('next.png: could not read the file.'), findsNothing);
+    expect(find.text('next: could not read the file.'), findsNothing);
     expect(session.layerById(row.id), row);
   });
 
@@ -348,14 +345,18 @@ void main() {
     test('nothing when the file came in or the row was left as it was — a '
         'row that changed while the file was read included; the file and '
         'why when it did not', () {
-      expect(referenceSwapWords(const ReferenceLaid(), '/w/bg.png'), isNull);
+      final project = createDefaultProject();
       expect(
-        referenceSwapWords(const ReferenceLeftAlone(), '/w/bg.png'),
+        referenceSwapWords(const ReferenceLaid(), '/w/bg.png', project),
+        isNull,
+      );
+      expect(
+        referenceSwapWords(const ReferenceLeftAlone(), '/w/bg.png', project),
         isNull,
         reason: '↩️it said 「could not read the file」',
       );
       expect(
-        referenceSwapWords(const ReferenceUnreadable(), '/w/bg.png'),
+        referenceSwapWords(const ReferenceUnreadable(), '/w/bg.png', project),
         AppText.strings.imUnreadable('bg.png'),
       );
       AppText.settings.value = const AppLanguageSettings(
@@ -363,9 +364,38 @@ void main() {
         notationLanguage: AppLanguage.ko,
       );
       expect(
-        referenceSwapWords(const ReferenceLacksPicture(1), '/w/bg.png'),
+        referenceSwapWords(
+          const ReferenceLacksPicture(1),
+          '/w/bg.png',
+          project,
+        ),
         'bg.png: 이 파일에는 2번째 그림이 없습니다.',
         reason: 'counted from 1 where a person reads it',
+      );
+    });
+
+    test('F-376: a file the pool holds is named as the pool names it — a '
+        'name given in the pool, not the file\'s', () {
+      final project = createDefaultProject().copyWith(
+        mediaAssets: [
+          MediaAsset(
+            path: '/w/bg.png',
+            name: '거리',
+            kind: MediaAssetKind.image,
+          ),
+        ],
+      );
+      expect(
+        referenceSwapWords(const ReferenceUnreadable(), '/w/bg.png', project),
+        AppText.strings.imUnreadable('거리'),
+      );
+      expect(
+        referenceSwapWords(
+          const ReferenceLacksPicture(0),
+          '/w/bg.png',
+          project,
+        ),
+        AppText.strings.imLacksPicture('거리', 1),
       );
     });
 
@@ -532,7 +562,11 @@ void main() {
       expect(answer, isA<ReferenceUnreadable>());
       expect(session.layerById(takeRow), row);
       expect(
-        referenceSwapWords(answer!, '/work/take2.mp4'),
+        referenceSwapWords(
+          answer!,
+          '/work/take2.mp4',
+          session.repository.requireProject(),
+        ),
         AppText.strings.imUnreadable('take2.mp4'),
       );
     });

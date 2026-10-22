@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../text/app_strings.dart';
 import '../timeline/layer_label_controls.dart';
+import '../timeline/layer_rail_columns.dart' show LayerTypeButton;
 import '../widgets/app_scrollbar.dart';
 import '../widgets/settings_rows.dart';
 import 'export_cels_board.dart';
@@ -26,7 +27,7 @@ typedef ExportCelsStackLine = ({Layer layer, bool on});
 ///
 /// A switch is a row exception ([ExportCelsCutDelta.layerOverrides]): the
 /// label button reads 「커스텀」 while one answers by hand. A document's row
-/// holds no rows — its name heads the column alone.
+/// holds no rows — the column stands empty under its head.
 class ExportCelsStack extends StatefulWidget {
   const ExportCelsStack({
     super.key,
@@ -35,7 +36,7 @@ class ExportCelsStack extends StatefulWidget {
     required this.onSwitched,
   });
 
-  /// The row the list stands on — its name heads the column; null in a
+  /// The row the list stands on — the base its lines mark; null in a
   /// list with no row.
   final ExportCelsBoardRow? row;
 
@@ -45,6 +46,9 @@ class ExportCelsStack extends StatefulWidget {
   /// A line's switch, pressed: what the files should do with its row. Null
   /// while an export runs.
   final void Function(Layer layer, bool on)? onSwitched;
+
+  /// The slot that leads every line and marks the base.
+  static const double baseSlotWidth = 28;
 
   @override
   State<ExportCelsStack> createState() => _ExportCelsStackState();
@@ -112,47 +116,37 @@ class _ExportCelsStackState extends State<ExportCelsStack> {
     );
   }
 
-  /// The row stood on: its label and name — a document's icon and name.
-  Widget _head(BuildContext context) {
-    final row = widget.row;
-    if (row == null) {
-      return const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        children: [
-          switch (row) {
-            ExportCelsLayerRow(:final mark) => LayerMarkPlates(
-              mark: mark,
-              showTake: false,
-            ),
-            ExportCelsDocumentRow(:final kind) => Icon(
-              exportDocumentIcon(kind),
-              size: 14,
-            ),
-          },
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              row.name,
-              key: const ValueKey<String>('export-cels-stack-head'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: layerRowNameStyle(
-                context,
-              ).copyWith(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
+  /// What the column is: the layers the files put out.
+  ///
+  /// 🗣️F-395 (유저 2026-10-18): 「상단에 BG라는 이름써있는곳? 선택된 레이어
+  /// 써있는거 없애고, 해당영역 출력할 레이어 이렇게 텍스트 써두기」. ↩️It
+  /// headed the column with the row stood on — its label and name.
+  Widget _head(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        AppText.strings.exCelsLayersOut,
+        key: const ValueKey<String>('export-cels-stack-head'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: layerRowNameStyle(
+          context,
+        ).copyWith(fontWeight: FontWeight.bold),
       ),
-    );
-  }
+    ),
+  );
 
   /// One row of the stack: the app's labelled boolean — the whole line
   /// presses, the ring on its right (`SettingsSwitchRow`, 유저 2026-09-24:
-  /// 「설정 줄 하나로」) — led by the base's word or an attach row's arrow,
-  /// the base on the wash of the row stood on.
+  /// 「설정 줄 하나로」) — led as the timeline leads the row: its colour
+  /// label, its take and its kind; and before them a slot of its own that
+  /// marks the base, the base on the wash of the row stood on.
+  ///
+  /// 🗣️F-395 (유저 2026-10-18): 「밑에 영역엔 기준 BG 이런식말고 타임라인이랑
+  /// 똑같이 미술색라벨, 테이크, 아이콘, 이름 이렇게. 해당 영역 전부. 그리고 그
+  /// 왼쪽에 공간만들어서 규칙에 의해 기준으로 정해진 레이어에 기준이라고
+  /// 표시」. ↩️A line was led by the base's word or an attach row's arrow.
   Widget _line(BuildContext context, ExportCelsStackLine line) {
     final (:layer, :on) = line;
     final scheme = Theme.of(context).colorScheme;
@@ -167,16 +161,41 @@ class _ExportCelsStackState extends State<ExportCelsStack> {
       child: SettingsSwitchRow(
         tileKey: ValueKey<String>('export-cels-stack-switch-$idValue'),
         label: layer.name,
-        leading: isBase
-            ? Text(
-                AppText.strings.exSelBase,
-                style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-              )
-            : LayerAttachArrowCell(
-                keyPrefix: 'export-cels-stack',
-                idValue: idValue,
-                placement: layer.attachedPlacement,
-              ),
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // The base's slot stands on every line, the word on the base's
+            // alone.
+            SizedBox(
+              width: ExportCelsStack.baseSlotWidth,
+              child: isBase
+                  ? FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        AppText.strings.exSelBase,
+                        key: ValueKey<String>(
+                          'export-cels-stack-base-$idValue',
+                        ),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            SizedBox(
+              height: 24,
+              child: LayerMarkPlates(mark: layer.mark),
+            ),
+            LayerTypeButton(
+              keyPrefix: 'export-cels-stack',
+              idValue: idValue,
+              kind: layer.kind,
+            ),
+          ],
+        ),
         value: on,
         onChanged: onSwitched == null
             ? null

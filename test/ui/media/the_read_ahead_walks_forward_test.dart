@@ -93,7 +93,6 @@ void main() {
     slot.request.value = MediaViewerRequest(
       path: 'C:/work/clip-$opens.pdf',
       kind: MediaAssetKind.pdf,
-      name: 'clip',
     );
     // Fixed pumps, not a settle: a held first frame is a future that never
     // lands by itself.

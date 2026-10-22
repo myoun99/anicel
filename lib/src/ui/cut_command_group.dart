@@ -8,7 +8,7 @@ import '../models/layer_mark.dart';
 import 'cut/cut_note_dialog.dart';
 import 'dialogs/cut_settings_window.dart';
 import 'editor_command_actions.dart';
-import 'dialogs/app_progress_dialog.dart';
+import 'dialogs/behind_the_wait_window.dart';
 import 'dialogs/dialog_verb.dart';
 import 'dialogs/canvas_size_dialog.dart';
 import 'editor_session_manager.dart';
@@ -84,11 +84,17 @@ Future<void> _resizeActiveCutCanvas(
       CanvasEdgesDraft.of(cut.id, cut.canvasSize),
     ),
   ),
-  commit: (request) => _resizeBehindTheWaitWindow(
+  commit: (request) => resizeBehindTheWaitWindow(
     context,
     () => session.cutVerbs.resizeActiveCutCanvas(
       request.size,
       anchor: request.anchor,
+    ),
+    title: AppText.strings.canvasSizeTitle,
+    ahead: (report) => session.cutVerbs.resizeActiveCutCanvasAhead(
+      request.size,
+      anchor: request.anchor,
+      report: report,
     ),
   ),
 );
@@ -112,42 +118,26 @@ Future<void> landCanvasAdjust(
       session.camera.setProjectCameraSize(size);
       adjust.end();
     case CanvasEdgesDraft(:final size, :final contentOffset):
-      await _resizeBehindTheWaitWindow(context, () {
-        session.cutVerbs.placeActiveCutCanvas(
+      await resizeBehindTheWaitWindow(
+        context,
+        () {
+          session.cutVerbs.placeActiveCutCanvas(
+            size,
+            contentOffset: contentOffset,
+          );
+          adjust.end();
+        },
+        title: AppText.strings.canvasSizeTitle,
+        ahead: (report) => session.cutVerbs.placeActiveCutCanvasAhead(
           size,
           contentOffset: contentOffset,
-        );
-        adjust.end();
-      });
+          report: report,
+        ),
+      );
     case null:
       return;
   }
 }
-
-/// A canvas resize, the one way every door runs it.
-///
-/// D3: the app's ONE wait-for-this window, exactly as save wears it.
-/// The command is synchronous, but runWithAppProgress paints the
-/// window before starting the task; the trailing endOfFrame holds
-/// the modal barrier over the SECOND half of the resize — the
-/// canvas host's adoption pass and the first recomposite land on
-/// the next frame, and no input may slip between the halves (an
-/// edit there would commit a stroke at the wrong canvas size).
-Future<void> _resizeBehindTheWaitWindow(
-  BuildContext context,
-  VoidCallback resize,
-) => runWithAppProgress<void>(
-  context: context,
-  title: AppText.strings.canvasSizeTitle,
-  titleIcon: Icons.aspect_ratio,
-  runningLabel: AppText.strings.resizeProgressRunning,
-  doneLabel: AppText.strings.resizeProgressDone,
-  windowKey: const ValueKey<String>('resize-progress-dialog'),
-  task: (report) async {
-    resize();
-    await WidgetsBinding.instance.endOfFrame;
-  },
-);
 
 /// The band over the cut pill's ＋ — the ways of making a cut.
 ///
@@ -171,15 +161,9 @@ List<PanelFlyoutEntry> cutAddEntries(EditorSessionManager session) {
       enabled: session.cutPlacement.canCreateCut,
       onSelected: session.cutVerbs.createCut,
     ),
-    // ↩️It read 「Duplicate active cut」 here and 「Duplicate cut」 in the
-    // menu beside it — one verb, and one action's name now.
-    PanelFlyoutItem(
-      keyValue: 'add-cut-duplicate',
-      label: editorActionLabel(EditorActionIds.cutDuplicate),
-      shortcuts: const [EditorActionIds.cutDuplicate],
-      icon: Icons.content_copy,
-      onSelected: session.cutVerbs.duplicateActiveCut,
-    ),
+    // ⛔No duplicate here — 🗣️F-379 (유저 2026-10-17): 「컷 추가
+    // 팝오버버튼의 컷 복제는 컷 버튼에 중복존재하니 삭제」. The cut button's
+    // menu keeps it.
     // 겸용컷: same pictures, own timing. It only ever lived in the top
     // menu bar, and it belongs beside the other ways of making a cut.
     // ↩️It borrowed the menu bar's wording by id; the id is its action's.
@@ -268,20 +252,6 @@ List<PanelFlyoutEntry> cutMenuEntries(
       enabled: canConvertActiveCutToLinked(session),
       onSelected: () =>
           unawaited(showConvertActiveCutToLinked(context, session)),
-    ),
-    // ONE name, and the check says which way the switch stands — as every
-    // switch in a menu does. ↩️The label flipped between 「Pin thumbnail
-    // frame」 and 「Unpin thumbnail frame」, a checked 「Unpin」 among them,
-    // and in English whatever the program language was.
-    PanelFlyoutItem(
-      keyValue: 'set-cut-thumbnail-button',
-      label: editorActionLabel(EditorActionIds.cutPinThumbnail),
-      shortcuts: const [EditorActionIds.cutPinThumbnail],
-      icon: session.cutVerbs.isActiveCutThumbnailPinnedHere
-          ? Icons.image
-          : Icons.image_outlined,
-      checked: session.cutVerbs.isActiveCutThumbnailPinnedHere,
-      onSelected: session.cutVerbs.toggleActiveCutThumbnailFrame,
     ),
     const PanelFlyoutDivider(),
     PanelFlyoutItem(

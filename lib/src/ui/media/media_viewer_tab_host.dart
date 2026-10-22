@@ -15,6 +15,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
+import '../../models/viewer_ink_keys.dart' show viewerInksOn;
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
@@ -30,11 +31,18 @@ import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/canvas_book.dart';
 import '../brush/canvas_floor_insets.dart';
+import '../brush/canvas_selection_commands.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/cut_into_the_hand.dart';
+import '../brush/sheet_canvas_panel.dart'
+    show SheetStrokeHold, sheetBrushSwitch, sheetRunsTool;
 import '../editor_session_manager.dart';
+import '../input/os_file_drop.dart';
 import '../playback/playback_transport.dart';
+import '../session/media_file_views.dart';
+import '../sheet/sheet_ink_layer.dart' show SheetInkWindow;
+import '../sheet/sheet_shape_targets.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -46,10 +54,11 @@ import 'page_rasters.dart';
 import 'viewer_page_loading.dart';
 import 'viewer_pages_and_run.dart';
 import 'viewer_render_tier.dart';
+import 'viewer_ink.dart';
 import 'viewer_sound.dart';
 import 'waveform_marks_painter.dart';
 import '../widgets/app_icon_button.dart';
-import '../widgets/page_turn_strip.dart';
+import '../widgets/page_turn_bar.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/transport_bar.dart';
 import '../widgets/static_raster.dart';
@@ -61,15 +70,15 @@ import '../sliced_value_listenable_builder.dart';
 /// dockable-panel view-state rule) so the choice survives tab switches
 /// and re-docking.
 class MediaViewerRequest {
-  const MediaViewerRequest({required this.path, required this.kind, this.name});
+  const MediaViewerRequest({required this.path, required this.kind});
 
   final String path;
   final MediaAssetKind kind;
 
-  /// Display name (the asset's); null falls back to the file name.
-  final String? name;
-
-  String get displayName => name ?? mediaFileName(path);
+  // 🪦No name of its own (F-376, 2026-10-17): it carried the pooled
+  // asset's name as it stood when the viewer opened, and a rename while
+  // the file was open did not reach the viewer's plate. The plate reads
+  // the pool now ([MediaViewerTabHost]).
 }
 
 /// ONE viewer's whole state, owned by the workspace: what it looks at,
@@ -80,6 +89,11 @@ class MediaViewerRequest {
 /// never change what the other is showing, which is the entire reason
 /// there are two.
 class MediaViewerSlot {
+  MediaViewerSlot() {
+    position.addListener(_keepPage);
+    viewport.addListener(_keepFraming);
+  }
+
   final ValueNotifier<MediaViewerRequest?> request = ValueNotifier(null);
 
   /// See [MediaViewerTabHost.position] — one slot, whatever the kind.
@@ -113,24 +127,30 @@ class MediaViewerSlot {
     const ViewerLoudness(),
   );
 
-  /// Points this viewer at a document. The position goes back to the
-  /// start, because "page 37" of the file you just left means nothing in
-  /// the one you just opened.
+  /// This viewer's brush switch ([MediaViewerTabHost.brushAllowed]) — off
+  /// to begin with, as every sheet's (I-114: 「다른 캔버스 베이스패널의
+  /// 브러시 허용이랑 똑같은」), and up here for the reason the page is.
+  ///
+  /// ⚠️The viewer's, not the file's: a swap trades the files and leaves
+  /// each viewer its own switch ([swapWith]), as its loudness.
+  final ValueNotifier<bool> brushAllowed = ValueNotifier(false);
+
+  /// Points this viewer at a document — at the page that FILE was last seen
+  /// at, in either viewer, or its first when it never was turned (F-382,
+  /// [keepIn]). "Page 37" of the file you just left means nothing in the
+  /// one you just opened: the page is always the arriving file's. Null
+  /// empties the viewer, which is also what a reference the app can no
+  /// longer reach comes back as (유저 확정 ⑭: quietly).
+  ///
+  /// ↩️A project's remembered documents came back through a door of their
+  /// own, the one that did not go back to the start; with the page the
+  /// file's, every open is that door.
   ///
   /// A SWAP deliberately does not come through here — it carries each
   /// file's own page across with it (see [swapWith]).
   void open(MediaViewerRequest? next) {
     request.value = next;
-    position.value = 0;
-  }
-
-  /// Puts back a document the project remembered, at the page it
-  /// remembered — the one path that sets a request WITHOUT going back to
-  /// the start. Null empties the viewer, which is what a reference the
-  /// app can no longer reach comes back as (유저 확정 ⑭: quietly).
-  void restore(MediaViewerRequest? request, {int position = 0}) {
-    this.request.value = request;
-    this.position.value = request == null || position < 0 ? 0 : position;
+    position.value = next == null ? 0 : (_views?.pageOf(next.path) ?? 0);
   }
 
   /// Trades documents with the other viewer: 유저 확정 ⑪⑯⑰ — the verb is
@@ -140,7 +160,8 @@ class MediaViewerSlot {
   ///
   /// The page travels WITH its file (page 37 of the conte is still page
   /// 37 when it lands on the floor). The viewport does not: the two
-  /// panels are different widths, so each re-frames what arrives.
+  /// panels are different widths, so each frames what arrives for itself
+  /// — as it last framed that file, or fitted ([keptFramingOf]).
   void swapWith(MediaViewerSlot other) {
     final request = this.request.value;
     final position = this.position.value;
@@ -150,12 +171,53 @@ class MediaViewerSlot {
     other.position.value = position;
   }
 
+  /// What this viewer keeps of each file it shows — the page it was left
+  /// at and how it was framed (F-382) — and its panel id, the framing's
+  /// key. The project on screen's ([keepIn]); with none, every file opens
+  /// at its first page, fitted.
+  MediaFileViews? _views;
+  String _viewer = '';
+
+  /// From now on this viewer keeps what it shows in [views], as [viewer]
+  /// — the project that came on screen's.
+  void keepIn(MediaFileViews views, {required String viewer}) {
+    _views = views;
+    _viewer = viewer;
+  }
+
+  /// The view this viewer left [path] framed at — null when it never
+  /// framed it, and the file is fitted ([MediaViewerTabHost.keptFraming]).
+  CanvasViewport? keptFramingOf(String path) =>
+      _views?.framingOf(path, viewer: _viewer);
+
+  /// The file the page and the view belong to now — none while the viewer
+  /// is between files ([framedFor] still names the last one): what moves
+  /// then is the last document's view, or the next one's page on its way,
+  /// and keeping it would hand one file another's.
+  String? get _seen {
+    final path = request.value?.path;
+    return path != null && framedFor.value == path ? path : null;
+  }
+
+  void _keepPage() {
+    if (_seen case final path?) {
+      _views?.rememberPage(path, position.value);
+    }
+  }
+
+  void _keepFraming() {
+    if ((_seen, viewport.value) case (final path?, final framing?)) {
+      _views?.rememberFraming(path, viewer: _viewer, framing: framing);
+    }
+  }
+
   void dispose() {
     request.dispose();
     position.dispose();
     viewport.dispose();
     framedFor.dispose();
     loudness.dispose();
+    brushAllowed.dispose();
   }
 }
 
@@ -187,11 +249,16 @@ class MediaViewerTabHost extends StatefulWidget {
     this.viewportController,
     this.onViewportChanged,
     this.framedFor,
+    this.keptFraming,
     this.loudness,
+    this.selection,
     this.filePicker,
     this.sound,
     this.brushTool,
     this.cutPieceSlot,
+    this.inkController,
+    this.brushAllowed = false,
+    this.onBrushAllowedChanged,
   });
 
   /// WHICH viewer this is — the panel's tab id, and the prefix every
@@ -269,12 +336,24 @@ class MediaViewerTabHost extends StatefulWidget {
   /// framed for. Null in hosts that own no slot; then every load frames, which
   /// is the old behaviour and correct when there is nothing to preserve.
   final ValueNotifier<Object?>? framedFor;
+
+  /// [MediaViewerSlot.keptFramingOf] — the view this viewer left a file
+  /// framed at (F-382). A document it has framed before comes back framed
+  /// so, at the page its file was last seen at, rather than fitted. Null in
+  /// hosts that own no slot: every document is fitted.
+  final CanvasViewport? Function(String path)? keptFraming;
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   /// [MediaViewerSlot.loudness] — how loud this viewer plays its sound.
   /// Null in hosts that own no slot: the panel keeps a level of its own for
   /// as long as it is mounted.
   final ValueNotifier<ViewerLoudness>? loudness;
+
+  /// This viewer's selection channel, the window's for it (F-380 —
+  /// `HomePage`): where the cut's polygon trace is tapped out. Null in a
+  /// host handed none: the panel keeps a channel of its own for as long as
+  /// it is mounted.
+  final CanvasSelectionCommands? selection;
 
   /// Injectable loose-file picker (tests): answers in place of the dialog.
   final LooseFilePicker? filePicker;
@@ -296,6 +375,8 @@ class MediaViewerTabHost extends StatefulWidget {
   /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널의 잘라내기툴 사용 가능하도록」 —
   /// and the viewer has no drawing (「뷰어패널은 기본적으로 드로잉모드
   /// 존재안하니」), so the cut is the one tool with anything to do here.
+  /// ↩️I-114 gave it one — [brushAllowed], on a file the project carries —
+  /// and while it is on the brush reaches the page's ink as on a sheet.
   final ValueListenable<BrushToolState>? brushTool;
 
   /// Where a cut from this viewer lands — the cut tool's one held piece,
@@ -304,6 +385,24 @@ class MediaViewerTabHost extends StatefulWidget {
   /// ⛔Not handed to the panel below: a mounted canvas panel installs its
   /// paste-at-origin into the slot, and the viewer has no cel to paste on.
   final CutPieceSlot? cutPieceSlot;
+
+  /// The ink the viewers write on the files the project carries. Null
+  /// writes on none.
+  final ViewerInkController? inkController;
+
+  /// THE VIEWER'S BRUSH SWITCH — the sheets' 「브러시 허용」
+  /// ([sheetBrushSwitch]), off by default as theirs is.
+  ///
+  /// 🗣️I-114 (유저 2026-10-21): 「뷰어패널(서브던 메인이던) 새 기능. 다른
+  /// 캔버스 베이스패널의 브러시 허용이랑 똑같은 직접 그릴수있는기능 법
+  /// 통일해서 구현. 물론 그리는게 가능한 파일만 대응 … 오디오파일처럼
+  /// 못그리는건 대응불가하도록」 — and I-114-Q1: 「품은 파일만」. On any
+  /// other file the switch keeps its place, off ([viewerInksOn]).
+  final bool brushAllowed;
+
+  /// Flips [brushAllowed]. Null shows no switch — a viewer with nowhere to
+  /// keep the answer.
+  final ValueChanged<bool>? onBrushAllowedChanged;
 
   @override
   State<MediaViewerTabHost> createState() => _MediaViewerTabHostState();
@@ -318,6 +417,7 @@ final class _LetGoOf implements ViewerDocument {
   _LetGoOf(ViewerDocument document, {required int page})
     : pageCount = document.pageCount,
       framesPerSecond = document.framesPerSecond,
+      drawnAtAnySize = document.drawnAtAnySize,
       _size = document.pageCount == 0
           ? ui.Size.zero
           : document.pageSize(page.clamp(0, document.pageCount - 1));
@@ -327,6 +427,9 @@ final class _LetGoOf implements ViewerDocument {
 
   @override
   final double? framesPerSecond;
+
+  @override
+  final bool drawnAtAnySize;
 
   final ui.Size _size;
 
@@ -358,7 +461,52 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
       BrushEditCacheInvalidationSink();
 
+  /// The page ink's live-stroke hold — a sheet's ([SheetStrokeHold]).
+  late final SheetStrokeHold _strokeHold = SheetStrokeHold(
+    brushInput: (live) => widget.session.setBrushInputActive(live),
+  );
+
+  /// What takes a shape on the page ink — its layer says (F-420).
+  final SheetShapeTargets _shapes = SheetShapeTargets();
+
+  /// Whether the last build mounted the page ink: drawing going off — the
+  /// switch, another file — unmounts it under a pen that will never be
+  /// lifted there.
+  bool _drawingOn = false;
+
   MediaViewerRequest? get _currentRequest => widget.request.value;
+
+  /// The open file's name as the pool shows it NOW (F-376) — a rename while
+  /// it is open reaches the plate — or null with nothing open.
+  String? get _shownName => switch (_currentRequest) {
+    final request? => mediaFileShownName(_shownAsset, request.path),
+    null => null,
+  };
+
+  /// The open file as the pool holds it NOW — null with nothing open, or a
+  /// file the pool does not hold.
+  MediaAsset? get _shownAsset => switch (_currentRequest) {
+    final request? => widget.session.repository.currentProject
+        ?.mediaAssetByPath(request.path),
+    null => null,
+  };
+
+  /// The name the plate was last drawn with: the session tells of every
+  /// edit, and only one that changes this name redraws the viewer.
+  String? _drawnName;
+
+  /// What the open file was carried as when last drawn — whether its page
+  /// takes ink (I-114): a file carried or let go while it is open redraws
+  /// the viewer, as a rename does.
+  String? _drawnCarry;
+
+  void _onSessionChanged() {
+    if (mounted &&
+        (_shownName != _drawnName ||
+            _shownAsset?.carriedAs != _drawnCarry)) {
+      setState(() {});
+    }
+  }
 
   /// The open document, whatever medium it came from — 🪦there used to be
   /// a `_frames` list AND a `_pdf` handle here, and five places downstream
@@ -474,6 +622,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   void initState() {
     super.initState();
     widget.request.addListener(_onRequestChanged);
+    widget.session.addListener(_onSessionChanged);
     widget.session.memoryPressureTicks.addListener(_onMemoryPressure);
     widget.position.addListener(_onPosition);
     widget.session.playbackRig.transports.add(this);
@@ -486,6 +635,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     if (rebindListener(oldWidget.request, widget.request, _onRequestChanged)) {
       _onRequestChanged();
     }
+    rebindListener(oldWidget.session, widget.session, _onSessionChanged);
     rebindListener(
       oldWidget.session.memoryPressureTicks,
       widget.session.memoryPressureTicks,
@@ -528,6 +678,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   @override
   void dispose() {
     widget.request.removeListener(_onRequestChanged);
+    widget.session.removeListener(_onSessionChanged);
     widget.session.memoryPressureTicks.removeListener(_onMemoryPressure);
     widget.position.removeListener(_onPosition);
     // ⚠️Before [_disposeContent]: it stops the clock, and a transport that
@@ -543,6 +694,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       widget.viewerId,
     );
     _run.dispose();
+    _ownSelection?.dispose();
+    _strokeHold.dispose();
     super.dispose();
   }
 
@@ -847,6 +1000,13 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// The level of a host that handed none ([MediaViewerTabHost.loudness]).
   ViewerLoudness _ownLoudness = const ViewerLoudness();
 
+  /// The selection channel this viewer's canvas panel runs the cut on —
+  /// the one handed in, or one of its own ([MediaViewerTabHost.selection]).
+  CanvasSelectionCommands get _selection =>
+      widget.selection ?? (_ownSelection ??= CanvasSelectionCommands());
+
+  CanvasSelectionCommands? _ownSelection;
+
   void _setLoudness(ViewerLoudness next) => setState(() {
     final held = widget.loudness;
     if (held == null) {
@@ -876,7 +1036,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   @override
   ValueListenable<bool> get isActiveListenable => _run.playingFlips;
 
-  Future<void> _pickLooseFile() async {
+  /// What [picker] picks opens here — the dialog with none. Each way in
+  /// names its own: the pill's 「파일 열기」 the widget's [filePicker], and
+  /// files dropped here the files ([_openDropped]).
+  Future<void> _openLooseFile(LooseFilePicker? picker) async {
     // 🚨EVERY PICKER SHOWS EVERY FILE (유저 2026-08-29) — the refusal is a
     // notice after the pick, not a greyed-out file in the dialog. The
     // widget's own [filePicker] seam answers in place of the dialog, and
@@ -889,7 +1052,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final path = await openSupportedFile(
       context,
       supportedExtensions: FileTypeGroups.poolMedia.extensions ?? [],
-      picker: widget.filePicker,
+      picker: picker,
     );
     if (path == null || !mounted) {
       return;
@@ -900,6 +1063,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     widget.onRequestPicked?.call(MediaViewerRequest(path: path, kind: kind));
   }
+
+  /// Files dropped here from the OS ([OsFileDropEntrance]), opened as the
+  /// 「파일 열기」 opens what it picks.
+  void _openDropped(List<String> paths) =>
+      unawaited(_openLooseFile(() async => paths));
 
   /// Whether the file on screen can still be added to the media pool —
   /// false for one already in it, and for nothing at all.
@@ -935,33 +1103,35 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// 타임시트나 콘티용지패널이랑 같은 알약쓰고, 한장짜리면 그 알약조차
   /// 없애고, 동영상같은거면 아래에 재생ui 넣고」): a document that RUNS — its
   /// pages advance by themselves, or it sounds ([MediaRun.canPlay]) — gets
-  /// the transport under it ([_transport]); a book gets the page cluster on
-  /// the left ([_pageStrip]); a single picture gets neither.
+  /// the transport under it ([_player]); a book gets the page turner there
+  /// instead (F-383); a single picture gets neither ([_transport]).
   ///
-  /// ↩️Every document wore the left strip, and one that ran had PLAY at the
-  /// head of it — a movie turned its frames by the page chevrons.
+  /// ↩️Every document wore the strip on the left edge, and one that ran had
+  /// PLAY at the head of it — a movie turned its frames by the page
+  /// chevrons.
   bool get _runs => _run.canPlay;
 
-  /// The page cluster, STACKED for the left strip (유저 확정 ⑥) — a book's,
-  /// and empty unless there is more than one page, because a still image
-  /// has no pages to turn and a strip standing there for it would be a
-  /// permanent disabled promise.
-  List<Widget> _pageStrip(int pageIndex, int pageCount) => _runs
-      ? const []
-      : pageTurnStrip(
+  /// The band under the document stood on — page [pageIndex] of
+  /// [pageCount]: the transport of one that runs, the page turner of a
+  /// book ([CanvasTransportBand.ofPages] — none below two pages).
+  CanvasTransportBand? _transport(
+    BuildContext context,
+    int pageIndex,
+    int pageCount,
+  ) => _runs
+      ? _player(context)
+      : CanvasTransportBand.ofPages(
+          context,
           keyPrefix: widget.viewerId,
           page: viewerPage(pageIndex, pageCount),
           onTurnTo: _turnToPage,
         );
 
-  /// The transport under a document that runs, or null for one that does
-  /// not. What it counts is the run's ([MediaRun.frameCount]): a movie's
-  /// own frames, and a sound's length in the project's frames — the frames
-  /// the import window counts the same sound in.
-  CanvasTransportBand? _transport(BuildContext context) {
-    if (!_runs) {
-      return null;
-    }
+  /// The transport under a document that runs. What it counts is the run's
+  /// ([MediaRun.frameCount]): a movie's own frames, and a sound's length in
+  /// the project's frames — the frames the import window counts the same
+  /// sound in.
+  CanvasTransportBand _player(BuildContext context) {
     final rate = widget.session.projectSettings.projectFrameRate;
     final frameCount = _run.frameCount(rate);
     return CanvasTransportBand(
@@ -1136,8 +1306,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   /// The pages the view shows now and where each lies — every page on
   /// screen in the book ([_book]), the page on show ([_pageShown])
-  /// otherwise — each asked for at the zoom the view has — none while
-  /// [asking] is false (a fit is about to replace the view).
+  /// otherwise — each asked for at the zoom the view has, or at its own
+  /// pixels when it is made of them ([mediaViewerRenderScaleFor]) — none
+  /// while [asking] is false (a fit is about to replace the view).
   ///
   /// 🚨★★★THE ZOOM THE VIEW HAS, read HERE, from the view the panel hands
   /// this builder. It was read in `build` from `widget.viewport` — a seed
@@ -1164,7 +1335,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// white flashes 유저 2026-08-31 reported (「첫 재생때 … 흰 화면이
   /// 엄청나게 깜빡이면서 재생됨」) by making the picture lie; the playhead
   /// does not reach a frame that is not there instead.
-  List<({Rect rect, ui.Image? image})> _pagesShown(
+  List<({int page, Rect rect, ui.Image? image})> _pagesShown(
     BuildContext context,
     CanvasViewport viewport,
     Size box, {
@@ -1190,9 +1361,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     if (asking) {
       final coverage = CanvasZoomScale.of(context).display(viewport.zoom);
       for (final entry in shown) {
-        final scale = viewerRenderScaleFor(
+        final scale = mediaViewerRenderScaleFor(
           coverage,
           document.pageSize(entry.page),
+          drawnAtAnySize: document.drawnAtAnySize,
         );
         if (entry.page == page) {
           _rasters.scale = scale;
@@ -1203,7 +1375,30 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     return [
       for (final entry in shown)
-        (rect: entry.rect, image: _rasters.imageOf(entry.page)),
+        (
+          page: entry.page,
+          rect: entry.rect,
+          image: _rasters.imageOf(entry.page),
+        ),
+    ];
+  }
+
+  /// The ink windows of [pages] — each page's whole picture, of the file the
+  /// project carries as [carry].
+  List<SheetInkWindow> _inkWindowsOf(
+    List<({int page, Rect rect, ui.Image? image})> pages, {
+    required String carry,
+    required bool drawnAtAnySize,
+  }) {
+    final scale = viewerInkScale(drawnAtAnySize: drawnAtAnySize);
+    return [
+      for (final shown in pages)
+        viewerInkWindow(
+          carry: carry,
+          page: shown.page,
+          rect: shown.rect,
+          scale: scale,
+        ),
     ];
   }
 
@@ -1213,6 +1408,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final request = _currentRequest;
     final pageCount = _pageCount;
     final pageIndex = _pageShown;
+    _drawnName = _shownName;
+    final carry = _shownAsset;
+    _drawnCarry = carry?.carriedAs;
 
     // Document space: the page/frame being shown. ONE answer now — the
     // document knows its own page size, whether that is PDF points, image
@@ -1255,10 +1453,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // minted a fresh one and the fit ran again over a view the user had
     // set. What the slot remembers is what makes 「once per document」 true
     // across a close.
+    // F-382: and a file this viewer has framed before stands as it left it.
     final framing = paper != null && _loadedToken != null && _needsFraming
         ? CanvasAutoFrameRequest(
             token: _loadedToken!,
             rect: book?.pageRect(pageIndex) ?? paper,
+            view: switch (request) {
+              final shown? => widget.keptFraming?.call(shown.path),
+              null => null,
+            },
           )
         : null;
     // The pages wait for the fit: it lands after this frame, and the build
@@ -1277,12 +1480,26 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // viewer in a rail is not under the provider. ↩️The floor's viewer was
     // handed none, so its bars stood under the panels lying on it.
     final floor = CanvasFloorInsets.maybeOf(context);
-    final transport = _transport(context);
+    final transport = _transport(context, pageIndex, pageCount);
 
-    BrushCanvasPanel panelWith(ValueListenable<BrushToolState>? tool) =>
-        BrushCanvasPanel(
+    // I-114: the brush writes on the page of a file the project carries
+    // while the switch is on — a sheet's drawing ([SheetStrokeHold] and all).
+    final ink = widget.inkController;
+    final inkTool = widget.brushTool;
+    final inkable = ink != null && inkTool != null && viewerInksOn(carry);
+    final drawing = inkable && widget.brushAllowed;
+    if (_drawingOn && !drawing) {
+      _strokeHold.releaseAfterFrame();
+    }
+    _drawingOn = drawing;
+
+    /// The panel running [tool] — the workspace's while [inks], the armed
+    /// cut's, or none.
+    BrushCanvasPanel panelWith(
+      ValueListenable<BrushToolState>? tool, {
+      bool inks = false,
+    }) => BrushCanvasPanel(
       floorCover: floor?.insets ?? EdgeInsets.zero,
-      floorLeftRailBand: floor?.leftRailBand,
       floorRightRailBand: floor?.rightRailBand,
       floorBottomOverlaySpan: floor?.bottomOverlaySpan ?? 0,
       coordinator: null,
@@ -1298,19 +1515,36 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // Paper rule: the viewer never rotates the view.
       allowViewRotation: false,
       // Read-only host: a brush-tip cursor over undrawable content is a
-      // false affordance.
-      toolCursorsEnabled: false,
+      // false affordance. ↩️Drawable while the page takes ink (I-114) under
+      // a tool a sheet runs (F-420).
+      toolCursorsEnabled: inks,
       // F-77 (유저: 「뷰어패널 열린거 없으면 확대나 스크롤바같은 조작 버튼
       // 비활성화」): with no file open there is no view to operate.
       hasContentToView: request != null,
       // 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드
       // 존재안하니 한손가락 핑거시 팬」 — whatever the one-finger slot says,
       // and so a finger drives no tool here: the cut takes a pen or a mouse.
-      oneFingerAction: CanvasTouchDragAction.navigate,
+      // ↩️While the page takes ink under a tool a sheet runs (I-114 ·
+      // F-420) the finger is a sheet's: the slot's own answer.
+      oneFingerAction: inks ? null : CanvasTouchDragAction.navigate,
+      // 🗣️F-420 (유저 2026-10-20: 「선택한 도구가 작동하게하도록」), a
+      // sheet's law: while the page takes ink, a tool a sheet runs
+      // ([sheetRunsTool]) is the panel's — the brush and the eraser in the
+      // ink's windows, a shape landed in the window it is pressed in
+      // ([SheetShapeScope] in [build]); the armed cut runs as it does with
+      // the ink off (F-380); and under any other tool nothing here can act,
+      // so a press moves the page (F-80). ↩️While it took ink the panel ran
+      // no tool and the windows laid the brush under whatever was in hand.
       brushToolState: tool,
-      // F-80: with no cut armed nothing here can act on a press, so it
-      // moves the page instead.
       runsTheSelectedTool: tool != null,
+      // ⚠️THE SECOND OF ITS KIND: [SheetCanvasPanel] answers its drawingOn
+      // with these same answers — the finger, the press, the tool in hand,
+      // the shapes, the hold, and the let-go after the frame in [build].
+      // Two, so not shared yet (the rule of three); a third host taking ink
+      // lifts them into one.
+      contentStrokeActive: drawing ? _strokeHold : null,
+      contentShapeTargetAt: _shapes.at,
+      contentTakesPressAt: _shapes.takesPressAt,
       // F-179 (유저 2026-09-25: 「타임시트패널등 캔버스 베이스 패널엔
       // 페이스트보드가 없다는 뜻임」): the viewer is one of those panels —
       // F-201 names it one.
@@ -1318,6 +1552,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // F-315: a file is looked at a pixel to a pixel.
       oneToOneOnPill: true,
       onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
+      // F-380: the cut runs on a channel as the canvas's does — a polygon's
+      // vertices are kept there ([MediaViewerTabHost.selection]).
+      selectionCommands: _selection,
       autoFrame: framing,
       // 유저 확정 2026-08-13 (⑤): opening a file is the one verb that stays
       // on the pill. Register and swap are a session's worth of taps
@@ -1326,13 +1563,21 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // 🗣️I-83-Q1 (유저 2026-10-09): 「알약의 「파일 열기」 옆」 — closing
       // stands beside opening, at that cost; off while nothing is open.
       bottomBarLeading: [
+        // At the head of the bar, as on every sheet; off on a file it cannot
+        // write on (I-114), in its place.
+        if (widget.onBrushAllowedChanged case final flip?)
+          sheetBrushSwitch(
+            allowed: drawing,
+            onChanged: inkable ? flip : null,
+            keyPrefix: widget.viewerId,
+          ),
         if (widget.onRequestPicked != null)
           AppIconButton(
             keyValue: _key('open-file-button'),
             tooltip: strings.mediaViewerOpenFile,
             icon: const Icon(Icons.file_open_outlined),
             size: AppIconButtonSize.strip,
-            onPressed: _pickLooseFile,
+            onPressed: () => unawaited(_openLooseFile(widget.filePicker)),
           ),
         if (widget.onRequestClosed case final close?)
           AppIconButton(
@@ -1343,9 +1588,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             onPressed: request == null ? null : close,
           ),
       ],
-      pageStrip: _pageStrip(pageIndex, pageCount),
       transport: transport,
-      documentName: request?.displayName,
+      documentName: _drawnName,
       bottomBarSettings: [
         // Both keep their retired button's key string — the flyout's own
         // convention, so every test that pressed them gains a menu-open
@@ -1371,7 +1615,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // this one in the pool" can change. ⚠️It has to: the list captures
       // the entries when the BAR is built, not when the list opens. So
       // does whether a file is open: the close button is off without one.
-      bottomBarHostToken: (pageIndex, pageCount, _canRegister, request != null),
+      // And the brush switch's two answers.
+      bottomBarHostToken: (
+        pageIndex,
+        pageCount,
+        _canRegister,
+        request != null,
+        drawing,
+        inkable,
+      ),
       // A book's Fit frames the page read — the panel's to know.
       fitFocusRect: book == null ? paper : null,
       viewLimit: paper,
@@ -1395,12 +1647,24 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             Positioned.fill(
               child: LayoutBuilder(
                 builder: (context, box) {
+                  final ratio = EffectiveDevicePixelRatio.of(context);
+                  // Snapped ONCE, as a sheet's view is (P8): the pages and
+                  // the ink over them land on one device grid.
+                  final snapped = renderSnappedViewport(viewport, ratio);
                   final pages = _pagesShown(
                     context,
-                    viewport,
+                    snapped,
                     box.biggest,
                     asking: !framingPending,
                   );
+                  final carried = carry?.carriedAs;
+                  final inkWindows = ink == null || carried == null
+                      ? const <SheetInkWindow>[]
+                      : _inkWindowsOf(
+                          pages,
+                          carry: carried,
+                          drawnAtAnySize: document?.drawnAtAnySize ?? false,
+                        );
                   return Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1414,21 +1678,54 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                         child: CustomPaint(
                           key: ValueKey<String>(_key('page')),
                           painter: ViewportPagesPainter(
-                            pages: pages,
+                            pages: [
+                              for (final shown in pages)
+                                (rect: shown.rect, image: shown.image),
+                            ],
                             // PDF paper is opaque white; a transparent
                             // image shows the checker-free paper too — the
                             // viewer is a light table, not a compositor.
                             ground: document != null
                                 ? ViewportPageGround.paper
                                 : ViewportPageGround.none,
-                            viewport: viewport,
-                            effectiveRatio: EffectiveDevicePixelRatio.of(
-                              context,
-                            ),
+                            viewport: snapped,
+                            effectiveRatio: ratio,
                           ),
                           child: const SizedBox.expand(),
                         ),
                       ),
+                      // The page's saved ink, over it (I-114) — but where a
+                      // live window draws it.
+                      if (ink != null && inkWindows.isNotEmpty)
+                        RepaintBoundary(
+                          child: CustomPaint(
+                            key: ValueKey<String>(_key('ink')),
+                            painter: ViewerInkPainter(
+                              windows: inkWindows,
+                              viewport: snapped,
+                              effectiveRatio: ratio,
+                              inkSurfaceFor: ink.surfaceOf,
+                              liveInkKeys: {
+                                if (drawing)
+                                  for (final window in inkWindows) window.key,
+                              },
+                              repaint: ink,
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      if (drawing)
+                        ViewerInkOverlay(
+                          key: ValueKey<String>(_key('ink-layer')),
+                          keyPrefix: widget.viewerId,
+                          controller: ink,
+                          windows: inkWindows,
+                          brushToolState: inkTool,
+                          historyManager: widget.session.historyManager,
+                          viewport: snapped,
+                          strokeActive: _strokeHold,
+                          cacheInvalidationSink: _cacheInvalidationSink,
+                        ),
                       // The file still opening, or a page on screen not
                       // drawn yet (F-315).
                       if (document == null ||
@@ -1476,17 +1773,36 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final brushTool = widget.brushTool;
     final panel = brushTool == null
         ? panelWith(null)
-        : SlicedValueListenableBuilder<BrushToolState, CanvasShapeKind?>(
+        : SlicedValueListenableBuilder<
+            BrushToolState,
+            (CanvasShapeKind?, bool)
+          >(
             valueListenable: brushTool,
-            slice: armedCutShape,
-            builder: (context, tool) => panelWith(_toolFor(tool)),
+            slice: (tool) => (armedCutShape(tool), sheetRunsTool(tool.tool)),
+            builder: (context, tool) => drawing && sheetRunsTool(tool.tool)
+                ? panelWith(brushTool, inks: true)
+                : panelWith(_toolFor(tool)),
           );
 
     final surface = ColoredBox(
       key: ValueKey<String>(_key('panel')),
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: panel,
+      // Where the page ink's layer answers what takes a shape (F-420).
+      child: SheetShapeScope(targets: _shapes, child: panel),
     );
+    // 🗣️F-378 (유저 2026-10-17: 「윈도우등 os에서 드래그앤 드롭으로 파일을
+    // 뷰어패널에 떨어트리면 바로 뷰어패널에서 열리도록. 서브뷰어던
+    // 메인뷰어던」): a file dropped here from the OS opens here, as the
+    // pill's 「파일 열기」 opens one — and is refused as it would be.
+    return OsFileDropEntrance(
+      onDrop: _openDropped,
+      child: _poolEntrance(surface),
+    );
+  }
+
+  /// [surface] with the place a pool row is dropped on over it — or as it
+  /// is, for a host that takes none.
+  Widget _poolEntrance(Widget surface) {
     final onAssetDropped = widget.onAssetDropped;
     if (onAssetDropped == null) {
       return surface;

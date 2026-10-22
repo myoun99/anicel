@@ -15,7 +15,19 @@ import '../../models/app_input_settings.dart' show AppInput;
 import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/named.dart';
-import 'axis_turn.dart' show extentAlong, offsetAlong;
+import 'axis_turn.dart'
+    show
+        endAcross,
+        endAlong,
+        extentAcross,
+        extentAlong,
+        offsetAlong,
+        partAcross,
+        partAlong,
+        rectAlong,
+        sizeAlong,
+        startAcross,
+        startAlong;
 import 'berth_row.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_double_tap.dart';
@@ -170,6 +182,14 @@ class TimelineRowCellsPainter extends CustomPainter
   @override
   bool Function(Layer layer, int frameIndex)? get celHasContentForLayer =>
       celContent?.hasContent;
+
+  /// Whether a block's cel could not be read — the block goes red.
+  ///
+  /// ⚠️Not in a baked tile's identity of its own: it comes from the source
+  /// [celHasContentForLayer] comes from, which is, and
+  /// [celContentRevision] moves whenever it can have changed.
+  bool Function(Layer layer, int frameIndex)? get celCannotBeReadForLayer =>
+      celContent?.cannotRead;
 
   /// Read LIVE, never captured: the whole point is that the row does NOT
   /// rebuild when a cel gains pixels — it repaints — so a value frozen at
@@ -326,9 +346,11 @@ class TimelineRowCellsPainter extends CustomPainter
     final frames = geometry.value;
     final main = frames.edgeAt(frameIndex);
     final extent = frames.edgeAt(frameIndex + 1) - main;
-    return axis == Axis.horizontal
-        ? Rect.fromLTWH(main, 0, extent, crossAxisExtent)
-        : Rect.fromLTWH(0, main, crossAxisExtent, extent);
+    return rectAlong(
+      axis,
+      along: (from: main, to: main + extent),
+      across: (from: 0, to: crossAxisExtent),
+    );
   }
 
   /// Camera rows are a SUMMARY column, not a sheet: their "coverage" is the
@@ -497,16 +519,22 @@ class TimelineRowCellsPainter extends CustomPainter
     // resolver stands down elsewhere). Ghosts stay plain (they carry no
     // block chrome at all). I-44: onto [paperGround], so the grid sheet
     // under the row cannot show through it.
-    final baseBackground =
-        !model.ghost &&
-            !_cameraSummaryRow &&
-            model.exposureState.isCovered &&
-            !(celHasContentForLayer?.call(layer, frameIndex) ?? true)
-        ? timelineGridGroundOver(
-            under: paperGround,
-            painted: timelineEmptyCelPaperColor(paper),
-          )!
-        : cellPaper;
+    final block =
+        !model.ghost && !_cameraSummaryRow && model.exposureState.isCovered;
+    final Color baseBackground;
+    if (block && (celCannotBeReadForLayer?.call(layer, frameIndex) ?? false)) {
+      // A cel whose picture data could not be read is red, as the ruler's
+      // bar is over its frames (frame-picture-indicator-Q1 b).
+      baseBackground = timelineUnreadableCelPaperColor;
+    } else if (block &&
+        !(celHasContentForLayer?.call(layer, frameIndex) ?? true)) {
+      baseBackground = timelineGridGroundOver(
+        under: paperGround,
+        painted: timelineEmptyCelPaperColor(paper),
+      )!;
+    } else {
+      baseBackground = cellPaper;
+    }
     // D32/D38 (2026-08-18): the per-cell BORDER is gone. It existed to be
     // the seams ("the paper blocks' seams all sit on the shared faint
     // alpha" — UI-R20 #7 already killed the strong start edge), and as a
@@ -537,9 +565,13 @@ class TimelineRowCellsPainter extends CustomPainter
   Rect paperRectFor(int frameIndex) {
     final cell = cellRectFor(frameIndex);
     final paper = timelineRowPaperExtent(crossAxisExtent);
-    return axis == Axis.horizontal
-        ? Rect.fromLTWH(cell.left, cell.top, cell.width, paper)
-        : Rect.fromLTWH(cell.left, cell.top, paper, cell.height);
+    final alongStart = startAlong(axis, cell);
+    final acrossStart = startAcross(axis, cell);
+    return rectAlong(
+      axis,
+      along: (from: alongStart, to: alongStart + extentAlong(axis, cell.size)),
+      across: (from: acrossStart, to: acrossStart + paper),
+    );
   }
 
   /// What frames [from, to) lay down under their ink — THE contract the
@@ -659,14 +691,11 @@ class TimelineRowCellsPainter extends CustomPainter
       return null;
     }
     final paper = paperRectFor(frameIndex);
-    final horizontal = axis == Axis.horizontal;
     return timelineBlockFrameLine(
       axis: axis,
       frameIndex: frameIndex,
-      boundary: horizontal ? paper.left : paper.top,
-      across: horizontal
-          ? (from: paper.top, to: paper.bottom)
-          : (from: paper.left, to: paper.right),
+      boundary: startAlong(axis, paper),
+      across: (from: startAcross(axis, paper), to: endAcross(axis, paper)),
       frameCellExtent: frameCellExtent,
       framesPerSecond: framesPerSecond,
       colorScheme: colorScheme,
@@ -722,14 +751,13 @@ class TimelineRowCellsPainter extends CustomPainter
         devicePixelRatio: devicePixelRatio,
       );
       if (image != null) {
-        final origin = cellRectFor(spanStart);
-        final end = cellRectFor(spanEnd - 1);
-        final mainExtent = axis == Axis.horizontal
-            ? end.right - origin.left
-            : end.bottom - origin.top;
-        final dst = axis == Axis.horizontal
-            ? Rect.fromLTWH(origin.left, 0, mainExtent, crossAxisExtent)
-            : Rect.fromLTWH(0, origin.top, crossAxisExtent, mainExtent);
+        final origin = startAlong(axis, cellRectFor(spanStart));
+        final mainExtent = endAlong(axis, cellRectFor(spanEnd - 1)) - origin;
+        final dst = rectAlong(
+          axis,
+          along: (from: origin, to: origin + mainExtent),
+          across: (from: 0, to: crossAxisExtent),
+        );
         canvas.drawImageRect(
           image,
           Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
@@ -857,13 +885,16 @@ class TimelineRowCellsPainter extends CustomPainter
 
   /// One untiled stretch [from, to) of [_paintForegrounds].
   void _paintUntiledForegrounds(Canvas canvas, int from, int to) {
-    final first = cellRectFor(from);
-    final past = cellRectFor(to);
     canvas.save();
     canvas.clipRect(
-      axis == Axis.horizontal
-          ? Rect.fromLTRB(first.left, 0, past.left, crossAxisExtent)
-          : Rect.fromLTRB(0, first.top, crossAxisExtent, past.top),
+      rectAlong(
+        axis,
+        along: (
+          from: startAlong(axis, cellRectFor(from)),
+          to: startAlong(axis, cellRectFor(to)),
+        ),
+        across: (from: 0, to: crossAxisExtent),
+      ),
     );
     final lead = wordCellBefore(from);
     if (lead != null) {
@@ -955,7 +986,6 @@ class TimelineRowCellsPainter extends CustomPainter
     required int from,
     required int to,
   }) {
-    final horizontal = axis == Axis.horizontal;
     final first = math.max(start, from);
     final past = end > to && to < frameEndIndexExclusive
         ? to + 1
@@ -965,20 +995,19 @@ class TimelineRowCellsPainter extends CustomPainter
     final startsHere = first == start;
     final endsHere = past == end;
     final lo =
-        (horizontal ? head.left : head.top) +
-        (startsHere ? timelineHoldLineInset : 0);
-    final hi =
-        (horizontal ? tail.right : tail.bottom) -
-        (endsHere ? timelineHoldLineInset : 0);
+        startAlong(axis, head) + (startsHere ? timelineHoldLineInset : 0);
+    final hi = endAlong(axis, tail) - (endsHere ? timelineHoldLineInset : 0);
     if (hi - lo <= 1) {
       return null;
     }
     const half = timelineJoiningLineWidth / 2;
-    final across = horizontal ? head.center.dy : head.center.dx;
+    final across = partAcross(axis, head.center);
     return (
-      box: horizontal
-          ? Rect.fromLTRB(lo, across - half, hi, across + half)
-          : Rect.fromLTRB(across - half, lo, across + half, hi),
+      box: rectAlong(
+        axis,
+        along: (from: lo, to: hi),
+        across: (from: across - half, to: across + half),
+      ),
       startsHere: startsHere,
       endsHere: endsHere,
       ink: foregroundInkFor(cellModelAt(first)),
@@ -1048,7 +1077,7 @@ class TimelineRowCellsPainter extends CustomPainter
       // and marks with the cell rather than blanking them below ~14px, and
       // #15 shrank them with a squeezed row — both are the narrowing now, on
       // the axis that ran short.
-      fontSize: baseTextStyle.fontSize ?? 12,
+      fontSize: timelineBlockNameFontSize(baseTextStyle),
       bold:
           !model.ghost &&
           !isEmptyX &&
@@ -1086,15 +1115,16 @@ class TimelineRowCellsPainter extends CustomPainter
 
   TimelineBlockWordSlot _wordSlotFor(int frameIndex, Size word) {
     final cell = cellRectFor(frameIndex);
-    final horizontal = axis == Axis.horizontal;
-    final cellStart = horizontal ? cell.left : cell.top;
+    final cellStart = startAlong(axis, cell);
     final roomEnd = _wordRoomEnd(frameIndex, extentAlong(axis, word));
     final paper = timelineRowPaperExtent(crossAxisExtent);
     return (
       axis: axis,
-      room: horizontal
-          ? Rect.fromLTRB(cellStart, 0, roomEnd, paper)
-          : Rect.fromLTRB(0, cellStart, paper, roomEnd),
+      room: rectAlong(
+        axis,
+        along: (from: cellStart, to: roomEnd),
+        across: (from: 0, to: paper),
+      ),
       cellStart: cellStart,
       // The cell the law laid (F-220), not the zoom's nominal width.
       cellExtent: extentAlong(axis, cell.size),
@@ -1119,10 +1149,12 @@ class TimelineRowCellsPainter extends CustomPainter
     return (
       center: paper.center,
       size: timelineInbetweenMarkSize(
-        baseTextStyle.fontSize ?? 12,
-        cell: axis == Axis.horizontal
-            ? Size(cell.width, paper.height)
-            : Size(paper.width, cell.height),
+        timelineBlockNameFontSize(baseTextStyle),
+        cell: sizeAlong(
+          axis,
+          along: extentAlong(axis, cell),
+          across: extentAcross(axis, paper.size),
+        ),
       ),
     );
   }
@@ -1142,14 +1174,9 @@ class TimelineRowCellsPainter extends CustomPainter
   /// ghost wears no paper (UI-R10 #11) but it is still a run of one drawing,
   /// and its name stays inside that run as a drawn block's does.
   double _wordRoomEnd(int frameIndex, double extent) {
-    final horizontal = axis == Axis.horizontal;
-    double endOf(int index) {
-      final cell = cellRectFor(index);
-      return horizontal ? cell.right : cell.bottom;
-    }
+    double endOf(int index) => endAlong(axis, cellRectFor(index));
 
-    final cell = cellRectFor(frameIndex);
-    final start = horizontal ? cell.left : cell.top;
+    final start = startAlong(axis, cellRectFor(frameIndex));
     var index = frameIndex;
     var end = endOf(index);
     while (end - start < extent &&
@@ -1239,18 +1266,16 @@ class TimelineRowCellsPainter extends CustomPainter
   void _paintHoldLine(Canvas canvas, TimelineHoldLine line) {
     const half = timelineJoiningLineWidth / 2;
     final box = line.box;
-    final horizontal = axis == Axis.horizontal;
     canvas.drawLine(
       offsetAlong(
         axis,
-        along: (horizontal ? box.left : box.top) + (line.startsHere ? half : 0),
-        across: horizontal ? box.center.dy : box.center.dx,
+        along: startAlong(axis, box) + (line.startsHere ? half : 0),
+        across: partAcross(axis, box.center),
       ),
       offsetAlong(
         axis,
-        along:
-            (horizontal ? box.right : box.bottom) - (line.endsHere ? half : 0),
-        across: horizontal ? box.center.dy : box.center.dx,
+        along: endAlong(axis, box) - (line.endsHere ? half : 0),
+        across: partAcross(axis, box.center),
       ),
       Paint()
         ..color = line.ink
@@ -1284,6 +1309,7 @@ class TimelineRowCellsPainter extends CustomPainter
     exposureStateForLayer,
     frameNameForLayer,
     celHasContentForLayer,
+    celCannotBeReadForLayer,
     celContentRevision,
     substrateGeneration,
     ByIdentity(tileStore),
@@ -1380,7 +1406,7 @@ Widget timelineRowCellsPaintArea({
   // Read LIVE: the row that built this closure survives zoom steps now.
   bool inWindow(int frameIndex) => geometry.value.contains(frameIndex);
   int frameAt(Offset localPosition) => geometry.value.cellAt(
-    axis == Axis.horizontal ? localPosition.dx : localPosition.dy,
+    partAlong(axis, localPosition),
   );
   // The row the press is on — asked at the press, the row being kept
   // through a cut switch.

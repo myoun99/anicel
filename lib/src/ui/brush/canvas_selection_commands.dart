@@ -1,14 +1,40 @@
 import 'dart:async';
+import 'dart:ui' show Rect;
 
 import 'package:flutter/foundation.dart';
 
 import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/transform_values.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import 'transform_tool_options.dart';
+
+/// How far 선택 반전 reaches (I-108): the wall it inverts within.
+enum InvertReach {
+  /// The canvas itself — 「용지 내」.
+  canvas,
+
+  /// Out to the pasteboard's wall — everything a selection tool can reach.
+  pasteboard;
+
+  Rect wallOf(PasteboardWall wall) => switch (this) {
+    InvertReach.canvas => wall.canvas.canvasRect,
+    InvertReach.pasteboard => wall.rect,
+  };
+}
+
+/// A shape on the canvas, and whether a TOOL synthesized it rather than the
+/// user choosing it (F-108) — one value, so neither travels without the
+/// other ([CanvasSelectionDocument._shape]).
+typedef LiveShape = ({CanvasSelectionRegion region, bool implicit});
+
+/// [region] as a [LiveShape] — none for no region: nothing is implicit
+/// about nothing, so clearing always clears both.
+LiveShape? liveShapeOf(
+  CanvasSelectionRegion? region, {
+  bool implicit = false,
+}) => region == null ? null : (region: region, implicit: implicit);
 
 /// ONE PROJECT's selection on its canvas: the marquee (or the box a tool
 /// made) and an open polygon trace. The channel below shows the one of the
@@ -31,10 +57,17 @@ final class CanvasSelectionDocument {
   /// app's channel until I-7, on the project's document since) makes the
   /// region a DOCUMENT-level fact: it survives tool switches, the ants
   /// keep showing under every tool, and painting can clip to it.
-  CanvasSelectionRegion? _region;
-
-  /// Whether [_region] is a shape a TOOL synthesized rather than one the
-  /// user chose.
+  ///
+  /// [LiveShape.implicit] says whether it is a shape a TOOL synthesized
+  /// rather than one the user chose.
+  ///
+  /// 🚨★★★**ONE FIELD, NOT TWO** (F-401, 유저 2026-10-19: 「아직도 선택안하고
+  /// 변형도구쓸때 개미행렬 작동하는 문제 … 구조/근본적으로 나눌거 나누고 법
+  /// 통일/단순화」). The shape and its flag were two fields here and two
+  /// more on the layer, and the layer, mounting again after a painting
+  /// tool, took the shape and left the flag behind — the move tool's box
+  /// came back as a selection the user never made. A [LiveShape] cannot be
+  /// copied without what it is.
   ///
   /// 🚨★★★**F-108** (유저 2026-09-12: 「선택툴 안하고 그냥 변형사용시 … 변형
   /// 하고 확정하고 되돌리면 **선택툴의 개미행렬이 남아있음**. 그 상태에서
@@ -48,12 +81,12 @@ final class CanvasSelectionDocument {
   /// ⛔**THE FIX IS THE NAMING, NOT A GUARD AT EACH READER.**
   /// [CanvasSelectionCommands.region] — the name every consumer outside
   /// the layer already reads — now means 「what the user selected」 and goes
-  /// null while this is set. The raw geometry is
+  /// null while the shape is implicit. The raw geometry is
   /// [CanvasSelectionCommands.liveShape], and the only thing that wants it
   /// is the layer that draws the box. A new reader cannot pick the wrong
   /// one by accident, which is the whole point of splitting the two
   /// questions instead of adding a flag for readers to remember.
-  bool _regionIsImplicit = false;
+  LiveShape? _shape;
 
   /// The vertices of an OPEN polygon trace, oldest first; empty when none
   /// is being traced.
@@ -68,6 +101,20 @@ final class CanvasSelectionDocument {
   /// Vertices taken back by undo, newest first — the redo side. Cleared by
   /// the next real vertex, the way every redo stack is.
   final List<CanvasPoint> _polygonRedo = [];
+
+  /// The mode the open trace folds under once it closes, read at its FIRST
+  /// vertex as a drag's is read at its press (I-110-Q1) — and kept here
+  /// with the vertices, which outlive the layer that read it.
+  SelectionCombineMode? _polygonCombine;
+
+  /// When the trace was last added to or taken back from, on one clock for
+  /// every document: which of the open traces is the newest (`CanvasTraces`
+  /// — a viewer keeps a trace of its own).
+  int _traceTouchedAt = 0;
+
+  static int _traceClock = 0;
+
+  void _touchTrace() => _traceTouchedAt = ++_traceClock;
 }
 
 /// The imperative selection channel (P9): the app-level shortcuts
@@ -102,14 +149,17 @@ class CanvasSelectionCommands extends ChangeNotifier {
 
   /// 🚨THE SELECTION — what the USER chose. Null while the live shape is a
   /// tool's own implicit target (F-108 — the document's implicit flag).
-  CanvasSelectionRegion? get region =>
-      _document._regionIsImplicit ? null : _document._region;
+  CanvasSelectionRegion? get region {
+    final shape = _document._shape;
+    return shape == null || shape.implicit ? null : shape.region;
+  }
 
   /// The live SHAPE on the canvas, selection or not — the marquee's
-  /// outline, or the box the move tool synthesized with nothing selected.
+  /// outline, or the box the move tool synthesized with nothing selected —
+  /// and which of the two it is.
   /// ⚠️GEOMETRY. The layer that owns the box reads this to stay in step
   /// with the channel; everyone else means [region].
-  CanvasSelectionRegion? get liveShape => _document._region;
+  LiveShape? get liveShape => _document._shape;
 
   /// True when a region is selected — the single truth the shortcuts, the
   /// paint clip and the ants all read.
@@ -135,15 +185,11 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// command replaying a selection, a host handing one in — and a shape
   /// that has to be declared implicit is one nobody can make by forgetting.
   void setRegion(CanvasSelectionRegion? region, {bool implicit = false}) {
-    // Nothing is implicit about nothing: clearing always clears both.
-    final nextImplicit = region != null && implicit;
-    final document = _document;
-    if (document._region == region &&
-        document._regionIsImplicit == nextImplicit) {
+    final next = liveShapeOf(region, implicit: implicit);
+    if (_document._shape == next) {
       return;
     }
-    document._region = region;
-    document._regionIsImplicit = nextImplicit;
+    _document._shape = next;
     notifySessionChanged();
   }
 
@@ -163,9 +209,22 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// answers by acting, asked without acting.
   bool get canRedoPolygonPoint => _document._polygonRedo.isNotEmpty;
 
-  void addPolygonPoint(CanvasPoint point) {
+  /// When the trace was last added to or taken back from — later is larger.
+  int get traceTouchedAt => _document._traceTouchedAt;
+
+  /// The mode the open trace folds under when it closes — null for a trace
+  /// begun by a verb that folds nothing.
+  SelectionCombineMode? get polygonCombine => _document._polygonCombine;
+
+  /// [point] goes on the open trace; the FIRST vertex of a trace takes
+  /// [combine] with it ([polygonCombine]).
+  void addPolygonPoint(CanvasPoint point, {SelectionCombineMode? combine}) {
+    if (_document._polygonPoints.isEmpty) {
+      _document._polygonCombine = combine;
+    }
     _document._polygonPoints.add(point);
     _document._polygonRedo.clear();
+    _document._touchTrace();
     notifySessionChanged();
   }
 
@@ -177,6 +236,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
       return false;
     }
     _document._polygonRedo.add(_document._polygonPoints.removeLast());
+    _document._touchTrace();
     notifySessionChanged();
     return true;
   }
@@ -186,6 +246,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
       return false;
     }
     _document._polygonPoints.add(_document._polygonRedo.removeLast());
+    _document._touchTrace();
     notifySessionChanged();
     return true;
   }
@@ -228,6 +289,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     }
     _document._polygonPoints.clear();
     _document._polygonRedo.clear();
+    _document._polygonCombine = null;
     notifySessionChanged();
   }
 
@@ -240,7 +302,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   void Function(CanvasSelectionRegion? region)? _applyRegion;
   bool Function()? _movePending;
   VoidCallback? _confirmPendingMove;
-  VoidCallback? _revertPendingMove;
   TransformValues? Function()? _transformValues;
   void Function(TransformValues Function(TransformValues now) change)?
   _editTransformValues;
@@ -269,7 +330,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     void Function(CanvasSelectionRegion? region)? applyRegion,
     bool Function()? movePending,
     VoidCallback? confirmPendingMove,
-    VoidCallback? revertPendingMove,
     TransformValues? Function()? transformValues,
     void Function(TransformValues Function(TransformValues now) change)?
     editTransformValues,
@@ -297,7 +357,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _applyRegion = applyRegion;
     _movePending = movePending;
     _confirmPendingMove = confirmPendingMove;
-    _revertPendingMove = revertPendingMove;
     _transformValues = transformValues;
     _editTransformValues = editTransformValues;
     _undoTransformStep = undoTransformStep;
@@ -320,7 +379,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _applyRegion = null;
     _movePending = null;
     _confirmPendingMove = null;
-    _revertPendingMove = null;
     _transformValues = null;
     _editTransformValues = null;
     _undoTransformStep = null;
@@ -344,8 +402,22 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _notifyScheduled = true;
     scheduleMicrotask(() {
       _notifyScheduled = false;
-      notifyListeners();
+      if (!_disposed) {
+        notifyListeners();
+      }
     });
+  }
+
+  /// ⚠️A ping can be on its way when the channel goes: the layer unbinds as
+  /// it is let go of, and a viewer handed no channel lets go of its own
+  /// (`MediaViewerTabHost.selection`) in the same unmount.
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    liveTransformValues.dispose();
+    super.dispose();
   }
 
   /// Adopts a committed region — the selection history command's
@@ -385,7 +457,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
       layerDeselect();
       return;
     }
-    final before = _document._region;
+    final before = _document._shape?.region;
     if (before == null) {
       return;
     }
@@ -399,8 +471,13 @@ class CanvasSelectionCommands extends ChangeNotifier {
 
   /// 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능. 내용은 선택되지
   /// 않은 부분을 선택함. 위치는 선택툴일때의 툴설정. 버튼.」 Selects what is
-  /// NOT selected, out to [canvasSize]'s pasteboard wall (I-23-Q1
-  /// 「페이스트보드 벽까지」: 「선택도구로 사용할수있는 모든부분까지임」).
+  /// NOT selected, out to [reach]'s wall of [pasteboard].
+  ///
+  /// 🗣️TWO WALLS, ONE VERB (I-108, 유저 2026-10-18: 「용지 내에서만
+  /// 작동하게하고싶을때의 방법이 필요하니 버튼 나눠서 용지 내 선택 반전, 용지
+  /// 밖까지? 선택 반전 이렇게 버튼 두개로」). ↩️It reached the pasteboard's
+  /// wall alone (I-23-Q1 「페이스트보드 벽까지」: 「선택도구로 사용할수있는
+  /// 모든부분까지임」) — still [InvertReach.pasteboard], and its key's.
   ///
   /// ONE undo step, through [regionHistoryRecorder] like every selection
   /// change. An open box or a pending move lands FIRST, as its own entry:
@@ -412,12 +489,15 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// the user never chose. ⛔And it writes through [applyRegion], never a
   /// bare [setRegion] — the mounted layer has to hear it (see the note in
   /// `_adoptChannelRegion`).
-  void invertSelection({required CanvasSize canvasSize}) {
+  void invertSelection({
+    required PasteboardWall pasteboard,
+    required InvertReach reach,
+  }) {
     confirmPendingMove();
     final before = region;
     final after = CanvasSelectionRegion.invertedWithin(
       before,
-      canvasSize.pasteboardRect,
+      reach.wallOf(pasteboard),
     );
     if (after == before) {
       return;
@@ -448,11 +528,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// hook, and [applyTransform] when the session holds changes. No-op
   /// without a session.
   void confirmPendingMove() => _confirmPendingMove?.call();
-
-  /// Reverts the pending move: the pixels return EXACTLY to where the
-  /// session found them (a fresh lift disappears entirely), no history
-  /// entry. The "되돌리기" choice in the R17-① confirm prompt.
-  void revertPendingMove() => _revertPendingMove?.call();
 
   /// The open transform box's values, or null when no box is up (the
   /// settings fields then show the identity).

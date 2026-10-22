@@ -2,12 +2,17 @@
 // 「참조 행에서 이동(변형) 도구로 끌면 참조 fx 의 위치값이 바뀐다 — 카메라
 // 틀을 끌면 카메라 위치가 바뀌는 것과 같은 방식, 레이어 트랜스폼은 따로
 // 남는다」 · 「변형으로 크기 줄였으면 같은값만큼 다른용지도 줄어들게」 ·
-// I-68-Q1 「레이어의 fx버튼 꺼도 그 자리 유지」.
+// I-68-Q1 「레이어의 fx버튼 꺼도 그 자리 유지」. 10-17 (F-374): 「참조fx도
+// 똑같이 fx로서 법 통일. 지금 움직여도 키 안생긴다거나」.
 //
-// The box frames the PICTURE where the reference's pose lays it, and each
-// grab writes that pose: the inside its centre, a corner its scale, outside
-// its turn — shown while the hand moves, the file laid again on release.
+// The box frames the PICTURE where the reference fx stands it at the
+// playhead, and each grab keys that fx there, as the layer's box keys its
+// transform: the inside its position, a corner its scale, outside its turn
+// — shown while the hand moves, written on release, the canvas standing the
+// file there as it is laid (F-374-Q1). ↩️The file was laid again where the
+// fx then stood still.
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -17,10 +22,13 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
+import 'package:anicel/src/services/cut_frame_composite_plan.dart'
+    show layerPlacementAt;
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
@@ -28,6 +36,8 @@ import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
+    show transformLaneKeyFrames;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
@@ -104,29 +114,45 @@ void main() {
         : tester.widget<RowTransformBox>(found);
   }
 
+  MediaReference referenceOf(EditorSessionManager s, Layer row) =>
+      s.layerById(row.id)!.mediaReference!;
+
+  /// Where the canvas shows [row]'s picture at frame 0: its cel's ink, each
+  /// corner through the row's placement — the cel holds the file where it
+  /// was laid, the canvas stands it where the fx says.
   ui.Rect? shown(EditorSessionManager s, Layer row) {
     final cut = s.requireActiveCut;
     final surface = s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
       s.brushFrameKeyForCut(cut, row.id, row.frames.single.id),
     );
     final box = surface == null ? null : bitmapSurfaceContentBounds(surface);
-    return box == null
-        ? null
-        : ui.Rect.fromLTRB(
-            box.left.toDouble(),
-            box.top.toDouble(),
-            box.rightExclusive.toDouble(),
-            box.bottomExclusive.toDouble(),
-          );
-  }
-
-  Future<void> settle(WidgetTester tester, bool Function() done) async {
-    for (var tries = 0; tries < 100 && !done(); tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
+    if (box == null) {
+      return null;
     }
+    final placement = layerPlacementAt(
+      cut: cut,
+      layer: s.layerById(row.id)!,
+      frameIndex: 0,
+    );
+    CanvasPoint shownAt(int x, int y) {
+      final onCel = CanvasPoint(x: x.toDouble(), y: y.toDouble());
+      return placement?.apply(onCel) ?? onCel;
+    }
+
+    final corners = [
+      shownAt(box.left, box.top),
+      shownAt(box.rightExclusive, box.top),
+      shownAt(box.rightExclusive, box.bottomExclusive),
+      shownAt(box.left, box.bottomExclusive),
+    ];
+    final xs = [for (final corner in corners) corner.x];
+    final ys = [for (final corner in corners) corner.y];
+    return ui.Rect.fromLTRB(
+      xs.reduce(math.min),
+      ys.reduce(math.min),
+      xs.reduce(math.max),
+      ys.reduce(math.max),
+    );
   }
 
   /// The test's own epilogue: the edit's timers run out, the warmer they
@@ -169,23 +195,25 @@ void main() {
     await wrapUp(tester, s);
   });
 
-  testWidgets('the move tool on the row brings the box and writes the '
-      'reference fx — while a transform lane brings the layer\'s own',
-      (tester) async {
+  testWidgets('the move tool on the row brings the box and KEYS the '
+      'reference fx at the playhead — while a transform lane brings the '
+      'layer\'s own', (tester) async {
     final (s, row, tool) = await onTheCanvas(tester);
     tool.value = tool.value.copyWith(tool: CanvasTool.move);
     s.standOnRow(LayerRowAddress(row.id));
     await tester.pump();
 
     boxOf(tester)!.move!.committed(CanvasPoint(x: 1200, y: 827));
-    await settle(
-      tester,
-      () => s.layerById(row.id)!.mediaReference!.pose.center.x == 1200,
-    );
+    expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1200, y: 827));
     expect(
-      s.layerById(row.id)!.mediaReference!.pose.center,
-      CanvasPoint(x: 1200, y: 827),
+      transformLaneKeyFrames(referenceOf(s, row).fx, 'position'),
+      {0},
+      reason: '「지금 움직여도 키 안생긴다」 — one key, at the playhead',
     );
+    await tester.pump();
+    // The box frames the picture where the key stands it, not where the
+    // file was placed.
+    expectPoint(boxOf(tester)!.corners[0], CanvasPoint(x: 1150, y: 797));
     expect(
       s.layerById(row.id)!.transformTrack.position.isEmpty,
       isTrue,
@@ -202,15 +230,13 @@ void main() {
       isFalse,
       reason: 'standing on the transform, the box is the layer\'s',
     );
-    expect(
-      s.layerById(row.id)!.mediaReference!.pose.center,
-      CanvasPoint(x: 1200, y: 827),
-    );
+    expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1200, y: 827));
     await wrapUp(tester, s);
   });
 
   testWidgets('a drag shows the picture where the hand is — nothing written '
-      '— and the release lays the file there, ONE undo', (tester) async {
+      '— and the release keys the fx there at once, the canvas standing the '
+      'picture there: ONE undo', (tester) async {
     final (s, row, _) = await onTheCanvas(tester);
     s.standOnRow(LaneRowAddress(row.id, referenceGroupLaneId));
     await tester.pump();
@@ -218,19 +244,23 @@ void main() {
 
     boxOf(tester)!.move!.changed(CanvasPoint(x: 1250, y: 900));
     expect(
-      laneEditInFlight(s.dragPreview.value)?.row?.mediaReference?.pose.center,
+      laneEditInFlight(
+        s.dragPreview.value,
+      )?.row?.mediaReference?.poseAt(0).center,
       CanvasPoint(x: 1250, y: 900),
     );
     expect(s.layerById(row.id), before, reason: 'a drag writes nothing');
 
     boxOf(tester)!.move!.committed(CanvasPoint(x: 1250, y: 900));
-    await settle(
-      tester,
-      () => s.layerById(row.id)!.mediaReference!.pose.center.x == 1250,
+    expect(
+      referenceOf(s, row).poseAt(0).center,
+      CanvasPoint(x: 1250, y: 900),
+      reason: 'written on release',
     );
     expect(shown(s, row), const ui.Rect.fromLTRB(1200, 870, 1300, 930));
 
     s.undo();
+    expect(s.layerById(row.id), before);
     expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
     await wrapUp(tester, s);
   });
@@ -256,12 +286,8 @@ void main() {
     expectPoint(box.pose.center, CanvasPoint(x: 1270, y: 827));
 
     box.move!.committed(CanvasPoint(x: 1300, y: 827));
-    await settle(
-      tester,
-      () => s.layerById(row.id)!.mediaReference!.pose.center.x == 1200,
-    );
     expect(
-      s.layerById(row.id)!.mediaReference!.pose.center,
+      referenceOf(s, row).poseAt(0).center,
       CanvasPoint(x: 1200, y: 827),
       reason: 'the row\'s own move taken back off — where the file stands '
           'in the row',
@@ -270,35 +296,28 @@ void main() {
   });
 
   testWidgets('a corner scales the reference fx, outside turns it — the '
-      'pose\'s own two scales and turn', (tester) async {
+      'pose\'s own two scales and turn, each keyed at the playhead', (
+    tester,
+  ) async {
     final (s, row, _) = await onTheCanvas(tester);
     s.standOnRow(LaneRowAddress(row.id, referenceGroupLaneId));
     await tester.pump();
 
     final scale = boxOf(tester)!.scale! as RowBoxTwoScales;
     scale.landing.committed(CanvasPoint(x: 2, y: 2));
-    await settle(
-      tester,
-      () => s.layerById(row.id)!.mediaReference!.pose.scaleX == 2,
-    );
-    expect(
-      s.layerById(row.id)!.mediaReference!.pose.scale,
-      CanvasPoint(x: 2, y: 2),
-    );
+    expect(referenceOf(s, row).poseAt(0).scale, CanvasPoint(x: 2, y: 2));
     expect(shown(s, row), const ui.Rect.fromLTRB(1070, 767, 1270, 887));
     await tester.pump(const Duration(minutes: 1));
 
     boxOf(tester)!.turn!.committed(90);
-    await settle(
-      tester,
-      () => s.layerById(row.id)!.mediaReference!.pose.rotationDegrees == 90,
-    );
-    expect(s.layerById(row.id)!.mediaReference!.pose.rotationDegrees, 90);
+    expect(referenceOf(s, row).poseAt(0).rotationDegrees, 90);
     expect(
       shown(s, row),
       const ui.Rect.fromLTRB(1110, 727, 1230, 927),
       reason: 'a 200×120 picture stood on its side, about its middle',
     );
+    expect(transformLaneKeyFrames(referenceOf(s, row).fx, 'scale'), {0});
+    expect(transformLaneKeyFrames(referenceOf(s, row).fx, 'rotation'), {0});
     await wrapUp(tester, s);
   });
 }

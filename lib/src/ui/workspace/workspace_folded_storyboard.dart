@@ -68,6 +68,7 @@ class _WorkspaceFoldedStoryboard {
       pixelsPerFrame: pixelsPerFrame,
       framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
       railChild: folded.rail?.call(),
+      dashedFrames: folded.dashes,
       frameRowBuilder: frames == null
           ? null
           : (context, geometry) => Stack(

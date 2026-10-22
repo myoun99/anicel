@@ -120,6 +120,7 @@ class _BottomBarBuild {
           none: _bar.pasteboardNone,
           onNone: _bar.onPasteboardNone,
           keepsAlpha: true,
+          hostRow: _pasteboardReachRowOf(_bar),
         ),
       ],
       // 제일오른쪽에 배경색 (유저, R3 #4) — outermost swatch for the
@@ -388,9 +389,10 @@ class _BottomBarBuild {
         const SizedBox(width: CanvasCapsule.barPillEnd),
       ],
     );
-    // 🗣️THE PAGE STRIP'S LAW (`_PageStripSeat`): a panel too narrow for
-    // what the fold kept shows all of it, smaller — never a row that runs
-    // off the capsule, never a control cut away. At the narrowest the pill
+    // 🗣️THE PAGE TURNER'S LAW (`PageTurnBar`, born on the strip that stood
+    // on the left edge): a panel too narrow for what the fold kept shows
+    // all of it, smaller — never a row that runs off the capsule, never a
+    // control cut away. At the narrowest the pill
     // holds Fit and the gear, which never go, and below a 438px window the
     // timesheet's rail is narrower than those two
     // (`canvas-bottom-bar-overflows-at-437`, measured 2026-10-14).
@@ -436,7 +438,7 @@ class _BottomBarBuild {
           textStyle: const TextStyle(fontSize: 11),
           onDragDelta: _bar.onRotateByDrag!,
           onEditSubmit: (text) {
-            final parsed = double.tryParse(text);
+            final parsed = columnValueOf(text);
             if (parsed != null && _bar.onRotateByDrag != null) {
               _bar.onRotateByDrag!(parsed - viewport.rotationDegrees);
             }
@@ -560,7 +562,7 @@ class _BottomBarBuild {
       onDragDelta: (units) =>
           _bar.onZoomSet(_zoomScale.render((displayPercent + units) / 100)),
       onEditSubmit: (text) {
-        final parsed = double.tryParse(text.replaceAll('%', '').trim());
+        final parsed = columnValueOf(text);
         if (parsed != null) {
           _bar.onZoomSet(_zoomScale.render(parsed / 100));
         }
@@ -596,3 +598,18 @@ class _BottomBarBuild {
     return row;
   }
 }
+
+/// The pasteboard's own row in its colour window (I-109): its size and
+/// whether it is there — none where the host takes neither.
+Widget? _pasteboardReachRowOf(_CanvasViewportBottomBar bar) => switch ((
+  bar.onPasteboardSizeChanged,
+  bar.onPasteboardInUseChanged,
+)) {
+  (final onSize?, final onInUse?) => PasteboardReachRow(
+    size: bar.pasteboardSize,
+    inUse: bar.pasteboardInUse,
+    onSize: onSize,
+    onInUse: onInUse,
+  ),
+  _ => null,
+};

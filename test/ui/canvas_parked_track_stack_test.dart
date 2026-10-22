@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/session/frame_scrub.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
     show commitStoryboardScrub;
 
+import '../helpers/draw_on_current_frame.dart';
+
 /// The multitrack display path's canvas mount (parked state): a gap
 /// parking swaps the canvas content to the track stack — a parked frame
 /// ON a cut shows that cut's composite instead of the old unconditional void,
@@ -122,7 +124,7 @@ void main() {
 
     s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
-    expect(stack().run?.landings, same(landings));
+    expect(stack().run?.cuts.landings, same(landings));
     s.playbackRig.playback.stop();
     await tester.pump();
 
@@ -138,6 +140,61 @@ void main() {
       same(landings),
       reason: 'a cut played alone plays on the canvas, from the warmer\'s '
           'pictures (playback-plays-the-screen-material)',
+    );
+    s.playbackRig.playback.stop();
+    await drainWarming(tester);
+  });
+
+  /// F-365: the film changes frames by the question its run's clock asks of
+  /// a frame — the rig's, the one place both read it from — and the clock
+  /// counts a frame it leaves unshown by the same answer (F-365-Q2), so the
+  /// count is of the frames the screen did not show.
+  testWidgets('the film asks of a frame what the run\'s clock asks', (
+    tester,
+  ) async {
+    final (s, first, _) = gappedSession();
+    addTearDown(s.dispose);
+    final second = s.repository.requireProject().tracks.first.cuts[1].id;
+    s.selectCut(second);
+    drawOnCurrentFrame(s);
+    s.selectCut(first);
+    await pumpArea(tester, s);
+    final head = s.rowSpans.trackGlobalFrameOf(second, 0);
+    expect(
+      s.playbackRig.pictureIsThere(head),
+      isNull,
+      reason: '⛔premise: the warmer follows no run',
+    );
+    expect(
+      s.playbackRig.frameIsThere(head),
+      isTrue,
+      reason: 'with nothing making the run\'s pictures, what the cuts hold is '
+          'all there will be: every frame goes up as it is asked for',
+    );
+
+    s.playbackRig.playback.play(
+      scope: PlaybackScope.allCuts,
+      startGlobalFrame: 0,
+    );
+    await tester.pump();
+    // What was made of the second cut's head goes: a memory warning's work.
+    s.renderCaches.layerFrameImageCache.enforceBudget(maxBytes: 0);
+    expect(
+      s.playbackRig.pictureIsThere(head),
+      isFalse,
+      reason: '⛔premise: the head\'s picture is not there',
+    );
+    expect(
+      tester
+          .widget<CanvasTrackStackView>(find.byKey(stackKey))
+          .run!
+          .frameIsThere(head),
+      isFalse,
+    );
+    expect(
+      s.playbackRig.playback.frameIsThere?.call(head),
+      isFalse,
+      reason: 'the clock counts the frame unshown by the same answer',
     );
     s.playbackRig.playback.stop();
     await drainWarming(tester);

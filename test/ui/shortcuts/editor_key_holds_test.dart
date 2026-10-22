@@ -1,8 +1,13 @@
+import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/windows_key_state.dart' show vkShift;
+import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/temporary_tool.dart';
+import 'package:anicel/src/ui/canvas/canvas_line_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_press.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_key_holds.dart';
@@ -119,6 +124,46 @@ void main() {
       reason: 'Shift with no view key held holds nothing',
     );
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+  });
+
+  // 🗣️I-61 (유저 2026-10-16): 「마우스던 펜이던 … 그림 그리는 동작이라면
+  // 해야하는건데」 — on Windows a pen's or a finger's move lets go of Shift
+  // in the engine's record with the key still down, and the real release
+  // that comes after is dropped: no event says so (`ModifierKeys`).
+  testWidgets('🚨Shift+Space stays the turn when the engine lets go of Shift '
+      'under a pen — and let go with no key event, the next press pans', (
+    tester,
+  ) async {
+    var windowsHoldsShift = false;
+    ModifierKeys.debugWindowsKeyDown = (key) =>
+        key == vkShift && windowsHoldsShift;
+    addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+    await pumpRoad(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    expect(canvasPressPans(kPrimaryButton), isTrue);
+
+    // Shift pressed under the held Space, then the engine lets go of it at
+    // the pen's next move — and then the hand does, unheard.
+    Future<void> shiftUnderAPen() async {
+      windowsHoldsShift = true;
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      expect(CanvasViewHold.held.value, ViewHold.turn);
+      expect(canvasPressTurns(kPrimaryButton), isTrue);
+      expect(canvasPressPans(kPrimaryButton), isFalse);
+      windowsHoldsShift = false;
+      expect(CanvasViewHold.held.value, ViewHold.turn, reason: 'premise');
+    }
+
+    // Each press reader asks first once, so neither leans on the other's
+    // asking.
+    await shiftUnderAPen();
+    expect(canvasPressTurns(kPrimaryButton), isFalse);
+    await shiftUnderAPen();
+    expect(canvasPressPans(kPrimaryButton), isTrue);
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    expect(canvasPressMovesTheView(kPrimaryButton), isFalse);
   });
 
   testWidgets('a focused text field keeps its space bar — no pan', (
@@ -377,6 +422,70 @@ void main() {
       reason: 'a key the window lost is not taken when the stroke ends',
     );
     await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+  });
+
+  // 🗣️I-119 (유저 2026-10-21): 「… 누르고있으면 저번에 찍은 마지막 dab? 점
+  // 부터 현재 호버중인 커서까지 라이브로 직선 보여주고」 — I-119-Q1 put it on
+  // a key of its own (Z), I-119-Q2: 「도중에 … 키를 떼면 취소임」.
+  testWidgets('Z held is the line from the last stroke: taken whole, repeats '
+      'and all — and letting go lets go', (tester) async {
+    await pumpRoad(tester);
+    expect(CanvasLineHold.held.value, isFalse);
+
+    expect(await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ), isTrue);
+    expect(CanvasLineHold.held.value, isTrue);
+    expect(await tester.sendKeyRepeatEvent(LogicalKeyboardKey.keyZ), isTrue);
+    expect(CanvasLineHold.held.value, isTrue);
+    expect(CanvasViewHold.held.value, isNull, reason: 'it holds no view');
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
+    expect(CanvasLineHold.held.value, isFalse);
+  });
+
+  testWidgets('⛔Shift+Z is 「처음으로」, not the line — and Ctrl+Z is the '
+      'undo', (tester) async {
+    await pumpRoad(tester);
+    for (final modifier in [
+      LogicalKeyboardKey.shiftLeft,
+      LogicalKeyboardKey.controlLeft,
+    ]) {
+      await tester.sendKeyDownEvent(modifier);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ);
+      expect(CanvasLineHold.held.value, isFalse, reason: '$modifier');
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
+      await tester.sendKeyUpEvent(modifier);
+    }
+  });
+
+  testWidgets('a focused text field keeps its Z — no line', (tester) async {
+    await pumpRoad(tester, focused: () => const TextField(autofocus: true));
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ);
+    expect(CanvasLineHold.held.value, isFalse);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
+  });
+
+  testWidgets('the line follows its binding, and a window that loses the '
+      'OS\'s focus or a shell that goes away lets go of it', (tester) async {
+    await pumpRoad(tester);
+    bindings.setActivators(EditorActionIds.canvasLineHold, const [
+      SingleActivator(LogicalKeyboardKey.keyL),
+    ]);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ);
+    expect(CanvasLineHold.held.value, isFalse, reason: 'Z is not it now');
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyL);
+    expect(CanvasLineHold.held.value, isTrue);
+    holds.letGoOfEverything();
+    expect(CanvasLineHold.held.value, isFalse);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyL);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyL);
+    expect(CanvasLineHold.held.value, isTrue);
+    holds.dispose();
+    expect(CanvasLineHold.held.value, isFalse);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyL);
   });
 
   testWidgets('a shell that goes away lets go of the pan', (tester) async {

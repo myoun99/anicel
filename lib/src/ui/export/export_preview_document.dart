@@ -8,13 +8,13 @@ import 'offscreen_raster.dart';
 /// What the file under preview IS — which is what the panel showing it
 /// wears (F-289, 유저 2026-10-06: 「이 캔버스 베이스패널은 형식에 따라
 /// 나누기로하자」; of this window: the Sequence and Image tabs stand on the
-/// transport, the Conte tab turns its pages on the left, and a cel is one
-/// picture).
+/// transport, the Conte tab turns its pages, and a cel is one picture).
 enum ExportPreviewShape {
   /// It runs in time: the transport's rows stand under it.
   runs,
 
-  /// It turns pages: the page cluster stands on its left.
+  /// It turns pages: the page turner stands under it, in the transport's
+  /// place (F-383).
   book,
 
   /// One picture, with neither.
@@ -83,6 +83,11 @@ class ExportPreviewDocument implements ViewerDocument {
     final size = sizeOf(pageIndex);
     return ui.Size(size.width.toDouble(), size.height.toDouble());
   }
+
+  /// The file's pixels: a page past the size it is written at shows no
+  /// more than the file would.
+  @override
+  bool get drawnAtAnySize => false;
 
   /// A page with nothing on it lands as a clear picture: it is a page that
   /// was drawn, and what stands under it shows.

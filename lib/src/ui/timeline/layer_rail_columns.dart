@@ -94,11 +94,14 @@ AppIconButtonBox railSlotBox(
   required double slot,
   required double across,
   required double iconSize,
-}) => AppIconButtonBox(
-  width: axis == Axis.horizontal ? slot : across,
-  height: axis == Axis.horizontal ? across : slot,
-  iconSize: iconSize,
-);
+}) {
+  final box = sizeAlong(axis, along: slot, across: across);
+  return AppIconButtonBox(
+    width: box.width,
+    height: box.height,
+    iconSize: iconSize,
+  );
+}
 
 /// The TWIRL glyph, for every rail surface in either orientation.
 ///
@@ -334,7 +337,6 @@ Widget? layerRailDepthGuides(
   required ColorScheme colorScheme,
 }) {
   if (depth == 0) return null;
-  final horizontal = axis == Axis.horizontal;
   return alongBox(
     axis,
     layerRailNameIndent(depth),
@@ -346,9 +348,10 @@ Widget? layerRailDepthGuides(
             axis,
             layerRailGuideWidth,
             child: Center(
-              child: SizedBox(
-                width: horizontal ? 1 : double.infinity,
-                height: horizontal ? double.infinity : 1,
+              child: sizedAlong(
+                axis,
+                along: 1,
+                across: double.infinity,
                 child: ColoredBox(color: colorScheme.outline),
               ),
             ),

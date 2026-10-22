@@ -74,15 +74,9 @@ void main() {
           pixels: rgba(0, 0, 255),
         ),
       });
-      await tester.runAsync(() async {
-        final all = [...frameA.tiles.entries, ...frameB.tiles.entries];
-        for (final entry in all) {
-          tiles.pictureFor(entry.value);
-        }
-        while (all.any((entry) => tiles.imageFor(entry.value) == null)) {
-          await Future<void>.delayed(const Duration(milliseconds: 1));
-        }
-      });
+      for (final entry in [...frameA.tiles.entries, ...frameB.tiles.entries]) {
+        tiles.pictureFor(entry.value);
+      }
       final viewport = CanvasViewport(zoom: zoom, panX: 32, panY: 32);
       Offset onScreen(double x, double y) =>
           Offset(32 + x * zoom, 32 + y * zoom);

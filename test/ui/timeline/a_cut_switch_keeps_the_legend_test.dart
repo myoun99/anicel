@@ -6,8 +6,11 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/working_panel.dart';
+import 'package:anicel/src/ui/canvas/view_hand.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/session/rail_legends.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -15,6 +18,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 /// 🚨I-57 ㉢-2 (10-13, measured on the user's project): the rail's legend
 /// header was kept by every fact it shows — and by the set of layers on
@@ -27,23 +31,139 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 /// and kind flyouts list: a cut of other marks or kinds — most of them —
 /// built it again whole, 221 widgets of a crossing's 821. They are read
 /// when a flyout opens.
+///
+/// 🗣️F-408 ② (유저 2026-10-19): 「다른 레전드 행도 점검하면서 법 통일」 — the
+/// x-sheet's corner is the same legend, kept the same way.
 void main() {
-  testWidgets('a cut switch builds nothing of the legend header again', (
-    tester,
-  ) async {
-    await _show(tester, _panel('one', []));
-    expect(
-      find.byType(TimelineLayerControlsHeader),
-      findsOneWidget,
-      reason: 'LIVENESS: the legend stands',
-    );
+  for (final orientation in TimelineOrientation.values) {
+    testWidgets('$orientation: a cut switch builds nothing of the legend '
+        'header again', (tester) async {
+      await _show(tester, _panel('one', [], orientation: orientation));
+      expect(
+        find.byType(TimelineLayerControlsHeader),
+        findsOneWidget,
+        reason: 'LIVENESS: the legend stands',
+      );
 
-    final built = await _legendBuildsWhile(
-      () => _show(tester, _panel('two', [])),
-    );
+      final built = await _legendBuildsWhile(
+        () => _show(tester, _panel('two', [], orientation: orientation)),
+        around: _gridOf(orientation),
+      );
 
-    expect(built.grids, greaterThan(0), reason: 'LIVENESS: the grid was built');
-    expect(built.inLegend, isEmpty);
+      expect(
+        built.grids,
+        greaterThan(0),
+        reason: 'LIVENESS: the grid was built',
+      );
+      expect(built.inLegend, isEmpty);
+    });
+
+    testWidgets('$orientation: the master opacity bar acts on the layers on '
+        'display NOW', (tester) async {
+      final committed = <Set<LayerId>>[];
+      final values = <double>[];
+      for (final cut in const ['one', 'two']) {
+        await _show(
+          tester,
+          _panel(cut, committed, orientation: orientation, values: values),
+        );
+      }
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('legend-opacity')),
+        // Toward empty: the rail's runs along the row; the sheet's, turned
+        // with its header, up the column — two ways, not one turned.
+        const {
+          TimelineOrientation.horizontal: Offset(-40, 0),
+          TimelineOrientation.vertical: Offset(0, 40),
+        }[orientation]!,
+      );
+      await tester.pumpAndSettle();
+
+      expect(committed, isNotEmpty, reason: 'LIVENESS: the bar committed');
+      expect(committed.last, {
+        const LayerId('two-1'),
+        const LayerId('two-2'),
+        const LayerId('two-3'),
+      });
+      expect(
+        values.last,
+        lessThan(values.first),
+        reason: 'the bar runs along the rail, as the drag did (F-408 ②)',
+      );
+    });
+
+    testWidgets('$orientation: the mute cell reads the SE rows of the grid '
+        'it heads — every one muted, it unmutes; one sounding, it mutes', (
+      tester,
+    ) async {
+      Layer se(int row, {required bool muted}) => Layer(
+        id: LayerId('one-$row'),
+        name: 'SE $row',
+        frames: const [],
+        kind: LayerKind.se,
+        muted: muted,
+      );
+      final pressed = <String>[];
+      for (final muted in const [true, false]) {
+        await _show(
+          tester,
+          _panel(
+            'one',
+            [],
+            orientation: orientation,
+            layers: [se(1, muted: true), se(2, muted: muted)],
+            onSeMute: pressed.add,
+          ),
+        );
+        await tester.tap(find.byKey(const ValueKey<String>('legend-mute')));
+        await tester.pumpAndSettle();
+      }
+
+      expect(pressed, ['unmute', 'mute']);
+    });
+  }
+
+  testWidgets('the menus the header tells go with the panel — not with a '
+      'turn, which builds the other grid\'s header before the grid it '
+      'replaces goes', (tester) async {
+    final hand = ViewHand<RailLegendHold>();
+    await _show(tester, _panel('one', [], legendHand: hand));
+    expect(hand.now?.menus, isNotNull, reason: '⛔premise: the rail told them');
+
+    await _show(
+      tester,
+      _panel(
+        'one',
+        [],
+        orientation: TimelineOrientation.vertical,
+        legendHand: hand,
+      ),
+    );
+    expect(find.byType(XSheetTimelineGrid), findsOneWidget);
+    expect(hand.now?.menus, isNotNull, reason: 'the corner\'s, last');
+
+    await tester.pumpWidget(const SizedBox());
+    expect(hand.now, isNull, reason: 'the panel went, and they with it');
+  });
+
+  testWidgets('a panel built anew comes up before the one it replaces goes, '
+      'and its legend stays held up (rail-legend-menus-lost-to-an-old-'
+      'goodbye)', (tester) async {
+    final hand = ViewHand<RailLegendHold>();
+    await _show(
+      tester,
+      _panel('one', [], legendHand: hand, key: const ValueKey('old')),
+    );
+    final old = hand.now;
+    expect(old?.menus, isNotNull, reason: '⛔premise: the rail told them');
+
+    await _show(
+      tester,
+      _panel('one', [], legendHand: hand, key: const ValueKey('new')),
+    );
+    expect(hand.now, isNot(same(old)), reason: '⛔premise: built anew');
+    expect(hand.now?.menus, isNotNull);
   });
 
   testWidgets('nor a switch to a cut of other marks and kinds, whose flyouts '
@@ -129,27 +249,35 @@ void main() {
     expect(built.inLegend, isEmpty);
   });
 
-  testWidgets('the master opacity bar acts on the layers on display NOW', (
-    tester,
-  ) async {
-    final committed = <Set<LayerId>>[];
-    await _show(tester, _panel('one', committed));
-    await _show(tester, _panel('two', committed));
-
-    await tester.drag(
-      find.byKey(const ValueKey<String>('legend-opacity')),
-      const Offset(-40, 0),
+  testWidgets('the storyboard holds its legend up, and puts it down as it '
+      'goes', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
     );
     await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+    final legends = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session
+        .railLegends;
+    expect(legends.rowsOf(WorkingPanel.storyboard), isNotEmpty);
 
-    expect(committed, isNotEmpty, reason: 'LIVENESS: the bar committed');
-    expect(committed.last, {
-      const LayerId('two-1'),
-      const LayerId('two-2'),
-      const LayerId('two-3'),
-    });
+    await tester.pumpWidget(const SizedBox());
+    expect(legends.handOf(WorkingPanel.storyboard).now, isNull);
   });
+
 }
+
+/// The grid [orientation] stands up.
+Type _gridOf(TimelineOrientation orientation) => switch (orientation) {
+  TimelineOrientation.horizontal => LayerTimelineGrid,
+  TimelineOrientation.vertical => XSheetTimelineGrid,
+};
 
 const _layout = LayerMark(process: LayerProcess.layout);
 
@@ -215,10 +343,17 @@ Widget _panel(
   List<Set<LayerId>> committed, {
   bool marked = false,
   int rows = 3,
+  TimelineOrientation orientation = TimelineOrientation.horizontal,
+  ViewHand<RailLegendHold>? legendHand,
+  Key? key,
+  List<double>? values,
+  List<Layer>? layers,
+  ValueChanged<String>? onSeMute,
 }) => MaterialApp(
   home: Scaffold(
     body: TimelinePanel(
-      layers: _layersOf(cut, marked: marked, rows: rows),
+      key: key,
+      layers: layers ?? _layersOf(cut, marked: marked, rows: rows),
       activeLayerId: rows == 0 ? null : LayerId('$cut-1'),
       substrateGeneration: cut,
       frameCursor: _cursor,
@@ -231,8 +366,9 @@ Widget _panel(
       onLayerOpacityChanged: (_, _) {},
       onToggleLayerTimesheet: (_) {},
       onLayerMarkSelected: (_, _) {},
-      orientation: TimelineOrientation.horizontal,
+      orientation: orientation,
       onOrientationChanged: (_) {},
+      legendHand: legendHand,
       legend: LayerLegendCallbacks(
         onShowAllLayers: () {},
         onHideAllLayers: () {},
@@ -241,8 +377,8 @@ Widget _panel(
         onSheetAllOff: () {},
         onClearMarkFilter: () {},
         onClearAllFillReferences: () {},
-        onMuteAllSe: () {},
-        onUnmuteAllSe: () {},
+        onMuteAllSe: () => onSeMute?.call('mute'),
+        onUnmuteAllSe: () => onSeMute?.call('unmute'),
         onBypassAllFx: () {},
         onEnableAllFx: () {},
         onToggleMarkFilter: (_) {},
@@ -250,8 +386,11 @@ Widget _panel(
         onToggleSheetOnlyFilter: () {},
         onToggleFxOnlyFilter: () {},
         onToggleFillReferenceOnlyFilter: () {},
-        onPreviewLayersOpacity: (_, _) {},
-        onCommitLayersOpacity: (ids, _) => committed.add(ids),
+        onPreviewLayersOpacity: (_, value) => values?.add(value),
+        onCommitLayersOpacity: (ids, value) {
+          committed.add(ids);
+          values?.add(value);
+        },
       ),
     ),
   ),

@@ -30,7 +30,7 @@ void main() {
       size: 21,
       flow: 0.6,
       hardness: 0.4,
-      tipMask: maskOf('tip-$id'),
+      tips: [maskOf('tip-$id')],
       textureMaskSource: maskOf('paper-$id'),
       textureInvert: true,
       textureBrightness: -0.3,

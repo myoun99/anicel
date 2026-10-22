@@ -50,12 +50,13 @@ if(APPLE)
     PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 endif()
 # ⛔WIN32 only, for the same reason the Apple source above is: an
-# `IMFByteStream` over a range is Media Foundation's problem and nobody
-# else's, and a translation unit that compiles to nothing elsewhere is a
-# warning waiting to happen.
+# `IMFByteStream` over a range — and starting Media Foundation at all — is
+# Media Foundation's problem and nobody else's, and a translation unit that
+# compiles to nothing elsewhere is a warning waiting to happen.
 if(WIN32)
   target_sources(qa_engine PRIVATE
-    "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
+    "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_win_media_foundation.c")
   # The compositor kept composing while a clock runs: DirectComposition's
   # interfaces are C++ only, so this one translation unit is C++.
   enable_language(CXX)
@@ -154,9 +155,11 @@ if(NOT ANDROID AND NOT IOS)
       "-framework CoreFoundation" "-framework AudioToolbox")
   elseif(WIN32)
     # The Windows range origin hands Media Foundation the video decoder's
-    # byte stream, so the test needs that translation unit too.
+    # byte stream, and starts Media Foundation the engine's one way, so the
+    # test needs those translation units too.
     target_sources(qa_audio_range_test PRIVATE
-      "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
+      "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c"
+      "${CMAKE_CURRENT_LIST_DIR}/qa_win_media_foundation.c")
     target_link_libraries(qa_audio_range_test
       mfplat mfreadwrite mfuuid ole32)
   else()
@@ -184,6 +187,7 @@ if(WIN32)
   add_executable(qa_win_range_stream_test
     "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream_test.c"
     "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_win_media_foundation.c"
     "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
     "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c")
   set_target_properties(qa_win_range_stream_test PROPERTIES

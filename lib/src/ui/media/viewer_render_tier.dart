@@ -31,9 +31,21 @@ const int viewerMaxRenderPixels = 16 * 1024 * 1024;
 /// inside the widget's State where only a pumped panel could reach it —
 /// and a pumped panel re-frames its own viewport, so the one input that
 /// decides could not be driven from a test at all.
-double viewerRenderScaleFor(double zoom, ui.Size pageSize) {
+///
+/// 🚨IT STOPS AT THE PAGE'S OWN SIZE unless the page is [drawnAtAnySize]
+/// (`ViewerDocument.drawnAtAnySize`, 유저 2026-09-11): past 100% a page made
+/// of its file's pixels has none more to give. ONE law, for every render
+/// of a page — the viewer's, a preview's, a composed picture's
+/// ([pictureRenderWidthFor]); ↩️two of them stopped it each in its own
+/// line, and the viewer did not.
+double viewerRenderScaleFor(
+  double zoom,
+  ui.Size pageSize, {
+  required bool drawnAtAnySize,
+}) {
+  final most = drawnAtAnySize ? 8.0 : 1.0;
   var scale = 1.0;
-  while (scale < zoom && scale < 8) {
+  while (scale < zoom && scale < most) {
     scale *= 2;
   }
   while (scale / 2 >= zoom && scale > viewerMinRenderScale) {
@@ -45,6 +57,29 @@ double viewerRenderScaleFor(double zoom, ui.Size pageSize) {
   }
   return scale;
 }
+
+/// The scale the MEDIA VIEWER asks a page at, for a view showing it at
+/// [zoom]: a page drawn at any size by the ladder ([viewerRenderScaleFor]),
+/// and a page made of its file's pixels — a photo, a movie's frame — at its
+/// own size whatever the zoom, as the canvas holds its cels whole: halved
+/// only for [viewerMaxRenderPixels].
+///
+/// 🗣️유저 2026-10-16 (viewer-tier-ignores-zoom-Q1 b): 「늘 원본(캔버스처럼)」
+/// — the media viewer alone. A document's preview and a composed picture
+/// go down the ladder with the view ([viewerRenderScaleFor],
+/// [pictureRenderWidthFor]). ↩️The viewer's photos and movies went down it
+/// too, a quarter of their pixels shown at a quarter of their size (유저
+/// 2026-08-29: 「100%로 fit인 상태로 축소해도 전 최대 디코드 크기보다
+/// 압도적으로 작아진단거 맞지?」).
+double mediaViewerRenderScaleFor(
+  double zoom,
+  ui.Size pageSize, {
+  required bool drawnAtAnySize,
+}) => viewerRenderScaleFor(
+  drawnAtAnySize ? zoom : 1,
+  pageSize,
+  drawnAtAnySize: drawnAtAnySize,
+);
 
 /// The width to render a composed picture at — a conte cell's, a strip
 /// block's — when it is drawn [shownHeight] device pixels tall and its
@@ -59,9 +94,10 @@ int pictureRenderWidthFor(double shownHeight, ui.Size original) {
   if (original.width <= 0 || original.height <= 0) {
     return 1;
   }
-  final scale = math.min(
-    1.0,
-    viewerRenderScaleFor(shownHeight / original.height, original),
+  final scale = viewerRenderScaleFor(
+    shownHeight / original.height,
+    original,
+    drawnAtAnySize: false,
   );
   return math.max(1, (original.width * scale).round());
 }

@@ -201,8 +201,8 @@ void main() {
     );
   });
 
-  test('a fresh attach row takes the first name of its side no row of the '
-      'cut wears', () {
+  test('a fresh attach row takes the first name of its side no rider of '
+      'its base wears', () {
     Layer rider(String name, AttachedPlacement placement) => attached.copyWith(
       id: LayerId('rider-$name'),
       name: name,
@@ -236,13 +236,27 @@ void main() {
       ], below),
       'A-3',
     );
+
+    // 🗣️F-397 (유저 2026-10-18): 「기준 레이어의 어태치상태만을 보도록」 —
+    // the image rows after BG all wear BOOK, each with riders of its own.
+    final book = base.copyWith(id: const LayerId('book'), name: 'BOOK');
+    final bare = base.copyWith(id: const LayerId('bare'), name: 'BOOK');
+    Layer bookRider(String name) =>
+        rider(name, below).copyWith(attachedToLayerId: book.id);
+    final books = [bookRider('BOOK-1'), bookRider('BOOK-2'), book, bare];
+    expect(
+      nextAttachedLayerName(bare, books, below),
+      'BOOK-1',
+      reason: 'another BOOK\'s riders are not this one\'s',
+    );
+    expect(nextAttachedLayerName(book, books, below), 'BOOK-3');
     expect(
       nextAttachedLayerName(base, [
         base,
         base.copyWith(id: const LayerId('renamed'), name: 'A+1'),
       ], above),
-      'A+2',
-      reason: 'whoever wears the name — the cels\' rule, on the cut\'s rows',
+      'A+1',
+      reason: 'a row that rides no base is no rider of this one',
     );
   });
 

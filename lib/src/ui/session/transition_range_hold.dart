@@ -50,7 +50,7 @@ extension TransitionRangeHold on Transitions {
     TrackFrameRangeSelection selection,
   ) => {
     for (final row in selection.spanRows)
-      if (row.owningLayerId case final id?)
+      if (row.blockLayerId case final id?)
         if (trackTransitionOwner(id) case final owner?)
           if (keysStartingIn(
                 owner.transitionLayer.instructions.keys,

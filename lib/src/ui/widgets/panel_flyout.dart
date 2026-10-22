@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../shortcuts/editor_shortcut_bindings.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/vertical_writing_text.dart';
+import '../timeline/axis_turn.dart' show alongBox;
 import '../theme/app_theme.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
@@ -546,13 +547,23 @@ Future<void> showPanelFlyout(
                     const SizedBox(width: 8),
                   ],
                   Flexible(
-                    child: _ControlsAtFullStrength(
-                      child: listenable == null
-                          ? Builder(builder: builder)
-                          : ListenableBuilder(
-                              listenable: listenable,
-                              builder: (context, _) => builder(context),
-                            ),
+                    // 🗣️THE PAGE TURNER'S LAW, as the pill keeps it for the
+                    // very controls a row here holds once they fold: a row
+                    // too wide for the list shows all of it, smaller —
+                    // never one that runs off it. ⚠️Where it fits, nothing
+                    // is scaled. ↩️At twice the OS text size the view's
+                    // row ran 73px past the list
+                    // (`canvas-settings-view-row-runs-over-at-2x`).
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: _ControlsAtFullStrength(
+                        child: listenable == null
+                            ? Builder(builder: builder)
+                            : ListenableBuilder(
+                                listenable: listenable,
+                                builder: (context, _) => builder(context),
+                              ),
+                      ),
                     ),
                   ),
                 ],
@@ -1350,17 +1361,11 @@ class PanelFlyoutButton extends StatelessWidget {
               children: [
                 if (icon case final glyph?) ...[
                   Icon(glyph, size: 16, color: labelStyle.color),
-                  SizedBox(
-                    width: vertical ? null : 6,
-                    height: vertical ? 6 : null,
-                  ),
+                  alongBox(axis, 6),
                 ],
                 if (expand) Flexible(child: text) else text,
                 if (showCaret) ...[
-                  SizedBox(
-                    width: vertical ? null : 2,
-                    height: vertical ? 2 : null,
-                  ),
+                  alongBox(axis, 2),
                   Icon(
                     Icons.arrow_drop_down,
                     size: 16,

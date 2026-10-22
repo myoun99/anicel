@@ -10,6 +10,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -72,7 +73,9 @@ void main() {
     addTearDown(cache.dispose);
     final overlay = ActiveStrokeOverlayModel(tileSize: 8);
     addTearDown(overlay.dispose);
-    final rasterizer = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+    final rasterizer = BrushLiveStrokeRasterizer(
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+    );
     final surface = committedSurface();
     final painter = BitmapSurfacePainter(
       surface: surface,

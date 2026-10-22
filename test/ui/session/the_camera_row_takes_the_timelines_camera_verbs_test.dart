@@ -145,6 +145,7 @@ void main() {
     'comma': panel.canSetComma,
     'blank': panel.canBlankExposure,
     'mark': panel.canToggleMark,
+    'mark every': panel.canMarkEvery,
     'cut': panel.canCutRun,
     'copy': panel.canCopyFrame,
     'paste': panel.canPasteIndependentFrame,

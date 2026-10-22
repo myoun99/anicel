@@ -31,7 +31,7 @@ void main() {
   });
 
   test('the first uncovered row after a drawing is the X cell, the rest of '
-      'the run stays blank', () {
+      'the run counts on from the X for the stretch line (F-430)', () {
     final layer = Layer(
       id: const LayerId('l'),
       name: 'A',
@@ -57,6 +57,51 @@ void main() {
     final kinds = [for (final cell in column.cells.take(6)) cell.kind];
     expect(kinds[0], TimesheetCellKind.drawing);
     expect(kinds[2], TimesheetCellKind.emptyRunStart);
-    expect(kinds.sublist(3), everyElement(TimesheetCellKind.empty));
+    expect(kinds.sublist(3), everyElement(TimesheetCellKind.emptyRunSpan));
+    expect([
+      for (final cell in column.cells.sublist(3, 6)) cell.spanOffset,
+    ], [1, 2, 3]);
+  });
+
+  test('each empty run takes its own X and counts from it', () {
+    final layer = Layer(
+      id: const LayerId('l'),
+      name: 'A',
+      frames: [
+        Frame(id: const FrameId('a'), duration: 1, strokes: const []),
+        Frame(id: const FrameId('b'), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('a'), length: 1),
+        3: const TimelineExposure.drawing(FrameId('b'), length: 1),
+      },
+    );
+    final document = TimesheetDocument.fromCut(
+      cut: Cut(
+        id: const CutId('c'),
+        name: '1',
+        layers: [layer],
+        duration: 6,
+        canvasSize: const CanvasSize(width: 32, height: 32),
+      ),
+      projectName: 'P',
+      fps: 24,
+      info: TimesheetInfo.empty,
+    );
+    final cells = document.columns
+        .firstWhere((column) => column.kind == TimesheetColumnKind.action)
+        .cells;
+
+    expect(
+      [for (final cell in cells.take(6)) (cell.kind, cell.spanOffset)],
+      [
+        (TimesheetCellKind.drawing, null),
+        (TimesheetCellKind.emptyRunStart, null),
+        (TimesheetCellKind.emptyRunSpan, 1),
+        (TimesheetCellKind.drawing, null),
+        (TimesheetCellKind.emptyRunStart, null),
+        (TimesheetCellKind.emptyRunSpan, 1),
+      ],
+    );
   });
 }

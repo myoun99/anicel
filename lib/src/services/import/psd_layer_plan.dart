@@ -13,10 +13,11 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/timeline_exposure.dart';
-import '../layer_pose_matrix.dart' show LayerPlacement;
+import '../layer_pose_matrix.dart' show LayerPlacement, picturePlacement;
+import '../photoshop/psd_blend_modes.dart';
 import '../photoshop/psd_reader.dart';
 import 'media_import_planner.dart' show ImportIdMint;
-import 'raster_cel_import.dart' show fitPose, picturePlacement;
+import 'raster_cel_import.dart' show fitPose;
 import '../../models/import/import_warning.dart';
 
 /// EXPAND: a Photoshop stack becomes our stack.
@@ -30,10 +31,16 @@ import '../../models/import/import_warning.dart';
 /// a translation — [LayerBlendMode.passThrough] is our folder default and
 /// means the same thing.
 ///
-/// The whole document lands inside ONE folder named after the file. That is
-/// what makes "expanded PSD" a thing you can point at: undo takes it, a
-/// later re-import replaces it, and nobody has to reason about which of
-/// forty rows came from where.
+/// Into a cut that is there already, the whole document lands inside ONE
+/// folder named after the file. That is what makes "expanded PSD" a thing
+/// you can point at there: undo takes it, a later re-import replaces it,
+/// and nobody has to reason about which of forty rows came from where.
+///
+/// A NEW cut made of the document is that thing already — the cut is the
+/// file — so its rows stand in it as the file has them, under no folder the
+/// file does not have (🗣️유저 2026-10-20, F-422: 「새 컷으로 만들기 해도
+/// psd의 파일이름폴더가 타임라인에 생기는데 안생기도록. 레이어에 임포트할때만
+/// 생기도록」). ↩️A new cut held the file's folder too.
 ///
 /// Pure: it decides the tree and the rectangles, and never touches a pixel.
 /// The pixels are the service's half, which is what makes every rule here
@@ -81,31 +88,11 @@ class PsdExpandPlan {
   final List<ImportWarning> warnings;
 }
 
-/// Photoshop's four-character blend codes. Everything absent from this map
-/// arrives as [LayerBlendMode.normal] with the layer named in a warning:
-/// silently drawing "linear burn" as normal is a picture that is wrong in a
-/// way nobody can see the reason for.
-const Map<String, LayerBlendMode> psdBlendModes = {
-  'pass': LayerBlendMode.passThrough,
-  'norm': LayerBlendMode.normal,
-  'dark': LayerBlendMode.darken,
-  'mul ': LayerBlendMode.multiply,
-  'idiv': LayerBlendMode.colorBurn,
-  'lite': LayerBlendMode.lighten,
-  'scrn': LayerBlendMode.screen,
-  'div ': LayerBlendMode.colorDodge,
-  'lddg': LayerBlendMode.add,
-  'over': LayerBlendMode.overlay,
-  'sLit': LayerBlendMode.softLight,
-  'hLit': LayerBlendMode.hardLight,
-  'diff': LayerBlendMode.difference,
-  'smud': LayerBlendMode.exclusion,
-};
-
 /// Plans [document]'s expansion into [canvas].
 ///
 /// [duration] is the cut's length: an expanded layer is a PICTURE layer, so
-/// its one cel is held across the whole thing.
+/// its one cel is held across the whole thing. [newCut]: the stack makes a
+/// cut of its own, and stands in it unwrapped.
 PsdExpandPlan planPsdExpansion({
   required PsdDocument document,
   required String displayName,
@@ -114,6 +101,7 @@ PsdExpandPlan planPsdExpansion({
   required CanvasSize canvas,
   required MediaFitMode fit,
   required ImportIdMint mint,
+  required bool newCut,
 }) {
   final warnings = <ImportWarning>[...document.warnings];
   final held = duration < 1 ? 1 : duration;
@@ -134,7 +122,7 @@ PsdExpandPlan planPsdExpansion({
     documentSize,
   );
 
-  final rootId = mint.nextLayerId();
+  final rootId = newCut ? null : mint.nextLayerId();
   final layers = <Layer>[];
   final placements = <PsdLayerPlacement>[];
 
@@ -142,7 +130,7 @@ PsdExpandPlan planPsdExpansion({
   // members and the folder row itself ABOVE them — which is our order
   // exactly, so the walk is one pass with a stack of open groups.
   final openGroups = <LayerId>[];
-  LayerId enclosing() => openGroups.isEmpty ? rootId : openGroups.last;
+  LayerId? enclosing() => openGroups.isEmpty ? rootId : openGroups.last;
 
   for (var index = 0; index < document.layers.length; index += 1) {
     final source = document.layers[index];
@@ -151,7 +139,7 @@ PsdExpandPlan planPsdExpansion({
         openGroups.add(mint.nextLayerId());
       case PsdLayerRole.groupOpen:
         final id = openGroups.isEmpty ? mint.nextLayerId() : openGroups.removeLast();
-        _sayEffects(source, warnings);
+        _sayNotApplied(source, warnings);
         layers.add(
           Layer(
             id: id,
@@ -179,15 +167,9 @@ PsdExpandPlan planPsdExpansion({
           continue;
         }
         if (source.clipping) {
-          warnings.add(
-            ImportWarning(
-              'psdClipping',
-              '{name}: clipping mask not applied.',
-              {'name': source.name},
-            ),
-          );
+          warnings.add(clippingNotApplied(source.name));
         }
-        _sayEffects(source, warnings);
+        _sayNotApplied(source, warnings);
         final layerId = mint.nextLayerId();
         final frameId = mint.nextFrameId(layerId);
         layers.add(
@@ -238,15 +220,17 @@ PsdExpandPlan planPsdExpansion({
   }
 
   // The root goes last: the folder row sits above everything it holds.
-  layers.add(
-    Layer(
-      id: rootId,
-      name: displayName,
-      kind: LayerKind.folder,
-      frames: const [],
-      timeline: SplayTreeMap<int, TimelineExposure>(),
-    ),
-  );
+  if (rootId != null) {
+    layers.add(
+      Layer(
+        id: rootId,
+        name: displayName,
+        kind: LayerKind.folder,
+        frames: const [],
+        timeline: SplayTreeMap<int, TimelineExposure>(),
+      ),
+    );
+  }
 
   return PsdExpandPlan(
     layers: layers,
@@ -255,20 +239,22 @@ PsdExpandPlan planPsdExpansion({
   );
 }
 
-/// Names [source] when it carries layer effects that are on: the stack is
-/// the layers' own pixels, and an effect is drawn by Photoshop on top of
-/// them (F-306 — they used to fall away without a word).
-void _sayEffects(PsdLayer source, List<ImportWarning> warnings) {
-  if (!source.hasLayerEffects) {
-    return;
+/// Names [source] where Photoshop keeps something of it that no row here
+/// does, in every decoder's words for them — a group as much as a layer,
+/// since either can wear them: layer effects that are on (the stack is the
+/// layers' own pixels, and an effect is drawn by Photoshop on top of them —
+/// F-306, they used to fall away without a word), a mask that is on and was
+/// not baked into its pixels, a lock (10-17).
+void _sayNotApplied(PsdLayer source, List<ImportWarning> warnings) {
+  if (source.hasLayerEffects) {
+    warnings.add(layerEffectsNotApplied(source.name));
   }
-  warnings.add(
-    ImportWarning(
-      'psdLayerEffects',
-      '{name}: layer effects not applied.',
-      {'name': source.name},
-    ),
-  );
+  if (source.hasUnbakedMask) {
+    warnings.add(layerMaskNotApplied(source.name));
+  }
+  if (source.locked) {
+    warnings.add(lockNotImported(source.name));
+  }
 }
 
 /// The part of [source] inside [document], in the layer's own pixels — or

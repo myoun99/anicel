@@ -11,6 +11,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
@@ -29,6 +30,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
 import '../helpers/library_source.dart';
+import '../helpers/settle_async.dart';
 import 'brush_canvas_test_helpers.dart';
 
 void main() {
@@ -523,19 +525,19 @@ void main() {
         //
         // What the test can still say without asserting which case it got:
         // the overlay ALWAYS ends up clear.
-        for (
-          var i = 0;
-          i < 40 && canvasView.overlayModel!.dabs.isNotEmpty;
-          i++
-        ) {
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 16)),
-          );
-          await tester.pump(const Duration(milliseconds: 16));
-          canvasView = tester.widget<BrushEditCanvasView>(
-            find.byType(BrushEditCanvasView),
-          );
-        }
+        await settleAsync(
+          tester,
+          () => tester
+              .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
+              .overlayModel!
+              .dabs
+              .isEmpty,
+          beat: const Duration(milliseconds: 16),
+          step: const Duration(milliseconds: 16),
+        );
+        canvasView = tester.widget<BrushEditCanvasView>(
+          find.byType(BrushEditCanvasView),
+        );
         expect(
           canvasView.overlayModel!.dabs,
           isEmpty,
@@ -558,7 +560,10 @@ void main() {
             _view(
               _sessionState(),
               results.add,
-              inputSettings: BrushEditCanvasInputSettings(size: 1),
+              inputSettings: BrushEditCanvasInputSettings(
+                size: 1,
+                correction: BrushCorrection.none,
+              ),
             ),
           ),
         );
@@ -1991,17 +1996,22 @@ BrushEditSessionState _sessionState({int width = 8, int height = 8}) {
 InteractiveBrushEditCanvasView _view(
   BrushEditSessionState sessionState,
   ValueChanged<List<BrushDab>> onResult, {
-  BrushEditCanvasInputSettings inputSettings =
-      BrushEditCanvasInputSettings.defaults,
+  BrushEditCanvasInputSettings? inputSettings,
   CanvasViewport? viewport,
   void Function(CanvasTool tool)? onTemporaryToolHold,
   void Function({required bool keep})? onTemporaryToolRelease,
 }) {
+  // The pen's own line: a steadied one runs on the events' clock, and these
+  // carry none (F-418 — a brush steadies as Clip Studio's 0 unless told
+  // otherwise).
+  final brush =
+      inputSettings ??
+      BrushEditCanvasInputSettings(correction: BrushCorrection.none);
   return InteractiveBrushEditCanvasView(
     celNow: () => sessionState.canvasState.currentSurface,
     layerId: const LayerId('layer-a'),
     frameId: const FrameId('frame-a'),
-    inputSettings: () => inputSettings,
+    inputSettings: () => brush,
     viewport: viewport,
     onTemporaryToolHold: onTemporaryToolHold,
     onTemporaryToolRelease: onTemporaryToolRelease,

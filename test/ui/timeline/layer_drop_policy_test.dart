@@ -538,6 +538,187 @@ void main() {
     });
   });
 
+  group('F-312 (10-08): the OUTERMOST row lets go where it stands', () {
+    // 유저: 「가장 바깥에 있는 어태치레이어는 그게 적용안됨. 적용되도록하고
+    // 다른 곳에서도 법 다른거있으면 통일」. Its own outer gap is a boundary
+    // F-31② splits like any other: the half past the group lets go, without
+    // the row having to travel one row further to be let out.
+    final above = [
+      _row('under'),
+      _row('base'),
+      _row('a1', attachedTo: 'base'),
+      _row('a2', attachedTo: 'base'),
+      _row('top'),
+    ];
+
+    test('the pointer past the group: let go, and nothing else moves', () {
+      // Both of the row's own gaps are the one seat it stands in.
+      for (final gap in [3, 4]) {
+        final plan = resolveLayerDrop(
+          stack: above,
+          movingId: const LayerId('a2'),
+          insertAt: gap,
+          pointerInRow: const LayerId('top'),
+        )!;
+        expect(_ids(plan.order), [
+          'under',
+          'base',
+          'a1',
+          'a2',
+          'top',
+        ], reason: 'gap $gap');
+        expect(plan.attach.detachIds, {const LayerId('a2')}, reason: '$gap');
+      }
+    });
+
+    test('the pointer in the group, on the row, or nowhere changes nothing '
+        '— which is no landing (④)', () {
+      for (final pointer in ['a1', 'a2', null]) {
+        expect(
+          resolveLayerDrop(
+            stack: above,
+            movingId: const LayerId('a2'),
+            insertAt: 4,
+            pointerInRow: pointer == null ? null : LayerId(pointer),
+          ),
+          isNull,
+          reason: 'pointer $pointer',
+        );
+      }
+    });
+
+    test('and the outermost row BELOW the base the same', () {
+      final below = [
+        _row('under'),
+        _row('u', attachedTo: 'base', placement: AttachedPlacement.below),
+        _row('base'),
+        _row('top'),
+      ];
+      final plan = resolveLayerDrop(
+        stack: below,
+        movingId: const LayerId('u'),
+        insertAt: 1,
+        pointerInRow: const LayerId('under'),
+      )!;
+      expect(_ids(plan.order), ['under', 'u', 'base', 'top']);
+      expect(plan.attach.detachIds, {const LayerId('u')});
+      expect(
+        resolveLayerDrop(
+          stack: below,
+          movingId: const LayerId('u'),
+          insertAt: 1,
+          pointerInRow: const LayerId('base'),
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('F-312 (10-08): a FOLDER\'s edge splits the same way', () {
+    // 「다른 곳에서도 법 다른거있으면 통일」: the line under a folder said 「out」
+    // to its own members whichever half the pointer was in, so the folder's
+    // bottom could not be reached from inside it at all.
+    final stack = [
+      _row('A'),
+      _row('m1', folderId: 'F'),
+      _row('m2', folderId: 'F'),
+      _row('F', kind: LayerKind.folder),
+      _row('top'),
+    ];
+
+    test('a member with the pointer still in the folder stays in, at the '
+        'bottom', () {
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('m2'),
+        insertAt: 1,
+        pointerInRow: const LayerId('m1'),
+      )!;
+      expect(_ids(plan.order), ['A', 'm2', 'm1', 'F', 'top']);
+      expect(plan.folderIds, isEmpty);
+      expect(plan.joinedFolderId, const LayerId('F'));
+    });
+
+    test('past the folder\'s rows it goes out', () {
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('m2'),
+        insertAt: 1,
+        pointerInRow: const LayerId('A'),
+      )!;
+      expect(_ids(plan.order), ['A', 'm2', 'm1', 'F', 'top']);
+      expect(plan.folderIds, {const LayerId('m2'): null});
+    });
+
+    test('the bottom member goes out where it stands; from inside, nothing '
+        'changes and nothing lands', () {
+      final out = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('m1'),
+        insertAt: 1,
+        pointerInRow: const LayerId('A'),
+      )!;
+      expect(_ids(out.order), ['A', 'm1', 'm2', 'F', 'top']);
+      expect(out.folderIds, {const LayerId('m1'): null});
+      // The folder's own ROW is the folder's too.
+      for (final pointer in ['m1', 'm2', 'F']) {
+        expect(
+          resolveLayerDrop(
+            stack: stack,
+            movingId: const LayerId('m1'),
+            insertAt: 1,
+            pointerInRow: LayerId(pointer),
+          ),
+          isNull,
+          reason: pointer,
+        );
+      }
+    });
+
+    test('a row from OUTSIDE is beside the folder on that line, wherever the '
+        'pointer is — the folder row is the way in', () {
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('top'),
+        insertAt: 1,
+        pointerInRow: const LayerId('m1'),
+      )!;
+      expect(_ids(plan.order), ['A', 'top', 'm1', 'm2', 'F']);
+      expect(plan.folderIds, isEmpty);
+      expect(plan.joinedFolderId, isNull);
+    });
+
+    test('over the folder ROW the only meaning is out: in its half there is '
+        'no landing, since a member cannot sit above its folder', () {
+      final out = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('m1'),
+        insertAt: 4,
+        pointerInRow: const LayerId('top'),
+      )!;
+      expect(_ids(out.order), ['A', 'm2', 'F', 'm1', 'top']);
+      expect(out.folderIds, {const LayerId('m1'): null});
+      expect(
+        resolveLayerDrop(
+          stack: stack,
+          movingId: const LayerId('m1'),
+          insertAt: 4,
+          pointerInRow: const LayerId('F'),
+        ),
+        isNull,
+      );
+    });
+
+    test('with no pointer the line under the folder is what it was: out', () {
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('m2'),
+        insertAt: 1,
+      )!;
+      expect(plan.folderIds, {const LayerId('m2'): null});
+    });
+  });
+
   group('every slot at once', () {
     // A group with a rider on each side, and an ordinary row on each side of
     // it. Sweeping EVERY slot is the only way to see the answer table whole:

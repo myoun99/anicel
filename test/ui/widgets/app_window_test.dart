@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
 
 void main() {
@@ -91,6 +92,47 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('action-apply')));
     await tester.pump();
     expect(events, ['cancel', 'apply']);
+  });
+
+  testWidgets('an action that names its consequence wears it as a tooltip, '
+      'and one that does not wears none', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AppWindow(
+            title: 'Window under test',
+            titleIcon: Icons.tune,
+            onClose: () {},
+            actions: [
+              AppWindowAction(
+                label: 'Plain',
+                actionKey: const ValueKey<String>('action-plain'),
+                onPressed: () {},
+              ),
+              AppWindowAction(
+                label: 'Told',
+                actionKey: const ValueKey<String>('action-told'),
+                tooltip: 'what it costs',
+                onPressed: () {},
+              ),
+            ],
+            body: const Text('the body'),
+          ),
+        ),
+      ),
+    );
+    String? tipOf(String key) => tester
+        .widgetList<AppTooltip>(
+          find.ancestor(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(AppTooltip),
+          ),
+        )
+        .map((tip) => tip.message)
+        .firstOrNull;
+
+    expect(tipOf('action-told'), 'what it costs');
+    expect(tipOf('action-plain'), isNull);
   });
 
   // F-337 (유저 2026-10-10): 「익스포트/임포트 창이 너무 큼. 앱 화면의

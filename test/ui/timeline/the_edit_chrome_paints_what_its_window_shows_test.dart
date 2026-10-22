@@ -112,7 +112,7 @@ void main() {
             height: 52,
             child: TimelineFrameCellsRow(
               layer: layer,
-              playbackFrameCount: 1200,
+              drawnFrameCount: 1200,
               geometry: testFrameGeometry(
                 frameCellExtent: 24,
                 frameEndIndexExclusive: 1200,

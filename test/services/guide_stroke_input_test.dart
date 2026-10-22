@@ -4,6 +4,13 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/services/guide_geometry.dart';
 import 'package:anicel/src/services/guide_stroke_input.dart';
+import 'package:flutter/services.dart'
+    show
+        KeyDownEvent,
+        KeyEvent,
+        KeyRepeatEvent,
+        LogicalKeyboardKey,
+        PhysicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
 CanvasPoint _point(double x, double y) => CanvasPoint(x: x, y: y);
@@ -403,6 +410,116 @@ void main() {
       _expectPoint(lock.follow(_point(50, -80), shift: false).single, 50, 0);
       _expectPoint(lock.follow(_point(52, 20), shift: true).single, 50, 20);
       _expectPoint(lock.follow(_point(80, 30), shift: false).single, 80, 20);
+    });
+  });
+
+  // 🗣️I-121 (유저 2026-10-21): 「스냅 발생하면 쉬프트 떼기 전까지는
+  // 같은스냅 … 스트로크만 떼고 다음 포인트에서 같은 라인의 직선을 그릴 수
+  // 있게되는거지. 그걸 기본으로.」
+  group('ShiftLine', () {
+    StrokeLock strokeFrom(CanvasPoint start, ShiftLine line) => StrokeLock(
+      guides: CutGuides.empty,
+      start: start,
+      zoom: 1,
+      line: line,
+    );
+
+    /// A stroke under Shift from the origin, locked across: y = 0.
+    ShiftLine lockedAcross() {
+      final line = ShiftLine();
+      strokeFrom(_point(0, 0), line)
+        ..follow(_point(10, 1), shift: true)
+        ..follow(_point(20, 2), shift: true)
+        ..finish();
+      return line;
+    }
+
+    test('🚨the next stroke, under the same Shift, goes on along the line '
+        'from its press — whichever way it heads', () {
+      final line = lockedAcross();
+      final press = line.onTheLine(_point(5, 7));
+      _expectPoint(press, 5, 0);
+
+      // Heading down — afresh, that would lock down.
+      final lock = strokeFrom(press, line);
+      _expectPoint(lock.follow(_point(6, 30), shift: true).single, 6, 0);
+      _expectPoint(lock.follow(_point(40, 31), shift: true).single, 40, 0);
+    });
+
+    test('Shift let go between the strokes: the next chooses afresh', () {
+      final line = lockedAcross()..heldNow(false);
+      _expectPoint(line.onTheLine(_point(5, 7)), 5, 7);
+
+      final lock = strokeFrom(_point(5, 7), line);
+      expect(lock.follow(_point(6, 9), shift: true), isEmpty);
+      _expectPoint(lock.follow(_point(6, 30), shift: true).last, 5, 30);
+    });
+
+    test('a stroke that goes without Shift lets the line go', () {
+      final line = lockedAcross();
+      strokeFrom(_point(5, 7), line).follow(_point(6, 9), shift: false);
+      _expectPoint(line.onTheLine(_point(5, 7)), 5, 7);
+    });
+
+    test('a line Shift locked onto in the middle of a stroke is held too', () {
+      final line = ShiftLine();
+      strokeFrom(_point(0, 0), line)
+        ..follow(_point(10, 10), shift: false)
+        ..follow(_point(10, 30), shift: true)
+        ..finish();
+      _expectPoint(line.onTheLine(_point(3, 50)), 10, 50);
+    });
+
+    test('a press in a placed row lands on the line the CANVAS shows', () {
+      final line = lockedAcross();
+      // The row's (x, y) shows at (2x, y/2) — and back at (x/2, 2y).
+      const stretched = GuideSpace(
+        toCanvas: GuideTransform(2, 0, 0, 0.5, 0, 0),
+        toStroke: GuideTransform(0.5, 0, 0, 2, 0, 0),
+      );
+      _expectPoint(line.onTheLine(_point(3, 8), space: stretched), 3, 0);
+    });
+
+    test('🚨a Shift pressed anew lets the line go — not one the engine puts '
+        'back, not another key, not the key held down', () {
+      KeyEvent shift(
+        LogicalKeyboardKey key, {
+        bool synthesized = false,
+        bool repeat = false,
+      }) {
+        const physical = PhysicalKeyboardKey.shiftLeft;
+        const at = Duration.zero;
+        return repeat
+            ? const KeyRepeatEvent(
+                physicalKey: physical,
+                logicalKey: LogicalKeyboardKey.shiftLeft,
+                timeStamp: at,
+              )
+            : KeyDownEvent(
+                physicalKey: physical,
+                logicalKey: key,
+                timeStamp: at,
+                synthesized: synthesized,
+              );
+      }
+
+      final line = lockedAcross();
+      for (final kept in [
+        shift(LogicalKeyboardKey.shiftLeft, synthesized: true),
+        shift(LogicalKeyboardKey.keyA),
+        shift(LogicalKeyboardKey.shiftLeft, repeat: true),
+      ]) {
+        expect(line.heardKey(kept), isFalse, reason: 'the key goes on');
+        _expectPoint(line.onTheLine(_point(5, 7)), 5, 0);
+      }
+      for (final key in [
+        LogicalKeyboardKey.shiftLeft,
+        LogicalKeyboardKey.shiftRight,
+      ]) {
+        final anew = lockedAcross();
+        expect(anew.heardKey(shift(key)), isFalse, reason: 'the key goes on');
+        _expectPoint(anew.onTheLine(_point(5, 7)), 5, 7);
+      }
     });
   });
 

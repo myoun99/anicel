@@ -1,8 +1,12 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart';
 
+import '../../services/command.dart' show WorkAhead;
 import '../debug/key_trace.dart';
 import '../editor_session_manager.dart';
 import 'canvas_selection_commands.dart';
+import 'canvas_traces.dart';
 import 'cel_text_commands.dart';
 
 /// 🚨★★★**UNDO AND REDO — ONE verb each, and every door opens the same
@@ -24,12 +28,17 @@ import 'cel_text_commands.dart';
 class HistoryVerbs {
   HistoryVerbs({
     required this.selection,
+    required this.traces,
     required this.text,
     required this.session,
     required this.contactIsDown,
+    required this.behindTheWaitWindow,
   });
 
   final CanvasSelectionCommands selection;
+
+  /// Every canvas's polygon trace — the canvas's and each viewer's (F-380).
+  final CanvasTraces traces;
 
   /// The text the canvas holds (R9-rest).
   final CelTextCommands text;
@@ -59,9 +68,21 @@ class HistoryVerbs {
   /// the lift has been heard, or it counts itself — the H42 failure.
   final bool Function() contactIsDown;
 
+  /// Takes a document step behind the wait window while what it works out
+  /// [ahead] runs — the window its first run stood behind
+  /// (`stepBehindTheWaitWindow`).
+  final Future<void> Function(WorkAhead ahead, VoidCallback step)
+  behindTheWaitWindow;
+
   /// Everything [canUndo] and [canRedo] depend on.
-  Listenable get changes =>
-      Listenable.merge([selection, text, session.historyManager]);
+  Listenable get changes => Listenable.merge([
+    selection,
+    traces.changes,
+    text,
+    session.canvasAdjust,
+    session.sheetPhotoHold,
+    session.historyManager,
+  ]);
 
   bool get canUndo => _undo() != null;
 
@@ -97,8 +118,16 @@ class HistoryVerbs {
   /// the document is LAST: asked first, it would land an open session and
   /// undo somebody else's edit while the user was still transforming.
   VoidCallback? _undo() {
-    if (selection.hasOpenPolygon) {
-      return selection.undoPolygonPoint;
+    // 🗣️F-377 (유저 2026-10-17): 「변형 상태는 모두 기본적으로 그걸
+    // 따르도록」 — a canvas or the camera's frame adjusted on the canvas
+    // (I-79 · I-80) takes undo a grab at a time, as the open box below
+    // does. Asked first, as 확정 asks it first (`ConfirmVerb`): it is a
+    // mode the user stepped into over whatever was open.
+    if (session.canvasAdjust.canStepBack) {
+      return session.canvasAdjust.stepBack;
+    }
+    if (traces.open case final trace?) {
+      return trace.undoPolygonPoint;
     }
     // 🚨★★★**AN OPEN TRANSFORM BOX TAKES UNDO THE SAME WAY** — 유저
     // 2026-09-20: 「**변형도구 사용시 변형에 대한 조작마다 언두로 기록**
@@ -111,6 +140,18 @@ class HistoryVerbs {
     if (selection.canUndoTransformStep) {
       return selection.undoTransformStep;
     }
+    // F-377: a photo held on a sheet (I-97) wears the box's chrome and
+    // keeps its law — a grab back at a time while held, ONE step once let
+    // go (`HistoryRun`).
+    if (session.sheetPhotoHold.canStepBack) {
+      return session.sheetPhotoHold.stepBack;
+    }
+    // F-377: and a text held by its box (R9-rest) — what its box landed
+    // goes back a step at a time while it is held, ONE once the box lets
+    // go: its letters taken up, or the text let go of.
+    if (text.canStepBack) {
+      return text.stepBack;
+    }
     // R9-rest: a text being TYPED answers the same way — a step back is a
     // word, a letter taken out, a change of setting — and falls through
     // once its letters stand as they were when the visit began. (Ctrl+Z
@@ -119,19 +160,47 @@ class HistoryVerbs {
     if (text.canUndoLetters) {
       return text.undoLetters;
     }
-    return session.canUndo ? session.undo : null;
+    return session.canUndo ? () => _stepTheDocument(undo: true) : null;
   }
 
   /// The mirror of [_undo]: a vertex the trace took back is put back before
   /// the document's redo. A transform box has no redo of its own — 유저 asked
   /// for its undo only.
   VoidCallback? _redo() {
-    if (selection.canRedoPolygonPoint) {
-      return selection.redoPolygonPoint;
+    if (traces.toRedo case final trace?) {
+      return trace.redoPolygonPoint;
     }
     if (text.canRedoLetters) {
       return text.redoLetters;
     }
-    return session.canRedo ? session.redo : null;
+    return session.canRedo ? () => _stepTheDocument(undo: false) : null;
+  }
+
+  /// The document's own undo — or, with [undo] false, redo — behind the
+  /// wait window where it works something out ahead of it
+  /// ([EditorSessionManager.historyStepAhead]), else at once.
+  ///
+  /// 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1 (유저 2026-10-22:
+  /// 「다시 하기도 대기 창 뒤에서 옮긴다」): a redo that runs a resize again
+  /// moves every cel of the cut, as the first run did.
+  void _stepTheDocument({required bool undo}) {
+    final step = undo ? session.undo : session.redo;
+    final ahead = session.historyStepAhead(undo: undo);
+    if (ahead == null) {
+      step();
+      return;
+    }
+    final history = session.historyManager;
+    final asked = history.revision;
+    unawaited(
+      behindTheWaitWindow(ahead, () {
+        // A step that waited is taken only over the history it was asked
+        // of, and never over work begun since ([HistoryManager.revision]).
+        if (history.revision == asked &&
+            !(history.pendingBeforeUndoRedo?.call() ?? false)) {
+          step();
+        }
+      }),
+    );
   }
 }

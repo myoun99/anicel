@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/turn_trig.dart';
 import '../core/unit_direction.dart';
 import '../models/canvas_point.dart';
 import '../models/drawing_guide.dart';
@@ -90,16 +91,15 @@ class GuideTransform {
   /// A rotation of [degrees] (clockwise-positive, matching the transform
   /// lanes) about [origin].
   factory GuideTransform.rotation(CanvasPoint origin, double degrees) {
-    final radians = degrees * math.pi / 180;
-    final cos = math.cos(radians);
-    final sin = math.sin(radians);
+    final turn = PlaneTurn(degrees);
+    final turned = turn.apply(origin.x, origin.y);
     return GuideTransform(
-      cos,
-      sin,
-      -sin,
-      cos,
-      origin.x - cos * origin.x + sin * origin.y,
-      origin.y - sin * origin.x - cos * origin.y,
+      turn.cos,
+      turn.sin,
+      -turn.sin,
+      turn.cos,
+      origin.x - turned.x,
+      origin.y - turned.y,
     );
   }
 
@@ -357,13 +357,59 @@ SnapCandidate? chooseSnapCandidate(
 /// the eye level while it is dragged.
 CanvasPoint projectOntoAxis(GuideAxis axis, CanvasPoint point) {
   final radians = axis.angleDegrees * math.pi / 180;
-  final dx = math.cos(radians);
-  final dy = math.sin(radians);
   final along =
-      (point.x - axis.origin.x) * dx + (point.y - axis.origin.y) * dy;
+      (point.x - axis.origin.x) * math.cos(radians) +
+      (point.y - axis.origin.y) * math.sin(radians);
+  return alongAxis(axis, along);
+}
+
+/// The point [distance] canvas units along [axis] from its origin — where a
+/// line's turning handle stands, and where a new vanishing point is put.
+CanvasPoint alongAxis(GuideAxis axis, double distance) {
+  final radians = axis.angleDegrees * math.pi / 180;
   return CanvasPoint(
-    x: axis.origin.x + dx * along,
-    y: axis.origin.y + dy * along,
+    x: axis.origin.x + math.cos(radians) * distance,
+    y: axis.origin.y + math.sin(radians) * distance,
+  );
+}
+
+/// [point] with its 「평행」 pill pressed (vanishing-point-types-Q1 · Q2,
+/// 유저 2026-10-16: 「점이 있던 쪽 그대로」).
+///
+/// A point on the plane becomes the family at infinity running the way it
+/// lay from the eye level's handle — a point left of it, a level family.
+/// A family at infinity comes back as a point [reach] along its way, on the
+/// eye level while the guide holds its points there
+/// ([constrainedVanishingPointTarget] — the drag's own rule, so the pill
+/// lands a point nowhere a drag could not).
+///
+/// Null where there is nothing to read a way from: two drawn lines that
+/// meet past the reach of a double name neither a point nor a direction.
+VanishingPoint? toggledParallel(
+  PerspectiveShape shape,
+  VanishingPoint point, {
+  required double reach,
+}) {
+  final origin = shape.eyeLevel.origin;
+  final resolved = point.resolve();
+  final way = resolved.directionFrom(origin);
+  if (resolved.position != null) {
+    // ⚠️My choice, not the user's (2026-10-16): a point standing ON the
+    // eye level's handle lay no way at all, and it turns into the vertical
+    // family — what 「정확히 수직으로」 made of every point before this pill
+    // took its place.
+    return way == null
+        ? VanishingPointTowards(dx: 0, dy: 1)
+        : VanishingPointTowards(dx: way.dx, dy: way.dy);
+  }
+  if (!resolved.isInfinite || way == null) {
+    return null;
+  }
+  return VanishingPointAt(
+    constrainedVanishingPointTarget(
+      shape,
+      CanvasPoint(x: origin.x + way.dx * reach, y: origin.y + way.dy * reach),
+    ),
   );
 }
 

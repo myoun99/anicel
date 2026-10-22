@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
 void main() {
@@ -97,9 +98,10 @@ void main() {
           home: Align(
             alignment: Alignment.topLeft,
             child: StatefulBuilder(
-              builder: (context, setState) => SizedBox(
-                width: axis == Axis.horizontal ? laneSize : 14,
-                height: axis == Axis.horizontal ? 14 : laneSize,
+              builder: (context, setState) => sizedAlong(
+                axis,
+                along: laneSize,
+                across: 14,
                 child: AppScrollbar(
                   key: const ValueKey<String>('app-scrollbar-under-test'),
                   axis: axis,
@@ -315,10 +317,7 @@ void main() {
       final thumb = tester.widget<AnimatedContainer>(
         find.byKey(const ValueKey<String>('app-scrollbar-thumb')),
       );
-      final constraints = thumb.constraints!;
-      return axis == Axis.vertical
-          ? constraints.maxWidth
-          : constraints.maxHeight;
+      return extentAcross(axis, thumb.constraints!.biggest);
     }
 
     testWidgets('a press turns the thumb accent and releasing restores it', (

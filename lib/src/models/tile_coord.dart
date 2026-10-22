@@ -122,6 +122,13 @@ TileRange tileRangeCovering({
   return (firstX: x.first, lastX: x.last, firstY: y.first, lastY: y.last);
 }
 
+/// Whether [range] holds [coord] — inclusive at both ends, as a range is.
+bool tileRangeHolds(TileRange range, TileCoord coord) =>
+    coord.x >= range.firstX &&
+    coord.x <= range.lastX &&
+    coord.y >= range.firstY &&
+    coord.y <= range.lastY;
+
 /// Every coordinate in [range], ROW-MAJOR (tile row outer, column inner)
 /// — the order every tile walk in the tree uses, so a walk that only
 /// needs the coordinates reads them from here instead of nesting its own

@@ -4,10 +4,10 @@ import 'dart:io';
 import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
-import '../models/brush_preset_id.dart';
 import '../models/brush_settings.dart';
 import '../models/brush_tip_mask.dart';
 import 'brush_preset_defaults.dart';
+import 'brush_preset_id_mint.dart';
 import 'persistence/app_support_path.dart';
 import 'persistence/versioned_settings_file.dart';
 
@@ -127,32 +127,18 @@ class BrushPresetFileService {
     presets: namedDefaultBrushPresets(nameOf),
   );
 
-  /// Preset ids must be unique (they key preset rows and drive
-  /// replace-on-import), so duplicates in a saved library — e.g. written by
-  /// the pre-fix ABR importer when several brushes shared one tip — are
-  /// healed on load by suffixing later occurrences deterministically.
+  /// Preset ids must be unique (they key preset rows), so duplicates in a
+  /// saved library — e.g. written by the pre-fix ABR importer when several
+  /// brushes shared one tip — are healed on load by the one mint.
   static List<BrushPreset> _withUniquePresetIds(List<BrushPreset> presets) {
-    final seen = <String>{};
+    final mint = BrushPresetIdMint();
     return [
       for (final preset in presets)
-        if (seen.add(preset.id.value))
-          preset
-        else
-          preset.copyWith(
-            id: BrushPresetId(_nextFreeId(preset.id.value, seen)),
-          ),
+        switch (mint.next(preset.id.value)) {
+          final id when id == preset.id => preset,
+          final id => preset.copyWith(id: id),
+        },
     ];
-  }
-
-  static String _nextFreeId(String id, Set<String> seen) {
-    var suffix = 2;
-    while (true) {
-      final candidate = '$id-$suffix';
-      if (seen.add(candidate)) {
-        return candidate;
-      }
-      suffix += 1;
-    }
   }
 
   /// A repeated group id can only mean the same group written twice, and
@@ -205,9 +191,13 @@ class BrushPresetFileService {
       json['settings'] as Map<String, dynamic>,
     );
     for (final key in brushSettingsMaskKeys) {
-      final mask = settings.remove(key);
-      if (mask is Map<String, dynamic>) {
-        settings[brushSettingsMaskIdKey(key)] = mask['id'];
+      settings.remove(key);
+      final masks = brushSettingsMasksAt(preset.settings, key);
+      if (masks.isNotEmpty) {
+        settings[brushSettingsMaskIdKey(key)] = brushSettingsMaskIdsJson(
+          key,
+          masks,
+        );
       }
     }
     json['settings'] = settings;
@@ -229,15 +219,12 @@ class BrushPresetFileService {
     final settingsJson = json['settings'] as Map<String, dynamic>;
     var settings = preset.settings;
     for (final key in brushSettingsMaskKeys) {
-      final id = settingsJson[brushSettingsMaskIdKey(key)];
-      if (id is! String) {
-        continue;
-      }
-      final mask = resolveTip(id);
-      if (mask == null) {
-        continue;
-      }
-      settings = brushSettingsWithMask(settings, key, mask);
+      settings = brushSettingsWithMasks(settings, key, [
+        for (final id in brushSettingsMaskIdsFrom(
+          settingsJson[brushSettingsMaskIdKey(key)],
+        ))
+          ?resolveTip(id),
+      ]);
     }
     return preset.copyWith(settings: settings);
   }
@@ -247,43 +234,99 @@ class BrushPresetFileService {
 /// library, in production.
 typedef BrushTipResolver = BrushTipMask? Function(String id);
 
-/// The three mask-valued settings, by json key.
+/// The mask-valued settings, by json key.
 ///
 /// ⚠️Shared by every writer that names tips by id — the preset file and the
-/// hand bank (`brush_hand_overlay.dart`) — so a fourth mask cannot be named
-/// by one and carried whole by the other.
+/// hand bank (`brush_hand_overlay.dart`) — so a fifth mask cannot be named
+/// by one and carried whole by the other; and by [brushTipMasksIn], so the
+/// tip library adopts exactly the masks a file goes on to name.
 // ⚠️'textureMaskSource', not 'textureMask': the file stores the texture AS
 // PICKED, and the levelled bake beside it is derived — it has no id of its
 // own and nothing in the library to resolve back to.
 const List<String> brushSettingsMaskKeys = [
   'tipMask',
+  brushSettingsMoreTipsKey,
   'dualMask',
   'textureMaskSource',
 ];
 
-/// Where a writer that names tips keeps the id of the mask at json [key].
+/// The tips after the first ([BrushSettings.tips], F-176-Q3) — the one mask
+/// key that holds a LIST, so its value is one too, whole or by id. The first
+/// tip keeps 'tipMask', which is why a file from before a brush could carry
+/// several reads with no code of its own (see [BrushSettings.toJson]).
+const String brushSettingsMoreTipsKey = 'moreTipMasks';
+
+/// Where a writer that names tips keeps the ids of the masks at json [key].
 String brushSettingsMaskIdKey(String key) => '${key}Id';
 
-/// The mask [settings] holds at json [key].
-BrushTipMask? brushSettingsMaskAt(BrushSettings settings, String key) =>
+/// The masks [settings] holds at json [key] — one at most, but at
+/// [brushSettingsMoreTipsKey].
+List<BrushTipMask> brushSettingsMasksAt(BrushSettings settings, String key) =>
     switch (key) {
-      'tipMask' => settings.tipMask,
-      'dualMask' => settings.dualMask,
-      _ => settings.textureMaskSource,
+      'tipMask' => [...settings.tips.take(1)],
+      brushSettingsMoreTipsKey => [...settings.tips.skip(1)],
+      'dualMask' => [?settings.dualMask],
+      _ => [?settings.textureMaskSource],
     };
 
-/// [settings] holding [mask] at json [key].
+/// [settings] holding [masks] at json [key].
 ///
-/// ⚠️A null [mask] leaves the mask that is there — `copyWith` cannot clear
-/// one — so a caller that means "no tip" starts from settings read without.
-BrushSettings brushSettingsWithMask(
+/// ⚠️None leaves what is there — `copyWith` keeps what it is not given — so
+/// a caller that means "no tip" starts from settings read without, and lays
+/// the keys in [brushSettingsMaskKeys]' order: the first tip, then the ones
+/// after it.
+BrushSettings brushSettingsWithMasks(
   BrushSettings settings,
   String key,
-  BrushTipMask? mask,
-) => switch (key) {
-  'tipMask' => settings.copyWith(tipMask: mask),
-  'dualMask' => settings.copyWith(dualMask: mask),
-  _ => settings.copyWith(textureMaskSource: mask),
+  List<BrushTipMask> masks,
+) {
+  if (masks.isEmpty) {
+    return settings;
+  }
+  return switch (key) {
+    'tipMask' => settings.copyWith(
+      tips: [masks.first, ...settings.tips.skip(1)],
+    ),
+    brushSettingsMoreTipsKey => settings.copyWith(
+      tips: [...settings.tips.take(1), ...masks],
+    ),
+    'dualMask' => settings.copyWith(dualMask: masks.first),
+    _ => settings.copyWith(textureMaskSource: masks.first),
+  };
+}
+
+/// [masks], held at json [key], as a writer that names tips writes them.
+Object brushSettingsMaskIdsJson(String key, List<BrushTipMask> masks) =>
+    key == brushSettingsMoreTipsKey
+    ? [for (final mask in masks) mask.id]
+    : masks.first.id;
+
+/// [masks], held at json [key], carried whole.
+Object brushSettingsMasksJson(String key, List<BrushTipMask> masks) =>
+    key == brushSettingsMoreTipsKey
+    ? [for (final mask in masks) mask.toJson()]
+    : masks.first.toJson();
+
+/// The ids at an id key — the one of a one-mask key, or the list at
+/// [brushSettingsMoreTipsKey]'s.
+List<String> brushSettingsMaskIdsFrom(Object? json) => switch (json) {
+  final String id => [id],
+  final List<dynamic> ids => [
+    for (final id in ids)
+      if (id is String) id,
+  ],
+  _ => const [],
+};
+
+/// The masks a key carries whole — one, or the list at
+/// [brushSettingsMoreTipsKey].
+List<BrushTipMask> brushSettingsMasksFrom(Object? json) => switch (json) {
+  final Map<String, dynamic> mask => [BrushTipMask.fromJson(mask)],
+  final List<dynamic> masks => [
+    for (final mask in masks)
+      BrushTipMask.fromJson(mask as Map<String, dynamic>),
+  ],
+  _ => const [],
 };
 
 /// Every distinct mask carried by [presets].
@@ -292,19 +335,23 @@ BrushSettings brushSettingsWithMask(
 /// preset arriving with its mask INLINE — from an import, or from a built-in
 /// that carries a procedural one — has to reach the tip library, or the next
 /// save writes an id pointing at nothing.
+///
+/// 🚨THE MASKS AT [brushSettingsMaskKeys], and no list of its own. It kept
+/// one, which still read the texture's levelled BAKE after G5 (2026-09-09)
+/// moved the file onto the texture as picked: the bake carries its
+/// source's id, so the library adopted it under that id, and the next start
+/// resolved the id to the bake and levelled it a second time.
 List<({BrushTipMask mask, String name})> brushTipMasksIn(
   Iterable<BrushPreset> presets,
 ) {
   final seen = <String>{};
   final found = <({BrushTipMask mask, String name})>[];
   for (final preset in presets) {
-    for (final mask in [
-      preset.settings.tipMask,
-      preset.settings.dualMask,
-      preset.settings.textureMask,
-    ]) {
-      if (mask != null && seen.add(mask.id)) {
-        found.add((mask: mask, name: preset.name));
+    for (final key in brushSettingsMaskKeys) {
+      for (final mask in brushSettingsMasksAt(preset.settings, key)) {
+        if (seen.add(mask.id)) {
+          found.add((mask: mask, name: preset.name));
+        }
       }
     }
   }

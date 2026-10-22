@@ -381,11 +381,15 @@ void main() {
     session.selectLayer(se.id);
     session.selectFrameIndex(2);
     session.seEntries.createSeEntryAtCurrentFrame(name: '쿵', seName: 'A');
-    Offset? tagAt({TimelineDragPreview? preview}) => session.seEntries
-        .seNameTagsForCutFrame(session.requireActiveCut, 2, preview: preview)
-        .single
-        .content
-        .position;
+    // Where the tag lands on the canvas — its row's pose lays it there
+    // (F-387), as a layer's lays its picture.
+    CanvasPoint tagAt({TimelineDragPreview? preview}) {
+      final tag = session.seEntries
+          .seNameTagsForCutFrame(session.requireActiveCut, 2, preview: preview)
+          .single;
+      final at = tag.content.position!;
+      return tag.placement.apply(CanvasPoint(x: at.dx, y: at.dy));
+    }
     final tagBefore = tagAt();
 
     session.laneVerbs.previewLaneValueAt(

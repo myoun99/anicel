@@ -73,7 +73,6 @@ void main() {
     slot.request.value = MediaViewerRequest(
       path: 'C:/work/clip-$opens.pdf',
       kind: MediaAssetKind.pdf,
-      name: 'clip',
     );
     await tester.pumpAndSettle();
     return fake;
@@ -120,40 +119,53 @@ void main() {
     );
   });
 
-  testWidgets('🚨a clock that got ahead is followed to its page — the pages '
-      'on the way drop, as the canvas\'s do: time never stretches', (
+  testWidgets('🚨a clock that got ahead shows every page all the same — the '
+      'run goes on onto the next, and its clock is put back to it', (
     tester,
   ) async {
     await open(tester);
     await press(tester);
     await readAhead(tester);
 
-    // A busy frame: the first look is half a second late.
+    // A busy frame: a look half a second late.
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(
       slot.position.value,
-      12,
-      reason: 'half a second in, at 24 — ↩️the run turned a page a look and '
-          'showed page 1 here, its picture a page a look behind its clock',
+      1,
+      reason: '유저 2026-10-16 (F-364-every-picture-even-when-late-Q1 a): '
+          '「재생 전 굽기도 안 건너뛴다(뷰어도)」 — the page after 0, where the '
+          'clock says 12. ↩️It was followed to 12, the pages on the way '
+          'never shown',
     );
+    await looks(tester, 2);
+    expect(
+      slot.position.value,
+      1,
+      reason: 'put back to page 1, its clock counts a whole frame from there '
+          '— a clock left where it got to would turn a page a look, its '
+          'picture behind it for as long as it took',
+    );
+    await looks(tester, 1);
+    expect(slot.position.value, 2);
   });
 
-  testWidgets('🚨a clock that got ahead past a page that is not there stands '
-      'BEFORE that page — never on a page it has not got', (tester) async {
+  testWidgets('🚨a clock that got ahead stands BEFORE a page that is not '
+      'there — never on a page it has not got', (tester) async {
     final fake = await open(tester);
     fake.holdRender(5);
     await press(tester);
     await readAhead(tester);
 
     await tester.pump(const Duration(milliseconds: 500));
+    expect(slot.position.value, 1, reason: 'every page, the next first');
 
+    await looks(tester, 10);
     expect(
       slot.position.value,
       4,
-      reason: 'the way stops at the first page that is not there, on the way '
-          'to the twelfth the clock says — the pages before it drop as any '
-          'do',
+      reason: 'the pages that are there, each shown, and the run parked '
+          'before the first that is not',
     );
     await looks(tester, 10);
     expect(slot.position.value, 4, reason: 'and it stays parked there');

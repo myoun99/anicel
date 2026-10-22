@@ -14,6 +14,7 @@ import '../models/layer_id.dart';
 import '../models/movie_cel.dart';
 import '../models/timeline_coverage.dart';
 import '../models/transform_track.dart';
+import 'layer_pose_matrix.dart' show pictureMoved;
 import 'layer_pose_paint.dart';
 import 'cel_source_effect_pass.dart';
 import 'cel_surface_as_shown.dart';
@@ -73,13 +74,6 @@ class CutFrameCompositeLayer {
   final List<ResolvedLayerEffect> effects;
 }
 
-/// A layer's identity pose: content centered, unscaled, unrotated — the
-/// same canvas-centered shape the camera defaults to, so an empty track
-/// composites exactly as before.
-TransformPose layerIdentityPose(CanvasSize canvasSize) => TransformPose(
-  center: CanvasPoint(x: canvasSize.width / 2, y: canvasSize.height / 2),
-);
-
 /// The layer's resolved GEOMETRIC pose at [frameIndex]; null while the
 /// geometric tracks (anchor/position/scale/rotation) are empty — an
 /// animated Opacity alone never forces the transform path. Shared by the
@@ -113,16 +107,26 @@ CanvasPoint? resolveLayerAnchorPointAt({
 }
 
 /// The layer's effective opacity at [frameIndex]: static layer opacity ×
-/// the animated Opacity sample (1 while unkeyed), clamped to 0..1.
+/// the animated Opacity sample (1 while unkeyed), clamped to 0..1 — the
+/// sample only while its fx is on: the Opacity lane is the TRANSFORM
+/// group's, and the switch bypasses it as the composite does (R8).
+///
+/// ↩️The switch was read beside this by the caller that knew of it, and
+/// the SE name tag did not (F-387: 「같은 fx인데 다른건 말이안됨」).
 double resolveLayerEffectiveOpacityAt({
   required Layer layer,
   required int frameIndex,
-}) {
-  return (layer.opacity *
-          resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex))
-      .clamp(0.0, 1.0)
-      .toDouble();
-}
+}) => _ownStrengthAt(layer, layer, frameIndex).clamp(0.0, 1.0).toDouble();
+
+/// [layer]'s OWN strength at [frameIndex], before any folder's: its static
+/// opacity × its fx [carrier]'s animated Opacity sample — the sample only
+/// while the carrier's fx is on (R8). Unclamped: the composite folds the
+/// folders' strength in before it clamps ([_resolveLayerNode]).
+double _ownStrengthAt(Layer layer, Layer carrier, int frameIndex) =>
+    carrier.transformEnabled
+    ? layer.opacity *
+          resolveOpacityTrackAt(carrier.transformTrack.opacity, frameIndex)
+    : layer.opacity;
 
 /// Resolves the drawable surface for a layer's frame (e.g. by replaying the
 /// brush store's paint commands); `null` when the frame has no artwork.
@@ -395,13 +399,23 @@ LayerPoseSample? _folderPoseAt(
   );
 }
 
-/// [carrier]'s own placement: its pose and anchor while its fx is on, null
-/// when the switch bypasses them or the track carries no geometry.
-LayerPoseSample? _ownPlacementAt(Cut cut, Layer carrier, int frameIndex) {
+/// [carrier]'s own placement in [space] — the space its pose is keyed in:
+/// its pose and anchor while its fx is on, null when the switch bypasses
+/// them or the track carries no geometry.
+///
+/// ONE gate for every picture a row's transform lays: a layer's artwork on
+/// the canvas, and an SE row's name tag in the shot (F-387: 「같은 fx인데
+/// 다른건 말이안됨」). ↩️The tag read the transform track itself, so its
+/// row's fx switch turned off nothing it drew.
+LayerPoseSample? layerOwnPlacementAt({
+  required Layer carrier,
+  required CanvasSize space,
+  required int frameIndex,
+}) {
   final pose = carrier.transformEnabled
       ? resolveLayerPoseAt(
           layer: carrier,
-          canvasSize: cut.canvasSize,
+          canvasSize: space,
           frameIndex: frameIndex,
         )
       : null;
@@ -434,15 +448,64 @@ LayerPlacement? layerPlacementAt({
   required Cut cut,
   required Layer layer,
   required int frameIndex,
-}) {
-  final carrier = isAttachedLayer(layer)
-      ? (attachedBaseOf(layer, cut.layers) ?? layer)
-      : layer;
-  return placementUnderFolders(
-    folderPoses: _folderPosesAbove(cut, layer, frameIndex),
-    layerSample: _ownPlacementAt(cut, carrier, frameIndex),
-    canvasSize: cut.canvasSize,
-  );
+}) => placementUnderFolders(
+  folderPoses: _folderPosesAbove(cut, layer, frameIndex),
+  layerSample: layerOwnPlacementAt(
+    carrier: _fxCarrierOf(cut, layer),
+    space: cut.canvasSize,
+    frameIndex: frameIndex,
+  ),
+  canvasSize: cut.canvasSize,
+  within: referenceMoveAt(layer, frameIndex),
+);
+
+/// Where [layer]'s REFERENCE FX stands its file's picture from — the row's
+/// own pose under every folder above it, short of the move the fx makes at
+/// [frameIndex] ([referenceMoveAt]): what the reference's box frames the
+/// fx's values in. Null = the canvas itself.
+LayerPlacement? layerReferenceSpaceAt({
+  required Cut cut,
+  required Layer layer,
+  required int frameIndex,
+}) => placementUnderFolders(
+  folderPoses: _folderPosesAbove(cut, layer, frameIndex),
+  layerSample: layerOwnPlacementAt(
+    carrier: _fxCarrierOf(cut, layer),
+    space: cut.canvasSize,
+    frameIndex: frameIndex,
+  ),
+  canvasSize: cut.canvasSize,
+);
+
+/// The row whose transform places [layer]: its base, for an attach row.
+Layer _fxCarrierOf(Cut cut, Layer layer) => isAttachedLayer(layer)
+    ? (attachedBaseOf(layer, cut.layers) ?? layer)
+    : layer;
+
+/// The move [layer]'s REFERENCE FX makes at [frameIndex]: the file's
+/// picture from where its pixels are laid ([MediaReference.laid]) to where
+/// the fx stands it then ([MediaReference.poseAt]), in the row's own space
+/// — under its transform, which still moves it. Null while the two agree:
+/// every row that shows no file, and a reference laid where it stands.
+///
+/// 🗣️F-374 (유저 2026-10-17): 「참조fx도 똑같이 fx로서 법 통일. 지금 움직여도
+/// 키 안생긴다거나」 — the fx keys, and a picture laid once stands at each
+/// frame where its keys say. No switch reaches it, as none reaches where the
+/// file was laid (I-68-Q1: 「레이어의 fx버튼 꺼도 그 자리 유지되고 출력시에도
+/// fx 적용 해제되있어도 유지됨」).
+LayerPlacement? referenceMoveAt(Layer layer, int frameIndex) {
+  final reference = layer.mediaReference;
+  if (reference == null) {
+    return null;
+  }
+  final to = reference.poseAt(frameIndex);
+  return to == reference.laid
+      ? null
+      : pictureMoved(
+          from: reference.laid,
+          to: to,
+          picture: reference.pictureSize,
+        );
 }
 
 /// Where [layer]'s OWN pose lives on the canvas at [frameIndex] — its
@@ -484,14 +547,19 @@ List<LayerPoseSample> _folderPosesAbove(
 ///
 /// The fold is the PRODUCT, and nothing else: a placement is an affine and
 /// affines are closed under it ([LayerPlacement] says what that replaced).
+///
+/// [within] is a move inside the row's own space, before its pose: where
+/// its reference fx stands the file at this frame ([referenceMoveAt]).
 LayerPlacement? placementUnderFolders({
   required List<LayerPoseSample> folderPoses,
   required LayerPoseSample? layerSample,
   required CanvasSize canvasSize,
+  LayerPlacement? within,
 }) {
-  var combined = layerSample == null
-      ? null
-      : placementOf(layerSample, canvasSize);
+  final own = layerSample == null ? null : placementOf(layerSample, canvasSize);
+  var combined = own == null || within == null
+      ? own ?? within
+      : own.compose(within);
   // Fold innermost-outward: outer ∘ (… ∘ (inner ∘ layer)).
   for (final folderPose in folderPoses.reversed) {
     final outer = placementOf(folderPose, canvasSize);
@@ -579,6 +647,67 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
         frameIndex: frameIndex,
       );
 
+/// [layer] as a row that paints a picture of its own: the row whose fx it
+/// wears — itself, or its base for an attach row — and that base. Null for
+/// a row that paints nothing of its own: a folder composites its MEMBERS,
+/// whose picture its eye, opacity, blend and FX reach through
+/// [resolveFolderChainAt] (flat) or a [CompositeGroup] (tree); an
+/// adjustment filters what is under it. And null for an attach row whose
+/// base is gone — a dangling link contributes nothing.
+({Layer carrier, Layer? base})? _paintingRowOf(Cut cut, Layer layer) {
+  if (!layer.kind.paintsArtwork) {
+    return null;
+  }
+  if (!isAttachedLayer(layer)) {
+    return (carrier: layer, base: null);
+  }
+  final base = attachedBaseOf(layer, cut.layers);
+  return base == null ? null : (carrier: base, base: base);
+}
+
+/// What [layer] draws at [frameIndex] in [cut], shown or not: the cel it
+/// exposes there — none where it exposes none — and how: its OWN strength,
+/// its own blend, where it lies under every folder above it, and the chain
+/// of the row whose fx it wears. Null for a row that paints nothing of its
+/// own ([_paintingRowOf]).
+///
+/// The composite's answer for a row short of its gates — the eye, the
+/// static opacity, a hidden folder — and of what it folds in from the
+/// folders above, their strength and blend ([_resolveLayerNode]): what a
+/// file that keeps every row apart lays each row by, a hidden one hidden
+/// and each folder's strength and blend on the folder (I-117-Q2, 유저
+/// 2026-10-22: 「층을 지키고 그 효과는 뺀다」).
+({Frame? frame, ResolvedRowRender render})? layerDrawingAt({
+  required Cut cut,
+  required Layer layer,
+  required int frameIndex,
+}) {
+  final painting = _paintingRowOf(cut, layer);
+  if (painting == null) {
+    return null;
+  }
+  return (
+    frame: _celOf(layer, painting.base, frameIndex),
+    render: (
+      opacity: _ownStrengthAt(
+        layer,
+        painting.carrier,
+        frameIndex,
+      ).clamp(0.0, 1.0).toDouble(),
+      blendMode: layer.blendMode,
+      placement: layerPlacementAt(
+        cut: cut,
+        layer: layer,
+        frameIndex: frameIndex,
+      ),
+      effects: resolveLayerEffectsAt(
+        effects: painting.carrier.effects,
+        frameIndex: frameIndex,
+      ),
+    ),
+  );
+}
+
 /// What one layer contributes at a frame: its resolved
 /// [CutFrameCompositeEntry], a [CutFrameCompositeLiveRow] when it is the
 /// LIVE row and has no cel exposed here, or null when it contributes
@@ -597,17 +726,8 @@ CutFrameCompositeRow? _resolveLayerNode(
   ({int frameIndex, bool foldBufferedFolders, LayerId? liveLayerId}) at,
 ) {
   final frameIndex = at.frameIndex;
-  // Folder rows composite their MEMBERS, not a surface of their own —
-  // their eye/opacity/blend/FX reach the picture through
-  // [resolveFolderChainAt] (flat) or [CutFrameCompositeGroup] (tree).
-  if (!layer.kind.paintsArtwork) {
-    return null;
-  }
-  final base = isAttachedLayer(layer)
-      ? attachedBaseOf(layer, cut.layers)
-      : null;
-  if (isAttachedLayer(layer) && base == null) {
-    // Dangling attach link (base gone): the row contributes nothing.
+  final painting = _paintingRowOf(cut, layer);
+  if (painting == null) {
     return null;
   }
   // Each row's OWN eye and static opacity gate it — the base's eye
@@ -627,16 +747,9 @@ CutFrameCompositeRow? _resolveLayerNode(
   if (!folderChain.visible) {
     return null;
   }
-  final fxCarrier = base ?? layer;
-  final fxEnabled = fxCarrier.transformEnabled;
+  final fxCarrier = painting.carrier;
   final opacity =
-      ((fxEnabled
-                  ? layer.opacity *
-                        resolveOpacityTrackAt(
-                          fxCarrier.transformTrack.opacity,
-                          frameIndex,
-                        )
-                  : layer.opacity) *
+      (_ownStrengthAt(layer, fxCarrier, frameIndex) *
               folderChain.opacityFactor)
           .clamp(0.0, 1.0)
           .toDouble();
@@ -644,7 +757,7 @@ CutFrameCompositeRow? _resolveLayerNode(
     return null;
   }
 
-  final frame = _celOf(layer, base, frameIndex);
+  final frame = _celOf(layer, painting.base, frameIndex);
 
   // R6: effects ride the FX carrier exactly like the pose and the
   // animated opacity — an attach row wears its base's chain, and the
@@ -661,8 +774,13 @@ CutFrameCompositeRow? _resolveLayerNode(
   // folder poses this walk already gathered with the chain's gates.
   final combined = placementUnderFolders(
     folderPoses: folderChain.poses,
-    layerSample: _ownPlacementAt(cut, fxCarrier, frameIndex),
+    layerSample: layerOwnPlacementAt(
+      carrier: fxCarrier,
+      space: cut.canvasSize,
+      frameIndex: frameIndex,
+    ),
     canvasSize: cut.canvasSize,
+    within: referenceMoveAt(layer, frameIndex),
   );
   // The blend is the ROW's own (attach rows keep theirs — their pixels
   // are independent even when timing rides the base); a member that sets

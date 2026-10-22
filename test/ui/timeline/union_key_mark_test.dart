@@ -174,6 +174,67 @@ void main() {
     expect(memberName.fontSize, header.fontSize, reason: 'one type');
   });
 
+  testWidgets('🚨F-367-Q4: in a NARROW cell a mark keeps its height, stands '
+      'in the middle of its row, and its press box still covers it', (
+    tester,
+  ) async {
+    const narrow = TimelineGridMetrics(frameCellWidth: 8);
+    for (final lane in [member, union]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Material(
+            // Its row's height: under the root's tight constraints it would
+            // fill the screen, and the screen's middle is no row's.
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 480,
+                height: narrow.layerRowHeight,
+                child: TimelineLaneFrameRow(
+                  layer: layer,
+                  lane: lane,
+                  frameStartIndex: 0,
+                  frameEndIndexExclusive: 40,
+                  leadingFrameSpacerWidth: 0,
+                  trailingFrameSpacerWidth: 0,
+                  metrics: narrow,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final band = tester.getRect(find.byType(TimelineLaneFrameRow));
+      final marker = find.byKey(
+        ValueKey<String>('timeline-lane-key-layer-a-${lane.laneId}-2'),
+      );
+      final press = tester.getRect(marker);
+      final drawn = tester.getRect(
+        find.descendant(of: marker, matching: find.byType(CustomPaint)),
+      );
+      final wanted = timelineLaneKeyMarkerSizeOf(
+        narrow.layerRowHeight,
+        frameCellExtent: narrow.frameCellWidth,
+        heads: lane.isGroupHeader,
+      );
+      final who = lane.laneId;
+      expect(wanted.height, greaterThan(wanted.width), reason: '⛔전제 $who');
+      expect(drawn.width, moreOrLessEquals(wanted.width), reason: who);
+      expect(drawn.height, moreOrLessEquals(wanted.height), reason: who);
+      expect(
+        drawn.center.dy,
+        moreOrLessEquals(band.top + narrow.layerRowHeight / 2),
+        reason: '$who — the middle of the row it keeps its height in',
+      );
+      expect(
+        press.intersect(drawn),
+        rectMoreOrLessEquals(drawn),
+        reason: '$who — what is drawn is what is pressed',
+      );
+    }
+  });
+
   testWidgets('⛔and the member mark is still 6px — that was option A', (
     tester,
   ) async {

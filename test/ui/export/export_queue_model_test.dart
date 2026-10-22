@@ -13,7 +13,7 @@ void main() {
       final first = queue.enqueue(
         spec: const SequenceExportSpec(),
         destination: const ExportIntoFolder('D:/out'),
-        fileName: 'a.mp4',
+        typedName: 'a.mp4',
         now: () => DateTime.utc(2026),
       );
       final second = queue.enqueue(
@@ -24,7 +24,7 @@ void main() {
 
       expect(first.id, 1);
       expect(second.id, 2);
-      expect(second.fileName, isNull);
+      expect(second.typedName, isNull);
       expect(queue.jobs.map((job) => job.tab), [
         ExportTab.sequence,
         ExportTab.cels,

@@ -24,8 +24,14 @@ class _CelTextWayOut {
   /// is in hand ([CelTextTool.landShown]). Whether anything landed.
   bool landShown() {
     var landed = false;
-    for (final holding in [...leaving, ?_tool._held]) {
-      landed = land(holding) || landed;
+    final held = _tool._held;
+    // What still owes its landing keeps owing it: a want still being set
+    // lands once it is, a step of its own after this one.
+    for (final holding in leaving) {
+      landed = land(holding, holding.owed ?? _StepOf.letters) || landed;
+    }
+    if (held != null) {
+      landed = land(held, held.owed ?? _tool._stepOfTheHand) || landed;
     }
     return landed;
   }
@@ -33,8 +39,9 @@ class _CelTextWayOut {
   /// Lands everything the hand holds AS IT IS SHOWN, and lets go of it all
   /// ([CelTextTool.landNow]).
   void landAll() {
-    _tool._dropLetters();
     final held = _tool._held;
+    held?.owed ??= _tool._stepOfTheHand;
+    _tool._dropLetters();
     _tool._held = null;
     // In the order they were let go of, the one in hand last — and each
     // out of [leaving] before it lands, as [_landOut] asks.
@@ -42,13 +49,17 @@ class _CelTextWayOut {
       leaving.add(held);
     }
     while (leaving.isNotEmpty) {
-      _landOut(leaving.removeAt(0));
+      final holding = leaving.removeAt(0);
+      final of = holding.owed ?? _StepOf.letters;
+      holding.owed = null;
+      _landOut(holding, of);
     }
   }
 
-  /// Lands the text in hand — now, or once its last want is set — and lets
-  /// go of it where [thenLetGo] says so, or it has no letters left.
-  void landHeld({required bool thenLetGo}) {
+  /// Lands the text in hand — now, or once its last want is set — as a
+  /// step [of] the letters or the box, and lets go of it where [thenLetGo]
+  /// says so, or it has no letters left.
+  void landHeld({required bool thenLetGo, required _StepOf of}) {
     final held = _tool._held;
     if (held == null) {
       return;
@@ -61,14 +72,15 @@ class _CelTextWayOut {
     }
     if (held.session.settled) {
       if (letGo) {
-        _landOut(held);
+        _landOut(held, of);
       } else {
-        land(held);
+        land(held, of);
       }
       return;
     }
     // Its last want is still being set: it stays on screen until that is,
     // and lands then — a step holds a whole text.
+    held.owed ??= of;
     if (letGo) {
       leaving.add(held);
     }
@@ -91,20 +103,27 @@ class _CelTextWayOut {
       // on, and lands when it ends.
       return;
     }
+    final step = held.owed;
+    held.owed = null;
     if (owed >= 0) {
       leaving.removeAt(owed);
-      _landOut(held);
+      _landOut(held, step ?? _StepOf.letters);
+    } else if (step != null) {
+      land(held, step);
     } else {
-      land(held);
+      // Landed already as it settled, or given up by a step back.
+      return;
     }
     _tool._changed();
   }
 
-  /// Lands [holding] — let go of, and out of [leaving] — as it is shown,
-  /// turns it into its cel's drawing where it was let go of for that
+  /// Lands [holding] — let go of, and out of [leaving] — as it is shown, a
+  /// step [of] the letters or the box, closes what its box landed into one
+  /// step, turns it into its cel's drawing where it was let go of for that
   /// ([CelTextTool.turnIntoDrawing]), and is done with it.
-  void _landOut(_Holding holding) {
-    land(holding);
+  void _landOut(_Holding holding, _StepOf of) {
+    land(holding, of);
+    holding.closeBoxSteps();
     if (holding.becomesDrawing) {
       _turnIntoDrawing(holding);
     }
@@ -135,10 +154,10 @@ class _CelTextWayOut {
     );
   }
 
-  /// Puts [holding]'s text on its cel as it is shown, as one step, and
-  /// stands the session on what the cel then carries. Whether there was
-  /// anything to put.
-  bool land(_Holding holding) {
+  /// Puts [holding]'s text on its cel as it is shown, as one step [of] the
+  /// letters or the box ([_Holding.boxSteps]), and stands the session on
+  /// what the cel then carries. Whether there was anything to put.
+  bool land(_Holding holding, _StepOf of) {
     final _Holding(:session, :cel) = holding;
     final command = session.landing(
       coordinator: cel.coordinator,
@@ -149,17 +168,29 @@ class _CelTextWayOut {
     }
     // The first landing of a text whose press made its cel takes the cel
     // with it; every later one is a step of its own.
-    final celMadeSince = holding.celMadeSince;
-    holding.celMadeSince = null;
-    _tool.host.run(
+    final celMade = holding.celMade;
+    holding.celMade = null;
+    void run() => _tool.host.run(
       command,
-      withCelMadeSince: celMadeSince,
       // What is shown is what lands ([CelTextSession.landing]) — and a
       // text with no letters is in no face.
       setIn: {
         for (final span in session.shown.content.spans) ?span.style.fontFamily,
       },
     );
+    final boxSteps = holding.boxSteps;
+    if (celMade != null) {
+      // The door filed the cel as the press came up: another hand's step,
+      // and the run's own all the same.
+      celMade
+        ..adopt()
+        ..write(run)
+        ..end('Set text on a new frame');
+    } else if (of == _StepOf.box && boxSteps != null) {
+      boxSteps.write(run);
+    } else {
+      run();
+    }
     final id = command.textId;
     final texts = cel.coordinator.currentSurfaceOf(cel.key).texts;
     session.standOn(

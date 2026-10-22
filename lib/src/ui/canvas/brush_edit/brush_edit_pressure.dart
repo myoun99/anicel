@@ -45,7 +45,11 @@ class _BrushEditPressure {
     }
     return <BrushDab>[
       for (final dab in dabs)
-        applyBrushInputDynamics(dab, shape: settings.shape),
+        applyBrushInputDynamics(
+          dab,
+          shape: settings.shape,
+          random: _state._inputRandom,
+        ),
     ];
   }
 

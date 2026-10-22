@@ -137,7 +137,7 @@ void main() {
       ),
     );
     // Its share (F-337) the window this was written at: 1200 wide. At its
-    // least (1018) the band's pair name runs past its room in the TEST font
+    // least (1018 then) the band's pair name runs past its room in the TEST font
     // — in the app's own faces it holds there
     // (a_linked_groups_cels_are_listed_in_the_windows_cut_test).
     await tester.binding.setSurfaceSize(const Size(1470, 860));
@@ -175,11 +175,18 @@ void main() {
   // The 겸용 pair places both of A's cels between its two cuts; C3 places
   // the first alone, and a cel a cut never places is no cel of its export
   // (F-289 ⑥, 유저 2026-10-06: 「애초에 타임라인에 안놓은 셀은 출력에
-  // 포함하지않음」). The timesheet is the cut's own; the envelope is the
-  // pair's, which is its first cut's.
+  // 포함하지않음」). Each cut of the pair keeps a timesheet and the pair lists
+  // both (F-415); the envelope is the pair's, which is its first cut's.
+  const pair = [
+    'A1.png',
+    'A2.png',
+    '_TSC1.png',
+    '_TSC2.png',
+    '_CUTC1_envelope.png',
+  ];
   for (final (standingOn, files) in [
-    ('c1', ['A1.png', 'A2.png', '_TSC1.png', '_CUTC1_envelope.png']),
-    ('c2', ['A1.png', 'A2.png', '_TSC2.png', '_CUTC1_envelope.png']),
+    ('c1', pair),
+    ('c2', pair),
     ('c3', ['A1.png', '_TSC3.png', '_CUTC3_envelope.png']),
   ]) {
     testWidgets('🎯the cut scope, standing on ${standingOn.toUpperCase()} '
@@ -203,7 +210,7 @@ void main() {
   }
 
   testWidgets('…and the RUN writes them: standing on C2 with its tick off, '
-      'its sheet and the pair\'s envelope land on disk', (
+      'the pair\'s sheets and its envelope land on disk', (
     tester,
   ) async {
     final temp = Directory.systemTemp.createTempSync('qa-cut-scope');
@@ -223,7 +230,11 @@ void main() {
 
     // (The fixture's cels are drawn on nothing, and a cel with no picture
     // is no file.)
-    expect(filesWrittenUnder(temp), ['_CUTC1_envelope.png', '_TSC2.png']);
+    expect(filesWrittenUnder(temp), [
+      '_CUTC1_envelope.png',
+      '_TSC1.png',
+      '_TSC2.png',
+    ]);
     session.playbackRig.prerenderScheduler.cancel();
   });
 

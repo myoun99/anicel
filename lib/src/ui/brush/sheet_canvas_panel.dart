@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/app_input_settings.dart' show CanvasTouchDragAction;
@@ -6,10 +7,12 @@ import '../../models/canvas_viewport.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../sheet/sheet_shape_targets.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/panel_flyout.dart' show PanelFlyoutEntry;
 import 'brush_canvas_panel.dart';
+import 'brush_tool_state.dart';
 import 'canvas_book.dart';
 
 /// [paperView] — a sheet panel's view as it is KEPT, in the paper's pixels
@@ -76,7 +79,7 @@ class SheetCanvasPanel extends StatefulWidget {
     this.onViewportChanged,
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
-    this.pageStrip = const <Widget>[],
+    this.transport,
     this.bottomBarHostToken,
     this.fitFocusRect,
     this.unframedFit,
@@ -85,6 +88,7 @@ class SheetCanvasPanel extends StatefulWidget {
     this.strokeHold,
     this.brushSwitch,
     required this.drawingOn,
+    this.brushToolState,
     required this.content,
   });
 
@@ -110,7 +114,11 @@ class SheetCanvasPanel extends StatefulWidget {
   /// ([BrushCanvasPanel.bottomBarSettings]) — what the host carries in
   /// [bottomBarHostToken] too, or the memoised bar keeps the old ones.
   final List<PanelFlyoutEntry> bottomBarSettings;
-  final List<Widget> pageStrip;
+
+  /// The band under the sheet — its page turner
+  /// ([CanvasTransportBand.ofPages]), none for a sheet of one page
+  /// ([BrushCanvasPanel.transport]).
+  final CanvasTransportBand? transport;
   final Object? bottomBarHostToken;
   final Rect? fitFocusRect;
 
@@ -132,14 +140,27 @@ class SheetCanvasPanel extends StatefulWidget {
   /// turns off under the pen.
   final SheetStrokeHold? strokeHold;
 
-  /// Whether this sheet's DRAWING is on — its ink windows are mounted — and
-  /// the sheet's answer to [BrushCanvasPanel.runsTheSelectedTool] (F-80).
+  /// Whether this sheet's DRAWING is on — its ink windows are mounted — and,
+  /// with the tool in hand ([brushToolState]), the sheet's answer to
+  /// [BrushCanvasPanel.runsTheSelectedTool] (F-80).
   ///
   /// ⛔Asked separately from [strokeHold] on purpose. That one says a stroke
   /// is LIVE right now, and reading its NULLNESS as 「this sheet takes no
   /// tool」 made one flag answer two questions (유저 2026-09-16: 「법
   /// 통일할수있을거같은데」).
   final bool drawingOn;
+
+  /// The tool in hand — the workspace's, as the sheet's ink windows hear it.
+  ///
+  /// 🗣️F-420 (유저 2026-10-20): 「캔버스 베이스패널에서 브러시허용일때,
+  /// 도형도구 선택되있는데 브러시가 그려짐. 선택한 도구가 작동하게하도록」 —
+  /// F-80's law, a tool at a time: 「작동가능한거면 해당 도구 작동시키고,
+  /// 불가능하면 팬」. While [drawingOn], a tool the sheet runs
+  /// ([sheetRunsTool]) is the panel's, as the canvas runs it; under any
+  /// other the sheet is the viewer, and a press moves it. ↩️The panel was
+  /// handed no tool at all and ran the brush's defaults, and the windows
+  /// laid the brush's stroke under whatever was in hand.
+  final ValueListenable<BrushToolState>? brushToolState;
 
   /// THE SHEET'S BRUSH SWITCH — 「브러시 허용」, at the head of the bar: whether
   /// the brush draws on this sheet (유저 2026-09-25: 「잉크 허용이아니라
@@ -164,14 +185,50 @@ class SheetCanvasPanel extends StatefulWidget {
 }
 
 class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
+  /// What takes a shape here — the sheet's ink layer says (F-420).
+  final SheetShapeTargets _shapes = SheetShapeTargets();
+
+  /// Whether the tool in hand is one this sheet runs, as last built.
+  late bool _toolRuns = _toolInHandRuns;
+
+  bool get _toolInHandRuns {
+    final tool = widget.brushToolState?.value.tool;
+    return tool != null && sheetRunsTool(tool);
+  }
+
+  /// The panel is built again when the answer changes, and for nothing
+  /// else of the brush (H40 ②: a brush change rebuilds no sheet).
+  void _hearTool() {
+    if (_toolInHandRuns != _toolRuns) {
+      setState(() => _toolRuns = _toolInHandRuns);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.brushToolState?.addListener(_hearTool);
+  }
+
   @override
   void didUpdateWidget(covariant SheetCanvasPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.brushToolState, widget.brushToolState)) {
+      oldWidget.brushToolState?.removeListener(_hearTool);
+      widget.brushToolState?.addListener(_hearTool);
+      _toolRuns = _toolInHandRuns;
+    }
     // Drawing going off unmounts the ink windows — the pen that was down on
     // one will never be lifted there.
     if (oldWidget.drawingOn && !widget.drawingOn) {
       oldWidget.strokeHold?.releaseAfterFrame();
     }
+  }
+
+  @override
+  void dispose() {
+    widget.brushToolState?.removeListener(_hearTool);
+    super.dispose();
   }
 
   /// [rect], of the sheet's units, on the paper's pixels.
@@ -210,13 +267,10 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
     final brush = widget.brushSwitch;
     return [
       if (brush != null)
-        AppIconButton(
-          keyValue: '${brush.keyPrefix}-brush-toggle-button',
-          tooltip: AppText.strings.sheetBrushAllow,
-          icon: const Icon(Icons.brush),
-          isSelected: brush.allowed,
-          size: AppIconButtonSize.strip,
-          onPressed: () => brush.onChanged(!brush.allowed),
+        sheetBrushSwitch(
+          allowed: brush.allowed,
+          onChanged: brush.onChanged,
+          keyPrefix: brush.keyPrefix,
         ),
       ...widget.bottomBarLeading,
     ];
@@ -226,6 +280,7 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
   Widget build(BuildContext context) {
     final widget = this.widget;
     final scale = widget.paperScale;
+    final runs = widget.drawingOn && _toolRuns;
     return BrushCanvasPanel(
       coordinator: null,
       availableFrameKeys: const [],
@@ -241,7 +296,7 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
       canvasBase: true,
       bottomBarLeading: _barLeading,
       bottomBarSettings: widget.bottomBarSettings,
-      pageStrip: widget.pageStrip,
+      transport: widget.transport,
       // The switch is built HERE, so its state joins the host's token here —
       // a host that forgot it would get a switch the memo serves stale.
       // Null stays null: that asks for a bar rebuilt every time.
@@ -253,25 +308,58 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
       viewLimit: _onPaper(widget.viewLimit),
       book: _bookOnPaper,
       contentStrokeActive: widget.drawingOn ? widget.strokeHold : null,
-      // F-80: a sheet runs the selected tool while its drawing is ON. With
-      // it off nothing here can act, so the panel makes a plain primary
-      // press pan — one that no control on the sheet has taken (a timesheet
-      // head cell, a conte cell) — and one finger pans as the viewer does
-      // (I-14).
-      oneFingerAction: widget.drawingOn
-          ? null
-          : CanvasTouchDragAction.navigate,
-      runsTheSelectedTool: widget.drawingOn,
-      contentOverride: (context, paperView) => widget.content(
-        context,
-        renderSnappedViewport(
-          sheetUnitsView(paperView, scale),
-          EffectiveDevicePixelRatio.of(context),
+      // F-80: a sheet runs the selected tool while its drawing is ON and
+      // the tool is one it runs (F-420). Otherwise nothing here can act, so
+      // the panel makes a plain primary press pan — one that no control on
+      // the sheet has taken (a timesheet head cell, a conte cell) — and one
+      // finger pans as the viewer does (I-14), under no tool's cursor (the
+      // viewer's: a tip over what it cannot draw on is a false
+      // affordance).
+      brushToolState: runs ? widget.brushToolState : null,
+      oneFingerAction: runs ? null : CanvasTouchDragAction.navigate,
+      runsTheSelectedTool: runs,
+      toolCursorsEnabled: runs,
+      contentShapeTargetAt: _shapes.at,
+      contentTakesPressAt: _shapes.takesPressAt,
+      contentOverride: (context, paperView) => SheetShapeScope(
+        targets: _shapes,
+        child: widget.content(
+          context,
+          renderSnappedViewport(
+            sheetUnitsView(paperView, scale),
+            EffectiveDevicePixelRatio.of(context),
+          ),
         ),
       ),
     );
   }
 }
+
+/// THE BRUSH SWITCH — 「브러시 허용」 ([SheetCanvasPanel.brushSwitch]): one
+/// button, one word, on every panel that writes on what it shows — the
+/// sheets and the viewers (I-114: 「다른 캔버스 베이스패널의 브러시
+/// 허용이랑 똑같은」). Null [onChanged] stands it off: a viewer showing a
+/// file it cannot write on keeps its place on the bar.
+Widget sheetBrushSwitch({
+  required bool allowed,
+  required ValueChanged<bool>? onChanged,
+  required String keyPrefix,
+}) => AppIconButton(
+  keyValue: '$keyPrefix-brush-toggle-button',
+  tooltip: AppText.strings.sheetBrushAllow,
+  icon: const Icon(Icons.brush),
+  isSelected: allowed,
+  size: AppIconButtonSize.strip,
+  onPressed: onChanged == null ? null : () => onChanged(!allowed),
+);
+
+/// Whether a sheet runs [tool] (F-420) — on its ink, as the canvas runs it
+/// on a cel: the painting tools in its windows ([canvasToolPaints]), the
+/// shape tool through the canvas's own drag, landed in the window its press
+/// lands in. Every other tool has nothing on a sheet to act on, and a press
+/// under it moves the sheet (F-80).
+bool sheetRunsTool(CanvasTool tool) =>
+    canvasToolPaints(tool) || canvasToolDrawsShapes(tool);
 
 /// A sheet's LIVE-STROKE HOLD: raised while the pen is down on the sheet's
 /// ink. The panel holds navigation on it, and [brushInput] carries it to the

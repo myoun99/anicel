@@ -11,6 +11,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
@@ -150,7 +151,7 @@ void main() {
     BrushBlendMode mode,
   ) {
     final rasterizer = BrushLiveStrokeRasterizer(
-      canvasSize: canvasSize,
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
       tileSize: tileSize,
     );
     rasterizer.blendFrom(dabs, from: 0);
@@ -248,7 +249,7 @@ void main() {
     for (final erase in [false, true]) {
       final dabs = loopBack(erase: erase);
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: canvasSize,
+        pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
         tileSize: tileSize,
       );
       rasterizer.blendFrom(dabs, from: 0);

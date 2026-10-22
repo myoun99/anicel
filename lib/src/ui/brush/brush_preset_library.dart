@@ -505,23 +505,22 @@ class BrushPresetLibrary extends ChangeNotifier {
       imported: imported,
       sourceName: baseName,
     );
-    _groups = merged.groups;
-    _presets = merged.presets;
+    _groups = merged.library.groups;
+    _presets = merged.library.presets;
     // 🚨THE HAND SETTINGS ARRIVE WITH THEIR BRUSH (유저, `Q-brush-store`:
     // 「내보낼 때는 브러시 파일에 쓴다」).
     //
-    // ⚠️Keyed by id, and that is checked rather than assumed: the merge
-    // REPLACES a colliding preset instead of re-minting it (two presets may
-    // never share an id), so the id in the file is the id in the library.
-    // An entry naming a brush that did not land is dropped — a bank row for
-    // a preset that does not exist would attach to whatever took that id
-    // later.
+    // ⚠️Keyed by id, and the id in the file is not always the id in the
+    // library: one the library already held was minted afresh (F-433), so
+    // each entry follows its brush to where it landed. ↩️The merge used to
+    // REPLACE a colliding preset, which kept the two ids one. An entry
+    // naming a brush that did not land is dropped — a bank row for a preset
+    // that does not exist would attach to whatever took that id later.
     final port = handSettingsPort;
     if (handInFile.isNotEmpty && port != null) {
-      final landedIds = {for (final preset in _presets) preset.id.value};
       final landed = {
-        for (final entry in handInFile.entries)
-          if (landedIds.contains(entry.key)) entry.key: entry.value,
+        for (final MapEntry(key: inFile, :value) in handInFile.entries)
+          if (merged.landedAs[inFile] case final id?) id.value: value,
       };
       if (landed.isNotEmpty) {
         port.write(landed);

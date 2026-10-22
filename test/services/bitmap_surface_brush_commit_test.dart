@@ -7,6 +7,7 @@ import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
@@ -170,6 +171,27 @@ void main() {
 
       expect(result.dirtyTiles.coords, {TileCoord(x: -1, y: -1)});
       expect(result.surface.tiles.length, 1);
+    });
+
+    test('stops at the wall of the pasteboard\'s size (I-109)', () {
+      // Canvas 4×4 at 1.5x → wall [-1, 5)². A square dab over [-2, 0)²
+      // keeps only its [-1, 0)² pixel, as at 3x it kept all four.
+      for (final (reach, inked) in [
+        (PasteboardReach.whole, 4),
+        (PasteboardReach.quarter, 1),
+        (PasteboardReach.none, 0),
+      ]) {
+        final result = materializeBrushDabSequenceOnBitmapSurface(
+          surface: BitmapSurface(
+            canvasSize: const CanvasSize(width: 4, height: 4),
+            pasteboardReach: reach,
+            tileSize: 1,
+          ),
+          sequence: BrushDabSequence([squareDab(centerX: -1, centerY: -1)]),
+        );
+        expect(result.surface.tiles.length, inked, reason: '$reach');
+        expect(result.surface.pasteboardReach, reach);
+      }
     });
 
     group('erase dabs', () {

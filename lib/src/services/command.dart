@@ -69,6 +69,29 @@ abstract interface class ParkableCommand {
   void dropPayload();
 }
 
+/// The wall a step moves — the canvas's, or how far its pasteboard reaches
+/// — whose wait window it stands behind while its work runs ahead.
+enum WallMove { canvasSize, pasteboard }
+
+/// What a step works out off the UI thread before it is taken: [run], which
+/// hears through its `report` how much is done, from 0 to 1 — for the wait
+/// window of the [wall] it moves to hold up while it runs.
+typedef WorkAhead = ({
+  WallMove wall,
+  Future<void> Function(void Function(double done) report) run,
+});
+
+/// Commands whose step has work it can do AHEAD of it, off the UI thread.
+///
+/// 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1 (유저 2026-10-22:
+/// 「다시 하기도 대기 창 뒤에서 옮긴다」): a redo that runs a resize again
+/// moves every cel of the cut, as the first run did behind its wait window.
+abstract interface class WorksAheadCommand {
+  /// What the next [Command.undo] — or, with [undo] false, the next run of
+  /// [Command.execute] — works out ahead; null when there is nothing.
+  WorkAhead? workAhead({required bool undo});
+}
+
 /// Parks a RUN of commands — the composite's children and, one entry at a
 /// time, the history stacks.
 ///
@@ -125,7 +148,8 @@ class CompositeCommand
         Command,
         RetainedBytesCommand,
         ParkableCommand,
-        PictureRestoringCommand {
+        PictureRestoringCommand,
+        WorksAheadCommand {
   CompositeCommand._({required this.description, required this.commands});
 
   @override
@@ -158,6 +182,30 @@ class CompositeCommand
 
   @override
   void dropReadAhead() => dropReadAheadOf(commands);
+
+  /// The children's, in the order the step runs them, as [readAhead] — each
+  /// a share of the report, behind the first one's window. ⚠️One worked out
+  /// before an earlier child's step is taken can go stale, never wrong: each
+  /// is taken only for the very picture it was worked out from.
+  @override
+  WorkAhead? workAhead({required bool undo}) {
+    final ordered = undo ? commands.reversed : commands;
+    final aheads = [
+      for (final command in ordered.whereType<WorksAheadCommand>())
+        ?command.workAhead(undo: undo),
+    ];
+    if (aheads.isEmpty) {
+      return null;
+    }
+    return (
+      wall: aheads.first.wall,
+      run: (report) async {
+        for (final (index, ahead) in aheads.indexed) {
+          await ahead.run((done) => report((index + done) / aheads.length));
+        }
+      },
+    );
+  }
 
   @override
   void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) {

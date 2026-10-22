@@ -27,14 +27,14 @@ windowedUpload({
   required AudioConformStore conformStore,
   required int deviceRate,
   required int centerSample,
-}) => windowedMixUpload(
+}) => planWindowedMixUpload(
   mix: mix,
   conformStore: conformStore,
   deviceRate: deviceRate,
   centerSample: centerSample,
-  backSeconds: AudioStreamingWindow.backSeconds,
-  aheadSeconds: AudioStreamingWindow.aheadSeconds,
-);
+  backSeconds: AudioStreamingWindow.playing.backSeconds,
+  aheadSeconds: AudioStreamingWindow.playing.aheadSeconds,
+)?.readHere();
 
 void main() {
   late Directory directory;
@@ -202,29 +202,86 @@ void main() {
     store.dispose();
   });
 
-  test('streaming on a device off the project rate refuses — the caller '
-      'stands down instead of pitching the audio', () async {
+  WindowedUploadPlan? planOf(
+    AudioConformStore store,
+    List<ScheduledAudioClip> schedule, {
+    required int deviceRate,
+  }) => planWindowedMixUpload(
+    mix: mixOf(schedule),
+    conformStore: store,
+    deviceRate: deviceRate,
+    centerSample: 0,
+    backSeconds: AudioStreamingWindow.playing.backSeconds,
+    aheadSeconds: AudioStreamingWindow.playing.aheadSeconds,
+  );
+
+  test('🚨a stream on a device off the project rate is left out and named, '
+      'never pitched — ↩️it refused the whole upload, and the platform '
+      'players carried the run', () async {
     final (store, _) = await storeWithBoth();
-    expect(
-      windowedUpload(
-        mix: mixOf(const [
-          ScheduledAudioClip(
-            filePath: 'long',
-            startFrame: 0,
-            endFrameExclusive: 1200,
-          ),
-        ]),
-        conformStore: store,
-        deviceRate: 44100,
-        centerSample: 0,
+    final plan = planOf(store, const [
+      ScheduledAudioClip(
+        filePath: 'long',
+        startFrame: 0,
+        endFrameExclusive: 1200,
       ),
-      isNull,
+    ], deviceRate: 44100);
+    expect(plan, isNotNull);
+    expect(plan!.cannotPlay, {'long'});
+    expect(plan.clips, isEmpty);
+    expect(plan.hasStreaming, isFalse);
+    store.dispose();
+  });
+
+  test('🚨a source nothing will make ready is left out and named, and the '
+      'rest plays (playback-waits-for-its-sound) — ↩️it held the whole '
+      'upload back', () async {
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      projectSampleRate: sampleRate,
+      runner: (request) async => request.sourcePath == 'broken'
+          ? const ConformResult(
+              outcome: ConformOutcome.undecodable,
+              error: 'fixture',
+            )
+          : ConformResult(
+              outcome: ConformOutcome.built,
+              samples: ramp(100),
+              channels: 1,
+              sampleRate: sampleRate,
+              frames: 100,
+            ),
+      log: (_) {},
+    );
+    store.resultFor('broken');
+    store.resultFor('short');
+    await pumpEventQueue();
+
+    final plan = planOf(store, const [
+      ScheduledAudioClip(
+        filePath: 'broken',
+        startFrame: 0,
+        endFrameExclusive: 10,
+      ),
+      ScheduledAudioClip(
+        filePath: 'short',
+        startFrame: 0,
+        endFrameExclusive: 10,
+      ),
+    ], deviceRate: sampleRate);
+    expect(plan, isNotNull);
+    expect(plan!.cannotPlay, {'broken'});
+    expect(plan.resident, hasLength(1));
+    expect(
+      plan.clips.single.sourceIndex,
+      0,
+      reason: 'the clip left points at the one source uploaded',
     );
     store.dispose();
   });
 
-  test('a missing resident source refuses the whole upload (the old '
-      'schedule keeps playing)', () async {
+  test('a resident source still landing holds the whole upload back (the '
+      'old schedule keeps playing)', () async {
     final (store, _) = await storeWithBoth();
     expect(
       windowedUpload(

@@ -93,10 +93,17 @@ enum ExportVideoCodec {
   }
 }
 
+/// The lineup's order is this order. BMP · TGA · TIFF · WEBP joined as the
+/// user named them (I-117, 유저 2026-10-21: 「새 출력형식으로서 BMP TGA TIFF
+/// WEBP」).
 enum ExportStillFormat {
   png,
   jpg,
-  psd;
+  psd,
+  bmp,
+  tga,
+  tiff,
+  webp;
 
   String get jsonValue => name;
 
@@ -104,22 +111,29 @@ enum ExportStillFormat {
     ExportStillFormat.png => 'PNG',
     ExportStillFormat.jpg => 'JPG',
     ExportStillFormat.psd => 'PSD',
+    ExportStillFormat.bmp => 'BMP',
+    ExportStillFormat.tga => 'TGA',
+    ExportStillFormat.tiff => 'TIFF',
+    ExportStillFormat.webp => 'WEBP',
   };
 
   String get fileExtension => jsonValue;
 
-  /// JPG has no alpha; PNG and PSD choose via [ExportChannels].
+  /// JPG has no alpha; every other format chooses via [ExportChannels].
   bool get supportsAlpha => this != ExportStillFormat.jpg;
 
-  static ExportStillFormat fromJson(Object? json) => switch (json) {
-    'jpg' => ExportStillFormat.jpg,
-    'psd' => ExportStillFormat.psd,
-    _ => ExportStillFormat.png,
-  };
+  static ExportStillFormat fromJson(Object? json) {
+    for (final format in ExportStillFormat.values) {
+      if (format.jsonValue == json) {
+        return format;
+      }
+    }
+    return ExportStillFormat.png;
+  }
 }
 
-/// PNG·PSD = RGBA(투명)/RGB 선택 — RGB면 배경색이 깔리고 PNG 파일에 알파
-/// 채널이 없다(색 형식 2, F-335). JPG = RGB 고정.
+/// RGBA(투명)/RGB 선택 — RGB면 배경색이 깔리고 파일에 알파 채널이 없다(PNG 는
+/// 색 형식 2, F-335). JPG = RGB 고정.
 enum ExportChannels {
   rgba,
   rgb;
@@ -156,8 +170,8 @@ class ExportFormatSelection {
   final ExportVideoCodec videoCodec;
   final ExportStillFormat stillFormat;
 
-  /// Meaningful for PNG/PSD stills and ProRes 4444 video; everything else
-  /// resolves to RGB (see [effectiveChannels]).
+  /// Meaningful for stills with alpha and ProRes 4444 video; everything
+  /// else resolves to RGB (see [effectiveChannels]).
   final ExportChannels channels;
 
   /// The backing color when the output has no alpha (RGB stills, JPG).
@@ -173,7 +187,7 @@ class ExportFormatSelection {
   bool get isStill => kind == ExportMediaKind.still;
 
   /// The channels the output actually gets: JPG and non-4444 video are
-  /// always opaque; PNG/PSD/4444 honor the choice.
+  /// always opaque; every other still and 4444 honor the choice.
   ExportChannels get effectiveChannels {
     if (isVideo) {
       return videoCodec.supportsAlpha ? channels : ExportChannels.rgb;
@@ -182,6 +196,10 @@ class ExportFormatSelection {
   }
 
   bool get wantsAlpha => effectiveChannels == ExportChannels.rgba;
+
+  /// Whether the file keeps the rows its picture is laid up of apart: a
+  /// PSD's (I-117).
+  bool get keepsRowsApart => isStill && stillFormat == ExportStillFormat.psd;
 
   /// The output file extension for the current choice.
   String get fileExtension =>

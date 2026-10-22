@@ -7,6 +7,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show endAlong, offsetAlong, partAcross, rectAlong, sizeAlong, startAlong;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineHoldLineInset, timelineJoiningLineWidth;
@@ -120,19 +122,16 @@ void main() {
   Rect wholeLineOver(TimelineRowCellsPainter painter, int first, int last) {
     final head = painter.cellRectFor(first);
     final tail = painter.cellRectFor(last);
-    return painter.axis == Axis.horizontal
-        ? Rect.fromLTRB(
-            head.left + timelineHoldLineInset,
-            head.center.dy - half,
-            tail.right - timelineHoldLineInset,
-            head.center.dy + half,
-          )
-        : Rect.fromLTRB(
-            head.center.dx - half,
-            head.top + timelineHoldLineInset,
-            head.center.dx + half,
-            tail.bottom - timelineHoldLineInset,
-          );
+    final axis = painter.axis;
+    final middle = partAcross(axis, head.center);
+    return rectAlong(
+      axis,
+      along: (
+        from: startAlong(axis, head) + timelineHoldLineInset,
+        to: endAlong(axis, tail) - timelineHoldLineInset,
+      ),
+      across: (from: middle - half, to: middle + half),
+    );
   }
 
   group('a hold is one line', () {
@@ -278,28 +277,31 @@ void main() {
         final spy = _StrokeSpy();
         painter.paint(
           spy,
-          axis == Axis.horizontal
-              ? const Size(cut * cell, rowExtent)
-              : const Size(rowExtent, cut * cell),
+          sizeAlong(axis, along: cut * cell, across: rowExtent),
         );
         final box = wholeLineOver(painter, 5, 11);
         final stroke = theOne(spy.strokes);
+        final middle = partAcross(axis, box.center);
         // Round ends INSIDE the box: the stroke stops half its width short
         // of each of the hold's own ends.
         expect(
           stroke.from,
           offsetMoreOrLessEquals(
-            axis == Axis.horizontal
-                ? Offset(box.left + half, box.center.dy)
-                : Offset(box.center.dx, box.top + half),
+            offsetAlong(
+              axis,
+              along: startAlong(axis, box) + half,
+              across: middle,
+            ),
           ),
         );
         expect(
           stroke.to,
           offsetMoreOrLessEquals(
-            axis == Axis.horizontal
-                ? Offset(box.right - half, box.center.dy)
-                : Offset(box.center.dx, box.bottom - half),
+            offsetAlong(
+              axis,
+              along: endAlong(axis, box) - half,
+              across: middle,
+            ),
           ),
         );
         // A paint keeps its width in 32 bits.
@@ -373,9 +375,10 @@ void main() {
       double dpr,
     ) {
       final first = painter.cellRectFor(spanStart);
-      final local = painter.axis == Axis.horizontal
-          ? box.shift(Offset(-first.left, 0))
-          : box.shift(Offset(0, -first.top));
+      final axis = painter.axis;
+      final local = box.shift(
+        offsetAlong(axis, along: -startAlong(axis, first), across: 0),
+      );
       double q8(double pixels) => timelineGridQ8(pixels * dpr) / 256;
       return Rect.fromLTWH(
         q8(local.left),

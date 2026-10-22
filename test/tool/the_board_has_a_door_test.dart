@@ -159,8 +159,40 @@ void main() {
 
     test('🚨the address is the door\'s: loopback alone, or every interface',
         () {
-      expect(doorListensOn(const LoopbackDoor()).isLoopback, isTrue);
-      expect(doorListensOn(const LanDoor(secret)), InternetAddress.anyIPv4);
+      expect(doorListensOn(const LoopbackDoor()).every((a) => a.isLoopback),
+          isTrue);
+      expect(doorListensOn(const LanDoor(secret)).first,
+          InternetAddress.anyIPv4);
+      for (final door in const [LoopbackDoor(), LanDoor(secret)]) {
+        expect(doorListensOn(door).skip(1), [InternetAddress.loopbackIPv6],
+            reason: 'localhost is ::1 first on this machine, and a browser '
+                'waits 300ms on an address nobody listens at');
+      }
+    });
+
+    test('every address a door names is heard, at one port and in one line',
+        () async {
+      final v6 = await ServerSocket.bind(InternetAddress.loopbackIPv6, 0)
+          .then((s) => s.close().then((_) => true), onError: (_) => false);
+      if (!v6) return markTestSkipped('no IPv6 loopback on this machine');
+      final heard = await listenAt(
+        [InternetAddress.loopbackIPv4, InternetAddress.loopbackIPv6],
+        0,
+      );
+      final paths = <String>[];
+      final listening = heard.requests.listen((request) {
+        paths.add(request.uri.path);
+        unawaited(request.response.close());
+      });
+      final client = HttpClient();
+      for (final (host, name) in [('127.0.0.1', 'v4'), ('[::1]', 'v6')]) {
+        final request = await client
+            .getUrl(Uri.parse('http://$host:${heard.port}/$name'));
+        await (await request.close()).drain<void>();
+      }
+      client.close();
+      await listening.cancel();
+      expect(paths, ['/v4', '/v6']);
     });
   });
 
@@ -922,37 +954,51 @@ void main() {
   });
 
   group('an exe is rebuilt when ANY file it is made of changes', () {
-    // `board_up.sh` and [sourcesOfEntry] follow an entry's imports ONE
-    // level. The tools import each other now, so a file reached only
-    // through another file would change without anything being rebuilt.
+    // `tool/exe_stamp.sh` and [sourcesOfEntry] follow an entry's imports to
+    // every level (2026-10-18). The tools import each other, so a file
+    // reached only through another file would otherwise change without
+    // anything being rebuilt — `board_ack` reaches `board_model` that way.
     Set<String> importsOf(String name) => {
       for (final m in RegExp(
-        r"^import '([A-Za-z0-9_]+\.dart)';",
+        r"^import '([A-Za-z0-9_]+\.dart)'",
         multiLine: true,
       ).allMatches(File('tool/$name').readAsStringSync()))
         m.group(1)!,
     };
 
-    for (final entry in const ['board_server.dart', 'board_check.dart']) {
-      test('🚨everything $entry is made of is one import away from it', () {
-        final near = importsOf(entry);
-        expect(near, isNotEmpty, reason: '⛔premise: the scan reads imports');
-        final all = <String>{...near};
-        final open = [...near];
+    for (final entry in const [
+      'board_server.dart',
+      'board_check.dart',
+      'board_ack.dart',
+    ]) {
+      test('🚨everything $entry is made of is in its stamp', () {
+        final all = {entry};
+        final open = [entry];
         while (open.isNotEmpty) {
           for (final further in importsOf(open.removeLast())) {
             if (all.add(further)) open.add(further);
           }
         }
-        expect(all.difference({...near, entry}), isEmpty);
+        expect(all.length, greaterThan(1), reason: '⛔premise: it imports');
         expect(
           {
             for (final file in sourcesOfEntry(File('tool/$entry')))
               file.uri.pathSegments.last,
           },
-          {...near, entry},
+          all,
         );
       });
     }
+
+    test('⛔premise: board_ack is made of a file it does not import', () {
+      expect(importsOf('board_ack.dart'), isNot(contains('board_model.dart')));
+      expect(
+        {
+          for (final file in sourcesOfEntry(File('tool/board_ack.dart')))
+            file.uri.pathSegments.last,
+        },
+        contains('board_model.dart'),
+      );
+    });
   });
 }

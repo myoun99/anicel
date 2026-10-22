@@ -13,6 +13,7 @@ import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/canvas_traces.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 import 'package:anicel/src/ui/brush/tool_library_panel.dart';
 import 'package:anicel/src/ui/brush/tool_press.dart';
@@ -491,12 +492,19 @@ void main() {
           .withActiveBlendMode(BrushBlendMode.multiply)
           .copyWith(tool: CanvasTool.cutStamp)
           .withActiveBlendMode(BrushBlendMode.behind);
-      final after = before.withMask(BrushMaskSlot.tip, null);
-      expect(after.selectShape, CanvasShapeKind.lasso);
-      expect(after.cutShape, CanvasShapeKind.polygon);
-      expect(after.fillBlendMode, BrushBlendMode.multiply);
-      expect(after.cutStampBlendMode, BrushBlendMode.behind);
-      expect(after.tool, CanvasTool.cutStamp);
+      // ↩️A tip went through `withMask` too; the tips are a list written
+      // with `copyWith` now (F-176-Q3), and a mask still takes `withMask` —
+      // both are a pick, so both are held to it.
+      for (final after in [
+        before.withMask(BrushMaskSlot.dual, null),
+        before.copyWith(tips: const []),
+      ]) {
+        expect(after.selectShape, CanvasShapeKind.lasso);
+        expect(after.cutShape, CanvasShapeKind.polygon);
+        expect(after.fillBlendMode, BrushBlendMode.multiply);
+        expect(after.cutStampBlendMode, BrushBlendMode.behind);
+        expect(after.tool, CanvasTool.cutStamp);
+      }
     });
   });
 
@@ -508,6 +516,7 @@ void main() {
       required CanvasShapeKind shape,
       required int points,
       CanvasSelectionCommands? commands,
+      CanvasTool tool = CanvasTool.select,
     }) async {
       final channel = commands ?? CanvasSelectionCommands();
       for (var i = 0; i < points; i += 1) {
@@ -516,14 +525,12 @@ void main() {
       await tester.pumpWidget(
         app(
           ToolSettingsPanel(
-            state: BrushToolState.defaults.withShapeKind(
-              shape,
-              forTool: CanvasTool.select,
-            ),
+            state: BrushToolState.defaults.withShapeKind(shape, forTool: tool),
             onChanged: (_) {},
             fillOptions: const FloodFillOptions(),
             onFillOptionsChanged: (_) {},
             selectionCommands: channel,
+            canvasTraces: CanvasTraces([channel]),
           ),
         ),
       );
@@ -564,25 +571,61 @@ void main() {
       );
     });
 
-    testWidgets('closes the trace when pressed', (tester) async {
+    testWidgets('comes alive as the third goes down', (tester) async {
       final commands = CanvasSelectionCommands();
       await pumpSettings(
         tester,
         shape: CanvasShapeKind.polygon,
-        points: 3,
+        points: 2,
         commands: commands,
       );
-      await tester.tap(find.byKey(buttonKey));
-      await tester.pump();
-      expect(commands.hasOpenPolygon, isFalse);
+
+      commands.addPolygonPoint(CanvasPoint(x: 40, y: 0));
+      // The channel tells of it on a microtask; the frame comes after.
+      await tester.pump(Duration.zero);
+
+      expect(
+        tester.toolSettingAction(find.byKey(buttonKey)).onPressed,
+        isNotNull,
+      );
     });
+
+    // Every tool that traces a polygon closes it from its own settings.
+    for (final tool in const [
+      CanvasTool.select,
+      CanvasTool.cut,
+      CanvasTool.fillShape,
+    ]) {
+      testWidgets('closes the trace when pressed — under ${tool.name}', (
+        tester,
+      ) async {
+        final commands = CanvasSelectionCommands();
+        await pumpSettings(
+          tester,
+          shape: CanvasShapeKind.polygon,
+          points: 3,
+          commands: commands,
+          tool: tool,
+        );
+        await tester.tap(find.byKey(buttonKey));
+        await tester.pump();
+        expect(commands.hasOpenPolygon, isFalse);
+      });
+    }
   });
 
   // 🚨I-23 — 유저 2026-09-12: 「선택반전기능. 내용은 선택되지 않은 부분을
-  // 선택함. 위치는 선택툴일때의 툴설정. 버튼.」
+  // 선택함. 위치는 선택툴일때의 툴설정. 버튼.」 Two walls, two buttons
+  // (I-108, 유저 2026-10-18: 「버튼 나눠서 용지 내 선택 반전, 용지 밖까지?
+  // 선택 반전 이렇게 버튼 두개로」).
   group('선택 반전 in the selection tool\'s settings', () {
-    const buttonKey = ValueKey<String>('selection-invert-button');
     const canvas = CanvasSize(width: 20, height: 15);
+    final walls = {
+      'selection-invert-in-canvas-button': canvas.canvasRect,
+      'selection-invert-button': canvas
+          .pasteboardAt(PasteboardReach.whole)
+          .rect,
+    };
 
     CanvasSelectionRegion selected() => CanvasSelectionRegion.shape(
       CanvasSelectionShape.rect(left: 2, top: 3, right: 12, bottom: 9),
@@ -601,63 +644,65 @@ void main() {
             fillOptions: const FloodFillOptions(),
             onFillOptionsChanged: (_) {},
             selectionCommands: commands,
-            canvasSize: canvasSize,
+            pasteboard: canvasSize?.pasteboardAt(PasteboardReach.whole),
           ),
         ),
       );
       await tester.pump();
     }
 
-    ToolSettingAction button(WidgetTester tester) =>
-        tester.toolSettingAction(find.byKey(buttonKey));
+    for (final MapEntry(key: keyValue, value: wall) in walls.entries) {
+      final buttonKey = ValueKey<String>(keyValue);
+      ToolSettingAction button(WidgetTester tester) =>
+          tester.toolSettingAction(find.byKey(buttonKey));
 
-    testWidgets('stands in one place, live, with a selection and without', (
-      tester,
-    ) async {
-      final commands = CanvasSelectionCommands();
-      await pumpSelectSettings(tester, commands: commands);
-      final without = tester.getRect(find.byKey(buttonKey));
-      expect(
-        button(tester).onPressed,
-        isNotNull,
-        reason: 'nothing selected still inverts — to the whole wall',
-      );
+      group(keyValue, () {
+        testWidgets('stands in one place, live, with a selection and '
+            'without', (tester) async {
+          final commands = CanvasSelectionCommands();
+          await pumpSelectSettings(tester, commands: commands);
+          final without = tester.getRect(find.byKey(buttonKey));
+          expect(
+            button(tester).onPressed,
+            isNotNull,
+            reason: 'nothing selected still inverts — to the whole wall',
+          );
 
-      commands.setRegion(selected());
-      await tester.pump();
+          commands.setRegion(selected());
+          await tester.pump();
 
-      expect(tester.getRect(find.byKey(buttonKey)), without);
-      expect(button(tester).onPressed, isNotNull);
-    });
+          expect(tester.getRect(find.byKey(buttonKey)), without);
+          expect(button(tester).onPressed, isNotNull);
+        });
 
-    testWidgets('a tap inverts the selection', (tester) async {
-      final commands = CanvasSelectionCommands()..setRegion(selected());
-      await pumpSelectSettings(tester, commands: commands);
+        testWidgets('a tap inverts the selection within its wall', (
+          tester,
+        ) async {
+          final commands = CanvasSelectionCommands()..setRegion(selected());
+          await pumpSelectSettings(tester, commands: commands);
 
-      await tester.tap(find.byKey(buttonKey));
-      await tester.pump();
+          await tester.tap(find.byKey(buttonKey));
+          await tester.pump();
 
-      expect(
-        commands.region,
-        CanvasSelectionRegion.invertedWithin(
-          selected(),
-          canvas.pasteboardRect,
-        ),
-      );
-    });
+          expect(
+            commands.region,
+            CanvasSelectionRegion.invertedWithin(selected(), wall),
+          );
+        });
 
-    testWidgets('is greyed, never gone, with no canvas to take a wall from', (
-      tester,
-    ) async {
-      await pumpSelectSettings(
-        tester,
-        commands: CanvasSelectionCommands(),
-        canvasSize: null,
-      );
+        testWidgets('is greyed, never gone, with no canvas to take a wall '
+            'from', (tester) async {
+          await pumpSelectSettings(
+            tester,
+            commands: CanvasSelectionCommands(),
+            canvasSize: null,
+          );
 
-      expect(find.byKey(buttonKey), findsOneWidget);
-      expect(button(tester).onPressed, isNull);
-    });
+          expect(find.byKey(buttonKey), findsOneWidget);
+          expect(button(tester).onPressed, isNull);
+        });
+      });
+    }
   });
 
   group('shape memory (유저 확정: 도형은 동사별로 기억)', () {

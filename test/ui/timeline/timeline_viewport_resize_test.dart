@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
+import '../../helpers/settle_async.dart';
 import 'timeline_cell_probe.dart';
 
 /// THE RESIZE LAW (device report 2026-08-17: open a project in a SMALL
@@ -200,28 +202,26 @@ void main() {
     //
     // ⛔The fix is never a longer delay: a delay tuned on an idle machine
     // is a bet on how busy the machine will be, and the bulk run is
-    // exactly when it is busiest. The cap below is only the failure
-    // deadline; a fast machine never waits for it.
+    // exactly when it is busiest. The cap ([waitPatience]) is only the
+    // failure deadline; a fast machine never waits for it. ↩️It was a cap of
+    // 600 rounds, which a loaded machine stretches as it stretches a delay.
     final store = TimelineGridTileStore.instance;
     var landed = false;
-    var idle = false;
-    for (var round = 0; round < 600 && !idle; round += 1) {
-      final before = store.revision.value;
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-      if (store.revision.value != before) {
+    int? before;
+    final idle = await settleAsync(tester, () {
+      final now = store.revision.value;
+      if (before != null && now != before) {
         landed = true;
       }
-      idle = landed && !store.debugBusy;
-    }
+      before = now;
+      return landed && !store.debugBusy;
+    }, beat: const Duration(milliseconds: 50));
     expect(
       idle,
       isTrue,
       reason:
           'fixture: the store never went idle — a request stayed queued or '
-          'in flight for 30 s',
+          'in flight for ${waitPatience.inSeconds} s',
     );
     expect(
       landed,

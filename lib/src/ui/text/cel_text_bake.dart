@@ -4,9 +4,9 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
-import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
+import '../../services/import/cel_picture.dart' show EnginePicture;
 import '../../services/import/raster_cel_import.dart';
 import '../canvas/raster_picture.dart';
 import 'cel_text_layout.dart';
@@ -15,7 +15,7 @@ import 'cel_text_layout.dart';
 typedef CelTextBaker =
     Future<Map<TileCoord, BitmapTile>> Function(
       CelTextLayout layout, {
-      required CanvasSize canvasSize,
+      required PasteboardWall pasteboard,
       required int tileSize,
       Map<TileCoord, BitmapTile> previous,
     });
@@ -44,7 +44,7 @@ CelTextBaker? debugCelTextBaker;
 /// 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
 ///
 /// The pixels take the pass an imported picture's take
-/// ([rasterizeImageToSurface]: one raster over the tiles covered, read back
+/// ([layCelPicture]: one raster over the tiles covered, read back
 /// as straight RGBA, the empty tiles dropped), and are cut at the same
 /// pasteboard wall. A text set wholly beyond it has no plate.
 ///
@@ -60,7 +60,7 @@ CelTextBaker? debugCelTextBaker;
 /// holds the last one that was.
 Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
   CelTextLayout layout, {
-  required CanvasSize canvasSize,
+  required PasteboardWall pasteboard,
   required int tileSize,
   Map<TileCoord, BitmapTile> previous = const {},
 }) async {
@@ -68,12 +68,12 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
   if (standIn != null) {
     return standIn(
       layout,
-      canvasSize: canvasSize,
+      pasteboard: pasteboard,
       tileSize: tileSize,
       previous: previous,
     );
   }
-  final window = celTextBakeWindow(layout, canvasSize);
+  final window = celTextBakeWindow(layout, pasteboard);
   if (window.isEmpty) {
     return const {};
   }
@@ -89,9 +89,9 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
   );
   final BitmapSurface cut;
   try {
-    cut = await rasterizeImageToSurface(
-      image: set,
-      canvas: canvasSize,
+    cut = await layCelPicture(
+      picture: EnginePicture(set),
+      canvas: pasteboard.canvas,
       placement: rectPlacement(window, width: set.width, height: set.height),
       tileSize: tileSize,
     );
@@ -113,8 +113,8 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
 /// the whole of itself to keep a corner of it, or to keep nothing. Its own
 /// function so that a test can ask it: no picture shows the difference.
 @visibleForTesting
-ui.Rect celTextBakeWindow(CelTextLayout layout, CanvasSize canvasSize) =>
-    layout.inkBounds.intersect(canvasSize.pasteboardRect);
+ui.Rect celTextBakeWindow(CelTextLayout layout, PasteboardWall wall) =>
+    layout.inkBounds.intersect(wall.rect);
 
 /// [before] where it already holds [now]'s pixels, else [now].
 BitmapTile _keptIfUnchanged(BitmapTile? before, BitmapTile now) =>

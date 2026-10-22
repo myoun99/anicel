@@ -1,4 +1,5 @@
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -16,6 +17,7 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// The one question both doors ask before a session is torn down:
 /// **will the work survive it?**
@@ -164,10 +166,11 @@ void main() {
   });
 
   /// Drives [ask] through a REAL save: taps [buttonKey] on the gate window
-  /// and pumps real time until the whole thing settles — the save crosses
+  /// and lends both clocks until the whole thing settles — the save crosses
   /// into an isolate and the progress window spins, so neither the fake
-  /// clock nor pumpAndSettle can finish it (save_shows_progress_test's
-  /// harness, folded in).
+  /// clock nor pumpAndSettle can finish it ([settleBehindTheWaitWindow]).
+  /// ↩️It tapped inside `runAsync` until 10-20, where the window's linger
+  /// is 900ms of real time.
   Future<bool> settleThroughRealSave(
     WidgetTester tester,
     Future<bool> Function() ask,
@@ -175,20 +178,15 @@ void main() {
   ) async {
     late bool settled;
     var done = false;
-    await tester.runAsync(() async {
-      final future = ask().then((value) {
+    unawaited(
+      ask().then((value) {
         settled = value;
         done = true;
-      });
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(ValueKey<String>(buttonKey)));
-      final deadline = DateTime.now().add(const Duration(seconds: 30));
-      while (!done && DateTime.now().isBefore(deadline)) {
-        await tester.pump();
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
-      await future;
-    });
+      }),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey<String>(buttonKey)));
+    await settleBehindTheWaitWindow(tester, () => done);
     await tester.pump();
     expect(done, isTrue, reason: 'the gate never came back');
     return settled;
@@ -364,31 +362,30 @@ void main() {
     await tester.pump();
     await tester.pump();
     // The open hops to a background isolate, which the fake clock never
-    // advances — lend the real loop until the tab on screen holds it.
-    for (var attempt = 0; attempt < 200; attempt += 1) {
-      await tester.pump();
-      final shown = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
-      if (shown.projectFile.path == path) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
-    }
+    // advances — lend the real loop until the tab on screen holds it. And
+    // the fake clock too: a new tab comes up once the window's linger is
+    // over. ↩️It lent the real loop alone, so the tab never came, and every
+    // open here ran the whole patience out — sixty seconds a test (10-19).
+    // ↩️It walked the linger 50ms a frame until 10-20: 25 rounds an open,
+    // 8 with the linger passed in one step.
+    final shown = await settleBehindTheWaitWindow(
+      tester,
+      () =>
+          tester
+              .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+              .session
+              .projectFile
+              .path ==
+          path,
+    );
+    expect(shown, isTrue, reason: 'the tab on screen holds the file');
     // The window lingers with its check for `appProgressDoneLinger`, and a
-    // window still up would swallow the next tap. Both clocks are advanced
-    // until it is gone.
-    final window = find.byKey(const ValueKey<String>('open-progress-dialog'));
-    for (var attempt = 0;
-        attempt < 40 && window.evaluate().isNotEmpty;
-        attempt += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
-    }
+    // window still up would swallow the next tap.
+    await pumpPastTheWaitWindow(tester);
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.playbackRig.prerenderScheduler.cancel();
     await tester.pumpAndSettle();
   }
 

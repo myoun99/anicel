@@ -8,6 +8,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
@@ -92,7 +93,7 @@ void main() {
   /// The stroke flushed into [model] as the interactive view flushes it.
   BrushLiveStrokeRasterizer stroke(ActiveStrokeOverlayModel model) {
     final rasterizer = BrushLiveStrokeRasterizer(
-      canvasSize: celTextTestCanvas,
+      pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
       tileSize: tileSize,
     );
     final dabs = strokeDabs();
@@ -263,10 +264,8 @@ void main() {
 /// A stroke source with nothing painted — every pixel transparent.
 class _NoStroke implements ActiveStrokePixelSource {
   @override
-  int get canvasWidth => celTextTestCanvas.width;
-
-  @override
-  int get canvasHeight => celTextTestCanvas.height;
+  PasteboardWall get pasteboard =>
+      celTextTestCanvas.pasteboardAt(PasteboardReach.whole);
 
   @override
   void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {

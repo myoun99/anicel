@@ -97,18 +97,30 @@ void main() {
   // every panel ever looked at, at 640px, resident until the workspace
   // closed and named by nothing. So this looks for the other half of the
   // shape — a field that keeps images — and demands a counter or a reason.
+  //
+  // 🆕2026-10-17 (card census-misses-bake-once-images) — AND A FIELD WHOSE
+  // TYPE NAMES NO `ui.Image`. The baked words were a `BakeOnceLru`'s, the
+  // brush list's strokes one's too as `BrushStrokeSample`s, the timeline's
+  // tiles an `Lru`'s as `_TileEntry`s, an export run's pictures a map
+  // declared `var` — up to 512, 512 and 768 pictures the readout gave to
+  // the engine. So a picture is also what wraps one ([_pictureTypesBy]),
+  // and a field is one however it is declared ([_imageKeepersIn]).
   test('every field that keeps images is counted, or says why not', () {
-    final missing = <String>[];
-    final live = <String>{};
+    final sources = <String, String>{};
     for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       if (relative.startsWith('lib/dev/')) {
         continue;
       }
-      final source = entity.readAsStringSync();
-      for (final match in _imageHolder.allMatches(source)) {
-        final entry = '$relative → ${match.group(1)}';
+      sources[relative] = entity.readAsStringSync().replaceAll('\r\n', '\n');
+    }
+    final pictureTypes = _pictureTypesBy(sources);
+    final missing = <String>[];
+    final live = <String>{};
+    for (final MapEntry(key: relative, value: source) in sources.entries) {
+      for (final name in _imageKeepersIn(source, pictureTypes[relative]!)) {
+        final entry = '$relative → $name';
         live.add(entry);
         final answer = _imageHolders[entry];
         if (answer == null) {
@@ -204,6 +216,9 @@ const _notCensused = <String, String>{
       'via:storyboardThumbnailBytes — the store lives in the workspace '
       'State the session does not own, so the workspace pushes it onto '
       'RenderCaches, the way the canvas buffer and the viewers are',
+  'lib/src/ui/sheet/sheet_image_cache.dart → decodedBytes':
+      'via:sheetImageBytes — the sheets\' image cache lives in the '
+      'workspace too, and pushes onto RenderCaches as the thumbnails do',
   'lib/src/services/cut_piece_slot.dart → pieceBytes':
       'via:allPieceBytes — the slot is the APP\'s, one for every open '
       'project (I-7), so the census reads the class-level total once '
@@ -217,18 +232,156 @@ const _notCensused = <String, String>{
       'raster of itself',
 };
 
-/// A class-level field that KEEPS `ui.Image`s — a map, list or set of them,
+/// What a field KEEPS `ui.Image`s in — a map, list, set or queue of them,
 /// or an `Expando` hanging them on other objects (the tile cache does:
-/// found by widening this the day it was written, 2026-09-11). Record keys
+/// found by widening this the day it was written, 2026-09-11), or the core
+/// `Lru` (2026-10-16: the sheets' images and the storyboard's panels moved
+/// onto it, card every-bounded-cache-is-one-lru) and `BakeOnceLru` (the
+/// baked words', the brush list's strokes — 2026-10-17). Record keys
 /// are allowed — `Map<(A, B), ui.Image>` is still a holder.
 /// Crude on purpose, like [_counter]: a holder that hides from this also
 /// hides from the reader looking for one.
-final _imageHolder = RegExp(
-  '^  (?:static )?(?:late )?(?:final )?'
-  '(?:LinkedHashMap|Map|List|Set|Expando)<'
-  r'[^;=]*\bui\.Image\??>+\s+(\w+)\s*[=;]',
+const _keepers =
+    '(?:LinkedHash|Hash|SplayTree)?(?:Map|Set)|List|(?:List)?Queue|Expando'
+    '|(?:BakeOnce)?Lru';
+
+/// The fields of [source] that keep pictures — [pictures] being what a
+/// type names to be one ([_pictureTypesBy]) — typed
+/// (`final Map<K, ui.Image> _images = …`) or given a typed literal
+/// (`var _thisFrame = <Object, ui.Image>{}`), where a field stands: the top
+/// level, and the bodies of the classes and mixins ([_typesIn]). A local of
+/// a top-level function stands two spaces in as a member does, and is in
+/// neither.
+Iterable<String> _imageKeepersIn(String source, String pictures) sync* {
+  final typed =
+      '(?:$_keepers)<'
+      r'[^;=]*\b(?:'
+      '$pictures'
+      r')\??>+\s+(\w+)\s*[=;]';
+  final literal =
+      r'(\w+)\s*=\s*(?:'
+      '$_keepers'
+      r')?<[^;]*\b(?:'
+      '$pictures'
+      r')\??>\s*[{\[(]';
+  final declared = '(?:late )?(?:(?:final )?$typed|(?:final |var )$literal)';
+  final member = RegExp('^  (?:static )?$declared', multiLine: true);
+  final topLevel = RegExp('^$declared', multiLine: true);
+  for (final (name: _, :body) in _typesIn(source)) {
+    for (final field in member.allMatches(body)) {
+      yield field.group(1) ?? field.group(2)!;
+    }
+  }
+  for (final field in topLevel.allMatches(source)) {
+    yield field.group(1) ?? field.group(2)!;
+  }
+}
+
+/// For each file, what a field's type names when it keeps a picture:
+/// `ui.Image`, and every type whose values wrap one — a class or mixin with
+/// a field of it, or a record typedef with one, and so on up the chain
+/// (`BrushStrokeSample`, the timeline's `_TileEntry`, the move's `_Float`
+/// around its warp preview). A public name is the app's; a private one is
+/// its library's, its parts' included.
+Map<String, String> _pictureTypesBy(Map<String, String> sources) {
+  String libraryOf(String relative) =>
+      switch (_partOf.firstMatch(sources[relative]!)) {
+        null => relative,
+        final partOf => Uri.parse(relative).resolve(partOf.group(1)!).path,
+      };
+  final public = <String>{};
+  final private = <String, Set<String>>{};
+  Set<String> namedIn(String relative) => {
+    ...public,
+    ...?private[libraryOf(relative)],
+  };
+  String picturesIn(String relative) => [
+    r'ui\.Image',
+    for (final name in namedIn(relative)) RegExp.escape(name),
+  ].join('|');
+  var grew = true;
+  while (grew) {
+    grew = false;
+    for (final MapEntry(key: relative, value: source) in sources.entries) {
+      final named = namedIn(relative);
+      for (final name in _wrappersIn(source, picturesIn(relative))) {
+        if (named.contains(name)) {
+          continue;
+        }
+        final names = name.startsWith('_')
+            ? (private[libraryOf(relative)] ??= <String>{})
+            : public;
+        names.add(name);
+        grew = true;
+      }
+    }
+  }
+  return {for (final relative in sources.keys) relative: picturesIn(relative)};
+}
+
+/// The types of [source] whose values wrap one of [pictures]: a class or
+/// mixin with a field of it — or of the pieces of one (2026-10-21: a
+/// picture past the side is held in pieces, `List<ImagePiece>`, and the
+/// stored picture and the compose, each one image the day before, fell out
+/// of the chain with every holder above them) — a record typedef with one.
+/// ⛔Only pieces: a list of any picture is a holding, and a holder of
+/// holdings no picture of its own (widened so, the home page's sessions
+/// came up).
+Iterable<String> _wrappersIn(String source, String pictures) sync* {
+  final field = RegExp(
+    '^  (?:late )?(?:final )?(?:$pictures|List<ImagePiece>)'
+    r'\??\s+\w+\s*[;=]',
+    multiLine: true,
+  );
+  final recordField = RegExp(
+    r'(?:^|[(,{])\s*(?:'
+    '$pictures'
+    r')\??(?:\s+\w+)?\s*(?=[,)}]|$)',
+    multiLine: true,
+  );
+  for (final (:name, :body) in _typesIn(source)) {
+    if (field.hasMatch(body)) {
+      yield name;
+    }
+  }
+  for (final record in _recordTypedef.allMatches(source)) {
+    final fields = record.group(2)!;
+    if (!fields.contains('Function') && recordField.hasMatch(fields)) {
+      yield record.group(1)!;
+    }
+  }
+}
+
+/// The classes and mixins of [source], each with its body: from its `{` to
+/// the first `}` in the first column after it, which is where a formatted
+/// body closes. An empty `{}` has none.
+Iterable<({String name, String body})> _typesIn(String source) sync* {
+  for (final type in _typeHeader.allMatches(source)) {
+    if (source.startsWith('}', type.end)) {
+      continue;
+    }
+    final close = source.indexOf('\n}', type.end);
+    yield (
+      name: type.group(1)!,
+      body: source.substring(type.end, close < 0 ? source.length : close),
+    );
+  }
+}
+
+final _typeHeader = RegExp(
+  '^(?:(?:abstract|base|final|interface|sealed) )*'
+  r'(?:mixin class|class|mixin) (\w+)[^{;]*\{',
   multiLine: true,
 );
+
+/// `typedef Name = (…);` — a record, whose fields a wrapper is looked for
+/// in. ⛔Not a function type: a picture it takes is no picture it keeps.
+final _recordTypedef = RegExp(
+  r'^typedef (\w+)(?:<[^=]*>)?\s*=\s*\(([^;]*)\);',
+  multiLine: true,
+);
+
+final _partOf = RegExp("^part of '([^']+)';", multiLine: true);
 
 /// Every field that keeps images, and how its bytes are answered for:
 /// `counted:<getter>` names the byte counter the same file declares (the
@@ -251,9 +404,11 @@ const _imageHolders = <String, String>{
       'still pins until its next compose, so nothing is held through them '
       'that the buffer does not hold anyway',
   'lib/src/ui/sheet/sheet_image_cache.dart → _images':
-      'a handful of decoded logos, cover pictures and stamps, decoded once '
-      'for the life of the workspace; its own doc says it needs an eviction '
-      'the day it holds cels',
+      'counted:decodedBytes',
+  'lib/src/ui/sheet/sheet_image_cache.dart → _pictures':
+      'one export render\'s media images (SheetImageRun), read for that '
+      'render and let go when it ends — the working set of a render, as '
+      'the ink rasters and cell pictures composed beside it are',
   'lib/src/ui/canvas/active_stroke_overlay.dart → _tileImages':
       'the tiles of the stroke in progress, each freed as it settles into '
       'the surface',
@@ -262,4 +417,73 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/deferred_image_disposal.dart → _buckets':
       'images already let go, kept only for the frames the raster thread '
       'may still read; a disposal queue, not a holding',
+
+  // — 2026-10-17, what the wider shape found (card
+  // census-misses-bake-once-images). Three held pictures nothing counted,
+  // counted since:
+  'lib/src/ui/text/word_bake.dart → _images': 'counted:imageBytes',
+  'lib/src/ui/brush/brush_stroke_preview_cache.dart → _store':
+      'counted:sampleBytes',
+  'lib/src/ui/timeline/timeline_grid_tile_store.dart → _entries':
+      'counted:tileImageBytes',
+  // … holdings counted all along, by a counter of their own file …
+  'lib/src/ui/canvas/tile_pyramid.dart → tiles': 'counted:liveBytes',
+  'lib/src/ui/playback/layer_frame_image_cache.dart → _entries':
+      'counted:estimatedBytes',
+  'lib/src/ui/widgets/static_raster.dart → census': 'counted:censusBytes',
+  // … or pushed to where the census reads them …
+  'lib/src/ui/media/page_rasters.dart → _cache':
+      'a viewer\'s pages: every change in them reports their total '
+      '(_report) onto RenderCaches.viewerRasterBytesByViewer, which the '
+      'census reads (viewerRasterBytes)',
+  'lib/src/ui/export/held_rows.dart → _rows':
+      'an export run\'s row pictures: every change in what they hold is '
+      'told to playback\'s line (onHeld, PlaybackCacheBudget.lend), which '
+      'the census reads (lentBytes)',
+  'lib/src/ui/export/held_rows.dart → _inUse':
+      'the held rows ONE picture is made of — of _rows, not a holding '
+      'beside them',
+  // … and what one draw, one edit or one render holds while it lasts.
+  'lib/src/ui/export/held_rows.dart → _passing':
+      'the rows composed for one picture alone, let go once it is made '
+      '(during) — the working set of a render',
+  'lib/src/ui/export/held_pictures.dart → _thisFrame':
+      'an export run\'s pictures — a cut\'s whole picture, the finished '
+      'frame — for the frame being drawn, held one frame more and let go '
+      'after (nextFrame), every one when the run ends (dispose): the '
+      'working set of a render, as the sheets\' _pictures are',
+  'lib/src/ui/export/held_pictures.dart → _frameBefore':
+      'the same pictures one frame on: what the frame before was made of',
+  'lib/src/ui/export/export_frame_renderer.dart → all':
+      'one camera frame\'s track stack, laying pictures the run\'s '
+      'HeldPictures holds — a frame described, not a holding',
+  'lib/src/ui/canvas/canvas_layer_stack_view.dart → _images':
+      'clones of the layer images the rows this view shows draw from — '
+      'the playback cache\'s pictures (estimatedBytes); a clone outlives '
+      'the cache\'s own only for a row on screen, or of the last whole '
+      'frame until this one is whole',
+  'lib/src/ui/canvas/canvas_selection_layer.dart → floats':
+      'the open move\'s floats, one a cel it lifted: what each keeps of '
+      'pictures is its warp preview — the last resample decoded for the '
+      'screen, one at a time (FloatResamplePreview) — while the box is open',
+  'lib/src/ui/canvas/selection_float_overlay.dart → floats':
+      'a paint\'s floats: each picture is a float\'s warp preview, owned by '
+      'the float (canvas_selection_layer.dart → floats)',
+  'lib/src/ui/canvas/tiled_surface_compose.dart → _halvings':
+      'one compose\'s laid tiles, drawn halved at its finish: the tile '
+      'cache\'s pictures (liveImageBytes), or the blocks the compose '
+      'pictured itself and lets go when it ends',
+
+  // — 2026-10-21, a picture past the side held in pieces (card
+  // a-cel-past-the-device-side-composes-smaller): ONE picture, as many
+  // images as the side cuts it into, held and counted where its one image
+  // was.
+  'lib/src/ui/canvas/tiled_surface_compose.dart → pieces':
+      'one compose\'s picture, in pieces past the side (piecesOver): its '
+      'holder keeps and counts them as it did the one image',
+  'lib/src/ui/playback/layer_frame_image_cache.dart → pieces':
+      'one stored picture\'s pieces, the entry\'s own — of _entries '
+      '(estimatedBytes sums them)',
+  'lib/src/ui/canvas/canvas_layer_stack_view.dart → pieces':
+      'one row\'s picture carried into a paint: the clones _images holds',
 };

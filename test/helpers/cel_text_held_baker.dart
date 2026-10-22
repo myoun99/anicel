@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:anicel/src/core/floor_math.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/text/cel_text_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,7 +24,7 @@ class HeldBaker {
 
   Future<Map<TileCoord, BitmapTile>> call(
     CelTextLayout layout, {
-    required CanvasSize canvasSize,
+    required PasteboardWall pasteboard,
     required int tileSize,
     Map<TileCoord, BitmapTile> previous = const {},
   }) {

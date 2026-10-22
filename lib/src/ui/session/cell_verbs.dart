@@ -57,18 +57,26 @@ class CellVerbs {
   /// asks the active layer, so a caller gated on THIS can hand the press to
   /// that verb without the active-layer rung becoming reachable.
   bool get canDeleteCellForSelection =>
+      // A live selection is deletable wherever the playhead stands (UI-R17
+      // #2) — its blocks, and the transition spans it holds
+      // (transition-row-range-in-the-cut).
+      _rangeSelections.selectionBlocksToDeleteByLayer() != null ||
+      _selectionTransitionStarts != null ||
+      // 🚨F-87 (유저 2026-10-18): and the LANES it swept — an fx header's
+      // fx, every other lane's keys ([LaneVerbs.bandLanesToDelete]).
+      _laneVerbs.bandLanesToDelete.isNotEmpty ||
       // R10 #19: the same rule Add follows — when the subject is a PROPERTY
       // row, Delete removes its keys, not a cel. It also closes a gap the
       // other way round: a live LANE span used to fall through to the cell
       // path and delete the active layer's cel instead of the keys under it.
       // F-87: keys, or a live range naming an fx header (which removes the
       // effect).
-      _laneVerbs.laneVerbRangeHasSomethingToDelete ||
-      // A live selection is deletable wherever the playhead stands (UI-R17
-      // #2) — its blocks, and the transition spans it holds
-      // (transition-row-range-in-the-cut).
-      _rangeSelections.selectionBlocksToDeleteByLayer() != null ||
-      _selectionTransitionStarts != null;
+      // ↩️Asked after a cell band's claim: a band is the press's subject, so
+      // the lane stood on — or the band's own transform tail — answered
+      // instead of the rows it swept (the tail took the keys and left the
+      // blocks, F-87).
+      (!cellSelectionClaimsSubject &&
+          _laneVerbs.laneVerbRangeHasSomethingToDelete);
 
   /// The transition spans THE live selection holds, either axis.
   Map<LayerId, Set<int>>? get _selectionTransitionStarts =>
@@ -140,42 +148,24 @@ class CellVerbs {
   }
 
   void deleteCellAtCurrentFrame() {
+    if (_deleteWhatTheBandHolds()) {
+      return;
+    }
+    if (cellSelectionClaimsSubject) {
+      // The band holds nothing this verb may delete — that is a no-op,
+      // not a licence to edit whatever row is active.
+      return;
+    }
     // R10 #19: a property row is its own subject — see
     // [canDeleteCellAtCurrentFrame].
     final lane = _laneVerbs.laneVerbRange;
     // F-87: the lane row takes the whole press — an fx header's range removes
     // the effect, other lanes lose their keys, and nothing falls through to
     // the cel below when there is nothing to take.
+    // ↩️It was asked before the band: a band's transform tail, or a lane
+    // stood on, took the press from the rows the band swept.
     if (lane != null) {
       _laneVerbs.deleteForLaneSelection(lane);
-      return;
-    }
-    // A live selection routes the delete to EVERY selected block on
-    // EVERY spanned layer (UI-R17 #2/#8) and to the transition spans it
-    // holds, in one composite undo; the leftover selection covers empty
-    // cells so it clears with the delete.
-    final selectionTargets = _rangeSelections.selectionBlocksToDeleteByLayer();
-    final transitionTargets = _selectionTransitionStarts;
-    if (selectionTargets != null || transitionTargets != null) {
-      _project.historyManager.runAsOneStep('Delete selected cells', () {
-        if (selectionTargets != null) {
-          _controllers.timelineController.deleteBlocksForLayers(
-            selectionTargets,
-          );
-        }
-        if (transitionTargets != null) {
-          _transitions.removeTransitionSpans(transitionTargets);
-        }
-      });
-      // Whichever axis answered: the leftover span covers empty cells now.
-      _selection.clearFrameRangeSelection();
-      _selection.clearStoryboardCutSelection();
-      _changes.notifyChanged();
-      return;
-    }
-    if (cellSelectionClaimsSubject) {
-      // The band holds nothing this verb may delete — that is a no-op,
-      // not a licence to edit whatever row is active.
       return;
     }
     final layer = _selection.activeLayer;
@@ -196,6 +186,44 @@ class CellVerbs {
     _changes.notifyChanged();
   }
 
+  /// A live selection routes the delete to EVERY selected block on
+  /// EVERY spanned layer (UI-R17 #2/#8) and to the transition spans it
+  /// holds, in one composite undo; the leftover selection covers empty
+  /// cells so it clears with the delete.
+  /// 🚨F-87 (유저 2026-10-18): and to every LANE it swept, as a range over
+  /// that lane deletes — 「fx를 넘어서 뭐든 선택된 대상으로」.
+  ///
+  /// Whether the band held anything — false leaves the press to the row
+  /// stood on.
+  bool _deleteWhatTheBandHolds() {
+    final selectionTargets = _rangeSelections.selectionBlocksToDeleteByLayer();
+    final transitionTargets = _selectionTransitionStarts;
+    final laneTargets = _laneVerbs.bandLanesToDelete;
+    if (selectionTargets == null &&
+        transitionTargets == null &&
+        laneTargets.isEmpty) {
+      return false;
+    }
+    _project.historyManager.runAsOneStep('Delete selected cells', () {
+      if (selectionTargets != null) {
+        _controllers.timelineController.deleteBlocksForLayers(
+          selectionTargets,
+        );
+      }
+      if (transitionTargets != null) {
+        _transitions.removeTransitionSpans(transitionTargets);
+      }
+      _laneVerbs.deleteForBandLanes(laneTargets);
+    });
+    // Whichever axis answered: the leftover span covers empty cells now —
+    // and the band's transform tail, keys it no longer has.
+    _selection.clearFrameRangeSelection();
+    _rangeSelections.clearLaneRangeSelection();
+    _selection.clearStoryboardCutSelection();
+    _changes.notifyChanged();
+    return true;
+  }
+
   // --- 링크 독립 (I-45): the frame-axis rung --------------------------------
 
   /// The runs a frame-axis 링크 독립 press means, one per row.
@@ -210,13 +238,14 @@ class CellVerbs {
   ///
   /// ⚠️A row's blocks become ONE run, first start to last end — the band is
   /// contiguous, so everything between them is the band's too.
+  ///
+  /// ↩️F-87: the band is asked before the lane, as the delete asks it — a
+  /// band's transform tail, or a lane stood on, left the cels the band
+  /// swept out of the press.
   List<UnlinkRun> _unlinkRuns() {
-    if (_laneVerbs.laneVerbRange != null) {
-      return const [];
-    }
     final byLayer = _rangeSelections.selectionBlocksToDeleteByLayer();
     if (byLayer == null) {
-      if (cellSelectionClaimsSubject) {
+      if (cellSelectionClaimsSubject || _laneVerbs.laneVerbRange != null) {
         return const [];
       }
       final layer = _selection.activeLayer;

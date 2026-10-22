@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/canvas/tile_blocks.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/awaited_uploads.dart';
+import '../../helpers/one_piece.dart';
 
 /// The per-tile GPU compose must be byte-identical to the CPU assembly
 /// path ([bitmapSurfaceToImage]) — with and without cache reuse — and turn
@@ -155,7 +156,7 @@ void main() {
       )!;
       expect(positioned.deferred.worldRect, surfaceContentWorldRect(surface));
       expect(positioned.deferred.worldRect, later.worldRect);
-      expect(await bytesOf(await positioned.real!), want);
+      expect(await bytesOf((await positioned.real!).single), want);
       expect(await bytesOf(positioned.deferred.image), want);
 
       // And the FREE road refuses rather than makes.
@@ -195,7 +196,8 @@ void main() {
       // The first level — the step a level image begins with.
       final over = surfaceContentWorldRect(surface);
       waited.clear();
-      final kept = (await composeHalvedSurfaceImage(surface, over: over))!;
+      final kept =
+          (await composeHalvedSurfaceImage(surface, over: over))!.image;
       expect(waited, [(kept.width, kept.height)]);
       final want = await bytesOf(kept);
 
@@ -204,7 +206,7 @@ void main() {
         surface,
         over: over,
         deferred: true,
-      ))!;
+      ))!.image;
       expect(waited, isEmpty, reason: 'a step of a chain waits for nothing');
       expect((step.width, step.height), (kept.width, kept.height));
       expect(await bytesOf(step), want);
@@ -308,6 +310,50 @@ void main() {
         // World (0, 0) (canvas origin) → image (256, 256): empty here.
         const canvasOrigin = (256 * 556 + 256) * 4;
         expect(bytes.sublist(canvasOrigin, canvasOrigin + 4), [0, 0, 0, 0]);
+      });
+    });
+
+    // F-374-Q8: a file's picture composed over where it lies cuts through
+    // the clear pixels its edge tiles hold — what the part holds is the
+    // ink, and every tile is only the cheap proof of that.
+    testWidgets('a part composed on its own holds all of the ink: it may '
+        'cut through a tile\'s clear pixels, never through its ink', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        // One opaque red pixel at (5, 6), alone in its 16px tile.
+        final pixels = Uint8List(16 * 16 * 4);
+        const at = (6 * 16 + 5) * 4;
+        pixels[at] = 255;
+        pixels[at + 3] = 255;
+        final surface = BitmapSurface(
+          canvasSize: const CanvasSize(width: 32, height: 32),
+          tileSize: 16,
+          tiles: {
+            TileCoord(x: 0, y: 0): BitmapTile(size: 16, pixels: pixels),
+          },
+        );
+
+        final part = (await composePositionedSurfaceImage(
+          surface,
+          over: const ui.Rect.fromLTRB(5, 6, 6, 7),
+        ))!;
+        expect(part.worldRect, const ui.Rect.fromLTRB(5, 6, 6, 7));
+        expect(await bytesOf(part.image), [255, 0, 0, 255]);
+
+        // Each side in turn cuts the one inked pixel off.
+        for (final cut in const [
+          ui.Rect.fromLTRB(6, 0, 16, 16),
+          ui.Rect.fromLTRB(0, 7, 16, 16),
+          ui.Rect.fromLTRB(0, 0, 5, 16),
+          ui.Rect.fromLTRB(0, 0, 16, 6),
+        ]) {
+          await expectLater(
+            composePositionedSurfaceImage(surface, over: cut),
+            throwsAssertionError,
+            reason: '$cut',
+          );
+        }
       });
     });
   });
@@ -699,7 +745,10 @@ void main() {
           reason: 'fixture: the pasteboard\'s tiles grow the content',
         );
         tiles.deferred.image.dispose();
-        expect(await bytesOf(blocks.image), await bytesOf(await tiles.real!));
+        expect(
+          await bytesOf(blocks.image),
+          await bytesOf((await tiles.real!).single),
+        );
       });
     });
 
@@ -725,7 +774,7 @@ void main() {
         });
 
         final blocks = await bytesOf(
-          (await composeHalvedSurfaceImage(surface, over: over))!,
+          (await composeHalvedSurfaceImage(surface, over: over))!.image,
         );
         // Made now, every tile pictured on its own and kept — the road the
         // canvas shows a cel by.
@@ -735,8 +784,8 @@ void main() {
           snapshot: true,
           over: over,
         )!;
-        tiles.deferred.dispose();
-        expect(blocks, await bytesOf(await tiles.real!));
+        tiles.deferred.image.dispose();
+        expect(blocks, await bytesOf((await tiles.real!).single));
       });
     });
   });

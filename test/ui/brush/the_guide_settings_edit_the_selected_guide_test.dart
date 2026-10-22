@@ -1,11 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/brush/guide_panels.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
 /// What the guide TOOL's entry in the tool SETTINGS panel decides — the
@@ -56,25 +61,48 @@ void main() {
   PerspectiveShape perspectiveOf(CutGuides cut, String id) =>
       cut.guideFor(GuideId(id))!.shape as PerspectiveShape;
 
+  /// The paper the panel stands its guides over: a family at infinity comes
+  /// back 1.5 × its width — 1200 — from the eye level's handle.
+  const paper = CanvasSize(width: 800, height: 600);
+
   /// Mounts the settings panel over [guides] with [selected] picked, and
-  /// records what it commits.
+  /// records what it commits — and, given them, what it shows while a bar
+  /// moves and what it hands to be rasterized.
   Future<void> pumpSettings(
     WidgetTester tester,
     CutGuides guides,
     GuideId? selected,
-    void Function(CutGuides) onCommitted,
-  ) => tester.pumpWidget(
+    void Function(CutGuides) onCommitted, {
+    void Function(CutGuides)? onPreview,
+    ValueChanged<DrawingGuide>? onRasterized,
+  }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: GuideSettings(
           guides: guides,
           selectedGuideId: selected,
+          canvasSize: paper,
           onGuidesCommitted: onCommitted,
-          onGuidesPreview: (_) {},
+          onGuidesPreview: onPreview ?? (_) {},
+          onGuideRasterized: onRasterized,
         ),
       ),
     ),
   );
+
+  /// The 「평행」 pill in the row of the point at [index].
+  Finder parallelPillOf(int index) => find.descendant(
+    of: find.byKey(ValueKey<String>('guide-vanishing-point-$index')),
+    matching: find.byKey(const ValueKey<String>('guide-parallel')),
+  );
+
+  /// [point] as a point on the plane, near enough to ([x], [y]).
+  void expectStandsAt(VanishingPoint point, double x, double y) {
+    expect(point, isA<VanishingPointAt>());
+    final at = (point as VanishingPointAt).point;
+    expect(at.x, closeTo(x, 1e-9));
+    expect(at.y, closeTo(y, 1e-9));
+  }
 
   group('whose knobs these are', () {
     testWidgets('nothing selected → the prompt, and no guide\'s knobs', (
@@ -272,8 +300,10 @@ void main() {
       expect(freedPoints.eyeLevelVisible, isTrue);
     });
 
-    testWidgets('🚨"make vertical" states the direction EXACTLY, on that '
-        'point alone', (tester) async {
+    testWidgets('🚨「평행」 turns a point on the paper into the family running '
+        'the way it lay from the eye level\'s handle — on that point alone', (
+      tester,
+    ) async {
       CutGuides? committed;
       await pumpSettings(
         tester,
@@ -286,22 +316,162 @@ void main() {
         (next) => committed = next,
       );
 
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('guide-vanishing-point-1')),
-          matching: find.byKey(const ValueKey<String>('guide-make-vertical')),
-        ),
-      );
+      await tester.tap(parallelPillOf(1));
       await tester.pump();
 
       final points = perspectiveOf(committed!, 'p1').vanishingPoints;
-      expect(points, hasLength(2));
-      expect(points[1], VanishingPointTowards(dx: 0, dy: 1));
+      // vanishing-point-types-Q2: 「점이 있던 쪽 그대로」 — a point right of
+      // the handle at (50, 50) is the family running right.
+      expect(points[1], VanishingPointTowards(dx: 1, dy: 0));
       expect(
         points.first,
         at(-100, 50),
         reason: 'the point the user did not press is untouched',
       );
+    });
+
+    testWidgets('🚨「평행」 pressed off brings a family back the way it ran, '
+        'as far out as a new guide\'s points — onto the eye level while the '
+        'guide holds its points there', (tester) async {
+      Future<VanishingPoint> back({required bool held}) async {
+        CutGuides? committed;
+        await pumpSettings(
+          tester,
+          CutGuides(
+            guides: [
+              DrawingGuide(
+                id: const GuideId('p1'),
+                name: 'p1',
+                shape: PerspectiveShape(
+                  vanishingPoints: [VanishingPointTowards(dx: 3, dy: 4)],
+                  eyeLevel: axis(),
+                  constrainToEyeLevel: held,
+                ),
+              ),
+            ],
+          ),
+          const GuideId('p1'),
+          (next) => committed = next,
+        );
+        await tester.tap(parallelPillOf(0));
+        await tester.pump();
+        return perspectiveOf(committed!, 'p1').vanishingPoints.single;
+      }
+
+      // (0.6, 0.8) × 1200 from the handle at (50, 50).
+      expectStandsAt(await back(held: false), 50 + 720, 50 + 960);
+      // Held to the level eye level, it lands where a drag there would.
+      expectStandsAt(await back(held: true), 50 + 720, 50);
+    });
+
+    testWidgets('the pill is lit while the point is at infinity, and '
+        'refused where the point names no way to turn', (tester) async {
+      final degenerate = VanishingPointFromLines(
+        GuideLine(
+          a: CanvasPoint(x: 0, y: 0),
+          b: CanvasPoint(x: 1e200, y: 1e200),
+        ),
+        GuideLine(a: CanvasPoint(x: 0, y: 1), b: CanvasPoint(x: 1e200, y: 0)),
+      );
+      await pumpSettings(
+        tester,
+        CutGuides(
+          guides: [
+            perspectiveGuide(
+              'p1',
+              points: [
+                at(900, 50),
+                VanishingPointTowards(dx: 0, dy: 1),
+                degenerate,
+              ],
+            ),
+          ],
+        ),
+        const GuideId('p1'),
+        (_) {},
+      );
+
+      Pill pill(int index) => tester.widget<Pill>(parallelPillOf(index));
+      expect(pill(0).selected, isFalse);
+      expect(pill(0).onTap, isNotNull);
+      expect(pill(1).selected, isTrue);
+      expect(pill(1).onTap, isNotNull);
+      expect(pill(2).onTap, isNull, reason: 'no point, no way: refused');
+      expect(
+        parallelPillOf(2),
+        findsOneWidget,
+        reason: 'a refused pill keeps its place',
+      );
+    });
+
+    testWidgets('🚨a family\'s angle cell shows the way it runs, and its '
+        'release writes it — 90 EXACTLY the vertical family', (tester) async {
+      CutGuides? shown;
+      CutGuides? committed;
+      await pumpSettings(
+        tester,
+        CutGuides(
+          guides: [
+            perspectiveGuide(
+              'p1',
+              points: [at(-100, 50), VanishingPointTowards(dx: 1, dy: 1)],
+            ),
+          ],
+        ),
+        const GuideId('p1'),
+        (next) => committed = next,
+        onPreview: (next) => shown = next,
+      );
+      final angle = find.byKey(
+        const ValueKey<String>('guide-vanishing-point-1-angle'),
+      );
+      expect(tester.widget<FieldSlider>(angle).value, closeTo(45, 1e-9));
+      expect(
+        find.byKey(const ValueKey<String>('guide-vanishing-point-0-angle')),
+        findsNothing,
+        reason: 'a point on the paper reads where it stands instead',
+      );
+
+      tester.widget<FieldSlider>(angle).onChanged!(30);
+      expect(committed, isNull, reason: 'a bar in flight is shown, not kept');
+      expect(
+        perspectiveOf(shown!, 'p1').vanishingPoints[1],
+        VanishingPointTowards.atDegrees(30),
+      );
+
+      tester.widget<FieldSlider>(angle).onChangeEnd!(90);
+      final points = perspectiveOf(committed!, 'p1').vanishingPoints;
+      expect(points[1], VanishingPointTowards(dx: 0, dy: 1));
+      expect(points.first, at(-100, 50));
+    });
+
+    testWidgets('🚨the guide\'s ONE density bar: shown while it moves, kept '
+        'once let go, held to 4…48', (tester) async {
+      CutGuides? shown;
+      CutGuides? committed;
+      await pumpSettings(
+        tester,
+        CutGuides(
+          guides: [
+            perspectiveGuide('p1', points: [at(-100, 50)]),
+          ],
+        ),
+        const GuideId('p1'),
+        (next) => committed = next,
+        onPreview: (next) => shown = next,
+      );
+      final bar = tester.widget<FieldSlider>(
+        find.byKey(const ValueKey<String>('guide-line-density')),
+      );
+      expect(bar.value, defaultGuideLineDensity);
+      expect((bar.min, bar.max), (4, 48));
+
+      bar.onChanged!(20.4);
+      expect(committed, isNull);
+      expect(perspectiveOf(shown!, 'p1').lineDensity, 20);
+
+      bar.onChangeEnd!(30);
+      expect(perspectiveOf(committed!, 'p1').lineDensity, 30);
     });
 
     testWidgets('🚨the LAST vanishing point cannot be removed — a '
@@ -355,14 +525,11 @@ void main() {
       expect(perspectiveOf(committed!, 'p1').vanishingPoints, [at(900, 50)]);
     });
 
-    testWidgets('🚨a third point is taken only while there is room for one '
-        '— the button stays where it was, dead, at three — and it starts as '
-        'the VERTICAL family', (tester) async {
-      CutGuides? committed;
-      final addButton = find.byKey(
-        const ValueKey<String>('guide-add-vanishing-point'),
-      );
-
+    // 🗣️I-58 (유저 2026-10-18): 「ㅁㅁ 삭제」. ↩️It borrowed the guide
+    // row's string.
+    testWidgets('a point\'s delete names the point, not the guide', (
+      tester,
+    ) async {
       await pumpSettings(
         tester,
         CutGuides(
@@ -371,29 +538,90 @@ void main() {
           ],
         ),
         const GuideId('p1'),
-        (next) => committed = next,
+        (_) {},
       );
-      expect(addButton, findsOneWidget);
-      await tester.tap(addButton);
-      await tester.pump();
 
-      final points = perspectiveOf(committed!, 'p1').vanishingPoints;
-      expect(points, hasLength(3));
-      expect(points.last, VanishingPointTowards(dx: 0, dy: 1));
+      final remove = tester.widget<ToolSettingAction>(
+        find.ancestor(
+          of: find.descendant(
+            of: find.byKey(const ValueKey<String>('guide-vanishing-point-0')),
+            matching: find.byKey(const ValueKey<String>('guide-remove')),
+          ),
+          matching: find.byType(ToolSettingAction),
+        ),
+      );
+      expect(remove.label, strings.guideDeleteVanishingPoint);
+    });
 
-      CutGuides? fourth;
+    testWidgets('🚨the ＋ adds a point on the plane beside the eye level\'s '
+        'handle, ON the eye level — however many there are', (tester) async {
+      final addButton = find.byKey(
+        const ValueKey<String>('guide-add-vanishing-point'),
+      );
+      var guides = CutGuides(
+        guides: [
+          DrawingGuide(
+            id: const GuideId('p1'),
+            name: 'p1',
+            shape: PerspectiveShape(
+              vanishingPoints: [at(-100, 50), at(900, 50)],
+              // Tilted, so 「on the eye level」 is no mere x + 420.
+              eyeLevel: axis(angleDegrees: 30),
+            ),
+          ),
+        ],
+      );
+      // ↩️It stopped at three until 2026-10-16 (09-17: 「소실점 몇개든
+      // 추가할수있게하고, 기본값은 일반타입」).
+      for (var count = 3; count <= 5; count += 1) {
+        CutGuides? committed;
+        await pumpSettings(
+          tester,
+          guides,
+          const GuideId('p1'),
+          (next) => committed = next,
+        );
+        await tester.tap(addButton);
+        await tester.pump();
+        guides = committed!;
+        expect(perspectiveOf(guides, 'p1').vanishingPoints, hasLength(count));
+      }
+
+      final added = perspectiveOf(guides, 'p1').vanishingPoints.last;
+      expectStandsAt(
+        added,
+        50 + 420 * math.cos(math.pi / 6),
+        50 + 420 * math.sin(math.pi / 6),
+      );
+    });
+
+    testWidgets('🚨래스터라이즈 hands over the guide it is pressed for — and keeps '
+        'its place, dead, where nothing can take it', (tester) async {
+      final guide = perspectiveGuide('p1', points: [at(-100, 50)]);
+      final rasterize = find.byKey(const ValueKey<String>('guide-rasterize'));
+      DrawingGuide? handed;
       await pumpSettings(
         tester,
-        CutGuides(guides: [committed!.guides.single]),
+        CutGuides(guides: [guide]),
         const GuideId('p1'),
-        (next) => fourth = next,
+        (_) {},
+        onRasterized: (picked) => handed = picked,
       );
-      // ↩️It went away at three — 「없다가 생기는 UI」 (tool-settings-panel-
-      // tidy, 유저 2026-10-10: 「다 통일해서」).
-      expect(addButton, findsOneWidget, reason: 'the button keeps its place');
-      await tester.tap(addButton);
+      await tester.tap(rasterize);
       await tester.pump();
-      expect(fourth, isNull, reason: 'a PerspectiveShape refuses a fourth');
+      expect(handed, guide);
+
+      handed = null;
+      await pumpSettings(
+        tester,
+        CutGuides(guides: [guide]),
+        const GuideId('p1'),
+        (_) {},
+      );
+      expect(rasterize, findsOneWidget, reason: 'the button keeps its place');
+      await tester.tap(rasterize);
+      await tester.pump();
+      expect(handed, isNull);
     });
   });
 
@@ -426,11 +654,18 @@ void main() {
       expect(await readoutFor(tester, at(1234.6, -7.4)), '1235, -7');
     });
 
-    testWidgets('a point at infinity says so instead of dividing by zero', (
-      tester,
-    ) async {
+    testWidgets('two drawn lines that never meet say so instead of dividing '
+        'by zero', (tester) async {
+      // A family stated as a direction shows its angle instead — the cell
+      // above; two PARALLEL drawn lines are the same point, unnamed.
+      final parallel = VanishingPointFromLines(
+        GuideLine(a: CanvasPoint(x: 0, y: 0), b: CanvasPoint(x: 10, y: 0)),
+        GuideLine(a: CanvasPoint(x: 0, y: 5), b: CanvasPoint(x: 10, y: 5)),
+      );
+      expect(parallel.resolve().isInfinite, isTrue);
+
       expect(
-        await readoutFor(tester, VanishingPointTowards(dx: 0, dy: 1)),
+        await readoutFor(tester, parallel),
         strings.guideVanishingPointAtInfinity,
       );
     });

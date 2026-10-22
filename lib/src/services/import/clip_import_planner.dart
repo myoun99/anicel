@@ -53,6 +53,13 @@
 ///   timeline is not imported (「임포트 안해도 상관없고」), and what there is
 ///   no place for is said, never dropped quietly — a kind of layer this app
 ///   does not carry in every decoder's one word ([unsupportedLayerKind]).
+/// * **A text layer is a cel of the app's own texts** (F-370-Q3, 유저
+///   10-17: 「이제 들인다(앱의 글자로)」), shown as CLIP STUDIO drew them until
+///   one is edited ([clipCelTextsOf]).
+/// * **A layer mask that is on is baked into its layer's picture**, by the
+///   law Photoshop's is ([clipBakedMaskOf] — 보드 `the-clip-import-leaves-
+///   masks-and-locks-unsaid`, 10-17); one no picture is baked through — a
+///   folder's, a text layer's — is said, as a lock is: no row here has one.
 library;
 
 import 'dart:collection';
@@ -79,6 +86,7 @@ import '../../models/layer_folder.dart' show createFolderLayer;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_link_registry.dart';
+import '../../models/project_background.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/track_id.dart';
@@ -86,7 +94,9 @@ import '../../models/transform_track.dart' show TransformPose, TransformTrack;
 import '../editing/default_cut_helpers.dart';
 import '../layer_pose_matrix.dart' show LayerPoseSample;
 import 'camera_track.dart';
+import 'clip_cel_raster.dart' show clipBakedMaskOf;
 import 'clip_document.dart';
+import 'clip_lettering.dart';
 import 'clip_placement.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 
@@ -118,6 +128,21 @@ const int _passThrough = 30;
 /// `LayerOpacity` at 100%.
 const double _fullOpacity = 256;
 
+/// The project's paper [layer] stands for ([ClipImportPlan.paper]): its
+/// colour at its opacity, absent while it is hidden — null for a layer
+/// that is no paper, or a paper whose colour the file does not name.
+ProjectBackground? _projectPaperOf(ClipLayer layer) {
+  final colour = layer.mainColour;
+  if (layer.kind != ClipLayerKind.paper || colour == null) {
+    return null;
+  }
+  final alpha = (0xFF * layer.opacity / _fullOpacity).round().clamp(0, 0xFF);
+  return ProjectBackground.color(
+    (alpha << 24) | (colour & 0xFFFFFF),
+    none: !layer.isShown,
+  );
+}
+
 /// One picture of the file to bake into a cel.
 final class ClipCelBake {
   const ClipCelBake({
@@ -127,6 +152,7 @@ final class ClipCelBake {
     required this.source,
     required this.label,
     required this.alpha,
+    this.texts = const [],
   });
 
   /// The cel's address — the CANONICAL member's, the first cut's row, which
@@ -148,6 +174,11 @@ final class ClipCelBake {
   /// times its folders' in the cel — its row stands at 100% (Q5 — 「낮은채로
   /// 구워버려서」).
   final double alpha;
+
+  /// A text layer's texts, set as the app's at [alpha] — what the cel is
+  /// made of, the pictures CLIP STUDIO drew of them to read. None for every
+  /// other layer.
+  final List<ClipCelText> texts;
 }
 
 /// The project a file opens as, before a pixel is read.
@@ -158,6 +189,7 @@ final class ClipImportPlan {
     required this.bakes,
     required this.fps,
     required this.warnings,
+    this.paper,
   });
 
   /// One per timeline, in the file's order; one for a file with none.
@@ -170,6 +202,18 @@ final class ClipImportPlan {
   /// The first timeline's rate; null for a file with no timeline.
   final int? fps;
   final List<ImportWarning> warnings;
+
+  /// The project's paper: the file's paper layer with nothing that comes
+  /// in under it, by its colour, its eye and its opacity — null for a file
+  /// with none, and the project it opens as has none (F-370-Q2).
+  ///
+  /// 🗣️F-370 (유저 2026-10-16, opening a .clip: 「못읽어오는게 너무 많고」)
+  /// — and the paper was one the import could read: CLIP STUDIO's paper is
+  /// the colour of the sheet, which is what the project's paper is, the
+  /// plane under every row. ⛔A paper with a row under it, or in a folder,
+  /// is not that plane: it covers what is under it, or takes its folder's
+  /// look, and it is said as a kind not carried.
+  final ProjectBackground? paper;
 }
 
 /// Plans the project [document] opens as.
@@ -233,10 +277,20 @@ ClipImportPlan planClipImport({
           source: bake.source,
           label: bake.label,
           alpha: bake.alpha,
+          texts: bake.source.kind == ClipLayerKind.lettering
+              ? clipCelTextsOf(
+                  bake.source,
+                  resolution: document.resolution,
+                  name: bake.label,
+                  warnings: warnings,
+                  alpha: bake.alpha,
+                )
+              : const [],
         ),
     ],
     fps: _fpsOf(document, warnings),
     warnings: warnings,
+    paper: planner.paper,
   );
 }
 
@@ -701,6 +755,9 @@ final class _Planner {
   /// Layers whose blend was already said to have no equivalent.
   final _blendsSaid = <int>{};
 
+  /// See [ClipImportPlan.paper].
+  ProjectBackground? paper;
+
   List<LayerId> _ids() => [for (final _ in views) mint.nextLayerId()];
 
   /// Cut [i] as the file shows it, on its [canvas]: every row's layer in
@@ -769,16 +826,19 @@ final class _Planner {
     }
   }
 
-  _FolderRow _folderRowOf(ClipLayer folder, _FolderRow? parent) => _FolderRow(
-    parent,
-    _ids(),
-    name: folder.name,
-    visible: folder.isShown,
-    opacity: folder.opacity / _fullOpacity,
-    blend: _blendOf(folder, folder.name),
-    collapsed: folder.isCollapsed,
-    move: _moveOf(folder),
-  );
+  _FolderRow _folderRowOf(ClipLayer folder, _FolderRow? parent) {
+    _sayNotApplied(folder, folder.name);
+    return _FolderRow(
+      parent,
+      _ids(),
+      name: folder.name,
+      visible: folder.isShown,
+      opacity: folder.opacity / _fullOpacity,
+      blend: _blendOf(folder, folder.name),
+      collapsed: folder.isCollapsed,
+      move: _moveOf(folder),
+    );
+  }
 
   /// [layer]'s move: its camera's for a 2D camera folder, resting where its
   /// placement says ([ClipLayer.camera]); its own for any other layer a
@@ -818,7 +878,17 @@ final class _Planner {
     // A sound plays on each cut's SE rows ([_SoundRows]), not in a row of
     // pictures.
     if (layer.kind == ClipLayerKind.sound) {
+      _sayNotApplied(layer, layer.name);
       sounds.add(layer, folders);
+      return;
+    }
+    // Nor the paper under every row — the first, at the top of the tree:
+    // it is the project's.
+    final sheet = parent == null && rows.isEmpty && paper == null
+        ? _projectPaperOf(layer)
+        : null;
+    if (sheet != null) {
+      paper = sheet;
       return;
     }
     if (!_comesIn(layer, layer.name)) {
@@ -1109,6 +1179,7 @@ final class _Planner {
     final out = <_Leaf>[];
     void visit(ClipLayer layer, List<ClipLayer> chain) {
       if (layer.isFolder) {
+        _sayNotApplied(layer, where);
         for (final child in layer.children.reversed) {
           visit(child, [...chain, layer]);
         }
@@ -1192,7 +1263,8 @@ final class _Planner {
 
   /// Whether [layer] comes in — said by [name] when it comes in short, or
   /// not at all. A kind this app does not carry is left out in every
-  /// decoder's one word (유저 10-09); a sound belongs on the SE rows.
+  /// decoder's one word (유저 10-09); a sound belongs on the SE rows; what
+  /// CLIP STUDIO draws over one that comes in is [_sayNotApplied].
   bool _comesIn(ClipLayer layer, String name) {
     final (said, comes) = switch (layer.kind) {
       ClipLayerKind.vector => (
@@ -1210,19 +1282,42 @@ final class _Planner {
         }),
         false,
       ),
-      ClipLayerKind.lettering ||
       ClipLayerKind.paper ||
       ClipLayerKind.fill ||
       ClipLayerKind.other => (unsupportedLayerKind(name), false),
       ClipLayerKind.root ||
       ClipLayerKind.folder ||
       ClipLayerKind.raster ||
-      ClipLayerKind.picture => (null, true),
+      ClipLayerKind.picture ||
+      ClipLayerKind.lettering => (null, true),
     };
     if (said != null) {
       warnings.add(said);
     }
+    if (comes) {
+      _sayNotApplied(layer, name);
+    }
     return comes;
+  }
+
+  /// Names [layer] by [name] where CLIP STUDIO keeps something of it that
+  /// no row here does — an effect of its properties on, clipped to the
+  /// layer under it, a mask on that its picture is not baked through
+  /// ([clipBakedMaskOf]), a lock — in every decoder's words for them: a
+  /// folder as much as a layer, since either can wear them.
+  void _sayNotApplied(ClipLayer layer, String name) {
+    if (layer.effectsOn) {
+      warnings.add(layerEffectsNotApplied(name));
+    }
+    if (layer.clipped) {
+      warnings.add(clippingNotApplied(name));
+    }
+    if (layer.mask != null && clipBakedMaskOf(layer) == null) {
+      warnings.add(layerMaskNotApplied(name));
+    }
+    if (layer.locked) {
+      warnings.add(lockNotImported(name));
+    }
   }
 
   /// [layer]'s blend here, said once when there is none. Pass-through is a

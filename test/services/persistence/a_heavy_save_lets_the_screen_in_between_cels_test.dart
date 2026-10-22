@@ -40,6 +40,10 @@ import '../../helpers/project_scratch_folder.dart';
 /// test`). A cel crosses the way the park road's do now, and the screen
 /// gets its turn after each one.
 void main() {
+  // The session warms playback's rows in the quiet this test leaves it, and
+  // a row asks the binding for the quiet it takes its turn in ([QuietTurns]):
+  // without one, every run printed the warm's assertion.
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('🚨the event loop runs between two cels a save serialises', () async {
     final folder = Directory.systemTemp.createTempSync('screen-turns');
     deleteAfterSessionEnds(folder);

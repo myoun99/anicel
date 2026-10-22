@@ -1,9 +1,11 @@
 import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/argb_channels.dart';
 import 'package:anicel/src/core/bounded_memo.dart';
+import 'package:anicel/src/core/byte_needle.dart';
 import 'package:anicel/src/core/contain_rect.dart';
 import 'package:anicel/src/core/copy_with_sentinel.dart';
 import 'package:anicel/src/core/identity_memo.dart';
@@ -11,6 +13,7 @@ import 'package:anicel/src/core/inserted_at.dart';
 import 'package:anicel/src/core/mapped_or_same.dart';
 import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/core/set_toggle.dart';
+import 'package:anicel/src/core/signed_memo.dart';
 import 'package:anicel/src/core/unit_direction.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/rgba_image_bytes.dart';
@@ -108,6 +111,93 @@ void main() {
       expect(builds, 3, reason: 'the value it started over with is held');
       memo.resolve(2, build);
       expect(builds, 4, reason: 'the newest it held went with the rest');
+    });
+  });
+
+  group('SignedMemo — one value per source, kept while the signature is the '
+      'same by the memo\'s own law', () {
+    test('the same source under the same signature answers the SAME value '
+        'without a second make', () {
+      final memo = SignedMemo<int, List<int>>('test');
+      final source = Object();
+      var makes = 0;
+      List<int> make() => [++makes];
+
+      final first = memo.resolve(source, 7, make);
+      expect(identical(memo.resolve(source, 7, make), first), isTrue);
+      expect(makes, 1);
+    });
+
+    test('a new signature makes it again and keeps only that — the old '
+        'signature asked again makes it a third time', () {
+      final memo = SignedMemo<int, int>('test');
+      final source = Object();
+      var makes = 0;
+      int make() => ++makes;
+
+      expect(memo.resolve(source, 1, make), 1);
+      expect(memo.resolve(source, 2, make), 2);
+      expect(memo.resolve(source, 2, make), 2);
+      expect(memo.resolve(source, 1, make), 3, reason: 'one per source');
+    });
+
+    test('each source keeps its own, on its identity', () {
+      final memo = SignedMemo<int, int>('test');
+      final one = _Twin();
+      final two = _Twin();
+      var makes = 0;
+      int make() => ++makes;
+
+      expect(memo.resolve(one, 0, make), 1);
+      expect(memo.resolve(two, 0, make), 2, reason: 'equal, not the same');
+      expect(memo.resolve(one, 0, make), 1);
+      expect(memo.resolve(two, 0, make), 2);
+    });
+
+    test('what makes two signatures the same is the memo\'s: `==` unless '
+        'it says otherwise', () {
+      final source = Object();
+      var makes = 0;
+      int make() => ++makes;
+
+      final byValue = SignedMemo<_Twin, int>('test');
+      expect(byValue.resolve(source, _Twin(), make), 1);
+      expect(byValue.resolve(source, _Twin(), make), 1);
+      final byIdentity = SignedMemo<_Twin, int>('test', same: identical);
+      expect(byIdentity.resolve(source, _Twin(), make), 2);
+      expect(byIdentity.resolve(source, _Twin(), make), 3);
+      final byValues = SignedMemo<List<double>, int>('test', same: listEquals);
+      expect(byValues.resolve(source, [1, 2], make), 4);
+      expect(byValues.resolve(source, [1, 2], make), 4);
+    });
+
+    test('a value that was made null is kept, not made again', () {
+      final memo = SignedMemo<int, int?>('test');
+      final source = Object();
+      var makes = 0;
+      int? make() {
+        makes += 1;
+        return null;
+      }
+
+      expect(memo.resolve(source, 0, make), isNull);
+      expect(memo.resolve(source, 0, make), isNull);
+      expect(makes, 1);
+    });
+
+    test('a lookup answers what is kept, under whatever signature, and '
+        'makes nothing', () {
+      final memo = SignedMemo<int, int>('test');
+      final source = Object();
+      var makes = 0;
+      int make() => ++makes;
+
+      expect(memo.keptOf(source), isNull, reason: 'nothing made yet');
+      memo.resolve(source, 1, make);
+      memo.resolve(source, 2, make);
+      expect(memo.keptOf(source), 2, reason: 'the newest');
+      expect(memo.keptOf(Object()), isNull, reason: 'another source\'s');
+      expect(makes, 2);
     });
   });
 
@@ -377,17 +467,20 @@ void main() {
       expect(BrushPresetIdMint().next('ink').value, 'ink');
     });
 
-    test(
-      'a collision takes -2, -3, … in ORDER — a re-import has to land '
-      'on the same ids or it duplicates the pack instead of replacing it',
-      () {
-        final mint = BrushPresetIdMint();
-        expect(
-          [for (var i = 0; i < 4; i += 1) mint.next('ink').value],
-          ['ink', 'ink-2', 'ink-3', 'ink-4'],
-        );
-      },
-    );
+    test('a collision takes -2, -3, … — the first one free', () {
+      final mint = BrushPresetIdMint();
+      expect(
+        [for (var i = 0; i < 4; i += 1) mint.next('ink').value],
+        ['ink', 'ink-2', 'ink-3', 'ink-4'],
+      );
+    });
+
+    test('🚨an id it was told is taken is never handed out — an import '
+        'lands BESIDE the library\'s brush of that id (F-433)', () {
+      final mint = BrushPresetIdMint(taken: ['ink', 'ink-2']);
+      expect(mint.next('ink').value, 'ink-3');
+      expect(mint.next('pen').value, 'pen');
+    });
 
     test('a name that COLLIDES with a generated suffix skips past it', () {
       final mint = BrushPresetIdMint();
@@ -437,6 +530,25 @@ void main() {
       expect(toggledSet(toggledSet(const <String>{'a'}, 'b'), 'b'), <String>{
         'a',
       });
+    });
+  });
+
+  group('indexOfBytes — the byte-needle scan every file reader goes '
+      'through', () {
+    final bytes = Uint8List.fromList([1, 2, 3, 1, 2, 3, 4]);
+
+    test('the first start at or after where it looks', () {
+      expect(indexOfBytes(bytes, [2, 3], 0), 1);
+      expect(indexOfBytes(bytes, [2, 3], 2), 4);
+      expect(indexOfBytes(bytes, [1, 2, 3, 4], 0), 3);
+      expect(indexOfBytes(bytes, [1, 2], 3), 3, reason: 'right where it looks');
+    });
+
+    test('a needle must END by the bound — one that only starts inside it '
+        'is not found', () {
+      expect(indexOfBytes(bytes, [3, 4], 0, 7), 5);
+      expect(indexOfBytes(bytes, [3, 4], 0, 6), -1);
+      expect(indexOfBytes(bytes, [9], 0), -1);
     });
   });
 }

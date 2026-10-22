@@ -36,15 +36,13 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
+import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/poll_until.dart';
+import '../../helpers/one_piece.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
-
-  /// The walk at rest — or ten seconds gone: a walk that never rests is a
-  /// failure the test SAYS, not one it hangs on.
-  Future<void> rested(PlaybackPrerenderScheduler scheduler) => scheduler.idle
-      .timeout(const Duration(seconds: 10), onTimeout: () {});
 
   BrushFrameKey frameKey(Cut cut, LayerId layerId, FrameId frameId) =>
       BrushFrameKey(
@@ -226,7 +224,7 @@ void main() {
         cutId: const CutId('cut'),
         aroundFrameIndex: 0,
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       expect(
         shownAt(f.layerImages, runwayCut(), 6),
@@ -268,7 +266,7 @@ void main() {
         cutId: const CutId('cut'),
         aroundFrameIndex: 0,
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       expect(filled, isNotEmpty);
       for (final frame in filled) {
@@ -301,7 +299,7 @@ void main() {
         cutId: const CutId('cut'),
         aroundFrameIndex: 2,
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       for (var index = 0; index < 4; index += 1) {
         expect(
@@ -331,9 +329,9 @@ void main() {
       final scheduler = PlaybackPrerenderScheduler(
         pictures: f.pictures,
         resolveCut: (_) => cut(),
-        afterFrameCached: () => warmed += 1,
         idleDelay: Duration.zero,
       );
+      scheduler.landings.addListener(() => warmed += 1);
       var reports = 0;
       scheduler.progress.addListener(() => reports += 1);
       void warm() => scheduler.requestWarmCut(
@@ -341,7 +339,7 @@ void main() {
       );
 
       warm();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       // The runway's empty frames need no picture: one to make.
       expect(warmed, 1, reason: 'the premise: one picture to make');
       expect(
@@ -353,7 +351,7 @@ void main() {
       reports = 0;
       final cold = warmed;
       warm();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       expect(warmed, cold, reason: 'the second pass warmed nothing');
       expect(reports, 1 + 1, reason: 'the request, then the pass once');
       expect(
@@ -395,7 +393,7 @@ void main() {
       );
 
       scheduler.dispose();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       f.layerImages.dispose();
     });
   });
@@ -420,7 +418,7 @@ void main() {
           resolveCut: (_) => cut(duration: 40),
         ),
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       expect(scheduler.progress.value.total, 2);
       expect(scheduler.progress.value.isComplete, isTrue);
@@ -456,7 +454,7 @@ void main() {
       );
 
       scheduler.endInputHold();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       expect(scheduler.progress.value.isComplete, isTrue);
       expect(
@@ -483,7 +481,7 @@ void main() {
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       final before = shownAt(f.layerImages, cut(), 0);
 
       // Edit: caches invalidate via revision, then re-warm.
@@ -510,7 +508,7 @@ void main() {
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       final after = shownAt(f.layerImages, cut(), 0);
       expect(after, isNotNull);
@@ -578,7 +576,7 @@ void main() {
           aroundFrameIndex: 2,
           followedByCutId: const CutId('cut-b'),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         for (var index = 0; index < 4; index += 1) {
           expect(
@@ -623,7 +621,7 @@ void main() {
           cutId: const CutId('cut'),
           followedByCutId: const CutId('cut'),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(
           scheduler.progress.value.total,
           4,
@@ -634,7 +632,7 @@ void main() {
           cutId: const CutId('cut'),
           followedByCutId: const CutId('gone'),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(
           scheduler.progress.value.total,
           4,
@@ -694,18 +692,43 @@ void main() {
         pictures.has((cut: four(), frameIndex: frame)),
     ];
 
+    /// A cel inked across [four]'s canvas, and [past] tiles past every edge.
+    BitmapSurface inkedOut(int past) => BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: 4,
+      tiles: {
+        for (var y = -past; y <= 1 + past; y += 1)
+          for (var x = -past; x <= 1 + past; x += 1)
+            TileCoord(x: x, y: y): BitmapTile(
+              size: 4,
+              pixels: Uint8List.fromList([
+                for (var i = 0; i < 4 * 4; i += 1) ...[0, 0, 0, 255],
+              ]),
+            ),
+      },
+    );
+
     /// Every one of [four]'s cels drawn on — across all four of its tiles
     /// and inside its canvas, so each frame has a picture of the canvas's
-    /// size ([pictureBytes]) to make. ⚠️A dab past the edge puts the cel on
-    /// the pasteboard's tiles, and its picture is then theirs.
+    /// size ([pictureBytes]) to make — but [gone]'s, kept as an opened
+    /// project keeps a cel, in a stretch of a file that is no longer there:
+    /// its bytes cannot be read.
     ({
       BrushFrameStore store,
       LayerFrameImageCache layerImages,
       CanvasPictures pictures,
     })
-    inked() {
+    inked({FrameId? gone}) {
       final store = BrushFrameStore();
+      if (gone != null) {
+        keepInAFileThatIsGone(store, {
+          frameKey(four(), const LayerId('layer'), gone): inkedOut(0),
+        });
+      }
       for (var index = 0; index < 4; index += 1) {
+        if (FrameId('f$index') == gone) {
+          continue;
+        }
         BrushFrameEditingCoordinator(
           initialFrameKey: frameKey(
             four(),
@@ -742,6 +765,30 @@ void main() {
       );
     }
 
+    /// [four]'s cels kept as an opened project keeps them — in its file, not
+    /// read yet — each inked across its canvas, and [heavy]'s past every
+    /// edge as well: before it is read it is weighed as its canvas, and it
+    /// weighs four times that.
+    ({
+      BrushFrameStore store,
+      LayerFrameImageCache layerImages,
+      CanvasPictures pictures,
+    })
+    keptInked({required int heavy}) {
+      final store = BrushFrameStore();
+      keepInAFile(store, {
+        for (var index = 0; index < 4; index += 1)
+          frameKey(four(), const LayerId('layer'), FrameId('f$index')):
+              inkedOut(index == heavy ? 1 : 0),
+      });
+      final layerImages = LayerFrameImageCache(frameStore: store);
+      return (
+        store: store,
+        layerImages: layerImages,
+        pictures: picturesOver(layerImages),
+      );
+    }
+
     /// A picture waits for its raster to come back; asked for meanwhile, the
     /// next missing pictures' rasters queue behind it. Measured 10-10: the
     /// whole cut made 7–30% sooner.
@@ -766,7 +813,7 @@ void main() {
         );
 
         gated.gate.complete();
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         scheduler.dispose();
         gated.dispose();
       });
@@ -854,7 +901,7 @@ void main() {
         for (final frame in ['f3', 'f4', 'f5']) {
           await cache.letThrough(FrameId(frame));
         }
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         scheduler.dispose();
         cache.dispose();
       });
@@ -873,7 +920,7 @@ void main() {
         // The stroke or the seek just before play was pressed.
         scheduler.notifyEditActivity();
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(there(f.pictures), everyElement(isTrue));
         expect(
@@ -901,7 +948,7 @@ void main() {
 
         playhead = 2;
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(made, [2, 3, 0, 1]);
         expect(landings, 4, reason: 'a landing is told once a picture');
@@ -928,7 +975,7 @@ void main() {
 
         scheduler.follow(run());
         expect(scheduler.isResting, isFalse);
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(
           restingAtEach,
           [false, false, false, false, true],
@@ -944,7 +991,7 @@ void main() {
         scheduler.progress.addListener(() => progressSaid += 1);
         scheduler.wake();
         expect(scheduler.isResting, isFalse, reason: 'it has not looked yet');
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(scheduler.progress.value, before, reason: '⛔premise');
         expect(progressSaid, 0, reason: '⛔premise');
         expect(restingAtEach, [true], reason: 'a rest is told every time');
@@ -974,7 +1021,7 @@ void main() {
             },
           ),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(made, [2, 3, 0, 1], reason: 'two frames on, then the lap');
         expect(askedWith.first, Duration.zero, reason: 'nothing made yet');
@@ -1014,7 +1061,7 @@ void main() {
             playlistFrameOf: (_, frameIndex) => frameIndex,
           ),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(
           scheduler.composeTime,
@@ -1043,7 +1090,7 @@ void main() {
         room.demand = () => scheduler.demand;
 
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(made, [0, 1], reason: 'two pictures fit');
         expect(there(f.pictures), [true, true, false, false]);
         expect(
@@ -1057,13 +1104,13 @@ void main() {
         // of the room of the one that fell behind.
         playhead = 1;
         scheduler.wake();
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(made, [0, 1, 2]);
         expect(there(f.pictures), [false, true, true, false]);
 
         playhead = 2;
         scheduler.wake();
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(
           made,
           [0, 1, 2, 3],
@@ -1096,7 +1143,7 @@ void main() {
         );
 
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(
           said.first,
@@ -1121,8 +1168,12 @@ void main() {
       });
     });
 
-    testWidgets('the picture under the playhead is made whatever the room '
-        '— a run that waits for it must not wait for good', (tester) async {
+    /// 유저 2026-10-15, F-365-Q1 「직전 프레임에 서서 기다린다」: a run whose
+    /// clock waits stands BEFORE a frame that is not there, and waits for
+    /// that one — the frame after the one under its playhead.
+    testWidgets('🚨what a run that waits waits for is made whatever the room: '
+        'the picture under the playhead, and the one after it — a run that '
+        'waits for either must not wait for good', (tester) async {
       await tester.runAsync(() async {
         final f = inked();
         final room = _Room(f.pictures, 0);
@@ -1136,9 +1187,85 @@ void main() {
 
         playhead = 1;
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
-        expect(there(f.pictures), [false, true, false, false]);
+        expect(
+          there(f.pictures),
+          [false, true, true, false],
+          reason: '↩️only frame 1\'s was made, and a run standing on it '
+              'waited for frame 2 for good (F-365, a 47MB cut head under a '
+              '64MB line)',
+        );
+        expect(
+          scheduler.progress.value,
+          const PrerenderProgress(cached: 2, total: 2),
+          reason: 'and no other: for the one after there is no room',
+        );
+        scheduler.dispose();
+        f.layerImages.dispose();
+      });
+    });
+
+    testWidgets('a picture heavier than its room makes room for itself once '
+        'it lands — out of the pictures wanted after it, never itself '
+        '(F-365)', (tester) async {
+      await tester.runAsync(() async {
+        final f = keptInked(heavy: 1);
+        await f.pictures.make((
+          cut: four(),
+          frameIndex: 2,
+        ), shouldAbort: () => false);
+        final room = _Room(f.pictures, 3 * pictureBytes);
+        final scheduler = PlaybackPrerenderScheduler(
+          pictures: f.pictures,
+          resolveCut: (_) => four(),
+          room: room,
+          idleDelay: Duration.zero,
+        );
+        room.demand = () => scheduler.demand;
+
+        scheduler.follow(run());
+        await patiently(scheduler.idle);
+
+        expect(
+          there(f.pictures),
+          [true, true, false, false],
+          reason: 'frame 1 came heavier than the room it was asked by: the '
+              'picture wanted after it went, and the walk rests',
+        );
+        expect(
+          f.layerImages.estimatedBytes,
+          greaterThan(3 * pictureBytes),
+          reason: '⛔premise: over the line by what the estimate missed',
+        );
+        scheduler.dispose();
+        f.layerImages.dispose();
+      });
+    });
+
+    testWidgets('where the clock does not wait, the picture the walk starts '
+        'on is made whatever the room — a run that never waits still shows '
+        'something new (F-365)', (tester) async {
+      await tester.runAsync(() async {
+        final f = inked();
+        final room = _Room(f.pictures, 0);
+        final scheduler = PlaybackPrerenderScheduler(
+          pictures: f.pictures,
+          resolveCut: (_) => four(),
+          room: room,
+          idleDelay: Duration.zero,
+        );
+        room.demand = () => scheduler.demand;
+
+        playhead = 1;
+        scheduler.follow(run(lead: (_) => 2));
+        await patiently(scheduler.idle);
+
+        expect(
+          there(f.pictures),
+          [false, false, false, true],
+          reason: 'two frames on from the playhead',
+        );
         expect(
           scheduler.progress.value,
           const PrerenderProgress(cached: 1, total: 1),
@@ -1159,7 +1286,7 @@ void main() {
           idleDelay: Duration.zero,
         );
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(there(f.pictures), everyElement(isTrue));
 
         // A memory warning's work: every picture goes.
@@ -1167,7 +1294,7 @@ void main() {
         expect(there(f.pictures), everyElement(isFalse));
 
         scheduler.wake();
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(there(f.pictures), everyElement(isTrue));
         scheduler.dispose();
         f.layerImages.dispose();
@@ -1196,13 +1323,13 @@ void main() {
             playlistFrameOf: (_, frameIndex) => frameIndex,
           ),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(asked, greaterThanOrEqualTo(40), reason: 'the first walk');
 
         asked = 0;
         playhead = 1;
         scheduler.wake();
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(
           asked,
           lessThanOrEqualTo(2),
@@ -1224,7 +1351,7 @@ void main() {
           idleDelay: Duration.zero,
         );
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         f.layerImages.invalidateFrame(
           frameKey(four(), const LayerId('layer'), const FrameId('f2')),
@@ -1232,7 +1359,7 @@ void main() {
         expect(there(f.pictures), [true, true, false, true]);
 
         scheduler.wake(fromTheStart: true);
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(there(f.pictures), everyElement(isTrue));
         scheduler.dispose();
         f.layerImages.dispose();
@@ -1242,8 +1369,8 @@ void main() {
     testWidgets('a picture whose compose throws is not waited for, and is '
         'not paid for twice', (tester) async {
       await tester.runAsync(() async {
-        final f = inked();
-        final layerImages = _ThrowsAt(
+        final f = inked(gone: const FrameId('f1'));
+        final layerImages = _CountsMakings(
           const FrameId('f1'),
           frameStore: f.store,
         );
@@ -1263,7 +1390,7 @@ void main() {
         );
 
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         // ⛔Handed back BEFORE anything is expected: a failed expectation is
         // reported through this same door, and a collector left on it
         // swallows the failure — the pin could not fail.
@@ -1298,8 +1425,8 @@ void main() {
         );
 
         scheduler.wake(fromTheStart: true);
-        await rested(scheduler);
-        expect(layerImages.thrown, 1, reason: 'the same content is not retried');
+        await patiently(scheduler.idle);
+        expect(layerImages.asked, 1, reason: 'the same content is not retried');
         scheduler.dispose();
         layerImages.dispose();
       });
@@ -1382,12 +1509,17 @@ class _Gated extends LayerFrameImageCache {
   }
 }
 
-/// An image cache whose cel [frameId] cannot be read.
-class _ThrowsAt extends LayerFrameImageCache {
-  _ThrowsAt(this.frameId, {required super.frameStore});
+/// An image cache that counts the makings asked of the cel [frameId].
+///
+/// ⚠️IT MAKES THEM AS ANY CACHE DOES: what a cel that could not be read is
+/// remembered by is the cache's record ([LayerFrameImageCache.unreadable]),
+/// kept by its making — a stand-in for the making would stand in for the
+/// record as well.
+class _CountsMakings extends LayerFrameImageCache {
+  _CountsMakings(this.frameId, {required super.frameStore});
 
   final FrameId frameId;
-  int thrown = 0;
+  int asked = 0;
 
   @override
   Future<LayerFrameImage?> prepare({
@@ -1400,8 +1532,7 @@ class _ThrowsAt extends LayerFrameImageCache {
     Future<QuietTurn?> Function()? turn,
   }) {
     if (key.frameId == frameId) {
-      thrown += 1;
-      throw StateError('the cel ${frameId.value} cannot be read');
+      asked += 1;
     }
     return super.prepare(
       key: key,

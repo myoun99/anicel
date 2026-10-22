@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import '../../core/point_bounds.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
-import '../../models/canvas_size.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_pose.dart';
 import '../../services/camera_frame_corners.dart'
     show cameraFrameCornersInCanvas;
 import '../session/canvas_adjust.dart';
 import '../text/app_strings.dart';
+import '../text/pixel_size_label.dart';
 import '../widgets/panel_flyout.dart';
 import 'canvas_target_pill.dart';
 import 'canvas_viewport_offset.dart';
@@ -35,7 +36,7 @@ class CameraAdjustLayer extends StatelessWidget {
     required this.adjust,
     required this.pose,
     required this.viewport,
-    required this.canvasSize,
+    required this.pasteboard,
     required this.onLand,
   });
 
@@ -45,8 +46,8 @@ class CameraAdjustLayer extends StatelessWidget {
   final CameraPose pose;
   final CanvasViewport viewport;
 
-  /// The cut's canvas — the stage the box measures against.
-  final CanvasSize canvasSize;
+  /// The wall of the cut's canvas — the stage the box measures against.
+  final PasteboardWall pasteboard;
 
   /// Lands the size: the project camera's frame becomes it.
   final VoidCallback onLand;
@@ -86,11 +87,11 @@ class CameraAdjustLayer extends StatelessWidget {
                 center: pose.center,
                 rotationDegrees: pose.rotationDegrees,
               ),
-              canvasSize: canvasSize,
+              pasteboard: pasteboard,
               viewport: viewport,
               // The canvas stays the tools' and the view's: a press is the
               // box's on its handles alone.
-              claimsCanvas: false,
+              presses: RowBoxPresses.handles,
               onCancelled: adjust.dropShowing,
               // The box stands at scale 1 over the size the grab began at,
               // so what it lands is that size's two factors.
@@ -113,7 +114,7 @@ class CameraAdjustLayer extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Text(
-                    '${shown.size.width} × ${shown.size.height}',
+                    pixelSizeLabel(shown.size.width, shown.size.height),
                     key: const ValueKey<String>('camera-adjust-size'),
                     style: const TextStyle(fontSize: 12),
                   ),

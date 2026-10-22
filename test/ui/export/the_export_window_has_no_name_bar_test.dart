@@ -7,12 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -22,6 +24,7 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
@@ -49,6 +52,8 @@ void main() {
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Film',
+      // The work's words, set apart from the file's name (작품 설정).
+      timesheetInfo: const TimesheetInfo(title: 'AMMI', episode: 'OP'),
       cameraSize: const CanvasSize(width: 32, height: 18),
       createdAt: DateTime.utc(2026),
       tracks: [
@@ -124,6 +129,10 @@ void main() {
   String extensionShown(WidgetTester tester) =>
       tester.widget<Text>(keyed('export-file-extension')).data!;
 
+  /// What a field shows faintly while nothing is typed in it.
+  String? ghostOf(WidgetTester tester, String key) =>
+      tester.widget<TextField>(keyed(key)).decoration?.hintText;
+
   group('a lone file is named at the head of the settings column', () {
     testWidgets('🚨the field holds the name alone, and the extension stands '
         'beside it — the format\'s, changing with the format', (tester) async {
@@ -131,14 +140,13 @@ void main() {
       addTearDown(session.dispose);
       await pumpWindow(tester, session);
 
-      expect(nameTyped(tester), 'Film');
       expect(extensionShown(tester), '.mp4');
-      expect(tester.exportFirstFileName, 'Film.mp4');
+      expect(tester.exportFirstFileName, '301.mp4');
 
-      await press(tester, 'export-format-container-mov');
-      expect(nameTyped(tester), 'Film', reason: 'the name is not retyped');
+      await pickExportContainer(tester, ExportVideoContainer.mov);
+      expect(nameTyped(tester), isEmpty, reason: 'nothing was typed for it');
       expect(extensionShown(tester), '.mov');
-      expect(tester.exportFirstFileName, 'Film.mov');
+      expect(tester.exportFirstFileName, '301.mov');
       session.playbackRig.prerenderScheduler.cancel();
     });
 
@@ -165,13 +173,29 @@ void main() {
       session.playbackRig.prerenderScheduler.cancel();
     });
 
-    testWidgets('an empty field is the project\'s name', (tester) async {
+    testWidgets('an extension of any format the window writes is swapped, '
+        'not doubled — the four that joined in I-117 too', (tester) async {
+      final session = film();
+      addTearDown(session.dispose);
+      await pumpWindow(tester, session);
+      await press(tester, 'export-tab-image');
+      await pickExportStill(tester, ExportStillFormat.bmp);
+
+      for (final typed in ['shot.tiff', 'shot.tga', 'shot.webp', 'shot.png']) {
+        await tester.enterText(keyed('export-file-name-field'), typed);
+        await tester.pump();
+        expect(tester.exportFirstFileName, 'shot.bmp', reason: typed);
+      }
+      session.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('a field of spaces is an empty one', (tester) async {
       final session = film();
       addTearDown(session.dispose);
       await pumpWindow(tester, session);
       await tester.enterText(keyed('export-file-name-field'), '  ');
       await tester.pump();
-      expect(tester.exportFirstFileName, 'Film.mp4');
+      expect(tester.exportFirstFileName, '301.mp4');
       session.playbackRig.prerenderScheduler.cancel();
     });
 
@@ -190,9 +214,9 @@ void main() {
       expect(keyed('export-naming-base-field'), findsNothing);
       expect(topOf(strings.commonNameField), lessThan(formatTop));
 
-      await press(tester, 'export-format-still-png');
+      await pickExportStill(tester, ExportStillFormat.png);
       expect(keyed('export-file-name-field'), findsNothing);
-      expect(tester.exportFirstFileName, 'frame_0001.png');
+      expect(tester.exportFirstFileName, '301_0001.png');
       expect(
         topOf(strings.exNaming),
         lessThan(topOf(strings.exFormat)),
@@ -208,9 +232,8 @@ void main() {
       final state = await pumpWindow(tester, session);
       await press(tester, 'export-tab-conte');
 
-      expect(nameTyped(tester), 'conte');
       expect(extensionShown(tester), '.pdf');
-      expect(tester.exportFirstFileName, 'conte.pdf');
+      expect(tester.exportFirstFileName, 'AMMI_OP.pdf');
 
       await tester.enterText(keyed('export-file-name-field'), 'board');
       await tester.pump();
@@ -219,7 +242,7 @@ void main() {
       await tester.pump();
       expect(filesWrittenUnder(temp), ['board.pdf']);
 
-      await press(tester, 'export-conteformat-png');
+      await pickPaperFormat(tester, 'export-conteformat', 'png');
       expect(
         keyed('export-file-name-field'),
         findsOneWidget,
@@ -236,6 +259,103 @@ void main() {
         contains('board_p1.png'),
         reason: 'the pages are written under the name typed',
       );
+      session.playbackRig.prerenderScheduler.cancel();
+    });
+  });
+
+  /// 🗣️F-404 (유저 2026-10-19): 「우선 지금 텍스트가 입력되있는데 그게아니라
+  /// 고스트텍스트로 … 시퀀스에서 범위 컷이면 파일 고스트텍스트를 컷이름으로.
+  /// 범위 프로젝트면 고스트텍스트 지금처럼 작품명_화수명으로. 이미지는
+  /// 기본적으로 현재컷이 대상인거니 고스트텍스트 컷이름. 콘티용지는 범위 기본
+  /// 프로젝트니 고스트텍스트를 똑같이 작품명_화수명으로」 — and F-404-Q1
+  /// (유저 2026-10-20): 「작품 설정의 작품명_화수로」, not the file's name.
+  group('🎯F-404: a name field opens EMPTY, and behind it stands what the '
+      'export covers — the name its file is written under', () {
+    testWidgets('the sequence: the cut\'s name under the cut scope, the '
+        'work\'s title and episode under the project scope — its video and '
+        'its stills alike', (tester) async {
+      final session = film();
+      addTearDown(session.dispose);
+      await pumpWindow(tester, session);
+
+      expect(nameTyped(tester), isEmpty);
+      expect(ghostOf(tester, 'export-file-name-field'), '301');
+      expect(tester.exportFirstFileName, '301.mp4');
+
+      await press(tester, 'export-scope-project');
+      expect(ghostOf(tester, 'export-file-name-field'), 'AMMI_OP');
+      expect(tester.exportFirstFileName, 'AMMI_OP.mp4');
+
+      await pickExportStill(tester, ExportStillFormat.png);
+      await tester.ensureVisible(find.textContaining('Naming'));
+      await tester.tap(find.textContaining('Naming'));
+      await tester.pump();
+      final base = tester.widget<TextField>(keyed('export-naming-base-field'));
+      expect(base.controller!.text, isEmpty);
+      expect(ghostOf(tester, 'export-naming-base-field'), 'AMMI_OP');
+      expect(tester.exportFirstFileName, 'AMMI_OP_0001.png');
+
+      await press(tester, 'export-scope-cut');
+      expect(ghostOf(tester, 'export-naming-base-field'), '301');
+      expect(tester.exportFirstFileName, '301_0001.png');
+      session.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('the image: the name of the cut it is a frame of', (
+      tester,
+    ) async {
+      final session = film();
+      addTearDown(session.dispose);
+      final state = await pumpWindow(tester, session);
+      await press(tester, 'export-tab-image');
+
+      expect(nameTyped(tester), isEmpty);
+      expect(ghostOf(tester, 'export-file-name-field'), '301');
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(filesWrittenUnder(temp), ['301.png']);
+      session.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('the conte: the work\'s title and episode, its PDF\'s and its '
+        'pages\'', (tester) async {
+      final session = film();
+      addTearDown(session.dispose);
+      await pumpWindow(tester, session);
+      await press(tester, 'export-tab-conte');
+
+      expect(nameTyped(tester), isEmpty);
+      expect(ghostOf(tester, 'export-file-name-field'), 'AMMI_OP');
+      expect(tester.exportFirstFileName, 'AMMI_OP.pdf');
+      await pickPaperFormat(tester, 'export-conteformat', 'png');
+      expect(ghostOf(tester, 'export-file-name-field'), 'AMMI_OP');
+      expect(tester.exportPreviewName, startsWith('AMMI_OP'));
+      session.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('a job queued with the field empty comes back empty, and the '
+        'name typed before the queue ran is there after it', (tester) async {
+      final session = film();
+      addTearDown(session.dispose);
+      final state = await pumpWindow(tester, session);
+      await press(tester, 'export-tab-image');
+      await press(tester, 'export-queue-add-button');
+      await tester.pump();
+      await tester.enterText(keyed('export-file-name-field'), 'mine');
+      await tester.pump();
+
+      await press(tester, 'export-queue-job-1');
+      expect(nameTyped(tester), isEmpty, reason: 'the job named nothing');
+      expect(ghostOf(tester, 'export-file-name-field'), '301');
+
+      await press(tester, 'export-queue-add-button');
+      await tester.pump();
+      await tester.enterText(keyed('export-file-name-field'), 'mine');
+      await tester.pump();
+      await tester.runAsync(state.runQueue);
+      await tester.pump();
+      expect(filesWrittenUnder(temp), ['301.png']);
+      expect(nameTyped(tester), 'mine', reason: 'the user\'s own setup');
       session.playbackRig.prerenderScheduler.cancel();
     });
   });
@@ -308,7 +428,7 @@ void main() {
       final session = film();
       addTearDown(session.dispose);
       final state = await pumpWindow(tester, session);
-      await press(tester, 'export-format-still-png');
+      await pickExportStill(tester, ExportStillFormat.png);
 
       expect(keyed('export-progress'), findsNothing);
       expect(keyed('export-cancel-button'), findsNothing);

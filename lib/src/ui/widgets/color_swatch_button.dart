@@ -11,6 +11,7 @@ import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import 'anchored_popup.dart';
 import 'field_slider.dart';
+import 'pill_strip.dart' show TogglePill;
 import '../repaint_props.dart';
 
 /// The ONE color-picking control (R28 #9): a round swatch that opens the
@@ -35,6 +36,7 @@ class ColorSwatchButton extends StatelessWidget {
     this.keepsAlpha = false,
     this.onSettled,
     this.tooltip,
+    this.hostRow,
   });
 
   /// Widget key string for the trigger ('canvas-paper-color-button').
@@ -96,6 +98,11 @@ class ColorSwatchButton extends StatelessWidget {
   final bool keepsAlpha;
 
   final String? tooltip;
+
+  /// A row of the host's own, under the opacity row — the pasteboard's size
+  /// and whether it is there, in its window (I-109). Null in every other
+  /// window, which is then the window it always was.
+  final Widget? hostRow;
   static const double _diameter = 18;
 
   @override
@@ -143,6 +150,7 @@ class ColorSwatchButton extends StatelessWidget {
       onNone: onNone,
       none: none,
       keepsAlpha: keepsAlpha,
+      hostRow: hostRow,
     ).then((_) => onSettled?.call()),
   );
 }
@@ -211,6 +219,7 @@ Future<void> showColorPickerPopup(
   VoidCallback? onNone,
   bool none = false,
   bool keepsAlpha = false,
+  Widget? hostRow,
 }) {
   return showAnchoredPopup<void>(
     anchorContext,
@@ -224,7 +233,11 @@ Future<void> showColorPickerPopup(
     // The wheel, the action row above it and the readout below it. Grown
     // by the readout's own height when it arrived, so the wheel keeps the
     // 180 it was drawn at.
-    height: 252 + _noneRowHeight + ColorStatusBar.heightIn(anchorContext),
+    height:
+        252 +
+        _noneRowHeight +
+        (hostRow == null ? 0 : _noneRowHeight) +
+        ColorStatusBar.heightIn(anchorContext),
     builder: (context, _) => _ColorPickerBody(
       initialColor: color,
       onChanged: onChanged,
@@ -232,12 +245,14 @@ Future<void> showColorPickerPopup(
       onNone: onNone,
       none: none,
       keepsAlpha: keepsAlpha,
+      hostRow: hostRow,
     ),
   );
 }
 
 /// The 「없음」 row's own height, counted into the window so the wheel keeps
-/// the 180 it was drawn at rather than being squeezed by a row below it.
+/// the 180 it was drawn at rather than being squeezed by a row below it —
+/// and a host's row under it ([ColorSwatchButton.hostRow]) as tall.
 const double _noneRowHeight = 28;
 
 class _ColorPickerBody extends StatefulWidget {
@@ -248,6 +263,7 @@ class _ColorPickerBody extends StatefulWidget {
     required this.onNone,
     required this.none,
     required this.keepsAlpha,
+    required this.hostRow,
   });
 
   final int? initialColor;
@@ -256,6 +272,7 @@ class _ColorPickerBody extends StatefulWidget {
   final VoidCallback? onNone;
   final bool none;
   final bool keepsAlpha;
+  final Widget? hostRow;
 
   @override
   State<_ColorPickerBody> createState() => _ColorPickerBodyState();
@@ -365,6 +382,8 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
                 ),
               ),
               SizedBox(height: _noneRowHeight, child: _noneRow()),
+              if (widget.hostRow case final row?)
+                SizedBox(height: _noneRowHeight, child: row),
             ],
           ),
         ),
@@ -402,6 +421,14 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
   /// closes the window: it dims the bar in place, the bar stays draggable, and
   /// a drag lights it and brings the plane back. The bar's seat is dead where
   /// the host keeps no alpha, the way the button's is where none is no value.
+  ///
+  /// 🗣️F-425 (유저 2026-10-21): 「없음버튼 누르면 없음인데, 애초에 있는
+  /// 상태는 글자 있음, 강조색으로. 즉 누를때마다 토글이란느낌. 기존에
+  /// 누를때마다 글자색이나 색 변경하는거 버튼 있으니 공용/통일」. So the
+  /// button is the shared yes/no [TogglePill]: lit 「있음」 while the plane
+  /// is there, plain 「없음」 once it is not, and a press on 「없음」 brings
+  /// the plane back in the colour and opacity this window holds — the ones
+  /// it was before.
   Widget _noneRow() {
     final onNone = widget.onNone;
     return Row(
@@ -415,14 +442,23 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
           ),
         ),
         const SizedBox(width: 8),
-        _action(
+        TogglePill(
           keyValue: 'color-picker-none',
-          label: AppText.strings.colorNone,
-          onPressed: onNone == null
+          on: !_none,
+          words: (
+            on: AppText.strings.colorPresent,
+            off: AppText.strings.colorNone,
+          ),
+          onChanged: onNone == null
               ? null
-              : () {
-                  onNone();
-                  setState(() => _none = true);
+              : (present) {
+                  if (present) {
+                    setState(() => _none = false);
+                    _emit();
+                  } else {
+                    onNone();
+                    setState(() => _none = true);
+                  }
                 },
         ),
       ],

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
@@ -11,12 +12,19 @@ import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_press.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_stage.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
 import 'package:anicel/src/ui/text/cel_text_layout.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart'
+    show
+        HardwareKeyboard,
+        KeyDownEvent,
+        LogicalKeyboardKey,
+        PhysicalKeyboardKey;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -77,7 +85,6 @@ void main() {
     final CelTextCel cel = (
       key: celTextTestKey,
       coordinator: editingStackOn(drawingOf(const {}).withTexts(texts)),
-      canvasSize: celTextTestCanvas,
       cacheInvalidationSink: null,
     );
     return (
@@ -88,7 +95,9 @@ void main() {
             stage ??
             CelTextStage(
               viewport: CanvasViewport(zoom: 4),
-              canvasSize: celTextTestCanvas,
+              pasteboard: celTextTestCanvas.pasteboardAt(
+                PasteboardReach.whole,
+              ),
               placement: null,
             ),
         cel: noCel ? null : cel,
@@ -140,6 +149,29 @@ void main() {
         .firstWhere((text) => text.id == id);
   }
 
+  /// [key] held down on the keyboard for the rest of the test.
+  void hold(LogicalKeyboardKey key) {
+    HardwareKeyboard.instance.handleKeyEvent(
+      KeyDownEvent(
+        physicalKey: key == LogicalKeyboardKey.metaLeft
+            ? PhysicalKeyboardKey.metaLeft
+            : PhysicalKeyboardKey.controlLeft,
+        logicalKey: key,
+        timeStamp: Duration.zero,
+      ),
+    );
+    addTearDown(HardwareKeyboard.instance.clearState);
+  }
+
+  /// Finger [pointer] down on the glass for the rest of the test, as the
+  /// app's one observer of every pointer hears it (`InputInspectorHost`).
+  void restAFinger(int pointer) {
+    CanvasTouchContacts.noteAppWide(
+      PointerDownEvent(pointer: pointer, kind: PointerDeviceKind.touch),
+    );
+    addTearDown(CanvasTouchContacts.reset);
+  }
+
   group('a press on nothing', () {
     test('let go where it went down begins a text that grows, on the whole '
         'pixel nearest it', () {
@@ -162,7 +194,7 @@ void main() {
       final (tool: _, :scene, baker: _, :begun, traced: _) = table(
         stage: CelTextStage(
           viewport: CanvasViewport(zoom: 0.1),
-          canvasSize: celTextTestCanvas,
+          pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
           placement: null,
         ),
       );
@@ -248,7 +280,7 @@ void main() {
       CelTextScene sceneAtOne() => table(
         stage: CelTextStage(
           viewport: CanvasViewport(),
-          canvasSize: celTextTestCanvas,
+          pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
           placement: null,
         ),
       ).scene;
@@ -1222,6 +1254,104 @@ void main() {
       expect(baker.asked, isEmpty, reason: 'nothing was typed');
       expect(textsOn(scene), [(4, 'ab'), (5, 'cd')]);
     });
+
+    // 🗣️I-96 (유저 2026-10-12): 「편집중이던 뭐던 컨트롤 누르고 상자 이동
+    // 가능하도록. ae에도 있던 기능인거같은데」 — and I-96-Q3 (2026-10-16,
+    // a): a finger resting on the glass is a tablet's Ctrl.
+    group('with Ctrl held', () {
+      final holds = <String, void Function()>{
+        'Ctrl': () => hold(LogicalKeyboardKey.controlLeft),
+        // Ctrl is ⌘ on a Mac or an iPad.
+        '⌘': () => hold(LogicalKeyboardKey.metaLeft),
+        'a finger on the glass': () => restAFinger(9),
+      };
+      for (final MapEntry(key: held, value: holdIt) in holds.entries) {
+        test('🚨($held) a press inside is the BOX\'S: dragged, it carries '
+            'the text a whole pixel at a time, its letters still held, and '
+            'lands with them', () async {
+          final (:tool, :scene, :baker, begun: _, traced: _) = table(
+            texts: [carried(4, says('ab'))],
+          );
+          press(scene, 12, 12);
+          tool.typeAt(const TextSelection.collapsed(offset: 2));
+          holdIt();
+
+          final down = press(scene, 9, 13)!;
+
+          expect(
+            tool.letters!.selection,
+            const TextSelection.collapsed(offset: 2),
+            reason: 'no caret was set',
+          );
+
+          move(scene, down, 14.6, 16.2);
+          up(scene, down, 14.6, 16.2);
+
+          expect(tool.hold, CelTextHold.letters);
+          expect(tool.letters!.content.anchor, CanvasPoint(x: 14, y: 11));
+          expect(textOf(scene, 4).content.anchor, CanvasPoint(x: 8, y: 8));
+
+          tool.stopTyping();
+          while (baker.asked.any((bake) => !bake.answered)) {
+            await baker.pending.answer();
+          }
+
+          expect(textOf(scene, 4).content.anchor, CanvasPoint(x: 14, y: 11));
+        });
+      }
+
+      for (final MapEntry(key: held, value: holdIt) in holds.entries) {
+        test('($held) let go where it went down, the caret goes there, as a '
+            'press without it puts it', () {
+          final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+            texts: [carried(4, says('ab'))],
+          );
+          press(scene, 12, 12);
+          tool.typeAt(const TextSelection.collapsed(offset: 2));
+          holdIt();
+
+          final click = press(scene, 9, 13)!;
+          up(scene, click, 9, 13);
+
+          expect(tool.hold, CelTextHold.letters);
+          expect(
+            tool.letters!.selection,
+            const TextSelection.collapsed(offset: 0),
+          );
+        });
+      }
+
+      test('🚨the finger PRESSING is not its own Ctrl, nor one that has '
+          'lifted: the press inside sets the caret', () {
+        final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+          texts: [carried(4, says('ab'))],
+        );
+        press(scene, 12, 12);
+        tool.typeAt(const TextSelection.collapsed(offset: 2));
+        restAFinger(9);
+        CanvasTouchContacts.noteAppWide(
+          const PointerUpEvent(pointer: 9, kind: PointerDeviceKind.touch),
+        );
+        // Heard as it goes down, as the app's observer may hear it first.
+        restAFinger(10);
+
+        celTextPressAt(
+          scene,
+          PointerDownEvent(
+            pointer: 10,
+            kind: PointerDeviceKind.touch,
+            position: scene.stage.onPanel(const Offset(9, 13)),
+          ),
+          const Offset(9, 13),
+        );
+
+        expect(
+          tool.letters!.selection,
+          const TextSelection.collapsed(offset: 0),
+          reason: 'a caret, not the box: no finger rests besides the press',
+        );
+      });
+    });
   });
 
   group('a row shown posed', () {
@@ -1230,7 +1360,7 @@ void main() {
     // canvas at (2x − 10, 2y − 14).
     final posed = CelTextStage(
       viewport: CanvasViewport(zoom: 4),
-      canvasSize: celTextTestCanvas,
+      pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
       placement: placedBy(
         TransformPose.uniform(center: CanvasPoint(x: 22, y: 18), zoom: 2),
         celTextTestCanvas,
@@ -1331,14 +1461,11 @@ class _Host implements CelTextToolHost {
   CelTextCel? get cel => null;
 
   @override
-  HistoryMark? get historyMark => history.gestures.mark;
+  HistoryGestures get gestures => history.gestures;
 
   @override
-  void run(
-    Command command, {
-    HistoryMark? withCelMadeSince,
-    Set<String> setIn = const {},
-  }) => history.execute(command);
+  void run(Command command, {Set<String> setIn = const {}}) =>
+      history.execute(command);
 
   /// How often the hand asked for the cel to be drawn again.
   int shown = 0;

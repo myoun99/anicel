@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
@@ -23,6 +24,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/view_hand.dart';
 
 import '../brush_canvas_test_helpers.dart';
 
@@ -85,6 +87,55 @@ void main() {
     steadied.show!.landStroke(corner);
 
     expect(_look(steadied.committed.single), _look(plain.committed.single));
+  });
+
+  testWidgets('⛔nothing smooths it: a brush with 後補正 lays the path where '
+      'it was told, corner and all (F-418)', (tester) async {
+    final plain = _Host();
+    await _pump(tester, plain, _brush());
+    plain.show!.landStroke(corner);
+
+    final smoothing = _Host();
+    await _pump(tester, smoothing, _brush(postStrength: 100));
+    smoothing.show!.landStroke(corner);
+    // Fixture: a hand's stroke through the same points is smoothed.
+    await _byMouse(tester, const [
+      Offset(10, 10),
+      Offset(100, 10),
+      Offset(100, 50),
+    ]);
+
+    expect(smoothing.committed, hasLength(2));
+    expect(_look(smoothing.committed.first), _look(plain.committed.single));
+    expect(
+      _look(smoothing.committed.last),
+      isNot(_look(plain.committed.single)),
+      reason: "fixture: the hand's stroke was smoothed",
+    );
+  });
+
+  testWidgets('⛔a cancelled stroke leaves no line behind to smooth: the '
+      'path laid after it lands where it was told (F-418)', (tester) async {
+    final plain = _Host();
+    await _pump(tester, plain, _brush());
+    plain.show!.landStroke(corner);
+
+    final smoothing = _Host();
+    await _pump(tester, smoothing, _brush(postStrength: 100));
+    final hand = await tester.startGesture(
+      canvasGlobalOffset(tester, const Offset(20, 40)),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    await hand.moveTo(canvasGlobalOffset(tester, const Offset(60, 30)));
+    await tester.pump();
+    await hand.cancel();
+    await tester.pump();
+    smoothing.show!.landStroke(corner);
+
+    expect(smoothing.committed, hasLength(1), reason: 'the cancel landed none');
+    expect(_look(smoothing.committed.single), _look(plain.committed.single));
   });
 
   testWidgets('⛔nothing snaps it: under a perspective guide that bends a '
@@ -259,6 +310,41 @@ void main() {
 
       expect(host.committed, hasLength(1));
       expect(host.committed.single.first.center, p(10, 10));
+      expect(host.askedForACel, 1, reason: 'asked once');
+    });
+
+    testWidgets('🗣️I-113: on a held cel that gives way it asks for a cel of '
+        'its own, and draws once that is there — never on the held one', (
+      tester,
+    ) async {
+      final host = _Host();
+      // It gives way until the stroke has made its own cel: that one stands
+      // on its block's head, where a mark goes on the cel.
+      bool givesWay() => host.askedForACel == 0;
+      await _pump(
+        tester,
+        host,
+        _brush(),
+        celAnswer: true,
+        markMakesItsOwnCel: givesWay,
+      );
+
+      expect(host.show!.landStroke(corner), isTrue, reason: 'it will be drawn');
+      expect(host.askedForACel, 1);
+      expect(host.committed, isEmpty, reason: 'not on the held cel');
+
+      // The frame that brings the cel it made.
+      await _pump(
+        tester,
+        host,
+        _brush(),
+        celAnswer: true,
+        markMakesItsOwnCel: givesWay,
+        frame: 'frame-b',
+      );
+      await tester.pump();
+
+      expect(host.committed, hasLength(1));
       expect(host.askedForACel, 1, reason: 'asked once');
     });
 
@@ -628,8 +714,10 @@ void main() {
 }
 
 class _Host {
-  ShapeShow? show;
-  StrokeLander? lander;
+  final shapeShow = ViewHand<ShapeShow>();
+  final strokeLander = ViewHand<StrokeLander>();
+  ShapeShow? get show => shapeShow.now;
+  StrokeLander? get lander => strokeLander.now;
   final data = <BrushStrokeCommitData>[];
   List<List<BrushDab>> get committed => [
     for (final landed in data) landed.sourceDabs,
@@ -648,14 +736,21 @@ final _cel = BitmapSurface(
   tileSize: 16,
 );
 
+/// [stabilizer] null: switched off.
 BrushEditCanvasInputSettings _brush({
-  double stabilizer = 0,
+  double? stabilizer,
+  double postStrength = 0,
   BrushTipRotationMode rotation = BrushTipRotationMode.fixed,
 }) => BrushToolState.defaults
     .copyWith(
       size: 6,
       roundness: 0.5,
-      stabilizerStrength: stabilizer,
+      correction: BrushCorrection(
+        steadies: stabilizer != null,
+        stabilization: stabilizer ?? 0,
+        postStrength: postStrength,
+        postBySpeed: false,
+      ),
       rotationMode: rotation,
     )
     .toInputSettings();
@@ -667,6 +762,7 @@ Future<void> _pump(
   bool editable = true,
   bool rowAcceptsStrokes = true,
   bool? celAnswer,
+  bool Function()? markMakesItsOwnCel,
   CutGuides? guides,
   ActiveStrokeOverlayModel? overlay,
   String frame = 'frame-a',
@@ -693,9 +789,10 @@ Future<void> _pump(
                   host.askedForACel += 1;
                   return celAnswer;
                 },
+          markMakesItsOwnCel: markMakesItsOwnCel,
           onActiveStrokeChanged: host.active.add,
-          onShapeShowChanged: (show) => host.show = show,
-          onStrokeLanderChanged: (lander) => host.lander = lander,
+          shapeShow: host.shapeShow,
+          strokeLander: host.strokeLander,
           onSourceStrokeCommitted: host.data.add,
           overlayModel: overlay,
         ),

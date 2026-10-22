@@ -102,8 +102,9 @@ class BrushTipLibrary extends ChangeNotifier {
   }
 
   /// Adds [mask] to the library under [name], writing its image. Used by
-  /// brush-pack import (which brings its own ids, so re-importing replaces
-  /// rather than duplicates) and by the user adding an image by hand.
+  /// brush-pack import (for a tip whose id the library does not hold yet —
+  /// one it holds is never written over) and by the user adding an image by
+  /// hand.
   Future<BrushTipEntry> register(
     BrushTipMask mask, {
     required String name,

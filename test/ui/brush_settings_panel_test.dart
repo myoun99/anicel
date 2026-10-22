@@ -3,9 +3,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
@@ -14,6 +16,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/panels/editor_panel_dock.dart';
 import 'package:anicel/src/ui/panels/editor_panel_frame.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
+import 'package:anicel/src/ui/widgets/tip_direction_popup.dart';
 
 void main() {
   testWidgets('EditorPanelFrame renders toolbar and body at small sizes', (
@@ -109,21 +112,7 @@ void main() {
       'with R26 #11, and size/opacity left for the top strip)', (
     tester,
   ) async {
-    var state = BrushToolState.defaults;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (context, setState) => BrushSettingsPanel(
-                state: state,
-                onChanged: (next) => setState(() => state = next),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    final read = await _pumpPanel(tester);
 
     final spacingSlider = find.byKey(
       const ValueKey<String>('brush-tool-spacing-slider'),
@@ -131,26 +120,93 @@ void main() {
     await tester.ensureVisible(spacingSlider);
     await tester.drag(spacingSlider, const Offset(80, 0));
     await tester.pumpAndSettle();
-    expect(state.spacing, greaterThan(BrushToolState.defaultSpacing));
+    expect(read().spacing, greaterThan(BrushToolState.defaultSpacing));
+  });
+
+  testWidgets("the 손떨림 보정 slider sets the brush's own, which its preset "
+      'keeps (F-418-Q6)', (tester) async {
+    final read = await _pumpPanel(tester);
+
+    final slider = find.byKey(
+      const ValueKey<String>('brush-tool-stabilizer-slider'),
+    );
+    await tester.ensureVisible(slider);
+    await tester.drag(slider, const Offset(80, 0));
+    await tester.pumpAndSettle();
+    expect(
+      read().correction.stabilization,
+      greaterThan(BrushCorrection.defaultStabilization),
+    );
+    expect(read().toBrushSettings().correction, read().correction);
+  });
+
+  testWidgets('손떨림 보정 and 後補正 land on whole numbers, as Clip Studio '
+      'sets them (F-435)', (tester) async {
+    // 유저 2026-10-21: 「손떨림 보정, 클튜에선 소수점자리가 없음. 거기까지
+    // 조절안함. 우리도 정수로만」.
+    final read = await _pumpPanel(tester);
+    final rows = <String, double Function()>{
+      'brush-tool-stabilizer-slider': () => read().correction.stabilization,
+      'brush-tool-post-correction-slider': () =>
+          read().correction.postStrength,
+    };
+    for (final MapEntry(key: key, value: valueOf) in rows.entries) {
+      final slider = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(slider);
+      await tester.pumpAndSettle();
+      final box = tester.getRect(slider);
+      final seen = <double>[];
+      // Deliberately awkward places — taps that landed on whole numbers by
+      // luck would prove nothing.
+      for (final along in [0.213, 0.347, 0.461, 0.589]) {
+        await tester.tapAt(
+          Offset(box.left + box.width * along, box.center.dy),
+        );
+        await tester.pumpAndSettle();
+        seen.add(valueOf());
+      }
+      expect(seen.toSet(), hasLength(4), reason: '⛔premise: $key moved');
+      for (final value in seen) {
+        expect(value, value.roundToDouble(), reason: '$key held $value');
+      }
+    }
+  });
+
+  testWidgets('손떨림 보정 적용 switched off dims the slider and the speed row '
+      'under it, and keeps what they hold (유저 2026-10-20)', (tester) async {
+    Future<void> tap(String key) async {
+      final target = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(target);
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
+
+    final read = await _pumpPanel(
+      tester,
+      initial: BrushToolState.defaults.copyWith(
+        correction: const BrushCorrection(stabilization: 40),
+      ),
+    );
+    const off = BrushCorrection(steadies: false, stabilization: 40);
+    await tap('brush-tool-stabilizer-on');
+    expect(read().correction, off);
+
+    final slider = find.byKey(
+      const ValueKey<String>('brush-tool-stabilizer-slider'),
+    );
+    await tester.ensureVisible(slider);
+    await tester.drag(slider, const Offset(80, 0));
+    await tester.pumpAndSettle();
+    await tap('brush-tool-steadying-by-speed-slow');
+    expect(read().correction, off, reason: 'dim: neither moves');
+
+    await tap('brush-tool-stabilizer-on');
+    expect(read().correction, const BrushCorrection(stabilization: 40));
   });
 
   testWidgets('BrushSettingsPanel updates hardness and flow (the tip '
       'shape segment left with R26 #11 — presets own the tip)', (tester) async {
-    var state = BrushToolState.defaults;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (context, setState) => BrushSettingsPanel(
-                state: state,
-                onChanged: (next) => setState(() => state = next),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    final read = await _pumpPanel(tester);
 
     final hardnessSlider = find.byKey(
       const ValueKey<String>('brush-tool-hardness-slider'),
@@ -158,7 +214,7 @@ void main() {
     await tester.ensureVisible(hardnessSlider);
     await tester.drag(hardnessSlider, const Offset(-80, 0));
     await tester.pumpAndSettle();
-    expect(state.hardness, lessThan(BrushToolState.defaultHardness));
+    expect(read().hardness, lessThan(BrushToolState.defaultHardness));
 
     // ensureVisible before dragging, like the hardness slider above: the
     // scroll position after the previous ensureVisible depends on how much
@@ -169,32 +225,18 @@ void main() {
     await tester.ensureVisible(flowSlider);
     await tester.drag(flowSlider, const Offset(-80, 0));
     await tester.pumpAndSettle();
-    expect(state.flow, lessThan(BrushToolState.defaultFlow));
+    expect(read().flow, lessThan(BrushToolState.defaultFlow));
 
     // The sampled input settings carry every tool option to the canvas.
-    final inputSettings = state.toInputSettings();
-    expect(inputSettings.hardness, state.hardness);
-    expect(inputSettings.flow, state.flow);
+    final inputSettings = read().toInputSettings();
+    expect(inputSettings.hardness, read().hardness);
+    expect(inputSettings.flow, read().flow);
   });
 
   testWidgets('BrushSettingsPanel updates tip roundness and angle', (
     tester,
   ) async {
-    var state = BrushToolState.defaults;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (context, setState) => BrushSettingsPanel(
-                state: state,
-                onChanged: (next) => setState(() => state = next),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    final read = await _pumpPanel(tester);
 
     final roundnessSlider = find.byKey(
       const ValueKey<String>('brush-tool-roundness-slider'),
@@ -202,8 +244,8 @@ void main() {
     await tester.ensureVisible(roundnessSlider);
     await tester.drag(roundnessSlider, const Offset(-80, 0));
     await tester.pumpAndSettle();
-    expect(state.roundness, lessThan(BrushToolState.defaultRoundness));
-    expect(state.roundness, greaterThanOrEqualTo(BrushToolState.minRoundness));
+    expect(read().roundness, lessThan(BrushToolState.defaultRoundness));
+    expect(read().roundness, greaterThanOrEqualTo(BrushToolState.minRoundness));
 
     final angleSlider = find.byKey(
       const ValueKey<String>('brush-tool-angle-slider'),
@@ -211,36 +253,22 @@ void main() {
     await tester.ensureVisible(angleSlider);
     await tester.drag(angleSlider, const Offset(60, 0));
     await tester.pumpAndSettle();
-    expect(state.angleDegrees, greaterThan(BrushToolState.defaultAngleDegrees));
-    expect(state.angleDegrees, lessThanOrEqualTo(180.0));
+    expect(read().angleDegrees, greaterThan(BrushToolState.defaultAngleDegrees));
+    expect(read().angleDegrees, lessThanOrEqualTo(180.0));
 
     // Both reach the sampled canvas input settings.
-    final inputSettings = state.toInputSettings();
-    expect(inputSettings.roundness, state.roundness);
-    expect(inputSettings.angleDegrees, state.angleDegrees);
+    final inputSettings = read().toInputSettings();
+    expect(inputSettings.roundness, read().roundness);
+    expect(inputSettings.angleDegrees, read().angleDegrees);
   });
 
   testWidgets(
     'BrushSettingsPanel opens the pressure popup and toggles the curve '
     '(BB-3)',
     (tester) async {
-      var state = BrushToolState.defaults;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: StatefulBuilder(
-                builder: (context, setState) => BrushSettingsPanel(
-                  state: state,
-                  onChanged: (next) => setState(() => state = next),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
+      final read = await _pumpPanel(tester);
 
-      expect(state.flowPressureCurve, isNull);
+      expect(read().flowPressureCurve, isNull);
 
       // Every pressure-capable row STILL HERE carries its curve button;
       // size and opacity took theirs to the top strip with them.
@@ -275,8 +303,8 @@ void main() {
         find.byKey(const ValueKey<String>('curve-source-pressure')),
       );
       await tester.pumpAndSettle();
-      expect(state.flowPressureCurve, BrushPressureCurve.identity());
-      expect(state.toInputSettings().flowPressureCurve, isNotNull);
+      expect(read().flowPressureCurve, BrushPressureCurve.identity());
+      expect(read().toInputSettings().flowPressureCurve, isNotNull);
 
       // Disabling clears it back to null (the copyWith-preserve rule is
       // bypassed through withPressureCurve).
@@ -284,40 +312,18 @@ void main() {
         find.byKey(const ValueKey<String>('curve-source-pressure')),
       );
       await tester.pumpAndSettle();
-      expect(state.flowPressureCurve, isNull);
+      expect(read().flowPressureCurve, isNull);
     },
   );
 
   group('placement dynamics', () {
-    Future<BrushToolState Function()> pumpPanel(
-      WidgetTester tester, {
-      BrushToolState? initial,
-    }) async {
-      var state = initial ?? BrushToolState.defaults;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: StatefulBuilder(
-                builder: (context, setState) => BrushSettingsPanel(
-                  state: state,
-                  onChanged: (next) => setState(() => state = next),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      return () => state;
-    }
-
     testWidgets('⛔the mask sliders keep their place with no mask picked', (
       tester,
     ) async {
       // The dual and texture scale/density rows used to be mounted only once
       // a mask was chosen, so picking one in the popup shoved four rows into
       // the panel under the finger that had just come back from it.
-      final read = await pumpPanel(tester);
+      final read = await _pumpPanel(tester);
 
       expect(read().dualMask, isNull);
       expect(read().textureMask, isNull);
@@ -366,7 +372,7 @@ void main() {
         size: 2,
         alpha: Uint8List.fromList([0, 128, 200, 255]),
       );
-      final read = await pumpPanel(
+      final read = await _pumpPanel(
         tester,
         initial: BrushToolState.defaults.withMask(BrushMaskSlot.dual, mask),
       );
@@ -405,7 +411,7 @@ void main() {
         size: 2,
         alpha: Uint8List.fromList([0, 128, 200, 255]),
       );
-      final read = await pumpPanel(
+      final read = await _pumpPanel(
         tester,
         initial: BrushToolState.defaults.withMask(BrushMaskSlot.dual, mask),
       );
@@ -436,7 +442,7 @@ void main() {
     ) async {
       // 「없다가 생기는 UI 금지」, the same law the mask sliders above obey:
       // the row is here and DEAD, not absent and then suddenly present.
-      final read = await pumpPanel(tester);
+      final read = await _pumpPanel(tester);
       expect(read().dualMask, isNull);
       final button = find.byKey(
         const ValueKey<String>('brush-tool-dual-blend-menu-button'),
@@ -453,44 +459,98 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the jitter sliders reach the engine', (tester) async {
-      // These have existed in the engine since P20 with no way to touch
-      // them: only a preset or an import could turn them on.
-      final read = await pumpPanel(tester);
+    testWidgets('繰り返し方法 is picked by its row and reaches the shape '
+        '(F-176-Q3)', (tester) async {
+      BrushTipMask tip(String id) => BrushTipMask(
+        id: id,
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 200, 255]),
+      );
+      final read = await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.copyWith(tips: [tip('a'), tip('b')]),
+      );
+      expect(read().tipOrder, BrushTipOrder.repeat);
 
-      for (final key in [
-        'brush-tool-size-jitter-slider',
-        'brush-tool-opacity-jitter-slider',
-        'brush-tool-angle-jitter-slider',
-      ]) {
-        final slider = find.byKey(ValueKey<String>(key));
-        await tester.ensureVisible(slider);
-        await tester.drag(slider, const Offset(60, 0));
-        await tester.pumpAndSettle();
-      }
+      final button = find.byKey(
+        const ValueKey<String>('brush-tool-tip-order-menu-button'),
+      );
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-tool-tip-order-pingPong')),
+      );
+      await tester.pumpAndSettle();
 
-      expect(read().sizeJitter, greaterThan(0));
-      expect(read().opacityJitter, greaterThan(0));
+      expect(read().tipOrder, BrushTipOrder.pingPong);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('⛔the 繰り返し方法 row keeps its place with no tip picked', (
+      tester,
+    ) async {
+      // 「없다가 생기는 UI 금지」 again: the parametric tip has no tips to
+      // take turns, so the row is here and DEAD.
+      final read = await _pumpPanel(tester);
+      expect(read().tips, isEmpty, reason: 'fixture premise');
+      final button = find.byKey(
+        const ValueKey<String>('brush-tool-tip-order-menu-button'),
+      );
+      expect(button, findsOneWidget, reason: 'the row must keep its place');
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('brush-tool-tip-order-pingPong')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the angle\'s random turn reaches the engine — from the '
+        'window behind the button beside the angle (F-176-Q6)', (
+      tester,
+    ) async {
+      final read = await _pumpPanel(tester);
+
+      final button = find.byKey(
+        const ValueKey<String>(TipDirectionButton.keyValue),
+      );
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      final slider = find.byKey(
+        const ValueKey<String>('brush-tool-angle-jitter-slider'),
+      );
+      await tester.drag(slider, const Offset(60, 0));
+      await tester.pumpAndSettle();
+
       expect(read().angleJitter, greaterThan(0));
     });
 
-    testWidgets('the roundness and spacing jitters reach the engine', (
+    testWidgets('🚨no 「무작위」 group — chance is each setting\'s row', (
       tester,
     ) async {
-      final read = await pumpPanel(tester);
+      // F-176-Q2 (유저 2026-10-18 「클튜식 — 팝업에 랜덤 줄, 「무작위」 묶음
+      // 없앰」): the jitters are the ランダム row of each setting's curve
+      // popup, and roundness and spacing carry that popup like the others.
+      await _pumpPanel(tester);
 
-      for (final key in [
-        'brush-tool-roundness-jitter-slider',
-        'brush-tool-spacing-jitter-slider',
-      ]) {
-        final slider = find.byKey(ValueKey<String>(key));
-        await tester.ensureVisible(slider);
-        await tester.drag(slider, const Offset(60, 0));
-        await tester.pumpAndSettle();
+      for (final gone in ['size', 'opacity', 'roundness', 'spacing']) {
+        expect(
+          find.byKey(ValueKey<String>('brush-tool-$gone-jitter-slider')),
+          findsNothing,
+          reason: gone,
+        );
       }
-
-      expect(read().roundnessJitter, greaterThan(0));
-      expect(read().spacingJitter, greaterThan(0));
+      for (final target in ['roundness', 'spacing']) {
+        expect(
+          find.byKey(ValueKey<String>('brush-tool-pressure-$target')),
+          findsOneWidget,
+          reason: target,
+        );
+      }
     });
 
     // The blend lock moved to the top strip with the blend button; its
@@ -502,7 +562,7 @@ void main() {
       // 유저, 반복: 「없다가 생기는 UI 금지. 자리는 항상 예약하고 내용만
       // 바꾼다」. The three knobs used to be mounted only while mixing was
       // on, so the switch made everything below it jump.
-      final read = await pumpPanel(tester);
+      final read = await _pumpPanel(tester);
       const amount = ValueKey<String>('brush-tool-paint-amount-slider');
       const stretchKey = ValueKey<String>('brush-tool-color-stretch-slider');
 
@@ -541,7 +601,7 @@ void main() {
     testWidgets('scatter carries a radius, a count and an axis choice', (
       tester,
     ) async {
-      final read = await pumpPanel(tester);
+      final read = await _pumpPanel(tester);
 
       final radius = find.byKey(
         const ValueKey<String>('brush-tool-scatter-slider'),
@@ -573,11 +633,11 @@ void main() {
     testWidgets('the tip can be told to follow the stroke direction', (
       tester,
     ) async {
-      final read = await pumpPanel(tester);
+      final read = await _pumpPanel(tester);
       expect(read().rotationMode, BrushTipRotationMode.fixed);
 
       final button = find.byKey(
-        const ValueKey<String>('brush-tool-rotation-menu-button'),
+        const ValueKey<String>(TipDirectionButton.keyValue),
       );
       await tester.ensureVisible(button);
       await tester.tap(button);
@@ -594,39 +654,124 @@ void main() {
   testWidgets('the brush edge is the app\'s one grouped choice — a pill per '
       'step, the chosen one lit, a press choosing (board '
       'pill-group-everywhere)', (tester) async {
-    var state = BrushToolState.defaults;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (context, setState) => BrushSettingsPanel(
-                state: state,
-                onChanged: (next) => setState(() => state = next),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    final read = await _pumpPanel(tester);
     Finder edge(BrushAntiAlias step) =>
         find.byKey(ValueKey<String>('brush-tool-edge-${step.name}'));
     List<bool> lit() => [
       for (final step in BrushAntiAlias.values)
         tester.widget<Pill>(edge(step)).selected,
     ];
-    expect(state.antiAlias, isNot(BrushAntiAlias.none), reason: 'premise');
+    expect(read().antiAlias, isNot(BrushAntiAlias.none), reason: 'premise');
     expect(lit(), [
-      for (final step in BrushAntiAlias.values) step == state.antiAlias,
+      for (final step in BrushAntiAlias.values) step == read().antiAlias,
     ]);
 
     await tester.ensureVisible(edge(BrushAntiAlias.none));
     await tester.tap(edge(BrushAntiAlias.none));
     await tester.pumpAndSettle();
 
-    expect(state.antiAlias, BrushAntiAlias.none);
+    expect(read().antiAlias, BrushAntiAlias.none);
     expect(lit(), [
       for (final step in BrushAntiAlias.values) step == BrushAntiAlias.none,
     ]);
   });
+
+  testWidgets("the 보정 group writes the brush's own — the speed row and the "
+      '後補正 rows — and leaves dim what has nothing under it to bend '
+      '(F-418)', (tester) async {
+    Future<void> tap(String key) async {
+      final target = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(target);
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
+
+    const toggles = [
+      'brush-tool-post-by-speed-toggle',
+      'brush-tool-post-by-view-scale-toggle',
+      'brush-tool-post-bezier-toggle',
+    ];
+
+    var read = await _pumpPanel(
+      tester,
+      initial: BrushToolState.defaults.copyWith(
+        correction: BrushCorrection.none,
+      ),
+    );
+    await tap('brush-tool-steadying-by-speed-slow');
+    for (final key in toggles) {
+      await tap(key);
+    }
+    expect(
+      read().correction,
+      BrushCorrection.none,
+      reason: 'nothing steadied, nothing taken out: nothing to bend',
+    );
+    // 角をとがらせる sits under no switch in Clip Studio's group: it is
+    // never dim (F-418-Q11).
+    await tap('brush-tool-sharpen-corners');
+    expect(
+      read().correction,
+      BrushCorrection.none.copyWith(sharpenCorners: true),
+    );
+    await tap('brush-tool-sharpen-corners');
+    expect(read().correction, BrushCorrection.none, reason: 'and off again');
+
+    read = await _pumpPanel(
+      tester,
+      initial: BrushToolState.defaults.copyWith(
+        correction: const BrushCorrection(postStrength: 20),
+      ),
+    );
+    await tap('brush-tool-sharpen-corners');
+    await tap('brush-tool-steadying-by-speed-fast');
+    for (final key in toggles) {
+      await tap(key);
+    }
+    expect(
+      read().correction,
+      const BrushCorrection(
+        sharpenCorners: true,
+        steadyingBySpeed: BrushSteadyingBySpeed.fast,
+        postStrength: 20,
+        postBySpeed: false,
+        postByViewScale: false,
+        postBezier: true,
+      ),
+    );
+
+    final post = find.byKey(
+      const ValueKey<String>('brush-tool-post-correction-slider'),
+    );
+    await tester.ensureVisible(post);
+    await tester.drag(post, const Offset(80, 0));
+    await tester.pumpAndSettle();
+    expect(read().correction.postStrength, greaterThan(20));
+    expect(read().toBrushSettings().correction, read().correction);
+  });
+}
+
+/// The settings panel, scrolled, starting from [initial] and kept as each
+/// change leaves it: what it holds now is the answer of the function given
+/// back.
+Future<BrushToolState Function()> _pumpPanel(
+  WidgetTester tester, {
+  BrushToolState? initial,
+}) async {
+  var state = initial ?? BrushToolState.defaults;
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: StatefulBuilder(
+            builder: (context, setState) => BrushSettingsPanel(
+              state: state,
+              onChanged: (next) => setState(() => state = next),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  return () => state;
 }

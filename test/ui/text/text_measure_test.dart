@@ -65,4 +65,16 @@ void main() {
     );
     expect(measure.widest(const []), 0);
   });
+
+  test('a number with every digit in turn: the ten, in order, in its shape — '
+      'and the digits it is written in where they are not the ten', () {
+    expect(
+      everyDigitIn((digit) => '1$digit%').join(' '),
+      '10% 11% 12% 13% 14% 15% 16% 17% 18% 19%',
+    );
+    expect(
+      everyDigitIn((digit) => digit * 2, digits: '0F').join(' '),
+      '00 FF',
+    );
+  });
 }

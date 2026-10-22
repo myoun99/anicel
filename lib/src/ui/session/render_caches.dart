@@ -33,6 +33,7 @@ import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_ink_keys.dart';
+import '../../models/viewer_ink_keys.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/brush_frame_store.dart';
@@ -166,6 +167,13 @@ class RenderCaches {
   /// at once stayed resident until the workspace closed.
   int storyboardThumbnailBytes = 0;
 
+  /// What the sheets' media images hold — the logos, the cover pictures,
+  /// the photos on the sheets' ink (I-97) — within one viewer's share of
+  /// this device (`SheetImageCache`).
+  ///
+  /// PUSHED, as the thumbnails are: the cache lives in the workspace.
+  int sheetImageBytes = 0;
+
   /// What the media viewers hold between them.
   int get viewerRasterBytes {
     var total = 0;
@@ -197,6 +205,11 @@ class RenderCaches {
   /// envelope's unit.
   final BrushFrameStore timesheetInkStore = BrushFrameStore();
 
+  /// The viewers' ink store (I-114) — SESSION-owned like the sheets'. Its
+  /// keys carry the carry of the file written on ([viewerInkPageKey]), so
+  /// an entry whose carry the pool no longer holds is pruned at LOAD.
+  final BrushFrameStore viewerInkStore = BrushFrameStore();
+
   /// Every sheet's ink stores — the ONE list a whole-session walk reads:
   /// the budgets, memory pressure, the census, a save, an open, a reset.
   ///
@@ -206,6 +219,7 @@ class RenderCaches {
     conteInkRowStore,
     envelopeInkStore,
     timesheetInkStore,
+    viewerInkStore,
   ];
 
   /// Every store a cel ref can live in — the drawings, then
@@ -222,6 +236,9 @@ class RenderCaches {
     }
     if (isTimesheetInkKey(key)) {
       return timesheetInkStore;
+    }
+    if (isViewerInkKey(key)) {
+      return viewerInkStore;
     }
     return isEnvelopeInkKey(key) ? envelopeInkStore : null;
   }

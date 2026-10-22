@@ -12,8 +12,10 @@ import '../../models/envelope/cut_envelope_ink_keys.dart'
     show envelopeInkKeyOfCut;
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../../models/timesheet_document.dart' show sheetArtistMark;
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
 import '../../services/brush_frame_store.dart' show BrushFrameStore;
+import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/persistence/cel_places.dart' show rowOwnerName;
@@ -22,7 +24,6 @@ import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
 import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import '../text/place_lines.dart' show drawingPlaceLines;
-import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'cut_placement.dart';
 import 'independent_clip_mint.dart' show carryBakedPictures, carrySurfaces;
@@ -31,9 +32,9 @@ import 'session_roles.dart';
 import 'storyboard_rows.dart';
 
 /// The CUT VERBS — creating, deleting, duplicating, renaming and moving
-/// the active cut, linking it, resizing its canvas, its note, guides and
-/// thumbnail frame — as their own object. Each is a command over the
-/// repository; the session stays the facade that names them.
+/// the active cut, linking it, resizing its canvas, its note and guides —
+/// as their own object. Each is a command over the repository; the session
+/// stays the facade that names them.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: nothing of its own and twelve
@@ -45,7 +46,6 @@ class CutVerbs {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
-    required ActiveCutControllers controllers,
     required StoryboardRows storyboardRows,
     required ActiveCutEdits activeCut,
     required CutPlacement placement,
@@ -54,7 +54,6 @@ class CutVerbs {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _controllers = controllers,
        _storyboardRows = storyboardRows,
        _activeCut = activeCut,
        _placement = placement,
@@ -73,7 +72,6 @@ class CutVerbs {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
-  final ActiveCutControllers _controllers;
 
   /// Where a cut may step to and which index that is. Stateless, and asked
   /// by nobody but these verbs — so it is theirs, not a name on the session.
@@ -112,6 +110,22 @@ class CutVerbs {
     ),
   );
 
+  /// What [resizeActiveCutCanvas] will make of the pictures kept in files,
+  /// worked out ahead on the machine's workers — what its wait window holds
+  /// up first.
+  Future<void> resizeActiveCutCanvasAhead(
+    CanvasSize canvasSize, {
+    CanvasResizeAnchor anchor = CanvasResizeAnchor.center,
+    void Function(double done)? report,
+  }) => _activeCut.aheadOfActiveCut(
+    (cutId) => _project.cutCommandCoordinator.resizeCutCanvasAhead(
+      cutId: cutId,
+      canvasSize: canvasSize,
+      anchor: anchor,
+      report: report,
+    ),
+  );
+
   /// The active cut's canvas at [canvasSize], the picture moved by
   /// [contentOffset] — what a canvas adjusted on the canvas lands (I-79).
   void placeActiveCutCanvas(
@@ -122,6 +136,22 @@ class CutVerbs {
       cutId: cutId,
       canvasSize: canvasSize,
       contentOffset: contentOffset,
+    ),
+  );
+
+  /// What [placeActiveCutCanvas] will make of the pictures kept in files,
+  /// worked out ahead on the machine's workers — what its wait window holds
+  /// up first.
+  Future<void> placeActiveCutCanvasAhead(
+    CanvasSize canvasSize, {
+    required ({double dx, double dy}) contentOffset,
+    void Function(double done)? report,
+  }) => _activeCut.aheadOfActiveCut(
+    (cutId) => _project.cutCommandCoordinator.placeCutCanvasAhead(
+      cutId: cutId,
+      canvasSize: canvasSize,
+      contentOffset: contentOffset,
+      report: report,
     ),
   );
 
@@ -170,10 +200,10 @@ class CutVerbs {
       CutId owner,
       BrushFrameKey? Function(BrushFrameKey key) inCopy,
     ) => carrySurfaces(
-      store: store,
       sources: store.bakedSurfacesForCut(owner).entries,
       surfaceOf: (written) => written.value,
       keyOfCopy: (written) => inCopy(written.key),
+      keep: (key, surface, _) => store.storeBakedSurface(key, surface),
     );
 
     carry(_renderCaches.conteInkRowStore, from, (key) {
@@ -260,6 +290,19 @@ class CutVerbs {
   String? activeCutNoteOf(int page) =>
       _project.activeCutOrNull?.metadata.noteOf(page);
 
+  /// Names the active cut's sheet worker — the 러프원화 a sheet's name box
+  /// prints ([sheetArtistMark]) — on it and its 겸용 siblings, as 컷 설정
+  /// names a stage (I-112: the box and the setting are one name). A name
+  /// changes no cut's shape, so — as there — the repaint is the whole of
+  /// the reaction.
+  void setActiveCutSheetArtist(String name) =>
+      _activeCut.onActiveCutQuietly(
+        (cutId) => _project.cutCommandCoordinator.setCutStaffNames(
+          cutIds: [cutId],
+          names: {sheetArtistMark: name},
+        ),
+      );
+
   void updateActiveCutNote({required int page, required String note}) =>
       _activeCut.onActiveCut(
         (cutId) => _project.cutCommandCoordinator.updateCutNote(
@@ -324,31 +367,6 @@ class CutVerbs {
       cutIds: cutIds,
       names: names,
     );
-    _changes.notifyChanged();
-  }
-
-  /// Whether the active cut's storyboard thumbnail is pinned to the
-  /// playhead frame (drives the toolbar toggle's state).
-  bool get isActiveCutThumbnailPinnedHere =>
-      _project.activeCutOrNull?.metadata.thumbnailFrameIndex ==
-          _controllers.timelineController.currentFrameIndex &&
-      _project.activeCutOrNull?.metadata.thumbnailFrameIndex != null;
-
-  /// Pins the active cut's storyboard thumbnail to the playhead frame, or
-  /// releases the pin back to the first frame when pressed on the pinned
-  /// frame itself (toggle; one undo step either way).
-  void toggleActiveCutThumbnailFrame() {
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
-      return;
-    }
-    final frame = _controllers.timelineController.currentFrameIndex;
-    final pinned = cut.metadata.thumbnailFrameIndex;
-    _project.cutCommandCoordinator.updateCutThumbnailFrame(
-      cutId: cut.id,
-      frameIndex: pinned == frame ? null : frame,
-    );
-    _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
   }
 
@@ -534,6 +552,20 @@ class CutVerbs {
     );
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
+  }
+
+  /// What [convertActiveCutToLinked] works out ahead — the active cut's
+  /// canvas taken by [targetCutId]
+  /// ([CutCommandCoordinator.convertCutToLinkedAhead]); null when nothing.
+  WorkAhead? convertActiveCutToLinkedAhead(CutId targetCutId) {
+    final originCutId = _timeline.editingSession.activeCutId;
+    if (originCutId == null || originCutId == targetCutId) {
+      return null;
+    }
+    return _project.cutCommandCoordinator.convertCutToLinkedAhead(
+      originCutId: originCutId,
+      targetCutId: targetCutId,
+    );
   }
 
   /// Whether the selection can delete: cuts selected AND at least one

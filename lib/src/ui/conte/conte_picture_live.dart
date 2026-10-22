@@ -148,6 +148,9 @@ class ContePictureLive extends StatelessWidget {
       frameIndex: picture.frame,
       drawingLayerId: picture.layer.id,
     );
+    // The overlay shows its pictures in place of the painter's tiles below,
+    // so through the chain they are shown through.
+    window.overlay.sourceEffects = drawn.activeSourceEffects;
     final canvas = picture.cut.canvasSize;
     final corners = canvas.canvasRect;
     return Stack(

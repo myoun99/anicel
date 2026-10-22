@@ -137,6 +137,49 @@ void main() {
     expect(recorded.asked, isEmpty, reason: 'a loop come back round');
   });
 
+  // I-22 ②: an uncovering laid the paper back under a covered glyph from a
+  // walk of the whole window. The paper it lays is the cells round that
+  // glyph, along the strip, and no further.
+  testWidgets('an uncovering lays paper under the cells round its glyph, not '
+      'from the window\'s start', (tester) async {
+    const cell = 8.0;
+    final scale = await rulerOf(tester, cell: cell, frames: 300);
+    final playhead = ValueNotifier<int?>(150);
+    addTearDown(playhead.dispose);
+    final canvas = TestRecordingCanvas();
+    TimelineRulerPlayheadWritingPainter(
+      scale: scale,
+      playhead: playhead,
+      layout: TimelineFrameRulerPainter.glyphsAt,
+    ).paint(canvas, Size.zero);
+
+    // The paper an uncovering lays: what is filled inside a glyph's clip.
+    final laid = <(Rect clip, Rect paper)>[];
+    Rect? clip;
+    for (final call in canvas.invocations) {
+      final invocation = call.invocation;
+      switch (invocation.memberName) {
+        case #clipRect:
+          clip = invocation.positionalArguments[0] as Rect;
+        case #restore:
+          clip = null;
+        case #drawRect:
+          if (clip case final inside?) {
+            laid.add((inside, invocation.positionalArguments[0] as Rect));
+          }
+      }
+    }
+    expect(laid, isNotEmpty, reason: 'premise: the pair covers a glyph');
+    for (final (clip, paper) in laid) {
+      expect(
+        paper.left,
+        greaterThanOrEqualTo(clip.left - 3 * cell),
+        reason: 'paper from the cells under $clip, not from the window',
+      );
+      expect(paper.right, lessThanOrEqualTo(clip.right + 3 * cell));
+    }
+  });
+
   testWidgets('what the neighbourhood finds is what the whole window would '
       'find', (tester) async {
     for (final showSeconds in [false, true]) {

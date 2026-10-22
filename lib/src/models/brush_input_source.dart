@@ -33,22 +33,34 @@
 /// never seen is a control that has to be explained — and explanatory text is
 /// banned.
 ///
-/// ## Randomness is NOT one of these
+/// ## Chance IS one of these — the fourth row
 ///
-/// 🚨Chance already has a home — `BrushShape.sizeJitter` and its siblings,
-/// applied as `value *= 1 - jitter * rand`. Promoting it to a fourth source
-/// here would be a second machine doing one job.
+/// Clip Studio's 影響元設定 lists ランダム beside 筆圧 · 傾き · 速度: a tick
+/// and a 最小値, no graph — the value is thrown between that floor and 100%
+/// on every dab. F-176-Q2 (유저 2026-10-18 「클튜식 — 팝업에 랜덤 줄,
+/// 「무작위」 묶음 없앰」) put it here, and the five jitter sliders went: a
+/// jitter of j IS a random row with 最小値 1 − j (`value *= 1 - j * rand` is
+/// the same throw), so they were the second machine.
 ///
-/// ⚠️TWO ROOMS, not one, and the split is on purpose: size / opacity / angle
-/// / roundness jitter roll PER DAB in `brush_stroke_dynamics.dart`, while
-/// SPACING jitter rolls per SEGMENT in `brush_edit_stroke.dart`
-/// (`activeStrokeSpacing`) — spacing is consumed by the interpolator, which
-/// is pure and shared, so threading a random source into it would cost more
-/// than the difference is worth. The reason lives at that call site. Neither
-/// room is a fourth input source, which is all this paragraph claims. **Krita agrees structurally** — its fuzzy sensors return
-/// `isAdditive() == true`, so they skip the combination mode entirely and get
-/// folded in by a hard-coded multiply at the end, which is the same shape as
-/// our jitter.
+/// ↩️**This section used to say the opposite** (09-09 확정 ②, after
+/// `brush-dynamics-sources-Q1`): 「랜덤은 지금 자리 그대로 — 지터 진폭으로
+/// 곱해 넣는다. 곡선 소스로 승격시키면 같은 일을 하는 기계가 두 벌」. It was
+/// right that one job wants one machine and wrong about which one should
+/// stay: the popup a Clip Studio user knows has the random row, and five
+/// sliders in a group of their own were the copy.
+///
+/// ⚠️The throw needs dice, which a dab does not carry — so [random] is the
+/// one source [brushInputValue] cannot answer from the dab alone. Whoever
+/// owns a stroke's dice hands a throw in (`applyBrushInputDynamics`), and a
+/// caller that has none — a still thumbnail — skips the row, the way a mouse
+/// skips 傾き.
+///
+/// ⚠️TWO ROOMS still, and on purpose: size, opacity, flow, hardness and
+/// roundness throw PER DAB, while SPACING throws per SEGMENT in
+/// `brush_edit_stroke.dart` (`spacingAt`) — spacing is consumed by
+/// the interpolator, which is pure and shared, so threading dice into it
+/// would cost more than the difference is worth. **Krita agrees
+/// structurally** — its fuzzy sensors are folded in by a multiply at the end.
 enum BrushInputSource {
   /// 筆圧. The only source every tablet reports.
   pressure,
@@ -69,7 +81,12 @@ enum BrushInputSource {
   ///
   /// ⚠️Measured per SEGMENT, not per dab: every dab interpolated between two
   /// pointer readings carries the speed of the move that produced them.
-  speed;
+  speed,
+
+  /// ランダム — a fresh throw in [0, 1) for every dab (every segment, for
+  /// spacing). It has no graph in Clip Studio's panel, only a 最小値, so its
+  /// curve is always the straight line and the floor is what a brush sets.
+  random;
 
   /// The bit this source sets in an effector's input-flag word (int[2]).
   ///
@@ -81,6 +98,7 @@ enum BrushInputSource {
     pressure => 0x10,
     speed => 0x20,
     tilt => 0x40,
+    random => 0x80,
   };
 
   /// Where this source's 최소치 sits in the effector blob: `int[3 + index]`.
@@ -98,11 +116,6 @@ enum BrushInputSource {
     pressure => 0,
     tilt => 1,
     speed => 2,
+    random => 3,
   };
-
-  /// Chance's slot in that same run of four. Not a [BrushInputSource] because
-  /// randomness is not one here (see the class doc) — but the blob still
-  /// stores its minimum beside the others, and the jitter amplitude is read
-  /// from it.
-  static const int randomEffectorMinimumIndex = 3;
 }

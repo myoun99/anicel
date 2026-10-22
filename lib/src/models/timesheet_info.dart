@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import 'conte/conte_sheet_form.dart';
 import 'envelope/cut_envelope_presets.dart';
 import 'layer_mark.dart';
 
@@ -28,6 +29,7 @@ class TimesheetInfo {
     this.episode = '',
     this.hiddenFields = const {},
     this.exposureBarThreshold,
+    this.cellExposureBarThreshold = defaultCellExposureBarThreshold,
     this.seEmptyFill = true,
     this.staff = const {},
     this.logoAssetPath,
@@ -35,6 +37,8 @@ class TimesheetInfo {
     this.envelopeFormId = CutEnvelopePresets.analogId,
     this.conteCover = true,
     this.conteBlankPage = true,
+    this.conteForm = ConteSheetForm.analog,
+    this.conteOutlined = true,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -42,16 +46,33 @@ class TimesheetInfo {
   /// The industry-standard hold length the exposure bar option suggests.
   static const int defaultExposureBarThreshold = 3;
 
+  /// The CELL block's stretch line: on, from the comma after the first
+  /// (유저 2026-10-21, F-430: 「셀란은 기본 있음, 1코마」).
+  static const int defaultCellExposureBarThreshold = 1;
+
   final String title;
   final String episode;
+
+  /// The title the work goes by: its own, or [projectName] — the project's
+  /// name — while it has none. What every paper form prints, and what an
+  /// export of the whole is named after.
+  String titleOr(String projectName) => title.isEmpty ? projectName : title;
 
   /// Header boxes the form does NOT print; everything else stays visible.
   final Set<TimesheetHeaderField> hiddenFields;
 
-  /// The ACTION columns' hold bar ('1 ─ ─ ─' down held rows): null = never
-  /// drawn (the default — most sheets leave holds blank); N = drawn only
-  /// for exposures held N+ commas, starting from the (N+1)th comma.
+  /// The ACTION columns' stretch line ('1 ─ ─ ─' down a run): null = never
+  /// drawn (the default — 유저 2026-10-21, F-430: 「액션은 늘림선 기본
+  /// 없음」); N = drawn only down runs of N+ commas, from the (N+1)th — a
+  /// held drawing's, or the empty run past an × (「x부분 이후도 늘림선
+  /// 긋는것임. 진짜 어디던 긋는느낌」).
   final int? exposureBarThreshold;
+
+  /// The CELL columns' stretch line, by the same law and set apart from
+  /// the ACTION columns' (F-430: 「액션란이랑 셀란 늘림선 따로따로
+  /// 적용가능하게」) — on by default ([defaultCellExposureBarThreshold]).
+  /// ↩️One threshold drew both blocks until then.
+  final int? cellExposureBarThreshold;
 
   /// Light-gray fill over SE columns' empty stretches (the "no SE here"
   /// wash) — default on, toggleable per project.
@@ -99,6 +120,13 @@ class TimesheetInfo {
   final bool conteCover;
   final bool conteBlankPage;
 
+  /// The form the conte sheet is printed in, and whether its pictures stand
+  /// in the silhouette's black — the format window's (유저 2026-10-21,
+  /// I-118: 「그리고 서식 옵션으로 공통적용되게 화면에 검은 외곽선
+  /// 적용/미적용 버튼」), so the outline is either form's.
+  final ConteSheetForm conteForm;
+  final bool conteOutlined;
+
   /// The name for [mark]'s work, or empty when nobody is set — so a form
   /// binding never has to null-check.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
@@ -114,6 +142,7 @@ class TimesheetInfo {
     String? episode,
     Set<TimesheetHeaderField>? hiddenFields,
     int? Function()? exposureBarThreshold,
+    int? Function()? cellExposureBarThreshold,
     bool? seEmptyFill,
     Map<String, String>? staff,
     String? Function()? logoAssetPath,
@@ -121,6 +150,8 @@ class TimesheetInfo {
     String? envelopeFormId,
     bool? conteCover,
     bool? conteBlankPage,
+    ConteSheetForm? conteForm,
+    bool? conteOutlined,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -129,6 +160,9 @@ class TimesheetInfo {
       exposureBarThreshold: exposureBarThreshold == null
           ? this.exposureBarThreshold
           : exposureBarThreshold(),
+      cellExposureBarThreshold: cellExposureBarThreshold == null
+          ? this.cellExposureBarThreshold
+          : cellExposureBarThreshold(),
       seEmptyFill: seEmptyFill ?? this.seEmptyFill,
       staff: staff ?? this.staff,
       logoAssetPath: logoAssetPath == null
@@ -140,6 +174,8 @@ class TimesheetInfo {
       envelopeFormId: envelopeFormId ?? this.envelopeFormId,
       conteCover: conteCover ?? this.conteCover,
       conteBlankPage: conteBlankPage ?? this.conteBlankPage,
+      conteForm: conteForm ?? this.conteForm,
+      conteOutlined: conteOutlined ?? this.conteOutlined,
     );
   }
 
@@ -153,6 +189,12 @@ class TimesheetInfo {
     'hiddenFields': [for (final field in hiddenFields) field.name],
     if (exposureBarThreshold != null)
       'exposureBarThreshold': exposureBarThreshold,
+    // The CELL block's line is on unless taken off: what is said is the
+    // taking off, and a threshold other than its own.
+    if (cellExposureBarThreshold == null) 'cellExposureBar': false,
+    if (cellExposureBarThreshold case final from?
+        when from != defaultCellExposureBarThreshold)
+      'cellExposureBarThreshold': from,
     if (!seEmptyFill) 'seEmptyFill': false,
     if (staff.isNotEmpty) 'staff': {...staff},
     if (logoAssetPath != null) 'logo': logoAssetPath,
@@ -161,6 +203,8 @@ class TimesheetInfo {
       'envelopeForm': envelopeFormId,
     if (!conteCover) 'conteCover': false,
     if (!conteBlankPage) 'conteBlankPage': false,
+    if (conteForm != ConteSheetForm.analog) 'conteForm': conteForm.name,
+    if (!conteOutlined) 'conteOutlined': false,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -174,6 +218,10 @@ class TimesheetInfo {
             if (field.name == name) field,
       },
       exposureBarThreshold: json['exposureBarThreshold'] as int?,
+      cellExposureBarThreshold: json['cellExposureBar'] == false
+          ? null
+          : json['cellExposureBarThreshold'] as int? ??
+                defaultCellExposureBarThreshold,
       seEmptyFill: json['seEmptyFill'] as bool? ?? true,
       staff: staffFromJson(json['staff']),
       logoAssetPath: json['logo'] as String?,
@@ -182,6 +230,8 @@ class TimesheetInfo {
           json['envelopeForm'] as String? ?? CutEnvelopePresets.analogId,
       conteCover: json['conteCover'] as bool? ?? true,
       conteBlankPage: json['conteBlankPage'] as bool? ?? true,
+      conteForm: ConteSheetForm.named(json['conteForm']),
+      conteOutlined: json['conteOutlined'] as bool? ?? true,
     );
   }
 
@@ -192,12 +242,15 @@ class TimesheetInfo {
           other.title == title &&
           other.episode == episode &&
           other.exposureBarThreshold == exposureBarThreshold &&
+          other.cellExposureBarThreshold == cellExposureBarThreshold &&
           other.seEmptyFill == seEmptyFill &&
           other.logoAssetPath == logoAssetPath &&
           other.coverImagePath == coverImagePath &&
           other.envelopeFormId == envelopeFormId &&
           other.conteCover == conteCover &&
           other.conteBlankPage == conteBlankPage &&
+          other.conteForm == conteForm &&
+          other.conteOutlined == conteOutlined &&
           mapEquals(other.staff, staff) &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
@@ -207,12 +260,15 @@ class TimesheetInfo {
     title,
     episode,
     exposureBarThreshold,
+    cellExposureBarThreshold,
     seEmptyFill,
     logoAssetPath,
     coverImagePath,
     envelopeFormId,
     conteCover,
     conteBlankPage,
+    conteForm,
+    conteOutlined,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),
@@ -224,6 +280,7 @@ class TimesheetInfo {
       'TimesheetInfo(title: $title, episode: $episode, staff: $staff, '
       'hiddenFields: $hiddenFields, '
       'exposureBarThreshold: $exposureBarThreshold, '
+      'cellExposureBarThreshold: $cellExposureBarThreshold, '
       'seEmptyFill: $seEmptyFill)';
 }
 

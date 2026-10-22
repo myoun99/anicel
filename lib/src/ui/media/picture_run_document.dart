@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../core/in_flight.dart';
+import '../../core/lru.dart';
 import '../../models/media_asset.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
@@ -74,8 +74,14 @@ final class PictureRunDocument implements ViewerDocument {
   final List<String> _files;
   final Future<ViewerDocument?> Function(String file) _openOne;
 
-  /// The pictures open, the one asked for last at the end.
-  final LinkedHashMap<int, ViewerDocument> _open = LinkedHashMap();
+  /// The pictures open, the one asked for last at the end — past
+  /// [keptOpen] the one asked for longest ago is let go, never one a
+  /// render is still reading.
+  late final Lru<int, ViewerDocument> _open = Lru(
+    limit: () => keptOpen,
+    inUse: _rendering.containsKey,
+    letGo: (_, picture) => unawaited(picture.dispose()),
+  );
 
   /// Each picture's size, from the moment it first opened.
   final Map<int, ui.Size> _sizes = {};
@@ -98,6 +104,10 @@ final class PictureRunDocument implements ViewerDocument {
   @override
   ui.Size pageSize(int pageIndex) => _sizes[pageIndex] ?? _sizes[0]!;
 
+  /// Its pages are pictures.
+  @override
+  bool get drawnAtAnySize => false;
+
   @override
   Future<ui.Image> renderPage(
     int pageIndex, {
@@ -110,12 +120,11 @@ final class PictureRunDocument implements ViewerDocument {
     _rendering[pageIndex] = (_rendering[pageIndex] ?? 0) + 1;
     try {
       final picture = await _picture(pageIndex);
-      final own = picture.pageSize(0);
-      final at = width / asked.width;
+      final size = pagePixelSize(picture, 0, at: width / asked.width);
       return await picture.renderPage(
         0,
-        width: (own.width * at).round().clamp(1, 1 << 13).toInt(),
-        height: (own.height * at).round().clamp(1, 1 << 13).toInt(),
+        width: size.width,
+        height: size.height,
       );
     } finally {
       final left = _rendering[pageIndex]! - 1;
@@ -124,7 +133,7 @@ final class PictureRunDocument implements ViewerDocument {
       } else {
         _rendering[pageIndex] = left;
       }
-      _letGoOfTheFarthest();
+      _open.fit();
     }
   }
 
@@ -146,9 +155,8 @@ final class PictureRunDocument implements ViewerDocument {
 
   /// [pageIndex]'s picture, opened if it is not — and asked for last.
   Future<ViewerDocument> _picture(int pageIndex) {
-    final open = _open.remove(pageIndex);
+    final open = _open.use(pageIndex);
     if (open != null) {
-      _open[pageIndex] = open;
       return Future.value(open);
     }
     return _opening.join(pageIndex, () => _openAndKeep(pageIndex));
@@ -171,23 +179,7 @@ final class PictureRunDocument implements ViewerDocument {
   }
 
   void _keep(int pageIndex, ViewerDocument picture) {
-    _open.remove(pageIndex);
-    _open[pageIndex] = picture;
+    _open.keep(pageIndex, picture);
     _sizes[pageIndex] = picture.pageSize(0);
-  }
-
-  /// Lets go of the pictures asked for longest ago, past [keptOpen] — never
-  /// one a render is still reading.
-  void _letGoOfTheFarthest() {
-    for (final page in [..._open.keys]) {
-      if (_open.length <= keptOpen) {
-        return;
-      }
-      if (_rendering.containsKey(page)) {
-        continue;
-      }
-      final picture = _open.remove(page)!;
-      unawaited(picture.dispose());
-    }
   }
 }

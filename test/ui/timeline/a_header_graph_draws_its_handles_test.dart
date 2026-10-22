@@ -8,15 +8,15 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show LaneGraphLine;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
+    show timelineLayerRowHeight;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
@@ -67,6 +67,7 @@ void main() {
     return (
       layer: row,
       lane: lanes.firstWhere((lane) => lane.laneId == laneId),
+      reach: null,
     );
   }
 
@@ -74,7 +75,6 @@ void main() {
   /// not a cell apart everywhere.
   const cell = 13.7;
   late ValueNotifier<TimelineFrameGeometry> geometry;
-  late ValueNotifier<int> cursor;
   late ValueNotifier<int> bucket;
   setUp(() {
     geometry = ValueNotifier(
@@ -84,12 +84,10 @@ void main() {
         frameEndIndexExclusive: 48,
       ),
     );
-    cursor = ValueNotifier(0);
     bucket = ValueNotifier(0);
   });
   tearDown(() {
     geometry.dispose();
-    cursor.dispose();
     bucket.dispose();
   });
 
@@ -104,42 +102,21 @@ void main() {
     guests: guests,
     mode: mode,
     held: held,
-    grid: (
-      hooks: TimelineGridHooks(
-        activeLayerId: null,
-        frameCursor: cursor,
-        playbackFrameCount: 48,
-        exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
-        onSelectLayer: (_) {},
-        onSelectFrame: (_) {},
-        onToggleLayerVisibility: (_) {},
-        onLayerOpacityChanged: (_, _) {},
-        onToggleLayerTimesheet: (_) {},
-        onLayerMarkSelected: (_, _) {},
-      ),
-      metrics: TimelineGridMetrics.defaults,
+    frameAxis: (
       geometry: geometry,
       windowBucket: bucket,
       viewportMainExtent: 48 * cell,
-      frameAxisController: null,
-      nextPage: null,
-      rangeGesture: null,
       axis: axis,
-      keyPrefix: 'timeline',
+      laneExtent: timelineLayerRowHeight,
     ),
   );
 
-  Size sizeFor(Axis axis) => axis == Axis.horizontal
-      ? const Size(48 * cell, 196)
-      : const Size(196, 48 * cell);
+  Size sizeFor(Axis axis) => sizeAlong(axis, along: 48 * cell, across: 196);
 
   /// [at] read back along and across the graph.
   ({double time, double across}) readOf(Offset at, Axis axis) => (
-    time: laneGraphTimeAt(
-      axis == Axis.horizontal ? at.dx : at.dy,
-      geometry.value,
-    ),
-    across: axis == Axis.horizontal ? at.dy : at.dx,
+    time: laneGraphTimeAt(partAlong(axis, at), geometry.value),
+    across: partAcross(axis, at),
   );
 
   EaseSide sideOf(LaneGraphHandle handle) {
@@ -599,7 +576,7 @@ void main() {
       );
       final position = bent.transformTrack.position;
       final lengths = [
-        for (final from in [0, 8]) position.wayFrom(from, positionKeySpace)!,
+        for (final from in [0, 8]) position.wayFrom(from, pathKeySpace)!,
       ];
       expect(lengths.first.length, greaterThan(80), reason: '⛔전제: bent');
       expect(lengths.last.length, greaterThan(60), reason: '⛔전제: bent');
@@ -619,53 +596,57 @@ void main() {
       }
     });
 
-    test('a run through roving keys is one segment: its handles are its '
-        'timed ends\', paced by the whole way', () {
-      const ease = EaseSide(influence: 0.5, speed: 1);
-      final roving = withTrack(
-        TransformTrack.empty().copyWith(
-          position: PropertyTrack<CanvasPoint>()
-              .withKey(0, CanvasPoint(x: 0, y: 0), outgoing: ease)
-              .withKey(
-                8,
-                CanvasPoint(x: 80, y: 0),
-                incoming: ease,
-                outgoing: ease,
-              )
-              .withKey(16, CanvasPoint(x: 80, y: 60), incoming: ease)
-              .withKeysRoving(frames: {8}, roving: true),
-        ),
-      );
-      final painter = speedOf(lineOf('position', on: roving));
-      final handles = painter.handlesIn(size);
-      expect(
-        [
-          for (final handle in handles)
-            (handle.frame, handle.leaving, handle.frames),
-        ],
-        [(0, true, (from: 0, to: 16)), (16, false, (from: 0, to: 16))],
-        reason: 'none on the roving key',
-      );
-      expect(
-        readOf(handles.first.at, Axis.horizontal).across,
-        closeTo(acrossAt(painter, (80 + 60) / 16), 1e-9),
-      );
-    });
+    // An anchor point's keys walk a path too (anchor-walks-a-path).
+    for (final laneId in ['position', 'anchor-point']) {
+      test('a run through roving keys is one segment: its handles are its '
+          'timed ends\', paced by the whole way — $laneId', () {
+        const ease = EaseSide(influence: 0.5, speed: 1);
+        final keys = PropertyTrack<CanvasPoint>()
+            .withKey(0, CanvasPoint(x: 0, y: 0), outgoing: ease)
+            .withKey(
+              8,
+              CanvasPoint(x: 80, y: 0),
+              incoming: ease,
+              outgoing: ease,
+            )
+            .withKey(16, CanvasPoint(x: 80, y: 60), incoming: ease)
+            .withKeysRoving(frames: {8}, roving: true);
+        final roving = withTrack(
+          laneId == 'position'
+              ? TransformTrack.empty().copyWith(position: keys)
+              : TransformTrack.empty().copyWith(anchorPoint: keys),
+        );
+        final painter = speedOf(lineOf(laneId, on: roving));
+        final handles = painter.handlesIn(size);
+        expect(
+          [
+            for (final handle in handles)
+              (handle.frame, handle.leaving, handle.frames),
+          ],
+          [(0, true, (from: 0, to: 16)), (16, false, (from: 0, to: 16))],
+          reason: 'none on the roving key',
+        );
+        expect(
+          readOf(handles.first.at, Axis.horizontal).across,
+          closeTo(acrossAt(painter, (80 + 60) / 16), 1e-9),
+        );
+      });
+    }
 
     test('a pair of numbers that walks no path averages the line between '
-        'its keys — an anchor\'s', () {
-      final anchored = withTrack(
+        'its keys — a scale\'s, as it reads them', () {
+      final scaled = withTrack(
         TransformTrack.empty().copyWith(
-          anchorPoint: PropertyTrack<CanvasPoint>()
+          scale: PropertyTrack<CanvasPoint>()
               .withKey(
                 0,
-                CanvasPoint(x: 0, y: 0),
+                CanvasPoint(x: 1, y: 1),
                 outgoing: const EaseSide(influence: 0.5, speed: 1),
               )
-              .withKey(10, CanvasPoint(x: 30, y: 40)),
+              .withKey(10, CanvasPoint(x: 1.3, y: 1.4)),
         ),
       );
-      final painter = speedOf(lineOf('anchor-point', on: anchored));
+      final painter = speedOf(lineOf('scale', on: scaled));
       expect(
         readOf(painter.handlesIn(size).single.at, Axis.horizontal).across,
         closeTo(acrossAt(painter, 50 / 10), 1e-9),

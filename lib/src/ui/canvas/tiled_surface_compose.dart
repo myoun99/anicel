@@ -1,26 +1,42 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/dirty_region.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
 import '../../models/tile_coord.dart';
+import '../../models/tiles_covering.dart';
 import '../../core/dev_profile.dart';
+import '../../core/sync_image_upload.dart';
+import '../../native/qa_native_engine.dart';
+import '../../services/bitmap_surface_geometry.dart'
+    show bitmapSurfaceContentBounds;
 import '../../services/cel_text_laying.dart';
+import '../../services/import/cel_picture.dart'
+    show pictureSideLimit, pictureSideLimitIfMeasured;
+import '../../services/straight_rgba_image.dart' show uploadRawRgba;
 import 'bitmap_tile_image_cache.dart';
 import 'display_resample.dart';
+import 'image_pieces.dart';
 import 'level_image.dart';
 import 'raster_picture.dart';
 import 'surface_region_picture.dart';
 import 'tile_blocks.dart';
 import 'tile_origin.dart';
 
-/// A composed surface image plus the CANVAS-SPACE rect it covers.
+/// A composed surface image plus the CANVAS-SPACE rect it covers — in
+/// [pieces], each with the rect it covers: ONE, over the whole rect, inside
+/// the side this device's engine holds, and side by side past it
+/// ([piecesOver] says why).
 ///
 /// For a surface whose tiles all sit inside the canvas, [worldRect] is
 /// exactly the canvas rect and the image is canvas-sized — byte-identical
@@ -28,15 +44,88 @@ import 'tile_origin.dart';
 /// the image) only as far as the stored tiles reach, so layers without
 /// off-canvas artwork pay nothing.
 class PositionedSurfaceImage {
-  const PositionedSurfaceImage({required this.image, required this.worldRect});
+  const PositionedSurfaceImage({required this.pieces, required this.worldRect});
 
-  final ui.Image image;
+  final List<ImagePiece> pieces;
   final ui.Rect worldRect;
+}
 
-  /// Whether this is the plain canvas-extent case (consumers keep their
-  /// exact legacy draw path for it — byte parity).
-  bool isCanvasExtent(BitmapSurface surface) =>
-      worldRect == surface.canvasSize.canvasRect;
+/// [rect] as the pieces a compose made inside a build makes it in
+/// ([piecesOver]) — whole while the side this engine holds is still unread
+/// (`pictureSideLimitIfMeasured`: it is read after the first frame), as
+/// every compose was.
+List<ui.Rect> _piecesNow(ui.Rect rect, {double texelsPerUnit = 1}) =>
+    switch (pictureSideLimitIfMeasured) {
+      final side? => piecesOver(rect, side: side, texelsPerUnit: texelsPerUnit),
+      null => [rect],
+    };
+
+/// [rect] as the pieces an asynchronous compose makes it in ([piecesOver]).
+Future<List<ui.Rect>> _piecesOf(
+  ui.Rect rect, {
+  double texelsPerUnit = 1,
+}) async => piecesOver(
+  rect,
+  side: pictureSideLimitIfMeasured ?? await pictureSideLimit(),
+  texelsPerUnit: texelsPerUnit,
+);
+
+/// Each of [rects] made into its image by [make], in turn, as [worldRect]'s
+/// pieces — or null, the ones made let go, where one is not made.
+Future<PositionedSurfaceImage?> _inPieces(
+  ui.Rect worldRect,
+  List<ui.Rect> rects,
+  Future<ui.Image?> Function(ui.Rect piece) make,
+) async {
+  final pieces = <ImagePiece>[];
+  for (final rect in rects) {
+    final image = await make(rect);
+    if (image == null) {
+      pieces.disposeAll();
+      return null;
+    }
+    pieces.add((image: image, worldRect: rect));
+  }
+  return PositionedSurfaceImage(pieces: pieces, worldRect: worldRect);
+}
+
+/// [_inPieces] made now: each of [rects] by [make], deferred, with — where
+/// [make] snapshots — every piece's plain snapshot, in order, once all have
+/// landed. Null, the ones made let go, where one is not made.
+({PositionedSurfaceImage deferred, Future<List<ui.Image>>? real})?
+_inPiecesNow(
+  ui.Rect worldRect,
+  List<ui.Rect> rects,
+  ({ui.Image deferred, Future<ui.Image>? real})? Function(ui.Rect piece) make,
+) {
+  final made = <({ui.Image deferred, Future<ui.Image>? real})>[];
+  for (final rect in rects) {
+    final one = make(rect);
+    if (one == null) {
+      for (final each in made) {
+        each.deferred.dispose();
+        unawaited(each.real?.then((image) => image.dispose()));
+      }
+      return null;
+    }
+    made.add(one);
+  }
+  final reals = [for (final each in made) each.real];
+  return (
+    deferred: PositionedSurfaceImage(
+      pieces: [
+        for (var index = 0; index < rects.length; index += 1)
+          (image: made[index].deferred, worldRect: rects[index]),
+      ],
+      worldRect: worldRect,
+    ),
+    real: reals.contains(null)
+        ? null
+        : Future.wait(
+            [for (final real in reals) real!],
+            cleanUp: (image) => image.dispose(),
+          ),
+  );
 }
 
 /// The tiles a compose DRAWS for [surface], and the tiles every rect here
@@ -100,7 +189,9 @@ ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
 /// none. Either way a picture is a block's ([tileBlocksOf]), comes through
 /// the one door ([surfaceRegionPicture]), is the compose's own, and is let
 /// go right after it; what differs is whether the compose gives way while
-/// it makes them.
+/// it makes them. Past the wall a compose makes no pictures: it
+/// premultiplies its tiles' bytes ([_composedFromBytes]), and gives way
+/// between runs of them the same way.
 enum MissingTilePictures {
   /// A run of them at a time ([tilePictureRun]), the event queue given its
   /// turn between runs ([_giveWay]) — which is what lets a pen that comes
@@ -156,6 +247,16 @@ const Duration tilePictureRun = Duration(milliseconds: 2);
 /// has taken is read off the wall when this is null.
 @visibleForTesting
 int Function()? debugTilePictureClock;
+
+/// How many composes set out from their tiles' bytes
+/// ([_composedFromBytes], [_composedFromBytesNow]) — a test's count.
+@visibleForTesting
+int debugComposesFromBytes = 0;
+
+/// A test's hatch: a compose past the wall rastered as one inside it is,
+/// for the pins that hold the two roads to the same picture.
+@visibleForTesting
+bool debugRastersPastTheWall = false;
 
 /// One turn of the event queue: whatever was waiting in it when this is
 /// called — a pen coming down, a frame — is handled before it completes.
@@ -303,7 +404,7 @@ Future<ui.Image?> _composeAsync(
 
   try {
     final shown = _shownBy(surface);
-    for (final block in tileBlocksOf(shown)) {
+    for (final block in _blocksOver(shown, over)) {
       if (_layHeldPictures(laying, block, reuse)) {
         continue;
       }
@@ -421,14 +522,20 @@ bool _layHeldPictures(
   final recorder = ui.PictureRecorder();
   final laying = _TileLaying(ui.Canvas(recorder), over, halved: halved);
 
+  final tileSize = surface.tileSize;
   for (final entry in _tilesShownBy(surface).entries) {
     final tile = entry.value;
+    final origin = tileOriginOffset((coord: entry.key, tile: tile));
+    if (!(origin & ui.Size.square(tileSize.toDouble())).overlaps(over)) {
+      // Another piece's ([piecesOver]): nothing of it lands on this one.
+      continue;
+    }
     final image = makePictures ? reuse.pictureFor(tile) : reuse.imageFor(tile);
     if (image == null) {
       recorder.endRecording().dispose();
       return null;
     }
-    laying.lay(tileOriginOffset((coord: entry.key, tile: tile)), image);
+    laying.lay(origin, image);
   }
   laying.finish();
   return rasterPictureAndSnapshot(
@@ -469,9 +576,14 @@ ui.Image composeTiledSurfaceImageNow(
 /// pasteboard tiles exist).
 ///
 /// [over] rasters part of the content instead: a rect on whole canvas
-/// pixels that holds every tile ([surfaceInkWorldRect]). Each tile lands
+/// pixels that holds all of its ink — every tile ([surfaceInkWorldRect]),
+/// or where a file's picture lies on a cel that holds nothing else
+/// ([BitmapSurface.laidBounds], F-374-Q8). Each tile lands
 /// texel for texel where it lands in the whole image, so what comes back is
 /// that image's pixels over [over] — without the rest being drawn first.
+///
+/// A file's picture laid past the wall ([_laidPastTheWall]) is made from
+/// its tiles' bytes ([_composedFromBytes]).
 Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
@@ -480,24 +592,409 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   ui.Rect? over,
 }) async {
   final worldRect = _composedOver(surface, over);
-  final image = await _composeAsync(
-    surface,
-    reuse: reuse,
-    shouldAbort: shouldAbort,
-    missing: missing,
-    over: worldRect,
-    deferred: false,
+  return _inPieces(worldRect, await _piecesOf(worldRect), (piece) {
+    Future<ui.Image?> rastered() => _composeAsync(
+      surface,
+      reuse: reuse,
+      shouldAbort: shouldAbort,
+      missing: missing,
+      over: piece,
+      deferred: false,
+    );
+    return _madeFromBytes(surface)
+        ? _composedFromBytes(
+            _bytesShownOver(surface, piece),
+            shouldAbort: shouldAbort,
+            missing: missing,
+            rastered: rastered,
+          )
+        : rastered();
+  });
+}
+
+/// [shown]'s blocks that land on [over]: of a picture in pieces, another
+/// piece's ([piecesOver]) land nothing on this one.
+Iterable<TileBlock> _blocksOver(BitmapSurface shown, ui.Rect over) =>
+    tileBlocksOf(shown).where(
+      (block) =>
+          block.region.left < over.right &&
+          block.region.rightExclusive > over.left &&
+          block.region.top < over.bottom &&
+          block.region.bottomExclusive > over.top,
+    );
+
+/// Whether [surface] holds a file's picture laid whole past its wall
+/// ([BitmapSurface.pasteboard]) — the one thing that lies there
+/// ([BitmapSurface.laidBounds], F-374-Q8).
+///
+/// ⚠️NOT WHETHER A COMPOSE'S RECT REACHES PAST IT: a cel's tiles poke past
+/// the wall where they straddle it, and so does its ink pushed out to the
+/// halving grid ([surfaceInkWorldRect]) — nothing lies there, and such a
+/// cel rasters as it always did. Read off the rect, a stroke near a small
+/// picture's wall took the bytes road (a conte's cell,
+/// `a_conte_stroke_keeps_to_the_cell_it_starts_in_test`).
+bool _laidPastTheWall(BitmapSurface surface) {
+  final laid = surface.laidBounds;
+  if (laid == null) {
+    return false;
+  }
+  final wall = surface.pasteboard.rect;
+  return wall.expandToInclude(laid.rect) != wall;
+}
+
+/// Whether a compose of [surface] is made from its bytes: a file's picture
+/// laid past the wall ([_laidPastTheWall]), but for the test's hatch.
+bool _madeFromBytes(BitmapSurface surface) =>
+    _laidPastTheWall(surface) && !debugRastersPastTheWall;
+
+/// [surface]'s bytes over [over], as shown ([_shownBy]) — what a compose
+/// past the wall is made from — halved through [halving] when it is given.
+_BytesFill _bytesShownOver(
+  BitmapSurface surface,
+  ui.Rect over, {
+  Uint8List? halving,
+}) => _BytesFill(
+  SurfaceRegionBytes(_shownBy(surface), DirtyRegion.wholePixelsOf(over)),
+  halving: halving,
+);
+
+/// How a compose from bytes writes each tile's part of [bytes]: as it is,
+/// or — given [halving], the engine's measured halving
+/// ([measuredHalving]) — halved at its place, the first level made from the
+/// bytes themselves as a halved raster makes it from the tiles' pictures
+/// ([composeHalvedSurfaceImage]).
+///
+/// ⚠️A halved fill is exact only on the halving grid — the region's corners
+/// even, as every tile's are — so each 2×2 block lies inside one tile's
+/// part, as a halved raster's does ([_TileLaying]).
+class _BytesFill {
+  _BytesFill(this.bytes, {this.halving})
+    : assert(
+        halving == null ||
+            [
+              bytes.region.left,
+              bytes.region.top,
+              bytes.width,
+              bytes.height,
+            ].every((edge) => edge.isEven),
+        'a halved fill lies on the halving grid (got ${bytes.region})',
+      );
+
+  final SurfaceRegionBytes bytes;
+  final Uint8List? halving;
+
+  int get width => halving == null ? bytes.width : bytes.width ~/ 2;
+  int get height => halving == null ? bytes.height : bytes.height ~/ 2;
+  int get byteLength => width * height * 4;
+
+  /// The tiles whose parts [fill] writes, row by row.
+  Iterable<CoveredTile> get tiles =>
+      tilesCovering(bytes.surface, bytes.region);
+
+  /// A tile's part premultiplied before it is halved — one tile big, made
+  /// once a fill and let go by [dispose].
+  Pointer<Uint8>? _part;
+
+  /// [tile]'s part premultiplied by [native] into [target] where it lies —
+  /// or, halved, where its half lies.
+  void fill(QaNativeEngine native, CoveredTile tile, Pointer<Uint8> target) {
+    final table = halving;
+    if (table == null) {
+      bytes.premultiplyInto(native, tile, target);
+      return;
+    }
+    final part = SurfaceRegionBytes(
+      bytes.surface,
+      DirtyRegion(
+        left: tile.left,
+        top: tile.top,
+        rightExclusive: tile.rightExclusive,
+        bottomExclusive: tile.bottomExclusive,
+      ),
+    );
+    final tileSize = bytes.surface.tileSize;
+    final scratch = _part ??= calloc<Uint8>(tileSize * tileSize * 4);
+    part.premultiplyInto(native, tile, scratch);
+    halveRgbaWords(
+      table,
+      from: (
+        rows: (
+          words: scratch.cast<Uint32>().asTypedList(part.width * part.height),
+          start: 0,
+          stride: part.width,
+        ),
+        width: part.width,
+        height: part.height,
+      ),
+      into: (
+        words: target.cast<Uint32>().asTypedList(width * height),
+        start:
+            (tile.top - bytes.region.top) ~/ 2 * width +
+            (tile.left - bytes.region.left) ~/ 2,
+        stride: width,
+      ),
+    );
+  }
+
+  /// Every part at once where there is no engine: the door's bytes in one
+  /// read, halved after through [halving] when it is given. Copied out, as
+  /// they are the door's only while it reads them.
+  Uint8List readAll() {
+    final table = halving;
+    if (table == null) {
+      return bytes.readPremultiplied(Uint8List.fromList);
+    }
+    return bytes.readPremultiplied((whole) {
+      final half = Uint8List(byteLength);
+      halveRgbaWords(
+        table,
+        from: (
+          rows: (
+            words: whole.buffer.asUint32List(
+              whole.offsetInBytes,
+              whole.length ~/ 4,
+            ),
+            start: 0,
+            stride: bytes.width,
+          ),
+          width: bytes.width,
+          height: bytes.height,
+        ),
+        into: (words: half.buffer.asUint32List(), start: 0, stride: width),
+      );
+      return half;
+    });
+  }
+
+  void dispose() {
+    final part = _part;
+    if (part != null) {
+      calloc.free(part);
+      _part = null;
+    }
+  }
+}
+
+/// The picture of [bytes] — the bytes the door reads — made from them, not
+/// rastered: premultiplied into memory of this compose's own a tile at a
+/// time — [missing] says whether it gives way between runs of them, as a
+/// raster does — and uploaded off this thread ([uploadRawRgba]). Null when
+/// [shouldAbort] stood it down.
+///
+/// ⚠️THE SECOND OF ITS KIND: [_composeAsync] paces its pictures the same
+/// way — the same run, the same turn, the same ask before each. Not shared
+/// under the rule of three (CLAUDE.md 절대명령 1).
+///
+/// 🚨★★★PAST THE WALL A CEL'S IMAGE IS ITS BYTES, NOT A RASTER (F-374-Q8
+/// ⑦, 2026-10-18). Until a file's picture could be laid whole, the wall
+/// bounded every compose; past it the picture is as big as its file, and
+/// a raster of it held 9–15 times the image while it ran. 🔬Measured on
+/// the Windows app (Surface Pro 11, profile build, a throwaway probe): an
+/// A3 600dpi scan laid whole (7040×9984) rastered in 0.56–3.7 s at
+/// +2.6–3.7 GB, and a raster past 16384 a side came back smaller without a
+/// word (20480×1024 asked, 16384×819 made). Its bytes uploaded: +1.7 GB,
+/// the raster thread free, and the SAME image — 0 bytes apart, and 0 apart
+/// drawn small at `none`, `low`, `medium` and `high`: the decoder makes the
+/// mip chain a snapshot makes. (The synchronous door makes none, and a
+/// `medium` draw of its picture came out up to 125/255 apart.)
+/// ⛔NOT INSIDE THE WALL: there the raster draws the pictures the canvas
+/// keeps for its tiles, so a rebuild costs what changed (F-296) — an
+/// upload would cost the whole cel every time.
+///
+/// An upload that comes back another size — past what this device's
+/// decoder holds: 20000 wide came back 16384, its height kept — is let go,
+/// and the picture [rastered] as it always was.
+Future<ui.Image?> _composedFromBytes(
+  _BytesFill bytes, {
+  required bool Function()? shouldAbort,
+  required MissingTilePictures missing,
+  required Future<ui.Image?> Function() rastered,
+}) async {
+  debugComposesFromBytes += 1;
+  final native = QaNativeEngine.instance;
+  if (native == null) {
+    // No engine — a load that failed: every build the app ships carries
+    // one. The door's bytes in one read, not paced: what this road keeps
+    // is the memory, one image where a raster held 9–15.
+    return _uploadedOrRastered(bytes.readAll(), bytes, shouldAbort, rastered);
+  }
+  final byteLength = bytes.byteLength;
+  final target = calloc<Uint8>(byteLength);
+  try {
+    final watch = Stopwatch()..start();
+    int now() => debugTilePictureClock?.call() ?? watch.elapsedMicroseconds;
+    var runBegan = now();
+    for (final tile in bytes.tiles) {
+      if (missing == MissingTilePictures.madeInTurn &&
+          now() - runBegan >= tilePictureRun.inMicroseconds) {
+        await _giveWay();
+        runBegan = now();
+      }
+      if (shouldAbort?.call() ?? false) {
+        return null;
+      }
+      bytes.fill(native, tile, target);
+    }
+    return await _uploadedOrRastered(
+      target.asTypedList(byteLength),
+      bytes,
+      shouldAbort,
+      rastered,
+    );
+  } finally {
+    bytes.dispose();
+    calloc.free(target);
+  }
+}
+
+/// [premultiplied] — [bytes]'s pixels — uploaded, unless [shouldAbort]
+/// stands it down first; or [rastered] when the upload comes back another
+/// size than [bytes] is.
+Future<ui.Image?> _uploadedOrRastered(
+  Uint8List premultiplied,
+  _BytesFill bytes,
+  bool Function()? shouldAbort,
+  Future<ui.Image?> Function() rastered,
+) async {
+  if (shouldAbort?.call() ?? false) {
+    return null;
+  }
+  final image = await uploadRawRgba(
+    premultiplied,
+    width: bytes.width,
+    height: bytes.height,
   );
-  return image == null
-      ? null
-      : PositionedSurfaceImage(image: image, worldRect: worldRect);
+  if (image.width == bytes.width && image.height == bytes.height) {
+    return image;
+  }
+  image.dispose();
+  return rastered();
+}
+
+/// The picture of [bytes] made from them inside the call —
+/// [_composedFromBytes]'s synchronous twin, for a row that was on screen
+/// and may not go blank (`_composeSync`): premultiplied into memory of its
+/// own ([_BytesOfItsOwn]) and uploaded now ([wholePictureUploadedOrNull]).
+/// Null where this engine has no upload of that kind (Skia), refuses this
+/// one, or hands back another size — the caller rasters, as it always did.
+///
+/// 🚨★★★PAST THE WALL A ROW ON SCREEN IS MADE FROM ITS BYTES TOO (F-374-Q8
+/// ⑦, 2026-10-18). 🔬Measured on the Windows app (Surface Pro 11, profile
+/// build, a throwaway probe), an A3 600dpi scan laid whole (7040×9984,
+/// 4290 tiles): the raster made in the call took 155 ms there and 772 ms
+/// more to be shown, at +3.7 GB — and left 268 MB of tile pictures behind
+/// it, one a tile; made from its bytes, 261 ms and 520 ms at +0.8 GB, with
+/// no tile pictured, the same bytes.
+/// ⚠️IT HAS NO MIP CHAIN — a raster's snapshot has one — and is KEPT as it
+/// is: a cel's picture is drawn at `none` or `low` alone
+/// ([filterQualityForDisplayScale]: the stack, the camera, a group's raster
+/// — `medium` and `high` draw sheets and files' images, never a cel's), and
+/// there the two are the same pixels. A cel's picture drawn at `medium`
+/// would show the difference: make that one from [_composedFromBytes].
+/// ⛔NOT ON THE FREE ROAD ([composePositionedSurfaceImageSync]'s
+/// `makePictures` false): a picture this big is no free compose — its
+/// bytes in the call, or a raster of every tile's picture at 9–15 times
+/// the image — so a row that was not on screen arrives from the
+/// asynchronous road, as such rows always have.
+ui.Image? _composedFromBytesNow(_BytesFill bytes) {
+  debugComposesFromBytes += 1;
+  try {
+    final image = wholePictureUploadedOrNull(_BytesOfItsOwn(bytes));
+    if (image == null ||
+        image.width == bytes.width && image.height == bytes.height) {
+      return image;
+    }
+    image.dispose();
+    return null;
+  } finally {
+    bytes.dispose();
+  }
+}
+
+/// A compose made now ([_composeSync]'s answer) past the wall
+/// ([_madeFromBytes]): nothing on the free road ([makePictures] false —
+/// [_composedFromBytesNow] says why), the picture made from [bytes] — a
+/// plain picture already, and [snapshot]'s a handle of its own on it — or,
+/// where [bytes] is null or the upload is refused, [rastered]. Inside the
+/// wall it is [rastered].
+({ui.Image deferred, Future<ui.Image>? real})? _madeNow(
+  BitmapSurface surface, {
+  required bool makePictures,
+  required bool snapshot,
+  required _BytesFill? Function() bytes,
+  required ({ui.Image deferred, Future<ui.Image>? real})? Function() rastered,
+}) {
+  if (!_madeFromBytes(surface)) {
+    return rastered();
+  }
+  if (!makePictures) {
+    return null;
+  }
+  final fill = bytes();
+  final now = fill == null ? null : _composedFromBytesNow(fill);
+  if (now == null) {
+    return rastered();
+  }
+  return (deferred: now, real: snapshot ? Future.value(now.clone()) : null);
+}
+
+/// [bytes] premultiplied into memory of this read's own where the engine
+/// premultiplies them — not into its scratch ([SurfaceRegionBytes]'s),
+/// which grows to the biggest picture it ever held and keeps that much.
+class _BytesOfItsOwn implements PictureBytes {
+  _BytesOfItsOwn(this.bytes);
+
+  final _BytesFill bytes;
+
+  @override
+  int get width => bytes.width;
+
+  @override
+  int get height => bytes.height;
+
+  /// ⛔Not of a halved fill: a halving is of premultiplied texels, and
+  /// straight bytes made back from it are not the picture's. Nothing asks —
+  /// the upload made now reads premultiplied bytes alone
+  /// ([wholePictureUploadedOrNull]).
+  @override
+  T readStraight<T>(T Function(Uint8List straight) use) {
+    if (bytes.halving != null) {
+      throw UnsupportedError('a halving has no straight bytes');
+    }
+    return bytes.bytes.readStraight(use);
+  }
+
+  @override
+  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) {
+    final native = QaNativeEngine.instance;
+    if (native == null) {
+      return use(bytes.readAll());
+    }
+    final byteLength = bytes.byteLength;
+    final target = calloc<Uint8>(byteLength);
+    try {
+      for (final tile in bytes.tiles) {
+        bytes.fill(native, tile, target);
+      }
+      return use(target.asTypedList(byteLength));
+    } finally {
+      calloc.free(target);
+    }
+  }
 }
 
 /// The synchronous positioned compose — the layer stack's, for the frame a
 /// row changes route or content ([_composeSync] says what [makePictures]
-/// and [snapshot] mean; [over] is the async twin's). Null only when
-/// [makePictures] is false and a tile has no picture.
-({PositionedSurfaceImage deferred, Future<ui.Image>? real})?
+/// and [snapshot] mean; [over] is the async twin's). Null when
+/// [makePictures] is false and a tile has no picture — and, for a file's
+/// picture laid past the wall ([_laidPastTheWall]), whenever it is false.
+///
+/// Such a picture is made from its tiles' bytes
+/// ([_composedFromBytesNow]): no recording is rastered, so what comes back
+/// as "deferred" is a plain picture already, and [snapshot]'s is a handle
+/// of its own on the same picture — the holder's swap retires the handle it
+/// replaces, and nothing else was pinned.
+({PositionedSurfaceImage deferred, Future<List<ui.Image>>? real})?
 composePositionedSurfaceImageSync(
   BitmapSurface surface, {
   required BitmapTileImageCache reuse,
@@ -506,22 +1003,22 @@ composePositionedSurfaceImageSync(
   ui.Rect? over,
 }) {
   final worldRect = _composedOver(surface, over);
-  final composed = _composeSync(
-    surface,
-    reuse: reuse,
-    makePictures: makePictures,
-    snapshot: snapshot,
-    over: worldRect,
-  );
-  if (composed == null) {
-    return null;
-  }
-  return (
-    deferred: PositionedSurfaceImage(
-      image: composed.deferred,
-      worldRect: worldRect,
+  return _inPiecesNow(
+    worldRect,
+    _piecesNow(worldRect),
+    (piece) => _madeNow(
+      surface,
+      makePictures: makePictures,
+      snapshot: snapshot,
+      bytes: () => _bytesShownOver(surface, piece),
+      rastered: () => _composeSync(
+        surface,
+        reuse: reuse,
+        makePictures: makePictures,
+        snapshot: snapshot,
+        over: piece,
+      ),
     ),
-    real: composed.real,
   );
 }
 
@@ -545,36 +1042,91 @@ composePositionedSurfaceImageSync(
 /// ([BitmapTileImageCache.instance]); a block with a tile that lacks one is
 /// pictured whole, in turn ([MissingTilePictures.madeInTurn]) — a level is
 /// made off the frame, by the warm or for a row the canvas fills in.
-Future<ui.Image?> composeHalvedSurfaceImage(
+///
+/// 🚨★★★PAST THE WALL IT IS MADE FROM THE BYTES, HALVED BY THE ENGINE'S OWN
+/// TABLE ([measuredHalving]; board a-big-reference-picture-still-costs-
+/// when-zoomed-out, 🗣️유저 2026-10-18 「엔진과 같은 바이트를 내는 CPU 반감을
+/// 찾는다」). A full-size picture past the wall is its bytes
+/// ([_composedFromBytes]); its first level was still a raster of every
+/// tile's picture — the cost the bytes road had taken away, at a quarter of
+/// the pixels. Halved on the CPU through the table the engine's own
+/// halving gave, it is the raster's picture byte for byte; an engine whose
+/// halving is not the sum's has no table, and its level is rastered as it
+/// always was. 🔬Measured on the Windows app (Surface Pro 11, profile
+/// build, 2026-10-21, a throwaway probe), an A3 600dpi scan laid whole
+/// (7040×9984), its level 3520×4992: from its bytes 0.45–1.04 s at +170 MB
+/// (peak 0.8 GB), rastered 0.67–2.2 s at +1.0–1.5 GB (peak 2.4–2.6 GB), 0
+/// bytes apart; made now 0.31–0.34 s in the call, the raster 0.43–0.50 s.
+/// (Read back with `toByteData` the instant it is made, the picture made
+/// now is not there yet — 「Image was null」, as the full-size one made now
+/// — and drawn, or a frame on, it is the raster's.)
+Future<PositionedSurfaceImage?> composeHalvedSurfaceImage(
   BitmapSurface surface, {
   bool Function()? shouldAbort,
   required ui.Rect over,
   bool deferred = false,
-}) => _composeAsync(
-  surface,
-  reuse: BitmapTileImageCache.instance,
-  shouldAbort: shouldAbort,
-  missing: MissingTilePictures.madeInTurn,
-  over: _composedOver(surface, over),
-  deferred: deferred,
-  halved: true,
-);
+}) async {
+  final halvedOver = _composedOver(surface, over);
+  final halving = _madeFromBytes(surface) ? await measuredHalving() : null;
+  return _inPieces(
+    halvedOver,
+    await _piecesOf(halvedOver, texelsPerUnit: 0.5),
+    (piece) {
+      Future<ui.Image?> rastered() => _composeAsync(
+        surface,
+        reuse: BitmapTileImageCache.instance,
+        shouldAbort: shouldAbort,
+        missing: MissingTilePictures.madeInTurn,
+        over: piece,
+        deferred: deferred,
+        halved: true,
+      );
+      return halving == null
+          ? rastered()
+          : _composedFromBytes(
+              _bytesShownOver(surface, piece, halving: halving),
+              shouldAbort: shouldAbort,
+              missing: MissingTilePictures.madeInTurn,
+              rastered: rastered,
+            );
+    },
+  );
+}
 
 /// [composeHalvedSurfaceImage] made now — [_composeSync] says what
-/// [makePictures] and [snapshot] mean.
-({ui.Image deferred, Future<ui.Image>? real})? composeHalvedSurfaceImageSync(
+/// [makePictures] and [snapshot] mean, and [_madeNow] what is made past the
+/// wall: from the bytes once the engine's halving has been read
+/// ([measuredHalvingIfRead]), rastered before.
+({PositionedSurfaceImage deferred, Future<List<ui.Image>>? real})?
+composeHalvedSurfaceImageSync(
   BitmapSurface surface, {
   required bool makePictures,
   required bool snapshot,
   required ui.Rect over,
-}) => _composeSync(
-  surface,
-  reuse: BitmapTileImageCache.instance,
-  makePictures: makePictures,
-  snapshot: snapshot,
-  over: _composedOver(surface, over),
-  halved: true,
-);
+}) {
+  final halvedOver = _composedOver(surface, over);
+  return _inPiecesNow(
+    halvedOver,
+    _piecesNow(halvedOver, texelsPerUnit: 0.5),
+    (piece) => _madeNow(
+      surface,
+      makePictures: makePictures,
+      snapshot: snapshot,
+      bytes: () => switch (measuredHalvingIfRead) {
+        final halving? => _bytesShownOver(surface, piece, halving: halving),
+        null => null,
+      },
+      rastered: () => _composeSync(
+        surface,
+        reuse: BitmapTileImageCache.instance,
+        makePictures: makePictures,
+        snapshot: snapshot,
+        over: piece,
+        halved: true,
+      ),
+    ),
+  );
+}
 
 /// The rect a positioned compose rasters: [over], or the whole content.
 ui.Rect _composedOver(BitmapSurface surface, ui.Rect? over) {
@@ -582,11 +1134,20 @@ ui.Rect _composedOver(BitmapSurface surface, ui.Rect? over) {
     return surfaceContentWorldRect(surface);
   }
   assert(() {
-    final tiles = tileCoordsWorldRect(
-      _tilesShownBy(surface).keys,
-      surface.tileSize,
-    );
-    return tiles == null || over.expandToInclude(tiles) == over;
-  }(), 'a part of the content composed on its own must hold every tile');
+    final shown = _shownBy(surface);
+    final tiles = tileCoordsWorldRect(shown.tiles.keys, surface.tileSize);
+    if (tiles == null || over.expandToInclude(tiles) == over) {
+      return true;
+    }
+    // Past a tile's edge only its ink counts: a file's picture composed
+    // over where it lies (`_celMoved`, F-374-Q8) cuts through the clear
+    // pixels its edge tiles hold.
+    final ink = bitmapSurfaceContentBounds(shown);
+    return ink == null ||
+        ink.left >= over.left &&
+            ink.top >= over.top &&
+            ink.rightExclusive <= over.right &&
+            ink.bottomExclusive <= over.bottom;
+  }(), 'a part of the content composed on its own must hold all of its ink');
   return over;
 }

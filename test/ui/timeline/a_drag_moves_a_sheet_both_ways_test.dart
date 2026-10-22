@@ -14,12 +14,17 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
+
+import '../../helpers/named_finders.dart';
 
 /// 🗣️F-351 (유저 2026-10-12): 「스페이스바로 타임라인쪽 조작하면 가로/세로
 /// 스크롤 통합해서 캔버스 조작하듯이 팬 되는데, 법 통일해서 터치로 해당영역
@@ -29,13 +34,17 @@ import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
 /// ways at once — each axis by its own part of the hand's travel, as Space
 /// moves it — where each axis used to take a drag of its own and the one
 /// the hand moved along first took all of it.
+///
+/// 🗣️And its layer area pans itself (유저 2026-10-16): 「레이어 영역을 잡아도
+/// 프레임쪽이 팬 작동되는데 레이어쪽을 잡으면 레이어영역이 팬 작동하도록」.
 void main() {
   // The product's touch: a finger scrolls the sheets, and their edit
   // gestures let it go (1핑거 드로잉 off).
   setUp(() => AppInput.settings.value = const AppInputSettings());
-  tearDown(
-    () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
-  );
+  tearDown(() {
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    CanvasViewHold.held.value = null;
+  });
 
   Layer drawing(String id) => Layer(
     id: LayerId(id),
@@ -45,13 +54,20 @@ void main() {
     timeline: const {},
   );
 
-  /// The timeline or the x-sheet: sixty rows, four hundred frames — more of
-  /// both than a wide panel shows.
-  Widget timeline(TimelineOrientation orientation) {
+  /// The timeline or the x-sheet: sixty rows — or [rows] — four hundred
+  /// frames, more of both than a wide panel shows; its layer area seen
+  /// through [rail].
+  Widget timeline(
+    TimelineOrientation orientation,
+    LayerRailExtent rail, {
+    int? rows,
+  }) {
     final cursor = ValueNotifier<int>(0);
     addTearDown(cursor.dispose);
     return TimelinePanel(
-      layers: [for (var i = 0; i < 60; i += 1) drawing('draw-$i')],
+      timelineRailExtent: rail,
+      xsheetRailExtent: rail,
+      layers: [for (var i = 0; i < (rows ?? 60); i += 1) drawing('draw-$i')],
       activeLayerId: const LayerId('draw-0'),
       frameCursor: cursor,
       playbackFrameCount: 400,
@@ -68,15 +84,17 @@ void main() {
     );
   }
 
-  /// The conte panel: thirty tracks, the last of them four hundred frames
-  /// long and the rest short, so the cells are mostly empty lanes.
-  Widget conte() => StoryboardPanel(
+  /// The conte panel: thirty tracks — or [rows] — the last of them four
+  /// hundred frames long and the rest short, so the cells are mostly empty
+  /// lanes; its layer area seen through [rail].
+  Widget conte(LayerRailExtent rail, {int? rows}) => StoryboardPanel(
+    railExtent: rail,
     project: Project(
       id: const ProjectId('a-drag-moves-a-sheet'),
       name: 'a drag moves a sheet',
       createdAt: DateTime.utc(2026, 10, 14),
       tracks: [
-        for (var i = 0; i < 30; i += 1)
+        for (var i = 0; i < (rows ?? 30); i += 1)
           Track(
             id: TrackId('track-$i'),
             name: 'V${i + 1}',
@@ -84,7 +102,7 @@ void main() {
               Cut(
                 id: CutId('cut-$i'),
                 name: 'cut-$i',
-                duration: i == 29 ? 400 : 12,
+                duration: i == (rows ?? 30) - 1 ? 400 : 12,
                 canvasSize: const CanvasSize(width: 1280, height: 720),
                 layers: [drawing('draw-$i')],
               ),
@@ -99,21 +117,39 @@ void main() {
   final sheets = <_Sheet>[
     (
       name: 'timeline',
-      panel: () => timeline(TimelineOrientation.horizontal),
+      panel: (rail, rows) =>
+          timeline(TimelineOrientation.horizontal, rail, rows: rows),
       outer: 'timeline-vertical-scroll-viewport',
       inner: 'timeline-frame-scroll-viewport',
+      aLayerName: find
+          .namedWhere((name) => name.startsWith('timeline-layer-name-'))
+          .first,
     ),
     (
       name: 'x-sheet',
-      panel: () => timeline(TimelineOrientation.vertical),
+      panel: (rail, rows) =>
+          timeline(TimelineOrientation.vertical, rail, rows: rows),
       outer: 'xsheet-layer-horizontal-viewport',
       inner: 'xsheet-frame-vertical-viewport',
+      aLayerName: find
+          .namedWhere((name) => name.startsWith('xsheet-layer-name-'))
+          .first,
     ),
     (
       name: 'conte panel',
-      panel: conte,
+      panel: (rail, rows) => conte(rail, rows: rows),
       outer: 'storyboard-vertical-viewport',
       inner: 'storyboard-timeline-horizontal-viewport',
+      aLayerName: find
+          .byWidgetPredicate(
+            (widget) => switch (widget.key) {
+              ValueKey<String>(:final value) => value.startsWith(
+                'storyboard-track-label-track-',
+              ),
+              _ => false,
+            },
+          )
+          .first,
     ),
   ];
 
@@ -127,10 +163,18 @@ void main() {
     /// default. What decides who takes a pull — the slop, each axis's own —
     /// and what stops a coast under a press went unasked, and four mutants
     /// lived (F-351, 2026-10-14).
-    Future<void> pumpSheet(WidgetTester tester) async {
+    Future<void> pumpSheet(
+      WidgetTester tester, {
+      LayerRailExtent? rail,
+      int? rows,
+    }) async {
       // Wide enough for the cells beside the rail to be a panel's worth.
       await tester.binding.setSurfaceSize(const Size(900, 600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
+      final window = rail ?? LayerRailExtent();
+      if (rail == null) {
+        addTearDown(window.dispose);
+      }
       await tester.pumpWidget(
         MaterialApp(
           scrollBehavior: const AppScrollBehavior(),
@@ -138,7 +182,7 @@ void main() {
             body: OverflowScrollers(
               minWidth: 1000,
               minHeight: 700,
-              child: sheet.panel(),
+              child: sheet.panel(window, rows),
             ),
           ),
         ),
@@ -187,18 +231,20 @@ void main() {
         .intersect(tester.getRect(find.byType(OverflowScrollers)))
         .center;
 
-    /// [fingers] land together on the cells and travel ten steps of [step].
+    /// [fingers] land together [from] the cells — or where it says — and
+    /// travel ten steps of [step].
     Future<void> drag(
       WidgetTester tester, {
       Offset step = const Offset(-20, -15),
       int fingers = 1,
       PointerDeviceKind kind = PointerDeviceKind.touch,
+      Offset? from,
     }) async {
-      final from = onTheCells(tester);
+      final at = from ?? onTheCells(tester);
       final gestures = [
         for (var finger = 0; finger < fingers; finger += 1)
           await tester.startGesture(
-            from + Offset(finger * 30.0, 0),
+            at + Offset(finger * 30.0, 0),
             kind: kind,
             pointer: 10 + finger,
           ),
@@ -336,14 +382,160 @@ void main() {
         await drag(tester);
         expect(standing(tester), Offset.zero);
       });
+
+      /// The layer area's window, through which its layers show.
+      Finder layerAreaWindow() => find
+          .ancestor(
+            of: sheet.aLayerName,
+            matching: find.byType(LayerRailWindow),
+          )
+          .first;
+
+      /// The sheet with its layer area's window narrowed under the area's
+      /// natural extent, so the window has somewhere to be pushed.
+      Future<LayerRailExtent> pumpNarrowed(WidgetTester tester) async {
+        final rail = LayerRailExtent();
+        addTearDown(rail.dispose);
+        await pumpSheet(tester, rail: rail);
+        rail.value =
+            extentAlong(
+              tester.widget<LayerRailWindow>(layerAreaWindow()).axis,
+              tester.getSize(layerAreaWindow()),
+            ) -
+            40;
+        await tester.pumpAndSettle();
+        return rail;
+      }
+
+      Future<void> holdTheView(WidgetTester tester) async {
+        CanvasViewHold.held.value = ViewHold.pan;
+        await tester.pump();
+      }
+
+      for (final (hand, kind, space) in const [
+        ('a finger', PointerDeviceKind.touch, false),
+        ('a trackpad', PointerDeviceKind.trackpad, false),
+        ('Space\'s hand', PointerDeviceKind.mouse, true),
+      ]) {
+        testWidgets('🚨$hand pulled on the layer area moves the layer area — '
+            'its layers and its own window — and leaves the frames where '
+            'they are', (tester) async {
+          final rail = await pumpNarrowed(tester);
+          if (space) {
+            await holdTheView(tester);
+          }
+
+          // A layer's name: on the layer area, and no control's.
+          await drag(
+            tester,
+            from: tester.getCenter(sheet.aLayerName),
+            kind: kind,
+          );
+
+          expect(
+            positionOf(tester, sheet.inner).pixels,
+            0,
+            reason: '「레이어쪽을 잡으면 레이어영역이 팬」 — the frames stay',
+          );
+          expect(
+            positionOf(tester, sheet.outer).pixels,
+            greaterThan(0),
+            reason: 'the layers go with the hand',
+          );
+          expect(
+            rail.offset.value,
+            greaterThan(0),
+            reason: 'and so does the layer area\'s own window',
+          );
+        });
+      }
+
+      for (final (hand, kind, space) in const [
+        ('a finger', PointerDeviceKind.touch, false),
+        ('Space\'s hand', PointerDeviceKind.mouse, true),
+      ]) {
+        testWidgets('$hand pulled on the layer area while the sheet coasts '
+            'stops it — the frames too — and then moves the layer area: what '
+            'a coasting sheet shows is out of the hit test until the press '
+            'stops it (PEN-9)', (tester) async {
+          final rail = await pumpNarrowed(tester);
+          await tester.flingFrom(
+            onTheCells(tester),
+            const Offset(-160, -120),
+            2400,
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 50));
+          if (space) {
+            await holdTheView(tester);
+          }
+
+          // The middle of what shows of the layer area — its layers have
+          // moved on under any one name.
+          final press = await tester.startGesture(
+            tester
+                .getRect(layerAreaWindow())
+                .intersect(tester.getRect(find.byKey(ValueKey(sheet.outer))))
+                .intersect(tester.getRect(find.byType(OverflowScrollers)))
+                .center,
+            kind: kind,
+          );
+          await tester.pump();
+          final caught = positionOf(tester, sheet.inner).pixels;
+          for (var i = 0; i < 10; i += 1) {
+            await press.moveBy(const Offset(-20, -15));
+            await tester.pump();
+          }
+          await press.up();
+          await tester.pumpAndSettle();
+
+          expect(
+            positionOf(tester, sheet.inner).pixels,
+            caught,
+            reason: 'the press stopped the frames, and the pull left them',
+          );
+          expect(rail.offset.value, greaterThan(0));
+        });
+      }
+
+      testWidgets('⛔a pull on the layer area where only the frames could '
+          'move goes nowhere — not out to the scroller around the sheet '
+          '(F-202)', (tester) async {
+        await pumpSheet(tester, rows: 3);
+        expect(
+          [
+            positionOf(tester, sheet.outer).maxScrollExtent,
+            positionOf(tester, sheet.inner).maxScrollExtent,
+          ],
+          [0, greaterThan(200)],
+          reason: '⛔fixture premise: the layers fit, the frames do not',
+        );
+
+        await drag(tester, from: tester.getCenter(sheet.aLayerName));
+
+        expect(standing(tester), Offset.zero);
+        expect(
+          positionOf(tester, sheet.inner).activity,
+          isA<IdleScrollActivity>(),
+          reason: 'the press held the frames, and letting go lets them go',
+        );
+        expect(
+          [for (final position in theFloor(tester)) position.pixels],
+          everyElement(0),
+          reason: 'F-202: 「안에서 동작하는 스크롤이나 드래그는 절대 밖으로 '
+              '안새게」',
+        );
+      });
     });
   }
 }
 
-/// A sheet: its panel, and the keys of its outer and inner scroll views.
+/// A sheet: its panel with its layer area seen through a window, the keys of
+/// its outer and inner scroll views, and a layer's name on its layer area.
 typedef _Sheet = ({
   String name,
-  Widget Function() panel,
+  Widget Function(LayerRailExtent rail, int? rows) panel,
   String outer,
   String inner,
+  Finder aLayerName,
 });

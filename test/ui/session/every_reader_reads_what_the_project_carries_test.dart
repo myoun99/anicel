@@ -14,10 +14,13 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
+import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
+    show readSheetImage;
 
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/import_preview_probe.dart';
 import '../../helpers/psd_fixture.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 
 /// Card `carried-bytes-every-reader` — the SAME question the viewer asks
@@ -203,18 +206,35 @@ void main() {
             ),
           ),
         );
-        for (var i = 0; i < 60 && tester.importPreviewImage == null; i += 1) {
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 20)),
-          );
-          await tester.pump();
-        }
+        await settleAsync(tester, () => tester.importPreviewImage != null);
         expect(tester.importPreviewImage, isNotNull);
 
         await tester.pumpWidget(const SizedBox());
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 20)),
         );
+        expect(session.projectFile.heldArchiveEntries, isEmpty);
+      });
+    }
+  });
+
+  group('a sheet\'s media image — the logo, a cover, a photo on its ink '
+      '(I-97)', () {
+    for (final fate in OriginalFate.values) {
+      testWidgets('its original ${fate.name}: the sheet reads what the '
+          'project carries, and gives it back', (tester) async {
+        final (:session, :path) = await carriedAndGone(
+          tester,
+          writeCarriedPicture,
+          fate,
+        );
+
+        final image = await tester.runAsync(
+          () => readSheetImage(session.projectFile.holdMediaBytes, path, 8),
+        );
+        addTearDown(() => image?.dispose());
+
+        expect((image?.width, image?.height), (8, 6));
         expect(session.projectFile.heldArchiveEntries, isEmpty);
       });
     }

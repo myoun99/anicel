@@ -47,8 +47,8 @@ Object laneRowSlice(Layer layer, String laneId) {
   if (laneIsSeNameTag(laneId)) {
     return layer.seNameTag ?? layer;
   }
-  // I-68: the reference fx's rows show the reference's pose, and only an
-  // edit of it makes a new reference.
+  // I-68: the reference fx's rows show its keys over the pose they rest on
+  // (F-374), and only an edit of either makes a new reference.
   if (laneIsReference(laneId)) {
     return layer.mediaReference ?? layer;
   }

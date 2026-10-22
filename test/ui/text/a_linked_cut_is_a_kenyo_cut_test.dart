@@ -19,7 +19,6 @@ void main() {
       strings.shortcutLabel('cut-convert-linked', '?'),
       strings.convertLinkedCutTitle,
       strings.linkWindowUnlinkLinkedCut,
-      strings.imMultiCutFolders,
     ];
   }
 

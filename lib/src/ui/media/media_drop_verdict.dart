@@ -6,7 +6,8 @@ import 'package:flutter/widgets.dart';
 /// 🚨The CHIP says it, and only the chip (유저 2026-09-11, 미디어 배치 라운드:
 /// 「불가능 = 칩의 금지 표시(커서는 그대로)」 · 「가능할 때와 불가능할 때 — 칩
 /// 하나로만 말한다」). An entrance answers for the file standing over it; the
-/// chip the drag carries listens and wears the ban on `false`.
+/// chip the drag carries listens and wears the ban on anything but `true`
+/// (F-372: over no entrance, too, a drop does nothing).
 ///
 /// ⚠️A scope rather than a parameter threaded to every entrance: the
 /// entrances live in five surfaces (the stage, a row's frames, an SE row's

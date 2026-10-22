@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../input/hit_path.dart';
+
 /// A CONTROL, not a place to grab the row by (H1, 유저 2026-08-21).
 ///
 /// > 「지금 레이어 선택범위시 **버튼쪽 탭다운해서 움직이면 선택범위
@@ -47,15 +49,10 @@ class RowControlSurface extends StatelessWidget {
     if (box is! RenderBox || !box.hasSize) {
       return false;
     }
-    final result = BoxHitTestResult();
-    box.hitTest(result, position: box.globalToLocal(globalPosition));
-    for (final entry in result.path) {
-      final target = entry.target;
-      if (target is RenderMetaData && identical(target.metaData, marker)) {
-        return true;
-      }
-    }
-    return false;
+    return hitPathWithin(box, globalPosition).any(
+      (target) =>
+          target is RenderMetaData && identical(target.metaData, marker),
+    );
   }
 
   @override

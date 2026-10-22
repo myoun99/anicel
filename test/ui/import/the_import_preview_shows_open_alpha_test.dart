@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 
 import '../../helpers/import_preview_probe.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/the_file_itself.dart';
@@ -66,14 +67,7 @@ void main() {
         ),
       ),
     );
-    for (var tries = 0;
-        tries < 50 && tester.importPreviewImage == null;
-        tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => tester.importPreviewImage != null);
 
     expect(tester.importPreviewImage, isNotNull, reason: 'CONTROL: it landed');
     expect(

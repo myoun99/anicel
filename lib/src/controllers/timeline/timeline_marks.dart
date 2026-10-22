@@ -27,8 +27,7 @@ class _TimelineMarks {
     if (frameIndex < 0) {
       return false;
     }
-    final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    return block != null && !block.entry.ghost && frameIndex > block.startIndex;
+    return isHeldCellAt(layer.timeline, frameIndex);
   }
 
   void toggleMarkForLayer({required LayerId layerId}) =>

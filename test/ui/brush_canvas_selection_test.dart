@@ -23,6 +23,8 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/transform_values.dart';
+import 'package:anicel/src/services/bitmap_surface_geometry.dart'
+    show bitmapSurfaceContentBounds;
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
@@ -44,12 +46,15 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/core/point_bounds.dart';
 import 'package:anicel/src/ui/canvas/canvas_capsule.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/canvas_target_pill.dart';
 import 'package:anicel/src/ui/canvas/float_warp.dart'
     show debugLastResampledFloat;
 import 'package:anicel/src/ui/canvas/box_chrome.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart'
+    show InputInspectorHost;
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
     show EditorActionIds;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
@@ -57,12 +62,15 @@ import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
+import '../helpers/poll_until.dart';
+import '../helpers/settle_async.dart';
 
 /// P9 widget routing on the R19 pixel model: the selection layer mounts
 /// only for selection tools, regions select PIXELS, move sessions float
 /// until ONE confirmed history entry, and all oracles are the raster
 /// itself (commands retired — the picture is the record).
 void main() {
+  tearDown(CanvasTouchContacts.reset);
   const layerKey = ValueKey<String>('canvas-selection-layer');
 
   /// A press INSIDE the box but off the anchor cross — the start of an
@@ -214,45 +222,49 @@ void main() {
       brush.value = brush.value.copyWith(tool: tool);
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: RepaintBoundary(
-              key: const ValueKey<String>('panel-capture'),
-              child: BrushCanvasPanel(
-                coordinator: coordinator,
-                // The panel carries its OWN canvas size, independent of the
-                // coordinator's session store — passing only the fixture's
-                // left the panel at the 2340×1654 default, which silently
-                // put every reachable pointer position back on canvas.
-                canvasSize: canvasSize,
-                availableFrameKeys: frameKeys,
-                cacheInvalidationSink: cacheSink,
-                transformTargetKeys: transformTargetKeys,
-                cellPlacementOf: cellPlacementOf == null
-                    ? null
-                    : (key) => placementOfSample(
-                        cellPlacementOf(key),
-                        canvasSize,
-                      ),
-                interactiveContentPose: placementOfSample(
-                  placement,
-                  canvasSize,
-                ),
-                historyManager: history,
-                brushToolState: brush,
-                selectionCommands: commands,
-                viewport: liveViewport,
-                onViewportChanged: onViewportChanged,
-                shapeFillDabsFor: (area, color) => buildRegionFillDabs(
-                  region: area,
-                  color: color,
-                  options: const FloodFillOptions(
-                    expandPx: 0,
-                    antiAlias: false,
+          // Under the app's one observer of every pointer, which counts the
+          // fingers resting on the glass (`CanvasTouchContacts`).
+          home: InputInspectorHost(
+            child: Scaffold(
+              body: RepaintBoundary(
+                key: const ValueKey<String>('panel-capture'),
+                child: BrushCanvasPanel(
+                  coordinator: coordinator,
+                  // The panel carries its OWN canvas size, independent of the
+                  // coordinator's session store — passing only the fixture's
+                  // left the panel at the 2340×1654 default, which silently
+                  // put every reachable pointer position back on canvas.
+                  canvasSize: canvasSize,
+                  availableFrameKeys: frameKeys,
+                  cacheInvalidationSink: cacheSink,
+                  transformTargetKeys: transformTargetKeys,
+                  cellPlacementOf: cellPlacementOf == null
+                      ? null
+                      : (key) => placementOfSample(
+                          cellPlacementOf(key),
+                          canvasSize,
+                        ),
+                  interactiveContentPose: placementOfSample(
+                    placement,
+                    canvasSize,
                   ),
+                  historyManager: history,
+                  brushToolState: brush,
+                  selectionCommands: commands,
+                  viewport: liveViewport,
+                  onViewportChanged: onViewportChanged,
+                  shapeFillDabsFor: (area, color) => buildRegionFillDabs(
+                    region: area,
+                    color: color,
+                    options: const FloodFillOptions(
+                      expandPx: 0,
+                      antiAlias: false,
+                    ),
+                  ),
+                  transformOptions: transformOptions,
+                  onSelectionInteractionChanged:
+                      onSelectionInteractionChanged,
                 ),
-                transformOptions: transformOptions,
-                onSelectionInteractionChanged:
-                    onSelectionInteractionChanged,
               ),
             ),
           ),
@@ -412,25 +424,25 @@ void main() {
   ///
   /// Fails loudly on timeout rather than falling through to an assertion
   /// that would blame the code.
+  ///
+  /// ↩️It ran its own stopwatch, 15 s, until 2026-10-16 — the wait is
+  /// [settleAsync]'s now, and so is its ceiling ([waitPatience]).
   Future<void> pumpUntil(
     WidgetTester tester,
     bool Function() ready, {
     required String reason,
-    Duration timeout = const Duration(seconds: 15),
   }) async {
-    final watch = Stopwatch()..start();
-    while (!ready()) {
-      if (watch.elapsed > timeout) {
-        fail(
-          'timed out after ${timeout.inSeconds}s waiting for $reason — the '
-          'pipeline never got there, which is a real failure and not a '
-          'slow machine',
-        );
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    final came = await settleAsync(
+      tester,
+      ready,
+      beat: const Duration(milliseconds: 10),
+    );
+    if (!came) {
+      fail(
+        'timed out after ${waitPatience.inSeconds}s waiting for $reason — '
+        'the pipeline never got there, which is a real failure and not a '
+        'slow machine',
       );
-      await tester.pump();
     }
   }
 
@@ -441,16 +453,22 @@ void main() {
       .evaluate()
       .isNotEmpty;
 
-  /// Lets the real decode pipeline run to completion, so the committed
-  /// surface can paint and any hold releases.
-  Future<void> settle(WidgetTester tester) async {
-    for (var i = 0; i < 8; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 16)),
-      );
-      await tester.pump();
-    }
-  }
+  /// True once a float draws its warped preview's DECODED image — what a
+  /// confirm keeps. ⚠️Not [previewIsUp]: that key is the float overlay's,
+  /// mounted wherever a float is.
+  bool decodedPreviewIsUp(WidgetTester tester) => tester
+      .widgetList<CustomPaint>(find.byType(CustomPaint))
+      .map((paint) => paint.painter)
+      .whereType<SelectionFloatPainter>()
+      .any((painter) => painter.floats.any((float) => float.image != null));
+
+  /// A window of both clocks, so the committed surface can paint and any
+  /// hold releases.
+  Future<void> settle(WidgetTester tester) => lendBothClocks(
+    tester,
+    rounds: 8,
+    beat: const Duration(milliseconds: 16),
+  );
 
   /// The FLOAT's surface painters — every one whose surface is not the
   /// committed cel.
@@ -2756,7 +2774,7 @@ void main() {
     // instead of moving, which is how this test first read as a failure.
     expect(inkAt(env.coordinator, 300, 100), isNonZero);
     expect(
-      small.containsPasteboardPoint(x: 250, y: 60),
+      small.pasteboardAt(PasteboardReach.whole).containsPoint(x: 250, y: 60),
       isTrue,
       reason: '(250,60) is past the 200×150 canvas but inside its pasteboard',
     );
@@ -3606,12 +3624,68 @@ void main() {
     await moveBoxBy(tester, const Offset(10, 5));
     expect(env.commands.movePending, isTrue);
 
-    env.commands.revertPendingMove();
+    env.commands.cancelTransform();
     await tester.pump();
     expect(inkAt(env.coordinator, 30, 30), isNonZero);
     expect(env.commands.hasSelection, isFalse);
     expect(env.history.undoCount, entriesBefore);
   });
+
+  // ⛔The pins above ask `hasSelection`, and an implicit shape answers null
+  // to it whether it is gone or left standing (F-108) — so they cannot
+  // tell 「back to no selection」 from 「the picture as it was, still the
+  // shape」. A shape left standing is what the next press takes hold of,
+  // and whatever was drawn since is left behind (mutants of the two
+  // `_setRegion(null)` lived, 2026-10-19).
+  for (final (ending, end) in [
+    ('확정', (CanvasSelectionCommands commands) => commands.confirmPendingMove()),
+    ('취소', (CanvasSelectionCommands commands) => commands.cancelTransform()),
+  ]) {
+    testWidgets('R26 #13: after the implicit session\'s $ending the next move '
+        'takes the picture as it is THEN — ink drawn since comes along', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+      );
+      await moveAtZoom(
+        tester,
+        zoom: 3,
+        grabCanvas: const Offset(36.5, 36.5),
+        byCanvas: const Offset(10, 5),
+      );
+      expect(env.commands.movePending, isTrue, reason: '⛔전제: 세션이 열림');
+      end(env.commands);
+      await tester.pump();
+      expect(env.commands.movePending, isFalse);
+
+      // Drawn after the session ended, well away from the picture it took.
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(120, 120)]);
+      await env.setTool(CanvasTool.move);
+
+      // Inside the box over the whole picture as it now stands, and clear
+      // of its grips at zoom 3.
+      await moveAtZoom(
+        tester,
+        zoom: 3,
+        grabCanvas: const Offset(60, 50),
+        byCanvas: const Offset(10, 5),
+      );
+      env.commands.confirmPendingMove();
+      await tester.pump();
+
+      expect(
+        inkAt(env.coordinator, 130, 125),
+        isNonZero,
+        reason:
+            '「선택하지 않은 상황이어도 그림 전체를 이동」 — what was drawn '
+            'after the $ending is part of the picture',
+      );
+      expect(inkAt(env.coordinator, 120, 120), 0, reason: 'moved, not copied');
+    });
+  }
 
   testWidgets('Escape after grabbing a HANDLE of the implicit box ends the '
       'whole session — the grab is what opened it', (tester) async {
@@ -3978,6 +4052,44 @@ void main() {
       reason: '⛔그리고 처음 당긴 모서리도 그대로 — 보관본이 아니라 격자에서 왔다',
     );
   });
+
+  // 🚨F-412 (유저 2026-10-19): 「자유변형으로 그림 크게 조정하면, 사각형 도구
+  // ui 밖을 클릭한게 아닌데도 회전이 작동함. … 일반변형은 문제없으니 그부분
+  // 법 통일하면서 해결」. A corner pulled out grows the outline past the box
+  // it was pulled from; a press in the grown part is inside what is drawn,
+  // so it is the move — in 퍼스 and in 메쉬 alike.
+  for (final mode in [TransformMode.perspective, TransformMode.mesh]) {
+    testWidgets('$mode: inside the outline a corner was pulled out to is '
+        'the move', (tester) async {
+      final env = await pumpSelectionPanel(tester, transformMode: mode);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+
+      // Stamp rect (20,20)-(71,71): its bottom-right is a quad corner in
+      // 퍼스 and the grid's last point in 메쉬.
+      await dragOnLayer(tester, const Offset(71, 71), const Offset(120, 120));
+      final pulled = antsOnScreen(tester)!.transformChrome!.box;
+      expect(
+        pulled,
+        contains(const Offset(120, 120)),
+        reason: 'the premise: the outline grew to the pulled corner',
+      );
+
+      // Inside the grown outline, past the box it was pulled from (x > 71).
+      await dragOnLayer(tester, const Offset(85, 80), const Offset(95, 80));
+      final moved = antsOnScreen(tester)!.transformChrome!.box;
+      expect(moved, hasLength(pulled.length));
+      for (var i = 0; i < pulled.length; i += 1) {
+        expect(
+          moved[i] - pulled[i],
+          const Offset(10, 0),
+          reason: 'point $i rides the move — a turn would swing it',
+        );
+      }
+    });
+  }
 
   testWidgets('메쉬 mode: the control grid comes up WITH the box, a dragged '
       'point + Enter commits ONE warped entry', (tester) async {
@@ -4543,6 +4655,7 @@ void main() {
             Offset? outlineTopLeft,
             int entries,
             List<int> undone,
+            bool boxOpen,
           })
         >
         endedBy(String ending) async {
@@ -4593,6 +4706,7 @@ void main() {
           await tester.pump();
           await settle(tester);
           final pixels = read();
+          final boxOpen = env.commands.transformActive;
           final box = env.commands.region?.selectedBounds;
           final outline = '$box';
           final entries = env.history.undoCount - before;
@@ -4608,6 +4722,7 @@ void main() {
             outlineTopLeft: box == null ? null : Offset(box.left, box.top),
             entries: entries,
             undone: read(),
+            boxOpen: boxOpen,
           );
           await tester.pumpWidget(const SizedBox.shrink());
           await tester.pump();
@@ -4620,6 +4735,7 @@ void main() {
           isNot(original),
           reason: '⛔전제: 확정이 그림을 바꿨다',
         );
+        expect(confirmed.boxOpen, isFalse, reason: '⛔전제: 확정이 상자를 닫았다');
         expect(confirmed.recall, isNotNull, reason: '⛔전제: 확정이 기록을 남겼다');
         expect(confirmed.entries, 1, reason: '⛔전제');
         expect(confirmed.undone, original, reason: '⛔전제: 언두 하나로 돌아온다');
@@ -4649,6 +4765,9 @@ void main() {
             confirmed.pixels,
             reason: '$ending: the cel holds what 확정 would have landed',
           );
+          // A box whose transform is in the landing is spent — left open, it
+          // would show that transform again over the picture it landed on.
+          expect(ended.boxOpen, isFalse, reason: '$ending: the box closed');
           final recall = ended.recall;
           expect(recall, isNotNull, reason: '$ending: 재현 has a record');
           expect(recall!.values, confirmed.recall!.values, reason: ending);
@@ -4904,7 +5023,7 @@ void main() {
   /// 초기화같은거 하지말고** 해당 상황에서 수정자 적용해서 **다음부터
   /// 적용**되도록」.
   ///
-  /// ↩️The finger used to mean NOTHING here (08-13) — see [_modifierTouch]
+  /// ↩️The finger used to mean NOTHING here (08-13) — see `_aModifierFinger`
   /// for why, and why 유저 took that risk back.
   testWidgets('a finger landing mid-transform is the MODIFIER: the drag '
       'survives and NOTHING is reset', (tester) async {
@@ -5020,8 +5139,8 @@ void main() {
     expect(currentSurface(env.coordinator), equals(beforeLift));
   });
 
-  testWidgets('REVERT puts the pixels back exactly and records nothing '
-      '(R17-①: the prompt\'s 되돌리기)', (tester) async {
+  testWidgets('취소 puts the pixels back exactly and records nothing '
+      '(Escape: the session reverts whole)', (tester) async {
     final env = await pumpSelectionPanel(tester);
     final beforeLift = currentSurface(env.coordinator);
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
@@ -5031,7 +5150,7 @@ void main() {
     await moveBoxBy(tester, const Offset(15, 15));
     expect(env.commands.movePending, isTrue);
 
-    env.commands.revertPendingMove();
+    env.commands.cancelTransform();
     await tester.pump();
 
     expect(env.commands.movePending, isFalse);
@@ -5061,8 +5180,9 @@ void main() {
   /// ⇒ The document half of that law IS pinned, all through this file: the
   /// cel keeps every byte while a box is open, and the landing carries the
   /// erase with the stamp. The DRAWING half needs a host that composites —
-  /// the board carries it as its own round rather than a green test that
-  /// proves nothing.
+  /// it is pinned on the real workspace, which does
+  /// (`a_new_stroke_survives_a_transform_round_trip_test`: a pending move
+  /// shows its hole).
   /// 🚨★★★**전/중/후 같은 그림 — THE ABSOLUTE CONDITION OF THIS ROUND.**
   /// 유저 2026-09-17, choosing the non-destructive session: 「**조작 전/중/후가
   /// 빈 프레임 존재안하고 눈에 보이는 결과가 달라지지 않는건 절대조건**」.
@@ -5148,7 +5268,7 @@ void main() {
   /// have passed for the wrong reason here. 🔬Measured 2026-09-17 on this
   /// very fixture: `bytesNotSharedWith` = 0, because the marquee covers the
   /// whole stroke and the erased tile is dropped rather than rebuilt.
-  for (final ending in const ['확정', '되돌리기']) {
+  for (final ending in const ['확정', '취소']) {
     testWidgets('a memory warning mid-session gives the picture back, and '
         '$ending still lands correctly', (tester) async {
       final env = await pumpSelectionPanel(tester);
@@ -5189,7 +5309,7 @@ void main() {
           reason: 'and the pixels are where the move put them',
         );
       } else {
-        env.commands.revertPendingMove();
+        env.commands.cancelTransform();
         await tester.pump();
         expect(env.commands.movePending, isFalse);
         expect(
@@ -5345,14 +5465,12 @@ void main() {
       final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
 
-      Future<void> settle() async {
-        for (var i = 0; i < 8; i += 1) {
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 16)),
-          );
-          await tester.pump(const Duration(milliseconds: 16));
-        }
-      }
+      Future<void> settle() => lendBothClocks(
+        tester,
+        rounds: 8,
+        beat: const Duration(milliseconds: 16),
+        step: const Duration(milliseconds: 16),
+      );
 
       BitmapSurfacePainter floatPainter() {
         final floats = floatPainters(
@@ -5495,12 +5613,12 @@ void main() {
       // `_commitMove`, which is the first of the three rebuilds that have
       // a legitimate predecessor.
       await dragOnLayer(tester, const Offset(300, 250), const Offset(310, 258));
-      for (var i = 0; i < 10; i += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 16)),
-        );
-        await tester.pump(const Duration(milliseconds: 16));
-      }
+      await lendBothClocks(
+        tester,
+        rounds: 10,
+        beat: const Duration(milliseconds: 16),
+        step: const Duration(milliseconds: 16),
+      );
 
       final lifted = floatPainter().surface;
       expect(
@@ -5918,7 +6036,11 @@ void main() {
       );
       // The resample decodes asynchronously; the preview being up is what
       // says the image the confirm will keep actually exists yet.
-      await settle(tester);
+      await pumpUntil(
+        tester,
+        () => decodedPreviewIsUp(tester),
+        reason: 'the warped preview to decode',
+      );
       expect(
         find.byKey(const ValueKey<String>('transform-resample-preview')),
         findsOneWidget,
@@ -5983,7 +6105,11 @@ void main() {
           sy: 1.5,
         ),
       );
-      await settle(tester);
+      await pumpUntil(
+        tester,
+        () => decodedPreviewIsUp(tester),
+        reason: 'the warped preview to decode',
+      );
       env.commands.applyTransform();
       await tester.pump();
       final atConfirm = await screenInkMask(tester);
@@ -6207,7 +6333,11 @@ void main() {
           sy: 1.5,
         ),
       );
-      await settle(tester);
+      await pumpUntil(
+        tester,
+        () => decodedPreviewIsUp(tester),
+        reason: 'the warped preview to decode',
+      );
       env.commands.applyTransform();
       await tester.pump();
       await settle(tester);
@@ -6287,18 +6417,9 @@ void main() {
       await tester.pump();
       await gesture.moveTo(origin + const Offset(60, 55));
       await tester.pump();
-      // The DECODE, not the resample: `previewIsUp` is the fallback
-      // painter, which is up for the float surface as well.
-      bool decodedPreviewIsUp() => tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .whereType<SelectionFloatPainter>()
-          .any(
-            (painter) => painter.floats.any((float) => float.image != null),
-          );
       await pumpUntil(
         tester,
-        decodedPreviewIsUp,
+        () => decodedPreviewIsUp(tester),
         reason: 'the drag-time resample to decode',
       );
       final window = debugLastResampledFloat!.stamp!;
@@ -6406,6 +6527,95 @@ void main() {
       );
     });
 
+    testWidgets('🚨a second drag, inside the box the first one opened, '
+        'carries the float\'s own pixels — no picture of them is uploaded, '
+        'as none was for the first (a-drag-in-an-open-box-resamples-a-move)', (
+      tester,
+    ) async {
+      await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: widePicture,
+      );
+      await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
+      await dragOnLayer(tester, const Offset(340, 225), const Offset(380, 250));
+      // A decode is real work on a real thread: lend it the time to land,
+      // were one asked for.
+      await lendBothClocks(
+        tester,
+        rounds: 50,
+        beat: const Duration(milliseconds: 10),
+      );
+
+      final floats = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<SelectionFloatPainter>()
+          .expand((painter) => painter.floats)
+          .toList();
+      expect(floats, hasLength(1), reason: '⛔fixture: one float');
+      expect(
+        (floats.single.surfaceOffset.x, floats.single.surfaceOffset.y),
+        (80.0, 50.0),
+        reason: '⛔fixture: the second drag moved it on, inside the box',
+      );
+      expect(floats.single.image, isNull);
+    });
+
+    testWidgets('🚨a move typed in halves shows the float where it lands — '
+        'no pixel stands at a half, and the landing rounds '
+        '(a-drag-in-an-open-box-resamples-a-move)', (tester) async {
+      // Read off the cel and the float, not off the screen: the screen
+      // carries the box's chrome while the float is held, and not after.
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: widePicture,
+      );
+      final before = bitmapSurfaceContentBounds(
+        currentSurface(env.coordinator),
+      )!;
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(tx: 40.5, ty: 25.5),
+      );
+      await settle(tester);
+      final float = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<SelectionFloatPainter>()
+          .expand((painter) => painter.floats)
+          .single;
+      expect(
+        float.image,
+        isNull,
+        reason: 'a typed move uploads no picture either',
+      );
+      final held = bitmapSurfaceContentBounds(float.surface!.surface)!;
+      final carried = (
+        held.left + float.surfaceOffset.x,
+        held.top + float.surfaceOffset.y,
+      );
+
+      env.commands.applyTransform();
+      await settle(tester);
+      final landed = bitmapSurfaceContentBounds(
+        currentSurface(env.coordinator),
+      )!;
+
+      expect(
+        (landed.left, landed.top),
+        isNot((before.left, before.top)),
+        reason: '⛔CONTROL: the confirm moved the picture',
+      );
+      expect(
+        carried,
+        (landed.left.toDouble(), landed.top.toDouble()),
+        reason: 'what floats is where it lands',
+      );
+    });
+
     testWidgets('a SHRINK confirms and settles to the cel: nothing on screen '
         'where the cel has nothing', (tester) async {
       // 유저 2026-09-11 (F-68 ③, hands-on on Windows debug AND iPad
@@ -6432,7 +6642,11 @@ void main() {
           sy: 0.5,
         ),
       );
-      await settle(tester);
+      await pumpUntil(
+        tester,
+        () => decodedPreviewIsUp(tester),
+        reason: 'the warped preview to decode',
+      );
       env.commands.applyTransform();
       await tester.pump();
       await settle(tester);
@@ -6606,7 +6820,11 @@ void main() {
           sy: 1.4,
         ),
       );
-      await settle(tester);
+      await pumpUntil(
+        tester,
+        () => decodedPreviewIsUp(tester),
+        reason: 'the warped preview to decode',
+      );
       expect(
         find.byKey(const ValueKey<String>('transform-resample-preview')),
         findsOneWidget,
@@ -7863,37 +8081,46 @@ void main() {
         expect(env.coordinator, isASquare());
       });
 
-      testWidgets('the finger lifting gives the ratio back at the next move', (
-        tester,
-      ) async {
-        final env = await pumpSelectionPanel(
+      // The finger leaves the glass two ways, and either lets go. ↩️A cancel
+      // (a palm the OS rejects, the focus lost) used to leave it held for
+      // the life of the layer (card a-cancelled-modifier-finger-stays-held).
+      final leaves = <String, Future<void> Function(TestGesture finger)>{
+        'lifting': (finger) => finger.up(),
+        'cancelled': (finger) => finger.cancel(),
+      };
+      for (final MapEntry(key: way, value: leave) in leaves.entries) {
+        testWidgets('the finger $way gives the ratio back at the next move', (
           tester,
-          tool: CanvasTool.shape,
-          shapeOptions: free,
-        );
-        final origin = tester.getTopLeft(find.byKey(layerKey));
+        ) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: CanvasTool.shape,
+            shapeOptions: free,
+          );
+          final origin = tester.getTopLeft(find.byKey(layerKey));
 
-        final pen = await tester.startGesture(
-          origin + const Offset(100, 100),
-          kind: PointerDeviceKind.stylus,
-        );
-        await tester.pump();
-        final finger = await tester.startGesture(
-          origin + const Offset(500, 400),
-          kind: PointerDeviceKind.touch,
-        );
-        await tester.pump();
-        await pen.moveTo(origin + const Offset(190, 140));
-        await tester.pump();
-        await finger.up();
-        await tester.pump();
-        await pen.moveTo(origin + const Offset(200, 150));
-        await tester.pump();
-        await pen.up();
-        await tester.pump();
+          final pen = await tester.startGesture(
+            origin + const Offset(100, 100),
+            kind: PointerDeviceKind.stylus,
+          );
+          await tester.pump();
+          final finger = await tester.startGesture(
+            origin + const Offset(500, 400),
+            kind: PointerDeviceKind.touch,
+          );
+          await tester.pump();
+          await pen.moveTo(origin + const Offset(190, 140));
+          await tester.pump();
+          await leave(finger);
+          await tester.pump();
+          await pen.moveTo(origin + const Offset(200, 150));
+          await tester.pump();
+          await pen.up();
+          await tester.pump();
 
-        expect(env.coordinator, isAsDragged());
-      });
+          expect(env.coordinator, isAsDragged());
+        });
+      }
 
       // 유저 2026-08-27: 「손가락이 동시에 착지하는게 불가능하니까」 — a
       // finger's drag is a gesture of its own only once it has gone the
@@ -8521,6 +8748,7 @@ void main() {
     // two thirds of it away — at a phone's canvas size, hundreds of MB per
     // transform, and more for every larger scale.
     const canvasSize = CanvasSize(width: 60, height: 40);
+    final wall = canvasSize.pasteboardAt(PasteboardReach.whole);
     final env = await pumpSelectionPanel(
       tester,
       tool: CanvasTool.move,
@@ -8562,10 +8790,10 @@ void main() {
         height: stamp.height,
       ),
       (
-        left: canvasSize.pasteboardLeft,
-        top: canvasSize.pasteboardTop,
-        width: canvasSize.pasteboardRightExclusive - canvasSize.pasteboardLeft,
-        height: canvasSize.pasteboardBottomExclusive - canvasSize.pasteboardTop,
+        left: wall.left,
+        top: wall.top,
+        width: wall.rightExclusive - wall.left,
+        height: wall.bottomExclusive - wall.top,
       ),
       reason:
           'the whole picture is on screen, so the preview is the buffer '
@@ -8575,12 +8803,12 @@ void main() {
     env.commands.applyTransform();
     await tester.pump();
 
-    final right = canvasSize.pasteboardRightExclusive - 1;
-    final bottom = canvasSize.pasteboardBottomExclusive - 1;
+    final right = wall.rightExclusive - 1;
+    final bottom = wall.bottomExclusive - 1;
     for (final (x, y) in [
-      (canvasSize.pasteboardLeft, canvasSize.pasteboardTop),
-      (right, canvasSize.pasteboardTop),
-      (canvasSize.pasteboardLeft, bottom),
+      (wall.left, wall.top),
+      (right, wall.top),
+      (wall.left, bottom),
       (right, bottom),
     ]) {
       expect(
@@ -8771,6 +8999,94 @@ void main() {
         reason: '리두도 같은 순서 문제를 갖는다 — 되살릴 선택이 애초에 없다',
       );
     });
+
+    /// 🚨F-401 — 유저 2026-10-19: 「변형도구로 움직이고 확정안누르고 지우개등
+    /// 도구바꿈. 그림은 확정되있음. 다시 한번 더 변형도구로 움직이면 빨간
+    /// 변형도구 라인 뒤에 개미행렬이 보임. 그 상태서 확정짓거나 하면
+    /// 개미행렬이 존재함」.
+    ///
+    /// A painting tool takes the selection layer down, and the move lands on
+    /// the way out. The made-up box has to go with it — and the layer that
+    /// mounts again must not take what it finds for a selection.
+    testWidgets('a painting tool between two moves leaves no selection '
+        'behind', (tester) async {
+      final env = await pumpSelectionPanel(tester);
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(30, 30), const Offset(40, 35));
+      expect(env.commands.movePending, isTrue, reason: 'the session opened');
+
+      await env.setTool(CanvasTool.eraser);
+      // The unmount lands a frame later — history never runs in a build.
+      await tester.pump();
+      await tester.pump();
+      await settle(tester);
+      expect(
+        env.commands.movePending,
+        isFalse,
+        reason: '「그림은 확정되있음」 — the premise',
+      );
+      expect(
+        env.commands.liveShape,
+        isNull,
+        reason: 'the box closed, and the shape it framed went with it',
+      );
+
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(40, 35), const Offset(50, 40));
+      expect(
+        env.commands.movePending,
+        isTrue,
+        reason: '🚨the second session has to be OPEN or this proves nothing',
+      );
+      expect(
+        antsOnScreen(tester)!.committedRegion,
+        isNull,
+        reason: '「다시 한번 더 변형도구로 움직이면 빨간 변형도구 라인 뒤에 '
+            '개미행렬이 보임」',
+      );
+
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      expect(
+        env.commands.liveShape,
+        isNull,
+        reason: '「그 상태서 확정짓거나 하면 개미행렬이 존재함」',
+      );
+      expect(antsOnScreen(tester)!.committedRegion, isNull);
+    });
+
+    /// The other half of F-401: the layer that mounts again copies the
+    /// shape from the channel — and has to copy what it IS with it. It took
+    /// the shape and started its flag at false, which made the move tool's
+    /// box a selection with ants.
+    testWidgets('a layer mounting on a made-up shape does not take it for '
+        'a selection', (tester) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.eraser);
+      env.commands.setRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 20, top: 20, right: 70, bottom: 70),
+        ),
+        implicit: true,
+      );
+      await tester.pump();
+      expect(env.commands.region, isNull, reason: 'the premise: not chosen');
+
+      // ⚠️THE FIRST FRAME, not the settled one: the channel's next ping
+      // puts a wrong copy right a microtask later, after it has been drawn
+      // — and one frame of ants is ants (measured: a mount that dropped
+      // the flag passed a check made after `setTool`).
+      SelectionAntsPainter? firstFrame;
+      var drawn = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        drawn = true;
+        firstFrame = antsOnScreen(tester);
+      });
+      await env.setTool(CanvasTool.move);
+      expect(drawn, isTrue, reason: 'the mount drew a frame');
+      expect(firstFrame, isNotNull, reason: 'the layer mounted on it');
+      expect(firstFrame!.committedRegion, isNull);
+      expect(antsOnScreen(tester)!.committedRegion, isNull);
+    });
   });
 
   /// 🚨I-23 — 유저 2026-09-30: 「근데 지금 보니까 페이스트보드 밖도
@@ -8783,7 +9099,7 @@ void main() {
   /// canvas coordinates.
   group('a selection stops at the pasteboard wall', () {
     const small = CanvasSize(width: 200, height: 150);
-    final wall = small.pasteboardRect;
+    final wall = small.pasteboardAt(PasteboardReach.whole).rect;
 
     void expectInsideTheWall(
       ({double left, double top, double right, double bottom}) box,

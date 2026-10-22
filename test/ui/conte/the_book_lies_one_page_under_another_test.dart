@@ -39,7 +39,8 @@ import '../../helpers/sheet_paper_view.dart';
 /// pdf같은거 여러페이지 동시에 볼수있게 하고싶음. pdf리더같은거 밑으로 쭉
 /// 존재하잖아. 별개로 왼쪽 알약인 페이지 넘기는 버튼은 동시존재해서 그거로
 /// 다음페이지 스냅」 — the conte's book lies one page under another, and the
-/// page strip scrolls to a page instead of swapping the paper.
+/// page turner (that 왼쪽 알약, in the band under the bars since F-383)
+/// scrolls to a page instead of swapping the paper.
 void main() {
   /// Eight one-cell cuts: five rows a page, so two body pages after the
   /// cover and its blank back.
@@ -363,7 +364,12 @@ void main() {
     final box = tester.getSize(find.byType(CanvasViewportGestureLayer));
     expect(
       stack.paper.bottom - (stack.pageRect(3).top - stack.gap / 2),
-      lessThan(box.height - pillBandOf(tester) - AppScrollbarLane.wide),
+      lessThan(
+        box.height -
+            pillBandOf(tester) -
+            bandCoverOf(tester) -
+            AppScrollbarLane.wide,
+      ),
       reason: '⛔전제: the last page, from half a gap above it to the '
           'paper\'s end, is shorter than the window',
     );
@@ -375,10 +381,11 @@ void main() {
     expect(readout(tester), '4 / 4');
     final shown = printedThrough(tester);
     // The view ends where the bottom lane begins (F-209: a docked panel's
-    // scrollbars take their room).
+    // scrollbars take their room), over the band the book's page turner
+    // stands in (F-383).
     expect(
       stack.paper.bottom * shown.zoom + shown.panY,
-      closeTo(box.height - AppScrollbarLane.wide, 1),
+      closeTo(box.height - bandCoverOf(tester) - AppScrollbarLane.wide, 1),
       reason: 'the paper\'s end on the view\'s',
     );
   });

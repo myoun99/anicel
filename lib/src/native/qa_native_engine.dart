@@ -70,6 +70,7 @@ class QaNativeEngine {
     this._preBlendTiles,
     this._premultiplyRgbaCopy,
     this._premultiplyRgbaRows,
+    this._keyRgba,
     this._copyBytes,
     this._zeroBytes,
     this._widenBytes,
@@ -213,6 +214,65 @@ class QaNativeEngine {
     width,
     rows,
   );
+
+  final int Function(
+    Pointer<Uint8> pixels,
+    int pixelCount,
+    Pointer<Uint32> red,
+    Pointer<Uint32> green,
+    Pointer<Uint32> blue,
+    int keeps,
+    Pointer<Uint8> alphaMaps,
+  )
+  _keyRgba;
+
+  final _keyPixels = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  final _keyRed = NativeScratch<Uint32>(
+    (n) => calloc<Uint32>(n),
+    bytesPerElement: sizeOf<Uint32>(),
+  );
+  final _keyGreen = NativeScratch<Uint32>(
+    (n) => calloc<Uint32>(n),
+    bytesPerElement: sizeOf<Uint32>(),
+  );
+  final _keyBlue = NativeScratch<Uint32>(
+    (n) => calloc<Uint32>(n),
+    bytesPerElement: sizeOf<Uint32>(),
+  );
+  final _keyAlphaMaps = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+
+  /// [straight] rgba through a row's colour keys, given as the [tables]
+  /// their one definition makes (`CelColorKey`, the keys' pass) — the
+  /// keyed bytes, or null when the keys leave every alpha as it was
+  /// (`qa_key_rgba`, ABI 49).
+  ///
+  /// The bytes go through the engine's own buffer, so [straight] may live
+  /// anywhere, and the answer is a view of that buffer: good until the
+  /// next call.
+  Uint8List? keyRgba(Uint8List straight, KeyRgbaTables tables) {
+    final (:red, :green, :blue, :keeps, :alphaMaps) = tables;
+    final length = straight.length;
+    final pixels = _keyPixels.ensure(length);
+    final keyed = pixels.asTypedList(length)..setAll(0, straight);
+    final changed = _keyRgba(
+      pixels,
+      length ~/ 4,
+      _staged(_keyRed, red),
+      _staged(_keyGreen, green),
+      _staged(_keyBlue, blue),
+      keeps,
+      _keyAlphaMaps.ensure(alphaMaps.length)
+        ..asTypedList(alphaMaps.length).setAll(0, alphaMaps),
+    );
+    return changed == 0 ? null : keyed;
+  }
+
+  static Pointer<Uint32> _staged(
+    NativeScratch<Uint32> scratch,
+    Uint32List table,
+  ) =>
+      scratch.ensure(table.length)
+        ..asTypedList(table.length).setAll(0, table);
 
   final _tilesPictureScratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
 
@@ -1070,6 +1130,27 @@ class QaNativeEngine {
             ),
             void Function(Pointer<Uint8>, int, Pointer<Uint8>, int, int, int)
           >('qa_premultiply_rgba_rows');
+      final keyRgba = library
+          .lookupFunction<
+            Int32 Function(
+              Pointer<Uint8>,
+              Int32,
+              Pointer<Uint32>,
+              Pointer<Uint32>,
+              Pointer<Uint32>,
+              Uint32,
+              Pointer<Uint8>,
+            ),
+            int Function(
+              Pointer<Uint8>,
+              int,
+              Pointer<Uint32>,
+              Pointer<Uint32>,
+              Pointer<Uint32>,
+              int,
+              Pointer<Uint8>,
+            )
+          >('qa_key_rgba');
       final copyBytes = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int64),
@@ -1337,6 +1418,7 @@ class QaNativeEngine {
         preBlendTiles,
         premultiplyRgbaCopy,
         premultiplyRgbaRows,
+        keyRgba,
         copyBytes,
         zeroBytes,
         widenBytes,
@@ -1979,7 +2061,17 @@ class QaNativeEngine {
     return QaNativeTileBuffer._(pointer, view);
   }
 
+  /// Buffers handed back through [releaseTileBuffer], counted in debug
+  /// builds only — the pin that a result the budget lets go of gives its
+  /// block back.
+  @visibleForTesting
+  static int debugReleasedTileBuffers = 0;
+
   void releaseTileBuffer(QaNativeTileBuffer buffer) {
+    assert(() {
+      debugReleasedTileBuffers += 1;
+      return true;
+    }());
     tileFree(buffer.pointer);
   }
 
@@ -2121,10 +2213,16 @@ class QaNativeEngine {
 
   /// Uploaded mask alphas keyed by the SOURCE Float64List's identity
   /// (BrushTipMask.alphaNormalized is `late final`, so the identity is
-  /// stable for a mask's lifetime). Small LRU — one stroke reuses the
-  /// same two or three masks for every dab.
+  /// stable for a mask's lifetime).
+  ///
+  /// 🚨ROOM FOR A WHOLE TIP LIST: a brush takes its tips in turn (F-176-Q3)
+  /// — Clip Studio's 遠くの雲 carries thirteen — and a stroke reuses every
+  /// one of them, its dual and its texture, dab after dab. ↩️Eight stood
+  /// here for "the same two or three masks", which a thirteen-tip stroke
+  /// would have evicted and uploaded again every few dabs, a batch cut at
+  /// each ([batchMaskAllowance]). The bytes stay the real bound.
   final _maskUploads = NativeUploadCache<Float64List>(
-    entryCap: 8,
+    entryCap: 64,
     byteBudget: stampUploadByteBudget,
   );
 
@@ -2385,6 +2483,24 @@ class QaNativeEngine {
 /// bytes on the next one does. A stride belongs to its rows — handed apart,
 /// one plane's stride could walk the other's rows.
 typedef NativeRows = ({Pointer<Uint8> start, int stride});
+
+/// Up to [keyRgbaKeysAtOnce] colour keys as `qa_key_rgba` reads them — a
+/// table lookup a channel where the keys asked a question a key: bit k of
+/// `red[r]`, `green[g]` and `blue[b]` says key k is within its tolerance of
+/// a pixel in that channel, bit k of `keeps` that key k keeps what it
+/// names, and `alphaMaps[k * 256 + a]` is what key k leaves of an alpha `a`
+/// it erases ([QaNativeEngine.keyRgba]; the keys' pass makes them).
+typedef KeyRgbaTables = ({
+  Uint32List red,
+  Uint32List green,
+  Uint32List blue,
+  int keeps,
+  Uint8List alphaMaps,
+});
+
+/// The keys one set of [KeyRgbaTables] holds: a bit each in a 32-bit word,
+/// the C's.
+const int keyRgbaKeysAtOnce = 32;
 
 /// A pooled native tile buffer: the raw pointer for the kernel and a
 /// typed-data view over the SAME memory for Dart-side reads/writes.

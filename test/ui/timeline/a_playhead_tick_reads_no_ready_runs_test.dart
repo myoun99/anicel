@@ -36,7 +36,13 @@ void main() {
               cellWidth: 8,
               readyRunsIn: (start, end) {
                 reads += 1;
-                return [(startIndex: start, endIndexExclusive: start + 1)];
+                return [
+                  (
+                    startIndex: start,
+                    endIndexExclusive: start + 1,
+                    unreadable: false,
+                  ),
+                ];
               },
             ),
           ),
@@ -97,8 +103,16 @@ void main() {
         ),
       ),
     );
-    await mount((start, end) => [(startIndex: 0, endIndexExclusive: 2)]);
-    await mount((start, end) => [(startIndex: 4, endIndexExclusive: 6)]);
+    await mount(
+      (start, end) => [
+        (startIndex: 0, endIndexExclusive: 2, unreadable: false),
+      ],
+    );
+    await mount(
+      (start, end) => [
+        (startIndex: 4, endIndexExclusive: 6, unreadable: false),
+      ],
+    );
     final strip = tester.renderObject<RenderCustomPaint>(
       find.byKey(const ValueKey<String>('ready-bar-probe')),
     );

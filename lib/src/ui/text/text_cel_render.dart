@@ -4,6 +4,7 @@ import 'package:flutter/painting.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/text_cel_style.dart';
+import 'canvas_letter_lines.dart';
 import 'canvas_letter_passes.dart';
 import 'canvas_letter_style.dart';
 
@@ -30,10 +31,12 @@ class TextCelLayout {
     required this.inkBounds,
     required this.topLeft,
     required CanvasLetterPasses<TextPainter> letters,
+    required CanvasLetterLines lines,
     required this.style,
     required this.pad,
     required this.textSize,
-  }) : _letters = letters;
+  }) : _letters = letters,
+       _lines = lines;
 
   /// The block's painted extent in canvas coordinates — text bounds plus
   /// the background box / outline, snapped to whole pixels so a bake's
@@ -55,6 +58,9 @@ class TextCelLayout {
   /// (the passes a text on a cel is drawn in too).
   final CanvasLetterPasses<TextPainter> _letters;
 
+  /// The lines they wear, where they are drawn.
+  final CanvasLetterLines _lines;
+
   /// Draws at the layout's canvas coordinates — the caller sets up any
   /// viewport/camera transform first.
   void paint(ui.Canvas canvas) {
@@ -73,14 +79,13 @@ class TextCelLayout {
         background,
       );
     }
-    // ⚠️A letter's size past the ink the layout counts: that box is the
-    // lines' own, and a glyph reaches out of its line.
-    _letters.paintAt(
-      canvas,
-      topLeft,
-      within: inkBounds.inflate(style.fontSize),
-    );
+    _letters.paintAt(canvas, topLeft, within: paintBounds, lines: _lines);
   }
+
+  /// Where the block may paint, in canvas coordinates: ⚠️a letter's size
+  /// past the ink the layout counts — that box is the lines' own, and a
+  /// glyph reaches out of its line.
+  ui.Rect get paintBounds => inkBounds.inflate(style.fontSize);
 
   void dispose() => _letters.dispose();
 }
@@ -143,11 +148,10 @@ TextCelLayout layoutTextCel({
   final anchor =
       content.position ??
       ui.Offset(canvas.width / 2, (canvas.height - textSize.height) / 2);
-  final topLeft = ui.Offset(switch (style.align) {
-    TextCelAlign.left => anchor.dx,
-    TextCelAlign.center => anchor.dx - textSize.width / 2,
-    TextCelAlign.right => anchor.dx - textSize.width,
-  }, anchor.dy);
+  final topLeft = ui.Offset(
+    anchor.dx - textSize.width * style.align.shareBefore,
+    anchor.dy,
+  );
 
   // The pad follows the DRAWN size, so a shrunk tag keeps its proportions.
   final pad = style.backgroundColor == null ? 0.0 : drawnSize * 0.25;
@@ -165,6 +169,19 @@ TextCelLayout layoutTextCel({
     ),
     topLeft: topLeft,
     letters: passes,
+    // The tag's one run, at the size it is drawn — a shrunk tag's lines
+    // shrink with its letters.
+    lines: canvasLetterLinesOf(
+      passes.fill,
+      [
+        (
+          start: 0,
+          end: content.text.length,
+          letters: style.copyWith(fontSize: drawnSize),
+        ),
+      ],
+      at: topLeft,
+    ),
     style: style,
     pad: pad,
     textSize: textSize,

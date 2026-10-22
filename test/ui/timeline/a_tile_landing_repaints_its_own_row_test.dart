@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
+import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨I-22 ③: A LANDED TILE REPAINTS ITS OWN ROW.
@@ -91,12 +93,6 @@ void main() {
     addTearDown(() => painter.removeListener(onRepaint));
   }
 
-  Future<void> idle() async {
-    while (store.debugBusy) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
-  }
-
   setUp(() {
     QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = dllPath;
@@ -125,7 +121,7 @@ void main() {
 
     paintRow(a, 8);
     expect(store.debugBusy, isTrue, reason: 'premise: its two spans are cold');
-    await idle();
+    await tileStoreIdle(store);
 
     expect(aRepaints, 2, reason: 'each of its landings repaints its row');
     expect(bRepaints, 0, reason: 'and never another row');
@@ -149,7 +145,7 @@ void main() {
     for (final row in rows) {
       paintRow(row, 80);
     }
-    await idle();
+    await tileStoreIdle(store);
 
     for (final row in rows) {
       paintRow(row, 80);
@@ -177,7 +173,7 @@ void main() {
     paintRow(gone, 40);
     paintRow(shown, 40);
     paintRow(big, 128);
-    await idle();
+    await tileStoreIdle(store);
 
     paintRow(shown, 40);
     expect(store.debugBusy, isFalse, reason: 'the row still shown is warm');
@@ -224,9 +220,7 @@ void main() {
     show(a, () => paintRow(a, 4));
 
     paintRow(a, 4);
-    while (out.isEmpty) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-    }
+    await pollUntil(() => out.isNotEmpty);
     paintRow(a, 4);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(out, hasLength(1), reason: 'its one tile is out once, not twice');
@@ -236,7 +230,7 @@ void main() {
       Canvas(recorder);
       landing.complete(recorder.endRecording().toImageSync(width, height));
     }
-    await idle();
+    await tileStoreIdle(store);
     expect(out, hasLength(1), reason: 'and its landing asks for nothing more');
   });
 
@@ -269,7 +263,7 @@ void main() {
     paintRow(filler, 128);
     // The cut switches before the drain runs.
     paintRow(current, 16);
-    await idle();
+    await tileStoreIdle(store);
 
     expect(
       [
@@ -319,20 +313,16 @@ void main() {
     final a = painterFor(rowLayer('a', frames: 4), frames: 4);
     final b = painterFor(rowLayer('b', frames: 4), frames: 4);
     paintRow(a, 4);
-    while (out.isEmpty) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-    }
+    await pollUntil(() => out.isNotEmpty);
     // Asked for while the first drain is out: a second drain takes it.
     paintRow(b, 4);
-    while (out.length < 2) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-    }
+    expect(await pollUntil(() => out.length >= 2), isTrue);
     land(0);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(store.debugBusy, isTrue, reason: "b's raster is still out");
 
     land(1);
-    await idle();
+    await tileStoreIdle(store);
   });
 
   test('a clear fences off a raster still out — its key is asked for again '
@@ -362,17 +352,11 @@ void main() {
       landing.complete(recorder.endRecording().toImageSync(width, height));
     }
 
-    Future<void> until(bool Function() done) async {
-      for (var wait = 0; wait < 500 && !done(); wait += 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
-    }
-
     final a = painterFor(rowLayer('a', frames: 4), frames: 4);
     var landings = 0;
     show(a, () => landings += 1);
     paintRow(a, 4);
-    await until(() => out.isNotEmpty);
+    await pollUntil(() => out.isNotEmpty);
     expect(out, hasLength(1), reason: 'premise: its one tile is out');
 
     // What a test's tear-down does — a widget test's clock never lets that
@@ -380,14 +364,14 @@ void main() {
     store.clear();
     expect(store.debugBusy, isFalse, reason: 'the raster out is not counted');
     paintRow(a, 4);
-    await until(() => out.length > 1);
+    await pollUntil(() => out.length > 1);
     expect(out, hasLength(2), reason: 'its key is asked for again at once');
 
     land(0);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(landings, 0, reason: 'the fenced raster lands nowhere');
     land(1);
-    await idle();
+    await tileStoreIdle(store);
     expect(landings, 1, reason: 'the one asked for after it does');
   });
 
@@ -417,7 +401,7 @@ void main() {
       paintRow(after, 40);
     });
     paintRow(after, 40);
-    await idle();
+    await tileStoreIdle(store);
 
     paintRow(after, 40);
     expect(store.debugBusy, isFalse, reason: 'the new painter is warm');

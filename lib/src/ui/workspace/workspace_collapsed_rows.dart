@@ -408,11 +408,7 @@ class _WorkspaceCollapsedRows {
     _state._foldedStoryboard.bindSession(session);
     _collapsedRowStructure = Listenable.merge([
       session,
-      session.railView.expandedLaneLayerIds,
-      session.railView.expandedLaneGroupKeys,
-      session.railView.hiddenSections,
-      session.railView.rowFilter,
-      session.railView.collapsedAttachBaseIds,
+      session.railView.drawn,
       _state._timelinePixelsPerFrame,
       _state._railExtents[LayerRailId.timeline],
       _state._storyboardPixelsPerFrame,
@@ -422,6 +418,7 @@ class _WorkspaceCollapsedRows {
     ]);
     _collapsedCelContent = TimelineCelContentSource(
       hasContent: session.layerStack.celHasContentForLayer,
+      cannotRead: session.layerStack.celCannotBeReadForLayer,
       revision: session.layerStack.celTintRevision,
     );
   }
@@ -507,8 +504,12 @@ class _WorkspaceCollapsedRows {
               projectId: session.repository.requireProject().id.value,
               cutId: session.activeCutId?.value,
             ),
-            playbackFrameCount:
-                session.activeCutSpan.activeCutPlaybackFrameCount,
+            drawnFrameCount: session.activeCutSpan.activeCutDrawnFrameCount,
+            // A sound carried over from an earlier cut reads as the
+            // timeline's does: its words where the track has them, its `~`
+            // at frame 0 (F-358).
+            spillInLeadFrames:
+                session.activeCutSpan.activeCutSpillInLeadFrames[layer.id],
             geometry: geometry,
             crossAxisExtent: collapsedRowHeight(),
             exposureStateForLayer: session.exposureStateForLayer,

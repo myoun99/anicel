@@ -42,34 +42,37 @@ void main() {
     },
   );
 
-  final document = TimesheetDocument.fromCut(
-    cut: Cut(
-      id: const CutId('cut-1'),
-      name: '1',
-      duration: 12,
-      canvasSize: const CanvasSize(width: 1920, height: 1080),
-      layers: [animationLayer('a'), seLayer(length: 3)],
-    ),
-    projectName: 'P',
-    fps: 24,
-  );
+  TimesheetDocument sheetWith({required int seLength}) =>
+      TimesheetDocument.fromCut(
+        cut: Cut(
+          id: const CutId('cut-1'),
+          name: '1',
+          duration: 12,
+          canvasSize: const CanvasSize(width: 1920, height: 1080),
+          layers: [animationLayer('a'), seLayer(length: seLength)],
+        ),
+        projectName: 'P',
+        fps: 24,
+      );
+
+  final document = sheetWith(seLength: 3);
   final layout = TimesheetDocumentLayout(document: document);
-  final painter = TimesheetDocumentPainter(
-    words: timesheetWordsIn(AppLanguage.en),
-    document: document,
-    layout: layout,
-    face: const TextStyle(),
-  );
   final width = (layout.paperLeft + layout.paperWidth + 8).ceil();
   const height = 512;
 
-  Future<ByteData> rasterize(WidgetTester tester) async {
+  Future<ByteData> rasterize(
+    WidgetTester tester, {
+    TimesheetDocument? sheet,
+  }) async {
+    final printed = sheet ?? document;
     final data = await tester.runAsync(() async {
       final recorder = ui.PictureRecorder();
-      painter.paint(
-        Canvas(recorder),
-        Size(width.toDouble(), height.toDouble()),
-      );
+      TimesheetDocumentPainter(
+        words: timesheetWordsIn(AppLanguage.en),
+        document: printed,
+        layout: TimesheetDocumentLayout(document: printed),
+        face: const TextStyle(),
+      ).paint(Canvas(recorder), Size(width.toDouble(), height.toDouble()));
       final image = await recorder.endRecording().toImage(width, height);
       return image.toByteData(format: ui.ImageByteFormat.rawRgba);
     });
@@ -136,6 +139,29 @@ void main() {
             'row $row is inside the block, not its end — a bar here '
             'would read as a block closing on every comma',
       );
+    }
+  });
+
+  // A block of ONE row has no held row to close it: the row it opens on
+  // closes it too, or it reads as running on into the rows below.
+  testWidgets('an SE block of ONE row opens and closes on that row', (
+    tester,
+  ) async {
+    final sheet = sheetWith(seLength: 1);
+    final pixels = await rasterize(tester, sheet: sheet);
+    final column = sheet.columns.indexWhere(
+      (c) =>
+          c.kind == TimesheetColumnKind.se && c.layerId == const LayerId('s'),
+    );
+    final left = layout.halfLeft(0, 0) + layout.columnLeftInHalf(column);
+    final columnWidth = layout.columnWidthFor(TimesheetColumnKind.se);
+    final top = layout.frameRowTop(0);
+    for (final (y, what) in [
+      (top + 1, 'opens'),
+      (top + TimesheetDocumentLayout.rowHeight - 1, 'closes'),
+    ]) {
+      final (r, g, b) = rgbAt(pixels, left + columnWidth / 2, y);
+      expect(r - g > 60 && r - b > 60, isTrue, reason: 'it $what on row 0');
     }
   });
 }

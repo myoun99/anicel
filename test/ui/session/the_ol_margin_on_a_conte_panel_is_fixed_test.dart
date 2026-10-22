@@ -18,6 +18,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/models/cel_bank_lanes.dart';
 import 'package:anicel/src/models/drawing_block_move.dart';
+import 'package:anicel/src/ui/editor_command_actions.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -329,6 +330,55 @@ void main() {
       final block = s.storyboardCursor.storyboardCursorBlockOrNull();
       expect(block, isA<StoryboardCursorCutBlock>());
       expect((block! as StoryboardCursorCutBlock).cut.id, receiving);
+    });
+  });
+
+  // 🗣️F-339 (유저 2026-10-11): 「OL있어서 콘티레이어의 앞부분에 서있을때
+  // 프레임 추가버튼 활성화되고 눌러도 아무반응없는데 추가나 붙여넣기나
+  // 관련로직 해당부분에서 못하게 하는게 맞는거같은데」.
+  group('the のりしろ is no room — the ＋ and the pastes are dark there, as '
+      'the move is', () {
+    /// The receiving cut, its conte row stood on at [frame] — the cut's own
+    /// frames, the のりしろ its first 12 — with panel 2 copied.
+    EditorSessionManager standingOn(int frame) {
+      final s = session();
+      addTearDown(s.dispose);
+      s.selectCut(receiving);
+      s.selectLayer(const LayerId('conte-b'));
+      s.selectFrameIndex(32);
+      s.clipboard.copyFrameAtCurrentFrame();
+      s.selectFrameIndex(frame);
+      return s;
+    }
+
+    for (final frame in [0, 11]) {
+      test('frame $frame of the のりしろ lights none of them', () {
+        final s = standingOn(frame);
+
+        expect(s.cellInstances.canCreateInstance, isFalse);
+        expect(s.clipboard.canPasteIndependentFrameAtCurrentFrame, isFalse);
+        expect(s.clipboard.canPasteLinkedFrameAtCurrentFrame, isFalse);
+      });
+    }
+
+    test('the ＋ pressed there anyway makes nothing — no panel, no step', () {
+      final s = standingOn(5);
+      final row = conteRow(s, receiving).timeline;
+      final steps = s.historyManager.undoCount;
+
+      createActiveInstance(s);
+
+      expect(conteRow(s, receiving).timeline, row);
+      expect(s.historyManager.undoCount, steps);
+    });
+
+    test('⛔past it, inside the first panel, the ＋ and the pastes still '
+        'light', () {
+      final s = standingOn(16);
+
+      expect(s.cellInstances.canCreateInstance, isTrue);
+      expect(s.clipboard.canPasteIndependentFrameAtCurrentFrame, isTrue);
+      expect(s.clipboard.canPasteLinkedFrameAtCurrentFrame, isTrue);
     });
   });
 }

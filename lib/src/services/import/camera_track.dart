@@ -160,13 +160,13 @@ double _pointMiss(CanvasPoint played, CanvasPoint shown) => math.max(
 );
 
 const _anchorLane = _TransformLane<CanvasPoint>(
-  pointKeySpace,
+  pathKeySpace,
   _pointMiss,
   _pointTolerance,
 );
 
 const _positionLane = _TransformLane<CanvasPoint>(
-  positionKeySpace,
+  pathKeySpace,
   _pointMiss,
   _pointTolerance,
 );

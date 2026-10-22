@@ -6,10 +6,18 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_correction.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/services/sut/sut_decoder.dart';
 import 'package:sqlite3/sqlite3.dart';
 import '../helpers/temp_dir.dart';
+
+/// The 最小値 of [s]'s ランダム row for [target], or null when it has none.
+double? randomFloor(BrushSettings s, BrushPressureTarget target) =>
+    s.shape.curveFor(target, BrushInputSource.random)?.minimum;
 
 /// Builds synthetic Clip Studio brush databases mirroring the real layout
 /// (verified against CSP 1.x/3.x exports): `Node` tool entries, `Variant`
@@ -35,7 +43,7 @@ void main() {
   /// ⛔This used to write `minimumPercent` to `int[3]` and nothing else, so
   /// every synthetic blob had its four slots collapsed into one — and a
   /// decoder reading the WRONG slot read the right number anyway. That is
-  /// exactly how `_effectorRandomJitter` took pressure's floor as random's
+  /// exactly how the decoder once took pressure's floor as random's
   /// amplitude and no test complained. A fixture that cannot express the
   /// defect cannot catch it.
   Uint8List effector(
@@ -79,17 +87,45 @@ void main() {
     return bytes.buffer.asUint8List();
   }
 
-  /// UTF-16LE catalog reference blob, as CSP writes pattern arrays.
-  Uint8List patternArray(String catalogPath) {
-    final builder = BytesBuilder();
-    builder.add(Uint8List(16)); // framing header (ignored by the decoder)
-    for (final unit in catalogPath.codeUnits) {
-      builder.addByte(unit & 0xFF);
-      builder.addByte(unit >> 8);
+  Uint8List u32(int value) =>
+      (ByteData(4)..setUint32(0, value)).buffer.asUint8List();
+
+  Uint8List utf16le(String text) => Uint8List.fromList([
+    for (final unit in text.codeUnits) ...[unit & 0xFF, unit >> 8],
+  ]);
+
+  /// A Clip Studio material array naming [entries] in order, laid out the
+  /// way the user's files are (📏2026-10-18): a big-endian u32 saying where
+  /// the entries start and a u32 count, then each entry led by its own
+  /// length — its layer path, a name and its catalog path inside.
+  Uint8List patternArrayOf(List<({String layer, String catalog})> entries) {
+    final builder = BytesBuilder()
+      ..add(u32(8))
+      ..add(u32(entries.length));
+    for (final entry in entries) {
+      final layer = utf16le(entry.layer);
+      final catalog = utf16le(entry.catalog);
+      final body = BytesBuilder()
+        ..add(u32(layer.length))
+        ..add(layer)
+        ..add(u32(2))
+        ..add(u32(0))
+        ..add(u32(catalog.length))
+        ..add(catalog);
+      builder
+        ..add(u32(4 + body.length))
+        ..add(body.toBytes());
     }
-    builder.add(Uint8List(6));
     return builder.toBytes();
   }
+
+  /// One material's entry, its layer path under its catalog path.
+  ({String layer, String catalog}) entryOf(String catalogPath) =>
+      (layer: '$catalogPath:data:material_0.layer', catalog: catalogPath);
+
+  /// The array naming one material, as most brushes' do.
+  Uint8List patternArray(String catalogPath) =>
+      patternArrayOf([entryOf(catalogPath)]);
 
   /// PNG bytes for a [width]x[height] opaque black rectangle.
   Future<Uint8List> blackPng(int width, int height) async {
@@ -144,6 +180,23 @@ void main() {
     // Null stands for a file written before the column existed; 3 (強) is
     // what Clip Studio's own G펜 stores.
     int? antiAlias = 3,
+    // F-176-Q3: further tips' materials, the arrays to store in place of the
+    // ones naming one material alone, and the 繰り返し方法 number.
+    List<({String catalogPath, String originalPath, Uint8List png})>
+        moreTipMaterials = const [],
+    Uint8List? tipArray,
+    Uint8List? dualArray,
+    int? patternOrderType,
+    int? flickerReduction,
+    // F-418: the rest of the 補正 group, null where the file says nothing.
+    int? sharpenCorner,
+    int? flickerReductionBySpeed,
+    int? flickerReductionBySpeedType,
+    int? useRevision,
+    double? revision,
+    int? revisionBySpeed,
+    int? revisionByViewScale,
+    int? revisionBezier,
   }) async {
     // Unique per call: a test that builds several fixtures would otherwise
     // reopen the first one and fail on its existing tables.
@@ -173,7 +226,12 @@ void main() {
         BrushUseWaterColor INTEGER, BrushMixColor INTEGER,
         BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER,
         BrushThicknessEffector BLOB, BrushIntervalEffector BLOB,
-        CompositeMode INTEGER, AntiAlias INTEGER);
+        CompositeMode INTEGER, AntiAlias INTEGER,
+        BrushPatternOrderType INTEGER, FlickerReduction INTEGER,
+        BrushSharpenCorner INTEGER, FlickerReductionBySpeed INTEGER,
+        FlickerReductionBySpeedType INTEGER, BrushUseRevision INTEGER,
+        BrushRevision REAL, BrushRevisionBySpeed INTEGER,
+        BrushRevisionByViewScale INTEGER, BrushRevisionBezier INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -202,12 +260,16 @@ void main() {
       'DualPatternImageArray, DualSize, SyncDualBrushSize, DualFlow, '
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
       'BrushMixColorExtension, BrushThicknessEffector, '
-      'BrushIntervalEffector, CompositeMode, AntiAlias) '
+      'BrushIntervalEffector, CompositeMode, AntiAlias, '
+      'BrushPatternOrderType, FlickerReduction, BrushSharpenCorner, '
+      'FlickerReductionBySpeed, FlickerReductionBySpeedType, '
+      'BrushUseRevision, BrushRevision, BrushRevisionBySpeed, '
+      'BrushRevisionByViewScale, BrushRevisionBezier) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
       '?, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
-        patternArray(catalogPath),
+        tipArray ?? patternArray(catalogPath),
         effector(
           sizeEffectorFlags,
           minimumPercent: sizeEffectorMinimum,
@@ -229,7 +291,10 @@ void main() {
         rotationRandomInSpray,
         if (dualPng == null) 0 else 1,
         if (dualPng == null) 0 else 1,
-        if (dualPng == null) null else patternArray(dualCatalogPath),
+        if (dualPng == null)
+          null
+        else
+          dualArray ?? patternArray(dualCatalogPath),
         dualSize,
         syncDualBrushSize,
         dualFlow,
@@ -249,6 +314,16 @@ void main() {
         ),
         compositeMode,
         antiAlias,
+        patternOrderType,
+        flickerReduction,
+        sharpenCorner,
+        flickerReductionBySpeed,
+        flickerReductionBySpeedType,
+        useRevision,
+        revision,
+        revisionBySpeed,
+        revisionByViewScale,
+        revisionBezier,
       ],
     );
     // Round brush without pattern data.
@@ -278,6 +353,22 @@ void main() {
         'VALUES (?, ?, ?)',
         [catalogPath, '$catalogPath:data:material_0.layer', fileData.toBytes()],
       );
+      for (final material in moreTipMaterials) {
+        database.execute(
+          'INSERT INTO MaterialFile(CatalogPath, OriginalPath, FileData) '
+          'VALUES (?, ?, ?)',
+          [
+            material.catalogPath,
+            material.originalPath,
+            Uint8List.fromList([
+              ...ascii.encode('catalog.zip'),
+              ...Uint8List(17),
+              ...material.png,
+              ...Uint8List(3),
+            ]),
+          ],
+        );
+      }
       if (dualPng != null) {
         final dualData = BytesBuilder();
         dualData.add(ascii.encode('catalog.zip'));
@@ -379,10 +470,138 @@ void main() {
     expect(round.settings.sizePressureCurve, isNull);
   });
 
+  test('🚨every tip a brush names comes in, in its array\'s order '
+      '(F-176-Q3)', () async {
+    const second = '.:36:44:second-tip';
+    const third = '.:36:45:third-tip';
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      moreTipMaterials: [
+        (
+          catalogPath: second,
+          originalPath: '$second:data:material_0.layer',
+          png: await blackPng(6, 6),
+        ),
+        (
+          catalogPath: third,
+          originalPath: '$third:data:material_0.layer',
+          png: await blackPng(8, 8),
+        ),
+      ],
+      tipArray: patternArrayOf([
+        entryOf(third),
+        entryOf('.:36:43:fixture-tip-catalog'),
+        entryOf(third),
+        entryOf(second),
+      ]),
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.warnings, isEmpty);
+    final tips = result.presets.first.settings.tips;
+    expect([for (final tip in tips) tip.size], [8, 4, 8, 6]);
+    const base = 'sut-0102030405060708090a0b0c0d0e0f10-tip';
+    expect(
+      [for (final tip in tips) tip.id],
+      [base, '$base-2', base, '$base-3'],
+    );
+    expect(identical(tips[0], tips[2]), isTrue, reason: 'one mask, twice');
+  });
+
+  test('⚠️an installed material is found by the catalog path its entry '
+      'spells — its layer path drops the Install:', () async {
+    const installed = '.:Install:Paint110:fixture-installed';
+    const layer = '.:Paint110:fixture-installed:data:material_0.layer';
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      moreTipMaterials: [
+        (
+          catalogPath: installed,
+          originalPath: layer,
+          png: await blackPng(6, 6),
+        ),
+      ],
+      tipArray: patternArrayOf([(layer: layer, catalog: installed)]),
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.warnings, isEmpty);
+    final tips = result.presets.first.settings.tips;
+    expect([for (final tip in tips) tip.size], [6]);
+  });
+
+  test('繰り返し方法 comes in by the number Clip Studio stores', () async {
+    // All six measured off one brush the user saved six times, the method
+    // alone changed (board F-176-Q5, 2026-10-21).
+    final orders = <BrushTipOrder>[];
+    for (final stored in [null, 0, 1, 2, 3, 4, 5]) {
+      final path = await buildFixture(
+        tipPng: await blackPng(4, 4),
+        patternOrderType: stored,
+      );
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+      expect(result.warnings, isEmpty, reason: '$stored');
+      orders.add(result.presets.first.settings.tipOrder);
+    }
+
+    expect(orders, [
+      BrushTipOrder.repeat,
+      BrushTipOrder.repeat,
+      BrushTipOrder.pingPong,
+      BrushTipOrder.holdLast,
+      BrushTipOrder.random,
+      BrushTipOrder.oneLap,
+      BrushTipOrder.shuffledLap,
+    ]);
+  });
+
+  test('an unrecognised 繰り返し方法 warns and takes the tips in order', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      patternOrderType: 9,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.tipOrder, BrushTipOrder.repeat);
+    expect(result.warnings, [contains('BrushPatternOrderType 9')]);
+  });
+
+  test('a dual tip naming two images keeps the first, and says so', () async {
+    const dual = '.:77:88:fixture-dual-catalog';
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      dualPng: await blackPng(10, 10),
+      dualArray: patternArrayOf([
+        entryOf(dual),
+        entryOf('.:36:43:fixture-tip-catalog'),
+      ]),
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.dualMask!.size, 10);
+    expect(result.warnings, [contains('only the first is used')]);
+  });
+
   test('the effector response curve imports as a curve', () async {
     // Clip Studio keeps the 筆압설정 graph in the effector's tail. The
-    // minimum is a SEPARATE control that lifts the curve's floor, so the
-    // stored y of 0 lands on the minimum and the stored 1 lands on full.
+    // minimum is a SEPARATE control — a slider beside the graph — so the
+    // graph comes in as it is stored and the floor rides beside it
+    // (F-176-Q2), landing the stored y of 0 on the minimum and 1 on full.
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
       sizeEffectorMinimum: 40,
@@ -394,11 +613,13 @@ void main() {
     )).presets.first.settings.sizePressureCurve!;
 
     expect(curve.points, [
-      const BrushCurvePoint(0.0, 0.4),
-      const BrushCurvePoint(0.25, 0.4 + 0.6 * 0.1),
-      const BrushCurvePoint(0.75, 0.4 + 0.6 * 0.9),
+      const BrushCurvePoint(0.0, 0.0),
+      const BrushCurvePoint(0.25, 0.1),
+      const BrushCurvePoint(0.75, 0.9),
       const BrushCurvePoint(1.0, 1.0),
     ]);
+    expect(curve.minimum, 0.4);
+    expect(curve.evaluate(0.0), closeTo(0.4, 1e-12));
   });
 
   test('an untouched graph still reduces to the straight line', () async {
@@ -439,8 +660,8 @@ void main() {
     // int[6] and pressure's at int[3]; before 2026-09-09 the decoder read
     // int[3] for both, and this test could not tell because the fixture
     // wrote one number into every slot. Now the two disagree on purpose —
-    // if the reader slips back to pressure's slot, the amplitudes come out
-    // 0.93 / 0.55 instead of 0.8 / 0.96 and this fails.
+    // if the reader slips back to pressure's slot, the floors come out
+    // 0.07 / 0.45 instead of 0.2 / 0.04 and this fails.
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
       sizeEffectorFlags: 0x80,
@@ -460,15 +681,20 @@ void main() {
       sourceName: 'fixture',
     )).presets.first.settings;
 
-    // Clip Studio wanders between 최소치% and 100%; the engine shakes
-    // downward, so the amplitude is the complement of the floor.
-    expect(s.sizeJitter, closeTo(0.8, 1e-9));
-    // No flow jitter on the engine — flow randomness folds into opacity.
-    expect(s.opacityJitter, closeTo(0.96, 1e-9));
+    // Clip Studio wanders between 최소치% and 100% — its ランダム row, which is
+    // each setting's own row here, floor and all (F-176-Q2).
+    expect(randomFloor(s, BrushPressureTarget.size), closeTo(0.2, 1e-9));
+    // Flow has a row of its own — it used to fold into opacity's jitter.
+    expect(randomFloor(s, BrushPressureTarget.flow), closeTo(0.04, 1e-9));
+    expect(randomFloor(s, BrushPressureTarget.opacity), isNull);
     // The rotation effector is a bare int carrying the same 0x80 bit.
     expect(s.angleJitter, closeTo(0.45, 1e-9));
     // Thickness IS roundness, so its random source squashes the tip.
-    expect(s.roundnessJitter, 0.0, reason: 'inert without the random bit');
+    expect(
+      randomFloor(s, BrushPressureTarget.roundness),
+      isNull,
+      reason: 'inert without the random bit',
+    );
     // The random bit does not imply a pressure curve.
     expect(s.sizePressureCurve, isNull);
   });
@@ -635,7 +861,10 @@ void main() {
       sourceName: 'fixture',
     )).presets.first.settings;
 
-    expect(s.roundnessJitter, closeTo(0.65, 1e-9));
+    expect(
+      randomFloor(s, BrushPressureTarget.roundness),
+      closeTo(0.35, 1e-9),
+    );
   });
 
   test('the interval effector random source breaks up the beat', () async {
@@ -651,7 +880,7 @@ void main() {
       sourceName: 'fixture',
     )).presets.first.settings;
 
-    expect(s.spacingJitter, closeTo(0.8, 1e-9));
+    expect(randomFloor(s, BrushPressureTarget.spacing), closeTo(0.2, 1e-9));
   });
 
   test('a non-normal composite mode travels with the brush', () async {
@@ -828,6 +1057,115 @@ void main() {
     expect(result.presets.first.settings.antiAlias, BrushAntiAlias.none);
   });
 
+  test("손떨림 보정 comes in as Clip Studio's own number, switched on "
+      '(유저 2026-10-20 「수치를 클튜랑 맞추고싶어서」)', () async {
+    const expected = <int, double>{0: 0, 4: 4, 100: 100};
+    for (final entry in expected.entries) {
+      final path = await buildFixture(
+        tipPng: await blackPng(4, 4),
+        flickerReduction: entry.key,
+      );
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+      expect(
+        result.presets.first.settings.correction.stabilization,
+        closeTo(entry.value, 1e-9),
+        reason: 'FlickerReduction ${entry.key}',
+      );
+      expect(
+        result.presets.first.settings.correction.steadies,
+        isTrue,
+        reason: "Clip Studio's 0 still steadies",
+      );
+    }
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test("a brush whose file says nothing steadies as Clip Studio's 0 "
+      '(F-418-Q6)', () async {
+    final path = await buildFixture(tipPng: await blackPng(4, 4));
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+    expect(result.presets, hasLength(2));
+    for (final preset in result.presets) {
+      expect(
+        preset.settings.correction,
+        const BrushCorrection(),
+        reason: preset.name,
+      );
+    }
+  });
+
+  test('the rest of the 補正 group comes in, each column to its own part '
+      '(F-418)', () async {
+    Future<BrushCorrection> read(Future<String> fixture) async {
+      final result = await decodeSutBrushFile(
+        filePath: await fixture,
+        sourceName: 'fixture',
+      );
+      return result.presets.first.settings.correction;
+    }
+
+    final tip = await blackPng(4, 4);
+    expect(
+      await read(
+        buildFixture(
+          tipPng: tip,
+          sharpenCorner: 1,
+          flickerReductionBySpeed: 1,
+          flickerReductionBySpeedType: 2,
+          useRevision: 1,
+          revision: 37.5,
+          revisionBySpeed: 0,
+          revisionByViewScale: 1,
+          revisionBezier: 0,
+        ),
+      ),
+      const BrushCorrection(
+        sharpenCorners: true,
+        steadyingBySpeed: BrushSteadyingBySpeed.fast,
+        postStrength: 37.5,
+        postBySpeed: false,
+      ),
+    );
+    expect(
+      await read(
+        buildFixture(
+          tipPng: tip,
+          sharpenCorner: 0,
+          flickerReductionBySpeed: 1,
+          flickerReductionBySpeedType: 1,
+          useRevision: 1,
+          revision: 12,
+          revisionBySpeed: 1,
+          revisionByViewScale: 0,
+          revisionBezier: 1,
+        ),
+      ),
+      const BrushCorrection(
+        steadyingBySpeed: BrushSteadyingBySpeed.slow,
+        postStrength: 12,
+        postByViewScale: false,
+        postBezier: true,
+      ),
+    );
+    expect(
+      await read(buildFixture(tipPng: tip, useRevision: 0, revision: 50)),
+      const BrushCorrection(),
+      reason: 'a 後補正 switched off takes nothing out, whatever it keeps',
+    );
+    expect(
+      (await read(
+        buildFixture(tipPng: tip, useRevision: 1, revision: 250),
+      )).postStrength,
+      BrushCorrection.maxPostStrength,
+      reason: 'past the scale, it is the most there is',
+    );
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
   test('ground-colour mixing imports behind its gate', () async {
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
@@ -907,7 +1245,16 @@ void main() {
 
     expect(result.presets, hasLength(2));
     expect(result.presets.first.settings.tipMask, isNull);
-    expect(result.warnings, isNotEmpty);
+    expect(
+      result.warnings,
+      contains(
+        allOf(
+          startsWith('Brush "'),
+          endsWith('tip bitmap is not embedded; imported without it.'),
+        ),
+      ),
+      reason: 'the warning names the brush and the part it came without',
+    );
   });
 
   test('rejects non-sqlite and non-brush files with clear errors', () async {

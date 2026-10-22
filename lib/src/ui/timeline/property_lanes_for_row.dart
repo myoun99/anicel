@@ -6,7 +6,6 @@ import '../../models/layer_kind.dart';
 import '../../models/reference_swap.dart' show referenceRedrawFor;
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/transform_track.dart';
-import '../../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import 'effect_lane_policy.dart' show effectGroupLaneId, effectPropertyLanes;
 import 'property_lane_model.dart';
 import 'reference_lane_policy.dart'
@@ -232,6 +231,14 @@ List<PropertyLaneRow> propertyLanesForRow({
             expanded: expandedGroupKeys.contains(
               laneGroupKey(layer.id, referenceGroupLaneId),
             ),
+            poseAt: source == null
+                ? null
+                : (time) {
+                    final at = _sourceAtTime(source, time);
+                    return (at.layer.mediaReference ?? reference).poseAtTime(
+                      at.time,
+                    );
+                  },
           ),
         ...layerEffectLanes(),
         ...collapsibleTransformGroup(layerTransformLanes()),

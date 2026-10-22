@@ -2,9 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_overrides.dart';
 import 'package:anicel/src/models/export_spec.dart';
@@ -1471,9 +1473,9 @@ void main() {
       );
     });
 
-    test('what its BLOCK reads: its number, its row\'s name where it has '
-        'none — and of a direction\'s drawing what its block says alone, the '
-        'whole name kept for where there is the room', () {
+    test('what its BLOCK reads: its number, 🎯NOTHING where it has none '
+        '(F-395) — and of a direction\'s drawing what its block says alone, '
+        'the whole name kept for where there is the room', () {
       final built = plan([
         base('a', 'A', [frame('f1')]),
         image('k', 'BOOK', frame('p', unnamed: true)),
@@ -1504,9 +1506,9 @@ void main() {
         },
         {
           'A': ('1', '1', '1'),
-          'BOOK': ('BOOK', '', 'BOOK'),
+          'BOOK': ('', '', 'BOOK'),
           'Camera': ('T.U', 'T.U_A-B', 'T.U_A-B'),
-          'Notes': ('Notes', '', 'Notes'),
+          'Notes': ('', '', 'Notes'),
         },
       );
     });
@@ -1651,6 +1653,34 @@ void main() {
       expect(offered.first.ref, drawingAt(row, 0));
     });
 
+    test('a drawing whose block says nothing is offered by its row\'s name '
+        '— its BLOCK reads nothing, the button names what it lays (F-395)', () {
+      final mute = Layer(
+        id: const LayerId('mute'),
+        name: 'Notes',
+        kind: LayerKind.instruction,
+        frames: [frame('n1', unnamed: true)],
+        timeline: const {
+          0: TimelineExposure.drawing(FrameId('n1'), length: 2),
+        },
+      );
+      final offered = exportDirectionDrawingsOf(
+        projectWith([mute]).tracks.single.cuts.single,
+        projectWith(const []).cameraInstructions,
+      );
+      expect(
+        [for (final one in offered) (one.name, one.fullName)],
+        [('Notes', 'Notes')],
+      );
+      expect(
+        plan([mute], spec: const CelsExportSpec(kinds: withDirection))
+            .sheets
+            .single
+            .word,
+        '',
+      );
+    });
+
     test('it is in that drawing\'s cel, over every member — one drawing, '
         'not its row — whether or not the direction kind is written', () {
       final row = directionRow();
@@ -1745,6 +1775,76 @@ void main() {
     );
     expect(keyOf(built.cels.first), isNot(keyOf(plan(layers).cels.first)));
   });
+
+  test('the cut\'s guides laid over a drawing (I-105) are in that drawing\'s '
+      'cel alone — and the preview tells them from the cel before they were '
+      'laid, and from the camera\'s work laid there', () {
+    final layers = [
+      base('a', 'A', [frame('f1'), frame('f2')]),
+    ];
+    const f1 = (row: LayerId('a'), cel: FrameId('f1'));
+    List<ExportCelGroupTask> laid(ExportCelsCutDelta delta) => plan(
+      layers,
+      overrides: ExportProjectOverrides().withCelsDelta(
+        const CutId('cut'),
+        delta,
+      ),
+    ).cels;
+    final guides = laid(ExportCelsCutDelta().withGuidesOver(f1, true));
+    expect([for (final task in guides) task.guidesLaid], [true, false]);
+    expect([for (final task in guides) task.cameraLaid], [false, false]);
+    String keyOf(ExportCelGroupTask task) => celGroupPreviewKey(
+      task,
+      sizeMode: 'canvas',
+      backgroundKey: -1,
+      applyLayerFx: true,
+    );
+    expect(keyOf(guides.first), isNot(keyOf(plan(layers).cels.first)));
+    expect(
+      keyOf(guides.first),
+      isNot(keyOf(laid(ExportCelsCutDelta().withCameraOver(f1, true)).first)),
+      reason: 'the guides and the camera\'s work are two pictures',
+    );
+  });
+
+  test('the guides laid over a drawing are the perspective guides the '
+      'canvas shows, in the cut\'s order — 「다만 대칭 가이드는 무시. '
+      '퍼스가이드만 그림에 얹음」 (I-105-Q1)', () {
+    DrawingGuide guide(String id, GuideShape shape, {bool visible = true}) =>
+        DrawingGuide(id: GuideId(id), name: id, shape: shape, visible: visible);
+    PerspectiveShape perspective() => PerspectiveShape(
+      vanishingPoints: [VanishingPointAt(CanvasPoint(x: 6, y: 2))],
+      eyeLevel: GuideAxis(origin: CanvasPoint(x: 0, y: 2), angleDegrees: 0),
+    );
+    final cut = Cut(
+      id: const CutId('cut'),
+      name: 'CUT1',
+      duration: 4,
+      canvasSize: const CanvasSize(width: 8, height: 8),
+      layers: const [],
+      guides: CutGuides(
+        guides: [
+          guide('p1', perspective()),
+          guide(
+            'sym',
+            SymmetryShape(
+              axis: GuideAxis(
+                origin: CanvasPoint(x: 4, y: 4),
+                angleDegrees: 90,
+              ),
+            ),
+          ),
+          guide('hidden', perspective(), visible: false),
+          guide('p2', perspective()),
+        ],
+      ),
+    );
+    expect(
+      [for (final guide in exportLaidGuidesOf(cut)) guide.id.value],
+      ['p1', 'p2'],
+    );
+  });
+
   group('the cut\'s documents are written beside its cels (F-289, 유저 '
       '2026-10-05: 「타임시트 탭을 그냥 셀 탭의 내부로 편입. 컷봉투탭도 셀 '
       '내부로 편입 … 기존의 범위는 셀의 범위 규칙 따라가고」)', () {
@@ -1926,8 +2026,8 @@ void main() {
     });
 
     test('겸용: under the project scope a group is ONE entry — a timesheet '
-        'for EACH of its cuts, and one envelope, its owner\'s; under the cut '
-        'scope the cut stood on has its own sheet', () {
+        'for EACH of its cuts, and one envelope, its owner\'s; 🎯and under '
+        'the cut scope the same, listed in the cut stood on (F-415)', () {
       final project = Project(
         id: const ProjectId('project'),
         name: 'Project',
@@ -2005,9 +2105,18 @@ void main() {
             (sheet.listedIn.id.value, sheet.of.id.value, sheet.fileName),
         ],
         [
+          ('c2', 'c1', '_TSC1.png'),
           ('c2', 'c2', '_TSC2.png'),
           ('c2', 'c1', '_CUTC1_envelope.png'),
         ],
+      );
+      expect(
+        [
+          for (final sheet in built(ExportScopeKind.cut, 'c3').documents)
+            sheet.fileName,
+        ],
+        ['_TSC3.png', '_CUTC3_envelope.png'],
+        reason: 'a cut alone is its own group',
       );
 
       // The plan READS the delta of the cut a document is of: C2's sheet

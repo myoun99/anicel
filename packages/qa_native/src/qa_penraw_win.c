@@ -20,6 +20,14 @@
 // Windows embedder takes POINTER_PEN_INFO's pressure and rotation and
 // drops its tilt, so a brush that leans with the pen had nothing to read.
 //
+// WHERE A PEN REPORTS: page 0x0D names two top-level collections a pen's
+// report comes through — Pen 0x02, a Windows tablet's own pen, and
+// Digitizer 0x01, an external tablet's. A Wacom Cintiq 24 (DTH246, its own
+// driver, Windows Ink on; measured 2026-10-21) declares both and sends
+// every report, tilt included, through the Digitizer one alone. Listening
+// to Pen only, this reader heard nothing there, and the brush that leans
+// with the pen drew upright (F-176-Q8). So it listens to both.
+//
 // PURE OBSERVATION, by construction:
 //   - A message-only window on its OWN thread receives WM_INPUT. Flutter's
 //     window and message loop are never touched, so nothing here can
@@ -104,6 +112,7 @@ typedef QPR_NTSTATUS(WINAPI *HidP_GetUsageValue_t)(
 
 // HID digitizer usage page and the usages we care about.
 #define QPR_USAGE_PAGE_DIGITIZER 0x0D
+#define QPR_USAGE_DIGITIZER 0x01
 #define QPR_USAGE_PEN 0x02
 #define QPR_USAGE_X_TILT 0x3D
 #define QPR_USAGE_Y_TILT 0x3E
@@ -379,14 +388,18 @@ static DWORD WINAPI qpr_thread_main(LPVOID param) {
     SetEvent(qpr_ready);
     return 0;
   }
-  RAWINPUTDEVICE device;
-  device.usUsagePage = QPR_USAGE_PAGE_DIGITIZER;
-  device.usUsage = QPR_USAGE_PEN;
-  // INPUTSINK = deliver even when this (invisible) window is not in the
-  // foreground. NOLEGACY is deliberately absent — see the file header.
-  device.dwFlags = RIDEV_INPUTSINK;
-  device.hwndTarget = hwnd;
-  if (!RegisterRawInputDevices(&device, 1, sizeof(device))) {
+  // Both collections a pen reports through — see the file header.
+  RAWINPUTDEVICE devices[2];
+  const USHORT usages[2] = {QPR_USAGE_PEN, QPR_USAGE_DIGITIZER};
+  for (int i = 0; i < 2; i += 1) {
+    devices[i].usUsagePage = QPR_USAGE_PAGE_DIGITIZER;
+    devices[i].usUsage = usages[i];
+    // INPUTSINK = deliver even when this (invisible) window is not in the
+    // foreground. NOLEGACY is deliberately absent — see the file header.
+    devices[i].dwFlags = RIDEV_INPUTSINK;
+    devices[i].hwndTarget = hwnd;
+  }
+  if (!RegisterRawInputDevices(devices, 2, sizeof(devices[0]))) {
     DestroyWindow(hwnd);
     SetEvent(qpr_ready);
     return 0;
@@ -401,9 +414,11 @@ static DWORD WINAPI qpr_thread_main(LPVOID param) {
   }
 
   // Unregister before the target window dies.
-  device.dwFlags = RIDEV_REMOVE;
-  device.hwndTarget = NULL;
-  RegisterRawInputDevices(&device, 1, sizeof(device));
+  for (int i = 0; i < 2; i += 1) {
+    devices[i].dwFlags = RIDEV_REMOVE;
+    devices[i].hwndTarget = NULL;
+  }
+  RegisterRawInputDevices(devices, 2, sizeof(devices[0]));
   DestroyWindow(hwnd);
   InterlockedExchange(&qpr_started, 0);
   return 0;

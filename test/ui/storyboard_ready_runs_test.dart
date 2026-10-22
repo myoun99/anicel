@@ -101,8 +101,8 @@ void main() {
     addTearDown(s.dispose);
 
     expect(storyboardReadyRuns(s, 0, 20, layout: [at(drawn, 10)]), [
-      (startIndex: 0, endIndexExclusive: 10),
-      (startIndex: 12, endIndexExclusive: 20),
+      (startIndex: 0, endIndexExclusive: 10, unreadable: false),
+      (startIndex: 12, endIndexExclusive: 20, unreadable: false),
     ]);
   });
 
@@ -114,8 +114,8 @@ void main() {
     expect(
       storyboardReadyRuns(s, 0, 12, layout: [at(empty, 0), at(drawn, 8)]),
       [
-        (startIndex: 0, endIndexExclusive: 8),
-        (startIndex: 10, endIndexExclusive: 12),
+        (startIndex: 0, endIndexExclusive: 8, unreadable: false),
+        (startIndex: 10, endIndexExclusive: 12, unreadable: false),
       ],
       reason: '8..9 are the drawn cut\'s unbaked cel — the empty cut before '
           'it ends at 8 and has no say there',
@@ -131,8 +131,8 @@ void main() {
     expect(
       storyboardReadyRuns(s, 8, 16, layout: [at(drawn, 10), at(empty, 8)]),
       [
-        (startIndex: 8, endIndexExclusive: 10),
-        (startIndex: 12, endIndexExclusive: 16),
+        (startIndex: 8, endIndexExclusive: 10, unreadable: false),
+        (startIndex: 12, endIndexExclusive: 16, unreadable: false),
       ],
       reason: '10..11 are the drawn cut\'s unbaked cel — the empty cut '
           'under it must not answer for them',
@@ -146,7 +146,30 @@ void main() {
     addTearDown(s.dispose);
 
     expect(storyboardReadyRuns(s, 11, 13, layout: [at(drawn, 10)]), [
-      (startIndex: 12, endIndexExclusive: 13),
+      (startIndex: 12, endIndexExclusive: 13, unreadable: false),
+    ]);
+  });
+
+  // 유저 2026-10-16 (frame-picture-indicator-Q1 b): a cel the project's file
+  // does not hold is red on the bar over the frames it shows.
+  testWidgets('🚨a cel that cannot be read is red where the track lays its '
+      'cut — a stretch of its own, not run into the ready frames around '
+      'it', (tester) async {
+    final s = session();
+    addTearDown(s.dispose);
+    // How the cache keeps a cel whose reading threw.
+    s.renderCaches.layerFrameImageCache.unreadable.note(
+      s.brushFrameKeyForCut(
+        drawn,
+        const LayerId('layer'),
+        const FrameId('frame-a'),
+      ),
+    );
+
+    expect(storyboardReadyRuns(s, 0, 20, layout: [at(drawn, 10)]), [
+      (startIndex: 0, endIndexExclusive: 10, unreadable: false),
+      (startIndex: 10, endIndexExclusive: 12, unreadable: true),
+      (startIndex: 12, endIndexExclusive: 20, unreadable: false),
     ]);
   });
 
@@ -163,14 +186,14 @@ void main() {
       ), shouldAbort: () => false);
       expect(
         s.playbackRig.playbackCache.playbackReadyRuns(0, 4),
-        [(startIndex: 0, endIndexExclusive: 4)],
+        [(startIndex: 0, endIndexExclusive: 4, unreadable: false)],
         reason: '⛔premise: the timeline\'s bar is green — its run plays on '
             'the canvas, from those very pictures',
       );
 
       expect(
         storyboardReadyRuns(s, 0, 4, layout: [at(cut, 0)]),
-        [(startIndex: 0, endIndexExclusive: 4)],
+        [(startIndex: 0, endIndexExclusive: 4, unreadable: false)],
         reason: 'the film shows a frame from those very images. ↩️It played '
             'on composites, and its bar stayed grey over pictures it never '
             'showed (until 2026-10-10)',

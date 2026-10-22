@@ -17,7 +17,7 @@ void main() {
       track.resolveAtTime(
         time: time,
         orElse: () => p(0, 0),
-        space: positionKeySpace,
+        space: pathKeySpace,
       );
 
   void expectNear(CanvasPoint actual, CanvasPoint expected, [String? why]) {
@@ -54,7 +54,7 @@ void main() {
         'leaving the first is slow across the run, not across a segment', () {
       const ease = EaseSide(influence: 0.5, speed: 0);
       final track = turning(leaving: ease);
-      final passed = track.rovingTimes(positionKeySpace)[10]!;
+      final passed = track.rovingTimes(pathKeySpace)[10]!;
       expect(passed, greaterThan(5), reason: 'later than an even pace');
       expectNear(at(track, passed), p(100, 0), 'passed when its times say');
       final share = segmentProgress(
@@ -80,7 +80,7 @@ void main() {
           20: PropertyKey(p(100, 100)),
         },
       );
-      final stops = bent.rovingTimes(positionKeySpace);
+      final stops = bent.rovingTimes(pathKeySpace);
       expectNear(at(bent, stops[10]!), p(100, 0), 'passed at its time');
       expect(at(bent, 5).y, lessThan(0), reason: 'the way in swings out');
     });
@@ -111,7 +111,7 @@ void main() {
         track.resolveAt(
           frameIndex: 20,
           orElse: () => p(0, 0),
-          space: positionKeySpace,
+          space: pathKeySpace,
         ),
         p(100, 300),
       );
@@ -123,7 +123,7 @@ void main() {
         'stands', () {
       for (final standing in [3, 10, 17]) {
         expect(
-          turning(rovingAt: standing).rovingTimes(positionKeySpace),
+          turning(rovingAt: standing).rovingTimes(pathKeySpace),
           {standing: closeTo(5, 1e-9)},
         );
       }
@@ -131,7 +131,7 @@ void main() {
 
     test('a hold\'s run is placed as if it did not hold', () {
       expect(
-        turning(leaving: KeyExit.hold).rovingTimes(positionKeySpace)[10],
+        turning(leaving: KeyExit.hold).rovingTimes(pathKeySpace)[10],
         closeTo(5, 1e-9),
       );
     });
@@ -145,7 +145,7 @@ void main() {
           30: PropertyKey(p(7, 7)),
         },
       );
-      final times = still.rovingTimes(positionKeySpace);
+      final times = still.rovingTimes(pathKeySpace);
       expect(times[4], closeTo(10, 1e-9));
       expect(times[5], closeTo(20, 1e-9));
     });
@@ -175,7 +175,7 @@ void main() {
     test('runs to the next that does, through the roving keys, as long as '
         'the walk through them — what a speed graph paces its handles by '
         '(I-89-Q5 B)', () {
-      final way = turning().wayFrom(0, positionKeySpace)!;
+      final way = turning().wayFrom(0, pathKeySpace)!;
       expect(way.to, 20);
       expect(way.length, closeTo(400, 1e-9));
     });
@@ -189,13 +189,13 @@ void main() {
           20: PropertyKey(p(100, 300)),
         },
       );
-      final first = track.wayFrom(0, positionKeySpace)!;
+      final first = track.wayFrom(0, pathKeySpace)!;
       expect(first.to, 10);
       expect(first.length, closeTo(100, 1e-9));
-      final second = track.wayFrom(10, positionKeySpace)!;
+      final second = track.wayFrom(10, pathKeySpace)!;
       expect(second.to, 20);
       expect(second.length, closeTo(300, 1e-9));
-      expect(track.wayFrom(20, positionKeySpace), isNull);
+      expect(track.wayFrom(20, pathKeySpace), isNull);
     });
 
     test('is a path\'s: a bent one is longer than the line between its '
@@ -207,7 +207,7 @@ void main() {
           20: PropertyKey(p(100, 100)),
         },
       );
-      expect(bent.wayFrom(0, positionKeySpace)!.length, greaterThan(100));
+      expect(bent.wayFrom(0, pathKeySpace)!.length, greaterThan(100));
     });
 
     test('is none on a lane whose keys walk no path', () {
@@ -221,11 +221,11 @@ void main() {
   group('where a roving key stands', () {
     test('the frame nearest when it is passed — and a placed track is '
         'placed again as it is', () {
-      final placed = turning().withRovingKeysSlotted(positionKeySpace);
+      final placed = turning().withRovingKeysSlotted(pathKeySpace);
       expect(placed.keys.keys, [0, 5, 20]);
       expect(placed.keyAt(5)!.roving, isTrue);
       expect(
-        identical(placed.withRovingKeysSlotted(positionKeySpace), placed),
+        identical(placed.withRovingKeysSlotted(pathKeySpace), placed),
         isTrue,
       );
       for (final time in [3.0, 5.0, 12.5]) {
@@ -242,11 +242,11 @@ void main() {
           10: PropertyKey(p(300, 0)),
         },
       );
-      final times = crowded.rovingTimes(positionKeySpace);
+      final times = crowded.rovingTimes(pathKeySpace);
       expect(times[5]!.round(), 10, reason: '⛔전제: both nearest the end');
       expect(times[6]!.round(), 10, reason: '⛔전제');
       expect(
-        crowded.withRovingKeysSlotted(positionKeySpace).keys.keys,
+        crowded.withRovingKeysSlotted(pathKeySpace).keys.keys,
         [0, 8, 9, 10],
       );
     });
@@ -260,7 +260,7 @@ void main() {
           20: PropertyKey(p(100, 300), roving: true),
         },
       );
-      final ends = flagged.withRovingKeysSlotted(positionKeySpace);
+      final ends = flagged.withRovingKeysSlotted(pathKeySpace);
       expect(ends.keys.keys, [0, 5, 20]);
       expect([for (final key in ends.keys.values) key.roving], [
         true,

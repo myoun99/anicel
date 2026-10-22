@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../services/input/modifier_keys.dart';
 import '../debug/key_trace.dart';
 import 'brush_actions.dart';
 import 'editor_action_registry.dart';
@@ -28,9 +29,9 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// panels ([setPanelActions]) and the brush library's ([setBrushActions])
   /// as they stand.
   List<EditorActionDefinition> get definitions => _definitions;
-  List<EditorActionDefinition> _definitions = editorActionDefinitions;
+  List<EditorActionDefinition> _definitions = editorActionsHere();
   Map<String, EditorActionDefinition> _definitionsById = {
-    for (final definition in editorActionDefinitions) definition.id: definition,
+    for (final definition in editorActionsHere()) definition.id: definition,
   };
 
   List<EditorActionDefinition> _panelActions = const [];
@@ -76,7 +77,7 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   void _relist() {
     _definitions = [
-      ...editorActionDefinitions,
+      ...editorActionsHere(),
       ..._panelActions,
       ..._brushActions,
     ];
@@ -176,10 +177,16 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// [shortcuts] map is built from the same forms, and the held keys and the
   /// playback gate ask here — so a key a layout types differently presses
   /// all three or none of them.
+  ///
+  /// 🚨With the modifiers AS HELD ([ModifierKeys.keyboard]): a held view
+  /// key is asked again whenever they change, and on Windows a pen's move
+  /// lets go of Shift in the engine's record with the key still down —
+  /// Shift+Space turned into the pan under a pen (I-61). At a key that
+  /// presses anything the two agree: the engine syncs to Windows first.
   bool presses(String actionId, KeyEvent event) {
     for (final activator in activatorsFor(actionId)) {
       for (final form in _formsOf(actionId, activator)) {
-        if (form.accepts(event, HardwareKeyboard.instance)) {
+        if (form.accepts(event, ModifierKeys.keyboard)) {
           return true;
         }
       }
@@ -670,6 +677,8 @@ class EditorShortcutManager extends ShortcutManager {
     }
     final result = super.handleKeypress(context, event);
     if (event is! KeyUpEvent) {
+      // ⚠️The engine's record, not the held keys: this says what the
+      // manager above just ran, and it reads the record itself.
       final intent = shortcuts.entries
           .where((entry) => entry.key.accepts(event, HardwareKeyboard.instance))
           .firstOrNull
@@ -698,6 +707,9 @@ class EditorShortcutManager extends ShortcutManager {
   /// between the field and the app binds belongs to that table — the text
   /// system's, in each platform's own modifier — and stands down here. The
   /// premise is made true rather than assumed.
+  ///
+  /// ⚠️Asked of the engine's record, not of the held keys: those tables are
+  /// run by managers that read the record, and this says what they will do.
   bool _fieldKeeps(KeyEvent event) {
     final focusContext = focusedTextField();
     if (focusContext == null) {

@@ -3,8 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../services/cel_text_frame.dart';
+import '../../../services/input/modifier_keys.dart';
 import '../../text/canvas_letter_style.dart';
 import '../../text/cel_text_layout.dart';
+import '../../timeline/axis_turn.dart' show partAlong;
 import 'cel_text_editing_controller.dart';
 import 'cel_text_stage.dart';
 
@@ -28,17 +31,23 @@ import 'cel_text_stage.dart';
 /// It is laid out ON THE ARTWORK, where the text is — the very spans, the
 /// very width, no strut and no text scaling (the sheet's in-place editor
 /// learned each of these, `SheetTextEditLayer`) — and stood under the
-/// panel's view of it, so the IME composes beside the caret and the arrow
-/// keys move along the lines the canvas shows.
+/// panel's view of it, so the IME composes beside the caret and the field
+/// breaks its lines where the canvas does.
 ///
 /// 🧭A TEXT IN COLUMNS HAS ITS FIELD LYING DOWN THEM. A field sets lines;
 /// turned a quarter clockwise about the block's top right corner, its
 /// first line runs down the first column and its next line is to the left
 /// — near enough to where the letters are that the IME's window opens
 /// beside them. Near enough, not exactly: the field breaks its lines by
-/// the letters' widths, the columns by the table's cells. So the ARROWS in
-/// columns are answered here, off the text as it is shown ([_arrow]), and
-/// never left to the field's own idea of the line above.
+/// the letters' widths, the columns by the table's cells.
+///
+/// 🧭AND A FIELD ALIGNS ALL ITS LINES BY ONE ALIGNMENT, where a text's
+/// paragraphs are aligned each its own way (text-letters-lean-and-underline
+/// ④): it is aligned as the paragraph the caret is in, where the IME looks.
+///
+/// So the arrows ACROSS the lines — up and down in lines, left and right
+/// in columns — are answered here, off the text as it is shown ([_arrow]),
+/// and never left to the field's own idea of the line above.
 class CelTextField extends StatelessWidget {
   const CelTextField({
     super.key,
@@ -91,10 +100,14 @@ class CelTextField extends StatelessWidget {
   );
 
   /// The field itself, its letters set as the canvas sets them: the very
-  /// spans, no strut, and for a box the box's own width.
+  /// spans, no strut, and for a box the width the canvas sets its lines at
+  /// ([celTextSetWidth]).
   Widget _field() {
     final content = letters.content;
-    final wrapWidth = content.wrapWidth;
+    final wrapWidth = celTextSetWidth(content);
+    // A field with no caret yet (−1, a field's own 「no selection」) is
+    // aligned as its first paragraph.
+    final caret = math.max(letters.selection.extentOffset, 0);
     final field = EditableText(
       key: const ValueKey<String>('cel-text-field'),
       controller: letters,
@@ -119,7 +132,14 @@ class CelTextField extends StatelessWidget {
       forceLine: false,
       keyboardType: TextInputType.multiline,
       textInputAction: TextInputAction.newline,
-      textAlign: canvasTextAlign(content.align),
+      // As the paragraph the caret is in is aligned. A field aligns every
+      // line of it by one alignment, and the IME's window opens where the
+      // FIELD puts the caret — so beside the letters as the canvas sets
+      // them, in that paragraph. The arrows across the lines are answered
+      // off the text as shown, every paragraph as it is set ([_arrow]).
+      textAlign: canvasTextAlign(
+        content.paragraphs[content.paragraphAt(caret)].align,
+      ),
       textDirection: TextDirection.ltr,
       rendererIgnoresPointer: true,
       autocorrect: false,
@@ -142,19 +162,21 @@ class CelTextField extends StatelessWidget {
   }
 
   /// The text's own frame — its letters' block — on the panel: from the
-  /// block's top left corner along its lines, or — in columns — from its
-  /// top right corner down them.
+  /// block's top left corner along its lines, as wide as their letters are
+  /// drawn ([CelTextContent.letterWidth]), or — in columns — from its top
+  /// right corner down them.
   Matrix4 get _frame {
     final content = letters.content;
-    final frame = stage.artworkOnPanel
-      ..translateByDouble(content.anchor.x, content.anchor.y, 0, 1)
-      ..rotateZ(content.rotationDegrees * math.pi / 180);
+    final frame = stage.artworkOnPanel;
+    CelTextFrame.of(content).applyToMatrix(frame);
     if (content.vertical) {
       return frame
         ..translateByDouble(shown.block.right, shown.block.top, 0, 1)
         ..rotateZ(math.pi / 2);
     }
-    return frame..translateByDouble(shown.block.left, shown.block.top, 0, 1);
+    return frame
+      ..translateByDouble(shown.block.left, shown.block.top, 0, 1)
+      ..scaleByDouble(content.letterWidth, 1, 1, 1);
   }
 
   static void _keepTheKeyboard(PointerEvent event) {}
@@ -165,72 +187,103 @@ class CelTextField extends StatelessWidget {
       onEscape();
       return KeyEventResult.handled;
     }
-    if (event is! KeyUpEvent && letters.content.vertical && _arrow(event)) {
+    if (event is! KeyUpEvent && _arrow(event)) {
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
   }
 
-  /// An arrow, in a text written in COLUMNS: down and up are the next
-  /// letter and the one before, left and right the column after and the
-  /// column before — with Shift, the end of the selection goes there.
-  /// Whether [event] was one, and was answered.
+  /// An arrow this answers, off the text as it is shown — with Shift, the
+  /// end of the selection goes there. Whether [event] was one, and was
+  /// answered.
+  ///
+  /// ACROSS the lines: down and up in lines — a field aligns its lines by
+  /// one alignment, and a text's paragraphs are aligned each its own way —
+  /// and in columns left, the column after, and right, the one before.
+  /// ALONG them, in columns, down and up are the next letter and the one
+  /// before; in lines left and right are the field's own.
   ///
   /// ⚠️Plain and with Shift alone. A jump by a word or to the end of the
-  /// text — an arrow with Ctrl, or with ⌘ — is the field's own, as it is in
-  /// lines.
+  /// text — an arrow with Ctrl, or with ⌘ — is the field's own.
   ///
   /// ⛔The third modifier is not asked after: held under the text tool it
   /// is the eyedropper's (F-299 — 유저 2026-10-05: 「어떤 도구 들고있던 규칙
   /// 만들지말고 법 통일해서 작동하도록」), and two tools alone keep theirs
   /// (`canvasToolReadsAlt`).
   bool _arrow(KeyEvent event) {
-    final keys = HardwareKeyboard.instance;
-    if (keys.isControlPressed || keys.isMetaPressed) {
+    if (ModifierKeys.isControlPressed || ModifierKeys.isMetaPressed) {
       return false;
     }
-    final from = letters.selection.extentOffset;
-    final text = letters.text;
-    if (from < 0) {
+    final selection = letters.selection;
+    if (selection.extentOffset < 0) {
       return false;
     }
-    final to = switch (event.logicalKey) {
-      LogicalKeyboardKey.arrowDown =>
-        from >= text.length
-            ? text.length
-            : from + text.substring(from).characters.first.length,
-      LogicalKeyboardKey.arrowUp =>
-        from <= 0
-            ? 0
-            : from - text.substring(0, from).characters.last.length,
-      LogicalKeyboardKey.arrowLeft => _inTheColumn(from, after: true),
-      LogicalKeyboardKey.arrowRight => _inTheColumn(from, after: false),
-      _ => null,
-    };
+    final to = _whereGoes(event.logicalKey, selection.extent);
     if (to == null) {
       return false;
     }
-    letters.selection = keys.isShiftPressed
-        ? letters.selection.copyWith(extentOffset: to)
-        : TextSelection.collapsed(offset: to);
+    letters.selection = ModifierKeys.isShiftPressed
+        ? selection.copyWith(extentOffset: to.offset)
+        : TextSelection.fromPosition(to);
     return true;
   }
 
-  /// The place as far down the column [after] the one [offset] is in — or
-  /// the one before it — as [offset] is down its own: read off the text as
-  /// it is shown. With no column on that side, the text's end, or its
-  /// start.
-  int _inTheColumn(int offset, {required bool after}) {
-    final length = shown.content.text.length;
-    final caret = shown.caretRect(
-      TextPosition(offset: math.min(offset, length)),
-    );
-    // The column after is to the LEFT.
-    final beside = Offset(
-      after ? caret.left - 0.5 : caret.right + 0.5,
-      caret.center.dy,
-    );
-    final there = shown.positionAt(shown.toCanvas(beside)).offset;
-    return there != offset ? there : (after ? letters.text.length : 0);
+  /// Where [key] takes a caret at [from]; null for a key not answered here.
+  TextPosition? _whereGoes(LogicalKeyboardKey key, TextPosition from) {
+    final vertical = letters.content.vertical;
+    final text = letters.text;
+    final offset = from.offset;
+    return switch (key) {
+      LogicalKeyboardKey.arrowDown when vertical => TextPosition(
+        offset: offset >= text.length
+            ? text.length
+            : offset + text.substring(offset).characters.first.length,
+      ),
+      LogicalKeyboardKey.arrowUp when vertical => TextPosition(
+        offset: offset <= 0
+            ? 0
+            : offset - text.substring(0, offset).characters.last.length,
+      ),
+      // The column after is to the LEFT.
+      LogicalKeyboardKey.arrowLeft when vertical => _onTheLineBeside(
+        from,
+        after: true,
+      ),
+      LogicalKeyboardKey.arrowRight when vertical => _onTheLineBeside(
+        from,
+        after: false,
+      ),
+      LogicalKeyboardKey.arrowDown => _onTheLineBeside(from, after: true),
+      LogicalKeyboardKey.arrowUp => _onTheLineBeside(from, after: false),
+      _ => null,
+    };
   }
+
+  /// The place on the line beside the one [from] stands on — the one
+  /// after, or before ([CelTextLayout.placeBeside]) — as far along it as
+  /// the arrows across the lines are aiming
+  /// ([CelTextEditingController.arrowAim]). With no line on that side, the
+  /// text's end, or its start.
+  TextPosition _onTheLineBeside(TextPosition from, {required bool after}) {
+    final aim = letters.arrowAim;
+    final goesOn = aim != null && aim.landed.offset == from.offset;
+    final stands = goesOn ? aim.landed : from;
+    final at = TextPosition(
+      offset: math.min(stands.offset, shown.content.text.length),
+      affinity: stands.affinity,
+    );
+    final along = goesOn ? aim.along : _alongOf(at);
+    final to =
+        shown.placeBeside(at, after: after, along: along) ??
+        TextPosition(offset: after ? letters.text.length : 0);
+    letters.arrowAim = (landed: to, along: along);
+    return to;
+  }
+
+  /// How far along the lines the caret at [position] stands, as it is
+  /// shown: its middle.
+  double _alongOf(TextPosition position) => partAlong(
+    celTextLettersAxis(vertical: letters.content.vertical),
+    shown.caretRect(position).center,
+  );
 }

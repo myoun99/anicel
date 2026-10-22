@@ -68,12 +68,13 @@ class ColorStatusBar extends StatefulWidget {
 
   /// Each hex at its widest: one glyph six times. A mixed hex is never
   /// wider than the widest of these.
-  static final List<String> _hexProbes = [
-    for (final glyph in '0123456789ABCDEF'.split('')) '#${glyph * 6}',
-  ];
-  static final List<String> _channelProbes = [
-    for (final digit in '0123456789'.split('')) digit * 3,
-  ];
+  static final List<String> _hexProbes = everyDigitIn(
+    (digit) => '#${digit * 6}',
+    digits: '${decimalDigits}ABCDEF',
+  );
+  static final List<String> _channelProbes = everyDigitIn(
+    (digit) => digit * 3,
+  );
 
   static TextMeasure _measureIn(BuildContext context) =>
       TextMeasure(context, DefaultTextStyle.of(context).style.merge(_readout));

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 
+import '../../helpers/native_call_watch.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -81,10 +82,17 @@ void main() {
   });
 
   test('HEVC: open succeeds exactly when the probe says so', () async {
+    // It stood under load too (2026-10-16, board
+    // the-trimmed-movie-test-can-hang-on-windows-ci): the watch names the
+    // call.
+    final watch = await NativeCallWatch.start('HEVC: open as the probe says');
+    addTearDown(watch.stop);
+    watch.step('asking for the encoder');
     final encoder = encoderOrSkip();
     if (encoder == null) {
       return;
     }
+    watch.step('probing for an HEVC encoder');
     final probed = encoder.probe(container: 0, codec: 1);
     final temp = Directory.systemTemp.createTempSync('qa-v21-hevc');
     deleteAfterSessionEnds(temp);
@@ -94,6 +102,7 @@ void main() {
     // realistic geometry.
     const width = 320;
     const height = 240;
+    watch.step('opening an HEVC writer');
     final opened = encoder.open(
       path: path,
       width: width,
@@ -108,10 +117,13 @@ void main() {
       final frame = Uint8List.fromList(
         List<int>.filled(width * height * 4, 0x80),
       );
+      watch.step('writing a frame');
       expect(encoder.writeFrame(frame), isTrue);
+      watch.step('finishing the movie');
       expect(encoder.finish(), isTrue);
       expect(File(path).lengthSync(), greaterThan(500));
     } else {
+      watch.step('letting the writer go');
       encoder.abort();
     }
     expect(

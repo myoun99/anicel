@@ -52,16 +52,21 @@ openedTvpp(
 /// The session the CLIP STUDIO file at [path] opens as — read and planned,
 /// then born with the project it became and every picture baked into it —
 /// with the warnings the import raised; null when the file is not one. The
-/// caller disposes it.
+/// caller disposes it. [onProgress] hears the bake go, as the import's
+/// window does.
 Future<({EditorSessionManager session, List<ImportWarning> warnings})?>
 openedClip(
   String path, {
   EditorSessionManager Function(Project project) make = _plainSession,
+  void Function(double fraction)? onProgress,
 }) async {
   final read = await readClipProject(clipPath: path);
   if (read == null) {
     return null;
   }
   final session = make(read.project);
-  return (session: session, warnings: await session.clipDoor.bake(read));
+  return (
+    session: session,
+    warnings: await session.clipDoor.bake(read, onProgress: onProgress),
+  );
 }

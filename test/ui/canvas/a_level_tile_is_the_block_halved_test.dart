@@ -69,9 +69,13 @@ void main() {
   /// What the surface pass answers for a coordinate of [surface] with
   /// [cache]'s pictures, the way `_CoordinatePicture` does: the tile is
   /// the key, and its picture is the one it has or the one made now.
-  LevelTileAsk askOf(BitmapSurface surface, BitmapTileImageCache cache) => (
+  LevelTileAsk askOf(
+    BitmapSurface surface,
+    BitmapTileImageCache cache, {
+    Object scope = 'cel',
+  }) => (
     tileSize: surface.tileSize,
-    scope: 'cel',
+    scope: scope,
     keyAt: (TileCoord at) => surface.tileAt(at),
     pictureAt: (TileCoord at) {
       final tile = surface.tileAt(at);
@@ -305,6 +309,105 @@ void main() {
         reason: 'asked again: made anew',
       );
       pyramid.paintEnded('cel');
+    });
+  });
+
+  testWidgets('a dropped scope keeps nothing: asked again, its level tile is '
+      'made anew and counted once', (tester) async {
+    await tester.runAsync(() async {
+      final cache = BitmapTileImageCache();
+      final pyramid = TilePyramid();
+      final tile = solid(black);
+      final coord = TileCoord(x: 0, y: 0);
+      final surface = BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: size,
+        tiles: {coord: tile},
+      );
+      adopt(cache, coord, tile, black);
+      final before = TilePyramid.liveBytes;
+      final made = levelOne(pyramid, surface, cache);
+      expect(made, isNotNull);
+
+      pyramid.drop('cel');
+
+      expect(pyramid.debugTileCountOf('cel'), 0);
+      expect(TilePyramid.liveBytes, before, reason: 'its tile let go');
+      expect(
+        identical(levelOne(pyramid, surface, cache), made),
+        isFalse,
+        reason: 'made anew — never the image it let go',
+      );
+      expect(
+        TilePyramid.liveBytes - before,
+        size * size * 4,
+        reason: 'and counted once',
+      );
+      pyramid.drop('cel');
+    });
+  });
+
+  testWidgets('🚨past retainedScopeLimit scopes, the one PAINTED longest ago '
+      'lets its level tiles and its seed go — not one painted again since', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final cache = BitmapTileImageCache();
+      final pyramid = TilePyramid();
+      final tile = solid(black);
+      final surface = BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: size,
+        tiles: {TileCoord(x: 0, y: 0): tile},
+      );
+      adopt(cache, TileCoord(x: 0, y: 0), tile, black);
+      void paint(String scope) {
+        pyramid.paintBegan(scope);
+        pyramid.imageFor(
+          askOf(surface, cache, scope: scope),
+          level: 1,
+          coord: TileCoord(x: 0, y: 0),
+        );
+        pyramid.paintEnded(scope);
+      }
+
+      final scopes = [
+        for (var i = 0; i <= TilePyramid.retainedScopeLimit; i += 1) 'cel $i',
+      ];
+      scopes.take(TilePyramid.retainedScopeLimit).forEach(paint);
+      paint(scopes.first);
+      pyramid.seed(scopes[1], (
+        pieces: [
+          (
+            image: picture(white),
+            worldRect: const ui.Rect.fromLTWH(0, 0, 16, 16),
+          ),
+        ],
+        level: 1,
+        worldRect: const ui.Rect.fromLTWH(0, 0, 16, 16),
+        madeFrom: const {},
+      ));
+      final before = TilePyramid.liveBytes;
+
+      paint(scopes.last);
+
+      expect(
+        pyramid.debugTileCountOf(scopes.first),
+        1,
+        reason: 'painted again since',
+      );
+      expect(
+        pyramid.debugTileCountOf(scopes[1]),
+        0,
+        reason: 'painted longest ago',
+      );
+      expect(pyramid.debugHasSeed(scopes[1]), isFalse);
+      expect(
+        TilePyramid.liveBytes,
+        before,
+        reason: 'the one tile made, the one let go',
+      );
+      scopes.forEach(pyramid.drop);
     });
   });
 }

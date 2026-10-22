@@ -152,11 +152,3 @@ Layer bornRowOfKind(
               )
             : createDefaultAnimationLayer(layerId: layerId, cut: cut))
         .copyWith(mark: LayerMark.bornOfKind(kind));
-
-/// The storyboard-kind shorthand for [createCoveringLayer] (its original
-/// name — the storyboard row was the first covering kind).
-Layer createStoryboardLayer({
-  required LayerId layerId,
-  required FrameId frameId,
-  required Cut cut,
-}) => createCoveringLayer(layerId: layerId, frameId: frameId, cut: cut);

@@ -8,7 +8,8 @@ import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
-import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
+import '../../models/pasteboard_bounds.dart'
+    show PasteboardBounds, PasteboardReach;
 import '../../models/project_background.dart';
 import '../../services/camera_projection_matrix.dart';
 import '../../services/playback/playback_frame_mapping.dart';
@@ -23,6 +24,15 @@ import 'playback_frame_painter.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../repaint_props.dart';
+
+/// What the track stack takes from a RUN it shows: what each of its cuts
+/// takes ([StackRun]), and whether the run's frame goes up when asked for —
+/// the question the run's clock counts the frames it leaves by
+/// (`PlaybackRig.frameIsThere`).
+typedef TrackStackRun = ({
+  StackRun cuts,
+  bool Function(int frame) frameIsThere,
+});
 
 /// The parked-state canvas content — the multitrack display path.
 ///
@@ -74,6 +84,7 @@ class CanvasTrackStackView extends StatelessWidget {
     this.paintsFloor = true,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.pasteboardNone = false,
+    this.pasteboardReach = PasteboardReach.whole,
   });
 
   /// The parked global frame (the session's gap parking): moves per
@@ -121,12 +132,13 @@ class CanvasTrackStackView extends StatelessWidget {
   ///
   /// Set where a run PLAYS through it: the warmer follows the run and is the
   /// one maker of its pictures, in the order the run wants them, so each cut
-  /// here shows what has landed and changes frames whole
-  /// ([CanvasLayerStackView.run]). ↩️It composed the frame under the
-  /// playhead itself, beside a warmer that was baking the playlist from
-  /// wherever play had been pressed — two makers, one picture between them
-  /// at the worst moment.
-  final StackRun? run;
+  /// here shows what has landed ([CanvasLayerStackView.run]) and the film
+  /// changes frames whole, across its cuts as within one
+  /// ([_WholeFilmFrames]). ↩️It composed the frame under the playhead
+  /// itself, beside a warmer that was baking the playlist from wherever
+  /// play had been pressed — two makers, one picture between them at the
+  /// worst moment.
+  final TrackStackRun? run;
 
   /// Told how many bytes each cut's display buffer holds, by cut, whenever
   /// that changes — 0 when it goes ([CanvasLayerStackView.onBufferBytes]).
@@ -152,6 +164,10 @@ class CanvasTrackStackView extends StatelessWidget {
   final bool backdropNone;
   final bool pasteboardNone;
 
+  /// How far the pasteboard reaches past each cut's paper (I-109) — the
+  /// wall its pictures stand behind and its plane is laid to.
+  final PasteboardReach pasteboardReach;
+
   /// Whether the stack stands on its own backdrop floor. False lays it OVER
   /// whatever is under it: the editing canvas's O.L partner (F-227) is
   /// painted over the LIVE cut, which is that partner's floor — the share
@@ -160,9 +176,10 @@ class CanvasTrackStackView extends StatelessWidget {
   final bool paintsFloor;
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<int?>(
-    valueListenable: globalFrame,
-    builder: (context, frame, _) => _frame(context, frame),
+  Widget build(BuildContext context) => _WholeFilmFrames(
+    globalFrame: globalFrame,
+    run: run,
+    builder: _frame,
   );
 
   Widget _frame(BuildContext context, int? frame) {
@@ -253,6 +270,7 @@ class CanvasTrackStackView extends StatelessWidget {
           );
     PlaybackFramePainter painter({required bool under}) => PlaybackFramePainter(
       canvasSize: cut.canvasSize,
+      pasteboardReach: pasteboardReach,
       viewport: view,
       devicePixelRatio: ratio,
       cameraPose: pose,
@@ -301,6 +319,7 @@ class CanvasTrackStackView extends StatelessWidget {
         : isStage
         ? StagePlanesPainter(
             pasteboard: (color: Color(pasteboardArgb), none: pasteboardNone),
+            pasteboardReach: pasteboardReach,
             paperNone: background.none,
             canvasSize: cut.canvasSize,
             viewport: view,
@@ -318,6 +337,7 @@ class CanvasTrackStackView extends StatelessWidget {
               nodes: stackOf(cut, localFrame),
               imageCache: imageCache,
               canvasSize: cut.canvasSize,
+              pasteboardReach: pasteboardReach,
               viewport: shot?.frameView ?? view,
               paintPaper: isStage,
               paperBackground: background,
@@ -325,7 +345,7 @@ class CanvasTrackStackView extends StatelessWidget {
               // whole frame until the next one is — a run's are whole anyway
               // ([CanvasLayerStackView.wholeFrames]).
               wholeFrames: true,
-              run: run,
+              run: run?.cuts,
               onBufferBytes: onBufferBytes == null
                   ? null
                   : (bytes) => onBufferBytes!(cut.id, bytes),
@@ -346,6 +366,97 @@ class CanvasTrackStackView extends StatelessWidget {
       child: unit,
     );
   }
+}
+
+/// 🚨A FILM CHANGES FRAMES WHOLE, ACROSS ITS CUTS AS WITHIN ONE (유저
+/// 2026-10-15, F-365-Q2: 「컷을 넘을 때도 직전 그림을 남기고, 건너뛴 프레임
+/// 수를 재생 버튼 왼쪽에 빨갛게」). Under a run, the frame shown is the
+/// run's — or, while its picture is not all there, the last one that was.
+/// Each cut's view changes its own frames whole ([CanvasLayerStackView.run]),
+/// but a cut coming in is a view of its own, with no frame of its own to
+/// leave standing: it showed its paper until its rows landed.
+///
+/// ⚠️Past the frame a run is put on, only a clock that goes on without a
+/// picture asks for a frame that is not whole — skipping frames — and every
+/// frame it leaves so is counted dropped by the same question
+/// (`CanvasPlaybackController.frameIsThere`), so what stands in for it is
+/// never shown silently. A clock that waits
+/// stands on the last whole frame itself (F-365-Q1, `playheadWay`):
+/// ⛔holding the picture here while ITS playhead went on was turned down —
+/// the playhead on one frame and the screen on another.
+///
+/// The first frame a clock asks for is shown whatever it holds — there is
+/// no other to show — and parked, every frame is shown as it is asked for:
+/// the cuts make what they lack themselves, and leave their own last whole
+/// frame standing.
+class _WholeFilmFrames extends StatefulWidget {
+  const _WholeFilmFrames({
+    required this.globalFrame,
+    required this.run,
+    required this.builder,
+  });
+
+  final ValueListenable<int?> globalFrame;
+  final TrackStackRun? run;
+  final Widget Function(BuildContext context, int? frame) builder;
+
+  @override
+  State<_WholeFilmFrames> createState() => _WholeFilmFramesState();
+}
+
+class _WholeFilmFramesState extends State<_WholeFilmFrames> {
+  /// The frame on screen: the one asked for, or the last whole one.
+  late int? _shown = widget.globalFrame.value;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.globalFrame.addListener(_look);
+    widget.run?.cuts.landings.addListener(_look);
+  }
+
+  @override
+  void didUpdateWidget(_WholeFilmFrames oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.globalFrame, widget.globalFrame)) {
+      oldWidget.globalFrame.removeListener(_look);
+      widget.globalFrame.addListener(_look);
+    }
+    final heard = oldWidget.run?.cuts.landings;
+    final landings = widget.run?.cuts.landings;
+    if (!identical(heard, landings)) {
+      heard?.removeListener(_look);
+      landings?.addListener(_look);
+    }
+    // Another clock, another run: what stands, stands until what is asked
+    // for now is whole.
+    final asked = widget.globalFrame.value;
+    if (_isWhole(asked)) {
+      _shown = asked;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.globalFrame.removeListener(_look);
+    widget.run?.cuts.landings.removeListener(_look);
+    super.dispose();
+  }
+
+  bool _isWhole(int? frame) =>
+      frame == null || (widget.run?.frameIsThere(frame) ?? true);
+
+  /// The frame asked for, or a picture landed: the frame asked for goes up
+  /// once it is whole.
+  void _look() {
+    final asked = widget.globalFrame.value;
+    if (asked != _shown && _isWhole(asked)) {
+      setState(() => _shown = asked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _shown);
 }
 
 /// The stage's floor seen through the camera (R3b): the letterbox past the

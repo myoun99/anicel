@@ -8,6 +8,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timesheet_document.dart' show sheetArtistMark;
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -188,6 +189,69 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(session.cutVerbs.activeCutNoteOf(0), 'カットO.L');
+    });
+
+    // 🗣️I-112 (유저 2026-10-19): 「원화 이름 클릭해서 변경가능하게. 변경한게
+    // 러프원화 스태프 이름에 연동? … 동기화되있는듯한?」.
+    testWidgets('🎯the name box types the cut\'s 러프원화 worker — Enter '
+        'lands it, and 컷 설정 reads the same name', (tester) async {
+      await pumpHost(tester, brushAllowed: false);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-name-edit-p0')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(_editorKey), '大川');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(_editorKey), findsNothing, reason: 'Enter lands it');
+      expect(
+        session.requireActiveCut.metadata.staffNameFor(sheetArtistMark),
+        '大川',
+      );
+      expect(
+        session.cutVerbs.addressedCutStaff?[sheetArtistMark.keySlug],
+        '大川',
+        reason: 'one name — the one 컷 설정 shows',
+      );
+    });
+
+    Future<void> typeInto(WidgetTester tester, String box, String words) async {
+      await tester.tap(find.byKey(ValueKey<String>('timesheet-$box-edit-p0')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(_editorKey), words);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
+
+    // 🗣️I-112 (유저 2026-10-21): 「추가로 화수,타이틀,신,이름 등 다른
+    // 변경가능한것도 변경가능하게 … 타이틀 바꾸면 다른곳에도 반영되는거
+    // 인지하고있음. 화수도 마찬가지.」
+    testWidgets('🎯the episode and title boxes type the work\'s own — the '
+        'values its settings show — and the cut box renames the cut', (
+      tester,
+    ) async {
+      await pumpHost(tester, brushAllowed: false);
+
+      await typeInto(tester, 'episode', '#3');
+      await typeInto(tester, 'title', '夜に駆ける');
+      await typeInto(tester, 'cut', 'C-012');
+
+      expect(session.timesheetInfo.episode, '#3');
+      expect(session.timesheetInfo.title, '夜に駆ける');
+      expect(session.requireActiveCut.name, 'C-012');
+    });
+
+    testWidgets('⛔an emptied cut box keeps the cut\'s name — no cut goes '
+        'nameless', (tester) async {
+      await pumpHost(tester, brushAllowed: false);
+      final name = session.requireActiveCut.name;
+
+      await typeInto(tester, 'cut', '  ');
+
+      expect(find.byKey(_editorKey), findsNothing);
+      expect(session.requireActiveCut.name, name);
     });
   });
 }

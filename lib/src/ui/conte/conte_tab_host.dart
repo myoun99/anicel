@@ -19,10 +19,13 @@ import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
 import '../../services/project_lookup.dart'
     show brushFrameKeyIn, cutPositionOf;
-import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
+import '../brush/brush_canvas_panel.dart'
+    show BrushCanvasPanel, CanvasTransportBand;
 import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetPictureWindow, SheetWindow;
+import '../sheet/sheet_photo_drop.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/canvas_book.dart';
@@ -33,11 +36,12 @@ import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart';
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
+import '../timeline/memo_token.dart' show ByIdentity;
 import '../dialogs/conte_format_window.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
-import '../widgets/page_turn_strip.dart';
+import '../widgets/page_turn_bar.dart' show viewerPage;
 import 'conte_book_page.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
@@ -77,7 +81,7 @@ class ConteTabHost extends StatefulWidget {
   /// A media image by its asset path — the company logo each body page
   /// prints top-right, the cover's picture. The workspace's decode cache,
   /// the one the envelope prints its logo from.
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
 
   /// Notifies when an image [imageFor] answered null for has landed — the
   /// page's inputs do not change for it, so this is what repaints it.
@@ -121,6 +125,16 @@ class ConteTabHost extends StatefulWidget {
   // under the page when a cell was selected, a row that did not flex. The
   // ACTION is edited on the page now, and the panel mounts nothing under
   // the shell (the envelope's case).
+
+  /// What the conte prints of [session], to the panel host that hears the
+  /// session through it: the project — its cuts, their cels and the camera
+  /// they are shot through — and the active cut's canvas, which the next
+  /// cut a stroke makes is planned from ([_ConteTabHostState._brushPageOf]).
+  /// The models are immutable, so a new one is the only way either moves.
+  static Object printedBy(EditorSessionManager session) => (
+    project: ByIdentity(session.repository.requireProject()),
+    activeCanvas: session.activeCutOrNull?.canvasSize,
+  );
 
   @override
   State<ConteTabHost> createState() => _ConteTabHostState();
@@ -221,7 +235,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   void initState() {
     super.initState();
     AppInput.settings.addListener(_onInputSettings);
-    // The page strip reads the view; a caller's own view rebuilds this from
+    // The page turner reads the view; a caller's own view rebuilds this from
     // above, this one from here.
     _ownView.addListener(_onInputSettings);
     // And the reader's page, which the panel moves.
@@ -291,7 +305,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
     final source = buildConteSheetSource(project);
     return (
       source,
-      layoutConteBook(source, metrics: ConteSheetMetrics(cameraAspect: aspect)),
+      layoutConteBook(
+        source,
+        metrics: ConteSheetMetrics.ofWork(
+          project.timesheetInfo,
+          cameraAspect: aspect,
+        ),
+      ),
     );
   }
 
@@ -373,10 +393,22 @@ class _ConteTabHostState extends State<ConteTabHost> {
     if (shown.isEmpty || !_drawing || controller == null || tool == null) {
       return null;
     }
-    final drawn = [for (final (:page, :at) in shown) (_brushPageOf(page), at)];
+    final brush = _brushPages(shown);
     return (
       controller: controller,
       tool: tool,
+      pages: brush.pages,
+      project: brush.project,
+    );
+  }
+
+  /// [shown] — not empty — as the brush draws on them ([_brushPageOf]),
+  /// and the project they are laid from.
+  ({List<ConteShownPage> pages, Project project}) _brushPages(
+    List<ConteShownPage> shown,
+  ) {
+    final drawn = [for (final (:page, :at) in shown) (_brushPageOf(page), at)];
+    return (
       pages: [for (final (brush, at) in drawn) (page: brush.page, at: at)],
       project: drawn.first.$1.project,
     );
@@ -451,10 +483,17 @@ class _ConteTabHostState extends State<ConteTabHost> {
     return askThenCommit<ConteFormat>(
       context,
       dialog: (_) => ConteFormatWindow(
-        initial: (cover: info.conteCover, blankPage: info.conteBlankPage),
+        initial: (
+          form: info.conteForm,
+          outlined: info.conteOutlined,
+          cover: info.conteCover,
+          blankPage: info.conteBlankPage,
+        ),
       ),
       commit: (format) => _session.updateTimesheetInfo(
         _session.timesheetInfo.copyWith(
+          conteForm: format.form,
+          conteOutlined: format.outlined,
           conteCover: format.cover,
           conteBlankPage: format.blankPage,
         ),
@@ -477,7 +516,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   ];
 
   /// The book on the canvas panel, every page one under another (F-201),
-  /// the page strip reading and turning the page the view is on.
+  /// the page turner reading and turning the page the view is on.
   Widget _panel(List<ContePageLayout> pages) {
     final stack = _stackOf(pages);
     final book = CanvasBook(pages: stack, reading: _reading);
@@ -502,8 +541,9 @@ class _ConteTabHostState extends State<ConteTabHost> {
               onChanged: onBrushAllowedChanged,
               keyPrefix: 'conte',
             ),
-      // The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13).
-      pageStrip: pageTurnStrip(
+      // The page turner, in the band under the book (F-383).
+      transport: CanvasTransportBand.ofPages(
+        context,
         keyPrefix: 'conte',
         page: viewerPage(pageIndex, pages.length),
         onTurnTo: book.turnTo,
@@ -515,6 +555,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
       viewLimit: pages.isEmpty ? null : stack.paper,
       book: pages.isEmpty ? null : book,
       drawingOn: _drawing && pages.isNotEmpty,
+      brushToolState: widget.brushToolState,
       strokeHold: _strokeHold,
       content: (context, viewport) => LayoutBuilder(
         builder: (context, box) =>
@@ -578,10 +619,42 @@ class _ConteTabHostState extends State<ConteTabHost> {
             ),
           ),
         if (ink != null) _inkLayer(ink, viewport, pictures!),
+        if (widget.inkController case final controller?
+            when shown.isNotEmpty)
+          _photoDrop(controller, shown, viewport),
         if (awaited != null) _waitFor(awaited),
       ],
     );
   }
+
+  /// A pool picture dropped on the pages on screen is a photo in the band
+  /// a stroke started there writes in — the block, or the next cut, made
+  /// as the stroke makes them (I-97).
+  Positioned _photoDrop(
+    ConteInkController controller,
+    List<ConteShownPage> shown,
+    CanvasViewport viewport,
+  ) => Positioned.fill(
+    child: SheetPhotoDrop(
+      session: _session,
+      ink: controller,
+      windows: () {
+        final brush = _brushPages(shown);
+        return conteSheetWindows(
+          brush.pages,
+          pictureWindows: _pictureWindowsOf(
+            brush.pages,
+            _picturesOf(brush.pages, brush.project),
+          ),
+          unwrittenInkIdOf: _unwrittenInkIdOf,
+          refusalOf: _refusalOfCell,
+        );
+      },
+      viewport: viewport,
+      beforeLanding: _makeWhatTheStrokeLandsIn,
+      cacheInvalidationSink: _cacheInvalidationSink,
+    ),
+  );
 
   /// What stands the pictures down once [prints] owes none
   /// ([_awaitingPrints]).
@@ -670,6 +743,21 @@ class _ConteTabHostState extends State<ConteTabHost> {
   String _unwrittenInkIdOf(ContePlacedCell cell) => _session.storyboardCursor
       .conteInkIdFor(CutId(cell.cutId), cell.source.startFrame);
 
+  /// Why [cell]'s band takes no ink ([_refusalFor]).
+  String? _refusalOfCell(ContePlacedCell cell) =>
+      _refusalFor(CutId(cell.cutId));
+
+  /// [pictures]' windows — each of [pages]' own — moved to where their
+  /// page lies.
+  List<SheetPictureWindow> _pictureWindowsOf(
+    List<ConteShownPage> pages,
+    List<List<ContePicture>> pictures,
+  ) => [
+    for (var index = 0; index < pages.length; index += 1)
+      for (final picture in pictures[index])
+        picture.window.shiftedBy(pages[index].at),
+  ];
+
   /// The one ink layer over the pages on screen: their bands' windows and
   /// their pictures' windows, each moved to where its page lies.
   Positioned _inkLayer(
@@ -691,15 +779,14 @@ class _ConteTabHostState extends State<ConteTabHost> {
         strokeActive: _strokeHold,
         cacheInvalidationSink: _cacheInvalidationSink,
         pictures: widget.pictures,
-        pictureWindows: [
-          for (var index = 0; index < ink.pages.length; index += 1)
-            for (final picture in pictures[index])
-              picture.window.shiftedBy(ink.pages[index].at),
-        ],
+        pictureWindows: _pictureWindowsOf(ink.pages, pictures),
         pictureInvalidationSink: _session.renderCaches.cacheInvalidationHub,
         unwrittenInkIdOf: _unwrittenInkIdOf,
-        refusalOf: (cell) => _refusalFor(CutId(cell.cutId)),
+        refusalOf: _refusalOfCell,
         beforeLanding: _makeWhatTheStrokeLandsIn,
+        imageFor: widget.imageFor,
+        imageRepaint: widget.imageRepaint,
+        photoHold: _session.sheetPhotoHold,
       ),
     );
   }

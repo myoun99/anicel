@@ -49,11 +49,16 @@ class ViewerLoudness {
 /// scrubber ride it too. This class is only the part that is the viewer's —
 /// which file, from what second, and where the device has got to.
 ///
-/// Standing down is silent and total, exactly as the other two paths stand
-/// down: no binary, no device, or a conform not resident yet leaves
-/// [isCarrying] false and the viewer plays its pictures without sound. ⛔A
-/// viewer that refused to play because there was no audio device would be
-/// worse than a silent one.
+/// A sound on its way — a conform not resident yet, an output being opened
+/// ([OutputComing]) — is waited for: the run stands where it was put and
+/// asks again ([prepare]) until it comes (`MediaRun`, playback-waits-for-
+/// its-sound: 「소리가 준비될 때까지 기다린다」). No binary, no device, or a
+/// file that will never be ready leaves [isCarrying] false and the viewer
+/// plays its pictures without sound ([OutputRefused]). ⛔A viewer that
+/// refused to play because there was no audio device would be worse than a
+/// silent one. ↩️A conform not resident yet stood down as silently: the
+/// movie played without its sound, and a sound alone did not play at all
+/// until the next press.
 class ViewerSound {
   ViewerSound({
     required this.conformStore,
@@ -116,7 +121,8 @@ class ViewerSound {
   bool get isCarrying => _device != null;
 
   /// Starts [sourcePath] at [fromSeconds], as loud as [gain]
-  /// ([ViewerLoudness.gain]); false stands down silently.
+  /// ([ViewerLoudness.gain]) — once it is armed there ([prepare]), which
+  /// it says.
   ///
   /// ⚠️It asks the conform store rather than a decoder: the sound of a
   /// media asset — a `.wav` on its own or the track inside a movie — is
@@ -128,16 +134,39 @@ class ViewerSound {
   /// ⚠️The gain is the one clip's, mixed into what is uploaded: the device
   /// has no fader of its own, so a sound already going hears a new level by
   /// being started again where it stands (`MediaRun.soundCell`).
-  bool play(String sourcePath, {double fromSeconds = 0, double gain = 1}) {
+  OutputArm play(String sourcePath, {double fromSeconds = 0, double gain = 1}) {
+    final armed = prepare(sourcePath, fromSeconds: fromSeconds, gain: gain);
+    if (armed is OutputArmed) {
+      // ⚠️The START is in SAMPLES, not in whole seconds: the window only has
+      // to be centred near the playhead, but the sound has to begin exactly
+      // where the picture says it does.
+      resume(fromSeconds);
+    }
+    return armed;
+  }
+
+  /// Arms [sourcePath] around [fromSeconds], as loud as [gain], without
+  /// starting it: [OutputArmed] and [isCarrying] once it is on the device,
+  /// [OutputComing] while its conform or its output is on its way — what a
+  /// run that waits for its sound asks again until it has come (`MediaRun`)
+  /// — and [OutputRefused] where it never will be: no output, or a file
+  /// nothing will make ready.
+  OutputArm prepare(
+    String sourcePath, {
+    required double fromSeconds,
+    required double gain,
+  }) {
     stop();
     final seconds = conformStore.durationSecondsFor(sourcePath);
     if (seconds == null || seconds <= 0) {
-      // Not conformed yet — the lookup KICKED it, so the next press has it.
-      return false;
+      // Not conformed: the lookup KICKED it, and it lands — or it never will.
+      return conformStore.isLanding(sourcePath, conformStore.projectSampleRate)
+          ? const OutputComing()
+          : const OutputRefused();
     }
     final device = _resolveDevice();
     if (device == null) {
-      return false;
+      return const OutputRefused();
     }
     final armed = armAudioOutput(
       device: device,
@@ -155,17 +184,16 @@ class ViewerSound {
       centerFrame: fromSeconds.floor(),
       preferredDeviceName: resolveOutputDeviceName?.call(),
     );
-    if (armed == null || !armed.uploaded) {
-      return false;
+    if (armed case OutputArmed(:final deviceRate, :final cannotPlay)) {
+      if (cannotPlay.isNotEmpty) {
+        // The one file the viewer plays is the one left out.
+        return const OutputRefused();
+      }
+      _device = device;
+      _deviceRate = deviceRate;
+      _endSample = (seconds * _deviceRate).round();
     }
-    _device = device;
-    _deviceRate = armed.deviceRate;
-    _endSample = (seconds * _deviceRate).round();
-    // ⚠️The START is in SAMPLES, not in whole seconds: the window only has
-    // to be centred near the playhead, but the sound has to begin exactly
-    // where the picture says it does.
-    resume(fromSeconds);
-    return true;
+    return armed;
   }
 
   /// Stops the sound WITHOUT letting go of what was uploaded, so [resume]
@@ -189,17 +217,36 @@ class ViewerSound {
 
   /// Starts (or picks back up) at [fromSeconds] on the schedule already
   /// uploaded — on the run's first look ([FirstLookStart]: [keepStreaming],
-  /// [heardAt]). ⛔Not a seek: the streaming window is where [play] centred
-  /// it, and a jump far from there would read past its edge.
+  /// [heardAt]) — with the streaming window centred there first where it
+  /// does not hold it ([AudioStreamingWindow.cover]): a run behind its clock
+  /// puts its sound back as far as the app was late (`MediaRun`).
+  /// ↩️It was 「not a seek」, picking up only where the window already was.
   void resume(double fromSeconds) {
     final device = _device;
     if (device == null) {
       return;
     }
     final startSample = _startSample = (fromSeconds * _deviceRate).round();
-    _start.arm(() {
-      device.play(startSample: startSample, stopSample: _endSample);
+    _window.cover(
+      startSample,
+      device: device,
+      conformStore: conformStore,
+      deviceRate: _deviceRate,
+    );
+    _start.arm((frameTime) {
       _heard.arm(deviceRate: _deviceRate, carriesFor: device.latencySamples);
+      device.play(
+        startSample: startSample,
+        stopSample: _endSample,
+        // Heard as the look's frame is shown — the canvas's law
+        // ([HeardOnTheDevice.leadFor]).
+        leadSamples: _heard.leadFor(
+          deviceNowMicros: device.clockNowMicros,
+          frameTime: frameTime,
+          latencySamples: device.latencySamples,
+          userOffsetSamples: resolveUserOffsetSamples(_deviceRate),
+        ),
+      );
     });
   }
 
@@ -210,16 +257,17 @@ class ViewerSound {
   }
 
   /// Moves the streaming window along with the sound — asked every tick of
-  /// a run. A file past two minutes streams from disk, and a window left
-  /// where [play] centred it runs dry half a minute in
-  /// ([AudioStreamingWindow.followPlayback], the timeline's own rule).
-  void keepStreaming() {
+  /// a run, whose frame is shown at [frameTime]. A file past two minutes
+  /// streams from disk, and a window left where [play] centred it runs dry
+  /// half a minute in ([AudioStreamingWindow.followPlayback], the
+  /// timeline's own rule).
+  void keepStreaming({required Duration? frameTime}) {
     final device = _device;
     if (device == null) {
       return;
     }
     // A look of the run: a sound started since the last one starts now.
-    _start.look();
+    _start.look(frameTime: frameTime);
     _window.followPlayback(
       positionSamples: device.positionSamples,
       deviceRate: _deviceRate,
@@ -240,8 +288,8 @@ class ViewerSound {
   /// 🚨★★★**THIS IS THE CLOCK — the canvas's, in its code**
   /// ([HeardOnTheDevice], viewer-plays-by-the-one-playback-law ④-b): the
   /// line through what the device was handed, at the frame's own time, less
-  /// what the device still holds to play, with the user's own correction
-  /// on top. A picture that follows it cannot drift from the sound, and
+  /// what the device still holds to play, and less the user's own
+  /// correction. A picture that follows it cannot drift from the sound, and
   /// stands where the canvas's would. ↩️It read what had been HANDED, the
   /// stair, as the tick ran: a picture ahead of what was heard by the
   /// device's latency, and a correction set in the settings that never
@@ -256,7 +304,7 @@ class ViewerSound {
       return null;
     }
     // A look of the run: a sound started since the last one starts now.
-    _start.look();
+    _start.look(frameTime: frameTime);
     final heard = math.max(
       _startSample,
       _heard.heard(
@@ -270,18 +318,6 @@ class ViewerSound {
       seconds: heard / _deviceRate,
       ended: _endSample > 0 && heard >= _endSample,
     );
-  }
-
-  /// How far the device has been handed the file, in seconds — where a
-  /// held sound picks up ([hold], [resume]), so what it played before the
-  /// hold is not played again; null while nothing is carrying. ⛔Not the
-  /// clock: what is heard trails it by the device's latency ([heardAt]).
-  double? get handedSeconds {
-    final device = _device;
-    if (device == null || _deviceRate <= 0) {
-      return null;
-    }
-    return device.positionSamples / _deviceRate;
   }
 
   /// Silence, and nothing held. ⚠️Idempotent — the viewer stops on every

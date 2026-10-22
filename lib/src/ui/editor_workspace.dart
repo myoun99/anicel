@@ -24,7 +24,7 @@ import '../models/project_font_file.dart';
 import '../services/command.dart' show Command;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
-import '../models/media_asset.dart' show MediaAsset, mediaFileName;
+import '../models/media_asset.dart' show MediaAsset;
 import '../models/reference_swap.dart';
 import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
@@ -37,7 +37,8 @@ import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../models/app_language.dart' show AppLanguage;
 import '../models/brush_tip_entry.dart';
 import '../models/canvas_size.dart';
-import '../models/drawing_guide.dart' show CutGuides, GuideId;
+import '../models/pasteboard_bounds.dart';
+import '../models/drawing_guide.dart' show CutGuides, DrawingGuide, GuideId;
 import '../services/cut_piece_slot.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
@@ -57,6 +58,7 @@ import 'brush/brush_preset_view_options.dart';
 import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/canvas_traces.dart';
 import 'brush/cel_text_commands.dart';
 import 'brush/text_tool_options.dart';
 import 'brush/confirm_verb.dart';
@@ -87,6 +89,7 @@ import 'media/media_drop_verdict.dart';
 import 'media/media_pool_panel.dart';
 import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
+import 'media/viewer_ink.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import '../services/audio/conform_wav_export.dart';
@@ -94,7 +97,12 @@ import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_prompt_dialog.dart';
 import 'dialogs/folder_pick_flow.dart';
 import 'dialogs/app_confirm_dialog.dart'
-    show ConfirmChoice, ConfirmQuestion, askConfirm, showAppNotice;
+    show
+        ConfirmChoice,
+        ConfirmQuestion,
+        NoticeDetails,
+        askConfirm,
+        showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -153,6 +161,7 @@ import 'timeline/layer_rail_window.dart';
 import 'canvas/flip_hud_controller.dart';
 import 'canvas/flip_hud_model.dart';
 import 'canvas/flip_hud_rows.dart';
+import 'canvas/guide_overlay.dart' show guideColorOf, guideLinesOnPaper;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/property_lane_model.dart'
@@ -177,7 +186,6 @@ import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 import 'workspace/workspace_bar_commands.dart';
 import 'workspace/workspace_door_commands.dart';
 import '../services/persistence/folder_grant.dart' show FolderGrant;
-import 'camera/camera_view_toggle_button.dart' show toggleCameraView;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
 import 'text/imported_fonts.dart';
@@ -186,6 +194,7 @@ import 'timeline_tab_host.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet_tab_host.dart';
 import 'input/control_press_claim.dart';
+import 'input/os_file_drop.dart';
 
 part 'workspace/workspace_collapsed_rows.dart';
 part 'workspace/workspace_folded_storyboard.dart';
@@ -233,6 +242,8 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasViewCommands,
     this.canvasNavigationRegionKey,
     this.canvasSelectionCommands,
+    this.viewerSelections,
+    this.canvasTraces,
     this.canvasTextCommands,
     this.lastStroke,
     this.toolHold,
@@ -285,6 +296,14 @@ class EditorWorkspace extends StatefulWidget {
 
   /// The shell-owned selection shortcut channel (P9, Ctrl+D + nudges).
   final CanvasSelectionCommands? canvasSelectionCommands;
+
+  /// Each viewer's selection channel, by its tab (F-380) — shell-owned, as
+  /// the canvas's is: the window's verbs ask after the trace on it.
+  final Map<String, CanvasSelectionCommands>? viewerSelections;
+
+  /// Every canvas's polygon trace — the tool settings' 닫기 closes the one
+  /// the user is in the middle of, as 확정 does.
+  final CanvasTraces? canvasTraces;
 
   /// The shell-owned text channel (R9-rest): the canvas binds the text it
   /// holds, and the tool settings show and change it.
@@ -1054,22 +1073,25 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// conte. Null while nothing is seeded, or while seeding.
   ProjectId? _viewersSeededFrom;
 
-  /// Puts each viewer back where the project left it (유저 확정 ⑤㉑).
+  /// Puts each viewer back where the project left it (유저 확정 ⑤㉑) — its
+  /// file at the page and the framing that file was left at (F-382).
   void _syncViewersWithProject() {
     final project = widget.session.repository.currentProject;
     if (project == null || project.id == _viewersSeededFrom) {
       return;
     }
-    // Nothing is written back while the two are being filled: restoring the
+    // Nothing is written back while the two are being filled: opening the
     // first viewer writes BOTH back, and the second still holds the last
-    // project's document until its own restore.
+    // project's document until it is opened too.
     _viewersSeededFrom = null;
-    for (final entry in _viewerSlots.entries) {
-      final bookmark = project.mediaViewerBookmarks[entry.key];
-      entry.value.restore(
-        _requestForBookmark(bookmark, project),
-        position: bookmark?.position ?? 0,
-      );
+    for (final MapEntry(key: viewer, value: slot) in _viewerSlots.entries) {
+      // What a viewer keeps of the files it shows is the project's (I-7) —
+      // handed as it is seeded, so the file opens at it.
+      slot
+        ..keepIn(widget.session.mediaFileViews, viewer: viewer)
+        ..open(
+          _requestForBookmark(project.mediaViewerBookmarks[viewer], project),
+        );
     }
     _viewersSeededFrom = project.id;
   }
@@ -1077,8 +1099,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// A remembered reference, or null when the app can no longer reach it.
   ///
   /// 유저 확정 ⑭: BOTH kinds come back — a pooled asset by its pool key
-  /// (its name and kind are the pool's, which may have been renamed since)
-  /// and a loose file by the absolute path it was opened from. A path
+  /// (its kind is the pool's; its name the viewer reads off the pool as it
+  /// draws) and a loose file by the absolute path it was opened from. A path
   /// that is neither is simply gone: the viewer comes back empty and says
   /// nothing, because a reference is not the work and losing one must not
   /// greet anybody with a dialog.
@@ -1091,22 +1113,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
     final asset = project.mediaAssetByPath(bookmark.path);
     if (asset != null) {
-      return MediaViewerRequest(
-        path: asset.path,
-        kind: asset.kind,
-        name: asset.name,
-      );
+      return MediaViewerRequest(path: asset.path, kind: asset.kind);
     }
     // Sync on purpose: this runs inside a notify, and a widget test's
     // fake-async zone never completes an awaited dart:io future.
     if (!File(bookmark.path).existsSync()) {
       return null;
     }
-    return MediaViewerRequest(
-      path: bookmark.path,
-      kind: bookmark.kind,
-      name: bookmark.name,
-    );
+    return MediaViewerRequest(path: bookmark.path, kind: bookmark.kind);
   }
 
   /// Writes both viewers back into the project — no command, so no undo
@@ -1124,8 +1138,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             entry.key: MediaViewerBookmark(
               path: request.path,
               kind: request.kind,
-              name: request.name,
-              position: entry.value.position.value,
             ),
       },
     );
@@ -1230,17 +1242,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       this,
       zoomStep: _stepZoom,
       toggleOrientation: _toggleOrientation,
-      toggleCameraView: () => toggleCameraView(_views._cameraViewEnabled),
     );
     widget.doorCommands?.bind(
       this,
       openFiles: () => unawaited(_pickAndOpen()),
       openFolder: () => unawaited(_pickFolderAndOpen()),
+      openPaths: (paths) => unawaited(_openHanded(paths)),
     );
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
     for (final slot in _viewerSlots.values) {
       slot.request.addListener(_writeViewerBookmarks);
-      slot.position.addListener(_writeViewerBookmarks);
     }
     _bindSession(widget.session);
   }
@@ -1419,7 +1430,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // Its pictures go with it; the store reports the zero to [session].
     _storyboardThumbnails.dispose();
-    _views.unbindSession();
+    _views.unbindSession(session);
     _foldedStoryboard.unbindSession();
     session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
     session.removeListener(_syncViewersWithProject);
@@ -1586,7 +1597,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// the drawing instead.
   void _openAssetInViewer(MediaAsset asset, {required String tabId}) {
     _openInViewer(
-      MediaViewerRequest(path: asset.path, kind: asset.kind, name: asset.name),
+      MediaViewerRequest(path: asset.path, kind: asset.kind),
       tabId: tabId,
     );
   }
@@ -1673,8 +1684,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         message: strings.tlAttachDropsFxBody,
         // F-303: WHICH rows — the request has always carried their names,
         // and the window never showed them.
-        details: request.rowNames,
-        detailsHeading: strings.tlAttachDropsFxRows,
+        details: [
+          NoticeDetails(request.rowNames, heading: strings.tlAttachDropsFxRows),
+        ],
       ),
       accept: ConfirmChoice(strings.commonApply),
     );
@@ -1730,7 +1742,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _panelFlash.dispose();
     for (final slot in _viewerSlots.values) {
       slot.request.removeListener(_writeViewerBookmarks);
-      slot.position.removeListener(_writeViewerBookmarks);
     }
     _mainViewer.dispose();
     _subViewer.dispose();
@@ -2125,19 +2136,54 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       ? railSpan
       : inset;
 
-  /// OS drag-and-drop (§6-i, confirmed): wherever the drop lands, what it
-  /// holds goes through the one door — never an instant import. Folders
-  /// drop too (the cut-folder parser's entrance).
+  /// OS drag-and-drop (§6-i, confirmed): what the drop holds goes through
+  /// the one door — never an instant import. Folders drop too (the
+  /// cut-folder parser's entrance).
   ///
   /// ↩️F-247 (유저 2026-09-30): 「anicel이면 배치창이아니라 새 프로젝트로
   /// 열도록. tvpp도 똑같이」 — a file 「열기」 opens is not imported: it opens
   /// in a tab of its own, once the import window has closed
   /// ([OpenedFilesDoor]).
-  void _onOsFilesDropped(DropDoneDetails details) => unawaited(
-    _door.open(context, [
-      for (final file in details.files) handedPath(file.path),
-    ]),
-  );
+  ///
+  /// ↩️F-378 (유저 2026-10-17): a drop on a place that opens files — a
+  /// viewer, either one — opens there instead ([OsFileDropPlace]). It
+  /// went through the door wherever it landed until then.
+  void _onOsFilesDropped(DropDoneDetails details) {
+    final paths = [for (final file in details.files) file.path];
+    final place = _osFileDropPlaceAt(details.globalPosition);
+    if (place != null) {
+      place.take(paths);
+      return;
+    }
+    unawaited(_openHanded(paths));
+  }
+
+  /// Paths handed over with nothing granted for them — a drop on the
+  /// window, the files the OS opened the app with — through the one door.
+  Future<void> _openHanded(List<String> paths) =>
+      _door.open(context, [for (final path in paths) handedPath(path)]);
+
+  /// The place a drag from the OS is over now, lit while it is
+  /// ([OsFileDropPlace.hover]). A drop is left first: the plugin says the
+  /// drag has gone before it says what was let go.
+  OsFileDropPlace? _osDragOver;
+
+  void _onOsDragMoved(DropEventDetails details) =>
+      _osDragIsOver(_osFileDropPlaceAt(details.globalPosition));
+
+  void _onOsDragLeft(DropEventDetails details) => _osDragIsOver(null);
+
+  void _osDragIsOver(OsFileDropPlace? place) {
+    if (identical(place, _osDragOver)) {
+      return;
+    }
+    _osDragOver?.hover(over: false);
+    _osDragOver = place;
+    place?.hover(over: true);
+  }
+
+  OsFileDropPlace? _osFileDropPlaceAt(Offset globalPosition) =>
+      osFileDropPlaceAt(globalPosition, View.of(context).viewId);
 
   /// THE ONE DOOR, with what this workspace holds for it (F-282): the
   /// shell's Open door for projects, the import window, the brush library
@@ -2146,8 +2192,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     openProjects: widget.onOpenProjects,
     importWindow: (picked, {required toPool}) =>
         _openImportWindow(picked: picked, poolOnly: toPool),
-    bringBrushes: (name, bytes) =>
-        _presetLibrary.importFile((name: name, bytes: bytes)),
+    // After the library has landed, as a resumed tool choice is
+    // ([_WorkspaceBrushPresets.libraryLanded]): the read puts back what the
+    // file holds, and brushes brought before it would go under it — a file
+    // the OS opened the app with knocks in the first frame
+    // (`open-door-windows-open-with`).
+    bringBrushes: (name, bytes) async {
+      await _brushPresets.libraryLanded;
+      return _presetLibrary.importFile((name: name, bytes: bytes));
+    },
     bringFont: (bytes) async {
       final outcome = await _fonts.importBytes(bytes);
       final family = outcome.family;
@@ -2192,6 +2245,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         path: path,
       ),
       path,
+      widget.session.repository.requireProject(),
     );
     if (words == null || !mounted) {
       return;
@@ -2232,6 +2286,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   @override
   Widget build(BuildContext context) {
     return DropTarget(
+      onDragEntered: _onOsDragMoved,
+      onDragUpdated: _onOsDragMoved,
+      onDragExited: _onOsDragLeft,
       onDragDone: _onOsFilesDropped,
       // THE STAGE'S OUTER SURFACES, SAID ONCE (유저, R4 #2). Every canvas
       // panel in the app is somewhere under here — the drawing floor, the
@@ -2254,6 +2311,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 project?.pasteboardArgb ?? defaultProjectPasteboardArgb,
             backdropNone: project?.backdropNone ?? false,
             pasteboardNone: project?.pasteboardNone ?? false,
+            pasteboardSize: project?.pasteboardSize ?? PasteboardSize.three,
+            pasteboardInUse: project?.pasteboardInUse ?? true,
             child: child!,
           );
         },
@@ -2801,19 +2860,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             frame.hasBottomDock && _bottomDockCollapsed && !frame.onTop
             ? _collapsedRows.collapsedRowHeight()
             : 0,
-        // WHERE each column actually is, not just how
+        // WHERE the right column actually is, not just how
         // wide it is. A rail panel is as tall as it was
         // left at, so a short one covers a band and not
         // an edge — and the scrollbar that stepped
         // aside for the whole edge read as floating for
         // no reason (유저, R3 #5).
-        leftRailBand: _rail.railBand(
-          right: false,
-          stop: frame.leftStop,
-          onTop: frame.onTop,
-          height: frame.constraints.maxHeight,
-          grid: frame.grid,
-        ),
         rightRailBand: _rail.railBand(
           right: true,
           stop: frame.rightStop,
@@ -3122,14 +3174,19 @@ class _CanvasAreaKey extends GlobalObjectKey {
 /// only lacks the picture the row's cel shows, says that — 「bg.png에는
 /// 2번째 그림이 없습니다」. ↩️It was told 「could not read the file」, and so
 /// was a row that changed while its file was read.
-String? referenceSwapWords(ReferenceRedraw answer, String path) =>
-    switch (answer) {
-      ReferenceLaid() || ReferenceLeftAlone() => null,
-      ReferenceUnreadable() => AppText.strings.imUnreadable(
-        mediaFileName(path),
-      ),
-      ReferenceLacksPicture(:final picture) => AppText.strings.imLacksPicture(
-        mediaFileName(path),
-        picture + 1,
-      ),
-    };
+///
+/// The file is named as [project]'s pool shows it (F-376).
+String? referenceSwapWords(
+  ReferenceRedraw answer,
+  String path,
+  Project project,
+) => switch (answer) {
+  ReferenceLaid() || ReferenceLeftAlone() => null,
+  ReferenceUnreadable() => AppText.strings.imUnreadable(
+    project.shownNameOfMedia(path),
+  ),
+  ReferenceLacksPicture(:final picture) => AppText.strings.imLacksPicture(
+    project.shownNameOfMedia(path),
+    picture + 1,
+  ),
+};

@@ -81,11 +81,9 @@ class BrushGroup {
 }
 
 /// The stable group id an imported brush file lands in, derived from the
-/// file's base name. Re-importing the same file therefore finds its own
-/// group again and replaces its contents instead of piling up duplicates.
-///
-/// Shared by the importer and by the legacy-library migration, which rebuilds
-/// group entities from the group NAMES older files stored on each preset.
+/// file's base name. Importing the same file again therefore finds its own
+/// group and adds to it, instead of piling up a second group of that name.
+/// ↩️It used to REPLACE the group's contents; an import only adds (F-433).
 BrushGroupId importedBrushGroupId(String sourceName) =>
     BrushGroupId('imported-$sourceName');
 

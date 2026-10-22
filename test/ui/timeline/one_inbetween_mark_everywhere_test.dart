@@ -19,6 +19,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -99,9 +100,8 @@ void main() {
         axis: axis,
       );
 
-  Size rowSize(Axis axis, {double cell = 24}) => axis == Axis.horizontal
-      ? Size(cell * frames, rowExtent)
-      : Size(rowExtent, cell * frames);
+  Size rowSize(Axis axis, {double cell = 24}) =>
+      sizeAlong(axis, along: cell * frames, across: rowExtent);
 
   final roomy = timelineInbetweenMarkSize(font, cell: const Size(100, 100));
 
@@ -227,15 +227,14 @@ void main() {
             final laid =
                 timelineFrameEdge(frame + 1, cell) -
                 timelineFrameEdge(frame, cell);
-            final horizontal = axis == Axis.horizontal;
-            final across = horizontal ? paper.height : paper.width;
+            final across = extentAcross(axis, paper.size);
             expect(
-              horizontal ? place.size.width : place.size.height,
+              extentAlong(axis, place.size),
               closeTo(math.min(roomy.width, laid), 1e-9),
               reason: '$where: along the frames, the cell\'s own narrowing',
             );
             expect(
-              horizontal ? place.size.height : place.size.width,
+              extentAcross(axis, place.size),
               closeTo(math.min(roomy.width, across), 1e-9),
               reason: '$where: across them, untouched by the zoom',
             );
@@ -261,9 +260,11 @@ void main() {
           );
           // The tile starts at its first cell, along the frame axis.
           final first = painter.cellRectFor(start);
-          final origin = axis == Axis.horizontal
-              ? Offset(first.left, 0)
-              : Offset(0, first.top);
+          final origin = offsetAlong(
+            axis,
+            along: startAlong(axis, first),
+            across: 0,
+          );
           final expected = TimelineGridTileOpWriter();
           for (final frame in [0, 2]) {
             if (frame < start) {
@@ -367,14 +368,14 @@ void main() {
       final head = dotted.cellRectFor(4);
       final dot = dotted.cellRectFor(5);
       expect(
-        horizontal ? kept.origin.dx : kept.origin.dy,
-        greaterThanOrEqualTo((horizontal ? head.left : head.top) - 1e-9),
+        partAlong(axis, kept.origin),
+        greaterThanOrEqualTo(startAlong(axis, head) - 1e-9),
       );
       // The room it was narrowed into ends where the dot's cell begins.
       expect(
         along(kept.fit) * (horizontal ? font * 2 : font),
         lessThanOrEqualTo(
-          (horizontal ? dot.left - head.left : dot.top - head.top) + 1e-9,
+          startAlong(axis, dot) - startAlong(axis, head) + 1e-9,
         ),
         reason: '$axis: the name keeps to the cells before the dot',
       );

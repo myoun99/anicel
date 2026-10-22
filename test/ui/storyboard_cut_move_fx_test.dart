@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
     show InstructionEvent;
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'storyboard_cut_block_probe.dart';
@@ -115,11 +116,14 @@ void main() {
     tester,
   ) async {
     final manager = await pumpHost(tester);
-    await tester.pumpAndSettle();
-
     // Twirl the V track's lane strips open (the chevron). There is no
     // Transform group header to open after it any more — a track row does not
-    // own one — so the twirl-down is its fx chain alone.
+    // own one — so the twirl-down is its fx chain alone, and a track with no
+    // chain draws no twirl.
+    manager.effectsAndFx.updateTrackEffects(manager.activeTrack.id, [
+      LayerEffect(id: const EffectId('glow'), kind: EffectKind.blur),
+    ]);
+    await tester.pumpAndSettle();
     final trackId = manager.activeTrack.id.value;
     await tester.tap(
       find.named('storyboard-track-lane-toggle-$trackId'),

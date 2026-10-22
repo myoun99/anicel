@@ -6,10 +6,13 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/input/pan_slide.dart';
 import 'package:anicel/src/ui/input/two_axis_drag.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, sizedAlong;
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
 /// 🗣️F-202 (유저 2026-09-27): 「띠가 스크롤되는거, 같은상황에서 뷰어패널
@@ -82,12 +85,8 @@ void main() {
     PointerDeviceKind kind, {
     double reach = 60,
   }) async {
-    final across = axis == Axis.horizontal
-        ? const Offset(0, -24)
-        : const Offset(-24, 0);
-    final step = axis == Axis.horizontal
-        ? Offset(reach / 3, 0)
-        : Offset(0, reach / 3);
+    final across = offsetAlong(axis, along: 0, across: -24);
+    final step = offsetAlong(axis, along: reach / 3, across: 0);
     final gesture = await tester.startGesture(at, kind: kind);
     await tester.pump();
     await gesture.moveBy(across);
@@ -106,11 +105,11 @@ void main() {
     /// An [AppScrollbar] over three viewports of content, its offset kept.
     Widget scrollbar(Axis axis, List<double> offsets) {
       var offset = 0.0;
-      final horizontal = axis == Axis.horizontal;
       return StatefulBuilder(
-        builder: (context, setState) => SizedBox(
-          width: horizontal ? 300 : 16,
-          height: horizontal ? 16 : 300,
+        builder: (context, setState) => sizedAlong(
+          axis,
+          along: 300,
+          across: 16,
           child: AppScrollbar(
             axis: axis,
             offset: offset,
@@ -159,10 +158,7 @@ void main() {
         await inTheStrip(tester, scrollbar(axis, offsets));
         final lane = tester.getTopLeft(find.byType(AppScrollbar));
         await tester.tapAt(
-          lane +
-              (axis == Axis.horizontal
-                  ? const Offset(250, 8)
-                  : const Offset(8, 250)),
+          lane + offsetAlong(axis, along: 250, across: 8),
         );
         await tester.pumpAndSettle();
         // A 100px thumb centred on 250 of a 300px lane: its start at 200 of
@@ -233,15 +229,15 @@ void main() {
     }) async {
       final list = ScrollController();
       addTearDown(list.dispose);
-      final horizontal = axis == Axis.horizontal;
       Widget tile(int i) => SizedBox.square(
         dimension: 100,
         child: GestureDetector(onTap: onTileTap, child: Text('$i')),
       );
-      final panel = SizedBox(
+      final panel = sizedAlong(
+        axis,
         key: listKey,
-        width: horizontal ? 300 : 120,
-        height: horizontal ? 120 : 300,
+        along: 300,
+        across: 120,
         child: ListView(
           controller: list,
           scrollDirection: axis,
@@ -430,9 +426,7 @@ void main() {
             everyElement(greaterThan(0)),
             reason: '⛔fixture premise: under the floor on both axes',
           );
-          final step = axis == Axis.horizontal
-              ? const Offset(-30, 0)
-              : const Offset(0, -30);
+          final step = offsetAlong(axis, along: -30, across: 0);
           final gesture = await tester.startGesture(
             tester.getTopLeft(find.byType(EditorPanelTabs)) +
                 const Offset(100, 100),
@@ -469,33 +463,41 @@ void main() {
     });
 
     /// A sheet whose frames fit it — it cannot scroll sideways — inside a
-    /// scroller that can: a panel's squeezed floor.
-    Future<void> pumpSheet(WidgetTester tester, {required double rowsTall}) =>
-        tester.pumpWidget(
-          MaterialApp(
-            scrollBehavior: const AppScrollBehavior(),
-            home: Scaffold(
-              body: SingleChildScrollView(
-                controller: around,
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: 1600,
-                  height: 300,
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                      key: const ValueKey<String>('sheet'),
-                      width: 400,
-                      height: 300,
-                      child: TwoAxisDrag(
-                        axes: [rows, frames],
+    /// scroller that can: a panel's squeezed floor. All of it is a part that
+    /// slides sideways by itself when [slide] is given, as a layer area's
+    /// window does ([PanSlide]).
+    Future<void> pumpSheet(
+      WidgetTester tester, {
+      required double rowsTall,
+      PanSlide? slide,
+    }) {
+      final content = SizedBox(width: 400, height: rowsTall);
+      return tester.pumpWidget(
+        MaterialApp(
+          scrollBehavior: const AppScrollBehavior(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              controller: around,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: 1600,
+                height: 300,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    key: const ValueKey<String>('sheet'),
+                    width: 400,
+                    height: 300,
+                    child: TwoAxisDrag(
+                      axes: [rows, frames],
+                      child: SingleChildScrollView(
+                        controller: rows,
                         child: SingleChildScrollView(
-                          controller: rows,
-                          child: SingleChildScrollView(
-                            controller: frames,
-                            scrollDirection: Axis.horizontal,
-                            child: SizedBox(width: 400, height: rowsTall),
-                          ),
+                          controller: frames,
+                          scrollDirection: Axis.horizontal,
+                          child: slide == null
+                              ? content
+                              : PanSlideRegion(slide: slide, child: content),
                         ),
                       ),
                     ),
@@ -504,7 +506,9 @@ void main() {
               ),
             ),
           ),
-        );
+        ),
+      );
+    }
 
     for (final kind in devices) {
       testWidgets('pulled with a ${kind.name} along the way it cannot '
@@ -539,6 +543,56 @@ void main() {
 
         expect(around.offset, greaterThan(0));
       });
+
+      testWidgets('…nor a ${kind.name} pull on a part of it that slides, '
+          'while that has nowhere to slide', (tester) async {
+        await pumpSheet(tester, rowsTall: 300, slide: _Slide(room: 0));
+
+        await tester.dragFrom(
+          tester.getCenter(find.byKey(const ValueKey<String>('sheet'))),
+          const Offset(-200, 0),
+          kind: kind,
+        );
+        await tester.pumpAndSettle();
+
+        expect(around.offset, greaterThan(0));
+      });
+
+      testWidgets('…but a part of it that slides keeps a ${kind.name} pull '
+          'while it has somewhere to slide, and slides with the hand '
+          '(F-351)', (tester) async {
+        final slide = _Slide(room: 100);
+        await pumpSheet(tester, rowsTall: 300, slide: slide);
+
+        await tester.dragFrom(
+          tester.getCenter(find.byKey(const ValueKey<String>('sheet'))),
+          const Offset(-200, 0),
+          kind: kind,
+        );
+        await tester.pumpAndSettle();
+
+        expect(around.offset, 0);
+        expect(slide.offset, greaterThan(0));
+      });
     }
   });
+}
+
+/// A part of a sheet that slides sideways by itself, as a layer area's
+/// window does, with [room] to slide in.
+class _Slide implements PanSlide {
+  _Slide({required this.room});
+
+  final double room;
+  double offset = 0;
+
+  @override
+  Axis get axis => Axis.horizontal;
+
+  @override
+  bool get canSlide => room > 0;
+
+  @override
+  void slideWithHand(Offset delta) =>
+      offset = (offset - delta.dx).clamp(0.0, room);
 }

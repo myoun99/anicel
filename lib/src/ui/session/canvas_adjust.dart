@@ -150,6 +150,21 @@ class CanvasAdjust extends ChangeNotifier {
   AdjustDraft? _draft;
   AdjustDraft? _showing;
 
+  /// Where [draft] stood before each grab that moved it — a ratio picked
+  /// on the pill is one too — for undo to take them back one at a time
+  /// ([stepBack]) while the adjust is open, as the transform box takes
+  /// back its operations (`TransformBox.steps`).
+  ///
+  /// 🗣️F-377 (유저 2026-10-17): 「변형중 언두가 직전변형 취소라던가. 끝나면
+  /// 한번에 취소라던가 하듯이 변형 상태는 모두 기본적으로 그걸 따르도록」 —
+  /// and I-80-Q1 had said it of the camera already: 「카메라 사이즈 변경은
+  /// 변형도구 규칙 그대로」. ↩️Undo did not know an adjust was open: it took
+  /// back the document's last edit and left the edges where they stood.
+  ///
+  /// ⚠️Empty exactly when the adjust stands as it opened, and gone with
+  /// it: what lands is ONE step of history, and what is let go never was.
+  final List<AdjustDraft> _steps = [];
+
   /// What is being adjusted, as the last grab let it go; null when nothing
   /// is.
   AdjustDraft? get draft => _draft;
@@ -182,6 +197,7 @@ class CanvasAdjust extends ChangeNotifier {
   void begin(AdjustDraft draft) {
     _draft = draft;
     _showing = null;
+    _steps.clear();
     notifyListeners();
   }
 
@@ -191,9 +207,26 @@ class CanvasAdjust extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Where a grab let it go.
+  /// Where a grab let it go — a step [stepBack] takes back.
   void move(AdjustDraft draft) {
+    if (_draft case final from?) {
+      _steps.add(from);
+    }
     _draft = draft;
+    _showing = null;
+    notifyListeners();
+  }
+
+  /// Whether undo has a grab of this adjust to take back ([stepBack]).
+  bool get canStepBack => _steps.isNotEmpty;
+
+  /// Takes the last grab back: the adjust stands where the one before it
+  /// let go.
+  void stepBack() {
+    if (_steps.isEmpty) {
+      return;
+    }
+    _draft = _steps.removeLast();
     _showing = null;
     notifyListeners();
   }
@@ -214,6 +247,7 @@ class CanvasAdjust extends ChangeNotifier {
     }
     _draft = null;
     _showing = null;
+    _steps.clear();
     notifyListeners();
   }
 }

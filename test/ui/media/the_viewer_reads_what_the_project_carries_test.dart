@@ -85,6 +85,10 @@ void main() {
 
   Finder page() => find.byKey(const ValueKey<String>('media-viewer-page'));
 
+  /// What the viewer says in place of a page — why it opened none.
+  Finder message() =>
+      find.byKey(const ValueKey<String>('media-viewer-message'));
+
   /// The viewer on [path], settled on whatever it could open.
   Future<MediaViewerSlot> view(
     WidgetTester tester,
@@ -107,7 +111,17 @@ void main() {
       ),
     );
     slot.request.value = MediaViewerRequest(path: path, kind: kind);
-    await settleAsync(tester, () => tester.any(page()));
+    // A frame first: the viewer stood empty, and saying so is a message too.
+    await tester.pump();
+    // Waits for either answer — a page, or why there is none. ↩️It waited
+    // for a page alone, which a viewer that cannot read the file never
+    // shows: sixty seconds of patience ran out in that test every time
+    // (10-19).
+    final answered = await settleAsync(
+      tester,
+      () => tester.any(page()) || tester.any(message()),
+    );
+    expect(answered, isTrue, reason: 'a page, or why there is none');
     return slot;
   }
 

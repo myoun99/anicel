@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -15,12 +16,13 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/widgets/app_window.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/import_preview_probe.dart';
+import '../../helpers/import_warnings.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -36,24 +38,34 @@ import '../../helpers/wait_window.dart';
 /// in a loaded run, then passed three times alone and in another lane's
 /// run — and the window's own preview holding the file was measured and
 /// ruled out (its viewer document open, the write went through). The
-/// emptying is the fixture's, not what the test measures, so it waits.
+/// emptying is the fixture's, not what the test measures, so it waits —
+/// by [waitPatience]. ↩️It gave up on its fiftieth try until 2026-10-19: a
+/// count of rounds, which a busy machine runs out.
 Future<void> emptyWhenFree(File file) async {
-  for (var attempt = 1; ; attempt += 1) {
-    try {
-      await file.writeAsBytes(const <int>[]);
-      return;
-    } on FileSystemException catch (error) {
-      if (error.osError?.errorCode != 1224 || attempt == 50) {
-        rethrow;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+  final emptied = await pollUntil(
+    () => _emptied(file),
+    beat: const Duration(milliseconds: 100),
+  );
+  expect(emptied, isTrue, reason: 'still mapped: ${file.path}');
+}
+
+/// Whether [file] took the empty write — false while a map holds it.
+Future<bool> _emptied(File file) async {
+  try {
+    await file.writeAsBytes(const <int>[]);
+    return true;
+  } on FileSystemException catch (error) {
+    if (error.osError?.errorCode != 1224) {
+      rethrow;
     }
+    return false;
   }
 }
 
-/// The import/placement window: the interpretation table shows the parse
-/// (dropped files included), the settings answer with filled defaults,
-/// and Import runs the session verbs.
+/// The import/placement window: the table shows what each source becomes,
+/// its cells answer with filled defaults, and Import runs the session
+/// verbs. A cut folder's rows have a file of their own
+/// (`a_cut_folder_comes_in_as_rows_of_the_import_window_test`).
 void main() {
   late Directory tempDir;
 
@@ -101,6 +113,21 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Types [first] into the preview's IN and [last] into its OUT, each as
+  /// a hand does — one-based, as they stand on screen.
+  Future<void> keepSpan(WidgetTester tester, int first, int last) async {
+    for (final (end, at) in [('in', first), ('out', last)]) {
+      await tester.tap(find.byKey(ValueKey<String>('transport-$end-edit')));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(ValueKey<String>('transport-$end-input')),
+        '$at',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
+  }
+
   testWidgets('🎯a cut folder counts its scans into the run\'s % (F-282-Q1)', (
     tester,
   ) async {
@@ -145,85 +172,6 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('a dropped cut folder shows the interpretation (layers, '
-      'pictures, exclusions) and Import builds the cut through the '
-      'session', (tester) async {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-
-    final folderPath = await tester.runAsync(() async {
-      const root = 'upn_02_063_lo';
-      final sep = Platform.pathSeparator;
-      await writePng('$root${sep}A1.png');
-      await writePng('$root${sep}A2.png');
-      await writePng('$root${sep}_BG.png');
-      await File('${tempDir.path}$sep$root${sep}memo.txt').writeAsString('메모');
-      return '${tempDir.path}$sep$root';
-    });
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ImportDialog(session: s, initialPaths: [folderPath!]),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    expect(
-      find.byKey(const ValueKey<String>('import-interpretation-table')),
-      findsOneWidget,
-    );
-    expect(find.textContaining('063'), findsWidgets, reason: 'cut number');
-    expect(find.textContaining('2 cels'), findsOneWidget, reason: 'layer A');
-    expect(find.text('BG'), findsWidgets, reason: 'picture row');
-    expect(
-      find.textContaining('memo.txt'),
-      findsOneWidget,
-      reason: 'exclusions are listed, never silent',
-    );
-    expect(
-      find.byKey(const ValueKey<String>('import-rasterize-toggle')),
-      findsNothing,
-      reason: 'folder imports ALWAYS bake (§6-z22) — no toggle to mislead',
-    );
-    expect(
-      find.byKey(const ValueKey<String>('import-media-reference')),
-      findsOneWidget,
-      reason:
-          'a folder still REGISTERS its references (the 참고영상 among '
-          'them), so copy-or-reference has something to decide',
-    );
-    expect(
-      find.textContaining('always bake'),
-      findsOneWidget,
-      reason: 'and the window says so',
-    );
-
-    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
-    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    await pumpPastTheWaitWindow(tester);
-    // Real IO completes inside runAsync, but the await CONTINUATIONS are
-    // fake-zone microtasks that only pump() drains — interleave the two.
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
-    await tester.pumpAndSettle();
-
-    final track = s.repository.requireProject().tracks.first;
-    expect(track.cuts.length, cutsBefore + 1);
-    final cut = track.cuts.firstWhere((cut) => cut.name == '063');
-    expect(cut.layers.any((l) => l.kind == LayerKind.image), isTrue);
-    expect(cut.layers.any((l) => l.name == 'A'), isTrue);
-    s.playbackRig.prerenderScheduler.cancel();
-  });
-
   testWidgets('single files import with destination/fit defaults filled — '
       'the simple case is one press', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -251,15 +199,10 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (s.requireActiveCut.layers.length > layersBefore) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () => s.requireActiveCut.layers.length > layersBefore,
+    );
     await tester.pumpAndSettle();
 
     expect(s.requireActiveCut.layers.length, layersBefore + 1);
@@ -269,6 +212,47 @@ void main() {
       ),
       isTrue,
       reason: 'the default is reference mode',
+    );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯F-405: one press of Import is ONE undo — every file it '
+      'placed goes back together', (tester) async {
+    // 🗣️유저 2026-10-19: 「여러파일 임포트/배치시 레이어 하나당 한번언두인데
+    // 임포트한거 한번에 언두하도록」.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final a = await tester.runAsync(() => writePng('a.png'));
+    final b = await tester.runAsync(() => writePng('b.png'));
+    final layersBefore = s.requireActiveCut.layers.length;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [a!, b!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
+    await settleAsync(
+      tester,
+      () => s.requireActiveCut.layers.length == layersBefore + 2,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      s.requireActiveCut.layers.length,
+      layersBefore + 2,
+      reason: 'CONTROL: a layer each',
+    );
+
+    s.undo();
+
+    expect(
+      s.requireActiveCut.layers.length,
+      layersBefore,
+      reason: 'both go with the one undo',
     );
     s.playbackRig.prerenderScheduler.cancel();
   });
@@ -412,19 +396,15 @@ void main() {
       return (s, path!);
     }
 
+    /// Imports what the window holds. It waits out the wait window, so it
+    /// ends by stopping playback's warmer (`pumpPastTheWaitWindow`) — for
+    /// every test that imports through it.
     Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
-      for (var tries = 0; tries < 100; tries += 1) {
-        if (s.mediaPool.mediaAssets.isNotEmpty) {
-          break;
-        }
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-        await tester.pump();
-      }
+      await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
       await tester.pumpAndSettle();
+      s.playbackRig.prerenderScheduler.cancel();
     }
 
     testWidgets('it starts on Keep inside, on every platform', (tester) async {
@@ -582,15 +562,11 @@ void main() {
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () =>
+          s.repository.requireProject().tracks.first.cuts.length > cutsBefore,
+    );
     await tester.pumpAndSettle();
 
     final track = s.repository.requireProject().tracks.first;
@@ -669,25 +645,24 @@ void main() {
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100; tries += 1) {
-      final status = tester.widgetList<Text>(
-        find.byKey(const ValueKey<String>('import-status')),
-      );
-      if (status.isNotEmpty &&
-          (status.first.data ?? '').contains('no PDF renderer')) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () => importWarningsButton.evaluate().isNotEmpty,
+    );
     await tester.pumpAndSettle();
+    final notice = await openImportWarnings(tester);
 
     expect(
-      find.textContaining('no PDF renderer'),
+      find.descendant(
+        of: notice,
+        matching: find.text('No PDF renderer in this build. (1)'),
+      ),
       findsOneWidget,
       reason: 'the absence is a stated condition, not a decode failure',
+    );
+    expect(
+      find.descendant(of: notice, matching: find.text('none.pdf')),
+      findsOneWidget,
     );
     expect(s.mediaPool.mediaAssets, isEmpty);
     s.playbackRig.prerenderScheduler.cancel();
@@ -717,10 +692,13 @@ void main() {
     await tester.pump();
 
     expect(
-      tester.widget<AppWindow>(find.byType(AppWindow)).footerNote,
-      isNull,
+      tester
+          .widget<Text>(find.byKey(const ValueKey<String>('import-status')))
+          .data,
+      isEmpty,
       reason: 'the footer is the status line, and nothing is running',
     );
+    expect(importWarningsButton, findsNothing);
   });
 
   /// The table itself: one row per file, one column per question, and a
@@ -885,15 +863,13 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
-      for (var tries = 0; tries < 100; tries += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-        if (!tester.any(find.text('Importing…'))) {
-          break;
-        }
-      }
+      // Waits for what landed, as every run here does. ↩️It waited for
+      // 「Importing…」 to go, which a run that imported never does: it ends
+      // in a pop, the window is no route in this test, and the line is left
+      // as it was — sixty seconds of patience run out every time (10-19).
+      Object? onSe1() => session.activeTrack.seLayers.first
+          .timeline[session.activeCutGlobalStartFrame];
+      await settleAsync(tester, () => onSe1() != null);
       await tester.pumpAndSettle();
 
       expect(
@@ -901,12 +877,7 @@ void main() {
         isNotEmpty,
         reason: 'the sound registered as it placed',
       );
-      expect(
-        session.activeTrack.seLayers.first
-            .timeline[session.activeCutGlobalStartFrame],
-        isNotNull,
-        reason: 'it landed on SE1 from the cut start',
-      );
+      expect(onSe1(), isNotNull, reason: 'it landed on SE1 from the cut start');
       expect(
         find.text('Nothing imported.'),
         findsNothing,
@@ -1079,12 +1050,8 @@ void main() {
           ),
         ),
       );
-      for (var tries = 0; tries < 50; tries += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 10)),
-        );
-        await tester.pump();
-      }
+      // IN/OUT is a span of the file's pages, said once the file is open.
+      await settleLoadedPages(tester);
     }
 
     testWidgets('🚨registering into the pool shows IN/OUT where there is a '
@@ -1167,39 +1134,20 @@ void main() {
     await tester.pump();
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
 
-    // Pages three and four of five: IN and OUT are one-based on screen.
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-in-input')),
-      '3',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-out-input')),
-      '4',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
+    // Pages three and four of five.
+    await keepSpan(tester, 3, 4);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     // The CUT lands before its pages are drawn — the structure is
     // committed first and the bakes follow — so waiting for the cut alone
     // would read the render log half-written.
-    for (var tries = 0; tries < 200; tries += 1) {
-      if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore &&
-          piece.renderRequests.length >= 2) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () =>
+          s.repository.requireProject().tracks.first.cuts.length > cutsBefore &&
+          piece.renderRequests.length >= 2,
+    );
     await tester.pumpAndSettle();
 
     final cut = s.repository.requireProject().tracks.first.cuts.firstWhere(
@@ -1231,14 +1179,7 @@ void main() {
     // The piece is let go of once its door returns — after the last page
     // has baked, which is later than the renders being asked for. Its bytes
     // were held before it landed, so THAT is no sign the door is done.
-    for (var tries = 0;
-        tries < 200 && File(piecePath).existsSync();
-        tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => !File(piecePath).existsSync());
     expect(
       stagedCopyIn(s, piecePath),
       isNotNull,
@@ -1284,22 +1225,7 @@ void main() {
     );
     await tester.pump();
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-in-input')),
-      '3',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-out-input')),
-      '4',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
+    await keepSpan(tester, 3, 4);
     final bake = find.byKey(ValueKey<String>('import-cell-bake-$pdfPath'));
     await tester.ensureVisible(bake);
     await tester.pumpAndSettle();
@@ -1309,12 +1235,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     int cutCount() => s.repository.requireProject().tracks.first.cuts.length;
-    for (var tries = 0; tries < 200 && cutCount() == cutsBefore; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => cutCount() != cutsBefore);
     await tester.pumpAndSettle();
 
     // Named for the file: no piece was cut to lend it a span's name.
@@ -1371,33 +1292,13 @@ void main() {
     );
     await tester.pump();
 
-    // Pages two and three of five: IN and OUT are one-based on screen.
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-in-input')),
-      '2',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-out-input')),
-      '3',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
+    // Pages two and three of five.
+    await keepSpan(tester, 2, 3);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     List<MediaAsset> pool() => s.repository.requireProject().mediaAssets;
-    for (var tries = 0; tries < 200 && pool().isEmpty; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => pool().isNotEmpty);
     await tester.pumpAndSettle();
 
     expect(cutFrom, [(pdfPath, 1, 2)], reason: 'cut out of the original');
@@ -1486,15 +1387,10 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (s.requireActiveCut.layers.length > layersBefore) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () => s.requireActiveCut.layers.length > layersBefore,
+    );
     await tester.pumpAndSettle();
 
     expect(s.requireActiveCut.layers.length, layersBefore + 1);
@@ -1546,17 +1442,14 @@ void main() {
     );
     expect(cancel, findsOneWidget, reason: 'the stop stands throughout');
 
-    var checked = false;
-    for (var tries = 0; tries < 400 && !checked; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
-      );
-      await tester.pump(const Duration(milliseconds: 20));
-      checked = find
+    final checked = await settleAsync(
+      tester,
+      () => find
           .byKey(const ValueKey<String>('app-progress-done'))
           .evaluate()
-          .isNotEmpty;
-    }
+          .isNotEmpty,
+      step: const Duration(milliseconds: 20),
+    );
     expect(checked, isTrue, reason: 'it says it is over');
     expect(cancel, findsOneWidget, reason: 'still standing — not gone');
     expect(
@@ -1606,15 +1499,8 @@ void main() {
       of: waitWindow,
       matching: find.textContaining(cloudLine),
     );
-    Future<bool> pumpUntil(bool Function() done) async {
-      for (var tries = 0; tries < 60 && !done(); tries += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump(const Duration(milliseconds: 300));
-      }
-      return done();
-    }
+    Future<bool> pumpUntil(bool Function() done) =>
+        settleAsync(tester, done, step: const Duration(milliseconds: 300));
 
     expect(
       await pumpUntil(() => lineThere.evaluate().isNotEmpty),
@@ -1650,8 +1536,9 @@ void main() {
     await pumpPastTheWaitWindow(tester);
 
     expect(s.requireActiveCut.layers.length, layersBefore + 1);
+    final notice = await openImportWarnings(tester);
     expect(
-      find.text(AppText.strings.imUnreadable('cloud-a.png')),
+      find.descendant(of: notice, matching: find.text('cloud-a.png')),
       findsOneWidget,
       reason: 'the one given up is named',
     );
@@ -1706,17 +1593,14 @@ void main() {
       of: waitWindow,
       matching: find.textContaining(cloudLine),
     );
-    var waited = false;
-    for (var tries = 0; tries < 40 && !waited; tries += 1) {
-      // Real time for the file probes, and the FAKE clock moved forward
-      // for the wait's own pacing — a bare pump leaves it where it was,
-      // the 250ms step never elapses, and the test measures nothing.
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump(const Duration(milliseconds: 300));
-      waited = lineThere.evaluate().isNotEmpty;
-    }
+    // Real time for the file probes, and the FAKE clock moved forward for
+    // the wait's own pacing — a bare pump leaves it where it was, the 250ms
+    // step never elapses, and the test measures nothing.
+    final waited = await settleAsync(
+      tester,
+      () => lineThere.evaluate().isNotEmpty,
+      step: const Duration(milliseconds: 300),
+    );
     expect(
       waited,
       isTrue,
@@ -1743,10 +1627,11 @@ void main() {
       layersBefore,
       reason: 'nothing was placed from a file that never arrived',
     );
+    final notice = await openImportWarnings(tester);
     expect(
-      find.text(AppText.strings.imUnreadable('cloudy.png')),
+      find.descendant(of: notice, matching: find.text('cloudy.png')),
       findsOneWidget,
-      reason: 'the file given up is named on the import window',
+      reason: 'the file given up is named in the import window\'s warnings',
     );
     s.playbackRig.prerenderScheduler.cancel();
   });
@@ -1768,6 +1653,9 @@ void main() {
       return file.path;
     }
 
+    /// Imports [paths] into a fresh session, and answers it. It waits out
+    /// the wait window, so it ends by stopping playback's warmer
+    /// (`pumpPastTheWaitWindow`) — for every test that imports through it.
     Future<EditorSessionManager> runImport(
       WidgetTester tester,
       List<String> paths,
@@ -1786,16 +1674,14 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
-      for (var tries = 0; tries < 100; tries += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-        if (!tester.any(find.text('Importing…'))) {
-          break;
-        }
-      }
-      await tester.pumpAndSettle();
+      await settleAsync(tester, () => !tester.any(find.text('Importing…')));
+      // The file left on the list is previewed again, and its spinner never
+      // lets the frames settle until the page lands. ↩️A bare
+      // `pumpAndSettle` held only while the wait before it happened to lend
+      // the real clock once more after the run — 20ms the preview's read
+      // needed, and got by luck.
+      await settleLoadedPages(tester);
+      session.playbackRig.prerenderScheduler.cancel();
       return session;
     }
 
@@ -1860,27 +1746,59 @@ void main() {
         isTrue,
       );
     });
-  });
 
-  /// THE INTERPRETATION TABLE SAYS WHAT WILL HAPPEN, in the reader's own
-  /// language and with the rows it will leave alone drawn as such.
-  ///
-  /// 감사 2026-09-09: nothing measured it. The kind label could be swapped
-  /// for another kind's word and the dim rule dropped, and the suite stayed
-  /// green — while the table printed `video` (a stored key) at a Japanese
-  /// user and drew a refused row like an ordinary one.
-  group('the interpretation table', () {
-    Future<String> writeMovie(WidgetTester tester) async =>
-        (await tester.runAsync(() async {
-          final file = File('${tempDir.path}${Platform.pathSeparator}ref.mp4');
-          await file.writeAsBytes(const [0, 0, 0, 24]);
-          return file.path;
-        }))!;
+    testWidgets('🎯F-370-Q1: what the run could not do is the status line\'s '
+        '「N warnings」, and it opens the Open door\'s notice — each reason '
+        'once, over every file it was said of', (tester) async {
+      final good = await tester.runAsync(() => writePng('lands.png'));
+      final first = await tester.runAsync(() => writeBrokenPng('breaks.png'));
+      final second = await tester.runAsync(() => writeBrokenPng('snaps.png'));
+      await runImport(tester, [good!, first!, second!]);
 
-    Future<void> pumpOn(WidgetTester tester, List<String> paths) async {
-      tester.view.physicalSize = const Size(1400, 1600);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      expect(
+        find.descendant(
+          of: importWarningsButton,
+          matching: find.text('2 warnings'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('import-status')),
+        findsNothing,
+        reason: 'the line is the button, not the warnings one after another',
+      );
+      final notice = await openImportWarnings(tester);
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+      expect(inNotice(AppText.strings.imLeftBehind), findsOneWidget);
+      expect(
+        inNotice('Could not be imported. (2)'),
+        findsOneWidget,
+        reason: 'the reason said once, not once a file',
+      );
+      expect(
+        [
+          for (final name in ['breaks.png', 'snaps.png'])
+            if (inNotice(name).evaluate().length != 1) name,
+        ],
+        isEmpty,
+        reason: 'every file, a line of its own',
+      );
+    });
+
+    /// Runs the window on [paths] and answers the notice its warnings open,
+    /// once the run has left them on the status line — a picture the window
+    /// [previews] shown first: a Photoshop file is read whole for it, and
+    /// held while it is (the file table's PSD pins) — and what the rows are
+    /// [asked] answered before Import is pressed; the pool's window when
+    /// it is [poolOnly].
+    Future<Finder> warningsAfterImporting(
+      WidgetTester tester,
+      List<String> paths, {
+      bool previews = false,
+      Future<void> Function()? asked,
+      bool poolOnly = false,
+    }) async {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
@@ -1888,38 +1806,429 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: ImportDialog(session: session, initialPaths: paths),
+            body: ImportDialog(
+              session: session,
+              initialPaths: paths,
+              poolOnly: poolOnly,
+            ),
           ),
         ),
       );
-      // A loose file is PROBED (identity, size) before the table can say
-      // what it is; the real IO runs in runAsync and its awaits are
-      // fake-zone microtasks that only pump() drains.
-      for (var i = 0; i < 8; i += 1) {
-        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pump();
+      await tester.pump();
+      if (previews) {
+        expect(
+          await settleAsync(tester, () => tester.importPreviewImage != null),
+          isTrue,
+        );
       }
+      await asked?.call();
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      await pumpPastTheWaitWindow(tester);
+      await settleAsync(
+        tester,
+        () => importWarningsButton.evaluate().isNotEmpty,
+      );
+      session.playbackRig.prerenderScheduler.cancel();
+      // 🚨A run that landed some of the files and not others leaves the
+      // preview opening the next: its spinner never settles until that
+      // page lands. ↩️The wait window's loop lent real time after its last
+      // frame, and that slice opened it — or did not, on a busy machine.
+      await settleLoadedPages(tester);
+      return openImportWarnings(tester);
     }
 
+    testWidgets('F-370-Q1: what a door says of a layer is listed under it in '
+        'the same notice — a Photoshop file\'s, as the Open door lists a '
+        'converted file\'s', (tester) async {
+      final psd = await tester.runAsync(() async {
+        final file = File(
+          '${tempDir.path}${Platform.pathSeparator}clipped.psd',
+        );
+        await file.writeAsBytes(
+          buildPsd(
+            width: 4,
+            height: 4,
+            layers: [
+              for (final name in ['ink', 'shade'])
+                PsdTestLayer(
+                  name: name,
+                  left: 0,
+                  top: 0,
+                  right: 4,
+                  bottom: 4,
+                  planes: psdSolidPlanes(4, 4, [10, 20, 30]),
+                  clipping: true,
+                ),
+            ],
+            compositePlanes: [Uint8List(16), Uint8List(16), Uint8List(16)],
+          ),
+        );
+        return file.path;
+      });
+      final notice = await warningsAfterImporting(tester, [
+        psd!,
+      ], previews: true);
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
 
-    testWidgets('with nothing picked it says so', (tester) async {
-      await pumpOn(tester, const []);
-      expect(find.text(AppText.strings.imPickToSee), findsOneWidget);
-    });
-
-    testWidgets('loose files go to the file TABLE — this table is not built '
-        'for them at all', (tester) async {
-      // 감사 2026-09-09: the table carried a loose-file branch that could
-      // not run, because the only place that builds it is the arm where
-      // `_files` is empty. It was still being kept in step with the kinds.
-      await pumpOn(tester, [await writeMovie(tester)]);
+      expect(inNotice('Clipping mask not applied. (2)'), findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('import-interpretation-table')),
-        findsNothing,
+        [
+          for (final layer in ['ink', 'shade'])
+            if (inNotice(layer).evaluate().length != 1) layer,
+        ],
+        isEmpty,
+        reason: 'each layer a line of its own, under what was said of it',
       );
-      expect(find.byType(ImportFileTable), findsOneWidget);
     });
 
+    testWidgets('F-370-Q1: what a cut folder\'s import said of no one file is '
+        'a line of the notice\'s own sentence', (tester) async {
+      final folder = await tester.runAsync(() async {
+        final sep = Platform.pathSeparator;
+        await writePng('scans${sep}A1.png');
+        return '${tempDir.path}${sep}scans';
+      });
+      final notice = await warningsAfterImporting(tester, [folder!]);
 
+      expect(
+        find.descendant(
+          of: notice,
+          matching: find.text(
+            [
+              AppText.strings.imLeftBehind,
+              'No cut number found in the folder name.',
+            ].join('\n'),
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('F-370-Q1: a Photoshop file with no layers to keep is named '
+        'under what was said of it', (tester) async {
+      final flat = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}flat.psd');
+        await file.writeAsBytes(
+          buildPsd(
+            width: 4,
+            height: 4,
+            compositePlanes: [Uint8List(16), Uint8List(16), Uint8List(16)],
+          ),
+        );
+        return file.path;
+      });
+      final notice = await warningsAfterImporting(tester, [
+        flat!,
+      ], previews: true);
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+
+      expect(
+        inNotice('No layers to expand — import it merged instead. (1)'),
+        findsOneWidget,
+      );
+      expect(inNotice('flat.psd'), findsWidgets);
+    });
+
+    testWidgets('F-370-Q1: a PDF whose pages did not all render is named '
+        'under how many did not', (tester) async {
+      addTearDown(PdfRenderService.debugResetForTests);
+      PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
+        pageSizes: List.filled(3, const ui.Size(595, 842)),
+        unrenderable: const {1, 2},
+      );
+      final pdf = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+        await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+        return file.path;
+      });
+      final notice = await warningsAfterImporting(
+        tester,
+        [pdf!],
+        asked: () =>
+            pickCell(tester, column: 'into', path: pdf, option: 'newCut'),
+      );
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+
+      expect(
+        inNotice('2 page(s) failed to render — their cels stay empty. (1)'),
+        findsOneWidget,
+      );
+      // By the name the pool gave it as it came in (F-376) — the flat
+      // Photoshop file above never came in, so it keeps its file's name.
+      expect(inNotice('conte'), findsOneWidget);
+    });
+
+    testWidgets('F-370-Q1: a cut folder gone before Import is said as a line '
+        'of the notice\'s own sentence', (tester) async {
+      final folder = await tester.runAsync(() async {
+        final sep = Platform.pathSeparator;
+        await writePng('gone_01_002_lo${sep}A1.png');
+        return '${tempDir.path}${sep}gone_01_002_lo';
+      });
+      final notice = await warningsAfterImporting(
+        tester,
+        [folder!],
+        // Moved away rather than deleted: a recursive delete in test/ sits
+        // in one of the two seats (a_temp_dir_cleans_itself_up_in_one_place)
+        // and the folder is gone from where it was picked all the same.
+        asked: () => tester.runAsync(
+          () => Directory(folder).rename('$folder-moved'),
+        ),
+      );
+
+      expect(
+        find.descendant(
+          of: notice,
+          matching: find.text(
+            [
+              AppText.strings.imLeftBehind,
+              'Could not read that folder.',
+            ].join('\n'),
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('F-370-Q1: a file its door could not open is named under '
+        'corrupt or locked', (tester) async {
+      addTearDown(PdfRenderService.debugResetForTests);
+      // A PDF that will not open — locked, say: its renderer throws.
+      PdfRenderService.debugOpenerOverride = (_) async =>
+          throw const FormatException('a password is needed');
+      final pdf = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}locked.pdf');
+        await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+        return file.path;
+      });
+      final notice = await warningsAfterImporting(
+        tester,
+        [pdf!],
+        asked: () =>
+            pickCell(tester, column: 'into', path: pdf, option: 'newCut'),
+      );
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+
+      expect(
+        inNotice('Could not be opened — corrupt or password-locked. (1)'),
+        findsOneWidget,
+      );
+      expect(inNotice('locked.pdf'), findsOneWidget);
+    });
+
+    testWidgets('F-370-Q1: a PDF registered as the pages it keeps, whose '
+        'pages could not be cut out, is named — and nothing registers in '
+        'their stead', (tester) async {
+      addTearDown(PdfRenderService.debugResetForTests);
+      PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
+        pageSizes: List.filled(5, const ui.Size(595, 842)),
+      );
+      // The renderer could not write those pages out as a file of their own.
+      PdfRenderService.debugPageSpanOverride = (path, first, count) async =>
+          null;
+      final pdf = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+        await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+        return file.path;
+      });
+      final notice = await warningsAfterImporting(
+        tester,
+        [pdf!],
+        poolOnly: true,
+        asked: () => keepSpan(tester, 2, 3),
+      );
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+
+      expect(inNotice('Could not be imported. (1)'), findsOneWidget);
+      expect(inNotice('conte.pdf'), findsOneWidget);
+      expect(
+        tester
+            .widget<ImportDialog>(find.byType(ImportDialog))
+            .session
+            .repository
+            .requireProject()
+            .mediaAssets,
+        isEmpty,
+        reason: 'not the piece, and not the whole file in its place',
+      );
+    });
+
+    testWidgets('F-370-Q1: what threw part-way through a run is a line of '
+        'the notice\'s own sentence — and what landed before it stays '
+        'landed', (tester) async {
+      final good = await tester.runAsync(() => writePng('lands.png'));
+      final cloudy = await tester.runAsync(() => writePng('cloudy.png'));
+      final notice = await warningsAfterImporting(
+        tester,
+        [good!, cloudy!],
+        asked: () async {
+          // A file that has not arrived, whose provider is asked for it and
+          // fails as a platform can: no file the run read, so said of none.
+          FolderPicker.debugDownloadRequester = (_) async =>
+              throw PlatformException(
+                code: 'offline',
+                message: 'the provider let go',
+              );
+          await tester.runAsync(() => emptyWhenFree(File(cloudy)));
+        },
+      );
+
+      expect(
+        find.descendant(
+          of: notice,
+          matching: find.textContaining('the provider let go'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey<String>('import-name-$good')),
+        findsNothing,
+        reason: 'it landed before the throw, and is not imported again',
+      );
+      expect(
+        find.byKey(ValueKey<String>('import-name-$cloudy')),
+        findsOneWidget,
+        reason: 'what threw is still on the list to retry',
+      );
+    });
+
+    testWidgets('F-370-Q1: the status line keeps its place — as tall before '
+        'anything is said as the button it turns into', (tester) async {
+      final bad = await tester.runAsync(() => writeBrokenPng('breaks.png'));
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(session: session, initialPaths: [bad!]),
+          ),
+        ),
+      );
+      await tester.pump();
+      final line = find.byKey(const ValueKey<String>('import-status-line'));
+      final run = find.byKey(const ValueKey<String>('import-run-button'));
+      final lineBefore = tester.getRect(line);
+      final runBefore = tester.getRect(run);
+      expect(
+        importWarningsButton,
+        findsNothing,
+        reason: 'with nothing to warn of, there is no button to press',
+      );
+      // Held, not shown: the button keeps the line as tall as it, and is
+      // there for nothing else.
+      final held = find.byKey(const ValueKey<String>('import-warnings-button'));
+      expect(
+        tester.widget<ButtonStyleButton>(held).onPressed,
+        isNull,
+        reason: 'no key reaches a button that is not there to see',
+      );
+      expect(
+        tester
+            .widget<Opacity>(
+              find.ancestor(of: held, matching: find.byType(Opacity)),
+            )
+            .opacity,
+        0,
+        reason: 'its place shows nothing',
+      );
+
+      await tester.tap(run);
+      await pumpPastTheWaitWindow(tester);
+      await settleAsync(
+        tester,
+        () => importWarningsButton.evaluate().isNotEmpty,
+      );
+      session.playbackRig.prerenderScheduler.cancel();
+
+      expect(
+        find.descendant(
+          of: importWarningsButton,
+          matching: find.text('1 warning'),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getRect(line), lineBefore);
+      expect(tester.getRect(run), runBefore, reason: 'nothing under it moved');
+    });
+  });
+
+  /// ⛔없다가 생기는 UI 금지: the table and the preview stand whatever is
+  /// listed. ↩️With nothing picked the window swapped them for a line saying
+  /// to pick something, and a cut folder for a list reading its parse out.
+  testWidgets('with nothing picked the table stands, empty', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: ImportDialog(session: session))),
+    );
+    await tester.pump();
+
+    expect(
+      tester.widget<ImportFileTable>(find.byType(ImportFileTable)).rows,
+      isEmpty,
+    );
+  });
+
+  testWidgets('one bar for the whole press: the files the pool takes fill '
+      'their share of it, then each file placed its own — the second '
+      'starting where the first\'s ends', (tester) async {
+    final (kept, linked, first, second) = (await tester.runAsync(
+      () async => (
+        await writePng('kept.png'),
+        await writePng('linked.png'),
+        await writePng('first.png'),
+        await writePng('second.png'),
+      ),
+    ))!;
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(
+            session: session,
+            initialPaths: [kept, linked, first, second],
+          ),
+        ),
+      ),
+    );
+    // The preview's page spins until it lands, so no frame settles before.
+    await settleLoadedPages(tester);
+    Future<void> pick(String column, String path, String option) async {
+      final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
+      await tester.ensureVisible(cell);
+      await tester.pump();
+      await tester.tap(cell);
+      await settleLoadedPages(tester);
+      await tester.tap(
+        find.byKey(ValueKey<String>('import-option-$column-$option')),
+      );
+      await settleLoadedPages(tester);
+    }
+
+    await pick('into', kept, 'pool');
+    await pick('into', linked, 'pool');
+    await pick('file', linked, 'reference');
+
+    final told = watchTheBar(tester);
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
+    session.playbackRig.prerenderScheduler.cancel();
+
+    // Four files, a quarter each: the pool's two — the kept one carried
+    // before the linked one registers — then the placed two, from half the
+    // bar.
+    expectOneBar(told, [0.25, 0.5, 0.75, 1]);
   });
 }

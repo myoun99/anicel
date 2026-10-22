@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizedAlong;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
@@ -31,9 +32,10 @@ void main() {
         MaterialApp(
           home: Align(
             alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: axis == Axis.horizontal ? 200 : 28,
-              height: axis == Axis.horizontal ? 28 : 200,
+            child: sizedAlong(
+              axis,
+              along: 200,
+              across: 28,
               child: SeSpanVisual(
                 axis: axis,
                 frames: 10,
@@ -70,9 +72,10 @@ void main() {
         MaterialApp(
           home: Align(
             alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: axis == Axis.horizontal ? 400 : cross,
-              height: axis == Axis.horizontal ? cross : 400,
+            child: sizedAlong(
+              axis,
+              along: 400,
+              across: cross,
               child: TimelineFixedFrameSpanLayer(
                 geometry: const TimelineFrameGeometry(
                   frameCellExtent: cell,

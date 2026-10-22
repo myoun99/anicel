@@ -189,7 +189,7 @@ void main() {
     final position = tag.content.position!;
     expect(position.dx, inInclusiveRange(0, frame.width));
     expect(position.dy, inInclusiveRange(0, frame.height));
-    final onTheCanvas = tag.shot.apply(
+    final onTheCanvas = tag.placement.apply(
       CanvasPoint(x: position.dx, y: position.dy),
     );
     final corners = cameraFrameCornersInCanvas(

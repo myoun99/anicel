@@ -285,9 +285,8 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
     this.axis = axis;
   }
 
-  Size _sizeFor(double main) => axis == Axis.horizontal
-      ? Size(main, crossAxisExtent)
-      : Size(crossAxisExtent, main);
+  Size _sizeFor(double main) =>
+      sizeAlong(axis, along: main, across: crossAxisExtent);
 
   /// What the CHILD is laid out at. Windowed, it is the constant window
   /// extent and the incoming constraints are deliberately NOT enforced: the
@@ -348,18 +347,16 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
   Offset get childPaintOffset => _childOffset;
 
   @override
-  double computeMinIntrinsicWidth(double height) => axis == Axis.horizontal
-      ? geometry.value.contentMainExtent
-      : crossAxisExtent;
+  double computeMinIntrinsicWidth(double height) =>
+      _sizeFor(geometry.value.contentMainExtent).width;
 
   @override
   double computeMaxIntrinsicWidth(double height) =>
       computeMinIntrinsicWidth(height);
 
   @override
-  double computeMinIntrinsicHeight(double width) => axis == Axis.horizontal
-      ? crossAxisExtent
-      : geometry.value.contentMainExtent;
+  double computeMinIntrinsicHeight(double width) =>
+      _sizeFor(geometry.value.contentMainExtent).height;
 
   @override
   double computeMaxIntrinsicHeight(double width) =>

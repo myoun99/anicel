@@ -37,6 +37,8 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/app_shortcuts.dart';
+
 const k = LogicalKeyboardKey.keyK;
 
 /// The bar's menu rows, in the bar's order — 컷 · 레이어 · 프레임 · fx.
@@ -49,7 +51,6 @@ final barRows = [
   EditorActionIds.cutSettings,
   EditorActionIds.cutCanvasSize,
   EditorActionIds.cutConvertLinked,
-  EditorActionIds.cutPinThumbnail,
   EditorActionIds.cutMoveLeft,
   EditorActionIds.cutMoveRight,
   EditorActionIds.cutCopyAeCamera,
@@ -167,15 +168,15 @@ void main() {
         'language the two parts are said in', () {
       expect(
         editorActionLabel(addLayerKindActionId(LayerKind.animation)),
-        'Add Layer: Animation',
+        'New Layer: Animation',
       );
       expect(
         addLayerKindActionLabel(LayerKind.animation, AppLanguage.ko),
-        '레이어 추가: 애니메이션',
+        '새 레이어: 애니메이션',
       );
       expect(
         addLayerKindActionLabel(LayerKind.folder, AppLanguage.ja),
-        'レイヤーを追加: フォルダー',
+        '新規レイヤー: フォルダー',
       );
       expect(
         editorActionLabel(addEffectActionId(EffectKind.blur)),
@@ -195,7 +196,7 @@ void main() {
 
       expect(
         editorActionLabel(addLayerKindActionId(LayerKind.animation)),
-        '레이어 추가: 애니메이션',
+        '새 레이어: 애니메이션',
       );
       expect(layerKindDisplayName(LayerKind.folder), '폴더');
       expect(
@@ -267,7 +268,6 @@ void main() {
         'duplicateActiveCut',
         'createLinkedCutFromActiveCut',
         'renameActiveCutWithDialog',
-        'toggleActiveCutThumbnailFrame',
         'moveActiveCutLeft',
         'moveActiveCutRight',
         'copyCameraAeKeyframes',
@@ -391,34 +391,16 @@ void main() {
       );
     });
 
-    testWidgets('one verb reached from two lists is ONE action: both rows '
-        'of 「컷 복제」 name it and read alike', (tester) async {
+    // 🗣️F-379 (유저 2026-10-17): 「컷 추가 팝오버버튼의 컷 복제는 컷 버튼에
+    // 중복존재하니 삭제」.
+    testWidgets("「컷 복제」 is the cut button's row alone — the add list "
+        'carries no second road to it', (tester) async {
       await pumpApp(tester);
       final rows = timelineRows(tester)
           .where((row) => row.shortcuts.contains(EditorActionIds.cutDuplicate))
           .toList();
-      expect(rows.map((row) => row.keyValue), [
-        'duplicate-cut-button',
-        'add-cut-duplicate',
-      ]);
-      expect(rows.map((row) => row.label).toSet(), {'Duplicate cut'});
-    });
-
-    testWidgets('the thumbnail switch says one name, and its check says '
-        'which way it stands', (tester) async {
-      await pumpApp(tester);
-      final session = sessionOf(tester);
-      PanelFlyoutItem row() =>
-          rowOf(timelineRows(tester), EditorActionIds.cutPinThumbnail);
-      final before = row();
-      expect(before.label, 'Pin thumbnail frame');
-      expect(before.checked, session.cutVerbs.isActiveCutThumbnailPinnedHere);
-
-      before.onSelected!();
-      await tester.pumpAndSettle();
-
-      expect(row().label, 'Pin thumbnail frame');
-      expect(row().checked, isNot(before.checked));
+      expect(rows.map((row) => row.keyValue), ['duplicate-cut-button']);
+      expect(rows.single.label, 'Duplicate cut');
     });
   });
 
@@ -598,10 +580,7 @@ void main() {
           .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)).first)
           .tooltip;
       expect(tooltip('new-cut-button'), 'New cut');
-      expect(
-        tooltip('auto-frame-toggle-button'),
-        'Make a frame where there is none',
-      );
+      expect(tooltip('auto-frame-toggle-button'), 'Auto-create Frames');
 
       keys(tester)
         ..setActivators(EditorActionIds.cutNew, const [
@@ -615,8 +594,29 @@ void main() {
       expect(tooltip('new-cut-button'), 'New cut (Ctrl+K)');
       expect(
         tooltip('auto-frame-toggle-button'),
-        'Make a frame where there is none (Alt+K)',
+        'Auto-create Frames (Alt+K)',
       );
+    });
+
+    // 🗣️I-58 (유저 2026-10-18): 「컷 추가버튼은 새 컷이고 레이어는 레이어
+    // 추가고 프레임은 추가임 … 통일(레이어 추가 이런식으로 ㅁㅁ 추가. ㅁㅁ
+    // 삭제)하고, x버튼은 비우기 … 마크 점은 중간나누기 마크」 — then 「ㅁㅁ
+    // 추가말고 새 ㅁㅁ로 하자」. ↩️The frame pill's ＋ × ● each wore a string
+    // of their own.
+    testWidgets('the frame pill\'s ＋ × ● and the n-koma ● wear their '
+        'actions\' names too', (tester) async {
+      await pumpApp(tester);
+      // Shift+I is anicel's. Clip Studio's preset, which an install opens
+      // on, takes New Frame from TVPaint's `I`, a key Clip Studio keeps for
+      // its own, and so leaves it without one (F-417-Q2, bf542a298).
+      await useAnicelKeys(tester);
+      String tooltip(String key) => tester
+          .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)).first)
+          .tooltip;
+      expect(tooltip('new-frame-button'), 'New Frame (Shift+I)');
+      expect(tooltip('blank-exposure-button'), 'Clear');
+      expect(tooltip('toggle-mark-button'), 'In-between Mark');
+      expect(tooltip('mark-every-button'), 'Auto-add In-between Marks');
     });
   });
 

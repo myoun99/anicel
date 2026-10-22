@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
@@ -38,6 +39,10 @@ void main() {
     final pressed = <int>[];
     final stroke = SheetStrokeHold(brushInput: (_) {});
     addTearDown(stroke.dispose);
+    // The brush in hand — a tool the sheet runs (F-420: under one it does
+    // not, a press moves the sheet whatever drawing says).
+    final tool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+    addTearDown(tool.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Align(
@@ -52,6 +57,7 @@ void main() {
               viewport: CanvasViewport(),
               onViewportChanged: emitted.add,
               drawingOn: drawing,
+              brushToolState: tool,
               strokeHold: stroke,
               content: (context, viewport) => Stack(
                 children: [
@@ -311,7 +317,8 @@ void main() {
     expect(pressed, [2]);
   });
 
-  testWidgets("⛔drawing ON: a plain mouse drag is not the view's", (
+  testWidgets('⛔drawing ON, the brush in hand: a plain mouse drag is not the '
+      "view's", (
     tester,
   ) async {
     final h = await pump(tester, drawing: true);

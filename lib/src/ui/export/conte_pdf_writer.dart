@@ -7,15 +7,22 @@ import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/cel_photo.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
+import '../../services/layer_pose_matrix.dart'
+    show picturePlacement, placementMatrix;
 import '../conte/conte_fonts.dart';
 import '../conte/conte_page_painter.dart' show conteWrappedLines;
 import '../sheet_painting.dart'
-    show SheetPictureOverInk, pictureOutline, sheetWordsSize;
+    show
+        SheetPictureOverInk,
+        pictureOutline,
+        sheetInkPaperFromSurface,
+        sheetWordsSize;
 import '../theme/app_theme.dart' show AppTypography;
 
 /// The conte sheet as ONE vector PDF.
@@ -106,7 +113,10 @@ class ContePdfPicture {
 /// absent entries print the page without them, like the panel does while
 /// a render is pending. [inkPictures] maps a sheet-ink window's
 /// [BrushFrameKey] to its composed raster (R5), drawn over the finished
-/// page exactly like the panel (pen over paper).
+/// page exactly like the panel (pen over paper), and [inkPhotos] to the
+/// photos laid under it (I-97) — each drawn from its file in [images],
+/// whole, so the page looked at closer shows the photo as far as its own
+/// pixels go.
 Future<Uint8List> writeContePdf({
   required ConteSheetSource source,
   required List<ContePageLayout> pages,
@@ -114,6 +124,7 @@ Future<Uint8List> writeContePdf({
   Map<SheetPictureKey, ContePdfPicture> pictures = const {},
   Map<String, ContePdfPicture> images = const {},
   Map<BrushFrameKey, ContePdfPicture> inkPictures = const {},
+  Map<BrushFrameKey, List<CelPhoto>> inkPhotos = const {},
   List<SheetPictureOverInk> Function(ContePageLayout page)? picturesOverInkOf,
   required ConteWords words,
 }) async {
@@ -139,6 +150,7 @@ Future<Uint8List> writeContePdf({
     inkPictures: {
       for (final entry in inkPictures.entries) entry.key: embed(entry.value),
     },
+    inkPhotos: inkPhotos,
   );
   for (final page in pages) {
     writer.writePage(
@@ -160,6 +172,7 @@ class _ContePdfPageWriter {
     required this.pictures,
     required this.images,
     required this.inkPictures,
+    required this.inkPhotos,
   });
 
   final PdfDocument document;
@@ -170,6 +183,7 @@ class _ContePdfPageWriter {
   final Map<SheetPictureKey, PdfImage> pictures;
   final Map<String, PdfImage> images;
   final Map<BrushFrameKey, PdfImage> inkPictures;
+  final Map<BrushFrameKey, List<CelPhoto>> inkPhotos;
 
   /// The painter's line height (TextStyle height: 1.25).
   static const double _lineHeight = 1.25;
@@ -224,8 +238,9 @@ class _ContePdfPageWriter {
         }
       case SheetInk(:final key, :final placement):
         final image = inkPictures[key];
-        if (image != null) {
-          _clippedTo(image, placement);
+        final photos = inkPhotos[key] ?? const [];
+        if (image != null || photos.isNotEmpty) {
+          _clippedTo(image, photos, placement);
         }
     }
   }
@@ -280,14 +295,18 @@ class _ContePdfPageWriter {
   void _drawnIn(PdfImage image, ui.Rect rect) =>
       _g.drawImage(image, rect.left, _y(rect.bottom), rect.width, rect.height);
 
-  /// An ink raster where its [placement] lays it, clipped to its window —
-  /// the screen's `paintSheetInkWindow`, in PDF — and out of every picture
-  /// over it where that shows its cut's canvas, exactly ([pictureOutline]):
-  /// the ink's ring past that edge (`sheetInkApron`) never lies over the
-  /// picture. Each picture cuts one more clip, and clips intersect.
-  void _clippedTo(PdfImage image, SheetInkPlacement placement) {
+  /// An ink raster where its [placement] lays it, over the [photos] laid on
+  /// its surface (I-97), clipped to its window — the screen's
+  /// `paintSheetInkWindow`, in PDF — and out of every picture over it where
+  /// that shows its cut's canvas, exactly ([pictureOutline]): the ink's
+  /// ring past that edge (`sheetInkApron`) never lies over the picture.
+  /// Each picture cuts one more clip, and clips intersect.
+  void _clippedTo(
+    PdfImage? image,
+    List<CelPhoto> photos,
+    SheetInkPlacement placement,
+  ) {
     final window = placement.window;
-    final laid = placement.rasterRect(image.width, image.height);
     _g.saveContext();
     _g.drawRect(window.left, _y(window.bottom), window.width, window.height);
     _g.clipPath();
@@ -304,7 +323,43 @@ class _ContePdfPageWriter {
       _g.closePath();
       _g.clipPath(evenOdd: true);
     }
-    _g.drawImage(image, laid.left, _y(laid.bottom), laid.width, laid.height);
+    for (final photo in photos) {
+      if (images[photo.reference.assetPath] case final file?) {
+        _photo(file, photo, placement);
+      }
+    }
+    if (image != null) {
+      _drawnIn(image, placement.rasterRect(image.width, image.height));
+    }
+    _g.restoreContext();
+  }
+
+  /// [photo] from its [file], where its reference stands it on the surface
+  /// [placement] lays on the page — the screen's `paintSheetPhotos`, in
+  /// PDF: the page's flip, the surface onto the paper
+  /// ([sheetInkPaperFromSurface]), the photo onto the surface
+  /// ([picturePlacement]), its own picture upright in it.
+  void _photo(PdfImage file, CelPhoto photo, SheetInkPlacement placement) {
+    final reference = photo.reference;
+    final picture = reference.pictureSize;
+    _g.saveContext();
+    _g.setTransform(
+      Matrix4.identity()
+        ..translateByDouble(0, _pageHeight, 0, 1)
+        ..scaleByDouble(1, -1, 1, 1)
+        ..multiply(sheetInkPaperFromSurface(placement))
+        ..multiply(
+          placementMatrix(picturePlacement(reference.pose, picture)),
+        ),
+    );
+    // The picture's own space runs down; a PDF image's rows run up.
+    _g.drawImage(
+      file,
+      0,
+      picture.height.toDouble(),
+      picture.width.toDouble(),
+      -picture.height.toDouble(),
+    );
     _g.restoreContext();
   }
 

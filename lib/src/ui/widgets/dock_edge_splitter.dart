@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior, kDoubleTapTimeout;
 
 import '../theme/app_theme.dart';
+import '../timeline/axis_turn.dart' show acrossBox, partAlong;
 import '../timeline/timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'owning_axis_grip.dart';
 
@@ -145,8 +146,7 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
   /// deepest-first, so it has accepted before any scrollable reaches its own
   /// threshold — which fixes ⑧ (no diagonal can lose a race that is over) and
   /// T30 together (there is no rival left to resign to).
-  Axis get _dragAxis =>
-      widget.axis == Axis.vertical ? Axis.horizontal : Axis.vertical;
+  Axis get _dragAxis => flipAxis(widget.axis);
 
   void _handleDragDown(DragDownDetails details) => _setDragging(true);
 
@@ -154,9 +154,7 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     if (!_dragging) {
       return;
     }
-    _applyDelta(
-      _dragAxis == Axis.horizontal ? details.delta.dx : details.delta.dy,
-    );
+    _applyDelta(partAlong(_dragAxis, details.delta));
     // An edge inside the content it sizes stands in a scroll of its own
     // axis — a header graph's (I-89 ③), the storyboard's V rows' — and a
     // pull that reaches the view's edge pans it, the pan folded into the
@@ -286,9 +284,9 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
           onPointerDown: _pressDown,
           onPointerUp: _pressUp,
           onPointerCancel: _pressCancel,
-          child: SizedBox(
-            width: vertical ? DockEdgeSplitter.thickness : null,
-            height: vertical ? null : DockEdgeSplitter.thickness,
+          child: acrossBox(
+            widget.axis,
+            DockEdgeSplitter.thickness,
             child: ColoredBox(color: _lineColor),
           ),
         ),

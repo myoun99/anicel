@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -176,7 +177,10 @@ void main() {
             defaultBrushPresets.firstWhere((preset) => preset.id.value == id),
             tool: CanvasTool.brush,
           )
-          .copyWith(antiAlias: edge);
+          // The pen's own line: a steadied one runs on the events' clock,
+          // and these carry none (F-418 — a brush steadies as Clip Studio's
+          // 0 unless told otherwise).
+          .copyWith(antiAlias: edge, correction: BrushCorrection.none);
 
   // The pen group's round brushes — the ones 유저 names.
   for (final id in ['builtin-g-pen', 'builtin-maru-pen', 'builtin-brush-pen']) {

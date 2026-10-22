@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../../core/bounded_memo.dart';
-import 'axis_turn.dart' show extentAlong, offsetAlong;
+import 'axis_turn.dart' show extentAlong, offsetAlong, startAlong;
 import 'frame_window_semantics.dart';
 
 import 'timeline_beat_lines.dart';
@@ -12,6 +12,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart' show frameVisibleX;
 import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
+import '../text/text_measure.dart' show everyDigitIn;
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_second.dart';
@@ -61,7 +62,27 @@ String timelineRulerSecondOf({
   required int framesPerSecond,
 }) {
   final safeFps = timelineSecondFrames(framesPerSecond);
-  return '${frameIndex ~/ safeFps}';
+  return timelineSecondsMark(frameIndex ~/ safeFps);
+}
+
+/// [seconds] as the seconds line writes it: the count alone below a
+/// minute, then `m:ss`, then `h:mm:ss` — growing only as far as the count
+/// needs.
+///
+/// 🗣️I-102 (유저 2026-10-15): 「분이나 시간도 표시가능하도록. 스토리보드프로
+/// 보면 애초에 룰러가 00:00:00:01 이런식인데, 그정도로 관계없는숫자가
+/// 보이게하는건 아니라도 분 표시가 되면 1:01 이런식으로. 필요할때마다
+/// 늘어나도록. 위에는 항상 초니까 초+코마던 뭐던 이런식으로 표시」.
+String timelineSecondsMark(int seconds) {
+  if (seconds < 60) {
+    return '$seconds';
+  }
+  String twoDigits(int value) => '$value'.padLeft(2, '0');
+  final minutes = seconds ~/ 60;
+  final ss = twoDigits(seconds % 60);
+  return minutes < 60
+      ? '$minutes:$ss'
+      : '${minutes ~/ 60}:${twoDigits(minutes % 60)}:$ss';
 }
 
 /// The NUMBER the ruler writes at [frameIndex]: absolute and 1-based, or
@@ -524,21 +545,37 @@ final class TimelineRulerScale {
   /// Every frame is measured NARROWED ([numberFitIn]) — as far as half-width
   /// and no further (ruler-digits-in-the-app-face-Q1): only a number that
   /// would still touch the next thins the strip.
+  ///
+  /// 🗣️F-385 (유저 2026-10-17): 「초+코마 표시에서만 타임라인 룰러 숫자 억지로
+  /// 넣으려고 … 글자 가로길이 줄이는데 룰러는 이렇게 안해도됨. 그냥 일반
+  /// 프레임모드랑 법 통일해서 해도됨」 — the numbers measured are the frame
+  /// numbers in either display. ↩️Under the seconds display it measured the
+  /// 1..fps it writes there, two digits that fit narrowed into a cell the
+  /// absolute numbers had already thinned out of: the same zoom wrote every
+  /// third number in one display and squeezed every one in the other.
+  ///
+  /// 🗣️I-102 (유저 2026-10-15): 「줌 줄였을때 보이는 숫자는 서로 같은기준으로
+  /// 통일 … 프레임쪽은 5 바로 밑 숫자가 아니라 97이 보인다던가. 어떤 줌하던
+  /// 서로 기준은 같도록. 위 숫자(초)를 기준으로 해서 아래가 길어져서
+  /// 힘들다 싶으면 아래를 2기준당 1개로 줄인다던가」. Inside a second the
+  /// rungs are the ladder's that divide the second, so a number stands on
+  /// every second's head; past one second the numbers stand under the
+  /// seconds line's marks ([secondsLabelEverySeconds]) — every one of them,
+  /// or every second, third … one, as their width asks. ↩️The ladder doubled
+  /// on past 24, and 96 frames went under marks four seconds apart where the
+  /// seconds were five apart.
   int get labelEveryFrames =>
       _labelEveryFramesOf[this] ??= _measuredLabelEveryFrames();
 
   int _measuredLabelEveryFrames() {
-    final safeFps = timelineSecondFrames(framesPerSecond);
-    final longest = showSeconds
-        ? '$safeFps'
-        : '${frameEndIndexExclusive > 1 ? frameEndIndexExclusive : 1}';
-    final digits = longest.length;
+    final second = timelineSecondFrames(framesPerSecond);
+    final widest = '${math.max(1, frameEndIndexExclusive)}';
     final cell = metrics.frameCellWidth;
     final everyFrame = numberTypeAt(everyFrame: true);
     final halfWidth =
-        digits * (everyFrame.fontSize ?? double.infinity) *
+        widest.length * (everyFrame.fontSize ?? double.infinity) *
         timelineNumberNarrowestEm;
-    if (_widestDigits(everyFrame, digits, widthAtMost: halfWidth) +
+    if (_widestWritten(everyFrame, widest, widthAtMost: halfWidth) +
             timelineMarkGap <=
         cell) {
       return 1;
@@ -547,11 +584,15 @@ final class TimelineRulerScale {
     // holds the overlay's widest number, and never the first — that is the
     // every-frame writing the line above has already refused.
     final overlay =
-        _widestDigits(numberTypeAt(everyFrame: false), digits) +
+        _widestWritten(numberTypeAt(everyFrame: false), widest) +
         timelineMarkGap;
-    final stride = timelineStrideHolding(overlay, cell);
-    final overlayFloor = timelineFrameStrideLadder[1];
-    return stride > overlayFloor ? stride : overlayFloor;
+    for (final stride in timelineFrameStrideLadder.skip(1)) {
+      if (stride < second && second % stride == 0 && overlay <= stride * cell) {
+        return stride;
+      }
+    }
+    final marks = second * secondsLabelEverySeconds;
+    return marks * math.max(1, (overlay / (marks * cell)).ceil());
   }
 
   /// A strip's window, both passes — the ruler's across and the rail's
@@ -679,9 +720,8 @@ final class TimelineRulerScale {
     if (ink == null) {
       return;
     }
-    final rect = cellRectFor(frameIndex);
     final edge =
-        (axis == Axis.horizontal ? rect.left : rect.top) + timelineGridLineSnap;
+        startAlong(axis, cellRectFor(frameIndex)) + timelineGridLineSnap;
     canvas.drawLine(
       offsetAlong(axis, along: edge, across: 0),
       offsetAlong(axis, along: edge, across: crossExtent),
@@ -701,27 +741,30 @@ final class TimelineRulerScale {
 
   int _measuredSecondsLabelEvery() {
     final second = timelineSecondFrames(framesPerSecond);
-    final digits = '${math.max(0, frameEndIndexExclusive - 1) ~/ second}'
-        .length;
+    final widest = timelineSecondsMark(
+      math.max(0, frameEndIndexExclusive - 1) ~/ second,
+    );
     return timelineSecondsHolding(
-      _widestDigits(timelineSecondsType(face, secondsFontSize), digits) +
+      _widestWritten(timelineSecondsType(face, secondsFontSize), widest) +
           timelineMarkGap,
       second * metrics.frameCellWidth,
     );
   }
 
-  /// The widest run of [digits] digits this strip can set in [type],
-  /// measured along [axis] and as drawn no wider than [widthAtMost]: the
-  /// widest digit, as many times over, so a face with proportional figures
-  /// cannot slip a wider run past the measure.
-  double _widestDigits(
+  /// The widest [written] this strip can set in [type] — every digit of it
+  /// written as the widest digit, so a face with proportional figures
+  /// cannot slip a wider number past the measure — measured along [axis]
+  /// and as drawn no wider than [widthAtMost].
+  double _widestWritten(
     TextStyle type,
-    int digits, {
+    String written, {
     double widthAtMost = double.infinity,
   }) {
     var widest = 0.0;
-    for (var digit = 0; digit <= 9; digit += 1) {
-      final glyph = laidOutGlyph('$digit' * digits, type);
+    for (final run in everyDigitIn(
+      (digit) => written.replaceAll(RegExp('[0-9]'), digit),
+    )) {
+      final glyph = laidOutGlyph(run, type);
       final extent = extentAlong(
         axis,
         Size(math.min(glyph.width, widthAtMost), glyph.height),

@@ -24,9 +24,13 @@ import '../../helpers/named_finders.dart';
 /// ⚠️Driven on the real rail: the camera row reaches its select-only target
 /// through the mount every surface uses, not through a hand-built target.
 void main() {
-  TimelineRowDragHooks hooks(List<String> events, {required bool inSelection}) =>
+  TimelineRowDragHooks hooks(
+    List<String> events, {
+    required bool inSelection,
+    ValueNotifier<LayerRowDragState?>? drag,
+  }) =>
       TimelineRowDragHooks(
-        drag: ValueNotifier<LayerRowDragState?>(null),
+        drag: drag ?? ValueNotifier<LayerRowDragState?>(null),
         onBegin: (_) => events.add('begin'),
         onUpdate: (_, _, {pointerInRow}) => events.add('update'),
         onRowTarget: (_, _, _) => events.add('rowTarget'),
@@ -134,6 +138,33 @@ void main() {
 
     expect(rowOpacity(tester), 1, reason: 'it settles where it was');
     expect(events, isEmpty);
+  });
+
+  testWidgets('🚨F-336: and it draws no line — at no gap of the stack it '
+      'stands in', (tester) async {
+    // 유저 10-10: 「s행의 제일 밑 레이어를 드래그로 s행 제일 위로 이동하려하면
+    // 카메라섹션의 가로줄이 생김」. The select-only row said gap 0, so the
+    // line at the top of any list of its lane was drawn on it as well.
+    final drag = ValueNotifier<LayerRowDragState?>(null);
+    addTearDown(drag.dispose);
+    await pump(tester, hooks(<String>[], inSelection: false, drag: drag));
+    bool drawsLine(String id) => [
+      for (final side in ['before', 'after'])
+        find.byKey(ValueKey<String>('timeline-row-caret-$side-$id')),
+    ].any((line) => line.evaluate().isNotEmpty);
+
+    var rowADrew = false;
+    for (var gap = 0; gap <= 2; gap += 1) {
+      drag.value = LayerRowDragState(
+        subject: const LayerRowSubject(LayerId('layer-2')),
+        caretSlot: gap,
+        legal: true,
+      );
+      await tester.pump();
+      expect(drawsLine('layer-1'), isFalse, reason: 'gap $gap');
+      rowADrew = rowADrew || drawsLine('layer-2');
+    }
+    expect(rowADrew, isTrue, reason: '⛔premise: the rail draws this drag');
   });
 
   testWidgets('⛔outside the selection it still selects', (tester) async {

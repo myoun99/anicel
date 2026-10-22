@@ -1,10 +1,15 @@
 import 'dart:io';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/cel_photo_fixture.dart';
+import '../../helpers/cel_text_fixture.dart';
+import '../../helpers/opened_session.dart';
 import '../../helpers/temp_dir.dart';
 
 /// A project whose folder moved whole — to another disk, another machine, a
@@ -52,6 +57,66 @@ void main() {
       opened.project.mediaAssets.single.path,
       '${to.path}/snd/boom.wav'.replaceAll(r'\', '/'),
       reason: 'the sound is the one beside the file it was opened from',
+    );
+  });
+
+  test('🚨the sheets\' photos travel with it (I-97) — each stands on the '
+      'file beside the file it was opened from, which the file itself does '
+      'not say yet', () async {
+    const service = AnicelFileService();
+    final from = Directory('${directory.path}/from')..createSync();
+    final picture = File('${from.path}/pics/sky.png')
+      ..createSync(recursive: true)
+      ..writeAsBytesSync([1, 2, 3]);
+    final project = createDefaultProject().copyWith(
+      mediaAssets: [MediaAsset(path: picture.path, name: 'sky')],
+    );
+    final key = envelopeInkBoxKey(project.tracks.first.cuts.first.id, 'memo');
+    await service.save(
+      project: project,
+      brushFrameStore: BrushFrameStore(),
+      auxCelStores: [
+        BrushFrameStore()..storeBakedSurface(
+          key,
+          drawingOf({
+            TileCoord(x: 0, y: 0): tileOf({
+              (1, 1): [9, 9, 9, 255],
+            }),
+          }).withPhotos([
+            photoOf(1, path: normalizedMediaPath(picture.path)),
+          ]),
+        ),
+      ],
+      filePath: '${from.path}/scene.anicel',
+    );
+    final to = Directory('${directory.path}/to');
+    for (final name in ['scene.anicel', 'pics/sky.png']) {
+      File('${to.path}/$name').createSync(recursive: true);
+      File('${from.path}/$name').copySync('${to.path}/$name');
+    }
+
+    final session = await openedSession('${to.path}/scene.anicel');
+    addTearDown(session.dispose);
+
+    final beside = normalizedMediaPath('${to.path}/pics/sky.png');
+    expect(
+      session.mediaPool.mediaAssets.single.path,
+      beside,
+      reason: 'the CONTROL — the pool followed',
+    );
+    final ink = session.renderCaches.envelopeInkStore;
+    expect(ink.celPhotoPathsByKey, {
+      key: [beside],
+    });
+    expect([
+      for (final photo in ink.bakedSurfaceOrNull(key)!.photos)
+        photo.reference.assetPath,
+    ], [beside]);
+    expect(
+      session.projectFile.hasUnsavedChanges,
+      isTrue,
+      reason: 'the cel in hand is not the cel in the file, as a healed '
+          'one is not',
     );
   });
 

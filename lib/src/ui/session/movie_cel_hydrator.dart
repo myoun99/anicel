@@ -14,13 +14,13 @@ import '../../models/transform_pose.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/cut_frame_composite_plan.dart'
     show resolveCutFrameCompositeEntries;
-import '../../services/import/raster_cel_import.dart'
-    show picturePlacement, rasterizeImageToSurface;
+import '../../services/import/cel_picture.dart' show pictureOfPixels;
+import '../../services/import/raster_cel_import.dart' show layCelPicture;
+import '../../services/layer_pose_matrix.dart' show picturePlacement;
 import '../../services/media/media_byte_source.dart'
     show HeldBytesMove, HeldMediaBytes, HoldMediaBytes;
 import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
-import '../../services/straight_rgba_image.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
 
@@ -128,11 +128,12 @@ class MovieCelHydrator {
   /// lives, not this.
   final Map<_MoviePicture, WeakReference<BitmapSurface>> _decoded = {};
 
-  /// What each cel's installed picture is OF: the movie, and the pose it
-  /// stands at. A cel keeps its key when its row is pointed at another movie
-  /// (I-47) or its reference fx moves (I-68), and the store knows only that
-  /// it holds A picture at that canvas — so a picture of another movie, or
-  /// at another pose, is decoded again here.
+  /// What each cel's installed picture is OF: the movie, and the pose it is
+  /// laid at ([MediaReference.laid]). A cel keeps its key when its row is
+  /// pointed at another movie (I-47) or its file is laid elsewhere (I-68),
+  /// and the store knows only that it holds A picture at that canvas — so a
+  /// picture of another movie, or laid at another pose, is decoded again
+  /// here.
   final Map<BrushFrameKey, (_Movie, TransformPose)> _shown = {};
 
   /// Set by [dispose]. A decode still on its way installs nothing: the store
@@ -140,9 +141,9 @@ class MovieCelHydrator {
   bool _disposed = false;
 
   /// Where [key]'s installed movie picture was laid — the pose it was
-  /// decoded at — or null while none has been. A row whose reference fx
-  /// moved shows that picture moved to its new pose until the new one is
-  /// decoded (`EditingStackMap`).
+  /// decoded at — or null while none has been. A row whose file is laid
+  /// elsewhere shows that picture moved there until the new one is decoded
+  /// (`EditingStackMap`).
   TransformPose? laidAt(BrushFrameKey key) => _shown[key]?.$2;
 
   /// What the DECODER said [path] is, or null while nothing has opened it.
@@ -193,7 +194,7 @@ class MovieCelHydrator {
         entry.frame.id,
       );
       if (store.hasMovieCel(key, cut.canvasSize) &&
-          _shown[key] == (_movieAt(reference.assetPath), reference.pose)) {
+          _shown[key] == (_movieAt(reference.assetPath), reference.laid)) {
         continue;
       }
       jobs.add(_fill(key, cut, reference, movieCel.elapsed));
@@ -221,13 +222,13 @@ class MovieCelHydrator {
       at,
       movieFrame,
       cut.canvasSize,
-      reference.pose,
+      reference.laid,
     ));
     if (picture == null || _disposed) {
       return;
     }
     _renderCaches.brushFrameStore.installMovieCel(key, picture);
-    _shown[key] = (at, reference.pose);
+    _shown[key] = (at, reference.laid);
   }
 
   Future<BitmapSurface?> _pictureOf(_OpenMovie movie, _MoviePicture at) {
@@ -245,8 +246,8 @@ class MovieCelHydrator {
     if (rgba == null || _disposed) {
       return null;
     }
-    final image = await decodeStraightRgbaImage(
-      rgba: rgba,
+    final picture = await pictureOfPixels(
+      rgba,
       width: movie.info.width,
       height: movie.info.height,
     );
@@ -254,18 +255,17 @@ class MovieCelHydrator {
       // Where the row's reference fx stands the frame (I-68). ↩️It was the
       // pool's fit for the file, fitted to the canvas as it was at each
       // decode — so a canvas grown since put the movie in its middle.
-      final surface = await rasterizeImageToSurface(
-        image: image,
+      // Whole, past the wall (F-374-Q8: 「참조 그림은 벽 밖까지 통째로」).
+      final surface = await layCelPicture(
+        picture: picture,
         canvas: canvas,
-        placement: picturePlacement(
-          pose,
-          CanvasSize(width: image.width, height: image.height),
-        ),
+        placement: picturePlacement(pose, picture.size),
+        whole: true,
       );
       _decoded[at] = WeakReference(surface);
       return surface;
     } finally {
-      image.dispose();
+      picture.dispose();
     }
   }
 

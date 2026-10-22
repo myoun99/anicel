@@ -1,10 +1,18 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
+
+import '../helpers/census_where_textures_are_ram.dart';
+import '../helpers/poll_until.dart';
 
 /// UI-R18 R18-B: the stroke-preview raster moved into an app-wide LRU
 /// image cache filled off the UI isolate — a preset rasterizes ONCE per
@@ -42,6 +50,26 @@ void main() {
     final other = await cache.ensure(settings, 48, 24);
     expect(identical(other, sample), isFalse);
     expect(other.image.width, 48);
+  });
+
+  test('🧮what the cached samples weigh is what the memory census reads — '
+      '4 bytes a pixel, and nothing once they are let go (card '
+      'census-misses-bake-once-images)', () async {
+    final cache = BrushStrokePreviewCache.instance;
+    expect(cache.sampleBytes, 0);
+
+    await cache.ensure(BrushSettings(), 96, 24);
+    await cache.ensure(BrushSettings(), 48, 24);
+    expect(cache.sampleBytes, (96 + 48) * 24 * 4);
+    expect(
+      collectMemoryCensusWhereTexturesAreRam(
+        const [],
+      ).items.singleWhere((item) => item.id == 'strokePreviews').bytes,
+      cache.sampleBytes,
+    );
+
+    cache.clear();
+    expect(cache.sampleBytes, 0);
   });
 
   test('concurrent requests for one key share one raster', () async {
@@ -109,13 +137,10 @@ void main() {
       expect(find.byType(RawImage), findsNothing);
 
       // Let the isolate raster + upload land, then rebuild.
-      for (var attempt = 0; attempt < 200; attempt += 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
+      await pollUntil(() async {
         await tester.pump();
-        if (find.byType(RawImage).evaluate().isNotEmpty) {
-          break;
-        }
-      }
+        return find.byType(RawImage).evaluate().isNotEmpty;
+      });
     });
     expect(find.byType(RawImage), findsOneWidget);
   });
@@ -378,5 +403,116 @@ void main() {
       (0.3 * 255).round(),
       reason: 'piled to its opacity and no further',
     );
+  });
+
+  group('F-176-Q3: a swatch takes a brush\'s tips in turn, as its strokes '
+      'do', () {
+    bool atTheMiddle(int x, int y) => x >= 3 && x <= 4 && y >= 3 && y <= 4;
+    BrushTipMask tip(String id, {required bool whole}) => BrushTipMask(
+      id: id,
+      size: 8,
+      alpha: Uint8List.fromList([
+        for (var y = 0; y < 8; y += 1)
+          for (var x = 0; x < 8; x += 1)
+            if (whole || atTheMiddle(x, y)) 255 else 0,
+      ]),
+    );
+    final block = tip('block', whole: true);
+    final dot = tip('dot', whole: false);
+
+    // A whole tip apart, so each dab's shape is its own on the swatch.
+    Uint8List swatchOf(List<BrushTipMask> tips, BrushTipOrder order) =>
+        rasterizeBrushStrokeSample(
+          BrushSettings(spacing: 1, tips: tips, tipOrder: order),
+          96,
+          32,
+        );
+
+    test('each dab draws the tip its turn gives it', () {
+      final turns = swatchOf([block, dot], BrushTipOrder.repeat);
+      expect(turns, isNot(swatchOf([block], BrushTipOrder.repeat)));
+      expect(turns, isNot(swatchOf([dot, block], BrushTipOrder.repeat)));
+    });
+
+    test('a lap that ran out leaves the rest of the swatch bare', () {
+      bool inkedPast(Uint8List alpha, int column) => [
+        for (var y = 0; y < 32; y += 1)
+          for (var x = column; x < 96; x += 1) alpha[y * 96 + x],
+      ].any((value) => value > 0);
+
+      expect(
+        inkedPast(swatchOf([block, block], BrushTipOrder.repeat), 64),
+        isTrue,
+        reason: 'fixture premise: the stroke reaches that far',
+      );
+      expect(
+        inkedPast(swatchOf([block, block], BrushTipOrder.oneLap), 64),
+        isFalse,
+      );
+    });
+
+    test('a random order throws the same at every bake', () {
+      expect(
+        swatchOf([block, dot], BrushTipOrder.random),
+        swatchOf([block, dot], BrushTipOrder.random),
+      );
+    });
+  });
+
+  // 유저 2026-10-21 (F-434): 「브러시 도구설정의 프리뷰가 브러시 끝 모양을
+  // 안따라감? 즉 실제 브러시랑 다른모양?」 — the swatch skipped the stroke's
+  // placement: a tip that follows the stroke never turned on it.
+  group('F-434: a swatch places its dabs as its strokes do', () {
+    // A hard, flat nib, one pixel apart, on a row tall enough to see it lie.
+    Uint8List swatchOf({
+      BrushTipRotationMode rotation = BrushTipRotationMode.fixed,
+      double angle = 0,
+      double jitter = 0,
+      int scatter = 1,
+    }) => rasterizeBrushStrokeSample(
+      BrushSettings(
+        spacing: 0.02,
+        roundness: 0.2,
+        angleDegrees: angle,
+        rotationMode: rotation,
+        angleJitter: jitter,
+        scatterRadiusRatio: scatter > 1 ? 1 : 0,
+        scatterCount: scatter,
+      ),
+      192,
+      64,
+    );
+    int inkOf(Uint8List alpha) => alpha.fold(0, (sum, value) => sum + value);
+
+    test('a tip that follows the stroke turns with the curve', () {
+      // Which of the two square angles lays the nib along the row: the one
+      // whose fixed line is the thinner — whatever way an angle runs.
+      final along = inkOf(swatchOf(angle: 0)) < inkOf(swatchOf(angle: 90))
+          ? 0.0
+          : 90.0;
+      final across = 90 - along;
+      expect(
+        inkOf(
+          swatchOf(rotation: BrushTipRotationMode.direction, angle: along),
+        ),
+        lessThan(inkOf(swatchOf(angle: along))),
+        reason: 'turned along the bends too, its line is thinner still',
+      );
+      expect(
+        inkOf(
+          swatchOf(rotation: BrushTipRotationMode.direction, angle: across),
+        ),
+        greaterThan(inkOf(swatchOf(angle: across))),
+        reason: 'and turned across them, broader',
+      );
+    });
+
+    test('a turn thrown at random and a spray are thrown, the same at every '
+        'bake', () {
+      expect(swatchOf(jitter: 1), isNot(swatchOf()));
+      expect(swatchOf(jitter: 1), swatchOf(jitter: 1));
+      expect(swatchOf(scatter: 3), isNot(swatchOf()));
+      expect(swatchOf(scatter: 3), swatchOf(scatter: 3));
+    });
   });
 }

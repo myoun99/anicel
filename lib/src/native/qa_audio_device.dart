@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:io' show Platform;
 import 'dart:typed_data';
@@ -7,6 +8,48 @@ import 'package:ffi/ffi.dart';
 import '../services/audio/audio_mixer_reference.dart';
 import 'qa_audio_native.dart';
 import 'qa_engine_abi.dart';
+
+/// Where the device's buffers come from, as one isolate tells another: its
+/// maker and its release, by their functions' addresses
+/// ([QaAudioDevice.buffers]). [audioBuffersHere] binds them.
+///
+/// 🚨A worker filling buffers for [QaAudioDevice.adoptSamples] takes them
+/// from the isolate that ADOPTS them: the release its lists' finalizer runs
+/// is that isolate's, and a worker's own probe can load another binary, or
+/// none — a test's path override is a static, and statics do not cross
+/// isolates (`TileBlocks`, the same shape for a tile's pixels).
+typedef AudioBuffers = ({int make, int release});
+
+/// What fills the device's buffers where [AudioBuffers] were sent: where a
+/// buffer comes from, and where it goes back when the work it was for
+/// fails.
+typedef AudioBufferHands = ({
+  Pointer<Float> Function(int floats) make,
+  void Function(Pointer<Float> samples) release,
+});
+
+/// [buffers] bound in the isolate they were sent to — whose [make] throws
+/// when the memory is not there, failing the work it was for whole.
+AudioBufferHands audioBuffersHere(AudioBuffers buffers) {
+  final make =
+      Pointer<NativeFunction<Pointer<Float> Function(Int64)>>.fromAddress(
+        buffers.make,
+      ).asFunction<Pointer<Float> Function(int)>();
+  final release =
+      Pointer<NativeFunction<Void Function(Pointer<Void>)>>.fromAddress(
+        buffers.release,
+      ).asFunction<void Function(Pointer<Void>)>();
+  return (
+    make: (floats) {
+      final samples = make(floats);
+      if (samples == nullptr) {
+        throw StateError('qa_audio_buffer_new failed for $floats floats');
+      }
+      return samples;
+    },
+    release: (samples) => release(samples.cast()),
+  );
+}
 
 /// The output device and the transport (audio program 2C).
 ///
@@ -102,11 +145,12 @@ final class QaAudioDevice {
       int,
     )
   >('qa_audio_device_set_schedule');
-  late final _bufferNew = _library
-      .lookupFunction<
-        Pointer<Float> Function(Int64),
-        Pointer<Float> Function(int)
-      >('qa_audio_buffer_new');
+  late final _bufferNewNative = _library
+      .lookup<NativeFunction<Pointer<Float> Function(Int64)>>(
+        'qa_audio_buffer_new',
+      );
+  late final _bufferNew = _bufferNewNative
+      .asFunction<Pointer<Float> Function(int)>();
   late final _bufferReleaseNative = _library
       .lookup<NativeFunction<Void Function(Pointer<Void>)>>(
         'qa_audio_buffer_release',
@@ -130,9 +174,10 @@ final class QaAudioDevice {
     'device buffers',
   );
   late final _play = _library
-      .lookupFunction<Int32 Function(Int64, Int64, Int32), int Function(int, int, int)>(
-        'qa_audio_device_play',
-      );
+      .lookupFunction<
+        Int32 Function(Int64, Int64, Int32, Int64),
+        int Function(int, int, int, int)
+      >('qa_audio_device_play');
   late final _stop = _library
       .lookupFunction<Void Function(), void Function()>('qa_audio_device_stop');
   late final _isPlaying = _library
@@ -222,7 +267,28 @@ final class QaAudioDevice {
     int channels = 2,
     bool useNullBackend = false,
     int deviceIndex = -1,
-  }) => _open(sampleRate, channels, useNullBackend ? 1 : 0, deviceIndex);
+  }) {
+    _onNullBackend |= useNullBackend;
+    // An open device answers its rate and opens nothing.
+    final opens = !isOpen;
+    final opened = _open(
+      sampleRate,
+      channels,
+      useNullBackend ? 1 : 0,
+      deviceIndex,
+    );
+    if (opens && opened > 0) {
+      _openedAtRate = sampleRate;
+    }
+    return opened;
+  }
+
+  /// Whether this device has been opened on the null backend — a bench's,
+  /// never the program's — so every open after it is on the null backend
+  /// too ([openAudioOutput]): 🚨a bench that hands a transport its null
+  /// device has it opened again AHEAD, by the program's own road
+  /// ([openAudioOutputAhead]), and that road must not find the speakers.
+  bool _onNullBackend = false;
 
   /// Enumerates output ([capture] false) or input devices, in the index
   /// order [open]'s `deviceIndex` refers to. Empty on any failure —
@@ -267,6 +333,61 @@ final class QaAudioDevice {
 
   void close() => _close();
   bool get isOpen => _isOpen() != 0;
+
+  /// The output setting [openAudioOutput] opened this device for — a name,
+  /// or null for the system default — while [isOpen]. An unattached name
+  /// opens the default and is still what it was opened for, so a changed
+  /// setting is told by this, whoever opened it: ↩️the transport kept a copy
+  /// of its own, and a device the scrubber or a cue had opened under a named
+  /// setting read to it as one to reopen.
+  String? get openedFor => _openedFor;
+  String? _openedFor;
+
+  /// The rate this device was asked to open at ([open]), while [isOpen] —
+  /// the rate a run's sound was conformed at, which an arm opens it at again
+  /// when it is another (`armAudioOutput`). Asked, not got: a backend that
+  /// gave another would otherwise be opened again at every arm.
+  int? get openedAtRate => _openedAtRate;
+  int? _openedAtRate;
+
+  /// Whether the output is being opened off this thread
+  /// ([openAudioOutputAhead]) — what an arm answers 「coming」 for
+  /// (`OutputComing`), rather than open it here again and wait for the
+  /// worker's open to let go of the C.
+  bool get isOpening => _opening != null;
+
+  /// The open under way off this thread, while [isOpening] — what a run
+  /// that waits for its output hears it come by.
+  Future<void>? get opening => _opening;
+  Future<void>? _opening;
+
+  /// Who keeps the output open: a session's transport from when it opens it
+  /// ahead — as its project opens (play-press-first-frame-stall-Q2 a) — or
+  /// first plays on it, and a cue while it sounds. ↩️Each transport closed
+  /// it as it went, under every other open project's next play.
+  final Set<Object> _keepers = {};
+
+  void keep(Object keeper) => _keepers.add(keeper);
+
+  /// [keeper] lets go, and the output closes once nobody keeps it — after
+  /// an open under way, which would otherwise leave it open and unkept.
+  void letGo(Object keeper) {
+    _keepers.remove(keeper);
+    final opening = _opening;
+    if (opening == null) {
+      _closeUnkept();
+    } else {
+      unawaited(opening.whenComplete(_closeUnkept));
+    }
+  }
+
+  void _closeUnkept() {
+    if (_keepers.isEmpty && isOpen) {
+      stop();
+      close();
+    }
+  }
+
   int get sampleRate => _sampleRate();
   int get channels => _channels();
 
@@ -281,9 +402,25 @@ final class QaAudioDevice {
   /// when the memory is not there.
   Float32List? newSamples(int floats) {
     final pointer = _bufferNew(floats);
-    if (pointer == nullptr) {
-      return null;
-    }
+    return pointer == nullptr ? null : _listOver(pointer, floats);
+  }
+
+  /// [newSamples]' maker and the release its lists' finalizer runs, by
+  /// address — for a worker that fills buffers this isolate adopts
+  /// ([audioBuffersHere], [adoptSamples]).
+  AudioBuffers get buffers => (
+    make: _bufferNewNative.address,
+    release: _bufferReleaseNative.address,
+  );
+
+  /// The [floats] samples a worker made with [buffers] and filled, at
+  /// [address] — the list over them, holding them as if [newSamples] had
+  /// made them here: the worker's hold is the list's now.
+  Float32List adoptSamples(int address, int floats) =>
+      _listOver(Pointer<Float>.fromAddress(address), floats);
+
+  /// The list over the buffer at [pointer], holding it until the list goes.
+  Float32List _listOver(Pointer<Float> pointer, int floats) {
     final samples = pointer.asTypedList(
       floats,
       finalizer: _bufferReleaseNative,
@@ -380,13 +517,17 @@ final class QaAudioDevice {
     return copy;
   }
 
-  /// Starts at [startSample]. [stopSample] is exclusive; pass a value at
-  /// or below the start for "no end".
+  /// Starts at [startSample], [leadSamples] of silence ahead of it — handed
+  /// and counted like any sample, so [positionSamples] starts that far
+  /// before [startSample] (`HeardOnTheDevice.leadFor` has why). [stopSample]
+  /// is exclusive; pass a value at or below the start for "no end". A loop
+  /// wraps to [startSample]: the lead is its first lap's alone.
   bool play({
     required int startSample,
     int stopSample = -1,
     bool looping = false,
-  }) => _play(startSample, stopSample, looping ? 1 : 0) != 0;
+    int leadSamples = 0,
+  }) => _play(startSample, stopSample, looping ? 1 : 0, leadSamples) != 0;
 
   void stop() => _stop();
   bool get isPlaying => _isPlaying() != 0;
@@ -512,6 +653,7 @@ int audioDeviceIndexByName(
   QaAudioDevice device, {
   required bool capture,
   required String? name,
+  bool useNullBackend = false,
 }) {
   // 🧪Mutating this guard away leaves every ANSWER unchanged — the loop
   // below finds no device named null and returns -1 anyway. It stays as an
@@ -520,7 +662,10 @@ int audioDeviceIndexByName(
   if (name == null) {
     return -1;
   }
-  final devices = device.devicesOf(capture: capture);
+  final devices = device.devicesOf(
+    capture: capture,
+    useNullBackend: useNullBackend,
+  );
   for (var index = 0; index < devices.length; index += 1) {
     if (devices[index].name == name) {
       return index;
@@ -529,17 +674,6 @@ int audioDeviceIndexByName(
   return -1;
 }
 
-/// Opens [device] on the output named [preferredName], falling back to the
-/// system default — true when the device is open afterwards.
-///
-/// 🚨The named device failed to open (unplugged mid-enumeration): fall
-/// back to the system default deliberately, never to silence (AUDIO-PRO
-/// R4). The retry only happens when a NAMED device was actually picked;
-/// a default that will not open has nowhere left to fall.
-///
-/// One sequence for the three callers that need a speaker — the playback
-/// transport, the scrub arm and the recording cue — which differ only in
-/// the rate, the channel count and where the name comes from.
 /// The device, unless a widget test is asking.
 ///
 /// 🚨★★★**A WIDGET TEST NEVER TOUCHES THE HARDWARE.** `flutter_tester`
@@ -563,12 +697,29 @@ QaAudioDevice? audioOutputUnlessTesting() =>
     ? null
     : QaAudioDevice.instance;
 
+/// Opens the closed [device] on the output named [preferredName], falling
+/// back to the system default — true when the device is open afterwards,
+/// for [preferredName] ([QaAudioDevice.openedFor]).
+///
+/// 🚨The named device failed to open (unplugged mid-enumeration): fall
+/// back to the system default deliberately, never to silence (AUDIO-PRO
+/// R4). The retry only happens when a NAMED device was actually picked;
+/// a default that will not open has nowhere left to fall.
+///
+/// One sequence for every caller that opens a speaker — the shared arm
+/// (`armAudioOutput`: the transport, the scrubber, the viewer), the
+/// recording cue and the open ahead ([openAudioOutputAhead]) — which differ
+/// only in the rate, the channel count and where the name comes from.
+///
+/// On the null backend where [device] has been on it — a worker's device
+/// told so by the open that hands it the work ([openAudioOutputAhead]).
 bool openAudioOutput(
   QaAudioDevice device, {
   required int sampleRate,
   required String? preferredName,
   int channels = 2,
 }) {
+  final onTheNullBackend = device._onNullBackend;
   final index = audioDeviceIndexByName(
     device,
     // 🧪MUTATION: flipping this to `capture: true` SURVIVES the suite —
@@ -579,11 +730,13 @@ bool openAudioOutput(
     // in `qa_audio_device_test` ("a name that exists only on one side").
     capture: false,
     name: preferredName,
+    useNullBackend: onTheNullBackend,
   );
   var opened = device.open(
     sampleRate: sampleRate,
     channels: channels,
     deviceIndex: index,
+    useNullBackend: onTheNullBackend,
   );
   // 🧪MUTATION: this retry SURVIVES the suite — never applied. Reaching it
   // needs a device that enumerates under a name and then REFUSES to open,
@@ -592,7 +745,97 @@ bool openAudioOutput(
   // opens. The reachable half — an unattached name falling back to the
   // default rather than to silence — is pinned in `qa_audio_device_test`.
   if (opened <= 0 && index >= 0) {
-    opened = device.open(sampleRate: sampleRate, channels: channels);
+    opened = device.open(
+      sampleRate: sampleRate,
+      channels: channels,
+      useNullBackend: onTheNullBackend,
+    );
   }
-  return opened > 0;
+  if (opened <= 0) {
+    return false;
+  }
+  device._openedFor = preferredName;
+  return true;
+}
+
+/// [openAudioOutput] on a worker, off the thread that draws — after closing
+/// [device] there when it is open for another output
+/// (play-press-first-frame-stall-Q1, 유저 10-15: 「프로젝트를 열면 미리
+/// 연다(UI 스레드 밖에서)」 — a first play's open held the UI thread for
+/// 63–272 ms). The device is one per process, so the output a worker opens
+/// is the one this isolate's [device] finds open.
+///
+/// One at a time: an open asked for while one is under way follows it, and
+/// an output already open for [preferredName] is left as it is — at any
+/// rate, unless [atThatRate]: an arm's, for a run whose sound was conformed
+/// at [sampleRate] (`armAudioOutput`). Ahead of a run the output is opened
+/// for the setting; only the run says what rate it plays at, and a tab
+/// opened at another rate would otherwise open it again for nothing.
+Future<void> openAudioOutputAhead(
+  QaAudioDevice device, {
+  required int sampleRate,
+  required String? preferredName,
+  bool atThatRate = false,
+}) {
+  final underWay = device._opening ?? Future<void>.value();
+  final opening = underWay.then(
+    (_) => _openAhead(
+      device,
+      sampleRate: sampleRate,
+      preferredName: preferredName,
+      atThatRate: atThatRate,
+    ),
+  );
+  device._opening = opening;
+  return opening.whenComplete(() {
+    if (identical(device._opening, opening)) {
+      device._opening = null;
+    }
+  });
+}
+
+Future<void> _openAhead(
+  QaAudioDevice device, {
+  required int sampleRate,
+  required String? preferredName,
+  required bool atThatRate,
+}) async {
+  if (device.isOpen &&
+      device._openedFor == preferredName &&
+      (!atThatRate || device._openedAtRate == sampleRate)) {
+    return;
+  }
+  final reopen = device.isOpen;
+  // A worker's device is its own, so it is told the one fact a bench's
+  // device carries ([QaAudioDevice._onNullBackend]).
+  final onTheNullBackend = device._onNullBackend;
+  bool opened;
+  try {
+    opened = await onAWorkerWithThisEngine(() {
+      final here = QaAudioDevice.instance;
+      if (here == null) {
+        return false;
+      }
+      here._onNullBackend = onTheNullBackend;
+      if (reopen) {
+        here
+          ..stop()
+          ..close();
+      }
+      return openAudioOutput(
+        here,
+        sampleRate: sampleRate,
+        preferredName: preferredName,
+      );
+    });
+  } on Object {
+    // A worker that could not open it leaves it as one that would not open:
+    // closed, and opened on the next arm.
+    opened = false;
+  }
+  if (opened) {
+    device
+      .._openedFor = preferredName
+      .._openedAtRate = sampleRate;
+  }
 }

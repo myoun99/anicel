@@ -583,7 +583,8 @@ typedef _ProjectionSweeps = ({
 /// ([trackCameraRowId]), the word its parts are keyed by, the word its key
 /// marks are, the layer it shows of a cut ([projectedRowOf]), and that
 /// layer's lanes there — every one of them, whatever the twirls: a lane row
-/// finds its own among them by id, in every cut.
+/// finds its own among them by id, in every cut — valued in that cut, the
+/// line a header graph draws of it there (I-89 ①).
 typedef _ProjectionLanes = ({
   LayerId rowId,
   String keyName,

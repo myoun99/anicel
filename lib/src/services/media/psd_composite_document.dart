@@ -43,6 +43,9 @@ final class PsdCompositeDocument implements ViewerDocument {
       ui.Size(_width.toDouble(), _height.toDouble());
 
   @override
+  bool get drawnAtAnySize => false;
+
+  @override
   Future<ui.Image> renderPage(
     int pageIndex, {
     required int width,

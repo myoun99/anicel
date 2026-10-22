@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
@@ -12,6 +13,8 @@ import 'package:anicel/src/ui/session/opacity_verbs.dart';
 import 'package:anicel/src/ui/session/standing.dart';
 import 'package:anicel/src/ui/session/visibility_solo.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 
 /// The rail legend's bulk commands (R-toolbar round): project-state sweeps
 /// (sheet/mark/fill-ref) land as ONE undo entry; the view-ish sweeps
@@ -40,6 +43,11 @@ void main() {
   LayerSwitchVerbs switches(EditorSessionManager s) => s.layerSwitches;
   LayerMarks marks(EditorSessionManager s) => s.layerMarks;
   OpacityVerbs opacity(EditorSessionManager s) => s.opacityVerbs;
+
+  /// The rows the bulk eyes answer for — not the camera, whose eye is the
+  /// camera view (F-363-Q2).
+  Iterable<Layer> eyeRows(EditorSessionManager s) =>
+      s.layers.where((layer) => layer.kind.hasPictureEye);
 
   test('setAllLayersOnTimesheet flips every cut-owned layer in ONE undo', () {
     final s = session();
@@ -166,16 +174,25 @@ void main() {
       drawing,
       enabled: !captured.transformEnabled,
     );
-    expect(switches(s).isLayerTransformOn(drawing), !captured.transformEnabled);
+    expect(
+      s.laneVerbs.isLaneGroupOn(drawing, transformGroupHeaderLane.laneId),
+      !captured.transformEnabled,
+    );
   });
 
-  test('visibility sweeps: hide all, show all', () {
+  test('visibility sweeps: hide all, show all — every row but the camera, '
+      'whose eye is the camera view (F-363-Q2)', () {
     final s = session();
+    bool cameraOn() =>
+        s.layers.firstWhere((l) => l.kind == LayerKind.camera).isVisible;
+    expect(cameraOn(), isTrue, reason: '⛔전제: the view is on');
+
     switches(s).setAllLayersVisibility(false);
-    expect(s.layers.every((layer) => !layer.isVisible), isTrue);
+    expect(eyeRows(s).every((layer) => !layer.isVisible), isTrue);
+    expect(cameraOn(), isTrue);
 
     switches(s).setAllLayersVisibility(true);
-    expect(s.layers.every((layer) => layer.isVisible), isTrue);
+    expect(eyeRows(s).every((layer) => layer.isVisible), isTrue);
   });
 
   test('visibility solo MODE flips REAL eyes, follows the active layer and '
@@ -198,20 +215,20 @@ void main() {
     final solo = visibilitySoloOf(s);
     solo.toggleLayerVisibilitySolo();
     expect(s.visibilitySolo.layerVisibilitySoloEnabled, isTrue);
-    for (final layer in s.layers) {
+    for (final layer in eyeRows(s)) {
       expect(layer.isVisible, layer.id == firstActive);
     }
 
     // Switching the active layer re-solos automatically.
     s.selectLayer(other);
-    for (final layer in s.layers) {
+    for (final layer in eyeRows(s)) {
       expect(layer.isVisible, layer.id == other);
     }
 
     // Exit: every eye returns to its snapshot state ('other' was hidden).
     solo.toggleLayerVisibilitySolo();
     expect(s.visibilitySolo.layerVisibilitySoloEnabled, isFalse);
-    for (final layer in s.layers) {
+    for (final layer in eyeRows(s)) {
       expect(layer.isVisible, layer.id != other);
     }
   });
@@ -225,7 +242,7 @@ void main() {
 
     final solo = visibilitySoloOf(s);
     solo.toggleLayerVisibilitySolo();
-    for (final layer in s.layers) {
+    for (final layer in eyeRows(s)) {
       expect(layer.isVisible, layer.id == activeId);
     }
 
@@ -277,6 +294,7 @@ void main() {
       for (final layer in s.layers)
         if (layer.kind.hasPictureOpacity) layer.id,
     };
+    final before = {for (final layer in s.layers) layer.id: layer.opacity};
     opacity(s).commitLayersOpacity(targets, 0.3);
     for (final layer in s.layers) {
       if (layer.kind.hasPictureOpacity) {
@@ -284,7 +302,7 @@ void main() {
       } else {
         // The camera's slider is the view dim, and the TRANSITION row is
         // read-only notation — neither has a picture opacity to write.
-        expect(layer.opacity, 1.0, reason: '${layer.kind}');
+        expect(layer.opacity, before[layer.id], reason: '${layer.kind}');
       }
     }
   });

@@ -8,6 +8,7 @@ library;
 import 'dart:collection';
 
 import '../core/mapped_or_same.dart';
+import '../core/signed_memo.dart';
 import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'cut.dart';
@@ -166,6 +167,26 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
   return timeline;
 }
 
+/// [layer] as a cut SHOWS it: a SYNCED attach row as its mirror of the base
+/// ([attachedDisplayLayer] — its stored timeline is empty by design), every
+/// other row as it is. A FREE attach row owns its timeline (UI-R21 #3), and
+/// a synced row whose base is gone has nothing to mirror.
+///
+/// 🚨F-183 ① (유저 2026-09-26): 「어태치 동기 레이어는 해당 레이어의
+/// 어니언스킨on해도 안보임. 어태치 프리는 보이는데」. The rows drew the
+/// mirror, and the onion skin planned from the stored row, found no exposure
+/// and drew no ghost — two readers of one row, one of them asking the wrong
+/// form. Both read this now.
+Layer attachedRowAsShown(Layer layer, List<Layer> cutLayers) {
+  if (!isSyncedAttachedLayer(layer)) {
+    return layer;
+  }
+  final base = attachedBaseOf(layer, cutLayers);
+  return base == null
+      ? layer
+      : attachedDisplayLayer(attached: layer, base: base);
+}
+
 /// The attach layer as a cut-local DISPLAY clone whose timeline mirrors the
 /// base through the cell links — the same read-via-display-clone pattern
 /// the track SE rows use: every read path (rows, selection, brush frame
@@ -188,38 +209,14 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
 /// comes out straight. Both inputs are immutable, so their identities are
 /// the whole key: a changed row or base is a new instance and misses, and
 /// a miss costs what every call cost before.
-/// [layer] as a cut SHOWS it: a SYNCED attach row as its mirror of the base
-/// ([attachedDisplayLayer] — its stored timeline is empty by design), every
-/// other row as it is. A FREE attach row owns its timeline (UI-R21 #3), and
-/// a synced row whose base is gone has nothing to mirror.
-///
-/// 🚨F-183 ① (유저 2026-09-26): 「어태치 동기 레이어는 해당 레이어의
-/// 어니언스킨on해도 안보임. 어태치 프리는 보이는데」. The rows drew the
-/// mirror, and the onion skin planned from the stored row, found no exposure
-/// and drew no ghost — two readers of one row, one of them asking the wrong
-/// form. Both read this now.
-Layer attachedRowAsShown(Layer layer, List<Layer> cutLayers) {
-  if (!isSyncedAttachedLayer(layer)) {
-    return layer;
-  }
-  final base = attachedBaseOf(layer, cutLayers);
-  return base == null
-      ? layer
-      : attachedDisplayLayer(attached: layer, base: base);
-}
-
-Layer attachedDisplayLayer({required Layer attached, required Layer base}) {
-  final made = _displayClones[attached];
-  if (made != null && identical(made.base, base)) {
-    return made.display;
-  }
-  final display = attached.copyWith(
-    timeline: attachedDisplayTimeline(attached: attached, base: base),
-  );
-  _displayClones[attached] = (base: base, display: display);
-  _mirroredBases[display] = base;
-  return display;
-}
+Layer attachedDisplayLayer({required Layer attached, required Layer base}) =>
+    _displayClones.resolve(attached, base, () {
+      final display = attached.copyWith(
+        timeline: attachedDisplayTimeline(attached: attached, base: base),
+      );
+      _mirroredBases[display] = base;
+      return display;
+    });
 
 /// The base a clone [attachedDisplayLayer] made mirrors — null for every
 /// other layer.
@@ -233,10 +230,11 @@ Layer? attachedDisplayBaseOf(Layer display) => _mirroredBases[display];
 /// The base each clone mirrors, held weakly like the clones themselves.
 final Expando<Layer> _mirroredBases = Expando('attached display base');
 
-/// The last clone made of each attach row instance, with the base instance
-/// it mirrored — held weakly, so it goes when the row instance does.
-final Expando<({Layer base, Layer display})> _displayClones = Expando(
+/// The last clone made of each attach row instance, by the base instance it
+/// mirrored — held weakly, so it goes when the row instance does.
+final SignedMemo<Layer, Layer> _displayClones = SignedMemo(
   'attached display clone',
+  same: identical,
 );
 
 /// The mirror cel id a SYNCED attach row uses for [baseFrameId] (UI-R23 #7
@@ -480,16 +478,23 @@ List<Layer> attachedGroupMembers(LayerId baseId, List<Layer> layers) {
 /// 생성되기도함. A랑 A-2만 있을때 추가하면 A-2가 만들어짐 … ABCD라는 이름을
 /// 나눠쓰는 규칙 그대로 쓰면서 통일할거 통일해서 제대로 순서대로 생성하도록」.
 /// ↩️The number was the side's COUNT plus one, so a side that had lost a
-/// row handed out a name still in use. It is the first one no row of
-/// [layers] wears (`firstUnusedLayerName`) — the cels' own rule, and the
+/// row handed out a name still in use. It is the first one no attach row
+/// of [base] wears (`firstUnusedName`) — the cels' own rule, and the
 /// fifth row kind to name itself by it: A with A-2 gets A-1.
+///
+/// 🗣️F-397 (유저 2026-10-18): 「-1을 붙이거나 -1이 있으면 -2를 붙이는
+/// 이름규칙이 기준 레이어의 어태치상태만을 보도록. 지금 BOOK이라는
+/// 이미지레이어가 여러개있고 … BOOK이라는 어태치가 아무것도 없는 레이어에
+/// 어태치추가시 BOOK-5로 명명되길래 발견했음」. ↩️F-292 read every row of
+/// [layers]: image rows after BG all wear BOOK, so each one's attach rows
+/// took the numbers from the next one's.
 String nextAttachedLayerName(
   Layer base,
   List<Layer> layers,
   AttachedPlacement placement,
 ) => attachedLayerNameAmong(
   base.name,
-  {for (final layer in layers) layer.name},
+  {for (final layer in attachedLayersOf(base.id, layers)) layer.name},
   placement,
 );
 

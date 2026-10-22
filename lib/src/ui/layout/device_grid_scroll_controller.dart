@@ -1,6 +1,7 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import '../timeline/axis_turn.dart' show offsetAlong;
 import 'device_grid.dart';
 import 'render_shifted_child.dart';
 
@@ -331,7 +332,7 @@ class _RenderLandedOnTheGrid extends RenderProxyBox
 
   Offset get _translation {
     final moved = movedAt(singleScrollPixelsOf(controller) ?? 0.0);
-    return axis == Axis.horizontal ? Offset(moved, 0) : Offset(0, moved);
+    return offsetAlong(axis, along: moved, across: 0);
   }
 
   @override

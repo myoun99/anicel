@@ -19,7 +19,9 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show defaultCutCanvasSize;
@@ -67,6 +69,7 @@ const toolSettingsButtons = [
   EditorActionIds.cutStampReset,
   EditorActionIds.cutStampRegisterTip,
   EditorActionIds.guideAddVanishingPoint,
+  EditorActionIds.guideRasterize,
   EditorActionIds.textCentreAcross,
   EditorActionIds.textCentreDown,
   EditorActionIds.textIntoDrawing,
@@ -140,6 +143,7 @@ Future<PanelKeys> pumpToolSettings(
   CutGuides? guides,
   GuideId? selectedGuideId,
   ValueChanged<CutGuides>? onGuidesCommitted,
+  ValueChanged<DrawingGuide>? onGuideRasterized,
   EditorShortcutBindings? shortcuts,
 }) async {
   await tester.binding.setSurfaceSize(const Size(400, 1000));
@@ -160,6 +164,7 @@ Future<PanelKeys> pumpToolSettings(
       selectedGuideId: selectedGuideId,
       onGuidesCommitted: onGuidesCommitted,
       onGuidesPreview: (_) {},
+      onGuideRasterized: onGuideRasterized,
     ),
   );
   if (shortcuts != null) {
@@ -237,6 +242,14 @@ DrawingGuide perspectiveGuide(String id, {required int points}) =>
       ),
     );
 
+DrawingGuide symmetryGuide() => DrawingGuide(
+  id: const GuideId('s1'),
+  name: 's1',
+  shape: SymmetryShape(
+    axis: GuideAxis(origin: CanvasPoint(x: 50, y: 50), angleDegrees: 90),
+  ),
+);
+
 void main() {
   setUp(() => _held = null);
 
@@ -297,7 +310,7 @@ void main() {
       );
       expect(
         editorActionLabel(EditorActionIds.guideAddSymmetry),
-        '대칭 가이드 추가',
+        '새 대칭 가이드',
       );
       expect(editorActionLabel(EditorActionIds.mediaPoolImport), '임포트…');
       expect(editorActionLabel(EditorActionIds.timesheetFormat), '타임시트 서식…');
@@ -320,7 +333,8 @@ void main() {
           '원래 위치에 붙여넣기',
           '스탬프 초기화',
           '팁으로 등록…',
-          '소실점 추가',
+          '새 소실점',
+          '래스터라이즈',
           '가로 가운데',
           '세로 가운데',
           '래스터라이즈',
@@ -537,6 +551,27 @@ void main() {
       }
     });
 
+    testWidgets('🎯its two walls are two keys: in the canvas, it stops at '
+        'the canvas\'s edge (I-108)', (tester) async {
+      await pumpHome(tester);
+      final workspace = tester.widget<EditorWorkspace>(
+        find.byType(EditorWorkspace),
+      );
+      final commands = workspace.canvasSelectionCommands!;
+      final canvas = workspace.session.requireActiveCut.canvasSize;
+
+      await pressKeyOf(
+        tester,
+        EditorActionIds.selectionInvertInCanvas,
+        settle: false,
+      );
+
+      expect(
+        commands.region,
+        CanvasSelectionRegion.invertedWithin(null, canvas.canvasRect),
+      );
+    });
+
     testWidgets('🚨the transform\'s flips and 초기화 — at the foot of a list '
         'that has not built them: a key presses the SECTION\'s buttons, '
         'wherever the list stands — and dead while the layer may not be '
@@ -615,8 +650,8 @@ void main() {
       expect((pastes, tips), (1, 1), reason: 'nothing held: no buttons');
     });
 
-    testWidgets('the perspective\'s ＋ adds a vanishing point — none at '
-        'three, and none for a symmetry guide', (tester) async {
+    testWidgets('the perspective\'s ＋ adds a vanishing point — at three as '
+        'at two, and none for a symmetry guide', (tester) async {
       CutGuides? committed;
       final perspective = perspectiveGuide('p1', points: 2);
       final keys = await pumpToolSettings(
@@ -634,35 +669,32 @@ void main() {
           (committed!.guideFor(perspective.id)!.shape as PerspectiveShape)
               .vanishingPoints;
       expect(points, hasLength(3));
-      expect(points.last, VanishingPointTowards(dx: 0, dy: 1));
+      // On the eye level beside its handle at (50, 50) (Q7).
+      expect(points.last, VanishingPointAt(CanvasPoint(x: 470, y: 50)));
 
       committed = null;
-      final full = perspectiveGuide('p1', points: 3);
+      final three = perspectiveGuide('p1', points: 3);
       final atThree = await pumpToolSettings(
         tester,
         tool: CanvasTool.guide,
-        guides: CutGuides(guides: [full]),
-        selectedGuideId: full.id,
+        guides: CutGuides(guides: [three]),
+        selectedGuideId: three.id,
         onGuidesCommitted: (next) => committed = next,
       );
       atThree.press(EditorActionIds.guideAddVanishingPoint, CanvasTool.guide);
-      expect(committed, isNull);
-
-      final symmetry = DrawingGuide(
-        id: const GuideId('s1'),
-        name: 's1',
-        shape: SymmetryShape(
-          axis: GuideAxis(
-            origin: CanvasPoint(x: 50, y: 50),
-            angleDegrees: 90,
-          ),
-        ),
+      expect(
+        (committed!.guideFor(three.id)!.shape as PerspectiveShape)
+            .vanishingPoints,
+        hasLength(4),
+        reason: '↩️it stopped at three until 2026-10-16',
       );
+
+      committed = null;
       final onSymmetry = await pumpToolSettings(
         tester,
         tool: CanvasTool.guide,
-        guides: CutGuides(guides: [symmetry]),
-        selectedGuideId: symmetry.id,
+        guides: CutGuides(guides: [symmetryGuide()]),
+        selectedGuideId: const GuideId('s1'),
         onGuidesCommitted: (next) => committed = next,
       );
       onSymmetry.press(
@@ -670,6 +702,45 @@ void main() {
         CanvasTool.guide,
       );
       expect(committed, isNull);
+    });
+
+    testWidgets('the perspective\'s 래스터라이즈 hands the guide over — none '
+        'for a symmetry guide, and none where nothing takes it', (
+      tester,
+    ) async {
+      final handed = <DrawingGuide>[];
+      final perspective = perspectiveGuide('p1', points: 2);
+      final keys = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.guide,
+        guides: CutGuides(guides: [perspective]),
+        selectedGuideId: perspective.id,
+        onGuideRasterized: handed.add,
+      );
+
+      keys.press(EditorActionIds.guideRasterize, CanvasTool.brush);
+      expect(handed, isEmpty, reason: 'another tool in hand');
+      keys.press(EditorActionIds.guideRasterize, CanvasTool.guide);
+      expect(handed, [perspective]);
+
+      final onSymmetry = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.guide,
+        guides: CutGuides(guides: [symmetryGuide()]),
+        selectedGuideId: const GuideId('s1'),
+        onGuideRasterized: handed.add,
+      );
+      onSymmetry.press(EditorActionIds.guideRasterize, CanvasTool.guide);
+      expect(handed, hasLength(1));
+
+      final untaken = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.guide,
+        guides: CutGuides(guides: [perspective]),
+        selectedGuideId: perspective.id,
+      );
+      untaken.press(EditorActionIds.guideRasterize, CanvasTool.guide);
+      expect(handed, hasLength(1));
     });
 
     testWidgets('다각형 닫기 and 적용 are 확정\'s own halves: they wear its '
@@ -701,6 +772,32 @@ void main() {
       expect(
         tooltipOf(tester, 'selection-close-polygon-button'),
         'Close shape (Enter)',
+      );
+    });
+
+    testWidgets('🎯the two inverts are two buttons of two actions: a key '
+        'recorded for the one in the canvas joins ITS name (I-108)', (
+      tester,
+    ) async {
+      final shortcuts = EditorShortcutBindings();
+      await pumpToolSettings(
+        tester,
+        tool: CanvasTool.select,
+        selectionCommands: selectionChannel(),
+        shortcuts: shortcuts,
+      );
+      shortcuts.setActivators(EditorActionIds.selectionInvertInCanvas, const [
+        SingleActivator(k),
+      ]);
+      await tester.pump();
+
+      expect(
+        tooltipOf(tester, 'selection-invert-in-canvas-button'),
+        'Invert Selection in Canvas (K)',
+      );
+      expect(
+        tooltipOf(tester, 'selection-invert-button'),
+        isNot(contains('(K)')),
       );
     });
   });

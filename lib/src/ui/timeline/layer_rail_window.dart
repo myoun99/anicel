@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../layout/render_shifted_child.dart';
+import '../text/app_strings.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart';
 import 'axis_turn.dart';
@@ -30,6 +31,7 @@ import 'layer_rail_columns.dart';
 import 'memo_token.dart' show KeptPiece;
 import 'timeline_grid_metrics.dart';
 import '../input/control_press_claim.dart';
+import '../input/pan_slide.dart';
 
 /// The narrowest window the user can drag to: the leading cluster (the
 /// section band and every control slot before the name) plus enough of the
@@ -280,24 +282,59 @@ class LayerRailWindow extends StatelessWidget {
       availableExtent: availableExtent,
     );
     final content = math.max(naturalExtent, windowExtent);
-    // Per-pixel pushes move the paint offset only — the rail's own subtree
-    // is handed through as the builder's stable child and never rebuilds.
-    return ValueListenableBuilder<double>(
-      valueListenable: rail.offset,
-      child: child,
-      builder: (context, value, child) => _RailWindowBox(
-        axis: axis,
-        windowExtent: windowExtent,
-        naturalExtent: content,
-        offset: LayerRailExtent.clampOffset(
-          value,
+    // A pan that starts here pushes this window, not the frames beside it
+    // (F-351: 「레이어쪽을 잡으면 레이어영역이 팬 작동하도록」).
+    return PanSlideRegion(
+      slide: _WindowSlide(this),
+      // Per-pixel pushes move the paint offset only — the rail's own
+      // subtree is handed through as the builder's stable child and never
+      // rebuilds.
+      child: ValueListenableBuilder<double>(
+        valueListenable: rail.offset,
+        child: child,
+        builder: (context, value, child) => _RailWindowBox(
+          axis: axis,
           windowExtent: windowExtent,
           naturalExtent: content,
+          offset: LayerRailExtent.clampOffset(
+            value,
+            windowExtent: windowExtent,
+            naturalExtent: content,
+          ),
+          child: child,
         ),
-        child: child,
       ),
     );
   }
+}
+
+/// [window] as a pan moves it: pushed along the rail by the push its
+/// scrollbar makes ([LayerRailExtent.pushTo]).
+class _WindowSlide implements PanSlide {
+  const _WindowSlide(this.window);
+
+  final LayerRailWindow window;
+
+  @override
+  Axis get axis => window.axis;
+
+  @override
+  bool get canSlide =>
+      LayerRailExtent.maximumOffset(
+        windowExtent: window.rail.windowExtent(
+          window.naturalExtent,
+          availableExtent: window.availableExtent,
+        ),
+        naturalExtent: window.naturalExtent,
+      ) >
+      0;
+
+  @override
+  void slideWithHand(Offset delta) => window.rail.pushTo(
+    window.rail.offset.value - partAlong(axis, delta),
+    naturalExtent: window.naturalExtent,
+    availableExtent: window.availableExtent,
+  );
 }
 
 class _RailWindowBox extends SingleChildRenderObjectWidget {
@@ -402,8 +439,7 @@ class _RenderRailWindowBox extends RenderShiftedBox
   bool get _horizontal => _axis == Axis.horizontal;
 
   /// Where the child paints relative to the window's origin.
-  Offset get _shift =>
-      _horizontal ? Offset(-_railOffset, 0) : Offset(0, -_railOffset);
+  Offset get _shift => offsetAlong(_axis, along: -_railOffset, across: 0);
 
   BoxConstraints _childConstraints(BoxConstraints constraints) => _horizontal
       ? BoxConstraints(
@@ -421,9 +457,11 @@ class _RenderRailWindowBox extends RenderShiftedBox
 
   Size _windowSize(BoxConstraints constraints, Size childSize) =>
       constraints.constrain(
-        _horizontal
-            ? Size(_windowExtent, childSize.height)
-            : Size(childSize.width, _windowExtent),
+        sizeAlong(
+          _axis,
+          along: _windowExtent,
+          across: extentAcross(_axis, childSize),
+        ),
       );
 
   @override
@@ -447,7 +485,7 @@ class _RenderRailWindowBox extends RenderShiftedBox
     final child = this.child;
     if (child == null) {
       return constraints.constrain(
-        _horizontal ? Size(_windowExtent, 0) : Size(0, _windowExtent),
+        sizeAlong(_axis, along: _windowExtent, across: 0),
       );
     }
     return _windowSize(
@@ -461,7 +499,7 @@ class _RenderRailWindowBox extends RenderShiftedBox
     final child = this.child;
     if (child == null) {
       size = constraints.constrain(
-        _horizontal ? Size(_windowExtent, 0) : Size(0, _windowExtent),
+        sizeAlong(_axis, along: _windowExtent, across: 0),
       );
       return;
     }
@@ -531,7 +569,7 @@ class LayerRailSplitter extends KeptPiece {
   @override
   Widget buildKept(BuildContext context) {
     return DockEdgeSplitter(
-      axis: axis == Axis.horizontal ? Axis.vertical : Axis.horizontal,
+      axis: flipAxis(axis),
       onDragDelta: (delta) => extent.resizeBy(
         delta,
         naturalExtent: naturalExtent,
@@ -571,8 +609,14 @@ class TimelineSecondsToggleCorner extends KeptPiece {
     if (onChanged == null) {
       return SizedBox(width: width, height: height);
     }
+    final strings = AppText.strings;
+    // 🗣️I-102 (유저 2026-10-15): 「초+코마 표시 토글버튼 로컬라이즈
+    // 안되있으니 해주고」 — the display a press turns to, in the words the
+    // frame-count entry names the two displays by.
     return AppTooltip(
-      message: showSeconds ? 'Show Frames' : 'Show Seconds',
+      message: showSeconds
+          ? strings.frameCountEntryFrames
+          : strings.frameCountEntrySecondsPlusFrames,
       child: ControlPressClaim(
         onPressed: () => onChanged(!showSeconds),
         child: InkWell(
@@ -639,18 +683,18 @@ class LayerRailScrollbar extends KeptPiece {
 
   @override
   Widget buildKept(BuildContext context) {
-    final horizontal = axis == Axis.horizontal;
     final windowExtent = rail.windowExtent(
       naturalExtent,
       availableExtent: availableExtent,
     );
     final content = math.max(naturalExtent, windowExtent);
-    return SizedBox(
+    return sizedAlong(
+      axis,
       key: ValueKey<String>('$keyPrefix-rail-scrollbar'),
       // The bar is exactly as long as the window it drives, so it sits
       // under the rail and stops at the splitter.
-      width: horizontal ? windowExtent : laneExtent,
-      height: horizontal ? laneExtent : windowExtent,
+      along: windowExtent,
+      across: laneExtent,
       // No hairline anywhere on this lane, and no fill either since F-73 ②
       // (유저 2026-09-11: 「…그냥 투명하게 할수는없나?」). It used to be the
       // level BELOW the rail rows — "a lane is a groove, not a panel" — and

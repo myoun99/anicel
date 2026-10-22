@@ -53,26 +53,32 @@ Positioned placedAlong(
       );
 
 /// A stack child spanning the WHOLE main axis at [across] — a row's strip.
+/// [fromEnd] measures [across] from the far side instead (a lane laid along
+/// a panel's bottom, a caret after a row); with no [acrossExtent] the strip
+/// is as thick as its child. [alongStart] holds the strip's near end off the
+/// main axis's start: a drop's line on a rail row starts past the row's
+/// leading slot, which the section band is painted over (F-423②).
 Positioned stripAcross(
   Axis axis, {
   required double across,
-  required double acrossExtent,
+  double? acrossExtent,
+  double alongStart = 0,
   required Widget child,
-}) => axis == Axis.horizontal
-    ? Positioned(
-        left: 0,
-        right: 0,
-        top: across,
-        height: acrossExtent,
-        child: child,
-      )
-    : Positioned(
-        top: 0,
-        bottom: 0,
-        left: across,
-        width: acrossExtent,
-        child: child,
-      );
+  bool fromEnd = false,
+  Key? key,
+}) {
+  final horizontal = axis == Axis.horizontal;
+  return Positioned(
+    key: key,
+    left: horizontal ? alongStart : (fromEnd ? null : across),
+    right: horizontal ? 0 : (fromEnd ? across : null),
+    top: horizontal ? (fromEnd ? null : across) : alongStart,
+    bottom: horizontal ? (fromEnd ? across : null) : 0,
+    width: horizontal ? null : acrossExtent,
+    height: horizontal ? acrossExtent : null,
+    child: child,
+  );
+}
 
 /// A stack child spanning the WHOLE cross axis at [along] — a grip line at
 /// a frame. [fromEnd] measures [along] from the strip's far end instead
@@ -124,9 +130,10 @@ SizedBox sizedAlong(
   required double along,
   required double across,
   Widget? child,
+  Key? key,
 }) => axis == Axis.horizontal
-    ? SizedBox(width: along, height: across, child: child)
-    : SizedBox(width: across, height: along, child: child);
+    ? SizedBox(key: key, width: along, height: across, child: child)
+    : SizedBox(key: key, width: across, height: along, child: child);
 
 /// A painter's box measured ALONG [axis] — the strip's length. The painter
 /// twin of [alongBox]: every `paint(canvas, size)` that serves both
@@ -138,6 +145,20 @@ double extentAlong(Axis axis, Size size) =>
 double extentAcross(Axis axis, Size size) =>
     axis == Axis.horizontal ? size.height : size.width;
 
+/// The part of a movement — or of a point — that runs ALONG [axis]: what
+/// moves a scroller on that axis, where a press stands on the strip. The
+/// offset twin of [extentAlong]: every gesture and painter that serves both
+/// orientations used to spell `horizontal ? delta.dx : delta.dy` by hand
+/// (card one-axis-part-of-an-offset-is-one-function — thirty lines on
+/// 2026-10-17; `one_axis_turn_test` holds them at none).
+double partAlong(Axis axis, Offset offset) =>
+    axis == Axis.horizontal ? offset.dx : offset.dy;
+
+/// The part of a movement — or of a point — that runs ACROSS [axis]: which
+/// row a press stands on, how far a drag has left its strip.
+double partAcross(Axis axis, Offset offset) =>
+    axis == Axis.horizontal ? offset.dy : offset.dx;
+
 /// A canvas point [along] the axis and [across] it — the painter twin of
 /// [placedAlong]. Called per bucket in the waveform loop, so it is a
 /// top-level one-expression function and not a per-paint closure.
@@ -146,3 +167,49 @@ Offset offsetAlong(
   required double along,
   required double across,
 }) => axis == Axis.horizontal ? Offset(along, across) : Offset(across, along);
+
+/// A size [along] the axis and [across] it — the measured twin of
+/// [sizedAlong], for a render box's own size and a painter's.
+Size sizeAlong(Axis axis, {required double along, required double across}) =>
+    axis == Axis.horizontal ? Size(along, across) : Size(across, along);
+
+/// The rect spanning [along] along [axis] and [across] across it — a cell,
+/// a block, a band. A span is its two edges, not a start and an extent: a
+/// caller holding those adds them, which is the sum `Rect.fromLTWH` makes
+/// itself, so the edge lands where it did. (card
+/// values-built-by-the-axis-are-one-function — this, the edges below and
+/// the other builds were sixty-three lines by hand on 2026-10-17;
+/// `one_axis_turn_test` holds them at its ledger's three.)
+Rect rectAlong(
+  Axis axis, {
+  required ({double from, double to}) along,
+  required ({double from, double to}) across,
+}) => axis == Axis.horizontal
+    ? Rect.fromLTRB(along.from, across.from, along.to, across.to)
+    : Rect.fromLTRB(across.from, along.from, across.to, along.to);
+
+/// Where [rect] begins along [axis]: its left on a strip that runs across,
+/// its top on one that runs down.
+double startAlong(Axis axis, Rect rect) =>
+    axis == Axis.horizontal ? rect.left : rect.top;
+
+/// Where [rect] ends along [axis].
+double endAlong(Axis axis, Rect rect) =>
+    axis == Axis.horizontal ? rect.right : rect.bottom;
+
+/// Where [rect] begins across [axis].
+double startAcross(Axis axis, Rect rect) =>
+    axis == Axis.horizontal ? rect.top : rect.left;
+
+/// Where [rect] ends across [axis].
+double endAcross(Axis axis, Rect rect) =>
+    axis == Axis.horizontal ? rect.bottom : rect.right;
+
+/// The middle of the edge [axis] runs from — where a strip's run begins, a
+/// fade sets off.
+Alignment centerStartAlong(Axis axis) =>
+    axis == Axis.horizontal ? Alignment.centerLeft : Alignment.topCenter;
+
+/// The middle of the edge [axis] runs to.
+Alignment centerEndAlong(Axis axis) =>
+    axis == Axis.horizontal ? Alignment.centerRight : Alignment.bottomCenter;

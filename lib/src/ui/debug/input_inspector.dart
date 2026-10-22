@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart';
 
 import '../../native/qa_tablet_bridge.dart' show QaPenRawState, QaTabletPacket;
+import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../../services/input/platform_pen_channel_service.dart';
 import '../../services/input/raw_pen_input_service.dart';
@@ -49,11 +50,10 @@ abstract final class InputInspector {
   /// The table and the gate write theirs through [KeyTrace], which this
   /// plugs in while shown.
   static void _watchKeys() {
-    final keyboard = HardwareKeyboard.instance;
-    keyboard.removeHandler(_noteKey);
+    HardwareKeyboard.instance.removeHandler(_noteKey);
     KeyTrace.sink = null;
     if (visible.value) {
-      keyboard.addHandler(_noteKey);
+      HardwareKeyboard.instance.addHandler(_noteKey);
       KeyTrace.sink = note;
     }
   }
@@ -62,7 +62,7 @@ abstract final class InputInspector {
     if (event is! KeyUpEvent) {
       final focus = FocusManager.instance.primaryFocus;
       final held = [
-        for (final key in HardwareKeyboard.instance.logicalKeysPressed)
+        for (final key in ModifierKeys.keyboard.logicalKeysPressed)
           key.debugName ?? key.keyLabel,
       ];
       note(
@@ -112,7 +112,17 @@ abstract final class InputInspector {
   ///
   /// ⚠️Deliberately NOT gated on [visible]: a counter that stops counting
   /// when you stop looking cannot answer the question it exists for.
+  ///
+  /// ⚠️ONE gate stands ahead of it: the binding keeps a pen's echo out
+  /// before any listener hears it (F-400), and counts it in [echoes].
   static int arrivals = 0;
+
+  /// F-400: the events the binding kept out as a pen's echo — a mouse's
+  /// hovers and presses while a pen is in range on Windows. Counted where
+  /// they are dropped, ahead of [arrivals], so a `mouse hover` row that
+  /// stopped coming says whether Windows stopped sending it or the app kept
+  /// it out. Not gated on [visible], for the reason [arrivals] is not.
+  static int echoes = 0;
 
   /// PEN-10: probe lines, ONE SLOT PER EMITTER — keyed by the line's first
   /// token (`aim`·`buf`·`geom`·`cmp`·`stack`·`tl`…), the latest line per
@@ -256,6 +266,7 @@ abstract final class InputInspector {
     peakPressure = 0;
     touchDownCount = 0;
     arrivals = 0;
+    echoes = 0;
     notes.clear();
     _bumpRevision();
   }
@@ -609,7 +620,9 @@ class _InspectorCard extends StatelessWidget {
                     // still too, delivery to this host has stopped. That
                     // one distinction is what the card could not make
                     // while it was the thing being diagnosed.
-                    ' seen=${InputInspector.arrivals}',
+                    ' seen=${InputInspector.arrivals}'
+                    // F-400: and what the binding kept out ahead of it.
+                    ' echo=${InputInspector.echoes}',
                     key: const ValueKey<String>('input-inspector-touch-count'),
                     style: rowStyle.copyWith(color: _inspectorSecondInk),
                   ),

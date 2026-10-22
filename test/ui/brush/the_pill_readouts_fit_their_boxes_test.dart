@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 import '../../helpers/app_faces.dart';
@@ -19,17 +20,26 @@ import '../../helpers/canvas_pill.dart';
 /// UDPGothic from the bundle's own file and measures with the style the
 /// mounted readout really carries (the theme's letter spacing included —
 /// it is 2px of a box that has 3px to spare).
+///
+/// 🚨And under the app's own theme, so the pill measures its boxes in that
+/// face too. Without it the pill measured them in the test font's squares,
+/// wider than any number in BIZ UDPGothic, and this pin held whatever the
+/// measuring did (found by mutation, F-383).
 void main() {
-  double widthOf(String text, TextStyle style) {
+  double widthOf(
+    String text,
+    TextStyle style, [
+    TextScaler scaler = TextScaler.noScaling,
+  ]) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
+      textScaler: scaler,
     )..layout();
     return painter.width;
   }
 
-  testWidgets('🚨the widest zoom and the widest angle fit their boxes in the '
-      'app\'s own face', (tester) async {
+  Future<void> pumpPanel(WidgetTester tester, CanvasSize canvasSize) async {
     tester.view.devicePixelRatio = 1.0;
     tester.view.physicalSize = const Size(1600, 1200);
     addTearDown(tester.view.reset);
@@ -38,55 +48,66 @@ void main() {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildAppTheme(),
         home: Scaffold(
           body: BrushCanvasPanel(
             coordinator: BrushCanvasFixture.createCoordinator(
               frameKeys: frameKeys,
-              canvasSize: const CanvasSize(width: 300, height: 300),
+              canvasSize: canvasSize,
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             floorCover: EdgeInsets.zero,
-            canvasSize: const CanvasSize(width: 300, height: 300),
+            canvasSize: canvasSize,
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  /// The box a readout was given, and the style and the scale its text is
+  /// painted in — read off the mounted widgets, so the pin follows the pill.
+  ({double box, TextStyle style, TextScaler scaler}) readout(
+    WidgetTester tester,
+    String key,
+  ) {
+    final label = find.ancestor(
+      of: find.byKey(ValueKey<String>(key)),
+      matching: find.byType(DragValueLabel),
+    );
+    // The FACE's writing — not its pencil's glyph beside it.
+    final painted = tester.widget<RichText>(
+      find.descendant(
+        of: find.byKey(ValueKey<String>(key)),
+        matching: find.byType(RichText),
+      ),
+    );
+    return (
+      box: tester.widget<DragValueLabel>(label).width,
+      style: painted.text.style!,
+      scaler: painted.textScaler,
+    );
+  }
+
+  /// The widest digit, measured rather than assumed (`1` is the narrow one
+  /// in this face; the rest are tabular).
+  String widestDigitIn(TextStyle style) => '0123456789'
+      .split('')
+      .reduce((a, b) => widthOf(a, style) >= widthOf(b, style) ? a : b);
+
+  testWidgets('🚨the widest zoom and the widest angle fit their boxes in the '
+      'app\'s own face', (tester) async {
+    await pumpPanel(tester, const CanvasSize(width: 300, height: 300));
     if (!tester.any(
       find.byKey(const ValueKey<String>('canvas-viewport-rotation-label')),
     )) {
       await openViewSettings(tester);
     }
 
-    /// The box a readout was given, and the style its text is painted in —
-    /// read off the mounted widgets, so the pin follows the pill.
-    ({double box, TextStyle style}) readout(String key) {
-      final label = find.ancestor(
-        of: find.byKey(ValueKey<String>(key)),
-        matching: find.byType(DragValueLabel),
-      );
-      // The FACE's writing — not its pencil's glyph beside it.
-      final painted = tester.widget<RichText>(
-        find.descendant(
-          of: find.byKey(ValueKey<String>(key)),
-          matching: find.byType(RichText),
-        ),
-      );
-      return (
-        box: tester.widget<DragValueLabel>(label).width,
-        style: painted.text.style!.copyWith(fontFamily: 'BIZ UDPGothic'),
-      );
-    }
-
-    final zoom = readout('canvas-viewport-zoom-label');
-    final angle = readout('canvas-viewport-rotation-label');
-
-    // The widest digit, measured rather than assumed (`1` is the narrow
-    // one in this face; the rest are tabular).
-    final widest = '0123456789'
-        .split('')
-        .reduce((a, b) => widthOf(a, zoom.style) >= widthOf(b, zoom.style) ? a : b);
+    final zoom = readout(tester, 'canvas-viewport-zoom-label');
+    final angle = readout(tester, 'canvas-viewport-rotation-label');
+    final widest = widestDigitIn(zoom.style);
     expect(
       widthOf('8', zoom.style),
       isNot(widthOf('8', zoom.style.copyWith(fontFamily: 'FlutterTest'))),
@@ -105,6 +126,71 @@ void main() {
     );
     expect(
       widthOf(widestAngle, angle.style),
+      lessThanOrEqualTo(angle.box),
+      reason: '"$widestAngle" does not fit the angle readout\'s ${angle.box}px',
+    );
+  });
+
+  testWidgets('🚨at twice the OS text size the widest zoom and the widest '
+      'angle still fit their boxes — there each box is what that number '
+      'measures, past the width drawn for it at 1× — the angle in the '
+      'settings list, which shows its row whole', (tester) async {
+    // text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
+    // 따라 자란다」). On a canvas this wide the zoom stays on the pill and
+    // the angle goes to the settings list, whose row of the view's controls
+    // ran 73px past the list at this size
+    // (`canvas-settings-view-row-runs-over-at-2x`).
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pumpPanel(tester, const CanvasSize(width: 1200, height: 900));
+
+    final zoom = readout(tester, 'canvas-viewport-zoom-label');
+    final widest = widestDigitIn(zoom.style);
+    final widestZoom = '1$widest$widest$widest.$widest$widest%';
+    expect(
+      widthOf(widestZoom, zoom.style, zoom.scaler),
+      lessThanOrEqualTo(zoom.box),
+      reason: '"$widestZoom" does not fit the zoom readout\'s ${zoom.box}px',
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-rotation-label')),
+      findsNothing,
+      reason: '⛔fixture: at this size the angle is in the settings list',
+    );
+    await openViewSettings(tester);
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'the view\'s row runs off the settings list',
+    );
+    // And it is shown whole: its first control and its last stand inside
+    // the room the list gives the row. ⚠️Not merely inside the row — at
+    // this size a row drawn past its room, centred on it, still stands
+    // inside the list's padding (found by mutation).
+    final room = tester.getRect(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey<String>('canvas-settings-view-row')),
+            matching: find.byType(FittedBox),
+          )
+          .first,
+    );
+    for (final key in const [
+      'canvas-viewport-rotate-ccw',
+      'canvas-viewport-flip-vertical',
+    ]) {
+      final control = tester.getRect(find.byKey(ValueKey<String>(key)));
+      expect(
+        control.left >= room.left - 0.5 && control.right <= room.right + 0.5,
+        isTrue,
+        reason: '$key ($control) stands past the row\'s room ($room)',
+      );
+    }
+    final angle = readout(tester, 'canvas-viewport-rotation-label');
+    final widestAngle = '-1$widest$widest.$widest$widest°';
+    expect(
+      widthOf(widestAngle, angle.style, angle.scaler),
       lessThanOrEqualTo(angle.box),
       reason: '"$widestAngle" does not fit the angle readout\'s ${angle.box}px',
     );

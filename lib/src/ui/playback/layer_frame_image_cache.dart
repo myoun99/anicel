@@ -14,11 +14,13 @@ import '../../models/tile_coord.dart';
 import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../../services/brush_frame_store.dart';
+import '../../services/cel_content_notes.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../core/dev_profile.dart';
 import '../canvas/deferred_image_disposal.dart';
+import '../canvas/image_pieces.dart';
 import '../canvas/layer_image_draw.dart';
 import '../canvas/level_image.dart';
 import '../canvas/raster_picture.dart';
@@ -37,14 +39,16 @@ import '../../core/pin_counts.dart';
 /// back whenever a draw needs it.
 class LayerFrameImage {
   LayerFrameImage({
-    required this.image,
+    required this.pieces,
     required this.worldRect,
     required this.extent,
     this.madeFrom = const {},
     Object? content,
   }) : content = content ?? Object();
 
-  final ui.Image image;
+  /// The image over [worldRect] — one piece, or several side by side past
+  /// the side this engine holds (`piecesOver`).
+  final List<ImagePiece> pieces;
   final ui.Rect worldRect;
   final ui.Rect extent;
 
@@ -115,7 +119,7 @@ class _LayerFrameImageEntry {
   /// answers with the snapshot, which is what a holder keeps.
   Future<void>? settling;
 
-  ui.Image get image => positioned.image;
+  List<ImagePiece> get pieces => positioned.pieces;
 }
 
 /// What a picture is made of, as an ask says it: the content's revision,
@@ -206,6 +210,11 @@ class LayerFrameImageCache {
   }
 
   final BrushFrameStore frameStore;
+
+  /// The cels whose image could not be made ([UnreadableCels]) — noted by
+  /// every making of this cache, the one record every maker and reader asks.
+  late final UnreadableCels unreadable = UnreadableCels(frameStore);
+
   final Map<(BrushFrameKey, PlaybackQuality), _LayerFrameImageEntry> _entries =
       {};
   int _useCounter = 0;
@@ -259,6 +268,59 @@ class LayerFrameImageCache {
     _validEntry(key, quality, canvasSize, sourceEffects)?.positioned,
     inkSuffices: inkSuffices,
   );
+
+  /// The bytes the image [prepare] makes of [key]'s cel at [quality] weighs,
+  /// read off the plan it is made by ([_levelPlan]) — or null while the
+  /// cel's preview is not prepared: what [readIn] does first.
+  ///
+  /// ★The plan of the cel AS DRAWN is the plan of the cel AS SHOWN: a colour
+  /// key rebuilds a tile and never moves one ([celSurfaceWithSourceEffects]),
+  /// and the texts are laid inside the plan either way
+  /// ([surfaceContentWorldRect]) — so a picture is weighed without the keys'
+  /// pass over its pixels.
+  int? plannedBytes(
+    BrushFrameKey key,
+    PlaybackQuality quality, {
+    required CanvasSize canvasSize,
+    required bool inkSuffices,
+  }) {
+    final preview = _previews(
+      canvasSize,
+    ).preparedFramePreviewOrNull(key)?.previewSurface;
+    if (preview == null) {
+      return null;
+    }
+    final size = _imageSizeOf(
+      _levelPlan(preview, quality, storesInk: _storesInk(inkSuffices)),
+      quality.level,
+    );
+    return estimatedImageBytes(size.width, size.height);
+  }
+
+  /// Brings [key]'s cel to where [plannedBytes] weighs it, as [prepare]
+  /// begins: thawed off the UI thread ([BrushFrameStore.thawAhead]), then
+  /// its preview prepared.
+  ///
+  /// ⛔ONLY A HOT CEL'S PREVIEW IS PREPARED HERE: any other is read from
+  /// storage on this thread by the preparing — a cel whose thaw failed is
+  /// read by [prepare], which says why it will not.
+  Future<void> readIn(BrushFrameKey key, {required CanvasSize canvasSize}) async {
+    await frameStore.thawAhead(key, canvasSize: canvasSize);
+    if (frameStore.hotBakedSurfaceOrNull(key) != null) {
+      _previews(canvasSize).prepareFramePreview(key);
+    }
+  }
+
+  BrushFrameDisplayCacheService _previews(CanvasSize canvasSize) =>
+      BrushFrameDisplayCacheService(
+        frameStore: frameStore,
+        canvasSize: canvasSize,
+      );
+
+  /// Whether a row's image is kept as its ink alone ([inkSuffices]) — ask by
+  /// ask, for every road that plans one.
+  bool _storesInk(bool inkSuffices) =>
+      inkSuffices && !debugStoresWholeContent;
 
   _LayerFrameImageEntry? _validEntry(
     BrushFrameKey key,
@@ -315,14 +377,17 @@ class LayerFrameImageCache {
       inkSuffices: inkSuffices,
     ),
     shouldAbort: shouldAbort,
-    make: () => _prepareNow(
-      key: key,
-      canvasSize: canvasSize,
-      quality: quality,
-      sourceEffects: sourceEffects,
-      shouldAbort: shouldAbort,
-      inkSuffices: inkSuffices,
-      turn: turn,
+    make: () => unreadable.noting(
+      key,
+      () => _prepareNow(
+        key: key,
+        canvasSize: canvasSize,
+        quality: quality,
+        sourceEffects: sourceEffects,
+        shouldAbort: shouldAbort,
+        inkSuffices: inkSuffices,
+        turn: turn,
+      ),
     ),
   );
 
@@ -408,10 +473,7 @@ class LayerFrameImageCache {
     if (shouldAbort?.call() ?? false) {
       return null;
     }
-    final previewCache = BrushFrameDisplayCacheService(
-      frameStore: frameStore,
-      canvasSize: canvasSize,
-    ).prepareFramePreview(key);
+    final previewCache = _previews(canvasSize).prepareFramePreview(key);
     if (!previewCache.isValid) {
       // A cel that HAS pixels, recorded at another canvas size. Composing
       // the blank stand-in and banking it here under [revision] is what
@@ -443,7 +505,7 @@ class LayerFrameImageCache {
     final plan = _levelPlan(
       preview,
       quality,
-      storesInk: inkSuffices && !debugStoresWholeContent,
+      storesInk: _storesInk(inkSuffices),
     );
     // 🚨WHAT IS PUT ON THE GPU WAITS ITS TURN ([turn]): everything above is
     // the CPU's and the workers', so the turn is taken here, and given back
@@ -465,6 +527,7 @@ class LayerFrameImageCache {
         quality,
         shouldAbort: shouldAbort,
       );
+      assert(stored == null || _isAsPlanned(stored.pieces, plan, quality));
       made = stored == null ? null : _bank((key, quality), stored, source);
     } finally {
       await (made == null ? taken?.gaveUp() : taken?.landed());
@@ -481,7 +544,7 @@ class LayerFrameImageCache {
   /// entry as stale and recomposes on every frame.
   LayerFrameImage _bank(
     (BrushFrameKey, PlaybackQuality) at,
-    ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) stored,
+    _Stored stored,
     ({
       int revision,
       CanvasSize canvasSize,
@@ -492,7 +555,7 @@ class LayerFrameImageCache {
   ) {
     _dropEntry(at);
     final result = LayerFrameImage(
-      image: stored.image,
+      pieces: stored.pieces,
       worldRect: stored.worldRect,
       extent: stored.extent,
       madeFrom: source.madeFrom,
@@ -544,7 +607,7 @@ class LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     required bool makePictures,
     bool inkSuffices = false,
-  }) {
+  }) => unreadable.notingNow(key, () {
     final cached = _drawable(
       validImageOrNull(
         key,
@@ -569,10 +632,7 @@ class LayerFrameImageCache {
 
     final previewCache = labProbe(
       'prepareFramePreview(${key.frameId.value} rev$revision)',
-      () => BrushFrameDisplayCacheService(
-        frameStore: frameStore,
-        canvasSize: canvasSize,
-      ).prepareFramePreview(key),
+      () => _previews(canvasSize).prepareFramePreview(key),
     );
     if (!previewCache.isValid) {
       // The size miss again — see the async twin. Banking the blank under
@@ -586,15 +646,21 @@ class LayerFrameImageCache {
       previewCache.previewSurface,
       sourceEffects,
     );
-    final composed = _composedNow(
+    final plan = _levelPlan(
       preview,
       quality,
+      storesInk: _storesInk(inkSuffices),
+    );
+    final composed = _composedNow(
+      preview,
+      plan,
+      quality,
       makePictures: makePictures,
-      storesInk: inkSuffices && !debugStoresWholeContent,
     );
     if (composed == null) {
       return null;
     }
+    assert(_isAsPlanned(composed.now.pieces, plan, quality));
     final at = (key, quality);
     final banked = _bank(at, composed.now, (
       revision: revision,
@@ -604,28 +670,37 @@ class LayerFrameImageCache {
     ));
     _settleWhenTheSnapshotLands(at, composed.kept);
     return banked;
-  }
+  });
 
   /// The entry at [at] holds a deferred image; [real] is the plain snapshot
-  /// of the same picture. When it lands it takes the entry's place — same
-  /// pixels, same validity — and the deferred image is retired, letting go
-  /// of every tile picture it pinned ([_LayerFrameImageEntry.settling]).
+  /// of the same picture, piece for piece. When it lands it takes the
+  /// entry's place — same pixels, same validity — and the deferred image is
+  /// retired, letting go of every tile picture it pinned
+  /// ([_LayerFrameImageEntry.settling]).
   void _settleWhenTheSnapshotLands(
     (BrushFrameKey, PlaybackQuality) at,
-    Future<ui.Image> real,
+    Future<List<ui.Image>> real,
   ) {
     final entry = _entries[at]!;
     entry.settling = real.then<void>(
-      (snapshot) {
+      (snapshots) {
         final slot = _slotHolding(entry, at);
         if (slot == null) {
           // Replaced, dropped, or the cache is gone: nobody wants it.
-          snapshot.dispose();
+          for (final snapshot in snapshots) {
+            snapshot.dispose();
+          }
           return;
         }
         _entries[slot] = _LayerFrameImageEntry(
           positioned: LayerFrameImage(
-            image: snapshot,
+            pieces: [
+              for (var index = 0; index < snapshots.length; index += 1)
+                (
+                  image: snapshots[index],
+                  worldRect: entry.pieces[index].worldRect,
+                ),
+            ],
             worldRect: entry.positioned.worldRect,
             extent: entry.positioned.extent,
             madeFrom: entry.positioned.madeFrom,
@@ -638,7 +713,7 @@ class LayerFrameImageCache {
           sourceEffectSignature: entry.sourceEffectSignature,
           lastUsed: entry.lastUsed,
         );
-        DeferredImageDisposer.instance.retire(entry.image);
+        entry.pieces.forEach(_retire);
       },
       // A snapshot the engine refused: the deferred image stays the entry.
       onError: (Object _) => entry.settling = null,
@@ -692,7 +767,7 @@ class LayerFrameImageCache {
   int get estimatedBytes {
     var total = 0;
     for (final entry in _entries.values) {
-      total += estimatedImageBytes(entry.image.width, entry.image.height);
+      total += entry.pieces.estimatedBytes;
     }
     return total;
   }
@@ -725,7 +800,7 @@ class LayerFrameImageCache {
     wantedAt: (entry) => wantedAt?.call(entry.key),
     lastUsed: (entry) => entry.value.lastUsed,
     bytesOf: (entry) =>
-        estimatedImageBytes(entry.value.image.width, entry.value.image.height),
+        entry.value.pieces.estimatedBytes,
     letGo: (entry) => _dropEntry(entry.key),
     laterThan: laterThan,
   );
@@ -763,7 +838,7 @@ class LayerFrameImageCache {
     for (final slot in _pins.keys) {
       final entry = _entries[slot];
       if (entry != null) {
-        total += estimatedImageBytes(entry.image.width, entry.image.height);
+        total += entry.pieces.estimatedBytes;
       }
     }
     return total;
@@ -774,6 +849,7 @@ class LayerFrameImageCache {
     for (final key in _entries.keys.toList()) {
       _dropEntry(key);
     }
+    unreadable.dispose();
   }
 
   int _currentRevision(BrushFrameKey key) =>
@@ -784,7 +860,7 @@ class LayerFrameImageCache {
     if (entry != null) {
       // Deferred, never direct: the image may still be referenced by the
       // frame currently on screen (same race the tile cache guards against).
-      DeferredImageDisposer.instance.retire(entry.image);
+      entry.pieces.forEach(_retire);
     }
   }
 }
@@ -795,12 +871,28 @@ class LayerFrameImageCache {
 // level, finding and cutting out the ink. Each step has a synchronous twin
 // for the sync road.
 
+/// What a stored picture is: its pieces ([LayerFrameImage.pieces]), the
+/// rect they cover, and the rect the whole content image covers.
+typedef _Stored = ({
+  List<ImagePiece> pieces,
+  ui.Rect worldRect,
+  ui.Rect extent,
+});
+
+/// Lets [piece]'s handle go once no frame on screen may still draw it
+/// (same race the tile cache guards against).
+void _retire(ImagePiece piece) =>
+    DeferredImageDisposer.instance.retire(piece.image);
+
 /// [preview] put on the GPU at [quality] under [plan] — the cel's first
 /// step ([_firstStep]), halved down to the level, and its ink cut out of
 /// that when [plan] keeps the ink — each step waited for as it lands, where
 /// [_composedNow] answers inside the call. Null when [shouldAbort] stood it
 /// down between its tile pictures.
-Future<({ui.Image image, ui.Rect worldRect, ui.Rect extent})?> _composed(
+///
+/// Piece by piece where the picture is held in pieces ([piecesOver]): no
+/// 2×2 block of a halving lies across two of them.
+Future<_Stored?> _composed(
   BitmapSurface preview,
   ({ui.Rect whole, ui.Rect? texels}) plan,
   PlaybackQuality quality, {
@@ -824,7 +916,7 @@ Future<({ui.Image image, ui.Rect worldRect, ui.Rect extent})?> _composed(
   // 무거워지는거같은데 맞나?」).
   final first = _firstStep(preview, plan, quality.level);
   final firstIsKept = quality.level <= 1;
-  final ui.Image? firstImage;
+  final PositionedSurfaceImage? firstImage;
   if (first.halved) {
     firstImage = await composeHalvedSurfaceImage(
       preview,
@@ -833,126 +925,172 @@ Future<({ui.Image image, ui.Rect worldRect, ui.Rect extent})?> _composed(
       deferred: !firstIsKept,
     );
   } else {
-    firstImage = (await composePositionedSurfaceImage(
+    firstImage = await composePositionedSurfaceImage(
       preview,
       reuse: BitmapTileImageCache.instance,
       shouldAbort: shouldAbort,
       over: first.over,
-    ))?.image;
+    );
   }
   if (firstImage == null) {
     return null;
   }
   if (firstIsKept) {
-    return (image: firstImage, worldRect: first.over, extent: whole);
+    return (pieces: firstImage.pieces, worldRect: first.over, extent: whole);
   }
   // Down to the level, one exact 2×2 box at a time ([halvingPicture]) —
   // never one reduction straight to the size, which aliases past 2× and,
   // as `medium`, mipmaps on one engine and not the other.
-  var image = firstImage;
+  var pieces = firstImage.pieces;
   for (var i = 1; i < quality.level; i += 1) {
     // The last step when nothing is cut out after it.
     final kept = texels == null && i == quality.level - 1;
-    final halved = kept
-        ? await _halved(image)
-        : _halvedNow(image, snapshot: false).deferred;
-    // The halving keeps what it drew; only the handle is ours to drop.
-    image.dispose();
-    image = halved;
+    final halved = <ImagePiece>[
+      for (final piece in pieces)
+        _atLevel(
+          kept
+              ? await _halved(piece.image)
+              : _halvedNow(piece.image, snapshot: false).deferred,
+          piece.worldRect.topLeft,
+          i + 1,
+        ),
+    ];
+    // The halving keeps what it drew; only the handles are ours to drop.
+    pieces.disposeAll();
+    pieces = halved;
   }
-  assert(_isLevelOf(image, whole, quality.level));
+  assert(_isLevelOf(pieces, whole, quality.level));
   if (texels == null) {
-    return (image: image, worldRect: whole, extent: whole);
+    return (pieces: pieces, worldRect: whole, extent: whole);
   }
   // Cut out of the level of the WHOLE image, never halved on its own: the
   // halving is the engine's, and a smaller image is halved differently on
   // Impeller Vulkan (`halving-rounds-differently-per-engine`).
-  final ink = await _cutOut(image, texels);
-  image.dispose();
+  final ink = await _cutOut(pieces, whole, texels, quality.level);
+  pieces.disposeAll();
   return (
-    image: ink,
+    pieces: ink,
     worldRect: _worldRectOfTexels(whole, texels, quality.level),
     extent: whole,
   );
 }
 
-/// [preview] composed inside the call at [quality] — the cel's first step
-/// ([_firstStep]), halved down to the level, and, when [storesInk] below the
-/// first level, its ink cut out of that — beside the plain snapshot of the
-/// picture that is KEPT: the last of those steps. Null only on the free
-/// road ([makePictures] false and a tile without its picture).
-({
-  ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) now,
-  Future<ui.Image> kept,
-})?
-_composedNow(
+/// [preview] composed inside the call at [quality] under [plan] — the cel's
+/// first step ([_firstStep]), halved down to the level, and, when [plan]
+/// keeps the ink below the first level, its ink cut out of that — beside
+/// the plain snapshot of the picture that is KEPT: the last of those steps,
+/// piece for piece. Null only on the free road ([makePictures] false and a
+/// tile without its picture).
+({_Stored now, Future<List<ui.Image>> kept})? _composedNow(
   BitmapSurface preview,
+  ({ui.Rect whole, ui.Rect? texels}) plan,
   PlaybackQuality quality, {
   required bool makePictures,
-  required bool storesInk,
 }) {
-  final plan = _levelPlan(preview, quality, storesInk: storesInk);
   final (:whole, :texels) = plan;
   final first = _firstStep(preview, plan, quality.level);
   final firstIsKept = quality.level <= 1;
-  final ({ui.Image deferred, Future<ui.Image>? real})? composed;
-  if (first.halved) {
-    composed = composeHalvedSurfaceImageSync(
-      preview,
-      makePictures: makePictures,
-      snapshot: firstIsKept,
-      over: first.over,
-    );
-  } else {
-    final positioned = composePositionedSurfaceImageSync(
-      preview,
-      reuse: BitmapTileImageCache.instance,
-      makePictures: makePictures,
-      snapshot: firstIsKept,
-      over: first.over,
-    );
-    composed = positioned == null
-        ? null
-        : (deferred: positioned.deferred.image, real: positioned.real);
-  }
+  final composed = first.halved
+      ? composeHalvedSurfaceImageSync(
+          preview,
+          makePictures: makePictures,
+          snapshot: firstIsKept,
+          over: first.over,
+        )
+      : composePositionedSurfaceImageSync(
+          preview,
+          reuse: BitmapTileImageCache.instance,
+          makePictures: makePictures,
+          snapshot: firstIsKept,
+          over: first.over,
+        );
   if (composed == null) {
     return null;
   }
   if (firstIsKept) {
     return (
-      now: (image: composed.deferred, worldRect: first.over, extent: whole),
+      now: (
+        pieces: composed.deferred.pieces,
+        worldRect: first.over,
+        extent: whole,
+      ),
       kept: composed.real!,
     );
   }
-  var image = composed.deferred;
-  Future<ui.Image>? kept;
+  var pieces = composed.deferred.pieces;
+  Future<List<ui.Image>>? kept;
   for (var i = 1; i < quality.level; i += 1) {
-    final halved = _halvedNow(
-      image,
-      snapshot: texels == null && i == quality.level - 1,
-    );
-    // The halving keeps what it drew; only the handle is ours to drop.
-    image.dispose();
-    image = halved.deferred;
-    kept = halved.real;
+    final halved = [
+      for (final piece in pieces)
+        _halvedNow(
+          piece.image,
+          snapshot: texels == null && i == quality.level - 1,
+        ),
+    ];
+    final next = [
+      for (var index = 0; index < pieces.length; index += 1)
+        _atLevel(
+          halved[index].deferred,
+          pieces[index].worldRect.topLeft,
+          i + 1,
+        ),
+    ];
+    // The halving keeps what it drew; only the handles are ours to drop.
+    pieces.disposeAll();
+    pieces = next;
+    kept = _snapshotsOf(halved);
   }
-  assert(_isLevelOf(image, whole, quality.level));
+  assert(_isLevelOf(pieces, whole, quality.level));
   if (texels == null) {
     return (
-      now: (image: image, worldRect: whole, extent: whole),
+      now: (pieces: pieces, worldRect: whole, extent: whole),
       kept: kept!,
     );
   }
-  final ink = _cutOutNow(image, texels);
-  // The cut keeps what it drew; only the handle is ours to drop.
-  image.dispose();
+  final ink = [
+    for (final part in _partsOf(pieces, whole, texels, quality.level))
+      (cut: _cutOutNow(part.image, part.texels), worldRect: part.worldRect),
+  ];
+  // The cut keeps what it drew; only the handles are ours to drop.
+  pieces.disposeAll();
   return (
     now: (
-      image: ink.deferred,
+      pieces: [
+        for (final part in ink)
+          (image: part.cut.deferred, worldRect: part.worldRect),
+      ],
       worldRect: _worldRectOfTexels(whole, texels, quality.level),
       extent: whole,
     ),
-    kept: ink.real!,
+    kept: _snapshotsOf([for (final part in ink) part.cut])!,
+  );
+}
+
+/// [image] — a level-[level] picture whose corner lies at [corner] — as the
+/// piece it is: over the canvas rect its texels cover, past an odd edge
+/// too ([halvedSize]), as a level's whole is grown ([_levelPlan]).
+ImagePiece _atLevel(ui.Image image, ui.Offset corner, int level) => (
+  image: image,
+  worldRect: ui.Rect.fromLTWH(
+    corner.dx,
+    corner.dy,
+    (image.width << level).toDouble(),
+    (image.height << level).toDouble(),
+  ),
+);
+
+/// The plain snapshots of [made], piece for piece, once all have landed —
+/// null where [made] took none.
+Future<List<ui.Image>>? _snapshotsOf(
+  List<({ui.Image deferred, Future<ui.Image>? real})> made,
+) {
+  final reals = [for (final each in made) each.real];
+  if (reals.contains(null)) {
+    return null;
+  }
+  return Future.wait(
+    [for (final real in reals) real!],
+    cleanUp: (image) => image.dispose(),
   );
 }
 
@@ -1058,10 +1196,48 @@ LayerFrameImage? _drawable(
   );
 }
 
-/// Whether [image] is the level-[level] image [whole] says it is.
-bool _isLevelOf(ui.Image image, ui.Rect whole, int level) =>
-    image.width << level == whole.width.round() &&
-    image.height << level == whole.height.round();
+/// Whether [pieces] are the level-[level] image [whole] says it is: over
+/// it, each a texel for 2^[level] canvas pixels.
+bool _isLevelOf(List<ImagePiece> pieces, ui.Rect whole, int level) =>
+    pieces.worldRect == whole &&
+    pieces.every(
+      (piece) =>
+          piece.image.width << level == piece.worldRect.width.round() &&
+          piece.image.height << level == piece.worldRect.height.round(),
+    );
+
+/// The size of the image a level-[level] [plan] makes: its ink's texels
+/// where it keeps the ink alone, else the whole content at the level.
+({int width, int height}) _imageSizeOf(
+  ({ui.Rect whole, ui.Rect? texels}) plan,
+  int level,
+) => switch (plan.texels) {
+  final texels? => (
+    width: texels.width.round(),
+    height: texels.height.round(),
+  ),
+  null => (
+    width: plan.whole.width.round() >> level,
+    height: plan.whole.height.round() >> level,
+  ),
+};
+
+/// Whether [image] is what [plan] said it would be at [quality] — the size
+/// a picture is weighed by before it is made
+/// ([LayerFrameImageCache.plannedBytes]).
+bool _isAsPlanned(
+  List<ImagePiece> pieces,
+  ({ui.Rect whole, ui.Rect? texels}) plan,
+  PlaybackQuality quality,
+) {
+  final size = _imageSizeOf(plan, quality.level);
+  return switch (pieces) {
+    [final whole] =>
+      whole.image.width == size.width && whole.image.height == size.height,
+    // In pieces, as many texels as the one image would have had.
+    _ => pieces.estimatedBytes == estimatedImageBytes(size.width, size.height),
+  };
+}
 
 /// The rect the ink alone is composed over at the full level, straight from
 /// its tiles — each tile lands texel for texel, and those are the whole
@@ -1121,18 +1297,61 @@ ui.Rect _worldRectOfTexels(ui.Rect whole, ui.Rect texels, int level) {
   );
 }
 
-/// [texels] of [whole] cut out, rasterised off the frame. The
-/// synchronous twin is [_cutOutNow].
-Future<ui.Image> _cutOut(ui.Image whole, ui.Rect texels) async {
-  final picture = recordInkCutOut(whole, texels).endRecording();
-  try {
-    return await waitedSnapshot(
-      picture,
-      texels.width.round(),
-      texels.height.round(),
+/// [texels] of the level-[level] image over [whole] — held in [pieces] —
+/// cut out of each piece they reach ([_partsOf]), rasterised off the frame.
+/// The synchronous twin is [_cutOutNow], a part at a time.
+Future<List<ImagePiece>> _cutOut(
+  List<ImagePiece> pieces,
+  ui.Rect whole,
+  ui.Rect texels,
+  int level,
+) async {
+  final cut = <ImagePiece>[];
+  for (final part in _partsOf(pieces, whole, texels, level)) {
+    final picture = recordInkCutOut(part.image, part.texels).endRecording();
+    try {
+      cut.add((
+        image: await waitedSnapshot(
+          picture,
+          part.texels.width.round(),
+          part.texels.height.round(),
+        ),
+        worldRect: part.worldRect,
+      ));
+    } finally {
+      picture.dispose();
+    }
+  }
+  return cut;
+}
+
+/// Where [texels] of the level-[level] image over [whole] lie in [pieces]:
+/// for each piece they reach, its image, the texels of it they cover, and
+/// the canvas rect those stand for. One part, the texels themselves, where
+/// the image is one piece.
+Iterable<({ui.Image image, ui.Rect texels, ui.Rect worldRect})> _partsOf(
+  List<ImagePiece> pieces,
+  ui.Rect whole,
+  ui.Rect texels,
+  int level,
+) sync* {
+  final step = (1 << level).toDouble();
+  final wanted = _worldRectOfTexels(whole, texels, level);
+  for (final piece in pieces) {
+    if (!piece.worldRect.overlaps(wanted)) {
+      continue;
+    }
+    final part = piece.worldRect.intersect(wanted);
+    yield (
+      image: piece.image,
+      texels: ui.Rect.fromLTRB(
+        (part.left - piece.worldRect.left) / step,
+        (part.top - piece.worldRect.top) / step,
+        (part.right - piece.worldRect.left) / step,
+        (part.bottom - piece.worldRect.top) / step,
+      ),
+      worldRect: part,
     );
-  } finally {
-    picture.dispose();
   }
 }
 

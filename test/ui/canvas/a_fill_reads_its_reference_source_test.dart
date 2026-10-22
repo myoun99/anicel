@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨I-36 (유저 2026-09-24): 「범위를 보여주고, 활성 레이어의 참조 버튼을
 /// 둔다」 + 「모드 세개. 참조(보이는거 전부), 참조(참조 설정한 레이어만, 없으면
@@ -236,18 +237,17 @@ void main() {
       visibleCanvasPoint(tester, offset: const Offset(-150, 80)),
       kind: PointerDeviceKind.stylus,
     );
-    for (var i = 0; i < 6; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 40)),
-      );
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-    final after = pixelsOf(tester, color, colorFrame);
     expect(
-      after.where((pixel) => pixel == opaqueBlue),
-      isNotEmpty,
+      await settleAsync(
+        tester,
+        () => pixelsOf(tester, color, colorFrame).contains(opaqueBlue),
+        beat: const Duration(milliseconds: 40),
+        step: const Duration(milliseconds: 16),
+      ),
+      isTrue,
       reason: '⛔CONTROL: the bucket filled',
     );
+    final after = pixelsOf(tester, color, colorFrame);
     return (
       paintedOverLine: lineStroke.every((i) => after[i] == opaqueBlue),
       paintedOverColor: colorStroke.every((i) => after[i] == opaqueBlue),

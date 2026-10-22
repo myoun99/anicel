@@ -14,6 +14,7 @@ import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_frame_range_gesture.dart';
+import 'timeline_grid_legend.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -129,6 +130,7 @@ class TimelineGridHooks {
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
+    this.layerOnTimesheetOf,
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -138,6 +140,7 @@ class TimelineGridHooks {
     this.onResetLaneGroup,
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
+    this.legend = const TimelineGridLegend(),
     this.collapsedAttachBaseIds = const {},
     this.onToggleAttachGroup,
     this.dragPreview,
@@ -147,7 +150,6 @@ class TimelineGridHooks {
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
-    this.layerOpacityOverrideOf,
   });
 
   final LayerId? activeLayerId;
@@ -450,14 +452,23 @@ class TimelineGridHooks {
   final bool Function(LayerId layerId)? laneOpenOf;
 
   /// A LIVE read of a lane GROUP’s switch, when the host can give one — the
-  /// transform group’s flag is the layer’s own field, and a lane row built
-  /// last frame carries a stale copy.
-  final bool Function(LayerId layerId)? laneGroupOnOf;
+  /// one [onToggleLaneGroupEnabled] flips, named by the group’s header (the
+  /// Transform group’s flag, an effect’s eyeball); null where the header
+  /// names none. A lane row built last frame carries a stale copy.
+  ///
+  /// ↩️It was asked by the layer alone and answered the TRANSFORM flag for
+  /// every group (I-89 ①ⓒ).
+  final bool? Function(LayerId layerId, String headerLaneId)? laneGroupOnOf;
 
   /// A LIVE read of a layer’s own eye — the rail’s bulk-drag needs the value
   /// the press just set, and a captured [Layer] still reports the last
   /// frame.
   final bool Function(LayerId layerId)? layerEyeOnOf;
+
+  /// A LIVE read of a layer’s sheet flag, for the same reason as
+  /// [layerEyeOnOf] — the read the session keeps for it
+  /// (`isLayerOnTimesheet`).
+  final bool Function(LayerId layerId)? layerOnTimesheetOf;
 
   final ValueChanged<LayerId>? onToggleLayerLanes;
 
@@ -494,6 +505,10 @@ class TimelineGridHooks {
   /// The rail's row FILTER (R2): hides layer rows failing its predicate;
   /// the active layer is exempt.
   final TimelineRowFilter rowFilter;
+
+  /// What the legend over the rail is told — the x-sheet's corner the same
+  /// ([TimelineGridLegend], F-408 ②).
+  final TimelineGridLegend legend;
 
   /// Bases whose attach group is twirled shut (UI-R20 #9): their attach
   /// rows contribute no display rows; the base row's chevron reflects it.
@@ -549,16 +564,15 @@ class TimelineGridHooks {
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
 
-  /// R27 #9: rows whose opacity is a live VIEW notifier (the camera row's
-  /// dim) hand it over here — the slider subscribes and the drag never
-  /// touches the host.
-  final ValueListenable<double>? Function(LayerId layerId)?
-  layerOpacityOverrideOf;
-
   /// Whether ANY of [layerId]'s FX apply — [layerFxStateOf]'s answer read
   /// through the one rule ([fxEnabledFromState]); no resolver means on.
   bool isLayerFxEnabled(LayerId layerId) =>
       fxEnabledFromState(layerFxStateOf?.call(layerId));
+
+  /// The lanes [layer]'s header shows — [lanesForLayer]'s answer; none
+  /// where the host gives no provider.
+  List<PropertyLaneRow> lanesOf(Layer layer) =>
+      lanesForLayer?.call(layer) ?? const [];
 
   /// The optional columns this host's rail carries — each one as far as the
   /// host handed over its verb. Read here once for the rows, the legend,

@@ -75,6 +75,23 @@ void main() {
       expect((p.top, p.bottom, p.left, p.width), (0, 0, 84, 28));
       expect((p.right, p.height), (null, null));
     });
+
+    test('held off its start: the near end moves, the far end stays', () {
+      final lying = stripAcross(
+        Axis.horizontal,
+        across: 84,
+        alongStart: 36,
+        child: child,
+      );
+      expect((lying.left, lying.right), (36, 0));
+      final stood = stripAcross(
+        Axis.vertical,
+        across: 84,
+        alongStart: 36,
+        child: child,
+      );
+      expect((stood.top, stood.bottom), (36, 0));
+    });
   });
 
   group('stripAlong', () {
@@ -132,6 +149,14 @@ void main() {
       final b = sizedAlong(Axis.vertical, along: 96, across: 28, child: child);
       expect((b.width, b.height), (28, 96));
     });
+
+    test('the box is the one its key names, either way', () {
+      for (final axis in Axis.values) {
+        const key = ValueKey<String>('box');
+        final b = sizedAlong(axis, along: 96, across: 28, key: key);
+        expect(b.key, key, reason: '$axis');
+      }
+    });
   });
 
   group('stripAlong from the far end', () {
@@ -157,6 +182,39 @@ void main() {
       );
       expect((p.bottom, p.height, p.left, p.right), (30, 2, 0, 0));
       expect((p.top, p.width), (null, null));
+    });
+  });
+
+  group('stripAcross from the far end', () {
+    test('horizontal: measured from the bottom', () {
+      final p = stripAcross(
+        Axis.horizontal,
+        across: 6,
+        acrossExtent: 16,
+        fromEnd: true,
+        child: child,
+      );
+      expect((p.bottom, p.height, p.left, p.right), (6, 16, 0, 0));
+      expect((p.top, p.width), (null, null));
+    });
+
+    test('vertical: measured from the right', () {
+      final p = stripAcross(
+        Axis.vertical,
+        across: 6,
+        acrossExtent: 16,
+        fromEnd: true,
+        child: child,
+      );
+      expect((p.right, p.width, p.top, p.bottom), (6, 16, 0, 0));
+      expect((p.left, p.height), (null, null));
+    });
+
+    test('with no extent it is as thick as its child, either way', () {
+      for (final axis in Axis.values) {
+        final p = stripAcross(axis, across: 0, fromEnd: true, child: child);
+        expect((p.width, p.height), (null, null), reason: '$axis');
+      }
     });
   });
 

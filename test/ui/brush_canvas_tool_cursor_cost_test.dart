@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ContainerLayer, Layer, PictureLayer;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -225,6 +226,12 @@ void main() {
     await tester.pump();
     final cursor = find.byKey(const ValueKey<String>('brush-cursor-overlay'));
     final extentBefore = tester.widget<ToolCursorSprite>(cursor).look.extent;
+    // The tip's picture, inside the sprite's moving layer.
+    Layer? tipPicture() =>
+        (tester.renderObject(cursor).debugLayer?.firstChild as ContainerLayer?)
+            ?.firstChild;
+    final tipBefore = tipPicture();
+    expect(tipBefore, isA<PictureLayer>(), reason: '⛔전제: the tip is drawn');
 
     final canvasBefore = canvasPaints[0];
     final chromeBefore = chromePaints[0];
@@ -270,7 +277,11 @@ void main() {
     bool handedOn(RenderObject object) =>
         object.isRepaintBoundary && !paintedInside(painted, object);
 
-    expect(painted, contains(sprite));
+    // The tip drew again. ↩️Read off [painted] until F-428 made each cursor
+    // a tick of its dock's still region: the sprite is a boundary of its own
+    // under its tick now, and repaints by itself — the census hears a paint
+    // only from the parent that paints a child, so its picture says it.
+    expect(tipPicture(), isNot(same(tipBefore)), reason: 'the tip drew again');
     expect(
       [
         for (final object in painted)

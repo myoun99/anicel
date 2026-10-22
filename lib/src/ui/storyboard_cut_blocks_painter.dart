@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
+import '../core/contain_rect.dart';
 import '../models/cut_id.dart';
 import '../models/storyboard_coverage.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
@@ -149,8 +150,9 @@ class StoryboardCutBlockVisual {
   /// The cut's name, drawn top-left.
   final String title;
 
-  /// The cumulative time at the cut's end (the conte sheet's TIME column),
-  /// or null when the block is too narrow to print it.
+  /// The cut's length, as a frame block's run label prints it (F-89),
+  /// drawn bottom-right however narrow the block (F-348) — or null for a
+  /// cut of one comma, which prints none (D23).
   final String? total;
 
   /// One picture per [cells] entry, in the same order — null while a
@@ -353,9 +355,6 @@ class StoryboardCutBlocksPainter extends CustomPainter
 
   static const double _padding = 4;
 
-  /// The narrowest block that still prints its total (the widget rule).
-  static const double totalLabelMinWidth = 48;
-
   double get _cellExtent => geometry.value.frameCellExtent;
 
   /// A frame's leading edge in the ROW's coordinates — measured from the
@@ -457,10 +456,10 @@ class StoryboardCutBlocksPainter extends CustomPainter
     );
   }
 
-  /// Where [entry]'s block lies and what it prints — its rect, its title,
-  /// and its total when the block is wide enough — or null when it lies
-  /// outside the visible window: what a sentence about the block reads,
-  /// and what the rest of its picture stands on ([_visualFor]).
+  /// Where [entry]'s block lies and what it prints — its rect, its title
+  /// and its total — or null when it lies outside the visible window: what
+  /// a sentence about the block reads, and what the rest of its picture
+  /// stands on ([_visualFor]).
   ({Rect rect, String title, String? total})? _placedFor(
     StoryboardTimelineLayoutEntry entry, {
     required ({int startIndex, int endIndexExclusive}) window,
@@ -479,13 +478,18 @@ class StoryboardCutBlocksPainter extends CustomPainter
       // 재사용」 — the cut's own length, by the frame blocks' run label. It
       // printed the running END frame, the conte sheet's TIME column (D23),
       // which the conte sheet itself keeps.
-      total: width >= totalLabelMinWidth
-          ? timelineRunLengthLabel(
-              entry.endFrame - entry.startFrame,
-              showSeconds: showSeconds,
-              countingBase: countingBase,
-            )
-          : null,
+      //
+      // 🗣️F-348 (유저 2026-10-12): 「1G컷이 코마텍스트가 사라짐. 콘티레이어나
+      // 기존 프레임 블록은 공간 부족하면 글자 좌우 길이 짧게한다던가 그런식으로
+      // 하면서 최대한 버티는데 컷블록은 그런게없음. 법 통일해서 적용」 — it
+      // narrows into its band as every block word does ([paintBandWord]).
+      // ↩️A block under 48px printed none (the widget rule it was painted
+      // from, #729).
+      total: timelineRunLengthLabel(
+        entry.endFrame - entry.startFrame,
+        showSeconds: showSeconds,
+        countingBase: countingBase,
+      ),
     );
   }
 
@@ -546,8 +550,8 @@ class StoryboardCutBlocksPainter extends CustomPainter
     if (thumbnails == null || !_stripShowsPictures(strip)) {
       return const [];
     }
-    // The picture is drawn the strip's height tall ([_pictureIn]), so that
-    // many device pixels is what it asks for — the conte cell's law.
+    // The picture is drawn at most the strip's height tall ([_pictureIn]),
+    // so that many device pixels is what it asks for — the conte cell's law.
     //
     // 🗣️유저 2026-09-26: 「최대값은 최대한 키울수있으면 좋아」 — a V row may
     // grow to [StoryboardPanel.maxTrackLaneHeightFor], and a picture stretched
@@ -563,11 +567,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       for (final cell in cells)
         thumbnails.resolve(
           entry.cut,
-          storyboardCellPictureFrame(
-            cell,
-            pinnedFrameIndex: entry.cut.metadata.thumbnailFrameIndex,
-            conteStart: conteStart,
-          ),
+          storyboardCellPictureFrame(cell, conteStart: conteStart),
           shownHeight: shownHeight,
         ),
     ];
@@ -937,19 +937,18 @@ class StoryboardCutBlocksPainter extends CustomPainter
   static bool _stripShowsPictures(Rect strip) =>
       strip.width > 0 && strip.height > 0;
 
-  /// Where [image] lands in [slot] — before the slot clips it.
+  /// Where [image] lands in [slot]: the WHOLE picture, as large as the slot
+  /// holds it undistorted, in its middle ([containRect]).
   ///
-  /// The picture is sized by the ROW's height alone and LEFT-aligned: a
-  /// shorter comma shows LESS of it, never a smaller copy of it (user,
-  /// 2026-07-28). Fitting the width instead made the picture shrink as the
-  /// block narrowed, so a row of short holds read as a row of tiny
-  /// thumbnails rather than as short holds. The slot's clip is what turns
-  /// "less width" into "less picture".
-  static Rect _pictureIn(Rect slot, ui.Image image) => Rect.fromLTWH(
-    slot.left,
-    slot.top,
-    image.width * slot.height / image.height,
-    slot.height,
+  /// 🗣️F-356 (유저 2026-10-14): 「스토리보드프로처럼 세로 가로 둘다 신경써서
+  /// 안에 들어가게 … 세로 유지하기 위해 가로 잘리는거 감수하는게아니라 그냥
+  /// 세로가로 유지하는 방향성으로 그림 자체가 작아지도록」. ↩️It was sized by
+  /// the ROW's height alone and LEFT-aligned, the slot's clip cutting what
+  /// ran past: 「a shorter comma shows LESS of it, never a smaller copy of
+  /// it」 (user, 2026-07-28).
+  static Rect _pictureIn(Rect slot, ui.Image image) => containRect(
+    Size(image.width.toDouble(), image.height.toDouble()),
+    slot,
   );
 
   /// What a mark over [block] stands on besides its plate, row-local: its
@@ -1049,9 +1048,9 @@ class StoryboardCutBlocksPainter extends CustomPainter
           CustomPainterSemantics(
             rect: rect,
             properties: SemanticsProperties(
-              // Joined from the parts that EXIST: a block too narrow for
-              // its length prints none, and an unconditional joiner would
-              // leave its space behind. ↩️The storyboard layer's name stood
+              // Joined from the parts that EXIST: a cut of one comma prints
+              // no length (D23), and an unconditional joiner would leave
+              // its space behind. ↩️The storyboard layer's name stood
               // between the two while the conte blocks were this block's
               // (I-73: they are the conte row's cells, which say their own).
               label: [title, ?total].join(' '),

@@ -21,30 +21,38 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
-Layer _animationLayer({required int length}) => Layer(
-  id: const LayerId('a'),
+Layer _animationLayer({
+  required int length,
+  String id = 'a',
+  LayerMark mark = LayerMark.none,
+}) => Layer(
+  id: LayerId(id),
+  mark: mark,
   name: 'A',
-  frames: [Frame(id: const FrameId('a-f1'), duration: 1, strokes: const [])],
+  frames: [Frame(id: FrameId('$id-f1'), duration: 1, strokes: const [])],
   timeline: {
-    0: TimelineExposure.drawing(const FrameId('a-f1'), length: length),
+    0: TimelineExposure.drawing(FrameId('$id-f1'), length: length),
   },
 );
 
 TimesheetDocument _document({
   required int length,
   TimesheetInfo info = TimesheetInfo.empty,
+  List<Layer>? layers,
 }) => TimesheetDocument.fromCut(
   cut: Cut(
     id: const CutId('cut-1'),
     name: '1',
     duration: 12,
     canvasSize: const CanvasSize(width: 1920, height: 1080),
-    layers: [_animationLayer(length: length)],
+    layers: layers ?? [_animationLayer(length: length)],
   ),
   projectName: 'P',
   fps: 24,
@@ -52,8 +60,12 @@ TimesheetDocument _document({
 );
 
 /// Rasterises the content stratum and counts the pixels with any ink inside
-/// the cell at [row] of the first column.
-Future<int> _inkInCell(TimesheetDocument document, {required int row}) async {
+/// the cell at [row] of [column].
+Future<int> _inkInCell(
+  TimesheetDocument document, {
+  required int row,
+  int column = 0,
+}) async {
   final layout = TimesheetDocumentLayout(document: document);
   final painter = TimesheetDocumentPainter(
     words: timesheetWordsIn(AppLanguage.en),
@@ -73,13 +85,20 @@ Future<int> _inkInCell(TimesheetDocument document, {required int row}) async {
   final bytes = data!.buffer.asUint8List();
   final width = image.width;
 
-  final left = layout.halfLeft(0, 0) + layout.columnLeftInHalf(0);
+  final left = layout.halfLeft(0, 0) + layout.columnLeftInHalf(column);
   final top = layout.halfRowsTop(0) + row * TimesheetDocumentLayout.rowHeight;
-  final columnWidth = layout.columnWidthFor(document.columns[0].kind);
+  final columnWidth = layout.columnWidthFor(document.columns[column].kind);
+  // Two pixels in from each side: a neighbour's ink (the SE wash) lands on
+  // the shared edge's split pixel and would read as this cell's own.
   return _inkIn(
     bytes,
     width,
-    Rect.fromLTWH(left, top, columnWidth, TimesheetDocumentLayout.rowHeight),
+    Rect.fromLTWH(
+      left + 2,
+      top,
+      columnWidth - 4,
+      TimesheetDocumentLayout.rowHeight,
+    ),
   );
 }
 
@@ -118,5 +137,78 @@ void main() {
       info: const TimesheetInfo(exposureBarThreshold: 2),
     );
     expect(await _inkInCell(document, row: 1), 0);
+  });
+
+  // F-430 (유저 2026-10-21): 「이 늘림 선은 x부분 이후도 늘림선 긋는것임.
+  // 진짜 어디던 긋는느낌」.
+  test('the stretch line runs on down the empty run past an ×, from the '
+      'threshold offset counted from the ×', () async {
+    final document = _document(
+      length: 3,
+      info: const TimesheetInfo(exposureBarThreshold: 1),
+    );
+    final cells = document.columns[0].cells;
+    expect(cells[3].kind, TimesheetCellKind.emptyRunStart, reason: 'fixture');
+    expect(cells[4].kind, TimesheetCellKind.emptyRunSpan);
+    expect(cells[4].spanOffset, 1);
+    expect(await _inkInCell(document, row: 4), greaterThan(0));
+
+    final later = _document(
+      length: 3,
+      info: const TimesheetInfo(exposureBarThreshold: 2),
+    );
+    expect(await _inkInCell(later, row: 4), 0);
+    expect(await _inkInCell(later, row: 5), greaterThan(0));
+  });
+
+  // F-430: 「액션란이랑 셀란 늘림선 따로따로 적용가능하게 나누고, 액션은
+  // 늘림선 기본 없음 … 셀란은 기본 있음, 1코마」.
+  test('by default the CELL block draws its stretch line from the second '
+      'comma, past its × too, and the ACTION block draws none', () async {
+    final document = _document(
+      length: 0,
+      layers: [
+        _animationLayer(length: 3),
+        _animationLayer(
+          length: 3,
+          id: 'ib',
+          mark: const LayerMark(process: LayerProcess.inbetween),
+        ),
+      ],
+    );
+    final cell = document.columns.indexWhere(
+      (column) => column.kind == TimesheetColumnKind.cel,
+    );
+    expect(document.columns[0].kind, TimesheetColumnKind.action);
+    expect(document.columns[cell].layerId, const LayerId('ib'));
+
+    expect(await _inkInCell(document, row: 1, column: cell), greaterThan(0));
+    expect(await _inkInCell(document, row: 4, column: cell), greaterThan(0));
+    expect(await _inkInCell(document, row: 1), 0);
+    expect(await _inkInCell(document, row: 4), 0);
+  });
+
+  test('each block draws by its own threshold', () async {
+    final document = _document(
+      length: 0,
+      info: const TimesheetInfo(
+        exposureBarThreshold: 1,
+        cellExposureBarThreshold: null,
+      ),
+      layers: [
+        _animationLayer(length: 3),
+        _animationLayer(
+          length: 3,
+          id: 'ib',
+          mark: const LayerMark(process: LayerProcess.inbetween),
+        ),
+      ],
+    );
+    final cell = document.columns.indexWhere(
+      (column) => column.kind == TimesheetColumnKind.cel,
+    );
+
+    expect(await _inkInCell(document, row: 1), greaterThan(0));
+    expect(await _inkInCell(document, row: 1, column: cell), 0);
   });
 }

@@ -209,7 +209,11 @@ void main() {
     await store.drainCooling();
 
     // The file the drawn cel now lives in goes away: the next copy cannot
-    // carry it.
+    // carry it. The warmer the edits above woke is stopped first: a walk
+    // that reaches the cel after its file is gone reports what it could
+    // not read, as it is meant to (`PlaybackPrerenderScheduler._compose`),
+    // and here the file is gone on purpose.
+    s.playbackRig.prerenderScheduler.cancel();
     OpenProjectFile.instance.releaseAll();
     File(original).deleteSync();
     await s.projectDoor.writeArchiveCopy(

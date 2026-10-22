@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -21,14 +20,15 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
-import '../../helpers/temp_dir.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/settle_async.dart';
+import '../../helpers/one_piece.dart';
 
 /// 🚨★★★A CEL THAT LEAVES THE ACTIVE SLOT IS STILL ON SCREEN THE SAME FRAME
 /// (유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
@@ -76,54 +76,31 @@ void main() {
 
   final screen = GlobalKey();
 
-  late Directory tempDir;
-
-  setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('anicel-leaving-the-slot');
-  });
-
-  tearDown(() => deleteTempQuietly(tempDir));
-
-  /// A store whose [layers] are each one blue, FILE-BACKED cel of eight
-  /// tiles — file-backed because `storeBakedSurface` alone registers pixels
-  /// without a drawing state, and the cache refuses at its first gate.
-  BrushFrameStore blueStore(List<String> layers) {
-    final refs = <BrushFrameKey, AnicelCelFileRef>{};
-    for (final layer in layers) {
-      final tiles = <TileCoord, BitmapTile>{};
-      for (var x = 0; x < tileCount; x += 1) {
-        final pixels = Uint8List(tileSize * tileSize * 4);
-        for (var i = 0; i < pixels.length; i += 4) {
-          pixels[i + 2] = 0xFF;
-          pixels[i + 3] = 0xFF;
-        }
-        tiles[TileCoord(x: x, y: 0)] = BitmapTile(
-          size: tileSize,
-          pixels: pixels,
-        );
+  /// One blue cel of eight tiles.
+  BitmapSurface blue() {
+    final tiles = <TileCoord, BitmapTile>{};
+    for (var x = 0; x < tileCount; x += 1) {
+      final pixels = Uint8List(tileSize * tileSize * 4);
+      for (var i = 0; i < pixels.length; i += 4) {
+        pixels[i + 2] = 0xFF;
+        pixels[i + 3] = 0xFF;
       }
-      final key = keyOf(layer);
-      final blob = AnicelCelBlob.encode(
-        AnicelCelEntry.fromSurface(
-          key,
-          BitmapSurface(
-            canvasSize: canvasSize,
-            tileSize: tileSize,
-            tiles: tiles,
-          ),
-        ),
-      );
-      final file = File('${tempDir.path}/$layer.bin')
-        ..writeAsBytesSync(blob.bytes);
-      refs[key] = AnicelCelFileRef(
-        filePath: file.path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: canvasSize,
-        tileSize: tileSize,
-      );
+      tiles[TileCoord(x: x, y: 0)] = BitmapTile(size: tileSize, pixels: pixels);
     }
-    return BrushFrameStore()..restoreFromFile(refs);
+    return BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: tiles,
+    );
+  }
+
+  /// A store whose [layers] are each one [blue], FILE-BACKED cel — file-
+  /// backed because `storeBakedSurface` alone registers pixels without a
+  /// drawing state, and the cache refuses at its first gate.
+  BrushFrameStore blueStore(List<String> layers) {
+    final store = BrushFrameStore();
+    keepInAFile(store, {for (final layer in layers) keyOf(layer): blue()});
+    return store;
   }
 
   /// The surface a canvas paints [key]'s cel from — the same tile objects
@@ -272,7 +249,11 @@ void main() {
         tester,
         zoom: 0.5,
         walk: false,
-        expectedPicturedWhileActive: tileCount,
+        // The four tiles in view at 50%: the display buffer says what it
+        // can land on (its bounds), so the active paint pictures no more
+        // than the walk's does — it pictured the whole cel while the
+        // buffer's canvas did not say.
+        expectedPicturedWhileActive: tileCount ~/ 2,
       ),
       viewSize.width.toInt(),
       reason: 'below 100% the stack asks for a LEVEL of the cel, which the '
@@ -346,14 +327,11 @@ void main() {
 
     /// Lets every picture the engine owes land — the async pass's compose
     /// and a snapshot's `toImage` both finish in real time.
-    Future<void> landEverything() async {
-      for (var i = 0; i < 6; i += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 30)),
-        );
-        await tester.pump();
-      }
-    }
+    Future<void> landEverything() => lendBothClocks(
+      tester,
+      rounds: 6,
+      beat: const Duration(milliseconds: 30),
+    );
 
     // The row under it is warm, as every row is once the editor has sat
     // idle: after the switch, the settle is the only thing still to come.
@@ -382,15 +360,25 @@ void main() {
           'raster a select has to pay',
     );
 
-    await landEverything();
-    final inTheBuild = images.handed.first;
-    final settled = images.handed.last;
     expect(
-      identical(settled.image, inTheBuild.image),
-      isFalse,
+      await settleAsync(
+        tester,
+        () =>
+            images.handed.isNotEmpty &&
+            !identical(images.handed.last.image, images.handed.first.image),
+      ),
+      isTrue,
       reason: 'fixture: the stack was handed a second handle — the snapshot '
           'that settled in place of the deferred image',
     );
+    // Then the frames the settle asks for: the stack's build, which lets
+    // its clone go, and the boundaries the cache's own retired handle waits
+    // out (`DeferredImageDisposer`) — frames, not time.
+    while (tester.binding.hasScheduledFrame) {
+      await tester.pump();
+    }
+    final inTheBuild = images.handed.first;
+    final settled = images.handed.last;
     expect(
       identical(settled.content, inTheBuild.content),
       isTrue,

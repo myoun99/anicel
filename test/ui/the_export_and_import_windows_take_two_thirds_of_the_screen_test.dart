@@ -17,6 +17,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
+import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
@@ -146,9 +147,10 @@ void main() {
       final size = windowSize(tester, 'export-dialog');
       expect(
         size.width,
-        1018,
+        // ↩️1018 while the cel list stood 184 wide (F-395 widened it).
+        1018 - 184 + ExportCelsBoard.stackWidth,
         reason: 'two thirds of 1200 by area is 980 wide; the columns with '
-            'both drawers folded lay out at 1018',
+            'both drawers folded lay out wider',
       );
       expect(size.height, closeTo(587.9, 0.1));
       expect(keyed('export-presets-strip'), findsOneWidget);

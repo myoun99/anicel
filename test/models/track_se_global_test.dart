@@ -7,12 +7,17 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/track_se_window.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagLaneDisplayOrder, seNameTagLaneLens;
+
+import '../helpers/run_edge_fixtures.dart';
 
 /// W3: SE rows move from cut-owned to TRACK-owned (global frame axis,
 /// cut-crossing sounds). Pins the JSON shape and the display window.
@@ -138,6 +143,34 @@ void main() {
         'without a cut there is no local axis to rebase onto', () {
       const parked = TrackSeWindow(cutStartFrame: 0, cutDurationFrames: 0);
       expect(parked.displayLayer(global).timeline, isEmpty);
+    });
+
+    test('🚨F-358: a sound runs past a line when it starts before it and '
+        'ends after it — the one question behind every end ~', () {
+      // Local blocks [0, 10) and [10, 18).
+      final display = window.displayLayer(global);
+      expect(seSoundRunsPast(display, 12), isTrue);
+      expect(
+        seSoundRunsPast(display, 10),
+        isFalse,
+        reason: 'one sound ends on the line and the next starts there',
+      );
+      expect(seSoundRunsPast(display, 18), isFalse, reason: 'ends on it');
+    });
+
+    test('an edge\'s ghost is no sound of its own: it crosses nothing', () {
+      Layer runningPast6({TimelineRunEdgeGhost? ghostOf}) => seLayer(
+        'se-ghost',
+        timeline: {
+          4: TimelineExposure.drawing(
+            const FrameId('fa'),
+            length: 8,
+            ghostOf: ghostOf,
+          ),
+        },
+      );
+      expect(seSoundRunsPast(runningPast6(), 6), isTrue);
+      expect(seSoundRunsPast(runningPast6(ghostOf: endHoldGhost), 6), isFalse);
     });
   });
 
@@ -304,6 +337,43 @@ void main() {
           .fontSize;
       expect(sizes.keys.keys.toList(), [8]);
       expect(sizes.keyAt(8)!.value, 40);
+    });
+
+    test('🚨EVERY member\'s keys arrive on the cut-local axis — read through '
+        'the lane table, so a member the rebase leaves out comes back '
+        'empty', () {
+      PropertyTrack<T> at20<T>(T value) =>
+          PropertyTrack<T>(keys: {20: PropertyKey(value)});
+      final layer = Layer(
+        id: const LayerId('se-1'),
+        name: 'S1',
+        kind: LayerKind.se,
+        frames: const [],
+        timeline: const {},
+        seNameTag: SeNameTag(
+          track: SeNameTagTrack(
+            fontSize: at20(40.0),
+            letterSpacing: at20(2.0),
+            bold: at20(false),
+            italic: at20(true),
+            underline: at20(true),
+            strikethrough: at20(true),
+            nameInk: at20(0xFF000000),
+            boxColor: at20(0xFF0000FF),
+            lineInk: at20(0xFF00FF00),
+            showLine: at20(false),
+          ),
+        ),
+      );
+      final rebased = window.displayLayer(layer).seNameTag!.track!;
+
+      for (final laneId in seNameTagLaneDisplayOrder) {
+        expect(
+          seNameTagLaneLens(laneId)!.keyFrames(rebased),
+          {8},
+          reason: laneId,
+        );
+      }
     });
   });
 }

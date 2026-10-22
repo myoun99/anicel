@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineRowPaperExtent;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
@@ -196,18 +197,17 @@ void main() {
 
           // Measured from the block's corner, in the corner's own terms: a
           // quarter of each leg in is ink, three quarters of each is not.
-          final horizontal = axis == Axis.horizontal;
           final lead = edge == TimelineBlockEdge.start;
-          final along = horizontal ? box.width : box.height;
-          final across = horizontal ? box.height : box.width;
+          final along = extentAlong(axis, box.size);
+          final across = extentAcross(axis, box.size);
           Offset fromCorner(double alongShare, double acrossShare) {
             final a = lead
-                ? (horizontal ? box.left : box.top) + along * alongShare
-                : (horizontal ? box.right : box.bottom) - along * alongShare;
+                ? startAlong(axis, box) + along * alongShare
+                : endAlong(axis, box) - along * alongShare;
             final c = lead
-                ? (horizontal ? box.bottom : box.right) - across * acrossShare
-                : (horizontal ? box.top : box.left) + across * acrossShare;
-            return horizontal ? Offset(a, c) : Offset(c, a);
+                ? endAcross(axis, box) - across * acrossShare
+                : startAcross(axis, box) + across * acrossShare;
+            return offsetAlong(axis, along: a, across: c);
           }
 
           expect(path.contains(fromCorner(0.25, 0.25)), isTrue, reason: why);

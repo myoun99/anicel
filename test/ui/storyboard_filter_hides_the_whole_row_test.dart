@@ -39,7 +39,8 @@ void main() {
     addTearDown(session.dispose);
     final track = session.selectedTrackId.value;
     // Stand on S1: a filter never hides the row you stand on, so S1 stays
-    // and S2 — which fails the mark chip below — is the row that goes.
+    // and S2 and the transition row — which fail the mark chip below — are
+    // the rows that go.
     session.selectRow(
       LayerRowAddress(seLayerIdForTrack(session.selectedTrackId, 1)),
     );
@@ -95,11 +96,10 @@ void main() {
       findsNothing,
       reason: 'the filter hides the ROW, its strip with it',
     );
-    expectOneRow(
-      tester,
-      'storyboard-transition-label-$track',
-      'storyboard-transition-row-$track',
-    );
+    // F-408: the transition row is judged as every row is, as the
+    // timeline's is — it carries no mark, so it goes, strip and all.
+    expect(keyed('storyboard-transition-label-$track'), findsNothing);
+    expect(keyed('storyboard-transition-row-$track'), findsNothing);
     expectOneRow(tester, 'storyboard-se-label-$track-1', 'storyboard-se-row-0-1');
     expectOneRow(
       tester,
@@ -206,7 +206,7 @@ void main() {
       dragOf(shown.track).first,
     );
     expect(filtered.slotBefore, 0, reason: 'S2 is hidden; S1 is the first');
-    expect(filtered.isLastRow, isTrue);
+    expect(filtered.drawsTheGapAfter, isTrue);
   });
 
   testWidgets('the ring stands on the row the rail draws, with a row hidden '

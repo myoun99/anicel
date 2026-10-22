@@ -5,6 +5,8 @@ import '../../models/canvas_viewport.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
+import '../session/sheet_photo_hold.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart';
 import 'cut_envelope_ink.dart';
 
@@ -29,6 +31,9 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
     required this.viewport,
     required this.strokeActive,
     this.cacheInvalidationSink,
+    this.imageFor,
+    this.imageRepaint,
+    this.photoHold,
   });
 
   final CutEnvelopeInkController controller;
@@ -47,6 +52,13 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
   final ValueNotifier<bool> strokeActive;
 
   final CacheInvalidationSink? cacheInvalidationSink;
+
+  /// Forwarded to [SheetInkLayer.imageFor] and [SheetInkLayer.imageRepaint].
+  final SheetImageLookup? imageFor;
+  final Listenable? imageRepaint;
+
+  /// Forwarded to [SheetInkLayer.photoHold].
+  final SheetPhotoHold? photoHold;
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +79,9 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
         historyManager: historyManager,
         cacheInvalidationSink: cacheInvalidationSink,
       ),
+      imageFor: imageFor,
+      imageRepaint: imageRepaint,
+      photoHold: photoHold,
     );
   }
 }

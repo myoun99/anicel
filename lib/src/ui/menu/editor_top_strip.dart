@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show File;
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../controllers/default_project_helpers.dart'
@@ -20,8 +21,10 @@ import '../../services/persistence/recent_projects_store.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../native/device_battery.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart';
+import '../../native/window_full_screen.dart';
 import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
@@ -33,6 +36,7 @@ import '../../models/media_asset.dart' show MediaAssetKind;
 import '../../models/timesheet_info.dart';
 import '../text/model_vocabulary.dart';
 import '../text/place_lines.dart' show celPlaceLine;
+import '../text/text_measure.dart';
 import '../input/control_press_claim.dart';
 import '../open_projects.dart';
 import '../widgets/app_icon_button.dart';
@@ -40,6 +44,7 @@ import '../widgets/app_tooltip.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
+import '../widgets/setting_source_button.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../dialogs/dialog_verb.dart';
 import '../dialogs/preferences_dialog.dart';
@@ -55,7 +60,11 @@ import '../export/export_dialog.dart';
 import '../workspace/workspace_door_commands.dart';
 import '../export/export_format_availability.dart' show stillFormatWritable;
 import '../export/export_plan.dart'
-    show ExportSizeMode, sanitizeExportFileComponent;
+    show
+        ExportFrameTask,
+        ExportSizeMode,
+        sanitizeExportFileComponent,
+        unnamedExportName;
 import '../export/frame_image_file.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_spec.dart' show ImageExportSpec;
@@ -95,6 +104,7 @@ class EditorTopStrip extends StatelessWidget {
     this.colorBackground,
     this.colorPalette,
     this.onColorPaletteChanged,
+    this.battery,
   });
 
   /// The projects open in the window — the strip's tabs (I-7).
@@ -134,6 +144,10 @@ class EditorTopStrip extends StatelessWidget {
   /// Palette writes go back through the host because they PERSIST — the
   /// strip must not learn where a palette file lives.
   final ValueChanged<ColorPaletteState>? onColorPaletteChanged;
+
+  /// The device's battery, at the strip's very end (I-103-Q1) — null on a
+  /// device without one, which keeps no place for it ([DeviceBattery]).
+  final ValueListenable<BatteryReading>? battery;
 
   /// 🪦Two picker seams stood here — `anicelOpenFilePicker` and
   /// `anicelSaveFilePicker`, both「injectable for tests」. **Nothing ever
@@ -401,7 +415,8 @@ class EditorTopStrip extends StatelessWidget {
       onPressed: () => unawaited(saveProject(context, session)),
     ),
     // 🗣️backlog-21-Q1 (유저 2026-10-08): 「「다른 이름으로 저장」에 둘째 단 —
-    // 프로젝트(.anicel) · PNG · JPG」. The format is chosen HERE, the same
+    // 프로젝트(.anicel) · PNG · JPG」, and after those the formats I-117-Q1
+    // added ([saveAsImageFormats]). The format is chosen HERE, the same
     // on every platform: Android's and iOS's save windows take one type
     // before they open and offer no list. The first row is the Save As there
     // always was, and Ctrl+Shift+S still presses it.
@@ -615,6 +630,21 @@ class EditorTopStrip extends StatelessWidget {
               ? () => panelsMenu.setRegionOnTop(!panelsMenu.regionOnTop)
               : null,
         ),
+        // 🗣️I-103-Q2 (유저 2026-10-16): 「데스크톱만 켜고 끄기, 모바일은
+        // 지금처럼 늘 전체 화면」 — a row on the three desktops and none on
+        // the iPad and Android, where there is nothing to switch. Its mark
+        // is the window's, as its runner last said ([WindowFullScreen.on]).
+        if (WindowFullScreen.offered)
+          _item(
+            id: 'window-full-screen',
+            label: editorActionLabel(EditorActionIds.fullScreen),
+            shortcuts: const [EditorActionIds.fullScreen],
+            icon: Icons.fullscreen,
+            checked: WindowFullScreen.on.value,
+            onPressed: () => unawaited(
+              WindowFullScreen.set(!WindowFullScreen.on.value),
+            ),
+          ),
         _item(
           id: 'window-reset-layout',
           label: editorActionLabel(EditorActionIds.resetLayout),
@@ -762,6 +792,7 @@ class EditorTopStrip extends StatelessWidget {
           child: _TabsAndBrushGroup(
             tabs: _ProjectTabRow(projects: projects, onClose: onCloseProject),
             brushTool: brushTool,
+            battery: battery,
           ),
         ),
         const SizedBox(width: 3),
@@ -812,16 +843,39 @@ class EditorTopStrip extends StatelessWidget {
 /// English 「Size … 2000.0 px」 at 127.6 — the pair would ask for 255.2 of
 /// those 254.
 class _TabsAndBrushGroup extends StatelessWidget {
-  const _TabsAndBrushGroup({required this.tabs, required this.brushTool});
+  const _TabsAndBrushGroup({
+    required this.tabs,
+    required this.brushTool,
+    required this.battery,
+  });
 
   final Widget tabs;
   final ValueNotifier<BrushToolState>? brushTool;
+  final ValueListenable<BatteryReading>? battery;
 
   @override
   Widget build(BuildContext context) {
+    // 🗣️I-103-Q1 (유저 2026-10-16): the battery stands after the brush's
+    // group, at the very end, and is KEPT with it as the list button's place
+    // is — the group gives way to its button that much sooner (the cost the
+    // answer named), and a strip too narrow for even that shows both,
+    // smaller.
+    final gauge = switch (battery) {
+      final battery? => _BatteryGauge(
+        battery: battery,
+        width: _BatteryGauge.widthIn(context),
+      ),
+      null => null,
+    };
     final tool = brushTool;
     if (tool == null) {
-      return tabs;
+      return gauge == null
+          ? tabs
+          : KeptTailRow(
+              headKeeps: _ProjectTabRow._minTabWidth,
+              head: tabs,
+              tail: gauge,
+            );
     }
     final narrowest = _BrushValueBars.narrowestIn(context);
     return LayoutBuilder(
@@ -829,20 +883,105 @@ class _TabsAndBrushGroup extends StatelessWidget {
         final bars = _BrushValueBars.widthsIn(
           // What the two bars may take between them once the tabs hold
           // only their list button's place and the group's fixed parts
-          // stand.
+          // and the battery stand.
           constraints.maxWidth -
               _ProjectTabRow._minTabWidth -
-              _BrushGroup.fixedWidth,
+              _BrushGroup.fixedWidth -
+              (gauge == null ? 0 : _BatteryGauge.gap + gauge.width),
           narrowest,
         );
+        final group = bars != null
+            ? _BrushGroup(brushTool: tool, bars: bars)
+            : _BrushGroupButton(brushTool: tool);
         return KeptTailRow(
           headKeeps: _ProjectTabRow._minTabWidth,
           head: tabs,
-          tail: bars != null
-              ? _BrushGroup(brushTool: tool, bars: bars)
-              : _BrushGroupButton(brushTool: tool),
+          tail: gauge == null
+              ? group
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    group,
+                    const SizedBox(width: _BatteryGauge.gap),
+                    gauge,
+                  ],
+                ),
         );
       },
+    );
+  }
+}
+
+/// The device's battery at the strip's very end (I-103-Q1): an icon that
+/// fills with the charge — the bolt while on power — and the percent.
+///
+/// ONE width whatever it says ([widthIn]), so a charge that loses a digit
+/// moves nothing beside it.
+class _BatteryGauge extends StatelessWidget {
+  const _BatteryGauge({required this.battery, required this.width});
+
+  final ValueListenable<BatteryReading> battery;
+  final double width;
+
+  /// Between the brush's group and the gauge.
+  static const double gap = 8;
+
+  static const double _iconSize = 16;
+  static const double _iconGap = 2;
+
+  /// The charge as the icons draw it: none to six bars, then full.
+  static const List<IconData> _levels = [
+    Icons.battery_0_bar,
+    Icons.battery_1_bar,
+    Icons.battery_2_bar,
+    Icons.battery_3_bar,
+    Icons.battery_4_bar,
+    Icons.battery_5_bar,
+    Icons.battery_6_bar,
+    Icons.battery_full,
+  ];
+
+  /// The size the project tabs write their names in.
+  static TextStyle _styleIn(BuildContext context) =>
+      DefaultTextStyle.of(context).style.merge(const TextStyle(fontSize: 12));
+
+  /// The icon and the widest percent the gauge can write — measured, as the
+  /// bars' floors are, so another face or OS text size still fits.
+  static double widthIn(BuildContext context) =>
+      _iconSize +
+      _iconGap +
+      TextMeasure(context, _styleIn(context)).widest([
+        '100%',
+        ...everyDigitIn((digit) => '$digit$digit%'),
+      ]).ceilToDouble();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    return ValueListenableBuilder<BatteryReading>(
+      valueListenable: battery,
+      builder: (context, reading, _) => SizedBox(
+        key: const ValueKey<String>('top-strip-battery'),
+        width: width,
+        child: Row(
+          children: [
+            Icon(
+              reading.charging
+                  ? Icons.battery_charging_full
+                  : _levels[(reading.percent * (_levels.length - 1) / 100)
+                        .round()],
+              size: _iconSize,
+              color: color,
+            ),
+            const SizedBox(width: _iconGap),
+            Text(
+              '${reading.percent}%',
+              maxLines: 1,
+              style: _styleIn(context).copyWith(color: color),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -925,7 +1064,7 @@ class _BrushGroupButton extends StatelessWidget {
               _padding * 2 +
               _BrushValueBars.fullBar +
               _BrushValueBars._gap +
-              PressureCurveButton.slotWidth,
+              SettingSourceButton.slotWidth,
           height:
               _padding * 2 + _BrushValueBars._barHeight * 3 + _lineGap * 2,
           builder: (context, _) => Padding(
@@ -998,10 +1137,10 @@ class _BrushValueBars extends StatelessWidget {
   /// pressure button after each, and the gaps.
   static const double fixedWidth =
       _gap +
-      PressureCurveButton.slotWidth +
+      SettingSourceButton.slotWidth +
       _gap +
       _gap +
-      PressureCurveButton.slotWidth;
+      SettingSourceButton.slotWidth;
 
   /// The size bar as the strip writes it — the one the strip shows, and the
   /// one [narrowestIn] measures.
@@ -1118,10 +1257,10 @@ class _BrushValueBars extends StatelessWidget {
         final sizeOn = state.supports(ToolParameter.size);
         final opacityOn = state.supports(ToolParameter.opacity);
         final pressureOn = state.supports(ToolParameter.pressure);
-        Widget pressure(BrushPressureTarget target, String title) {
+        Widget pressure(BrushPressureTarget target) {
           return PressureCurveButton(
             keyValue: 'brush-tool-pressure-${target.name}',
-            title: title,
+            target: target,
             curves: state.targetCurves(target),
             enabled: pressureOn,
             onChanged: (curves) => brushTool.value = brushTool.value
@@ -1144,7 +1283,7 @@ class _BrushValueBars extends StatelessWidget {
             ),
           ),
           const SizedBox(width: _gap),
-          pressure(BrushPressureTarget.size, AppText.strings.brSize),
+          pressure(BrushPressureTarget.size),
         ];
         final opacityLine = [
           SizedBox(
@@ -1163,7 +1302,7 @@ class _BrushValueBars extends StatelessWidget {
             ),
           ),
           const SizedBox(width: _gap),
-          pressure(BrushPressureTarget.opacity, AppText.strings.brOpacity),
+          pressure(BrushPressureTarget.opacity),
         ];
         if (axis == Axis.horizontal) {
           return Row(
@@ -2018,10 +2157,11 @@ Future<void> showSaveFailure(
       titleIcon: Icons.error_outline,
       message: saveFailureMessage(failure),
       details: [
-        if (copy != null) strings.saveFailedCopyLine(copy),
-        strings.saveFailedErrorLine('${failure.error}'),
+        NoticeDetails([
+          if (copy != null) strings.saveFailedCopyLine(copy),
+          strings.saveFailedErrorLine('${failure.error}'),
+        ], heading: strings.saveFailedDetailsHeading),
       ],
-      detailsHeading: strings.saveFailedDetailsHeading,
       actions: [
         AppWindowAction(
           label: editorActionLabel(EditorActionIds.fileBackUpFailedCopy),
@@ -2197,10 +2337,11 @@ Future<FailedSaveCopy?> _pickFailedCopy(
       titleIcon: Icons.backup_outlined,
       message: strings.failedCopyVanishOnClose,
       details: [
-        for (final copy in copies)
-          '${copy.projectPath} — ${clock(copy.savedAt)}',
+        NoticeDetails([
+          for (final copy in copies)
+            '${copy.projectPath} — ${clock(copy.savedAt)}',
+        ], heading: strings.saveFailedDetailsHeading),
       ],
-      detailsHeading: strings.saveFailedDetailsHeading,
       actions: [
         AppWindowAction(
           label: strings.commonCancel,
@@ -2254,13 +2395,14 @@ void _tellWhatTheSaveCouldNotCarry(
       // 「사라진 그림이 뭔지 이름 리스트로 표시하는게 필요해보임」) — in the
       // fold every notice has for what its sentence is about.
       details: [
-        for (final place in celPlacesOf(
-          session.repository.requireProject(),
-          lost,
-        ))
-          celPlaceLine(place, framePlace: session.framePlaceLabel),
+        NoticeDetails([
+          for (final place in celPlacesOf(
+            session.repository.requireProject(),
+            lost,
+          ))
+            celPlaceLine(place, framePlace: session.framePlaceLabel),
+        ], heading: strings.saveCelsLostHeading),
       ],
-      detailsHeading: strings.saveCelsLostHeading,
       windowKey: const ValueKey<String>('save-cels-lost-notice'),
     ),
   );
@@ -2421,45 +2563,24 @@ Future<void> _saySavedOncePlaced(BuildContext context) =>
       task: (report) async => report(1),
     );
 
-/// 「다른 이름으로 저장」's picture: the frame under the playhead as ONE
-/// [format] file at the canvas's size, where the person says — and the
-/// project stays the file it was. A copy, never where it saves from now on.
-///
-/// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재
-/// 보이는대로 png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로
-/// 클립하는건 당연」. What it takes is Q7's answer (09-30): 「내보내기
-/// 「이미지」와 같은 깨끗한 한 장」 — the image tab's picture at size =
-/// canvas ([writeFrameImage]): the layers as they show, none of the editing
-/// marks, the view's rotation and flip ignored, the pasteboard cut off. Its
-/// settings are that tab's defaults, not the ones last used there: this is
-/// Save As, not the export window — all but its ground: RGB on white, PNG
-/// as JPG, where the tab's PNG keeps its alpha.
-///
-/// 🗣️F-335 (유저 10-10): 「다른이름저장의 png, 형식 기본값 RGB의
-/// 배경흰색으로」.
+/// 「다른 이름으로 저장」's picture: [_pictureSaveAsWrites] as ONE [format]
+/// file, where the person says — and the project stays the file it was. A
+/// copy, never where it saves from now on.
 Future<void> saveFrameAsImage(
   BuildContext context,
   EditorSessionManager session,
   ExportStillFormat format,
 ) async {
-  final task = frameUnderThePlayhead(session);
-  if (task == null) {
+  final frame = frameUnderThePlayhead(session);
+  if (frame == null) {
     return;
   }
-  final spec = ImageExportSpec(
-    format: ExportFormatSelection(
-      kind: ExportMediaKind.still,
-      stillFormat: format,
-      channels: ExportChannels.rgb,
-      // ⚠️White because F-335 says white — not the window's default ground
-      // ([defaultExportBackgroundArgb]), which answers what the export
-      // window starts on and may change on its own.
-      backgroundArgb: 0xFFFFFFFF,
-    ),
-    sizeMode: ExportSizeMode.canvas,
-  );
-  final name = sanitizeExportFileComponent(
-    session.repository.requireProject().name,
+  final writePicture = _pictureSaveAsWrites(session, frame, format);
+  // The export window's image, and named as it is: after the cut it is a
+  // frame of (F-404 — 「이미지는 기본적으로 현재컷이 대상인거니 … 컷이름」).
+  final name = unnamedExportName(
+    session.repository.requireProject(),
+    cut: frame.cut,
   );
   final strings = AppText.strings;
   // ⚠️The order Save As keeps (유저 2026-08-31): where the file is written
@@ -2480,12 +2601,7 @@ Future<void> saveFrameAsImage(
         doneLabel: staged ? strings.savePrepareDone : strings.saveProgressDone,
         windowKey: const ValueKey<String>('save-progress-dialog'),
         task: (report) async {
-          final written = await writeFrameImage(session, task, spec, (
-            directory: File(path).parent.path,
-            name: fileNameOfPath(path),
-            isCancelled: null,
-            onProgress: null,
-          ));
+          final written = await writePicture(path);
           // ⛔Never 「Saved」 over no file: the throw takes the window down
           // before it says so, and the notice below says why.
           return written ? true : throw const _NothingWritten();
@@ -2500,6 +2616,70 @@ Future<void> saveFrameAsImage(
       showFileError(context, error);
     }
   }
+}
+
+/// What [saveFrameAsImage] writes as [format] — [task], the frame under the
+/// playhead, at the canvas's size — as a writer of it to a path.
+///
+/// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재
+/// 보이는대로 png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로
+/// 클립하는건 당연」. What it takes is Q7's answer (09-30): 「내보내기
+/// 「이미지」와 같은 깨끗한 한 장」 — the image tab's picture at size =
+/// canvas ([writeFrameImage]): the layers as they show, none of the editing
+/// marks, the view's rotation and flip ignored, the pasteboard cut off. Its
+/// settings are that tab's defaults, not the ones last used there: this is
+/// Save As, not the export window — all but its ground. Whatever the
+/// format, the picture stands on the project's PAPER as the canvas shows
+/// it, its colour and its alpha; where the paper is absent or thin, a file
+/// that keeps alpha (PNG) keeps nothing there and one that cannot (JPG)
+/// shows white.
+///
+/// 🗣️F-371 (유저 10-16): 「그냥 저번처럼 RGBA 고정으로. 다만 RGB로직
+/// 만든건 좋고 출력에서도 쓰니 그건 건들지않음. 설정만 RGBA로 할뿐」 ·
+/// 「바탕 앱에서 설정한 캔버스 색 따라감. 캔버스색이 없으면 투명인거고
+/// 그런식」 — the 캔버스 색 is the paper's swatch (`viewCanvasColor`) — and
+/// the JPG with it, as the rule for every picture Save As writes: 「jpg도
+/// 바탕 흰색고정말고 용지색으로 가자. 없음같은 투명한상황에서만 흰색으로
+/// 하고. 앞으로 다른이름저장은 기본적으로 anicel형식아닌 이미지형식은 그걸
+/// 기본으로」.
+/// ↩️F-335 (유저 10-10) had made the PNG RGB on white, as the JPG was:
+/// 「다른이름저장의 png, 형식 기본값 RGB의 배경흰색으로」.
+Future<bool> Function(String path) _pictureSaveAsWrites(
+  EditorSessionManager session,
+  ExportFrameTask task,
+  ExportStillFormat format,
+) {
+  final spec = ImageExportSpec(
+    format: ExportFormatSelection(
+      kind: ExportMediaKind.still,
+      stillFormat: format,
+      // A format that keeps no alpha makes its file RGB itself
+      // ([ExportFormatSelection.effectiveChannels]).
+      channels: ExportChannels.rgba,
+      // ⚠️White where the paper lets the ground show in a file with no
+      // alpha — not the window's default ground
+      // ([defaultExportBackgroundArgb]), which answers what the export
+      // window starts on and may change on its own.
+      backgroundArgb: 0xFFFFFFFF,
+    ),
+    sizeMode: ExportSizeMode.canvas,
+  );
+  final paper = session.projectSettings.projectBackground;
+  return (path) => writeFrameImage(
+    session,
+    task,
+    spec,
+    (
+      directory: File(path).parent.path,
+      name: fileNameOfPath(path),
+      isCancelled: null,
+      onProgress: null,
+      // Its pictures are the picture alone ([saveAsImageFormats] has no
+      // PSD): nothing is left out of one.
+      onLeftOut: null,
+    ),
+    paper: paper,
+  );
 }
 
 /// What a picture save that made no file says: the image tab's own sentence

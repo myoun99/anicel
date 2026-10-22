@@ -1,12 +1,12 @@
 import '../brush_preset_id_mint.dart';
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
 
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_correction.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_preset.dart';
@@ -14,6 +14,7 @@ import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
+import '../../models/brush_tip_order.dart';
 import '../../models/import/import_warning.dart';
 import '../brush_tip_image_codec.dart';
 
@@ -137,15 +138,13 @@ Future<SutImportResult> _decode(
         : 'sut-$sourceName-$nodeIndex';
     final presetId = mint.next(idBase);
 
-    BrushTipMask? mask;
+    var tips = const <BrushTipMask>[];
     if (_intOf(variant['BrushUsePatternImage']) == 1) {
-      mask = await _tipMaskFromPatternArray(
+      tips = await _tipMasksFromPatternArray(
         variant['BrushPatternImageArray'],
         materials: materials,
         maskId: '$idBase-tip',
-        brushName: name,
-        describe: 'tip bitmap',
-        warnings: warnings,
+        part: (brushName: name, describe: 'tip bitmap', warnings: warnings),
       );
     }
     // Paper texture material (canvas-anchored overlay), referenced the same
@@ -155,13 +154,19 @@ Future<SutImportResult> _decode(
     var textureBrightness = 0.0;
     var textureContrast = 0.0;
     if (variant['TextureImage'] != null) {
-      textureMask = await _tipMaskFromPatternArray(
-        variant['TextureImage'],
-        materials: materials,
-        maskId: '$idBase-texture',
+      final part = (
         brushName: name,
         describe: 'paper texture',
         warnings: warnings,
+      );
+      textureMask = _theOneOf(
+        await _tipMasksFromPatternArray(
+          variant['TextureImage'],
+          materials: materials,
+          maskId: '$idBase-texture',
+          part: part,
+        ),
+        part,
       );
       if (textureMask != null) {
         // ⛔CARRIED, not baked in here — see the same change in the ABR
@@ -192,13 +197,19 @@ Future<SutImportResult> _decode(
     BrushTipMask? dualMask;
     if (_intOf(variant['UseDualBrush']) == 1 &&
         _intOf(variant['DualUsePatternImage']) == 1) {
-      dualMask = await _tipMaskFromPatternArray(
-        variant['DualPatternImageArray'],
-        materials: materials,
-        maskId: '$idBase-dual',
+      final part = (
         brushName: name,
         describe: 'dual brush tip',
         warnings: warnings,
+      );
+      dualMask = _theOneOf(
+        await _tipMasksFromPatternArray(
+          variant['DualPatternImageArray'],
+          materials: materials,
+          maskId: '$idBase-dual',
+          part: part,
+        ),
+        part,
       );
     }
 
@@ -208,7 +219,7 @@ Future<SutImportResult> _decode(
         name: name,
         settings: _settingsFromVariant(
           variant,
-          mask: mask,
+          tips: tips,
           textureMaskSource: textureMask,
           textureInvert: textureInvert,
           textureBrightness: textureBrightness,
@@ -234,7 +245,7 @@ Future<SutImportResult> _decode(
 
 BrushSettings _settingsFromVariant(
   Map<String, Object?> variant, {
-  required BrushTipMask? mask,
+  required List<BrushTipMask> tips,
   required String brushName,
   required List<String> warnings,
   BrushTipMask? textureMaskSource,
@@ -264,44 +275,29 @@ BrushSettings _settingsFromVariant(
   final thicknessPercent = _doubleOf(variant['BrushThickness']) ?? 100.0;
   final rotation = _doubleOf(variant['BrushRotation']) ?? 0.0;
 
-  // BB-3: effectors map to pressure CURVES — the CSP minimum value is the
-  // size curve's left endpoint. Opacity and flow effectors now import as
-  // their own channels (they used to be OR-merged into one opacity bool).
+  // BB-3: effectors map to response CURVES — each source's 最小値 is its
+  // curve's own minimum. Opacity and flow effectors import as their own
+  // channels (they used to be OR-merged into one opacity bool).
   // ⛔EVERY enabled source, not just pressure. A Clip Studio brush can drive
   // one setting from several inputs at once, and each has its own curve block
   // in the effector's tail; reading only the first one imported a tilt brush
   // as a plain one.
+  // ★Thickness IS roundness here and Interval IS spacing, so their effectors
+  // land on those settings' rows (F-176-Q2) — ランダム included, which is what
+  // stops a textured stamp brush looking stamped and breaks up the even beat
+  // of its dabs.
   final curves = <BrushDynamicsKey, BrushPressureCurve>{
-    for (final entry in _effectorCurves(variant['BrushSizeEffector']).entries)
-      (BrushPressureTarget.size, entry.key): entry.value,
-    for (final entry
-        in _effectorCurves(variant['BrushOpacityEffector']).entries)
-      (BrushPressureTarget.opacity, entry.key): entry.value,
-    for (final entry in _effectorCurves(variant['BrushFlowEffector']).entries)
-      (BrushPressureTarget.flow, entry.key): entry.value,
+    for (final (target, column) in const [
+      (BrushPressureTarget.size, 'BrushSizeEffector'),
+      (BrushPressureTarget.opacity, 'BrushOpacityEffector'),
+      (BrushPressureTarget.flow, 'BrushFlowEffector'),
+      (BrushPressureTarget.roundness, 'BrushThicknessEffector'),
+      (BrushPressureTarget.spacing, 'BrushIntervalEffector'),
+    ])
+      for (final entry in _effectorCurves(variant[column]).entries)
+        (target, entry.key): entry.value,
   };
 
-  // Random input source (flag 0x80) drives the jitters. The engine shakes a
-  // value DOWNWARD from its full setting (`v *= 1 - jitter * random`), which
-  // is exactly Clip Studio's effector minimum: the value wanders between
-  // 최소치% and 100%, so the amplitude is the complement of that floor.
-  final sizeJitter = _effectorRandomJitter(variant['BrushSizeEffector']);
-  // No flow jitter exists on the engine; flow randomness folds into opacity,
-  // the same approximation the ABR importer makes.
-  final opacityJitter = math.max(
-    _effectorRandomJitter(variant['BrushOpacityEffector']),
-    _effectorRandomJitter(variant['BrushFlowEffector']),
-  );
-  // Thickness IS roundness here, so its random source squashes the tip per
-  // dab — what stops a textured stamp brush from looking stamped.
-  final roundnessJitter = _effectorRandomJitter(
-    variant['BrushThicknessEffector'],
-  );
-  // The interval effector's random source breaks up the even beat of a
-  // stamped brush.
-  final spacingJitter = _effectorRandomJitter(
-    variant['BrushIntervalEffector'],
-  );
   // Spray mode scatters dabs around the stroke — and it is also the gate on
   // WHICH pair of rotation columns describes the tip's spin, so it is read
   // before either of them.
@@ -372,12 +368,9 @@ BrushSettings _settingsFromVariant(
     roundness: (thicknessPercent / 100.0).clamp(0.01, 1.0).toDouble(),
     angleDegrees: rotation.isFinite ? ((rotation % 180.0) + 180.0) % 180.0 : 0,
     curves: curves,
-    tipMask: mask,
-    sizeJitter: sizeJitter,
-    opacityJitter: opacityJitter,
+    tips: tips,
+    tipOrder: _tipOrderOf(variant, brushName: brushName, warnings: warnings),
     angleJitter: angleJitter,
-    roundnessJitter: roundnessJitter,
-    spacingJitter: spacingJitter,
     scatterRadiusRatio: scatterRadiusRatio,
     scatterCount: scatterCount,
     dualMask: dualMask,
@@ -437,6 +430,48 @@ BrushSettings _settingsFromVariant(
       brushName: brushName,
       warnings: warnings,
     ),
+    correction: _correctionOf(variant),
+  );
+}
+
+/// The brush's 補正, every column of it the user's five files carry
+/// (F-418): its 手ブレ補正 (`FlickerReduction`, Clip Studio's 0..100) on
+/// our scale, the speed's say in it, the 後補正 and the corners.
+///
+/// 🗣️A file without the 手ブレ補正 reads as Clip Studio's 0 (유저
+/// 2026-10-20, F-418-Q6: 「없으면 클튜 0인거랑 동일한 우리의 값으로
+/// 기본값으로」). A 後補正 that is off is 0 whatever strength it keeps
+/// ([BrushCorrection.postStrength]); a part the file leaves out keeps our
+/// default.
+BrushCorrection _correctionOf(Map<String, Object?> variant) {
+  const fallback = BrushCorrection();
+  double finite(String column, double otherwise) {
+    final value = _doubleOf(variant[column]);
+    return value == null || !value.isFinite ? otherwise : value;
+  }
+
+  bool flag(String column, bool otherwise) => switch (_intOf(
+    variant[column],
+  )) {
+    null => otherwise,
+    final value => value != 0,
+  };
+  return BrushCorrection(
+    sharpenCorners: flag('BrushSharpenCorner', fallback.sharpenCorners),
+    stabilization: finite(
+      'FlickerReduction',
+      0,
+    ).clamp(0.0, BrushCorrection.maxStabilization),
+    steadyingBySpeed: BrushSteadyingBySpeed.fromClipStudio(
+      bySpeed: _intOf(variant['FlickerReductionBySpeed']),
+      type: _intOf(variant['FlickerReductionBySpeedType']),
+    ),
+    postStrength: flag('BrushUseRevision', false)
+        ? finite('BrushRevision', 0).clamp(0.0, BrushCorrection.maxPostStrength)
+        : 0,
+    postBySpeed: flag('BrushRevisionBySpeed', fallback.postBySpeed),
+    postByViewScale: flag('BrushRevisionByViewScale', fallback.postByViewScale),
+    postBezier: flag('BrushRevisionBezier', fallback.postBezier),
   );
 }
 
@@ -711,6 +746,17 @@ Map<BrushInputSource, BrushPressureCurve> _effectorCurves(Object? effector) {
     }
     block += 1;
   }
+  // ランダム is the highest bit, so whatever block it may own comes last and
+  // shifts nothing above. Clip Studio's panel gives it no graph — a tick and
+  // a 最小値 — and that is all it is read as (F-176-Q2).
+  if (flags & BrushInputSource.random.effectorFlagBit != 0) {
+    curves[BrushInputSource.random] = BrushPressureCurve.linearFrom(
+      _effectorMinimumRatio(
+        effector,
+        BrushInputSource.random.effectorMinimumIndex,
+      ),
+    );
+  }
   return curves;
 }
 
@@ -729,51 +775,43 @@ BrushPressureCurve? _effectorSourceCurve(
   final minimum = _effectorMinimumRatio(
     effector,
     source.effectorMinimumIndex,
-  );
+  ).clamp(0.0, 1.0).toDouble();
   final maximum = source == BrushInputSource.tilt
       ? _effectorTiltMaximum(effector)
       : 1.0;
-  // 🚨THE FLOOR IS DIVIDED BY THE CEILING, and getting this wrong is silent.
-  //
-  // The panel says the response runs from 최소치% to 최대치%. Our curve stores
-  // a SHAPE in [0, 1] and `evaluate` returns `shape * maximum`, so for the
-  // output to land on 최소치 at no input the shape has to start at
-  // `minimum / maximum` — not at `minimum`, which would come out
-  // maximum-times too high. With no maximum (every source but 傾き) the
-  // division is by 1.0 and this is exactly what it always was.
-  final floor = (minimum / maximum).clamp(0.0, 1.0).toDouble();
+  // The panel says the response runs from 最小値% to 最大値% as the graph
+  // runs from 0 to 1 — which is what a curve's own [BrushPressureCurve.minimum]
+  // and [BrushPressureCurve.maximum] mean, so the graph comes in as it is.
+  // ↩️The floor used to be folded into the points (divided by the ceiling
+  // first — 「THE FLOOR IS DIVIDED BY THE CEILING」), from before a curve
+  // could hold one apart; the popup now shows it as its own slider.
   final stored = effector is Uint8List
       ? _effectorCurvePoints(effector, blockIndex)
       : null;
   if (stored == null || stored.isEmpty) {
-    return BrushPressureCurve.linearFrom(floor, maximum: maximum);
+    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
-  final points = <BrushCurvePoint>[BrushCurvePoint(0.0, floor)];
+  final points = <BrushCurvePoint>[const BrushCurvePoint(0.0, 0.0)];
   for (final point in stored) {
     // The engine wants strictly increasing x inside the unit square; Clip
     // Studio pads unused slots by repeating the last point.
     if (point.x <= points.last.x || point.x > 1.0) {
       continue;
     }
-    points.add(
-      BrushCurvePoint(
-        point.x,
-        (floor + (1.0 - floor) * point.y).clamp(0.0, 1.0).toDouble(),
-      ),
-    );
+    points.add(BrushCurvePoint(point.x, point.y.clamp(0.0, 1.0).toDouble()));
   }
   if (points.last.x < 1.0) {
     points.add(const BrushCurvePoint(1.0, 1.0));
   }
   if (points.length < 2) {
-    return BrushPressureCurve.linearFrom(floor, maximum: maximum);
+    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
   try {
-    return BrushPressureCurve(points, maximum: maximum);
+    return BrushPressureCurve(points, minimum: minimum, maximum: maximum);
   } on ArgumentError {
     // Never fail an import over a curve; the straight line is the honest
     // fallback the file already implies through its minimum.
-    return BrushPressureCurve.linearFrom(floor, maximum: maximum);
+    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
 }
 
@@ -845,24 +883,6 @@ List<BrushCurvePoint>? _effectorCurvePoints(Uint8List blob, int blockIndex) {
   return null;
 }
 
-/// Jitter amplitude for an effector driven by the random input source.
-///
-/// Clip Studio wanders the value between its 최소치% and 100%; the engine
-/// shakes downward by `jitter * random`, so the amplitude is the complement
-/// of the minimum. An effector without the random bit contributes nothing.
-double _effectorRandomJitter(Object? effector) {
-  if (!_usesRandom(_effectorFlags(effector))) {
-    return 0.0;
-  }
-  return (1.0 -
-          _effectorMinimumRatio(
-            effector,
-            BrushInputSource.randomEffectorMinimumIndex,
-          ))
-      .clamp(0.0, 1.0)
-      .toDouble();
-}
-
 /// One source's 최소치 percentage — the floor that source's curve lifts to.
 ///
 /// 🚨**THERE ARE FOUR OF THESE, NOT ONE.** The blob stores a minimum per
@@ -873,7 +893,7 @@ double _effectorRandomJitter(Object? effector) {
 ///
 /// ⛔This used to read `int[3]` for everybody and call it "the pressure
 /// floor". That was harmless for pressure and WRONG for random, which took
-/// pressure's number as its jitter amplitude (see [_effectorRandomJitter]).
+/// pressure's number as its own 最小値 (see [_effectorCurves]).
 /// The fixtures could not catch it: `sut_decoder_test`'s `effector()` wrote
 /// only `setInt32(12, …)`, so every synthetic blob had its four slots
 /// collapsed into one and any index read the same value.
@@ -886,59 +906,173 @@ double _effectorMinimumRatio(Object? blob, int sourceIndex) {
   return (minimum / 100.0).clamp(0.0, 1.0).toDouble();
 }
 
-Future<BrushTipMask?> _tipMaskFromPatternArray(
+/// Every mask [patternArray] names, in its order — the first under [maskId],
+/// each further material under `[maskId]-2`, `-3`, … (a material named twice
+/// is one mask, taken twice).
+///
+/// ↩️Only the earliest material was read, so a brush of several tips came
+/// in with its first alone (F-176-Q3).
+Future<List<BrushTipMask>> _tipMasksFromPatternArray(
   Object? patternArray, {
   required List<({String path, Uint8List data})> materials,
   required String maskId,
-  required String brushName,
-  required String describe,
-  required List<String> warnings,
+  required _BrushPart part,
 }) async {
   if (patternArray is! Uint8List || materials.isEmpty) {
     if (patternArray != null) {
-      warnings.add(
-        'Brush "$brushName": $describe is not embedded; '
-        'imported without it.',
+      _leftOut(part, 'is not embedded');
+    }
+    return const [];
+  }
+  final named = _materialsNamedBy(patternArray, materials);
+  if (named.isEmpty) {
+    _leftOut(part, 'reference not found');
+    return const [];
+  }
+  final masks = <({String path, Uint8List data}), BrushTipMask?>{};
+  final tips = <BrushTipMask>[];
+  for (final material in named) {
+    if (!masks.containsKey(material)) {
+      masks[material] = await _tipMaskOf(
+        material,
+        id: masks.isEmpty ? maskId : '$maskId-${masks.length + 1}',
+        part: part,
       );
     }
-    return null;
-  }
-  // The array blob carries UTF-16BE catalog paths; match them against the
-  // embedded material files. The earliest referenced material is the
-  // primary tip (pattern brushes with several tips use only the first).
-  final text = _utf16Runs(patternArray);
-  ({String path, Uint8List data})? tipMaterial;
-  var bestIndex = -1;
-  for (final material in materials) {
-    final index = text.indexOf(material.path);
-    if (index >= 0 && (bestIndex == -1 || index < bestIndex)) {
-      bestIndex = index;
-      tipMaterial = material;
+    if (masks[material] case final mask?) {
+      tips.add(mask);
     }
   }
-  if (tipMaterial == null) {
-    warnings.add(
-      'Brush "$brushName": $describe reference not found; '
-      'imported without it.',
-    );
-    return null;
-  }
+  return tips;
+}
 
-  final png = _largestPng(tipMaterial.data);
-  if (png == null) {
-    warnings.add(
-      'Brush "$brushName": $describe material holds no readable '
-      'image; imported without it.',
+/// What a one-mask slot — the paper texture, the dual tip — keeps of
+/// [masks]: the first, said aloud when the file names more (Clip Studio
+/// lets a dual tip take turns too).
+BrushTipMask? _theOneOf(List<BrushTipMask> masks, _BrushPart part) {
+  if (masks.length > 1) {
+    part.warnings.add(
+      'Brush "${part.brushName}": ${part.describe} has ${masks.length} '
+      'images; only the first is used.',
     );
+  }
+  return masks.firstOrNull;
+}
+
+/// One part of a brush being read — the brush, the part as a warning
+/// words it, and where its warnings go.
+typedef _BrushPart = ({
+  String brushName,
+  String describe,
+  List<String> warnings,
+});
+
+/// Says [part] came in without it, for [why].
+void _leftOut(_BrushPart part, String why) => part.warnings.add(
+  'Brush "${part.brushName}": ${part.describe} $why; imported without it.',
+);
+
+/// 繰り返し方法, from `BrushPatternOrderType`.
+///
+/// 📏ALL SIX NUMBERS ARE MEASURED (2026-10-21, board F-176-Q5): the user
+/// saved one brush six times in Clip Studio, the method alone changed —
+/// 繰り返し 0 · 折り返し 1 · 繰り返さない 2 · ランダム 3 · 一巡のみ 4 ·
+/// ランダムに一巡 5, the order Clip Studio lists them in.
+/// ↩️Before, two facts bore that order out without pinning it: each
+/// one-tip brush of the user's stores 0, and all six of their Cloud
+/// brushes, which scatter their tips at random, store 3 (2026-10-18, ten
+/// brushes). `BrushPatternOrderType2` beside it holds the same number in
+/// all sixteen and is left unread.
+BrushTipOrder _tipOrderOf(
+  Map<String, Object?> variant, {
+  required String brushName,
+  required List<String> warnings,
+}) {
+  final stored = _intOf(variant['BrushPatternOrderType']) ?? 0;
+  final order = switch (stored) {
+    0 => BrushTipOrder.repeat,
+    1 => BrushTipOrder.pingPong,
+    2 => BrushTipOrder.holdLast,
+    3 => BrushTipOrder.random,
+    4 => BrushTipOrder.oneLap,
+    5 => BrushTipOrder.shuffledLap,
+    _ => null,
+  };
+  if (order == null) {
+    warnings.add(
+      'Brush "$brushName": its tips take turns in an unrecognised order '
+      '(BrushPatternOrderType $stored); imported taking them in order.',
+    );
+  }
+  return order ?? BrushTipOrder.repeat;
+}
+
+/// The material each entry of a Clip Studio material array names, in the
+/// array's order.
+///
+/// The array is a big-endian u32 saying where its entries start, a u32
+/// count, and the entries, each led by a u32 of its own length in bytes
+/// that counts those four; an entry spells its material's paths in
+/// UTF-16. 📏Read 2026-10-18 off the user's five brush files, tips,
+/// textures and dual tips alike — 遠くの雲's array counts thirteen entries
+/// and names thirteen materials.
+///
+/// ⚠️AN ENTRY IS MATCHED BY THE CATALOG PATH IT SPELLS, not by its layer
+/// path: an installed material's layer path drops the `Install:` its
+/// catalog path carries (ウェット水彩: `.:Paint110:…:data:material_0.layer`
+/// beside `.:Install:Paint110:…`), so only the catalog path finds it.
+List<({String path, Uint8List data})> _materialsNamedBy(
+  Uint8List array,
+  List<({String path, Uint8List data})> materials,
+) {
+  if (array.length < 8) {
+    return const [];
+  }
+  final view = ByteData.sublistView(array);
+  final count = view.getUint32(4);
+  final named = <({String path, Uint8List data})>[];
+  var offset = view.getUint32(0);
+  for (var entry = 0; entry < count && offset + 4 <= array.length; entry += 1) {
+    final length = view.getUint32(offset);
+    if (length < 4 || offset + length > array.length) {
+      break;
+    }
+    final text = _utf16Runs(
+      Uint8List.sublistView(array, offset, offset + length),
+    );
+    ({String path, Uint8List data})? material;
+    var earliest = -1;
+    for (final candidate in materials) {
+      final index = text.indexOf(candidate.path);
+      if (index >= 0 && (earliest == -1 || index < earliest)) {
+        earliest = index;
+        material = candidate;
+      }
+    }
+    if (material != null) {
+      named.add(material);
+    }
+    offset += length;
+  }
+  return named;
+}
+
+/// [material]'s image as a mask, or `null` — with a warning — when it holds
+/// none that reads.
+Future<BrushTipMask?> _tipMaskOf(
+  ({String path, Uint8List data}) material, {
+  required String id,
+  required _BrushPart part,
+}) async {
+  final png = _largestPng(material.data);
+  if (png == null) {
+    _leftOut(part, 'material holds no readable image');
     return null;
   }
   try {
-    return await decodeBrushTipImage(png, id: maskId);
+    return await decodeBrushTipImage(png, id: id);
   } on Object catch (error) {
-    warnings.add(
-      'Brush "$brushName": $describe image could not be decoded '
-      '($error); imported without it.',
-    );
+    _leftOut(part, 'image could not be decoded ($error)');
     return null;
   }
 }

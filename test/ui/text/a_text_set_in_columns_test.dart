@@ -366,6 +366,85 @@ void main() {
     });
   });
 
+  // text-letters-lean-and-underline ④ — and Q5 (유저 2026-10-18): 「글 덩어리
+  // 하나가 첫 문단의 정렬로 기준점에 선다」.
+  group('🚨paragraphs aligned each their own way', () {
+    CelTextLayout setEach(
+      String words,
+      List<TextCelAlign> aligns, {
+      double? wrapWidth,
+    }) {
+      final layout = layoutCelText(
+        CelTextContent(
+          spans: [run(words)],
+          anchor: CanvasPoint(x: 0, y: 0),
+          wrapWidth: wrapWidth,
+          vertical: true,
+          paragraphs: [
+            for (final align in aligns)
+              CelTextParagraph(align: align, lineHeight: 1),
+          ],
+        ),
+      );
+      addTearDown(layout.dispose);
+      return layout;
+    }
+
+    test('in a box, each column stands down its length as ITS paragraph '
+        'says', () {
+      final boxed = setEach('あい\nう\nえ', [
+        TextCelAlign.right,
+        TextCelAlign.center,
+        TextCelAlign.left,
+      ], wrapWidth: 100);
+
+      expect(boxed.block, at(-60, 0, 60, 100));
+      expect(letter(boxed, 0), at(-20, 60, 20, 20));
+      expect(letter(boxed, 3), at(-40, 40, 20, 20));
+      expect(letter(boxed, 5), at(-60, 0, 20, 20));
+    });
+
+    test('🚨a text that grows is one block, standing as its FIRST paragraph '
+        'is aligned — each column in the box it is set in as its own '
+        'says', () {
+      // 「あいうえ」 is 80 long: the box it is set in — the one it would be
+      // made — is 81, and a column set to an end stands at the box's.
+      final grown = setEach('あいうえ\nあい\nあい', [
+        TextCelAlign.center,
+        TextCelAlign.left,
+        TextCelAlign.right,
+      ]);
+
+      expect(grown.block, at(-60, -40, 60, 80));
+      expect(letter(grown, 0), at(-20, -40, 20, 20));
+      expect(letter(grown, 5), at(-40, -40.5, 20, 20));
+      expect(letter(grown, 8), at(-60, 0.5, 20, 20));
+    });
+
+    // 🗣️Q4 (유저 2026-10-18): 「줄마다 제 칸」 — a column is a line.
+    test('each column as wide as ITS paragraph\'s pitch says, and the next '
+        'one on from there', () {
+      final layout = layoutCelText(
+        CelTextContent(
+          spans: [run('あ\nい\nう')],
+          anchor: CanvasPoint(x: 0, y: 0),
+          vertical: true,
+          paragraphs: const [
+            CelTextParagraph(lineHeight: 1),
+            CelTextParagraph(lineHeight: 2),
+            CelTextParagraph(lineHeight: 1),
+          ],
+        ),
+      );
+      addTearDown(layout.dispose);
+
+      expect(layout.block, at(-80, 0, 80, 20));
+      expect(letter(layout, 0), at(-20, 0, 20, 20));
+      expect(letter(layout, 2), at(-60, 0, 40, 20));
+      expect(letter(layout, 4), at(-80, 0, 20, 20));
+    });
+  });
+
   group('the letter under a press', () {
     test('🚨the column by where the point is ACROSS, the place by how far '
         'DOWN — the nearer end of the letter it is on', () {

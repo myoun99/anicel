@@ -5,13 +5,16 @@ import 'package:flutter/material.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/cel_photo.dart';
 import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_form.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_source.dart';
 import '../../models/sheet_paint_layer.dart';
+import '../canvas/display_resample.dart' show displayScaleOf;
 import '../canvas/viewport_canvas_transform.dart';
 import 'cut_envelope_ink.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet_painting.dart';
 import '../repaint_props.dart';
@@ -32,6 +35,7 @@ class CutEnvelopePainter extends CustomPainter
     this.effectiveRatio = 1.0,
     this.imageFor,
     this.inkImageFor,
+    this.inkPhotosFor,
     this.inkSurfaceFor,
     this.inkOwner,
     this.liveInkKeys = const {},
@@ -67,12 +71,18 @@ class CutEnvelopePainter extends CustomPainter
   @override
   final double effectiveRatio;
 
-  /// Resolves a media asset path to a decoded image (the logo).
-  final ui.Image? Function(String assetPath)? imageFor;
+  /// Resolves a media asset path to a decoded image (the logo, and the
+  /// files the ink's photos are drawn from — I-97).
+  @override
+  final SheetImageLookup? imageFor;
 
   /// The ink raster for a box — for an EXPORT, which has no view to draw
   /// it through.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// The photos laid on a box's ink (I-97), for an export, beside its
+  /// raster — each drawn from its file by [imageFor].
+  final List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor;
 
   /// The ink surface for a box ON SCREEN, printed as the brush's live
   /// window paints it ([SheetInkOnScreen], F-215).
@@ -91,16 +101,17 @@ class CutEnvelopePainter extends CustomPainter
   final Set<BrushFrameKey> liveInkKeys;
 
   bool _draws(SheetPaintLayer layer) =>
-      layers == null || layers!.contains(layer);
+      drawsSheetLayer(layers, layer);
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.save();
-    enterSheetPaperSpace(canvas, size, (
+    final sheet = (
       viewport: viewport,
       devicePixelRatio: effectiveRatio,
       paper: Size(layout.paperWidth, layout.paperHeight),
-    ));
+    );
+    canvas.save();
+    enterSheetPaperSpace(canvas, size, sheet);
     if (_draws(SheetPaintLayer.paper)) {
       paintSheetPaper(
         canvas,
@@ -117,7 +128,7 @@ class CutEnvelopePainter extends CustomPainter
       _paintContent(canvas);
     }
     if (_draws(SheetPaintLayer.ink)) {
-      _paintInk(canvas);
+      _paintInk(canvas, SheetDeviceGrid.of(size, sheet));
     }
     canvas.restore();
     // On screen the ink is the stratum's last, and drawn out of paper
@@ -223,20 +234,28 @@ class CutEnvelopePainter extends CustomPainter
   /// ([envelopeInkWindows]) — each shows its surface where the window's
   /// placement lays it, clipped to itself so a stroke can never bleed into
   /// the next cell. The painter walked the boxes once more for itself.
-  void _paintInk(Canvas canvas) {
+  ///
+  /// A box's photos (I-97) lie under its handwriting, sampled for the
+  /// device pixels [grid] lays the paper on.
+  void _paintInk(Canvas canvas, SheetDeviceGrid grid) {
     final owner = inkOwner;
-    final imageFor = inkImageFor;
-    if (owner == null || imageFor == null) {
+    final rasterFor = inkImageFor;
+    final photosFor = inkPhotosFor;
+    if (owner == null || (rasterFor == null && photosFor == null)) {
       return;
     }
     for (final window in envelopeInkWindows(layout, owner)) {
       if (liveInkKeys.contains(window.key)) {
         continue;
       }
-      final image = imageFor(window.key);
-      if (image != null) {
-        paintSheetInkWindow(canvas, image, window.placement);
-      }
+      paintSheetInkWindow(
+        canvas,
+        rasterFor?.call(window.key),
+        window.placement,
+        photos: photosFor?.call(window.key) ?? const [],
+        photoFiles: imageFor,
+        displayScale: displayScaleOf(grid.scale, grid.devicePixelRatio),
+      );
     }
   }
 

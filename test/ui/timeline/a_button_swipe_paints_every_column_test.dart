@@ -88,12 +88,15 @@ void main() {
     return sessionOf(tester);
   }
 
-  /// Presses the button on [fromName] and drags DOWN across [rows] rows.
+  /// Presses the button on [fromName] and drags DOWN across [rows] rows —
+  /// with [oneFrame], its down and its first move in one frame, as a fast
+  /// swipe's land: nothing is rebuilt between the press and the sweep.
   Future<void> swipeDown(
     WidgetTester tester,
     String fromName, {
     required int rows,
     String rowName = 'timeline-layer-row-l4',
+    bool oneFrame = false,
   }) async {
     final start = tester.getCenter(find.named(fromName));
     final rowHeight = tester.getRect(find.named(rowName)).height;
@@ -101,7 +104,9 @@ void main() {
       start,
       kind: PointerDeviceKind.mouse,
     );
-    await tester.pump(const Duration(milliseconds: 16));
+    if (!oneFrame) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
     for (var step = 1; step <= rows; step += 1) {
       await gesture.moveBy(Offset(0, rowHeight));
       await tester.pump(const Duration(milliseconds: 16));
@@ -202,6 +207,71 @@ void main() {
           'a mixed row reads ON, as the tap flips it and as a press spread '
           'across a row selection reads it',
     );
+  });
+
+  /// I-89 ①ⓒ — a fast swipe's down and first move land in one frame: the
+  /// press has set its row and nothing has been rebuilt since, so every
+  /// column must read the value the press just set (the swipe's latch); one
+  /// reading the row as it was built spreads the value the press undid, and
+  /// the press's row is the only one changed. (How far a sweep reaches is
+  /// the cases above's — a twirl opening slides the rows under the finger.)
+  group('a fast swipe — its down and first move in one frame — spreads '
+      'what its press just set, on every column', () {
+    for (final (:column, :changed) in <({
+      String column,
+      int Function(EditorSessionManager s) changed,
+    })>[
+      (
+        column: 'visibility',
+        changed: (s) => [
+          for (final layer in s.requireActiveCut.layers)
+            if (!layer.isVisible) layer,
+        ].length,
+      ),
+      (column: 'onion', changed: (s) => s.onionSkin.layerIds.value.length),
+      (
+        column: 'fx',
+        changed: (s) => [
+          for (final layer in s.requireActiveCut.layers)
+            if (s.effectsAndFx.layerFxState(layer.id) == LayerFxState.off)
+              layer,
+        ].length,
+      ),
+      (
+        column: 'timesheet',
+        changed: (s) => [
+          for (final layer in s.requireActiveCut.layers)
+            if (!layer.onTimesheet) layer,
+        ].length,
+      ),
+      (
+        column: 'lanes',
+        changed: (s) => [
+          for (final layer in s.requireActiveCut.layers)
+            if (s.layerSwitches.isLayerLanesOpen(layer.id)) layer,
+        ].length,
+      ),
+    ]) {
+      testWidgets(column, (tester) async {
+        final s = await pump(tester);
+        expect(changed(s), 0, reason: '⛔전제: no row pressed yet');
+
+        await swipeDown(
+          tester,
+          column == 'lanes'
+              ? 'timeline-lane-toggle-l4'
+              : 'timeline-layer-$column-l4',
+          rows: 2,
+          oneFrame: true,
+        );
+
+        expect(
+          changed(s),
+          greaterThan(1),
+          reason: 'the rows swept as the press\'s own was set',
+        );
+      });
+    }
   });
 
   /// I-1 잔여 — the LEADING run.

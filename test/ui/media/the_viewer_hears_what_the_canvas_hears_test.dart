@@ -1,3 +1,4 @@
+import 'dart:developer' show Timeline;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -9,7 +10,9 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
+import '../../helpers/device_paced.dart';
 import '../../helpers/native_engine_path.dart';
 
 /// 🚨★★★**THE VIEWER HEARS WHAT THE CANVAS HEARS**
@@ -59,17 +62,6 @@ void main() {
     log: (_) {},
   );
 
-  Future<bool> waitFor(bool Function() check) async {
-    final deadline = DateTime.now().add(const Duration(seconds: 3));
-    while (DateTime.now().isBefore(deadline)) {
-      if (check()) {
-        return true;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-    return check();
-  }
-
   Future<(QaAudioDevice, ViewerSound)> playing({
     int correction = 0,
     double fromSeconds = 0,
@@ -94,7 +86,7 @@ void main() {
       resolveDevice: () => QaAudioDevice.instance,
       resolveUserOffsetSamples: (_) => correction,
     );
-    expect(sound.play(tone, fromSeconds: fromSeconds), isTrue);
+    expect(sound.play(tone, fromSeconds: fromSeconds), isA<OutputArmed>());
     if (look) {
       sound.heardAt(); // the run's first look starts the device
     }
@@ -112,9 +104,19 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     expect(device.isPlaying, isFalse, reason: 'the press only arms it');
 
+    // The look starts the device and then reads it: by the reading the
+    // device has played no more than the look took, past what it holds.
+    // ↩️Read as exactly 1, a look the machine was busy through failed
+    // (1.02 — 960 samples — in a loaded gate run, 저장 10-15).
+    final look = Stopwatch()..start();
+    final heard = sound.heardAt()!.seconds;
+    look.stop();
     expect(
-      sound.heardAt()!.seconds,
-      1,
+      heard,
+      inInclusiveRange(
+        1,
+        1 + look.elapsedMicroseconds / 1e6 + device.latencySamples / rate,
+      ),
       reason: '↩️started at the press, the first look read 1.3 seconds less '
           'the device\'s latency',
     );
@@ -130,15 +132,64 @@ void main() {
     final (device, sound) = await playing(fromSeconds: 1, look: false);
     sound.hold();
 
-    sound.keepStreaming(); // the parked run's next look
+    sound.keepStreaming(frameTime: null); // the parked run's next look
     expect(sound.heardAt()!.seconds, 1, reason: 'held where it was pressed');
     expect(device.isPlaying, isFalse, reason: 'held before it was looked at');
 
     sound.resume(1);
-    sound.keepStreaming();
+    sound.keepStreaming(frameTime: null);
     expect(device.isPlaying, isTrue, reason: 'going on, the next look starts');
     sound.stop();
   }, skip: skip);
+
+  // board a-start-is-heard-ahead-of-its-first-picture — the canvas's law,
+  // here too: the run's first sample is heard as its first look's frame is
+  // shown, whichever of the viewer's two looks comes first.
+  group('🚨the sound\'s first sample is heard as the first look\'s frame is '
+      'shown', () {
+    /// When a look's frame is shown: [ahead] from now, on the FRAME clock —
+    /// the clock the engine's frame times are on, which the sound reads them
+    /// on (`HeardOnTheDevice`, `FrameTimeOnDevice`). ↩️It was the device's
+    /// clock, the frame clock's own on Windows alone: on the Mac runners the
+    /// frame clock stood further ahead of it than the 300ms looked ahead,
+    /// and the lead came out nothing (release 10-22, macOS · TestFlight).
+    Duration shownIn(Duration ahead) =>
+        Duration(microseconds: Timeline.now) + ahead;
+
+    test('the look that reads the clock first', () async {
+      final (device, sound) = await playing(fromSeconds: 1, look: false);
+      final heard = sound
+          .heardAt(
+            frameTime: shownIn(const Duration(milliseconds: 300)),
+          )!
+          .seconds;
+      final handed = device.positionSamples;
+
+      expect(
+        heard,
+        inInclusiveRange(1, 1.05),
+        reason: 'read where play was pressed — a callback\'s time on at most',
+      );
+      expect(
+        handed,
+        lessThan(rate),
+        reason: 'the device stands ahead of the sound\'s first sample — '
+            '↩️started on it, it was heard 0.3s less what it holds ahead',
+      );
+      sound.stop();
+    }, skip: skip);
+
+    test('the look that keeps the sound streaming first — as a run\'s tick '
+        'looks (`MediaRun`)', () async {
+      final (device, sound) = await playing(fromSeconds: 1, look: false);
+      sound.keepStreaming(
+        frameTime: shownIn(const Duration(milliseconds: 300)),
+      );
+      expect(device.isPlaying, isTrue, reason: '⛔premise: it started');
+      expect(device.positionSamples, lessThan(rate));
+      sound.stop();
+    }, skip: skip);
+  });
 
   test('🚨what the viewer reads is HEARD: the device\'s latency off what it '
       'was handed, and the user\'s own correction on', () async {
@@ -146,7 +197,8 @@ void main() {
     const correction = rate ~/ 10;
     final (device, sound) = await playing(correction: correction);
     expect(
-      await waitFor(
+      await waitOnTheDevice(
+        device,
         () => device.clockPoint != null && device.positionSamples > rate ~/ 5,
       ),
       isTrue,
@@ -163,12 +215,12 @@ void main() {
     expect(
       heard,
       inInclusiveRange(
-        before - device.latencySamples + correction,
-        after + correction,
+        before - device.latencySamples - correction,
+        after - correction,
       ),
       reason: 'handed $before..$after, latency ${device.latencySamples}, '
           'correction $correction — without the correction it would be a '
-          'tenth of a second back',
+          'tenth of a second on',
     );
     sound.stop();
   }, skip: skip);
@@ -180,7 +232,7 @@ void main() {
     final (device, sound) = await playing(frames: frames);
 
     expect(
-      await waitFor(() => sound.heardAt()?.ended ?? false),
+      await waitOnTheDevice(device, () => sound.heardAt()?.ended ?? false),
       isTrue,
       reason: 'a sound played to its end is over',
     );

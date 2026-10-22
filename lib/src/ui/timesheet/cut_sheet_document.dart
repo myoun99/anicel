@@ -1,5 +1,6 @@
 import '../../models/cut.dart';
 import '../../models/timesheet_document.dart';
+import '../../services/export/xdts_builder.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 
@@ -48,3 +49,22 @@ TimesheetDocument cutSheetDocument(
     dataSheet: dataSheet,
   );
 }
+
+/// THE XDTS [cut] exports: the digital rendering of the projection its
+/// printed sheet reads (`SheetSources`), handed the same track rows on the
+/// same axis as [cutSheetDocument] hands it — the two sheets must read one
+/// story. In a cut an O.L arrives into, that is the のりしろ before its
+/// conte: the DIALOG tracks count from its own frame 0, as its cel tracks
+/// do (I-73-ol-sheet-columns).
+String cutXdtsContent(
+  EditorSessionManager session, {
+  required Cut cut,
+  required int cutStartFrame,
+}) => buildXdtsContent(
+  cut: cut,
+  cutLabel: cut.name,
+  instructionDefById: session.camera.cameraInstructionSet.defById,
+  trackSeLayers: session.activeTrack.seLayers,
+  cutStartFrame: cutStartFrame,
+  transitionSpans: session.transitions.activeTrackTransitionSpans,
+);

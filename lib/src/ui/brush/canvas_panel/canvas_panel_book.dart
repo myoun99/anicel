@@ -11,7 +11,7 @@ part of '../brush_canvas_panel.dart';
 /// paper's end ([BrushCanvasPanel.viewLimit]) is exactly where that count
 /// goes wrong — see [pageReadAt].
 ///
-/// A collaborator of `_BrushCanvasPanelState` like the others: two fields
+/// A collaborator of `_BrushCanvasPanelState` like the others: three fields
 /// and four members of its own, reaching the panel through `_state`.
 class _CanvasPanelBook {
   _CanvasPanelBook(this._state);
@@ -25,6 +25,13 @@ class _CanvasPanelBook {
   /// True while the panel writes the reader's page itself: hearing its own
   /// write back as a turn would snap the view to where it already is.
   bool _following = false;
+
+  /// True while a turn moves the view. The reader is on the page turned to
+  /// whatever the view would read: read back, a page this book does not
+  /// have was clamped to its last — and the page can be the NEXT
+  /// document's (F-382: a viewer opening a file writes that file's page
+  /// while the panel still holds the last one).
+  bool _turning = false;
 
   /// Hears [BrushCanvasPanel.book]'s reader — the one the widget holds now.
   void bind() {
@@ -64,12 +71,14 @@ class _CanvasPanelBook {
     final view = viewport._viewport;
     final top = book.pages.pageRect(book.page).top - book.pages.gap / 2;
     final onScreen = view.canvasToViewport(CanvasPoint(x: 0, y: top)).y;
+    _turning = true;
     viewport.setViewport(
       view.translated(
         dx: 0,
         dy: viewport._resolvedVisibleRect().top - onScreen,
       ),
     );
+    _turning = false;
   }
 
   /// After the view moved: the reader's page as [pageReadAt] answers for
@@ -78,7 +87,8 @@ class _CanvasPanelBook {
   void followView() {
     final book = _state.widget.book;
     final viewport = _state._viewportState;
-    if (book == null ||
+    if (_turning ||
+        book == null ||
         book.pages.length == 0 ||
         viewport.viewportNotifier.value == null) {
       return;

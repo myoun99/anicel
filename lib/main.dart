@@ -7,12 +7,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
+import 'src/native/device_battery.dart';
+import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
+import 'src/services/import/cel_picture.dart' show pictureSideLimit;
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
 import 'src/services/persistence/app_ui_scale_store.dart';
+import 'src/services/persistence/app_window_store.dart';
+import 'src/services/persistence/app_language_settings_store.dart';
+import 'src/native/window_full_screen.dart';
+import 'src/native/window_place.dart';
 import 'src/ui/canvas/colour_key_shader.dart';
+import 'src/ui/canvas/level_image.dart' show measuredHalving;
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
@@ -28,7 +36,7 @@ import 'src/ui/theme/app_theme.dart';
 import 'src/ui/ui_scale.dart';
 import 'src/ui/ui_scale_binding.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> handedAtLaunch) async {
   // FIRST, before anything reaches for a platform channel. The pen
   // sidecars do: PencilInteractionService installs a handler on
   // `qa_pen/ios`, and a MethodChannel needs the binding's messenger to
@@ -50,6 +58,15 @@ Future<void> main() async {
   // here can do is leave an entry at the old address for the next launch
   // to try again. See [migrateSettingsIntoTheirRoom].
   migrateSettingsIntoTheirRoom();
+  // The language, AWAITED here and not left to the session's restore: the
+  // launch splash says what the launch is doing in the app's own language
+  // (I-106, 2026-10-21), and it says it before the session exists. One
+  // small file read; the session's restore then lands on the same value.
+  final language = await AppLanguageSettingsStore().load();
+  if (language != null) {
+    AppText.settings.value = language;
+  }
+  await LaunchSplash.preparing(AppText.strings);
   // Full screen on the platforms that have an OS strip to give up (유저
   // 확정, 프로크리·카리페그처럼): the clock and the battery cost a band of
   // canvas across the top, and a drawing app is the case the immersive
@@ -76,6 +93,11 @@ Future<void> main() async {
   // the file. Loading it here is what lets the paint-time guard stay a
   // guard rather than a case.
   await ColourKeyShader.load();
+  // 🚨AWAITED, BEFORE THE FIRST FRAME, too (I-103-Q1): the top strip keeps
+  // a place for the battery on a device that has one and never on one that
+  // has not — a place that came a frame later would be UI popping into
+  // existence. One question to the OS.
+  await DeviceBattery.watch();
   // The bundled fonts are OFL: their license must SHIP with the binary that
   // redistributes them, not just sit in the repo — the About dialog's license
   // page surfaces these entries (THIRD_PARTY.md).
@@ -136,6 +158,14 @@ Future<void> main() async {
       PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0,
     );
   }
+  // AWAITED like the scale, and for its reason (I-103-Q2: 「다음 실행 때도
+  // 기억한다」): a window the last run left full screen opens full screen,
+  // rather than opening and then jumping — and where it stood (I-116),
+  // put back first so full screen comes back to it. One small file,
+  // and on a desktop two calls to its runner.
+  final window = AppWindowStore();
+  await WindowPlace.restore(window);
+  await WindowFullScreen.restore(window);
   // Read BEFORE this launch starts writing its own: an entry with no END
   // means the app died in the middle of that work, and a memory kill
   // leaves nothing else behind — no exception, no crash report, nothing
@@ -143,7 +173,8 @@ Future<void> main() async {
   // is reported at the next launch and not at every launch after it.
   MemoryBlackBox.lastUnfinished = MemoryBlackBox.unfinishedEntry();
   MemoryBlackBox.reset();
-  runApp(const AnicelApp());
+  LaunchSplash.drawing(AppText.strings);
+  runApp(AnicelApp(handedAtLaunch: handedAtLaunch));
   // 🗣️F-178 (유저 2026-09-24): 「ios에서 녹음누르면 권한묻는데 그게아니라 앱
   // 실행시로 못하나? 한번 권한 얻으면 심플하잖아」. Once, at launch, after the
   // first frame so the system dialog lands on the app rather than on an empty
@@ -153,10 +184,26 @@ Future<void> main() async {
   WidgetsBinding.instance.addPostFrameCallback(
     (_) => unawaited(AppStorage.ensureMicrophoneAccess()),
   );
+  // The engine's halving read once, after the first frame (a few small
+  // pictures, off the frame): a level of a picture laid past the wall is
+  // halved through it ([measuredHalving]), and one made inside a build
+  // before it is read is rastered as it always was.
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => unawaited(measuredHalving()),
+  );
+  // And the side this engine holds, the same way: a compose past it is made
+  // in pieces (`piecesOver`), and one made inside a build before it is read
+  // is made whole, as it always was.
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => unawaited(pictureSideLimit()),
+  );
 }
 
 class AnicelApp extends StatelessWidget {
-  const AnicelApp({super.key});
+  const AnicelApp({super.key, this.handedAtLaunch = const []});
+
+  /// The files the OS opened the app with ([HomePage.handedAtLaunch]).
+  final List<String> handedAtLaunch;
 
   @override
   Widget build(BuildContext context) {
@@ -214,8 +261,13 @@ class AnicelApp extends StatelessWidget {
             child: child ?? const SizedBox.shrink(),
           ),
         ),
-        home: const HomePage(),
+        home: _home(),
       ),
     );
   }
+
+  Widget _home() => HomePage(
+    battery: DeviceBattery.shown,
+    handedAtLaunch: handedAtLaunch,
+  );
 }

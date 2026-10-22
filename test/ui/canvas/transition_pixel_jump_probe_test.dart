@@ -93,15 +93,10 @@ void main() {
   BitmapSurface surfaceOf(Map<TileCoord, BitmapTile> tiles) =>
       BitmapSurface(canvasSize: canvasSize, tileSize: tileSize, tiles: tiles);
 
-  Future<void> decodeAll(WidgetTester tester, BitmapSurface surface) {
-    return tester.runAsync(() async {
-      for (final entry in surface.tiles.entries) {
-        tileCache.pictureFor(entry.value);
-      }
-      while (surface.tiles.values.any((t) => tileCache.imageFor(t) == null)) {
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
-    });
+  void decodeAll(BitmapSurface surface) {
+    for (final entry in surface.tiles.entries) {
+      tileCache.pictureFor(entry.value);
+    }
   }
 
   Future<Uint8List> paintBytes(WidgetTester tester, CustomPainter painter) {
@@ -147,12 +142,7 @@ void main() {
       (screen.width - panX) / zoom,
       (screen.height - panY) / zoom,
     );
-    final pasteboard = Rect.fromLTRB(
-      canvasSize.pasteboardLeft.toDouble(),
-      canvasSize.pasteboardTop.toDouble(),
-      canvasSize.pasteboardRightExclusive.toDouble(),
-      canvasSize.pasteboardBottomExclusive.toDouble(),
-    );
+    final pasteboard = canvasSize.pasteboardAt(PasteboardReach.whole).rect;
     final bounds = pasteboard.intersect(visible);
     final composeRect = Rect.fromLTRB(
       bounds.left.floorToDouble(),
@@ -287,9 +277,9 @@ void main() {
     );
     final surface2 = surfaceOf({...tilesV1, coord00: tile00V2});
     final surface3 = surfaceOf(freshTiles());
-    await decodeAll(tester, surface1);
-    await decodeAll(tester, surface2);
-    await decodeAll(tester, surface3);
+    decodeAll(surface1);
+    decodeAll(surface2);
+    decodeAll(surface3);
 
     BitmapSurfacePainter painterFor(BitmapSurface surface) =>
         BitmapSurfacePainter(
@@ -419,10 +409,8 @@ class _TransparentStrokeSource implements ActiveStrokePixelSource {
   final CanvasSize canvasSize;
 
   @override
-  int get canvasWidth => canvasSize.width;
-
-  @override
-  int get canvasHeight => canvasSize.height;
+  PasteboardWall get pasteboard =>
+      canvasSize.pasteboardAt(PasteboardReach.whole);
 
   @override
   void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {

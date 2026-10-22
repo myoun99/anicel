@@ -347,7 +347,9 @@ class _ImportPreviewState extends State<ImportPreview>
         height: TransportBar.heightIn(context, range: true),
         child: _transport(frameCount),
       ),
-      documentName: path == null ? null : mediaFileName(path),
+      documentName: path == null
+          ? null
+          : widget.session.repository.requireProject().shownNameOfMedia(path),
       marks: sound
           ? (viewport, page) => _soundMarks(viewport, page, frameCount)
           : null,

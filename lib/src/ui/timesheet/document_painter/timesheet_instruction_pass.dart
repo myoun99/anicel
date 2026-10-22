@@ -114,31 +114,11 @@ class _TimesheetInstructionPass {
       );
     }
 
-    // Writing goes BOLD (R6-①a): it sits directly on the bar/mark and has
-    // to stay readable over it.
     if (isFirst && (cell.valueA ?? '').isNotEmpty) {
-      _painter._text(
-        canvas,
-        cell.valueA!,
-        Offset(centerX, cellTop + 3),
-        fontSize: 10,
-        bold: true,
-        color: TimesheetDocumentPainter._ink,
-        centeredAtX: true,
-        maxWidth: columnWidth - 2,
-      );
+      paintEndpointName(canvas, slot, cell.valueA!);
     }
     if (isLast && !isFirst && (cell.valueB ?? '').isNotEmpty) {
-      _painter._text(
-        canvas,
-        cell.valueB!,
-        Offset(centerX, cellTop + 3),
-        fontSize: 10,
-        bold: true,
-        color: TimesheetDocumentPainter._ink,
-        centeredAtX: true,
-        maxWidth: columnWidth - 2,
-      );
+      paintEndpointName(canvas, slot, cell.valueB!);
     }
     if (isFirst && isLast && (cell.valueB ?? '').isNotEmpty) {
       // Single-row span: B shares the row under A.
@@ -154,6 +134,24 @@ class _TimesheetInstructionPass {
       );
     }
     paintSpanNameOn(canvas, slot, rows: rows);
+  }
+
+  /// [name] at the top of [slot]'s row, centred like a frame name: the name
+  /// an instruction's span begins or ends on (A, B), and a camera key's in
+  /// the camera column (I-89 ⑤) — one way to write the name a line stands
+  /// on. BOLD (R6-①a): it sits directly on the bar or mark and has to stay
+  /// readable over it.
+  void paintEndpointName(Canvas canvas, _CellSlot slot, String name) {
+    _painter._text(
+      canvas,
+      name,
+      Offset(slot.centerX, slot.cellTop + 3),
+      fontSize: 10,
+      bold: true,
+      color: TimesheetDocumentPainter._ink,
+      centeredAtX: true,
+      maxWidth: slot.columnWidth - 2,
+    );
   }
 
   /// The NAME of the span [slot]'s row lies in, on the row that is the

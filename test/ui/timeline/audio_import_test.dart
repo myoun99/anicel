@@ -15,6 +15,8 @@ import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart'
+    show SeInstanceDialog;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -661,8 +663,13 @@ void main() {
 
     testWidgets('names the sound and unlinks it on OK', (tester) async {
       final session = await withLinkedSound(tester);
-      // The FILE NAME, not the path.
-      expect(find.text('door-slam.wav'), findsOneWidget);
+      // The name the pool shows it by, not the path — the pool learned the
+      // file as it was linked (F-376).
+      final named = find.descendant(
+        of: find.byType(SeInstanceDialog),
+        matching: find.text('door-slam'),
+      );
+      expect(named, findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('se-linked-audio-none')),
         findsNothing,
@@ -672,7 +679,7 @@ void main() {
       await tester.pumpAndSettle();
       // Struck off in the dialog — but NOT yet in the project: unlinking is
       // a decision made here and applied on OK.
-      expect(find.text('door-slam.wav'), findsNothing);
+      expect(named, findsNothing);
       expect(clipsOf(session), hasLength(1));
 
       await tester.tap(

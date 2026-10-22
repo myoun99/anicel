@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/audio_clip.dart';
+import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
@@ -356,6 +357,44 @@ void main() {
         59,
         reason: 'two seconds at 30 fps, less one',
       );
+    });
+
+    // 🗣️F-376 (유저 2026-10-17): 「미디어풀에서 이름바꾸고 … 파일이름
+    // 표시되는게 다 바꾸기 전 이름임」.
+    testWidgets('🚨both doors name a sound the pool renamed as the pool '
+        'names it — and one it has not seen by its file name', (tester) async {
+      final footsteps = take('footsteps.wav');
+      final loose = take('loose.wav');
+      final s = await standingOnSounds(tester, [
+        (path: footsteps, offsetFrames: 0),
+        (path: loose, offsetFrames: 0),
+      ]);
+      s.cutCommandCoordinator.updateMediaAssets([
+        MediaAsset(
+          path: normalizedMediaPath(footsteps),
+          name: 'footsteps',
+          kind: MediaAssetKind.audio,
+        ),
+      ], description: 'Pool the footsteps');
+      s.mediaPool.renameMediaAsset(normalizedMediaPath(footsteps), '발소리');
+      final context = await contextFrom(tester);
+      final row = s.activeTrack.seLayers.first.id;
+
+      for (final door in [
+        () => editSeEntryInstance(context, s, layerId: row, globalFrame: 0),
+        () => activateCellEditor(context, s, layerId: row, frameIndex: 0),
+      ]) {
+        final editing = door();
+        await tester.pumpAndSettle();
+        expect(find.text('발소리'), findsOneWidget);
+        expect(find.text('footsteps.wav'), findsNothing);
+        expect(find.text('loose.wav'), findsOneWidget);
+        await tester.tap(
+          find.byKey(const ValueKey<String>('instance-edit-cancel-button')),
+        );
+        await tester.pumpAndSettle();
+        await editing;
+      }
     });
   });
 }

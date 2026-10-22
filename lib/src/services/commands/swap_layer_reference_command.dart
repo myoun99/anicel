@@ -35,9 +35,9 @@ import '../undo_surface_snapshot.dart';
 /// (`BrushFrameEditingCoordinator._storeMovedPast`), so the canvas shows
 /// what is written here either way.
 ///
-/// I-68: the same step lays the row's OWN file again at another pose — its
-/// reference fx moved — so [reference] may name the file it named, and a
-/// still's picture is baked anew where the pose now stands it.
+/// ↩️I-68 laid the row's OWN file again here at another pose when its
+/// reference fx moved, until F-374-Q1 (유저 2026-10-17, 「트랜스폼처럼
+/// 화면에서 옮긴다」): the canvas moves the picture now.
 class SwapLayerReferenceCommand
     implements
         Command,
@@ -128,7 +128,9 @@ class SwapLayerReferenceCommand
   /// parked payload will not come back (`restoreCelSnapshot` says why a
   /// surface with holes must not be painted over a drawing).
   void _restore(UndoSurfaceSnapshot snapshot) {
-    final surface = snapshot.surfaceOver(store.bakedSurfaceOrNull(snapshot.key));
+    final surface = snapshot.surfaceOver(
+      () => store.bakedSurfaceOrNull(snapshot.key),
+    );
     if (surface != null) {
       _put(snapshot.key, surface);
     }

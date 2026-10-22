@@ -1,22 +1,31 @@
 import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
+import 'axis_turn.dart' show extentAcross, rectAlong;
 import 'timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge, timelinePlayheadSpan;
 import 'timeline_frame_window.dart';
 import '../repaint_props.dart';
+import '../theme/app_theme.dart' show AppColors;
 import '../widgets/tick_layer.dart';
 import 'memo_token.dart';
+
+/// A stretch of frames READY to play — a run does not wait for them — and
+/// whether a cel they show could not be read, so they play without it.
+///
+/// 🗣️유저 2026-10-16 (frame-picture-indicator-Q1 b): 「a + 그 셀이 있는
+/// 타임라인 칸에도 빨간 표시」 — a cel whose picture data cannot be read
+/// paints its frames' stretch of the bar red, where a whole picture paints
+/// it green. ↩️Such a frame was never green and never anything else: the bar
+/// asked only whether the picture was there, while the run had stopped
+/// waiting for it.
+typedef ReadyRun = ({int startIndex, int endIndexExclusive, bool unreadable});
 
 /// Which stretches of the frames `[start, endExclusive)` are READY to
 /// play. Answered once per span of one picture, never per frame: zoomed
 /// out to ten minutes a window is ~15,000 frames (I-22).
-typedef ReadyRunsIn =
-    List<({int startIndex, int endIndexExclusive})> Function(
-      int start,
-      int endExclusive,
-    );
+typedef ReadyRunsIn = List<ReadyRun> Function(int start, int endExclusive);
 
 /// A frame ruler's MOVING layer: the current-frame tint and the green
 /// cached-range bar, painted OVER the static header cells and driven by
@@ -59,8 +68,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
 
   /// Told the ready runs each paint drew — what the overlay's gate compares
   /// a signal's answer against.
-  final void Function(List<({int startIndex, int endIndexExclusive})> runs)?
-  onPaintedRuns;
+  final void Function(List<ReadyRun> runs)? onPaintedRuns;
 
   /// The runs a paint draws, when something keeps the last reading — null
   /// reads them afresh ([readyRuns]).
@@ -70,8 +78,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   /// at 0.16px, profile build: 50ms of a 908ms tick sample). What turns a
   /// frame ready or not arrives on the signal, and the gate reads again
   /// there ([TimelineRulerCursorOverlay]).
-  final List<({int startIndex, int endIndexExclusive})> Function()?
-  runsToDraw;
+  final List<ReadyRun> Function()? runsToDraw;
 
   /// The FRAME axis. Horizontal rulers (timeline, storyboard) run frames
   /// left-to-right and hug the bar to the bottom edge; the X-sheet rail runs
@@ -94,6 +101,10 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
 
   /// The AE-style ready-range green (the header cells' own strip color).
   static const Color readyBarColor = Color(0xFF54B435);
+
+  /// A ready run with a cel that could not be read ([ReadyRun.unreadable])
+  /// — the red the reference button wears for a file it cannot read.
+  static const Color unreadableBarColor = AppColors.danger;
 
   /// The strip's thickness along the ruler's bottom edge.
   ///
@@ -119,7 +130,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   /// predicate answers "ready by definition", and clamping the bar here
   /// would repaint that answer as "not ready" — the exact lie the
   /// two-kind law retired.
-  List<({int startIndex, int endIndexExclusive})> readyRuns() {
+  List<ReadyRun> readyRuns() {
     final runsIn = readyRunsIn;
     if (runsIn == null) {
       return const [];
@@ -140,28 +151,21 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
 
   @override
   void paint(Canvas canvas, Size size) {
-    final horizontal = axis == Axis.horizontal;
     final barPaint = Paint()..color = readyBarColor;
+    final barStart = extentAcross(axis, size) - readyBarThickness;
+    final unreadablePaint = Paint()..color = unreadableBarColor;
     final runs = runsToDraw?.call() ?? readyRuns();
     onPaintedRuns?.call(runs);
     for (final run in runs) {
       final start = timelineFrameEdge(run.startIndex, cellWidth);
       final extent = timelineFrameEdge(run.endIndexExclusive, cellWidth) - start;
       canvas.drawRect(
-        horizontal
-            ? Rect.fromLTWH(
-                start,
-                size.height - readyBarThickness,
-                extent,
-                readyBarThickness,
-              )
-            : Rect.fromLTWH(
-                size.width - readyBarThickness,
-                start,
-                readyBarThickness,
-                extent,
-              ),
-        barPaint,
+        rectAlong(
+          axis,
+          along: (from: start, to: start + extent),
+          across: (from: barStart, to: barStart + readyBarThickness),
+        ),
+        run.unreadable ? unreadablePaint : barPaint,
       );
     }
 
@@ -170,9 +174,11 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
       // The grids' playhead, on the ruler's cell (F-212).
       final (:start, :end) = timelinePlayheadSpan(frame, cellWidth);
       canvas.drawRect(
-        horizontal
-            ? Rect.fromLTRB(start, 0, end, size.height)
-            : Rect.fromLTRB(0, start, size.width, end),
+        rectAlong(
+          axis,
+          along: (from: start, to: end),
+          across: (from: 0, to: extentAcross(axis, size)),
+        ),
         Paint()..color = timelinePlayheadWashColor,
       );
     }
@@ -303,19 +309,15 @@ class _ReadyRunsGate extends ChangeNotifier {
   _ReadyRunsGate(this._painter);
 
   final TimelineRulerCursorOverlayPainter Function() _painter;
-  List<({int startIndex, int endIndexExclusive})>? _drawn;
-  ({
-    ({int startIndex, int endIndexExclusive}) window,
-    List<({int startIndex, int endIndexExclusive})> runs,
-  })?
+  List<ReadyRun>? _drawn;
+  ({({int startIndex, int endIndexExclusive}) window, List<ReadyRun> runs})?
   _read;
 
-  void drew(List<({int startIndex, int endIndexExclusive})> runs) =>
-      _drawn = runs;
+  void drew(List<ReadyRun> runs) => _drawn = runs;
 
   void forget() => _read = null;
 
-  List<({int startIndex, int endIndexExclusive})> runsToDraw() {
+  List<ReadyRun> runsToDraw() {
     final painter = _painter();
     final window = painter._visibleWindow();
     final read = _read;

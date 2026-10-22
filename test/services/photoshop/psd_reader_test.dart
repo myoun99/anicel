@@ -437,6 +437,41 @@ void main() {
       );
     });
 
+    test('a lock the Layers panel set (`lspf`) is read — any of them; none '
+        'set is no lock (보드 the-clip-import-leaves-masks-and-locks-'
+        'unsaid)', () {
+      PsdTestLayer layer(String name, int? protection) => PsdTestLayer(
+        name: name,
+        left: 0,
+        top: 0,
+        right: 2,
+        bottom: 2,
+        planes: psdSolidPlanes(2, 2, [9, 9, 9]),
+        protection: protection,
+      );
+      final document = readPsdDocument(
+        buildPsd(
+          width: 2,
+          height: 2,
+          layers: [
+            layer('no block', null),
+            layer('none set', 0),
+            layer('transparency', 0x01),
+            layer('all', 0x80000000),
+          ],
+        ),
+      );
+      expect(
+        [for (final layer in document.layers) layer.locked],
+        [false, false, true, true],
+      );
+      expect(
+        document.layers.every((layer) => layer.hasPixels),
+        isTrue,
+        reason: 'the walk past the block did not lose its place',
+      );
+    });
+
     test('an adjustment layer is named rather than mistaken for a picture', () {
       final document = readPsdDocument(
         buildPsd(
@@ -620,6 +655,69 @@ void main() {
       final pixels = document.layers.single.pixels!;
       expect(pixels[3], 255);
       expect(pixels[7], 0);
+    });
+
+    test('a mask that is on and that no pixels were baked through — a '
+        'group\'s — is said to be left behind; a baked one, and one '
+        'switched off, are not (보드 the-clip-import-leaves-masks-and-locks-'
+        'unsaid)', () {
+      PsdTestMask mask({bool disabled = false}) => PsdTestMask(
+        left: 0,
+        top: 0,
+        right: 2,
+        bottom: 1,
+        samples: Uint8List.fromList([255, 0]),
+        disabled: disabled,
+      );
+      PsdTestLayer raster(String name, PsdTestMask mask) => PsdTestLayer(
+        name: name,
+        left: 0,
+        top: 0,
+        right: 2,
+        bottom: 1,
+        planes: psdSolidPlanes(2, 1, [255, 255, 255]),
+        mask: mask,
+      );
+      PsdTestLayer group(String name, int section, {PsdTestMask? mask}) =>
+          PsdTestLayer(
+            name: name,
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            planes: const [],
+            sectionType: section,
+            mask: mask,
+          );
+      final document = readPsdDocument(
+        buildPsd(
+          width: 2,
+          height: 1,
+          layers: [
+            group('</Layer group>', 3),
+            raster('baked', mask()),
+            raster('off', mask(disabled: true)),
+            group('group', 1, mask: mask()),
+            group('</Layer group>', 3),
+            group('group off', 1, mask: mask(disabled: true)),
+          ],
+        ),
+      );
+      expect(
+        [
+          for (final layer in document.layers)
+            (layer.name, layer.hasUnbakedMask),
+        ],
+        [
+          ('</Layer group>', false),
+          ('baked', false),
+          ('off', false),
+          ('group', true),
+          ('</Layer group>', false),
+          ('group off', false),
+        ],
+      );
+      expect(document.layers[1].pixels![7], 0, reason: 'baked, as before');
     });
   });
 

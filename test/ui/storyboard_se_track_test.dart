@@ -8,6 +8,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -15,7 +17,10 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SeSpanVisual;
 
@@ -52,13 +57,19 @@ Offset _storyboardCutRowPoint(WidgetTester tester, {required int globalFrame}) {
   );
 }
 
-Frame _frame(String id, String name, int length) =>
-    Frame(id: FrameId(id), duration: length, name: name, strokes: const []);
+Frame _frame(String id, String name, int length, {String? seName}) => Frame(
+  id: FrameId(id),
+  duration: length,
+  name: name,
+  seName: seName,
+  strokes: const [],
+);
 
 /// TRACK-owned SE row on the global frame axis: an entry inside cut 1, an
 /// entry CROSSING the cut-1→cut-2 boundary (frame 8), and one inside
-/// cut 2.
-Project _project() {
+/// cut 2 — [named] after their words, the row wearing [mark].
+Project _project({bool named = false, LayerMark mark = LayerMark.none}) {
+  String? seName(String words) => named ? words.replaceAll('!', '') : null;
   return Project(
     id: const ProjectId('sb-se-project'),
     name: 'SB SE Project',
@@ -73,10 +84,11 @@ Project _project() {
             id: const LayerId('se-row-1'),
             name: 'S1',
             kind: LayerKind.se,
+            mark: mark,
             frames: [
-              _frame('f-one', 'One!', 3),
-              _frame('f-cross', 'Cross!', 4),
-              _frame('f-two', 'Two!', 2),
+              _frame('f-one', 'One!', 3, seName: seName('One!')),
+              _frame('f-cross', 'Cross!', 4, seName: seName('Cross!')),
+              _frame('f-two', 'Two!', 2, seName: seName('Two!')),
             ],
             timeline: {
               1: const TimelineExposure.drawing(FrameId('f-one'), length: 3),
@@ -130,10 +142,11 @@ void main() {
     await tester.tap(find.descendant(of: label, matching: find.text('S1')));
     await tester.pumpAndSettle();
 
+    // Its marker is the timeline row's, which the S row is (I-89 ①).
     expect(
       find.descendant(
         of: label,
-        matching: find.byKey(const ValueKey<String>('storyboard-selected-row')),
+        matching: find.named('storyboard-selected-layer'),
       ),
       findsOneWidget,
     );
@@ -141,8 +154,9 @@ void main() {
     // row took it.
     expect(
       find.byKey(const ValueKey<String>('storyboard-selected-row')),
-      findsOneWidget,
+      findsNothing,
     );
+    expect(find.named('storyboard-selected-layer'), findsOneWidget);
 
     // The pick LANDS the editing focus (user 2026-07-29, superseding
     // #741's "row picks never move it") — and ⑭ decides WHICH cut that
@@ -159,6 +173,74 @@ void main() {
       findsOneWidget,
       reason: 'the cut is still active, so its rail has a selected row',
     );
+  });
+
+  // 🗣️F-358 (유저 2026-10-19): 「타임라인, 콘티패널 동일적용」 — the name
+  // just before its block where the room before it holds it whole
+  // (F-358-Q2 「이름칸이 통째로 들어가면 밖, 아니면 안(화면 픽셀로)」), and
+  // its ground the colour its tint gives the block's paper.
+  testWidgets('🚨a named sound with room before it wears its name just '
+      'before it, one without on its head', (tester) async {
+    const mark = LayerMark(process: LayerProcess.layout);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(initialProject: _project(named: true, mark: mark)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+    final perFrame = tester
+        .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+        .pixelsPerFrame;
+    Finder span(int start) => find.byKey(
+      ValueKey<String>('storyboard-se-span-se-row-1-$start'),
+    );
+    Rect chipOf(String name) =>
+        tester.getRect(find.bySemanticsLabel('SE name $name'));
+
+    // [1, 4) has one free frame before it, [6, 10) two, [10, 12) none. The
+    // chip narrows with its words (F-224), and the room is asked of the
+    // chip it is: a frame holds 「One」's whole.
+    expect(
+      chipOf('One').width,
+      lessThanOrEqualTo(perFrame),
+      reason: '⛔전제: narrowed, the chip fits the one free frame',
+    );
+    expect(
+      chipOf('One').right,
+      moreOrLessEquals(tester.getRect(span(1)).left, epsilon: 0.01),
+    );
+    expect(
+      chipOf('Cross').right,
+      moreOrLessEquals(tester.getRect(span(6)).left, epsilon: 0.01),
+    );
+    expect(
+      chipOf('Two').left,
+      moreOrLessEquals(tester.getRect(span(10)).left, epsilon: 0.01),
+    );
+
+    final ground = find
+        .descendant(
+          of: span(6),
+          matching: find.byWidgetPredicate(
+            (widget) => widget is CustomPaint && widget.painter != null,
+          ),
+        )
+        .first;
+    final laid = _GroundSpy();
+    tester
+        .widget<CustomPaint>(ground)
+        .painter!
+        .paint(laid, tester.getSize(ground));
+    expect(laid.colors, [
+      Color.alphaBlend(
+        AppColors.accent.withValues(alpha: 0.3),
+        layerMarkColor(mark),
+      ).toARGB32(),
+    ], reason: 'the colour the tint gives the paper of a row of that mark');
   });
 
   testWidgets('the storyboard renders the TRACK SE row on the global axis: '
@@ -346,4 +428,17 @@ void main() {
       findsNothing,
     );
   });
+}
+
+/// The colours a painter lays its rounded shapes in.
+class _GroundSpy implements Canvas {
+  /// As 32-bit ARGB: a paint holds its colour in single precision.
+  final colors = <int>[];
+
+  @override
+  void drawRRect(RRect rrect, Paint paint) =>
+      colors.add(paint.color.toARGB32());
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

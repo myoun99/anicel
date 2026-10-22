@@ -10,12 +10,15 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timeline_run_edit.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show endAlong, offsetAlong, partAcross;
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../../helpers/run_edge_fixtures.dart';
 import '../../helpers/the_classic_rail.dart';
@@ -70,37 +73,43 @@ void main() {
     drawnFrameCount: 6,
   );
 
+  /// The timeline, or with [axis] vertical the X-sheet.
   Widget harness({
     required List<Layer> layers,
     required TimelineRunEditCallbacks runEdit,
     ValueNotifier<TimelineDragPreview?>? dragPreview,
+    Axis axis = Axis.horizontal,
+    int frameCount = 24,
   }) {
     final cursor = ValueNotifier<int>(0);
     addTearDown(cursor.dispose);
+    final hooks = TimelineGridHooks(
+      activeLayerId: layers.first.id,
+      frameCursor: cursor,
+      playbackFrameCount: frameCount,
+      exposureStateForLayer: stateFor,
+      onSelectLayer: (_) {},
+      onSelectFrame: (_) {},
+      onToggleLayerVisibility: (_) {},
+      onLayerOpacityChanged: (_, _) {},
+      onToggleLayerTimesheet: (_) {},
+      onLayerMarkSelected: (_, _) {},
+      runEdit: runEdit,
+      dragPreview: dragPreview,
+    );
     return MaterialApp(
       home: Scaffold(
-        body: LayerTimelineGrid(
-          hooks: TimelineGridHooks(
-            activeLayerId: layers.first.id,
-            frameCursor: cursor,
-            playbackFrameCount: 24,
-            exposureStateForLayer: stateFor,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-            runEdit: runEdit,
-            dragPreview: dragPreview,
-          ),
-          layers: layers,
-          metrics: const TimelineGridMetrics(
-            frameCellWidth: 48,
-            layerRowHeight: 52,
-            layerControlsWidth: classicRailWidth,
-          ),
-        ),
+        body: axis == Axis.horizontal
+            ? LayerTimelineGrid(
+                hooks: hooks,
+                layers: layers,
+                metrics: const TimelineGridMetrics(
+                  frameCellWidth: 48,
+                  layerRowHeight: 52,
+                  layerControlsWidth: classicRailWidth,
+                ),
+              )
+            : XSheetTimelineGrid(hooks: hooks, layers: layers),
       ),
     );
   }
@@ -156,6 +165,81 @@ void main() {
     expect(begins.single, (const LayerId('layer-a'), 0, true));
     expect(addCounts, isNotEmpty);
     expect(addCounts.last, 2);
+  });
+
+  // F-15: a [+] held past the view's edge pans it like the ruler, and the
+  // cels it pans over count — along the timeline's x, down the sheet's y.
+  testWidgets('a [+] drag held in the frame axis\'s trailing band pans the '
+      'view, and the count keeps growing — on the timeline and on the '
+      'X-sheet', (tester) async {
+    for (final axis in Axis.values) {
+      final horizontal = axis == Axis.horizontal;
+      final addCounts = <int>[];
+      await tester.pumpWidget(
+        harness(
+          axis: axis,
+          frameCount: 120,
+          layers: [plainLayer()],
+          runEdit: recordingCallbacks(addCounts: addCounts),
+        ),
+      );
+      final frameViewport = find.byKey(
+        ValueKey<String>(
+          horizontal
+              ? 'timeline-frame-scroll-viewport'
+              : 'xsheet-frame-vertical-viewport',
+        ),
+      );
+      double frameOffset() => tester
+          .state<ScrollableState>(
+            find
+                .descendant(
+                  of: frameViewport,
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          )
+          .position
+          .pixels;
+      final viewportRect = tester.getRect(frameViewport);
+
+      final start = timelineRowChromeCenter(
+        tester,
+        'layer-a',
+        'run-add-end-layer-a-0',
+        prefix: horizontal ? 'timeline' : 'xsheet',
+      );
+      final gesture = await tester.startGesture(
+        start,
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveTo(
+        offsetAlong(
+          axis,
+          along: endAlong(axis, viewportRect) - 6,
+          across: partAcross(axis, start),
+        ),
+      );
+      await tester.pump();
+      final offsetAtEdge = frameOffset();
+      final countAtEdge = addCounts.last;
+      expect(offsetAtEdge, greaterThan(0), reason: '$axis: the reach pans');
+
+      for (var step = 0; step < 8; step += 1) {
+        final nudge = step.isEven ? 1.0 : -1.0;
+        await gesture.moveBy(offsetAlong(axis, along: nudge, across: 0));
+        await tester.pump();
+      }
+      expect(frameOffset(), greaterThan(offsetAtEdge), reason: '$axis');
+      expect(
+        addCounts.last,
+        greaterThan(countAtEdge),
+        reason: '$axis: the cels the view pans over are added too',
+      );
+
+      await gesture.up();
+      await tester.pump();
+    }
   });
 
   testWidgets('start-side [+] keeps accumulating across preview steps '

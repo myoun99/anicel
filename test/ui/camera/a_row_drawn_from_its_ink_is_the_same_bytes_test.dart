@@ -35,6 +35,7 @@ import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/placement_reading.dart';
+import '../../helpers/one_piece.dart';
 
 /// 🚨★★★A ROW A RENDER DRAWS FROM ITS INK PUTS THE SAME BYTES IN THE FRAME
 /// AS THE WHOLE ROW DID (유저 2026-09-23: 「1/4해상도같은 결과바뀌는건 절대로

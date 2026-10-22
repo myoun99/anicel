@@ -104,6 +104,15 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
             'if': 'Bash(git *)',
             'timeout': 10,
           },
+          // ⚠️The filter is best-effort: Claude Code matches it against
+          // each command it can split out and runs the hook anyway on input
+          // it cannot — the script reads the shell itself and decides.
+          {
+            'type': 'command',
+            'command': run('guard_bare_cd.sh'),
+            'if': 'Bash(cd *)',
+            'timeout': 10,
+          },
         ],
       },
     ],

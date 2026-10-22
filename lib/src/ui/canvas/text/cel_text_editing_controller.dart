@@ -56,6 +56,20 @@ class CelTextEditingController extends TextEditingController {
   TextLetterStyle get nextLetterStyle => _nextLetterStyle;
   TextLetterStyle _nextLetterStyle;
 
+  /// How far along the lines the arrows ACROSS them aim, and the place the
+  /// last of them landed: the next such arrow from that very place aims the
+  /// same, so a caret taken down past a short line comes back as far along
+  /// the longer ones as it set out — as a field's own up and down do
+  /// (`CelTextField`, which answers those arrows itself). From anywhere
+  /// else an arrow aims where the caret stands.
+  ///
+  /// ⚠️The place WITH its affinity: where a line wrapped, the end of the
+  /// line above and the head of the one below are one offset, and a
+  /// selection does not keep which — the end of one reads as whichever its
+  /// direction says (`TextSelection.extent`). So an arrow with Shift goes
+  /// on from the line it landed on.
+  ({TextPosition landed, double along})? arrowAim;
+
   final List<_Step> _stepsBack = [];
   final List<_Step> _stepsForward = [];
 

@@ -84,7 +84,7 @@ void main() {
       final room = codeOf('room_first');
       expect(at(room, r'[ "$1" = land ] && flag=--land'), isNot(-1));
       expect(
-        at(room, r'dart "$ROOT/tool/flutter_room.dart" ${flag:+"$flag"}'),
+        at(room, r'bash "$ROOT/tool/run.sh" flutter_room ${flag:+"$flag"}'),
         isNot(-1),
       );
     });

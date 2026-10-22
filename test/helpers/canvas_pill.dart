@@ -65,21 +65,16 @@ double pillBandOf(WidgetTester tester, {Finder? of}) {
   return margin + pill.height + margin;
 }
 
-/// How much of a canvas panel's left edge the page strip's band takes from
-/// what the panel frames — the strip with its margin either side (F-346:
-/// it is cover as the pill is). Read off the strip as it lies, as
-/// [pillBandOf] reads the pill.
+/// How much of a DOCKED canvas panel's bottom edge the band under its lanes
+/// takes from what the panel frames — a book's page turner, a movie's
+/// player (F-383) — read off the band as it lies, as [pillBandOf] reads the
+/// pill; 0 under a panel with no band.
 ///
-/// ⚠️For a strip on the box's own edge: one that stepped past a rail
-/// beside it would read the rail as margin.
-double pageStripBandOf(WidgetTester tester, {Finder? of}) {
-  Finder inPanel(String key) {
-    final finder = find.byKey(ValueKey<String>(key));
-    return of == null ? finder : find.descendant(of: of, matching: finder);
-  }
-
-  final shell = tester.getRect(inPanel('canvas-editor-panel-shell').first);
-  final strip = tester.getRect(inPanel('canvas-page-strip').first);
-  final margin = strip.left - shell.left;
-  return margin + strip.width + margin;
+/// ⚠️For a docked panel: on the floor the band is a capsule standing clear
+/// of the edge, and what it covers is not its size. Pass [of] whenever more
+/// than one canvas panel is mounted.
+double bandCoverOf(WidgetTester tester, {Finder? of}) {
+  final finder = find.byKey(const ValueKey<String>('canvas-transport'));
+  final band = of == null ? finder : find.descendant(of: of, matching: finder);
+  return tester.any(band) ? tester.getSize(band.first).height : 0;
 }

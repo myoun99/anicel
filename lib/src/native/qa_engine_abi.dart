@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
+
+import '../core/on_a_worker.dart';
 
 /// The `qa_engine` binary's ABI contract: **one version number, one
 /// loader, one place to change either.**
@@ -254,7 +257,16 @@ import 'dart:io';
 ///   `qa_audio_device_set_schedule` that names buffers — the device's PCM
 ///   is made once in C memory and a schedule copies none of it
 ///   (`QaAudioDevice.setSchedule`, board play-press-first-frame-stall).
-const int kQaEngineAbiVersion = 48;
+/// - v49: `qa_key_rgba` — a row's colour keys over straight pixels in
+///   place, from tables the one definition makes (`CelColorKey`), so a cel
+///   on a keyed row is shown at C speed — a live stroke's every tile, every
+///   flush (`QaNativeEngine.keyRgba`, board a-stroke-on-a-keyed-row-shows-
+///   its-tiles-unkeyed).
+/// - v50: `qa_audio_device_play` gains `lead_samples` — a run started that
+///   much silence ahead of its first sample, so the sample is heard as the
+///   run's first picture is shown (`QaAudioDevice.play`, board a-start-is-
+///   heard-ahead-of-its-first-picture).
+const int kQaEngineAbiVersion = 50;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
@@ -270,6 +282,22 @@ const int kQaEngineAbiVersion = 48;
 /// `qa_tablet` is a different binary and keeps its own override, on
 /// `QA_TABLET_PATH`.
 String? debugQaEngineLibraryPathOverride;
+
+/// [job] on a worker ([onAWorker]) that loads the binary this isolate
+/// loads: a worker resolves every loader from scratch, and
+/// [debugQaEngineLibraryPathOverride] is a static — statics do not cross
+/// isolates.
+///
+/// ⚠️Written down once when opening the output ahead became the THIRD job to
+/// carry the path (play-press-first-frame-stall, 10-16): a trimmed movie's
+/// span and a trimmed sound's had each spelled the same two lines out.
+Future<T> onAWorkerWithThisEngine<T>(FutureOr<T> Function() job) {
+  final library = debugQaEngineLibraryPathOverride;
+  return onAWorker(() {
+    debugQaEngineLibraryPathOverride ??= library;
+    return job();
+  });
+}
 
 /// Opens the engine binary, or null when there is none here or the one
 /// found does not speak [kQaEngineAbiVersion].

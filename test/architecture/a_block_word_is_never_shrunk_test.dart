@@ -10,10 +10,13 @@ import '../helpers/dart_sources.dart';
 /// 최대한 통일하면서. 컷블록의 텍스트든 se텍스트든 뭐든」.
 ///
 /// The shrink the words used to take (`timelineFittedGlyphFontSize`, R26
-/// #38) stays for what cannot be narrowed on one axis — a key MARK is a
-/// square (D39-2) — and for the rulers' numbers, which are no block's
-/// writing. ⛔A behaviour test can only prove the surfaces it knows about
-/// keep their type; this scan proves nothing ELSE reaches for the shrink.
+/// #38) stays for the rulers' numbers, which are no block's writing.
+/// ⛔A behaviour test can only prove the surfaces it knows about keep their
+/// type; this scan proves nothing ELSE reaches for the shrink.
+///
+/// ↩️A key MARK was allowed it too, as a square that cannot narrow on one
+/// axis (D39-2), until F-367 (유저 2026-10-16: 「칸 그냥 차지는
+/// 마름모라던가」): a mark fills its cell, so the cell is its size.
 ///
 /// ↩️The in-between DOT was allowed it too (D39-2, 유저 2026-09-24: 「a
 /// mark, not a word」) until F-297 (유저 2026-10-05): 「중간나누기 점도
@@ -26,8 +29,6 @@ void main() {
   const allowed = {
     // Its home.
     'lib/src/ui/timeline/timeline_cell_style.dart',
-    // A key mark's size (D39) — a mark, not a word.
-    'lib/src/ui/timeline/timeline_lane_rows.dart',
     // The rulers' numbers (R9 #4 · I-22) — the frame axis, not a block.
     'lib/src/ui/timeline/timeline_frame_ruler_painter.dart',
     'lib/src/ui/timeline/xsheet_timeline_grid.dart',

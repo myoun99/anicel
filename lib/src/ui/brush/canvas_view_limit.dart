@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
+import '../timeline/axis_turn.dart' show endAlong, extentAlong, startAlong;
 
 /// Where [rect] (canvas space) lies along [axis] on screen, with the pan
 /// taken out: where it starts and how long it is. Under a rotation or a
@@ -16,15 +17,15 @@ import '../../models/canvas_viewport.dart';
   CanvasViewport viewport,
   Rect rect,
 ) {
-  final horizontal = axis == Axis.horizontal;
   if (!viewport.hasRotationOrFlip) {
-    final start = horizontal ? rect.left : rect.top;
-    final extent = horizontal ? rect.width : rect.height;
+    final start = startAlong(axis, rect);
+    final extent = extentAlong(axis, rect.size);
     return (start: start * viewport.zoom, extent: extent * viewport.zoom);
   }
   final unpanned = viewport.copyWith(panX: 0, panY: 0);
   var min = double.infinity;
   var max = double.negativeInfinity;
+  final horizontal = axis == Axis.horizontal;
   for (final corner in [
     rect.topLeft,
     rect.topRight,
@@ -65,9 +66,8 @@ CanvasViewport viewHeldTo(
 }) {
   double held(Axis axis, double pan) {
     final span = viewportSpan(axis, view, limit);
-    final horizontal = axis == Axis.horizontal;
-    final low = horizontal ? window.left : window.top;
-    final high = horizontal ? window.right : window.bottom;
+    final low = startAlong(axis, window);
+    final high = endAlong(axis, window);
     final middle = (low + high) / 2 - (span.start + span.extent / 2);
     final (first, last) = span.extent <= high - low
         ? (middle, middle)

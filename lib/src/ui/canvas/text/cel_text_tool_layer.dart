@@ -5,9 +5,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/app_input_settings.dart';
+import '../../../models/brush_frame_key.dart';
 import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
-import '../../../services/history_manager.dart' show HistoryMark;
+import '../../../services/history_run.dart';
 import '../../input/value_control_pointers.dart' show controlOwnsTap;
 import '../../shortcuts/focused_text_field.dart';
 import '../../text/canvas_letter_faces.dart';
@@ -39,6 +40,7 @@ class CelTextToolLayer extends StatefulWidget {
     required this.stage,
     required this.cel,
     required this.onPressNeedsCel,
+    this.markMakesItsOwnCel,
     required this.onDragActive,
     this.oneFingerAction,
   });
@@ -56,6 +58,12 @@ class CelTextToolLayer extends StatefulWidget {
   /// frame a click and a drag are the click and the drag they are anywhere
   /// else.
   final bool Function()? onPressNeedsCel;
+
+  /// Whether [cel] gives way to a cel of the press's own — the auto toggle
+  /// on a held cell (I-113, `InteractiveBrushEditCanvasView.
+  /// markMakesItsOwnCel`): the press then asks as it does where there is
+  /// none.
+  final bool Function()? markMakesItsOwnCel;
 
   /// A press began or ended: the panel holds its pans and zooms meanwhile.
   final ValueChanged<bool> onDragActive;
@@ -77,10 +85,15 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   ({CanvasPoint anchor, double? wrapWidth, double? minHeight})?
   _textAwaitingCel;
 
-  /// Where history stood when a press made the cel its text is to be set
-  /// on — until that text begins, and the two land as one step
+  /// The run a press began that made the cel its text is to be set on —
+  /// until that text begins, and the two land as one step
   /// ([CelTextTool.beginText]).
-  HistoryMark? _celMadeSince;
+  HistoryRun? _celMade;
+
+  /// The key of the held cel a press gave way beside (I-113) — the cel
+  /// under the tool until the one the press made arrives, which a text is
+  /// not to be set on meanwhile ([_beginText]).
+  BrushFrameKey? _gaveWay;
 
   /// The box an empty drag is tracing, on the artwork.
   Rect? _tracedBox;
@@ -155,7 +168,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
     double? minHeight,
   }) {
     final cel = widget.cel;
-    if (cel == null) {
+    if (cel == null || cel.key == _gaveWay) {
       _textAwaitingCel = (
         anchor: anchor,
         wrapWidth: wrapWidth,
@@ -163,14 +176,15 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       );
       return;
     }
-    final celMadeSince = _celMadeSince;
-    _celMadeSince = null;
+    final celMade = _celMade;
+    _celMade = null;
+    _gaveWay = null;
     _tool.beginText(
       cel,
       anchor,
       wrapWidth: wrapWidth,
       minHeight: minHeight,
-      celMadeSince: celMadeSince,
+      celMade: celMade,
     );
   }
 
@@ -242,11 +256,12 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
 
   // ── presses ─────────────────────────────────────────────────────────
 
-  void _pointerDown(PointerDownEvent event) {
+  /// Whether [event] is a press this layer takes.
+  bool _takesPress(PointerDownEvent event) {
     // A press that landed on a control floating over the canvas is that
     // control's (`control_press_claim.dart`, 유저 2026-09-22).
     if (controlOwnsTap(event.pointer)) {
-      return;
+      return false;
     }
     if (_following != null) {
       // A second finger is the view's: what the first was doing goes back
@@ -254,36 +269,44 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       if (event.kind == PointerDeviceKind.touch) {
         _cancelPress();
       }
-      return;
+      return false;
     }
     // The two doors every tool's layer asks, as the selection layer asks
     // them: a finger drives a tool only while the one-finger slot says draw
     // (TS9), and the press is the tool's own — the plain primary contact,
     // not a mapped button's and not a pen's tail (no pen's tail holds the
     // text tool).
-    if (!AppInput.toolAcceptsPointer(
+    return AppInput.toolAcceptsPointer(
           event.kind,
           oneFinger: widget.oneFingerAction,
-        ) ||
-        !canvasPressIsTheTools(event, tailsToolInHand: (_) => false)) {
+        ) &&
+        canvasPressIsTheTools(event, tailsToolInHand: (_) => false);
+  }
+
+  void _pointerDown(PointerDownEvent event) {
+    if (!_takesPress(event)) {
       return;
     }
     final artwork = widget.stage.artworkAt(event.localPosition);
     if (artwork == null) {
       return;
     }
-    final cel = widget.cel;
+    // A held cel that gives way to the press's own is none to set on
+    // (I-113): the press asks as it does where there is none.
+    final givesWay = widget.markMakesItsOwnCel?.call() ?? false;
+    final cel = givesWay ? null : widget.cel;
     if (cel == null) {
       // Nothing to set a text on: ask for a cel, as a stroke's press does
       // (`_BrushEditCelPress`). The press then goes on as the press on
       // nothing it is, and its text begins on the cel once both are here
-      // ([_beginText]). ⚠️History is read AFTER the asking — the door
+      // ([_beginText]). ⚠️The run begins AFTER the asking — the door
       // settles a cel an earlier press left unclaimed before it makes
       // this one.
       if (!(widget.onPressNeedsCel?.call() ?? false)) {
         return;
       }
-      _celMadeSince = _tool.historyMark;
+      _celMade = _tool.beginRun();
+      _gaveWay = givesWay ? widget.cel?.key : null;
     }
     final scene = CelTextScene(
       tool: _tool,

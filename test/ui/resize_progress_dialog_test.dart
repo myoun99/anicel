@@ -1,10 +1,30 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/persistence/session_scratch.dart';
+import 'package:anicel/src/ui/dialogs/behind_the_wait_window.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../helpers/cels_kept_in_a_file.dart';
+import '../helpers/files_written_under.dart';
+import '../helpers/panel_finders.dart';
 import 'flyout_test_helpers.dart' show flyoutOwnerByItemKey;
 
 /// D3 (R7): the cut-canvas resize runs behind the app's ONE wait-for-this
@@ -76,4 +96,242 @@ void main() {
       findsNothing,
     );
   });
+
+  // 🔬Card `a-canvas-resize-rewrites-kept-cels-on-the-ui-thread`: on S5_BA
+  // saved and opened again, a resize thawed and moved every kept cel of the
+  // cut on the UI thread — 4.2 s about the centre. The window works them out
+  // first, on the machine's workers.
+  testWidgets('a size typed into its window moves the cels kept in files '
+      'ahead of the resize', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+    final store = session.renderCaches.brushFrameStore;
+    final cut = session.activeCutOrNull!;
+    final kept = BrushFrameKey(
+      projectId: const ProjectId('p'),
+      trackId: const TrackId('t'),
+      cutId: cut.id,
+      layerId: const LayerId('l'),
+      frameId: const FrameId('kept'),
+    );
+    // Tiles of 8: the centre's move of the new size below is no whole tile.
+    keepInAFile(store, {
+      kept: BitmapSurface(canvasSize: cut.canvasSize, tileSize: 8).putTiles([
+        (
+          coord: TileCoord(x: 1, y: 1),
+          tile: BitmapTile(
+            size: 8,
+            pixels: Uint8List(256)..fillRange(0, 256, 50),
+          ),
+        ),
+      ]),
+    });
+    final owner = flyoutOwnerByItemKey['resize-cut-canvas-button'];
+    if (owner != null) {
+      await tester.tap(find.byKey(ValueKey<String>(owner)));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(
+      find.byKey(const ValueKey<String>('resize-cut-canvas-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('canvas-size-width-field')),
+      '1280',
+    );
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('canvas-size-height-field')),
+      '720',
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-confirm-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      store.bakedSurfaceOrNull(kept)!.canvasSize,
+      const CanvasSize(width: 1280, height: 720),
+      reason: 'premise: the kept cel was resized with its cut',
+    );
+    expect(store.celsMovedHere, 0, reason: 'its move was worked out ahead');
+    await tester.pump(const Duration(milliseconds: 950));
+    await tester.pumpAndSettle();
+  });
+
+  // 🗣️F-432 (유저 2026-10-21): 「페이스트 보드 배율 전환이 너무 느리고, 이런
+  // 시간 걸리는 로직은 규칙으로서 공용 로딩창 표시해야함」.
+  testWidgets('a pasteboard size or use, pressed in its window, lands behind '
+      'the same wait window, under the pasteboard\'s name', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pumpAndSettle();
+
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+    // The floor lays its controls out rather than behind a gear.
+    await tester.tap(
+      find.descendant(
+        of: mainCanvasPanelShell(),
+        matching: find.byKey(
+          const ValueKey<String>('canvas-pasteboard-color-button'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final (press, landed) in [
+      (
+        'pasteboard-size-oneAndAHalf',
+        () => session.repository.requireProject().pasteboardSize ==
+            PasteboardSize.oneAndAHalf,
+      ),
+      (
+        'pasteboard-in-use',
+        () => !session.repository.requireProject().pasteboardInUse,
+      ),
+    ]) {
+      await tester.tap(find.byKey(ValueKey<String>(press)));
+      await tester.pump();
+      final window = find.byKey(
+        const ValueKey<String>('resize-progress-dialog'),
+      );
+      expect(window, findsOneWidget, reason: press);
+      expect(
+        find.descendant(
+          of: window,
+          matching: find.text(AppText.strings.pasteboardTitle),
+        ),
+        findsOneWidget,
+        reason: press,
+      );
+      await tester.pumpAndSettle();
+      expect(landed(), isTrue, reason: press);
+      await tester.pump(const Duration(milliseconds: 950));
+      await tester.pumpAndSettle();
+      expect(window, findsNothing, reason: press);
+    }
+  });
+
+  // 🗣️F-432: what a move of the wall can work out off the UI thread is
+  // worked out first, behind the same window, and the window counts it.
+  testWidgets('what is worked out ahead runs first, behind the window, and '
+      'the window counts it', (tester) async {
+    final gate = Completer<void>();
+    var moved = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => resizeBehindTheWaitWindow(
+              context,
+              () => moved = true,
+              title: 'wall',
+              ahead: (report) async {
+                report(0.5);
+                await gate.future;
+              },
+            ),
+            child: const Text('go'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('go'));
+    await tester.pump();
+    await tester.pump();
+    final window = find.byKey(const ValueKey<String>('resize-progress-dialog'));
+    expect(window, findsOneWidget);
+    expect(find.descendant(of: window, matching: find.text('50%')), findsOne);
+    expect(moved, isFalse, reason: 'the move waits for what runs ahead');
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(moved, isTrue);
+    await tester.pump(const Duration(milliseconds: 950));
+    await tester.pumpAndSettle();
+  });
+
+  // Both doors of the pasteboard row run ahead: its size, and whether it is
+  // in use at all — each a smaller wall from 3x.
+  for (final press in ['pasteboard-size-oneAndAHalf', 'pasteboard-in-use']) {
+    testWidgets('$press, pressed in its window, cuts the cels kept in files '
+        'ahead of the move', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+      );
+      await tester.pumpAndSettle();
+      final session = tester
+          .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+          .session;
+      expect(
+        session.repository.requireProject().pasteboardSize,
+        PasteboardSize.three,
+        reason: 'premise: 1.5x, and none, are smaller walls',
+      );
+      // A cel kept in a file, wholly past the 1.5x wall — x -16..-13 of a
+      // paper 16 wide, inside the 3x one.
+      keepInAFile(session.renderCaches.brushFrameStore, {
+        const BrushFrameKey(
+          projectId: ProjectId('p'),
+          trackId: TrackId('t'),
+          cutId: CutId('c'),
+          layerId: LayerId('l'),
+          frameId: FrameId('kept'),
+        ): BitmapSurface(
+          canvasSize: const CanvasSize(width: 16, height: 8),
+          tileSize: 4,
+        ).putTiles([
+          (
+            coord: TileCoord(x: -4, y: 0),
+            tile: BitmapTile(
+              size: 4,
+              pixels: Uint8List(64)..fillRange(0, 64, 50),
+            ),
+          ),
+        ]),
+      });
+      Set<String> parkedAhead() => {
+        for (final path in filesWrittenUnder(
+          Directory(SessionScratch.stagedFolder()),
+        ))
+          if (path.contains('-ahead')) path,
+      };
+
+      final before = parkedAhead();
+      await tester.tap(
+        find.descendant(
+          of: mainCanvasPanelShell(),
+          matching: find.byKey(
+            const ValueKey<String>('canvas-pasteboard-color-button'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>(press)));
+      await tester.pumpAndSettle();
+      expect(
+        parkedAhead().difference(before),
+        hasLength(1),
+        reason: 'the cut was worked out ahead, and the move took it',
+      );
+      await tester.pump(const Duration(milliseconds: 950));
+      await tester.pumpAndSettle();
+    });
+  }
 }

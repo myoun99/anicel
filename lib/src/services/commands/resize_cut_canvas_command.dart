@@ -25,7 +25,8 @@ class ResizeCutCanvasCommand
         Command,
         RetainedBytesCommand,
         ParkableCommand,
-        PictureRestoringCommand {
+        PictureRestoringCommand,
+        WorksAheadCommand {
   ResizeCutCanvasCommand({
     required this.repository,
     required this.cutId,
@@ -60,6 +61,39 @@ class ResizeCutCanvasCommand
   double _contentDy = 0;
   double _centreDx = 0;
   double _centreDy = 0;
+
+  /// The cuts a resize of [cutId] touches: it and every 겸용 sibling — what
+  /// [execute] walks, and what is worked out ahead of it
+  /// ([BrushFrameStore.moveCutCelsAhead]).
+  static List<CutId> targetsOf(Project project, CutId cutId) => [
+    cutId,
+    ...linkedCutSiblings(project, cutId: cutId),
+  ];
+
+  /// Every cel of the cut moved as [execute] moves it — the whole pixels it
+  /// rounds [contentOffset] to — on the machine's workers
+  /// ([BrushFrameStore.moveCutCelsAhead]): the first run's work, and the
+  /// redo's, which runs the resize again ([parkPayload]). The undo puts the
+  /// pictures back by reference and has none.
+  @override
+  WorkAhead? workAhead({required bool undo}) {
+    final store = brushFrameStore;
+    if (undo || store == null) {
+      return null;
+    }
+    return (
+      wall: WallMove.canvasSize,
+      run: (report) => store.moveCutCelsAhead(
+        targetsOf(repository.requireProject(), cutId),
+        (
+          canvasSize: canvasSize,
+          dx: contentOffset.dx.round(),
+          dy: contentOffset.dy.round(),
+        ),
+        report: report,
+      ),
+    );
+  }
 
   /// Every cut this resize touched — the target and its 겸용 siblings.
   /// Undo has to walk the SAME list: the project snapshot restores the
@@ -154,7 +188,7 @@ class ResizeCutCanvasCommand
     _centreDx = (canvasSize.width - fromSize.width) / 2;
     _centreDy = (canvasSize.height - fromSize.height) / 2;
 
-    _targets = [cutId, ...linkedCutSiblings(project, cutId: cutId)];
+    _targets = targetsOf(project, cutId);
 
     // R19 bake-only: the raster blit clips pixels shifted off-canvas, so
     // the exact undo restores the pre-resize baked surfaces by reference
@@ -247,7 +281,7 @@ class ResizeCutCanvasCommand
             // resize would answer null there and be silently left out of
             // its own undo.
             entry.key: ?entry.value.surfaceOver(
-              brushFrameStore?.bakedSurfaceOrNull(entry.key),
+              () => brushFrameStore?.bakedSurfaceOrNull(entry.key),
             ),
         });
       }

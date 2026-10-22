@@ -25,6 +25,8 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerVisibilityToggleButton;
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show TimelineGridDash, TimelineGridSheet;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 /// 🗣️F-322 (유저 2026-10-09): 「콘티패널 간편오버레이가 제대로 서있는곳
@@ -195,6 +197,37 @@ void main() {
     await _standOn(tester, session, LayerRowAddress(trackCameraRowId(_trackId)));
     expect(_inOverlay('storyboard-camera-label-t1'), findsOneWidget);
     expect(_inOverlay('storyboard-se-label-t1-1'), findsNothing);
+  });
+
+  testWidgets('🚨the folded conte and camera rows leave each cut start to '
+      'their dash, as the open rows do, and an S row leaves none (F-347)', (
+    tester,
+  ) async {
+    final session = await _pumpFolded(tester);
+    List<TimelineGridDash> yielded() => tester
+        .widget<TimelineGridSheet>(_inOverlay('collapsed-grid-sheet'))
+        .rows
+        .dashes;
+    Set<int> painted(String key) =>
+        (tester.widget<CustomPaint>(_inOverlay(key)).painter!
+                as StoryboardCutStartsPainter)
+            .starts
+            .toSet();
+    double height() => tester.widget<CollapsedRowOverlay>(_overlay).height;
+
+    for (final (row, dashes) in [
+      (trackConteRowId(_trackId), 'storyboard-conte-cut-starts-t1'),
+      (trackCameraRowId(_trackId), 'storyboard-camera-cut-starts-t1'),
+    ]) {
+      await _standOn(tester, session, LayerRowAddress(row));
+      expect(painted(dashes), {0, 12}, reason: '⛔전제: $dashes');
+      expect(yielded(), [
+        for (final frame in [0, 12]) (frame: frame, from: 0.0, to: height()),
+      ], reason: 'the whole of the folded row, at its dashes');
+    }
+
+    await _standOn(tester, session, const LayerRowAddress(LayerId('s1')));
+    expect(yielded(), isEmpty);
   });
 
   testWidgets('🚨a stand made while folded moves the folded row with it', (

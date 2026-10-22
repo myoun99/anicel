@@ -1,14 +1,18 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart' show TextStyle;
 
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cel_photo.dart';
 import '../../models/cut.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_words.dart';
+import '../sheet/sheet_image_cache.dart'
+    show SheetImageRun, paintWithSheetImages;
 import '../timesheet/timesheet_document_painter.dart';
 import 'offscreen_raster.dart';
 
@@ -46,7 +50,10 @@ class ExportTimesheetPageTask {
 /// preview. The painter's strata are exactly what the panel shows — the
 /// export IS the panel's picture, no second sheet layout to disagree with
 /// it — the saved [ink] included: the windows it shows through (the
-/// panel's own walk) and each window's baked raster.
+/// panel's own walk), each window's baked raster and the photos laid under
+/// it (I-97), whose files are the ones it asks [images] for. [layers]
+/// draws those strata alone — a Photoshop document's rows (I-117); null
+/// draws the page whole.
 ///
 /// ↩️A scale multiplied the page's size in the FORM'S UNITS, which was the
 /// paper while a unit was a pixel of it. F-294 gave the paper pixels of its
@@ -61,8 +68,14 @@ Future<ui.Image> renderTimesheetPageImage({
   required TimesheetWords words,
   required TextStyle face,
   CanvasSize? outputSize,
-  ({List<SheetInk> windows, ui.Image? Function(BrushFrameKey key) imageFor})?
+  ({
+    List<SheetInk> windows,
+    ui.Image? Function(BrushFrameKey key) rasterFor,
+    List<CelPhoto> Function(BrushFrameKey key) photosFor,
+  })?
   ink,
+  SheetImageRun? images,
+  Set<SheetPaintLayer>? layers,
 }) {
   final page = layout.pageRect(pageIndex);
   final paper = layout.paperPixelSize;
@@ -73,26 +86,39 @@ Future<ui.Image> renderTimesheetPageImage({
   );
   // The panel's strata, in the panel's order ([SheetStratum]), which
   // differ in nothing but the strata.
-  TimesheetDocumentPainter painterOf(SheetStratum stratum) =>
+  TimesheetDocumentPainter painterOf(Set<SheetPaintLayer> drawn) =>
       TimesheetDocumentPainter(
         document: document,
         layout: layout,
         face: face,
-        layers: stratum.layers,
+        layers: drawn,
         words: words,
         ink: ink?.windows ?? const [],
-        inkImageFor: ink?.imageFor,
+        inkImageFor: ink?.rasterFor,
+        inkPhotosFor: ink?.photosFor,
+        imageFor: images?.imageFor,
+        // The image's pixels to a unit of the sheet, as it lays the page
+        // below — what the photos are sampled for.
+        effectiveRatio: math.min(width / page.width, height / page.height),
       );
+  void paintPage(ui.Canvas canvas) {
+    canvas.scale(width / page.width, height / page.height);
+    canvas.translate(-page.left, -page.top);
+    canvas.clipRect(page);
+    for (final stratum in SheetStratum.values) {
+      final drawn = {
+        for (final layer in stratum.layers)
+          if (drawsSheetLayer(layers, layer)) layer,
+      };
+      if (drawn.isNotEmpty) {
+        painterOf(drawn).paint(canvas, layout.documentSize);
+      }
+    }
+  }
+
   return rasterizeOffscreen(
     width: width,
     height: height,
-    paint: (canvas) {
-      canvas.scale(width / page.width, height / page.height);
-      canvas.translate(-page.left, -page.top);
-      canvas.clipRect(page);
-      for (final stratum in SheetStratum.values) {
-        painterOf(stratum).paint(canvas, layout.documentSize);
-      }
-    },
+    paint: (canvas) => paintWithSheetImages(canvas, images, paintPage),
   );
 }

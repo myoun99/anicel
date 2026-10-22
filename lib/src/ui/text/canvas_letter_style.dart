@@ -33,6 +33,13 @@ import 'canvas_letter_faces.dart';
 /// outline pass ([canvasLetterOutlinePaint]). ⚠️For the same reason a style
 /// that runs are nested in is never painted by one: the engine keeps a
 /// foreground until another replaces it, and a colour does not.
+///
+/// 🔬A LEAN IS THE ENGINE'S OWN, in a face that has none (measured on the
+/// device 2026-10-18: BIZ UDPGothic, 나눔고딕 and Latin in either, asked
+/// for italic, came down leaning — the top row of the ink 13 pixels right
+/// of the upright's at 64). The LINES are not the engine's: they are drawn
+/// with the letters' passes (`canvas_letter_lines.dart`), so no decoration
+/// is ever asked of it here.
 TextStyle canvasLetterTextStyle(
   TextLetterStyle style, {
   required double lineHeight,
@@ -43,6 +50,7 @@ TextStyle canvasLetterTextStyle(
   foreground: foreground,
   fontSize: fontSize ?? style.fontSize,
   fontWeight: style.bold ? FontWeight.w700 : FontWeight.w400,
+  fontStyle: style.italic ? FontStyle.italic : FontStyle.normal,
   letterSpacing: style.letterSpacing,
   fontFamily:
       CanvasLetterFaces.current.engineFamilyOf(style.fontFamily) ??

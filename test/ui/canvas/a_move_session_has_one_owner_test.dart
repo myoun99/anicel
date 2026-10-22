@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/library_source.dart';
+import '../../helpers/source_body.dart';
 
 /// 🚨★★★**A MOVE SESSION HAS ONE OWNER, AND ONE DOOR OUT.**
 ///
@@ -30,7 +31,7 @@ void main() {
 
   test('⛔a session is CLEARED in exactly one place', () {
     expect(
-      '_session = null'.allMatches(layer).length,
+      'session = null'.allMatches(layer).length,
       1,
       reason:
           '🚨every extra one is a way to forget a session quietly, which is '
@@ -41,9 +42,31 @@ void main() {
 
   test('⛔a session is MADE in exactly one place', () {
     expect(
-      '_session = _MoveSession('.allMatches(layer).length,
+      'session = _MoveSession('.allMatches(layer).length,
       1,
       reason: 'a session is made whole or not at all',
+    );
+  });
+
+  test('⛔the box a session rides is dropped in exactly one place, and only '
+      'once nothing rides it', () {
+    // A session rides its box (`_OpenBox`), so dropping the box with a
+    // session on it drops the session too — with the host never told,
+    // which is F-164 again by another door.
+    expect(
+      '_box = null'.allMatches(layer).length,
+      1,
+      reason: 'the one that stands is inside `_clearTransform`',
+    );
+    // ⛔fixture premise: the one door exists — the body read asks it.
+    final closer = sourceBodyOf(layer, 'void _clearTransform(');
+    expect(closer, contains('_box = null'));
+    expect(
+      closer,
+      contains('_session == null'),
+      reason:
+          'the box closes after its session has ended, and says so where '
+          'it closes',
     );
   });
 
@@ -51,15 +74,15 @@ void main() {
     // The host learns of an ending through exactly these three callbacks.
     // Every call to one of them must sit inside `_endSession`, which is the
     // only method that also drops the field.
-    final ender = _methodBody(layer, '_MoveSession? _endSession(');
-    expect(ender, isNotNull, reason: '⛔fixture premise: the one door exists');
+    // ⛔fixture premise: the one door exists — the body read asks it.
+    final ender = sourceBodyOf(layer, '_MoveSession? _endSession(');
     for (final call in const [
       'widget.onLiftConfirmed',
       'widget.onLiftReverted',
     ]) {
       expect(
         call.allMatches(layer).length,
-        call.allMatches(ender!).length,
+        call.allMatches(ender).length,
         reason:
             '⛔$call is called outside `_endSession`. Whatever that caller '
             'is doing, the field and the host would then be two facts again',
@@ -76,30 +99,4 @@ void main() {
           'declaration, never only in a commit message',
     );
   });
-}
-
-/// The body of the method whose signature starts with [signature], by brace
-/// depth — good enough for one method in one file, and it fails loudly by
-/// answering null rather than a wrong span.
-String? _methodBody(String source, String signature) {
-  final start = source.indexOf(signature);
-  if (start < 0) {
-    return null;
-  }
-  final open = source.indexOf('{', start);
-  if (open < 0) {
-    return null;
-  }
-  var depth = 0;
-  for (var i = open; i < source.length; i += 1) {
-    if (source[i] == '{') {
-      depth += 1;
-    } else if (source[i] == '}') {
-      depth -= 1;
-      if (depth == 0) {
-        return source.substring(open, i + 1);
-      }
-    }
-  }
-  return null;
 }

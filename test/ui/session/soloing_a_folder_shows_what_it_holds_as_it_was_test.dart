@@ -79,9 +79,11 @@ void main() {
     return (s: s, deep: deep.id);
   }
 
+  /// The rows shown, of those the solo answers for — not the camera, whose
+  /// eye is the camera view (F-363-Q2).
   Set<LayerId> shownIn(EditorSessionManager s) => {
     for (final layer in s.requireActiveCut.layers)
-      if (layer.isVisible) layer.id,
+      if (layer.kind.hasPictureEye && layer.isVisible) layer.id,
   };
 
   test('standing on a folder, every row under it shows as it was — the '

@@ -55,6 +55,17 @@ void main() {
       expect(long.pageSize(0).height, short.pageSize(0).height);
     });
 
+    test('it is drawn at the size asked, as a PDF\'s page is: zoomed in, it '
+        'is asked sharper', () {
+      expect(
+        AudioViewerDocument(
+          peaks: peaksOfSeconds(2),
+          color: const Color(0xFF808080),
+        ).drawnAtAnySize,
+        isTrue,
+      );
+    });
+
     test('⛔the pages do not turn by themselves — a waveform is not a movie', () {
       expect(
         AudioViewerDocument(
@@ -140,7 +151,6 @@ void main() {
       slot.request.value = const MediaViewerRequest(
         path: 'C:/work/line.wav',
         kind: MediaAssetKind.audio,
-        name: 'line',
       );
       await tester.pumpAndSettle();
     }

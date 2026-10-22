@@ -8,7 +8,6 @@ import '../../models/frame_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/property_track.dart' show KeySidesEdit, KeyTypePick;
 import '../../models/layer_id.dart';
-import '../../models/media_asset.dart' show mediaFileName;
 import '../../models/se_line_type.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
@@ -24,7 +23,7 @@ import '../editor_session_manager.dart';
 import '../session/block_naming.dart' show AutoNamePlan;
 import '../text/app_strings.dart';
 import '../text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
-import 'key_flag_row.dart' show KeyFlagRow;
+import 'key_choice_row.dart' show KeyChoiceRow, KeyPathRow;
 import 'key_sides_rows.dart' show KeySidesRows;
 import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
@@ -32,6 +31,7 @@ import 'toolbar_panel_context.dart'
     show
         StoryboardEditCut,
         StoryboardEditLaneKey,
+        StoryboardEditRows,
         StoryboardEditSeEntry,
         StoryboardEditTimelineCells,
         StoryboardEditTransitionSpan,
@@ -149,10 +149,13 @@ Future<void> activateCellEditor(
 /// must never create. A fork inside it made the button author a camera key
 /// instead of opening the key dialog — one entrance answering two gestures.
 /// The double tap is a gesture with two meanings; the button has one.
+///
+/// [layerId] null: no layer in hand — the storyboard's lanes in a gap — so
+/// a filled cell has nothing to open, and an empty one is made all the same.
 Future<void> activateCellOnDoubleTap(
   BuildContext context,
   EditorSessionManager session, {
-  required LayerId layerId,
+  required LayerId? layerId,
   required int frameIndex,
   Axis previewAxis = Axis.horizontal,
 }) async {
@@ -173,6 +176,9 @@ Future<void> activateCellOnDoubleTap(
       : session.cellInstances.activeCellHoldsAnInstance;
   if (!instanceHere) {
     createActiveInstance(session);
+    return;
+  }
+  if (layerId == null) {
     return;
   }
   await activateCellEditor(
@@ -253,6 +259,9 @@ Future<void> editOnPanel(
   switch (panel.editTarget) {
     case StoryboardEditCut():
       await renameActiveCutWithDialog(context, session);
+    case StoryboardEditRows():
+      // The shared ladder's rows rung, the timeline's rename (F-359).
+      await renameActiveLayerWithDialog(context, session);
     case StoryboardEditSeEntry(:final layerId, :final globalFrame):
       await editSeEntryInstance(
         context,
@@ -350,7 +359,7 @@ SeInstanceAudioLink _audioLink(
   int index,
   int blockFrames,
 ) => (
-  label: mediaFileName(clip.filePath),
+  label: session.repository.requireProject().shownNameOfMedia(clip.filePath),
   token: index,
   offsetFrames: clip.offsetFrames,
   blockFrames: blockFrames,
@@ -783,7 +792,7 @@ Future<void> _renameLaneKey(
   // 🗣️F-17 (유저 2026-09-01): 「해당 키 공용 편집창 손봐서 이름변경이랑
   // 오른쪽에 유니언 타입 변경 두개 존재하도록. 물론 헤더에서 작동시
   // 유니언타입 일괄변경되는건 기존이랑 조작감 동일」. The TYPE opens on what
-  // the covered keys agree on — nothing lit when they disagree, the ○ the
+  // the covered keys agree on — nothing lit when they disagree, the ◉ the
   // header draws for them — and a header's range is all of its members, so
   // a header's pick lands on every member at once.
   // ⛔Only a type the user PICKED is written. The window opens on what the
@@ -792,6 +801,14 @@ Future<void> _renameLaneKey(
   // ADOPTS (유저 2026-09-12: 「싹다링크해야하는데」 put the type inside the
   // link, so re-stating it is no longer free).
   var picked = const KeyTypePick();
+  // F-389: each pick is shown on the screen and the graphs as it is made,
+  // by the write the window's OK makes (`previewLaneKeyTypeForSelection`);
+  // the window gone, it is dropped.
+  void pick(StateSetter setLocal, KeyTypePick next) {
+    setLocal(() => picked = next);
+    session.laneVerbs.previewLaneKeyTypeForSelection(next);
+  }
+
   // The keys stand still while the window is up: read them once.
   final sides = session.laneVerbs.laneKeySidesForSelection;
   final paths = session.laneVerbs.laneKeyPathsForSelection;
@@ -816,34 +833,33 @@ Future<void> _renameLaneKey(
             sides: sides,
             picked: picked.sides ?? const KeySidesEdit(),
             onPicked: sidesCount(picked.roving)
-                ? (edit) =>
-                      setLocal(() => picked = picked.copyWith(sides: edit))
+                ? (edit) => pick(setLocal, picked.copyWith(sides: edit))
                 : null,
           ),
           const SizedBox(height: 10),
-          KeyFlagRow(
-            label: strings.keyPath,
-            off: (
-              id: 'rename-key-path-straight',
-              word: strings.keyPathStraight,
-            ),
-            on: (id: 'rename-key-path-curved', word: strings.keyPathCurved),
-            flags: [for (final path in paths) path.curved],
-            picked: picked.curved,
-            onPicked: (bends) =>
-                setLocal(() => picked = picked.copyWith(curved: bends)),
+          KeyPathRow(
+            said: [for (final path in paths) path.kind],
+            picked: picked.path,
+            onPicked: (kind) => pick(setLocal, picked.copyWith(path: kind)),
           ),
           const SizedBox(height: 10),
           // I-89 ④-Q5 (A′ while it is asked): After Effects' Rove Across
           // Time, under the path it rides.
-          KeyFlagRow(
+          KeyChoiceRow<bool>(
             label: strings.keyRoving,
-            off: (id: 'rename-key-rove-off', word: strings.commonOff),
-            on: (id: 'rename-key-rove-on', word: strings.commonOn),
-            flags: roving,
+            help: strings.keyRovingHelp,
+            choices: [
+              (
+                id: 'rename-key-rove-off',
+                word: strings.commonOff,
+                value: false,
+              ),
+              (id: 'rename-key-rove-on', word: strings.commonOn, value: true),
+            ],
+            said: roving,
             picked: picked.roving,
             onPicked: (roves) =>
-                setLocal(() => picked = picked.copyWith(roving: roves)),
+                pick(setLocal, picked.copyWith(roving: roves)),
           ),
         ],
       ),
@@ -879,7 +895,7 @@ Future<void> _renameLaneKey(
         }
       },
     ),
-  );
+  ).whenComplete(session.laneVerbs.endLaneEditPreview);
 }
 
 Future<void> _renameSelectedFrame(

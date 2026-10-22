@@ -246,8 +246,10 @@ class CellInstances {
       // storyboard's verb ([Transitions.transitionSpanCreationInCutOrNull]).
       LayerKind.transition =>
         _transitions.transitionSpanCreationInCutOrNull != null,
+      LayerKind.instruction =>
+        _instructionVerbs.canCreateDefaultInstructionEventAtCurrentFrame,
       LayerKind.folder || LayerKind.adjustment => false,
-      _ => true,
+      LayerKind.camera => true,
     };
   }
 

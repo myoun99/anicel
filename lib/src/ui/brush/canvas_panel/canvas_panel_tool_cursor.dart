@@ -223,15 +223,26 @@ class _CanvasPanelToolCursor {
   /// 커서가 사라짐); F-130 moved it to `RenderToolCursorSprite.debugPosition`,
   /// which is null for exactly the same reason, so a sprite could be
   /// mounted once and moved without a build.
+  ///
+  /// 🚨EACH CURSOR IS A TICK of its dock's still region ([TickLayer.heard]):
+  /// drawn live between the region's strata, so a cursor moving keeps the
+  /// region's image. 🗣️F-428 (유저 2026-10-21): 「타임시트 용지패널의
+  /// 헤더부분 … 펜으로 호버해서 움직이면 그쪽 칸 라인만 진해졌다 연해졌다
+  /// 반복함」 — ↩️a cursor moving was a change of the region's, so every move
+  /// drew the sheet live and every pause took its image again, and an image
+  /// is not the paint it was taken of ([StillRaster]): the head's lines
+  /// came out darker one way and lighter the other.
   List<Widget> toolCursorLayers() {
     final aim = _state._toolCursorHover;
+    Widget tick(Widget cursor) =>
+        Positioned.fill(child: TickLayer.heard(child: cursor));
     return [
       if (eyedropperCursorActive) ...[
         // The hover SWATCH: its pixels change with the colour under the
         // pointer, so its picture is re-recorded per move — a disc — and
         // it samples in its own paint, once per frame.
-        Positioned.fill(
-          child: ToolCursorSprite(
+        tick(
+          ToolCursorSprite(
             key: const ValueKey<String>('eyedropper-hover-swatch'),
             position: aim,
             look: eyedropperSwatchLook(position: aim, sample: _sampleAt),
@@ -239,8 +250,8 @@ class _CanvasPanelToolCursor {
         ),
         // R26 #22: the eyedropper ICON as the cursor. Its tip is the hot
         // spot, so the glyph hangs up-left of the point being sampled.
-        Positioned.fill(
-          child: ToolCursorSprite(
+        tick(
+          ToolCursorSprite(
             key: const ValueKey<String>('eyedropper-cursor-icon'),
             position: aim,
             look: eyedropperCursorLook(),
@@ -249,8 +260,8 @@ class _CanvasPanelToolCursor {
       ],
       // R26 #23: the fill tool wears the bucket.
       if (fillCursorActive)
-        Positioned.fill(
-          child: ToolCursorSprite(
+        tick(
+          ToolCursorSprite(
             key: const ValueKey<String>('fill-cursor-icon'),
             position: aim,
             look: fillCursorLook(),
@@ -304,7 +315,7 @@ class _CanvasPanelToolCursor {
         ),
       // The painting tools wear their own footprint: an outline of the tip
       // that follows the pointer, so a stroke can be aimed before it starts.
-      if (brushCursorActive) Positioned.fill(child: _brushCursor(aim)),
+      if (brushCursorActive) tick(_brushCursor(aim)),
     ];
   }
 

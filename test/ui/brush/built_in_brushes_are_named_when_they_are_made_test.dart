@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/brush/brush_preset_library.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tip_library.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 void main() {
@@ -183,11 +184,11 @@ void main() {
 /// than waits forever when it never does.
 Future<void> _untilTheFileSays(String path, String text) async {
   final file = File(path);
-  for (var attempt = 0; attempt < 200; attempt += 1) {
-    if (await file.exists() && (await file.readAsString()).contains(text)) {
-      return;
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+  final said = await pollUntil(
+    () async =>
+        await file.exists() && (await file.readAsString()).contains(text),
+  );
+  if (!said) {
+    fail('$path never said $text');
   }
-  fail('$path never said $text');
 }

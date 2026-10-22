@@ -262,19 +262,13 @@ SplayTreeMap<int, TimelineExposure>? storyboardTimelineFilledToCover({
 /// The frame a cell's PICTURE is composited at, in the CUT's own frames.
 ///
 /// A panel shows the cut at its own division — that is where its drawing
-/// begins, so it is what the panel is about. The cut's pinned thumbnail
-/// frame still wins inside the panel that holds it: pinning says "show the
-/// cut at THIS moment", and the panel covering that moment is the one it
-/// was said about.
+/// begins, so it is what the panel is about. ↩️A pinned thumbnail frame
+/// won inside the panel that held it until F-379 took the pin away.
 ///
 /// The cell counts the CONTE's frames, which begin at [conteStart] in the
 /// cut's own ([storyboardConteStart]) — after the のりしろ a cut an O.L
-/// arrives into owes (F-227); the picture and the pin are the cut's.
+/// arrives into owes (F-227); the picture is the cut's.
 int storyboardCellPictureFrame(
   StoryboardCoverageCell cell, {
-  int? pinnedFrameIndex,
   required int conteStart,
-}) =>
-    pinnedFrameIndex != null && cell.covers(pinnedFrameIndex - conteStart)
-    ? pinnedFrameIndex
-    : conteStart + cell.startIndex;
+}) => conteStart + cell.startIndex;

@@ -292,9 +292,56 @@ void main() {
     });
   });
 
+  group("the line's tests", () {
+    // 🗣️유저 tests-crowd-the-machine-Q9 「line」(10-20): what the machine's
+    // test line launched counts in the line's ten alone. Built on the chain
+    // Windows listed that day: `affected_tests-<stamp>.exe` < `cmd.exe` <
+    // the Flutter tool.
+    final aLineRun = [
+      ...aSession,
+      win(68612, 48932, 'affected_tests-22fedb5d8d600256.exe'),
+      win(53800, 68612, 'cmd.exe'),
+      win(39032, 53800, 'dart.exe', asked: 'test --no-pub --concurrency=5'),
+      win(90104, 39032, 'dartvm.exe', asked: 'test --no-pub --concurrency=5'),
+    ];
+
+    test('🚨a run under the line takes no place — affected_tests or '
+        'test_queue', () {
+      expect(runsOf(aLineRun).single.of, RunOf.line);
+      expect(RunOf.line.takesAPlace, isFalse);
+      final plain = [
+        ...aSession,
+        win(700, 48932, 'test_queue-0123456789abcdef.exe'),
+        win(701, 700, 'cmd.exe'),
+        win(702, 701, 'dart.exe', asked: 'test --concurrency=3 a_test.dart'),
+      ];
+      expect(runsOf(plain).single.of, RunOf.line);
+    });
+
+    test("⛔and only that: a session's run beside it is counted, and a tool "
+        'run by JIT is no line', () {
+      final runs = runsOf(
+        [...aLineRun, ...aRunFromBash],
+        bash: itsBashRows,
+      );
+      expect(
+        {for (final run in runs) run.pid: run.of},
+        {39032: RunOf.line, 46048: RunOf.session},
+      );
+      // `dart tool/test_queue.dart`, when its exe could not be built.
+      final byJit = [
+        ...aSession,
+        win(800, 48932, 'dart.exe'),
+        win(801, 800, 'cmd.exe'),
+        win(802, 801, 'dart.exe', asked: 'test a_test.dart'),
+      ];
+      expect(runsOf(byJit).single.of, RunOf.session);
+    });
+  });
+
   group('room', () {
-    bool room(int taken, int freeGb, {bool aLand = false}) =>
-        roomFor(taken: taken, freeGb: freeGb, aLand: aLand);
+    bool room(int taken, int freeGb, {bool headroomAlone = false}) =>
+        roomFor(taken: taken, freeGb: freeGb, headroomAlone: headroomAlone);
 
     test('one more run wants a place AND the headroom', () {
       expect(room(3, 4), isTrue);
@@ -302,9 +349,9 @@ void main() {
       expect(room(3, 3), isFalse, reason: 'under 4GB');
     });
 
-    test('🚨a land\'s gates want the headroom alone', () {
-      expect(room(7, 4, aLand: true), isTrue);
-      expect(room(0, 3, aLand: true), isFalse);
+    test("🚨a land's gates and the line's tests want the headroom alone", () {
+      expect(room(7, 4, headroomAlone: true), isTrue);
+      expect(room(0, 3, headroomAlone: true), isFalse);
     });
 
     test('the two numbers are the ones CLAUDE.md states', () {
@@ -312,7 +359,7 @@ void main() {
 
       expect(law, contains('커밋 여유 ${kHeadroomGb}GB'));
       expect(law, contains('최대 $kFlutterPlaces개'));
-      expect(law, contains('dart tool/flutter_room.dart'));
+      expect(law, contains('bash tool/run.sh flutter_room'));
     });
   });
 

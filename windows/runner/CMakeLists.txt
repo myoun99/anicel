@@ -8,6 +8,7 @@ project(runner LANGUAGES CXX)
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
+  "launch_splash.cpp"
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"
@@ -44,6 +45,13 @@ target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 # ImmAssociateContextEx: the IME listens only while a text field holds the
 # keyboard (I-19 ④ — flutter_window.cpp says why).
 target_link_libraries(${BINARY_NAME} PRIVATE "imm32.lib")
+# SetWindowSubclass: a modifier Windows let go of is let go of in the
+# engine too (F-411 — flutter_window.cpp says why).
+target_link_libraries(${BINARY_NAME} PRIVATE "comctl32.lib")
+# WIC: the launch splash decodes its picture (launch_splash.cpp).
+target_link_libraries(${BINARY_NAME} PRIVATE "windowscodecs.lib")
+# Direct2D and DirectWrite: the splash writes its launch stage.
+target_link_libraries(${BINARY_NAME} PRIVATE "d2d1.lib" "dwrite.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

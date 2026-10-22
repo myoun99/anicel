@@ -141,7 +141,8 @@ void main() {
     });
 
     test('the bytes: a PNG that keeps its alpha is the engine\'s own; one in '
-        'RGB (F-335) and a JPG have an encoder', () {
+        'RGB (F-335) and a JPG have an encoder; a PSD, which is its rows, '
+        'is no one picture\'s', () {
       expect(
         stillEncoderFor(const ExportFormatSelection(kind: ExportMediaKind.still)),
         isNull,
@@ -163,6 +164,16 @@ void main() {
           ),
         ),
         isNotNull,
+      );
+      expect(
+        () => stillEncoderFor(
+          const ExportFormatSelection(
+            kind: ExportMediaKind.still,
+            stillFormat: ExportStillFormat.psd,
+          ),
+        ),
+        throwsArgumentError,
+        reason: 'the engine\'s PNG in a file named .psd is no document',
       );
     });
   });
@@ -194,6 +205,7 @@ void main() {
           name: 'frame.png',
           isCancelled: null,
           onProgress: (completed, total) => told.add((completed, total)),
+          onLeftOut: null,
         )),
       );
       expect(written, isTrue);
@@ -210,6 +222,7 @@ void main() {
           name: 'frame.png',
           isCancelled: () => true,
           onProgress: null,
+          onLeftOut: null,
         )),
       );
       expect(written, isFalse);
@@ -245,6 +258,7 @@ void main() {
               name: name,
               isCancelled: null,
               onProgress: null,
+              onLeftOut: null,
             ),
           );
           final codec = await ui.instantiateImageCodec(
@@ -281,9 +295,11 @@ void main() {
   group('what this machine writes', () {
     tearDown(() => QaImageEncoder.debugForceAbsent = false);
 
-    test('PNG always, PSD not yet, JPG where an encoder is', () {
+    // Which tab lays its picture out as a PSD's rows is the tab's to say
+    // (`export_dialog_test.dart`).
+    test('PNG and PSD always, JPG where an encoder is', () {
       expect(stillFormatWritable(ExportStillFormat.png), isTrue);
-      expect(stillFormatWritable(ExportStillFormat.psd), isFalse);
+      expect(stillFormatWritable(ExportStillFormat.psd), isTrue);
       expect(
         stillFormatWritable(ExportStillFormat.jpg, jpgSupported: false),
         isFalse,
@@ -305,7 +321,7 @@ void main() {
       addTearDown(none.dispose);
       expect(none.stillAllowed(ExportStillFormat.jpg), isFalse);
       expect(none.stillAllowed(ExportStillFormat.png), isTrue);
-      expect(none.stillAllowed(ExportStillFormat.psd), isFalse);
+      expect(none.stillAllowed(ExportStillFormat.psd), isTrue);
     });
   });
 }

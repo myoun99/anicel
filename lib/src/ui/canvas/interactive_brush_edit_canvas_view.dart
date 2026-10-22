@@ -5,11 +5,12 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../models/bitmap_surface.dart';
 import '../../native/qa_pen_ledger.dart';
+import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_lean.dart';
+import '../../services/input/pen_readings.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../debug/input_inspector.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
@@ -18,7 +19,6 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/canvas_point.dart';
-import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/dirty_region.dart';
 import '../../models/frame_id.dart';
@@ -38,6 +38,7 @@ import '../../services/canvas_selection_region.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/guide_geometry.dart';
 import '../../services/guide_stroke_input.dart';
+import '../../services/stroke_post_correction.dart';
 import '../../services/stroke_stabilizer.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -47,6 +48,7 @@ import 'canvas_press.dart';
 import 'canvas_tool_holds.dart';
 import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
+import 'view_hand.dart';
 import 'canvas_viewport_offset.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
@@ -123,6 +125,14 @@ abstract interface class ShapeShow {
   void drop();
 }
 
+/// The view a shape lands in where the content is not one cel — a sheet's
+/// window (F-420): its [show], and a point on the screen ([Offset] global)
+/// on the cel that view draws, or null where it maps to none.
+typedef ContentShapeTarget = ({
+  ShapeShow show,
+  CanvasPoint? Function(Offset global) onTheCel,
+});
+
 class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// The commitment distance (the engine's lock slop — one number keeps
   /// the engine's navigate-lock and this view's cancel window agreeing).
@@ -144,8 +154,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     required this.onSourceStrokeCommitted,
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
-    this.onStrokeLanderChanged,
-    this.onShapeShowChanged,
+    this.strokeLander,
+    this.shapeShow,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.toolHolds,
@@ -156,9 +166,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.editable = true,
     this.rowAcceptsStrokes = true,
     this.onPressNeedsCel,
+    this.markMakesItsOwnCel,
     CanvasViewport? viewport,
     CutGuides? guides,
     this.guideSpace = GuideSpace.canvas,
+    this.shiftLine,
   }) : viewport = viewport ?? CanvasViewport(),
        guides = guides ?? CutGuides.empty;
 
@@ -215,6 +227,26 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// as before.
   final bool Function()? onPressNeedsCel;
 
+  /// Whether a mark pressed NOW makes a cel of its own although one stands
+  /// under the playhead — the 프레임 자동 생성 toggle answering a held cell
+  /// as the ＋ does there.
+  ///
+  /// 🗣️I-113 (유저 2026-10-19): 「프레임 자동생성 버튼 동작 변경. 블록
+  /// 홀드구간에서 그리면 해당부분에 프레임 추가하듯이 추가하도록 동작변경.
+  /// 지금은 기존 같은 블록에 그림그려짐」.
+  ///
+  /// ⚠️Asked at the press, never kept from a build: a step inside one block
+  /// takes the playhead off its head with no new cel to rebuild for. Null
+  /// on the surfaces [onPressNeedsCel] is null on.
+  final bool Function()? markMakesItsOwnCel;
+
+  /// Whether a mark pressed now makes the cel it lands on first: none
+  /// stands here, or one does and [markMakesItsOwnCel] has it give way — on
+  /// a row that takes strokes, where alone a press of this view draws.
+  bool get marksMakeTheirCel =>
+      !editable ||
+      (rowAcceptsStrokes && (markMakesItsOwnCel?.call() ?? false));
+
   /// The cut's drawing guides, as they stand on the CANVAS. Empty (the
   /// default) leaves the stroke path exactly as it was — the ink surfaces
   /// that reuse this view (conte, timesheet, cut envelope) are not the
@@ -226,6 +258,13 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// view in the same placement, and hit testing brings a press back
   /// through it). The canvas itself by default.
   final GuideSpace guideSpace;
+
+  /// The line Shift holds past a stroke ([ShiftLine], I-121): a stroke
+  /// pressed under the same hold starts on it and goes along it. Its owner
+  /// hears the keyboard let go of it; this view says, at each press and as
+  /// each finger holding Shift lifts, whether Shift is held now. Null — a
+  /// surface that keeps none — and each stroke's Shift is its own.
+  final ShiftLine? shiftLine;
 
   /// The cel's pixels AS THEY STAND — asked at the moment they are used,
   /// never kept from the last build.
@@ -259,9 +298,14 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final bool showTransparentBackground;
   final ValueChanged<bool>? onActiveStrokeChanged;
 
-  /// Handed this view's [StrokeLander] while it is mounted, and null when
-  /// it goes — the same publish-upward shape `onCoordinatorChanged` uses,
-  /// on the same route as [onActiveStrokeChanged].
+  /// Where this view holds up its [StrokeLander] while it is mounted, and
+  /// takes it back when it goes — on the same route as
+  /// [onActiveStrokeChanged].
+  ///
+  /// ⛔A [ViewHand], NOT A CALLBACK (F-419): a view built anew comes up
+  /// before the one it replaces goes down, and a keeper handed a callback
+  /// took the last word — the old view's null. The type leaves no keeper
+  /// that can.
   ///
   /// 🚨★★★**A SAVE HAS TO BE ABLE TO LAND THE PEN.** Press Ctrl+S with the
   /// pen still down and the stroke reaches the cel AFTER the save took its
@@ -274,11 +318,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// ⛔The lander is the view's own [BrushEditPress.landActiveStroke] and
   /// nothing else — a save that ended the stroke its own way would be that
   /// four-step ordering written twice.
-  final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
+  final ViewHand<StrokeLander>? strokeLander;
 
-  /// Handed this view's [ShapeShow] while it is mounted, and null when it
-  /// goes — published the way [onStrokeLanderChanged] is.
-  final ValueChanged<ShapeShow?>? onShapeShowChanged;
+  /// Where this view holds up its [ShapeShow] while it is mounted — held
+  /// up the way [strokeLander] is.
+  final ViewHand<ShapeShow>? shapeShow;
 
   /// PEN-7a mapped-hold session: the pen's tail, or a button mapped to the
   /// eraser, switched the tool temporarily — the shell mirrors it on the
@@ -422,11 +466,23 @@ class _InteractiveBrushEditCanvasViewState
   /// race the batch that produced them.
   BrushGroundColorSampler? _groundSampler;
 
-  /// Pull-string stabilization for the active stroke (P7): created at
-  /// pointer-down when the strength is non-zero (rope = screen px / zoom,
-  /// frozen per stroke); pen positions run through it BEFORE clipping and
-  /// interpolation, so every downstream route sees the smoothed chain.
+  /// The pen's stroke's 손떨림 보정 (F-418): made at pointer-down from the
+  /// brush's own, none when it steadies nothing; pen positions run through
+  /// it BEFORE clipping and interpolation, so every downstream route sees
+  /// the smoothed chain.
   StrokeStabilizer? _stabilizer;
+
+  /// The line the pen's stroke has been laid along so far, each point with
+  /// what it read there — what its 後補正 smooths at pen-up (F-418). Null
+  /// for a stroke the tool lays: it draws no line of the pen's.
+  List<PenPoint>? _drawn;
+
+  /// The stroke's dice ([_BrushEditStroke._armItsOwn]) — kept so a stroke
+  /// laid again rolls its scatter and jitter as it first did.
+  int _strokeDice = 0;
+
+  /// A frame is asked for the stabilizer to keep closing on a resting pen.
+  bool _steadyingFrameAsked = false;
 
   /// The active stroke's lock — a snapping perspective's ray, or the eight
   /// ways while Shift is held (I-61): created at pointer-down, and fed
@@ -470,12 +526,17 @@ class _InteractiveBrushEditCanvasViewState
   final List<BrushDab> _pendingOverlayDabs = <BrushDab>[];
   bool _overlayFlushScheduled = false;
 
+  /// The keepers this view holds its hands up to — taken as it comes up,
+  /// so it puts its own hands down there as it goes.
+  late final ViewHand<StrokeLander>? _landerKeeper = widget.strokeLander;
+  late final ViewHand<ShapeShow>? _shapeKeeper = widget.shapeShow;
+
   @override
   void initState() {
     super.initState();
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
-    widget.onStrokeLanderChanged?.call(_press.landActiveStroke);
-    widget.onShapeShowChanged?.call(_shapeShow);
+    _landerKeeper?.up(_press.landActiveStroke);
+    _shapeKeeper?.up(_shapeShow);
     _toolHolds.handOver = _door;
   }
 
@@ -487,6 +548,13 @@ class _InteractiveBrushEditCanvasViewState
   @override
   void didUpdateWidget(covariant InteractiveBrushEditCanvasView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // A keeper named anew here would never hear this view's hands, and the
+    // one it held them up to would keep them past its going (F-419).
+    assert(
+      identical(widget.strokeLander, _landerKeeper) &&
+          identical(widget.shapeShow, _shapeKeeper),
+      'a view keeps the keepers it held its hands up to',
+    );
     // The view no longer REMOUNTS per cel (R13-2): the old frameId-keyed
     // remount tore down and re-inflated this whole subtree on every frame
     // flip, and that element + render-tree rebuild summed to a 40-80ms
@@ -543,10 +611,10 @@ class _InteractiveBrushEditCanvasViewState
   void dispose() {
     // ⛔FIRST, and before anything this view owns is torn down: a lander
     // still published after that point would land a stroke into freed
-    // rasterizer tiles. Nulling it is the only thing that says 「there is
-    // no pen here any more」.
-    widget.onStrokeLanderChanged?.call(null);
-    widget.onShapeShowChanged?.call(null);
+    // rasterizer tiles. Putting it down is the only thing that says 「there
+    // is no pen here any more」.
+    _landerKeeper?.down(_press.landActiveStroke);
+    _shapeKeeper?.down(_shapeShow);
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;
     }
@@ -669,13 +737,10 @@ class _InteractiveBrushEditCanvasViewState
   /// EVERY tool works anywhere on the pasteboard (Flash-style — the
   /// stage rectangle is a crop at composite time, not an input
   /// boundary): strokes, eyedropper picks and fill taps alike.
-  bool _isInsidePasteboard(CanvasPoint localPosition) {
-    final canvasSize = widget.celNow().canvasSize;
-    return canvasSize.containsPasteboardPoint(
-      x: localPosition.x,
-      y: localPosition.y,
-    );
-  }
+  bool _isInsidePasteboard(CanvasPoint localPosition) => widget
+      .celNow()
+      .pasteboard
+      .containsPoint(x: localPosition.x, y: localPosition.y);
 
   CanvasPoint _canvasPositionFromLocal(Offset localPosition) =>
       widget.viewport.viewportOffsetToCanvas(localPosition);
@@ -756,19 +821,23 @@ class _InteractiveBrushEditCanvasViewState
   /// Rolled from the stroke's press, as [_dualPhaseRandom] is.
   math.Random _spacingRandom = math.Random();
 
+  /// The ランダム row's dice for every per-dab setting (F-176-Q2), rolled
+  /// from the stroke's press like the others.
+  math.Random _inputRandom = math.Random();
+
   /// Creates or recycles the live stroke rasterizer for the current canvas.
   void _prepareLiveRasterizer() {
     final surface = widget.celNow();
-    final canvasSize = surface.canvasSize;
+    final pasteboard = surface.pasteboard;
     final existing = _liveRasterizer;
     // The stroke grid IS the cel grid (the promotion round's premise: a
     // result tile stands in for the committed tile at its coordinate).
     if (existing == null ||
-        existing.canvasSize != canvasSize ||
+        existing.pasteboard != pasteboard ||
         existing.tileSize != surface.tileSize) {
       existing?.clear(); // Native tiles return to the engine (R21).
       _liveRasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: canvasSize,
+        pasteboard: pasteboard,
         tileSize: surface.tileSize,
       );
     } else {

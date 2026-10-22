@@ -215,6 +215,16 @@ TextStyle timelineBlockWordStyle(
   leadingDistribution: TextLeadingDistribution.even,
 );
 
+/// The type a block's NAME is set in under [base]: the ambient type, at
+/// every zoom — a frame block's name (and the in-between mark sized off
+/// it), an instruction's A/B, a named key's.
+///
+/// 🗣️F-367 (유저 2026-10-16): 「이름도 지금 키 모양안에 맞춰넣으려는게
+/// 보이는데 그렇게 안해도됨 … 프레임블록의 이름이랑 법 통일」. ↩️The key's
+/// was a fixed 8px, a size that sat inside the mark, while the others each
+/// wrote this expression out.
+double timelineBlockNameFontSize(TextStyle base) => base.fontSize ?? 12;
+
 /// Which way a word in a block grows once it outgrows its cell.
 enum TimelineBlockWordGrowth {
   /// On into the block past the cell — a block's NAME, from its first cell.
@@ -286,7 +296,7 @@ double timelineBlockWordStart({
     growth: slot.growth,
   );
   final acrossRoom = extentAcross(axis, room.size);
-  final acrossStart = axis == Axis.horizontal ? room.top : room.left;
+  final acrossStart = startAcross(axis, room);
   final across =
       acrossStart +
       (acrossRoom - extentAcross(axis, fitted)) *
@@ -339,6 +349,16 @@ const double timelineEmptyCelAlpha = 0x6E / 0xFF;
 /// that happens to match it.
 Color timelineEmptyCelPaperColor(Color paper) =>
     paper.withValues(alpha: timelineEmptyCelAlpha);
+
+/// The paper of a block whose cel's picture data could not be read — the red
+/// the ruler's bar paints that cel's frames with (유저 2026-10-16,
+/// frame-picture-indicator-Q1 b: 「a + 그 셀이 있는 타임라인 칸에도 빨간
+/// 표시」).
+///
+/// ⚠️Whole, not derived from the paper like the empty cel's: it is no state
+/// of the drawing but a fault, and the colour labels are pastels it must
+/// not be taken for.
+const Color timelineUnreadableCelPaperColor = AppColors.danger;
 
 /// The PLAIN (non-block) frame grid's border alpha (UI-R14 #4): ONE
 /// faint value for every surface — the painterized drawing rows, the
@@ -418,8 +438,10 @@ const double timelineSecondGridAlpha = 1.0;
 /// ⛔NOT FOR A BLOCK'S WORDS any more (유저 2026-09-24, `block-word-size-at-
 /// zoom-Q1` 답 B): a word keeps its type and narrows into its block instead
 /// ([timelineBlockWordLayout]), which says it just as surely. What still
-/// shrinks here is what cannot be narrowed on one axis — a key MARK is a
-/// square (D39-2) — and the rulers' numbers, which are no block's writing.
+/// shrinks here is the rulers' numbers, which are no block's writing.
+/// ↩️A key MARK did too, as a square that cannot narrow on one axis
+/// (D39-2), until F-367 (유저 2026-10-16: 「칸 그냥 차지는 마름모라던가」):
+/// a mark fills its cell, so the cell is its size.
 ///
 /// [crossExtent] is the cell's OTHER dimension (#15's vertical half of
 /// the same rule): the fit takes whichever axis is tighter, so squeezing

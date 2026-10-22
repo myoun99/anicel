@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
@@ -34,6 +35,10 @@ import '../brush_canvas_test_helpers.dart';
 /// driver took while the pen still hovered. The stroke painted it. It now
 /// waits for the contact's first READING and paints every sample that
 /// waited with it.
+///
+/// These pin which reading lands on which sample, so they draw with brushes
+/// that steady nothing: a steadied line carries its readings in behind the
+/// pen (F-418). The one about the stabiliser says its own.
 void main() {
   setUp(() {
     CanvasTouchContacts.reset();
@@ -82,7 +87,9 @@ void main() {
     (tester) async {
       final results = await _parity(
         tester,
-        _pressureBrush.copyWith(stabilizerStrength: 40),
+        _pressureBrush.copyWith(
+          correction: const BrushCorrection(stabilization: 40),
+        ),
         waited: [
           _s(const Offset(4, 8), _stand, 0),
           _s(const Offset(30, 20), _stand, 8),
@@ -214,6 +221,7 @@ void main() {
       final results = await _strokes(
         tester,
         BrushEditCanvasInputSettings(
+          correction: BrushCorrection.none,
           size: 8,
           curves: {
             (BrushPressureTarget.size, BrushInputSource.tilt):
@@ -456,6 +464,47 @@ void main() {
           closeTo(_ipad(1.0), 1e-9),
         );
         expect(dabs.last.pressure, closeTo(_ipad(0.8), 1e-9));
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'a steadied line lifts reading what its last sample was measured '
+      'with, not the stand-in the pen still reads — UIKit measured the '
+      'short stroke only after its last move (F-418)',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await _pump(
+          tester,
+          _pressureBrush.copyWith(
+            correction: const BrushCorrection(stabilization: 40),
+          ),
+          results,
+        );
+        ledger[_ms(0)] = _estimatedReading;
+        ledger[_ms(8)] = _estimatedReading;
+        _down(
+          tester,
+          const Offset(4, 8),
+          time: _ms(0),
+          force: 0.5,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _move(
+          tester,
+          const Offset(20, 8),
+          time: _ms(8),
+          force: 0.5,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        ledger[_ms(0)] = measured(1.2);
+        ledger[_ms(8)] = measured(1.0);
+        _up(tester, const Offset(20, 8), time: _ms(12));
+        await tester.pump();
+
+        expect(results.single.last.pressure, closeTo(_ipad(1.0), 1e-9));
       },
       variant: ipad,
     );
@@ -969,10 +1018,17 @@ void main() {
     });
 
     for (final (name, brush) in [
-      ('a brush that reads none of it', BrushEditCanvasInputSettings(size: 10)),
+      (
+        'a brush that reads none of it',
+        BrushEditCanvasInputSettings(
+          size: 10,
+          correction: BrushCorrection.none,
+        ),
+      ),
       (
         'scatter thrown all around',
         BrushEditCanvasInputSettings(
+          correction: BrushCorrection.none,
           size: 10,
           scatterRadiusRatio: 1.0,
           scatterBothAxes: true,
@@ -1471,11 +1527,13 @@ const double _stand = 0.33;
 
 final BrushEditCanvasInputSettings _pressureBrush =
     BrushEditCanvasInputSettings(
+      correction: BrushCorrection.none,
       size: 40,
       sizePressureCurve: BrushPressureCurve.identity(),
     );
 
 final BrushEditCanvasInputSettings _tiltBrush = BrushEditCanvasInputSettings(
+  correction: BrushCorrection.none,
   size: 40,
   curves: {
     (BrushPressureTarget.size, BrushInputSource.tilt):
@@ -1485,6 +1543,7 @@ final BrushEditCanvasInputSettings _tiltBrush = BrushEditCanvasInputSettings(
 
 final BrushEditCanvasInputSettings _directionBrush =
     BrushEditCanvasInputSettings(
+      correction: BrushCorrection.none,
       size: 10,
       roundness: 0.5,
       rotationMode: BrushTipRotationMode.direction,
@@ -1492,6 +1551,7 @@ final BrushEditCanvasInputSettings _directionBrush =
 
 final BrushEditCanvasInputSettings _acrossScatterBrush =
     BrushEditCanvasInputSettings(
+      correction: BrushCorrection.none,
       size: 10,
       scatterRadiusRatio: 1.0,
       scatterBothAxes: false,
@@ -1504,6 +1564,7 @@ const PenLedgerReading _estimatedReading = (
 
 final BrushEditCanvasInputSettings _speedAndPressureBrush =
     BrushEditCanvasInputSettings(
+      correction: BrushCorrection.none,
       size: 40,
       curves: {
         (BrushPressureTarget.size, BrushInputSource.pressure):
@@ -1514,6 +1575,7 @@ final BrushEditCanvasInputSettings _speedAndPressureBrush =
     );
 
 final BrushEditCanvasInputSettings _speedBrush = BrushEditCanvasInputSettings(
+  correction: BrushCorrection.none,
   size: 40,
   curves: {
     (BrushPressureTarget.size, BrushInputSource.speed):

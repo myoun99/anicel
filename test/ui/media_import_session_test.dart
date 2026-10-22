@@ -3,12 +3,24 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/import/cut_folder_parse.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/import/cut_folder_edits.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_link_registry.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
-import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cut_folder_import_door.dart';
 import 'package:anicel/src/ui/session/project_import_doors.dart';
@@ -20,7 +32,7 @@ import '../helpers/temp_dir.dart';
 /// The R3b import verbs end to end: a real PNG on disk becomes a layer /
 /// cut whose cels live in the brush-frame store like drawn ones, with
 /// reference registration, rasterize, undo and the folder import's
-/// 겸용 follow-up. All real IO/codec work runs inside tester.runAsync
+/// corrections. All real IO/codec work runs inside tester.runAsync
 /// (the fake-async zone never completes file futures).
 /// The image/PSD/PDF doors themselves — named so `tool/mutation_run.dart`
 /// has a suite to run for them.
@@ -169,7 +181,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('rasterizeActiveLayer nulls the reference, keeps the pixels '
+  testWidgets('rasterizeLayerReferences nulls the reference, keeps the pixels '
       'and KEEPS the asset in the pool; undo restores the reference', (
     tester,
   ) async {
@@ -190,7 +202,7 @@ void main() {
     expect(s.editingCanvas.canRasterizeActiveLayer, isTrue);
     expect(s.mediaPool.mediaAssets, hasLength(1));
 
-    s.editingCanvas.rasterizeActiveLayer();
+    s.editingCanvas.rasterizeLayerReferences([layer.id]);
     final after = s.requireActiveCut.layers.firstWhere(
       (l) => l.id == layer.id,
     );
@@ -217,10 +229,11 @@ void main() {
   });
 
   testWidgets('importCutFolder: symbol layers with NAMED cels one comma '
-      'each, _BG picture at the bottom, and a multi-cut folder creates '
-      '겸용 linked cuts per extra number', (tester) async {
+      'each, _BG picture at the bottom, and a multi-cut folder is ONE cut '
+      '(F-429-Q3)', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
 
     final warnings = await tester.runAsync(() async {
       const root = 'csm_13_069_077_loeks';
@@ -232,13 +245,17 @@ void main() {
       await writePng('$root${sep}_BG.png', seed: 0xFF555555);
       return cutFolderDoorOf(s).importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
-        copyIntoProject: false,
       );
     });
     expect(warnings, isNotNull);
 
     final track = s.repository.requireProject().tracks.first;
-    final imported = track.cuts.firstWhere((cut) => cut.name == '069');
+    expect(
+      track.cuts.length,
+      cutsBefore + 1,
+      reason: 'the 겸용 number 077 is not read — no linked cut follows',
+    );
+    final imported = track.cuts.singleWhere((cut) => cut.name == '069');
     expect(imported.duration, 3, reason: 'longest layer = 3 cels');
 
     final bg = imported.layers.first;
@@ -253,79 +270,20 @@ void main() {
       reason: 'cel numbers become frame names',
     );
     expect(a.timeline.length, 3, reason: 'one comma each');
-    // The linked-cut follow-up moved the active cut; content checks read
-    // the ACTIVE cut, so come back to the imported one first.
-    s.selectCut(imported.id);
-    expect(s.layerStack.celHasContentForLayer(a, 0), isTrue);
+    expect(
+      s.layerStack.celHoldsAPicture(imported, a.id, a.frames.first.id),
+      isTrue,
+    );
 
     final b = imported.layers.firstWhere((l) => l.name == 'B');
     expect(b.frames, hasLength(1));
-
-    // Rule H: the second number became a LINKED cut sharing the cels.
-    final linked = track.cuts.firstWhere((cut) => cut.name == '077');
-    expect(linked.id, isNot(imported.id));
-    final group = s.repository.requireProject().linkRegistry.groupOf(
-      cutId: imported.id,
-      layerId: a.id,
-    );
-    expect(group, isNotNull, reason: 'the extra cut links the cel banks');
-    expect(group!.members, hasLength(2));
-    await tester.pumpAndSettle();
-  });
-
-  testWidgets('importCutFolder stamps the CARRY answer on its reference '
-      'registrations — every kind of them', (tester) async {
-    // 🚨 The planner is handed a folder, not a window, so it cannot know
-    // the answer — and the session used to express it by copying the file
-    // into `.assets/Media` and nothing else. The pool entry itself still
-    // said `carried: false`, which is the one thing the save reads, so
-    // the first save after a folder import left every timesheet scan
-    // OUTSIDE the archive. It only came right on a reopen, through the
-    // older `sourcePath` spelling of the same answer.
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-
-    final warnings = await tester.runAsync(() async {
-      const root = 'csm_13_069_loeks';
-      final sep = Platform.pathSeparator;
-      await writePng('$root${sep}A1.png', seed: 0xFF111111);
-      await writePng('$root${sep}_TS_a.png', seed: 0xFF222222);
-      final movie = File([tempDir.path, root, '참고.mp4'].join(sep));
-      await movie.writeAsBytes(const [0, 0, 0, 24]);
-      return cutFolderDoorOf(s).importCutFolder(
-        folderPath: '${tempDir.path}$sep$root',
-        copyIntoProject: true,
-      );
-    });
-    expect(warnings, isNotNull);
-
-    final assets = {
-      for (final asset in s.mediaPool.mediaAssets) asset.kind: asset,
-    };
     expect(
-      assets[MediaAssetKind.image]?.carried,
-      isTrue,
-      reason: 'the timesheet scan was asked for and can be carried',
-    );
-    expect(
-      assets[MediaAssetKind.video]?.carried,
-      isTrue,
-      reason: 'the answer is recorded as given at every registration site',
-    );
-    expect(
-      projectArchivedMediaPaths(s.repository.requireProject()),
-      {
-        assets[MediaAssetKind.image]!.path,
-        // The 참고영상 too: the folder import's answer was CARRY and the
-        // kind stopped being a veto on 08-14. What the user asked for is
-        // what the save writes.
-        assets[MediaAssetKind.video]!.path,
-      },
-    );
-    expect(
-      Directory('${tempDir.path}/csm_13_069_loeks.assets').existsSync(),
-      isFalse,
-      reason: 'carrying copies nothing',
+      s.repository.requireProject().linkRegistry.groupOf(
+        cutId: imported.id,
+        layerId: a.id,
+      ),
+      isNull,
+      reason: 'nothing shares its cels — there is no 겸용 cut',
     );
     await tester.pumpAndSettle();
   });
@@ -466,9 +424,10 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('importCutFolder with archived-process subfolders opted in '
-      'builds the R2 attach-folder structure: FREE attach rows below the '
-      'base inside a per-process organizer', (tester) async {
+  testWidgets('importCutFolder lands a correction as its base\'s SYNCED '
+      'attach row — the pixels on the mirror of the cel it corrects, the '
+      'other mirrors empty — and leaves the archived subfolder out',
+      (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
 
@@ -476,11 +435,11 @@ void main() {
       const root = 'csm_13_074_gen';
       final sep = Platform.pathSeparator;
       await writePng('$root${sep}A1.png');
+      await writePng('$root${sep}A2.png');
+      await writePng('$root${sep}A2s.png', seed: 0xFF00FF00);
       await writePng('$root${sep}LO${sep}A1.png', seed: 0xFF0000FF);
       await cutFolderDoorOf(s).importCutFolder(
         folderPath: '${tempDir.path}$sep$root',
-        config: const CutFolderParseConfig(includeProcessSubfolders: true),
-        copyIntoProject: false,
       );
     });
 
@@ -490,17 +449,142 @@ void main() {
         .first
         .cuts
         .firstWhere((cut) => cut.name == '074');
+    expect(
+      cut.layers.where((l) => l.name == 'A'),
+      hasLength(2),
+      reason: 'the archived LO/A1 brought no row of its own',
+    );
     final base = cut.layers.firstWhere(
       (l) => l.name == 'A' && l.attachedToLayerId == null,
     );
     final attach = cut.layers.firstWhere(
       (l) => l.attachedToLayerId == base.id,
     );
-    expect(attach.name, 'A LO');
-    final organizer = cut.layers.firstWhere((l) => l.id == attach.folderId);
-    expect(organizer.kind, LayerKind.folder);
-    expect(organizer.name, 'LO');
-    expect(s.layerStack.celHasContentForLayer(attach, 0), isTrue);
+    expect(attach.attachedMode, AttachedMode.synced);
+    expect(attach.mark.revise, LayerRevise.animationDirector);
+
+    final [a1, a2] = base.frames;
+    bool drawn(FrameId cel) =>
+        s.layerStack.celHoldsAPicture(cut, attach.id, cel);
+    expect(drawn(attach.baseFrameLinks[a2.id]!), isTrue, reason: 'A2s');
+    expect(drawn(attach.baseFrameLinks[a1.id]!), isFalse);
+    expect(s.layerStack.celHoldsAPicture(cut, base.id, a1.id), isTrue);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('importCutFolder under 「커스텀」: a row sent to a cut of its own '
+      'bakes there, a row joining the open cut bakes in it — each laid with '
+      'its own fit (F-429-Q1)', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final open = s.activeCutOrNull!;
+
+    await tester.runAsync(() async {
+      const root = 'csm_13_069_lo';
+      final sep = Platform.pathSeparator;
+      await writePng('$root${sep}A1.png');
+      await writePng('$root${sep}B1.png');
+      await cutFolderDoorOf(s).importCutFolder(
+        folderPath: '${tempDir.path}$sep$root',
+        edits: const CutFolderEdits(
+          custom: true,
+          into: {'A': ImportDestination.newCut},
+          fits: {'B': MediaFitMode.none},
+        ),
+      );
+    });
+
+    final cuts = s.repository.requireProject().tracks.first.cuts;
+    final own = cuts.singleWhere((cut) => cut.name == 'A');
+    final joined = cuts.singleWhere((cut) => cut.id == open.id);
+    final a = own.layers.firstWhere((layer) => layer.name == 'A');
+    final b = joined.layers.firstWhere((layer) => layer.name == 'B');
+    int tiles(Cut cut, Layer layer) =>
+        s.renderCaches.brushFrameStore
+            .bakedSurfaceOrNull(
+              s.brushFrameKeyForCut(cut, layer.id, layer.frames.single.id),
+            )
+            ?.tiles
+            .length ??
+        0;
+    expect(tiles(own, a), greaterThan(1), reason: 'contained: the canvas over');
+    expect(
+      tiles(joined, b),
+      1,
+      reason: '1:1, eight pixels — in the cut it joined, not the one the '
+          'import stands in after',
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('importCutFolder under 「커스텀」 into a 겸용 cut: a row joining '
+      'it joins its sibling too, as every row added to it does (F-398)', (
+    tester,
+  ) async {
+    Cut cut(String id) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 12,
+      canvasSize: const CanvasSize(width: 64, height: 64),
+      layers: [
+        Layer(id: LayerId('$id-cel'), name: 'S', frames: const []),
+        Layer(
+          id: LayerId('$id-cam'),
+          name: 'Camera',
+          kind: LayerKind.camera,
+          frames: const [],
+        ),
+      ],
+    );
+    LayerLinkMember shared(String id) => LayerLinkMember(
+      trackId: const TrackId('t'),
+      cutId: CutId(id),
+      layerId: LayerId('$id-cel'),
+    );
+    final s = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('p'),
+        name: 'P',
+        createdAt: DateTime.utc(2026, 10, 22),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'V',
+            cuts: [cut('a'), cut('b')],
+          ),
+        ],
+        linkRegistry: LayerLinkRegistry(
+          groups: [
+            LayerLinkGroup(id: 'link-0', members: [shared('a'), shared('b')]),
+          ],
+        ),
+      ),
+    );
+    addTearDown(s.dispose);
+    expect(s.activeCutOrNull?.id, const CutId('a'), reason: 'premise');
+
+    await tester.runAsync(() async {
+      const root = 'csm_13_069_lo';
+      final sep = Platform.pathSeparator;
+      await writePng('$root${sep}B1.png');
+      await cutFolderDoorOf(s).importCutFolder(
+        folderPath: '${tempDir.path}$sep$root',
+        edits: const CutFolderEdits(custom: true),
+      );
+    });
+
+    final project = s.repository.requireProject();
+    final b = project.tracks.single.cuts.first.layers.firstWhere(
+      (layer) => layer.name == 'B',
+    );
+    expect(
+      project.linkRegistry.counterpartIn(
+        cutId: const CutId('a'),
+        layerId: b.id,
+        targetCutId: const CutId('b'),
+      ),
+      isNotNull,
+    );
     await tester.pumpAndSettle();
   });
 }

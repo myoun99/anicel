@@ -21,6 +21,7 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'package:anicel/src/services/undo_surface_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/cel_photo_fixture.dart' show celStreamHeadEnd;
 import '../helpers/cel_text_fixture.dart';
 
 /// R9-rest (the text tool, 유저 2026-10-06: 「주인은 셀임 … 셀의 그림이랑 정확히
@@ -216,9 +217,15 @@ void main() {
     });
 
     test('a cel written before texts existed reads as it always did', () {
-      // A v2 stream: the header, one tile, and nothing after it.
-      final v3 = encodeCelEntryFromSurface(key, drawingOf({a: ink}));
-      final v2 = Uint8List.fromList(v3.sublist(0, v3.length - 4))..[0] = 2;
+      // A v2 stream: the header, one tile, and nothing after it — today's
+      // with its photos' zero after its head taken off, and at its end its
+      // texts' and the byte that says no file was laid on it (v5).
+      final today = encodeCelEntryFromSurface(key, drawingOf({a: ink}));
+      final headEnd = celStreamHeadEnd(key);
+      final v2 = Uint8List.fromList([
+        ...today.sublist(0, headEnd),
+        ...today.sublist(headEnd + 4, today.length - 5),
+      ])..[0] = 2;
 
       final read = decodeCelEntry(v2).toSurface();
 
@@ -230,7 +237,9 @@ void main() {
       final withNone = encodeCelEntryFromSurface(key, drawingOf({a: ink}));
 
       expect(withNone.first, anicelCelBinaryVersion);
-      expect(withNone.sublist(withNone.length - 4), [0, 0, 0, 0]);
+      // Ahead of the one byte that ends it (v5).
+      final textsEnd = withNone.length - 1;
+      expect(withNone.sublist(textsEnd - 4, textsEnd), [0, 0, 0, 0]);
     });
 
     test('a parked cel — the same blob, compressed — comes back with them', () {
@@ -243,6 +252,7 @@ void main() {
         key: key,
         canvasSize: picture.canvasSize,
         tileSize: picture.tileSize,
+        photoPaths: const [],
         codec: compressed.codec,
         body: compressed.bytes,
       );
@@ -271,7 +281,7 @@ void main() {
 
       expect(await snapshot.park(), isTrue);
       expect(snapshot.isParked, isTrue, reason: 'fixture: it let go');
-      final back = snapshot.surfaceOver(live);
+      final back = snapshot.surfaceOver(() => live);
 
       expect(back, before);
       // The cel no longer holds that plate, so the entry alone did — and
@@ -295,7 +305,7 @@ void main() {
       );
 
       expect(await snapshot.park(), isTrue);
-      final back = snapshot.surfaceOver(live);
+      final back = snapshot.surfaceOver(() => live);
 
       expect(back, before);
       expect(back!.texts.single.content.text, 'before');

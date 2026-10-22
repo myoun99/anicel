@@ -402,7 +402,223 @@ void main() {
   /// release re-keys them by. Read back off the two cuts it would be a
   /// second answer to that question. 🔬`clean_code_diff` against master
   /// (`3ef2f8da7`, at 395) named that one added and nothing gone.
-  const wideSignatures = 396;
+  ///
+  /// ⚠️396 → 397 on 2026-10-15, named as the rule above asks (I-97, a photo
+  /// laid on a sheet stays a photo — 유저 2026-10-15: 「사진으로 남게(셀의
+  /// 텍스트처럼)」). `paintSheetInkWindow` (six) is the one way an export
+  /// lays a sheet's window, and a window is its raster and the photos
+  /// under it now: the canvas, the raster, where the window lays them, the
+  /// photos, the files they are drawn from and how many target pixels a
+  /// unit of the paper is — the last three what the screen's
+  /// `paintSheetPhotos` takes, so an export samples a photo as the screen
+  /// does. 🔬`clean_code_diff` against the lane's last commit before it
+  /// (`93327c20a`, at 396) named that one added and nothing gone.
+  ///
+  /// ⚠️397 → 398 on 2026-10-15, named as the rule above asks (I-97, a pool
+  /// picture dropped on a sheet's band is a photo in it — 유저 2026-10-15:
+  /// 「원본 크기, 칸보다 크면 칸에 맞게」). `SheetInkController.putPhoto`
+  /// (five) is `commitStroke` (five) said of a photo: the plane and the cel
+  /// a window writes to, what goes on it, the history it is one step of and
+  /// the sink a stroke's commit tells — so a photo lands through the door a
+  /// stroke does. 🔬`clean_code_diff` against the lane's last commit before
+  /// it (`f99fdc4ff`, at 397) named that one added and nothing gone.
+  ///
+  /// ⚠️398 → 399 on 2026-10-16, named as the rule above asks (card
+  /// storyboard-thumbnails-let-go-by-the-one-order — the storyboard's
+  /// pictures let go by the one order). `letGoLeastRecentlyUsed` (five) is
+  /// `letGoWantedLatest` (eight) said of a cache no step wants anything of:
+  /// the entries in the order they were used, what is held and the line, an
+  /// entry's bytes and the letting go — the law's own, less the three a
+  /// playhead answers (when an entry is next wanted, when it was last used,
+  /// the floor), which the order the entries come in answers instead.
+  /// 🔬`clean_code_diff` against master (`8d4b7c1fa`, at 398) named that one
+  /// added and nothing gone.
+  ///
+  /// ⚠️399 → 398 on 2026-10-16, following that one down (card
+  /// every-bounded-cache-is-one-lru — every bounded cache lets go by one
+  /// LRU). `letGoLeastRecentlyUsed` is gone: the sheet's images and the
+  /// storyboard's pictures keep an `Lru` (core), which says the same with
+  /// three — what an entry costs, the limit, the letting go — and keeps the
+  /// order in its own map. 🔬`clean_code_diff` against master (`8d4b7c1fa`,
+  /// at 398): nothing added, nothing gone.
+  ///
+  /// ⚠️398 → 400 on 2026-10-16, named as the rule above asks (F-371, every
+  /// picture Save As writes stands on the paper — 유저 2026-10-16: 「바탕
+  /// 앱에서 설정한 캔버스 색 따라감. 캔버스색이 없으면 투명인거고 그런식」 ·
+  /// 「jpg도 바탕 흰색고정말고 용지색으로 가자」). `writeFrameImage` (five)
+  /// is the image tab's picture and Save As's, one call, and what the two
+  /// hand it differs in the spec and now the paper: Save As's stands on the
+  /// project's, the tab's on its own ground. `renderComposite` (five) lays
+  /// that paper under the rows as the canvas lays it — the parameter the
+  /// video stage's `_composite` already takes, handed on. 🔬`clean_code_diff`
+  /// against master (`6ceb2a7ac`, at 398) named those two added and nothing
+  /// gone.
+  ///
+  /// ⚠️400 → 402 on 2026-10-16, two named as the rule above asks
+  /// (vanishing-point-types-Q4 — 유저 2026-10-16: 「가이드마다 막대 하나」).
+  /// `GuideOverlayPainter._paintVanishingFan` (five) and
+  /// `_paintParallelFamily` (five) take the guide's line density: how many
+  /// rays a point sends and how many lanes a family stands either side of
+  /// the middle, the number Q4 made the guide's own. It is the guide's, not
+  /// the painter's — two guides on one canvas draw at their own — so it
+  /// travels with the point being drawn. 🔬`clean_code_diff` against master
+  /// (`ebefaea8b`, at 398, before F-371's two landed) named those two added
+  /// and nothing gone.
+  ///
+  /// ⚠️402 → 403 on 2026-10-17, named as the rule above asks (F-370-Q3, a
+  /// CLIP STUDIO text layer comes in as the app's own texts — 유저
+  /// 2026-10-17: 「이제 들인다(앱의 글자로)」). `clipCelTextsOf` (five) is
+  /// one layer's texts set as the app's: the layer, the resolution its
+  /// point sizes are counted in, the opacity its cel bakes them at, and the
+  /// name and the list what the app cannot keep of a setting is said by —
+  /// the pair every warning of the plan is said with. 🔬`clean_code_diff`
+  /// against master (`42ceeb00d`, at 402) named that one added and nothing
+  /// gone.
+  ///
+  /// ⚠️403 → 404 on 2026-10-17, two named and one gone as the rule above
+  /// asks (F-374 — 유저 2026-10-17: 「참조fx도 똑같이 fx로서 법 통일」).
+  /// `EditorCanvasAreaState._handleLandings` (five) is the one landing every
+  /// canvas box takes, and it says now which home the box keys: the
+  /// reference fx's box kept a copy of it, and lands through it beside the
+  /// layer's, the SE row's and the camera's.
+  /// `LaneVerbs._transformTrackWithKeyToggled` (five) freezes a key where
+  /// the lane's home stands the picture — a reference fx's where its file
+  /// stands, a row's own lanes where the row does — for the ◆ and the range
+  /// Create alike. `poseWithLaneValueEdited` left: a reference lane's value
+  /// is a transform lane's value now. 🔬`clean_code_diff` against master
+  /// (`0df66289b`, at 403) named those two added and that one gone.
+  /// The same day the span verbs became one code over a row's homes, at
+  /// 404 still — two named, two gone: `PropertyLaneLens.keysWritten`
+  /// (five) is the key window's one write of a lane that is a field of its
+  /// track, the transform's body, which the name tag's lanes take now, and
+  /// `seNameTagTrackWithLaneKeysWritten` (six) is the name tag's door to it
+  /// as `transformTrackWithLaneKeysWritten` is the transform's. The effect
+  /// chain's and the name tag's span shifts left: every home moves through
+  /// `LaneHome.shifted`. 🔬`clean_code_diff` against master (`7fe69eac7`,
+  /// at 403) named the four added and the three gone of the two commits.
+  ///
+  /// ⚠️404 → 403 on 2026-10-18, following one down (F-374-Q10, every use of
+  /// a reference's cel rasterized with it): `_bakeMovieRowIntoCels` (seven)
+  /// left — a movie's rasterize plans each use of its cel
+  /// (`_plannedMovieUse`) and bakes them from the door that opened their
+  /// files. 🔬`clean_code_diff` against master (`38f473e11`, at 404) named
+  /// that one gone and nothing added.
+  ///
+  /// ⚠️403 → 404 on 2026-10-18, named as the rule above asks (F-374-Q8 —
+  /// 유저 2026-10-17: 「맞춘다 — 참조 그림은 벽 밖까지 통째로」).
+  /// `rasterizeImageToSurface` (five) is five again: the image, the canvas,
+  /// where it goes and the grid — and whether it is a reference's file,
+  /// laid whole past the wall (the reference doors and a movie's frames),
+  /// or a picture a door draws a row of, cut at the wall as a tool's is (a
+  /// cut folder, a PSD expanded, a text's letters). The answer scoped the
+  /// whole lay to reference rows' cels. 🔬`clean_code_diff` against master
+  /// (`b6cbe550e`, at 403) named that one added and nothing gone.
+  /// ⛔Not two functions to fit: the cut is the one line that differs, and
+  /// a second name would be a second copy of the rest.
+  ///
+  /// ⚠️404 → 405 on 2026-10-18, named as the rule above asks
+  /// (text-letters-lean-and-underline ⑥ — 유저 2026-10-17 「일곱 전부」:
+  /// a text's letters drawn as wide as its horizontal scale says).
+  /// `CanvasLetterPasses.paint` (five) takes how wide the letters are
+  /// drawn beside where the hard ones are cut, what draws a setting, and
+  /// the lines they wear: the width is laid on INSIDE each pass, under the
+  /// hard passes' cut, so that a hard letter is cut as far past itself in
+  /// the canvas's pixels at every width. ⛔Not the caller's to lay on: a
+  /// canvas narrowed before the passes narrows the cut with the letters,
+  /// and a draw that narrows itself leaves the lines it wears as wide as
+  /// they were. `paintAt` keeps its four — the one setting that narrows
+  /// (a text in lines) asks `paint` itself. 🔬`clean_code_diff` against
+  /// the lane under it (`17f66740b`, at 404) named that one added and
+  /// nothing gone.
+  ///
+  /// ⚠️405 → 407 on 2026-10-18, two named as the rule above asks (I-105 —
+  /// 유저 2026-10-16: 「셀 출력시 CAM 적용 하는거랑 똑같이 … 가이드 버튼」).
+  /// `paintGuidesAtRest` (five) is the one picture 래스터라이즈 bakes and a
+  /// cel's export lays over a drawing (I-105-Q2: 「법 통일」): the guides,
+  /// the paper and the colour they are drawn on and in, and how many of its
+  /// own pixels a canvas pixel is — the bake at one, a file at the CAM's
+  /// sizes. `_ExportDialogState._celLaying` (five) is the one answer the
+  /// band's direction, CAM and guide pills give: the cut, the sheet shown,
+  /// whether there is anything to lay, and how the cut's list reads and
+  /// writes it. 🔬`clean_code_diff` against master (`9a7a8e3de`, at 404)
+  /// named those two added and nothing gone; stood on ⑥'s 405 above when
+  /// the lane was rebased onto it (10-19).
+  ///
+  /// ⚠️407 → 408 on 2026-10-19, named as the rule above asks (board
+  /// `F-287`, 유저 「다른 합성모드도 똑같으니 완벽하게 검사」).
+  /// `LayerStackPaintPass._layLevelPixels` (five) is the one lay of a
+  /// level's pixels one texel to a pixel: the patch's base, the scroll
+  /// carry's overlap and a region composed apart were three draws of one
+  /// copy, which the raw image draw ratchet caught at the third. Its five
+  /// are the draw's own — the canvas, the image, where it lands, which part
+  /// of the image (the scroll carry's overlap; the other two lay it whole)
+  /// and `src` for a region laid in place of the carried pixels.
+  /// 🔬`clean_code_diff` against master (`37cd01b30`, at 407) named that
+  /// one added and nothing gone. ⛔Not split to fit: a second name for the
+  /// `src` lay would be a second copy of the rest.
+  ///
+  /// ⚠️408 → 409 on 2026-10-19, named as the rule above asks (I-58 — 유저
+  /// 2026-10-01: 「버튼누르면 창 열려서 숫자만 입력가능한창」). `_askFrameCount`
+  /// (six) is the one window that asks for a count of frames, the N commas'
+  /// and the ● every n koma's: the context, the session it reads the frames
+  /// a second from and keeps the last entry in, and what the window is
+  /// keyed, titled, iconned and its field called. The N commas asked
+  /// inline; the ● asks the same, so the window is one. 🔬`clean_code_diff`
+  /// against master (`11209d525`, at 407) named that one added and nothing
+  /// gone; stood on F-287's 408 above when the lane was rebased onto it.
+  ///
+  /// ⚠️409 → 408 on 2026-10-20, lowered as the rule asks (F-176 · F-418,
+  /// the brush lanes): `tipMaskFromPatternArray` (six) left the list. It
+  /// became two when a brush took several tips — the array's reader and
+  /// one material's — and both carried the brush's name, the part's words
+  /// and the warnings, the three every warning about a part is made of;
+  /// those travel as one `_BrushPart` now, and the four 「imported without
+  /// it」 sentences are one (`_leftOut`). 🔬`clean_code_diff` against the
+  /// lanes' base (`243dd8074`, at 409) named that one gone.
+  ///
+  /// ⚠️408 → 407 on 2026-10-21, lowered as the rule asks (F-398 ⑤): the
+  /// 겸용 conversion's `_celKey` (five) left the list — it takes the side
+  /// a key is in. 🔬The lane's scan against master (`5cd21708d`, at 408)
+  /// named that one gone and nothing added.
+  ///
+  /// ⚠️407 → 408 on 2026-10-21 (400 → 401 on 2026-10-17, where the lane was
+  /// cut), named as the rule above asks (F-364-Q1 b, a run behind its clock
+  /// shows every picture — 유저 2026-10-15: 「하나도 안 건너뛴다 — 소리를
+  /// 그림에 다시 맞춘다」). `playheadWay` (five) is the ONE way a run's playhead goes,
+  /// the canvas's run and the media viewer's: the walk's three numbers
+  /// (where it stands, where its clock says, how long the run is), what
+  /// stops it (a frame that waits for its picture), and now how far a look
+  /// may take it — every frame its clock went over, or one.
+  /// 🔬`clean_code_diff` against the lane's base (`34c6233f6`, at 400) named
+  /// that one added and nothing gone; stood on the brush lanes' and F-398's
+  /// 407 above when the lane was rebased onto them (10-21). ⛔Not bundled to
+  /// fit: a run that cut its clock's frame short itself would walk the lap
+  /// the way walks, once in each of the two runs.
+  ///
+  /// ⚠️408 → 410 on 2026-10-22, two named as the rule above asks (I-117 —
+  /// 유저 2026-10-21: 「psd 내보내기 내용물」). `PsdBuilder.addLayer` (five)
+  /// and `PsdBuilder.openGroup` (five) write a Photoshop document's two
+  /// kinds of row as its records keep them: a name, what the row holds
+  /// (a picture's packed pixels, a folder shown shut or open), and how it
+  /// is laid over the rows under it — its strength, its eye and its blend,
+  /// the three every record carries and the app's own row keeps
+  /// (`Layer.opacity` · `isVisible` · `blendMode`). 🔬`clean_code_diff`
+  /// against master (`66c6c2063`, at 408) named those two added and
+  /// nothing gone. ⛔Not bundled to fit: a writer that took the three as
+  /// one value would have every caller build that value out of a row's
+  /// three fields first.
+  /// ⚠️410 → 412 on 2026-10-22, named as the rule above asks (card
+  /// box-sized-by-two-picks): two of `axis_turn.dart`'s turns, the home
+  /// that says a box by the axis once instead of the nineteen hand-turned
+  /// pairs it replaced. `stripAcross` (seven) is a turned `Positioned`:
+  /// the axis, where across and how thick, the child, its key, and the two
+  /// ends — `fromEnd` for a lane at a panel's far edge or a caret after a
+  /// row, `alongStart` for a drop's line held past a rail row's section
+  /// slot (F-423②). `sizedAlong` (five) is a turned `SizedBox`, and took
+  /// its child's key as `stripAlong` does. 🔬`clean_code_diff` against
+  /// master (`41c4dfa72`, at 410) named those two added and nothing gone.
+  /// ⛔Not split to fit: each parameter is one of the widget it turns.
+  const wideSignatures = 412;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -593,7 +809,86 @@ void main() {
   /// named that one added and nothing gone. ⛔Not split to fit: the chain's
   /// law (one wait an image, at any level) is one statement over the whole
   /// chain, and its sync twin keeps the same shape.
-  const longBodies = 408;
+  ///
+  /// ⚠️408 → 409 on 2026-10-17, named as the rule above asks (F-370-Q3, the
+  /// same text layers): the tree stood at 407, and two crossed.
+  /// `planClipImport` (65) is the plan's one assembly, and each bake it
+  /// hands out now carries a text layer's texts — read where the bake is
+  /// addressed, so what they cannot keep is the plan's to say, before a
+  /// pixel is read. `ClipImportDoor._workOf` (72) finds each bake's bytes in
+  /// the file, an arm a kind of source, and a text layer's is the third:
+  /// the pictures CLIP STUDIO drew of its texts, beside a stored picture's
+  /// blocks and a vector layer's strokes. 🔬`clean_code_diff` against master
+  /// (`42ceeb00d`, at 407) named those two added and nothing gone. ⛔Not
+  /// split to fit: the arms answer the one question the loop asks — where a
+  /// bake's pixels are — side by side, and one taken out would answer it
+  /// somewhere the other two do not.
+  ///
+  /// ⚠️409 → 408 on 2026-10-17, following one down (F-374): the lane range
+  /// move's `LaneRangeMoveDrag.update` shifted each family through an arm
+  /// of its own; every home moves through one `LaneHome.shifted` now, and
+  /// the update is a preview of what that answers. 🔬`clean_code_diff`
+  /// against master (`7fe69eac7`, at 409) named that one gone and nothing
+  /// added.
+  ///
+  /// ⚠️408 → 409 on 2026-10-18, named as the rule above asks (F-374-Q10,
+  /// every use of a reference's cel rasterized with it):
+  /// `ProjectImportDoors.rasterizeMovieReference` (66) opens each file the
+  /// uses of its cel show, once, and bakes them all through one bank — the
+  /// one row's tail `_bakeMovieRowIntoCels` held is planned a use apiece
+  /// now (`_plannedMovieUse`, folded by `_movieCelsOf`), and the door keeps
+  /// the bake's own call. 🔬`clean_code_diff` against master (`38f473e11`,
+  /// at 408) named that one added and nothing gone. ⛔Not split to fit:
+  /// the movies it opens it closes, in its own `finally` — a helper that
+  /// opened them would leave the closing to a scope it cannot see.
+  ///
+  /// ⚠️409 → 411 on 2026-10-18, two named as the rule above asks (I-105,
+  /// the guides laid over a cel as CAM lays the camera's work).
+  /// `ExportFrameRenderer.renderCelGroup` stood at the line — the stack's
+  /// one picture a layer, with the decisions on blends and effects beside
+  /// it — and crossed it handing the camera's work and the guides over as
+  /// one pass, in the guides' colour. `_exportCels` crossed it reading that
+  /// colour off the theme where the run starts and handing it to each
+  /// cel's render. 🔬`clean_code_diff` against master (`9a7a8e3de`, at 409)
+  /// named those two added and nothing gone. ⛔Not split to fit: each says
+  /// one thing — the stack and what is laid over it; the files a run
+  /// writes — and a part taken out would be read beside the rest anyway.
+  ///
+  /// ⚠️411 → 412 on 2026-10-20, named as the rule above asks (F-176 ·
+  /// F-418, the brush lanes). `BrushSettings.toJson` crossed the line with
+  /// a brush's further tips, their order and its correction — a key a line
+  /// and, beside the three, why each is written only off its default.
+  /// 🔬`clean_code_diff` against the lanes' base (`243dd8074`, at 411)
+  /// named that one added and nothing gone. ⛔Not split to fit: it is one
+  /// flat list of what a preset keeps, and a list cut in two is read as
+  /// one anyway.
+  ///
+  /// ⚠️412 → 416 on 2026-10-20, four named as the rule above asks
+  /// (F-418-Q10, 유저 「모든 그룹 머리가 접힌다」). The brush's settings fold
+  /// by Clip Studio's categories, so the panel's one list of rows — its
+  /// `build`, 465 lines — is a list a category now, which the category's
+  /// header shows or folds away: `_tipRows` (86), `_textureRows` (124) and
+  /// `_correctionRows` (77) stand over the line, and `build` (66), a group
+  /// a category, still does. The text tool's `TextToolSettings.build` (63)
+  /// crossed it taking its folds from the tool's store around the section.
+  /// 🔬`clean_code_diff` against the lane's base (`d890f68b0`, at 412)
+  /// named those four added and nothing gone. ⛔Not split to fit: a
+  /// category's rows are what its header folds, and a list cut in two
+  /// would fold as one anyway.
+  ///
+  /// ⚠️416 → 413 on 2026-10-21, lowered as the rule asks (F-398 ⑤): the
+  /// 겸용 conversion's `execute` is its steps now — the pairs, the rows one
+  /// side holds and the write — and master stood at 414, two under the
+  /// ceiling. 🔬The lane's scan against master (`5cd21708d`, at 414) named
+  /// `execute` gone and nothing added.
+  ///
+  /// ⚠️413 → 412 on 2026-10-22, lowered as the rule asks (I-117, a cel's
+  /// PSD): `ExportFrameRenderer.renderCelGroup` fell under the line when
+  /// the walk that finds a cel's rows became its own (`_celGroupOf`) — the
+  /// one the cel's picture and its PSD's rows are both laid from.
+  /// 🔬`clean_code_diff` against master (`66c6c2063`, at 413) named that one
+  /// gone and nothing added.
+  const longBodies = 412;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -765,7 +1060,123 @@ void main() {
   /// beside its synchronous twin as a plain function (`_composed`, counted
   /// among the long bodies above). 🔬`clean_code_diff` against master
   /// (`01986af08`) named that one gone and none added.
-  const longClasses = 62;
+  ///
+  /// ⚠️62 → 63 on 2026-10-15, ONE name: `_ConteTabHostState` crossed
+  /// (569 → 624) in I-97 — a pool picture dropped on the pages on screen is
+  /// a photo in the band a stroke started there writes in, so the drop asks
+  /// the windows the ink layer draws (the same bands, picture slots and
+  /// refusals) and makes the block or the next cut the stroke would; the
+  /// growth is the drop's mount and the helpers the ink layer now shares
+  /// with it. 🔬`clean_code_diff` against `f99fdc4ff` names this one and no
+  /// other class. ⛔Not split to fit: the windows are the host's state, read
+  /// where the ink layer reads them.
+  ///
+  /// ⚠️63 → 64 on 2026-10-17, ONE name: `LayerVerbs` crossed (588 → 601)
+  /// in F-369 — a cut's conte row is born at the bottom of ACTION from
+  /// every door, so the verb that puts a new row in the stack takes WHERE
+  /// from its caller (`addRow`): above the active row is one answer
+  /// (`placementAboveActive`), the conte row's birthplace the other.
+  /// 🔬`clean_code_diff` against master (`34c6233f6`) names this one and
+  /// no other class. ⛔Not split to fit: a row is inserted in one place,
+  /// and a door that inserted its own would be the second.
+  ///
+  /// ⚠️64 → 65 on 2026-10-17, ONE name: `LayerFrameImageCache` crossed
+  /// again (588 → 642) in playback-picture-weight-estimates — the warmer
+  /// asks for room by what a picture will be made as: the plan `prepare`
+  /// makes its image by (`plannedBytes`, read off the same `_levelPlan`),
+  /// once what `prepare` reads first is read (`readIn`), and both roads that
+  /// make an image hold it to that plan (`_isAsPlanned`). 🔬`clean_code_diff`
+  /// between master (`76fbb39e8`) and the lane names this one and no other
+  /// class. ⛔Not split to fit: the weight is the plan the image is made by,
+  /// and it stands beside the making so the two cannot part.
+  ///
+  /// ⚠️65 → 66 on 2026-10-16, ONE name: `PixelVerbs` crossed (581 → 613)
+  /// in vanishing-point-types-Q5 — 래스터라이즈 lays a guide's lines on the
+  /// cels the paste's ladder names (유저 2026-10-16: 「지금 레이어의 지금
+  /// 셀에」), through the door the paste lands through: the paste's landing
+  /// moved into `_land`, which both call now, and the new verb is the
+  /// crossing a canvas picture makes onto a posed row. 🔬`clean_code_diff`
+  /// against master (`ebefaea8b`, before the two above landed) names this
+  /// one and no other class. ⛔Not split to fit: a picture that lands as a
+  /// paste lands stands beside the paste, where
+  /// `a_piece_lands_through_one_door_test` reads them both.
+  ///
+  /// ⚠️66 → 67 on 2026-10-17, ONE name: CLIP STUDIO's `_Planner` crossed
+  /// (597 → 618) in the-clip-import-drops-layer-effects-silently — what
+  /// CLIP STUDIO draws over a layer that comes in without it (an effect of
+  /// its properties, its layer colour, its clipping) is said in every
+  /// decoder's words (유저 10-07 「없는 기능은 알리는거 ok」), by the name
+  /// the reader sees: the three places the planner makes one — a folder's
+  /// row, a folder inside a cel, a layer that comes in — call one
+  /// `_sayNotApplied`. 🔬`clean_code_diff` against master (`42ceeb00d`)
+  /// names this one and no other class. ⛔Not split to fit: the name a
+  /// warning is said by is made where the row is, and the planner makes it.
+  ///
+  /// ⚠️67 → 68 on 2026-10-17, ONE name: CLIP STUDIO's `_DocumentReader`
+  /// crossed (585 → 609) in the-masks-are-baked-and-locks-said — a layer's
+  /// mask comes in baked as Photoshop's does, and a lock is said (유저 10-09
+  /// 「다른 디코드 마찬가지 통일해서」): the reader asks the row for the
+  /// mask's columns and its lock with the others, and reads where the mask
+  /// stands (`_maskOf`: the layer's offset, the mask's own, the offscreen's).
+  /// 🔬`clean_code_diff` against master (`4c997b9cc`) names this one and no
+  /// other class. ⛔Not split to fit: a column is asked for in the one list
+  /// the row is read by, and read off that row beside the others.
+  ///
+  /// ⚠️68 → 69 on 2026-10-18, ONE name: `CelTextTool` crossed (590 → 618)
+  /// in text-letters-lean-and-underline ④⑤ — a text's paragraphs are set
+  /// each their own way, and the alignment and the line pitch in the tool's
+  /// settings are made on the paragraphs of the letters a letter setting
+  /// speaks for: `changeParagraphs` beside `changeLetters`,
+  /// `paragraphsSpokenFor` beside `letterStylesSpokenFor`, both through the
+  /// one range (`_lettersSpokenFor`). 🔬`clean_code_diff` against master
+  /// (`17f66740b`) names this one and no other class. ⛔Not split to fit:
+  /// what a paragraph setting speaks for is what a letter setting does, and
+  /// the two are read in one place.
+  ///
+  /// It grew again in F-377, no new name: a text held by its BOX writes
+  /// what it lands (a carry, a turn, a corner, a setting come to rest) as
+  /// a run of history (`HistoryRun`): undo takes the last one back while
+  /// the box holds it (`canStepBack` · `stepBack`), and they are ONE step
+  /// once the box lets go — the transform tool's law said of a text (유저
+  /// 10-17 「텍스트 변형이든 뭐든」). ⛔Not split to fit: whose step a
+  /// landing is (`_StepOf`) is decided where the tool lands the text it
+  /// holds, and the run is the holding's own.
+  ///
+  /// ⚠️69 → 70 on 2026-10-20, ONE name: the brush's settings panel state
+  /// crossed (543 → 609) when its groups came to fold (F-418-Q10, 유저
+  /// 「모든 그룹 머리가 접힌다」) — each of Clip Studio's six categories a
+  /// list of its own, called by its header, and the brush's own folds
+  /// read and written (`_foldOf`). 🔬`clean_code_diff` against the lane's
+  /// base (`d890f68b0`) names this one and no other class. ⛔Not split to
+  /// fit: the rows are the panel's, written from the one state it shows,
+  /// and the categories are read in the one place the panel lists them.
+  ///
+  /// ⚠️70 → 71 on 2026-10-21 (65 → 66 on 2026-10-17, where the lane was
+  /// cut), ONE name:
+  /// `MediaRun` crossed (588 → 632) in playback-waits-for-its-sound — the
+  /// media viewer's run waits for its sound by the canvas's law (유저
+  /// 2026-10-16: 「소리가 준비될 때까지 기다린다」): a press stands where it
+  /// was put while the sound is on its way (`_start`), each look asks for it
+  /// again, and the run goes on from there once it has come
+  /// (`_soundHasCome`). 🔬`clean_code_diff` against master (`4c0fed1e3`)
+  /// names this one and no other class; stood on the brush panel's 70 above
+  /// when the lane was rebased onto it (10-21). ⛔Not split to fit: going on
+  /// restarts the run's own film clock, its clock's lateness and its parked
+  /// state — what the class is — so a collaborator for the wait would be
+  /// handed all three. (The canvas's transport, which only hears the sound
+  /// land, gave that hearing to one: `_SoundOnItsWay`.)
+  ///
+  /// ⚠️71 found on 2026-10-22 under the same ceiling, ONE name: `CutVerbs`
+  /// crossed (579 → 611) when a canvas resize came to work out the cut's
+  /// kept cels ahead, behind its wait window (card
+  /// `a-canvas-resize-rewrites-kept-cels-on-the-ui-thread` — S5_BA saved and
+  /// opened again took 4.2 s on the UI thread): each canvas verb gained the
+  /// half its window runs first (`resizeActiveCutCanvasAhead` ·
+  /// `placeActiveCutCanvasAhead`). 🔬`clean_code_diff` against the lane's
+  /// base (`fdbdd1a3d`) names this one and no other class. ⛔Not split to
+  /// fit: the half ahead asks its step's own question of the cut the step
+  /// reads in one place (`ActiveCutEdits`), so the two are read side by side.
+  const longClasses = 71;
 
   late CleanCodeScan scan;
   setUpAll(() {

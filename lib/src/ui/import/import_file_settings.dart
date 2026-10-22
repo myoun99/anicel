@@ -1,7 +1,7 @@
+import '../../models/import/import_destination.dart';
 import '../../models/kept_span.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/import_layer_spot.dart';
-import '../../services/import/media_import_planner.dart' show ImportDestination;
 import '../text/app_strings.dart';
 
 /// What one FILE in the import window is set to.
@@ -130,8 +130,8 @@ class ImportFileSettings {
   /// Which pictures of a NUMBERED RUN come in — the run's IN/OUT, picked on
   /// the preview's transport as a movie's span is, the run's pictures its
   /// pages; [runOut] null means to the run's last picture. Read only of a
-  /// picture that is part of a run (`celRunOf`). Two or more come in as one
-  /// layer's frames; one comes in alone.
+  /// picture that is part of a run (`pictureRunOf`). Two or more come in as
+  /// one layer's frames; one comes in alone.
   ///
   /// 🗣️F-282 (유저 2026-10-09, 시안 ③ · ④): 「연번은 들어갈 범위만(A2–A3) —
   /// 미리보기의 IN/OUT, 동영상과 같은 법」 · 한 장만 = IN 과 OUT 이 같은 장.
@@ -312,6 +312,20 @@ bool importLandsAsSound({
 ///    file, their disk).
 ///  * 2026-09-16 — the movie default and the size warning both went, by the
 ///    answer above.
+///
+/// Why KEEP INSIDE is where every file starts — it was Reference, for a
+/// reason since answered: the pool copied whatever it was handed, so
+/// dropping a 3GB 참고영상 meant a 3GB copy the user never asked for and
+/// could not decline. What is left is which failure a person meets by not
+/// choosing. A reference dies when the original moves, and a project that
+/// has to be mailed with a folder beside it is the shape Pencil2D abandoned
+/// after its users kept sending the file alone. Apple already started here
+/// because a recorded path there stops working at the next launch; the rest
+/// follows, now that carrying costs bytes inside a ZIP rather than a second
+/// copy on disk. Reference stays one click away, for an original shared
+/// with another tool — a deliberate choice, which is exactly what it should
+/// be. (Said of the cut folder's one carry answer until F-429 made its
+/// media rows of their own, 2026-10-21.)
 ImportFileSettings seedImportSettings({ImportLayerSpot? spot}) =>
     ImportFileSettings(
       movieParts: spot is RowFramesSpot
@@ -365,7 +379,7 @@ ImportFileSettings resolvedImportSettings(
   ImportLayerSpot? spot,
 
   /// How many pictures the numbered run [settings]' file is part of holds
-  /// (`celRunOf`) — null for a file in none.
+  /// (`pictureRunOf`) — null for a file in none.
   int? runLength,
 }) {
   final psd = importPsdLocked(spot) ? PsdPlaceMode.merge : settings.psd;
@@ -403,7 +417,7 @@ ImportFileSettings resolvedImportSettings(
   // 고정」); else what the row was answered.
   final into =
       spot?.answeredDestination ??
-      (hasActiveCut ? settings.into : ImportDestination.newCut);
+      importDestinationGiven(settings.into, hasOpenCut: hasActiveCut);
   final fit = importFitLocked(settings.copyWith(into: into), placing: placing)
       ? MediaFitMode.none
       : settings.fit;

@@ -1,14 +1,8 @@
-import 'dart:async';
-import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/attached_mode.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -16,6 +10,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/export_cel_naming.dart';
 import 'package:anicel/src/models/export_overrides.dart';
 import 'package:anicel/src/models/export_spec.dart';
@@ -30,7 +25,6 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -43,6 +37,10 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_preview_panel.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show LayerMarkPlates;
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show LayerTypeButton;
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -50,8 +48,6 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
-import '../../helpers/named_finders.dart';
-import '../../helpers/project_scratch_folder.dart';
 
 /// The Cels tab (F-289): the rules that pick the rows — the kinds, one
 /// label picked through the timeline's own flyout, a take picker with
@@ -113,8 +109,12 @@ void main() {
   /// the sheet) and D — and, given [unplaced], a drawing of D's no block
   /// shows · a direction row. CUT2·CUT3 are 겸용 siblings and CUT4 stands
   /// alone — the scope grid's material. Given [camera], CUT1's camera
-  /// moves as it says.
-  EditorSessionManager celsSession({Frame? unplaced, CutCamera? camera}) {
+  /// moves as it says; given [guides], they are CUT1's.
+  EditorSessionManager celsSession({
+    Frame? unplaced,
+    CutCamera? camera,
+    CutGuides? guides,
+  }) {
     return EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
@@ -131,6 +131,7 @@ void main() {
                 duration: 4,
                 canvasSize: const CanvasSize(width: 8, height: 8),
                 camera: camera,
+                guides: guides,
                 layers: [
                   drawing('paper', 'Paper', [
                     frame('p1'),
@@ -210,6 +211,26 @@ void main() {
     );
   }
 
+  /// A perspective guide on CUT1's paper — hidden where [visible] is false.
+  DrawingGuide aPerspectiveGuide({bool visible = true}) => DrawingGuide(
+    id: const GuideId('perspective'),
+    name: 'Perspective',
+    visible: visible,
+    shape: PerspectiveShape(
+      vanishingPoints: [VanishingPointAt(CanvasPoint(x: 6, y: 2))],
+      eyeLevel: GuideAxis(origin: CanvasPoint(x: 0, y: 2), angleDegrees: 0),
+    ),
+  );
+
+  /// A symmetry guide on CUT1's paper, shown.
+  DrawingGuide aSymmetryGuide() => DrawingGuide(
+    id: const GuideId('symmetry'),
+    name: 'Symmetry',
+    shape: SymmetryShape(
+      axis: GuideAxis(origin: CanvasPoint(x: 4, y: 4), angleDegrees: 90),
+    ),
+  );
+
   /// A camera that moves across CUT1: the canvas draws it a path.
   CutCamera aCameraThatMoves() => CutCamera(
     keyframes: {
@@ -218,13 +239,11 @@ void main() {
     },
   );
 
-  /// The window on the Cels tab; given [placeIn], the folder its runs are
-  /// put in.
+  /// The window on the Cels tab.
   Future<ExportDialogState> pumpCels(
     WidgetTester tester,
-    EditorSessionManager session, {
-    String? placeIn,
-  }) async {
+    EditorSessionManager session,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -233,7 +252,6 @@ void main() {
         home: Scaffold(
           body: ExportDialog(
             session: session,
-            exportDirectoryPicker: placeIn == null ? null : () async => placeIn,
             formatAvailability: ExportFormatAvailability.permissive(),
           ),
         ),
@@ -623,19 +641,42 @@ void main() {
     await pumpCels(tester, session);
     await standOn(tester, 'a');
     expect(tester.celsStackLines, [('a-color', true), ('a', true)]);
-    // The base wears its word, an attach row its side's arrow.
+    // 🗣️F-395: the column says what it is, and every line is led as the
+    // timeline leads the row — its label, take and kind — after a slot of
+    // its own that marks the base.
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey<String>('export-cels-stack-line-a')),
-        matching: find.text(AppText.strings.exSelBase),
+        of: find.byKey(const ValueKey<String>('export-cels-stack-head')),
+        matching: find.text(AppText.strings.exCelsLayersOut),
+        matchRoot: true,
       ),
       findsOneWidget,
     );
     expect(
-      find.named('export-cels-stack-layer-attach-arrow-a-color'),
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('export-cels-stack-base-a')),
+        matching: find.text(AppText.strings.exSelBase),
+        matchRoot: true,
+      ),
       findsOneWidget,
     );
-    expect(find.named('export-cels-stack-layer-attach-arrow-a'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('export-cels-stack-base-a-color')),
+      findsNothing,
+    );
+    for (final id in ['a-color', 'a']) {
+      final line = find.byKey(ValueKey<String>('export-cels-stack-line-$id'));
+      expect(
+        find.descendant(of: line, matching: find.byType(LayerMarkPlates)),
+        findsOneWidget,
+        reason: '$id: its label and take',
+      );
+      expect(
+        find.descendant(of: line, matching: find.byType(LayerTypeButton)),
+        findsOneWidget,
+        reason: '$id: its kind',
+      );
+    }
     final before = tester.exportPreviewDocument!.look;
     await tester.settleExportPreview();
     final pictureBefore = tester.exportPreviewImage;
@@ -878,44 +919,56 @@ void main() {
     expect(deltaOf(session), isNull);
   });
 
-  testWidgets('while a run is under way the band touches no drawing: it '
-      'steps to none, and lays neither a direction nor CAM', (tester) async {
-    final temp = Directory.systemTemp.createTempSync('qa-cels-under-way');
-    deleteAfterSessionEnds(temp);
-    final session = celsSession(camera: aCameraThatMoves());
-    // A picture on one drawing: under the test's faked clock its render
-    // never finishes, so the run stays under way for as long as the test
-    // looks at it — a drawing with none renders nothing, at once.
-    final cut = session.cutById(cut1)!;
-    session.renderCaches.brushFrameStore.storeBakedSurface(
-      session.brushFrameKeyForCut(cut, const LayerId('a'), const FrameId('f1')),
-      BitmapSurface(
-        canvasSize: cut.canvasSize,
-        tileSize: 8,
-        tiles: {
-          TileCoord(x: 0, y: 0): BitmapTile(
-            size: 8,
-            pixels: Uint8List(8 * 8 * 4)..[3] = 255,
-          ),
-        },
+  testWidgets('「가이드」 lays the cut\'s guides over the drawing shown, a '
+      'drawing at a time, and 초기화 leaves it — I-105', (tester) async {
+    final session = celsSession(
+      guides: CutGuides(guides: [aPerspectiveGuide()]),
+    );
+    await pumpCels(tester, session);
+    const guides = 'export-cels-guides';
+
+    await standOn(tester, 'a');
+    expect(pill(tester, guides).selected, isFalse);
+    await tapKey(tester, guides);
+    expect(deltaOf(session)?.guidesOver, {ref('a', 'f1')});
+    expect(pill(tester, guides).selected, isTrue);
+    expect(
+      find.byKey(const ValueKey<String>('export-cels-block-g-a-f1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('export-cels-block-g-a-f2')),
+      findsNothing,
+      reason: 'laid over ONE drawing, not its row',
+    );
+
+    // The other drawing reads its own answer.
+    await tapKey(tester, 'export-cels-next');
+    expect(pill(tester, guides).selected, isFalse);
+
+    // 초기화 is of the rules: what is laid over a drawing stays.
+    await tapKey(tester, 'export-cels-switch-b');
+    await tapKey(tester, 'export-cels-reset');
+    expect(deltaOf(session)?.guidesOver, {ref('a', 'f1')});
+
+    await tapKey(tester, 'export-cels-prev');
+    await tapKey(tester, guides);
+    expect(deltaOf(session), isNull);
+  });
+
+  testWidgets('「가이드」 has nothing to lay where the cut shows no '
+      'perspective guide — a hidden one, a symmetry one — and keeps its '
+      'place (I-105-Q1)', (tester) async {
+    final session = celsSession(
+      guides: CutGuides(
+        guides: [aPerspectiveGuide(visible: false), aSymmetryGuide()],
       ),
     );
-    final state = await pumpCels(tester, session, placeIn: temp.path);
+    await pumpCels(tester, session);
     await standOn(tester, 'a');
-    ExportCelsBand band() => tester.widget(find.byType(ExportCelsBand));
-    expect(band().directions, isNotEmpty);
-    expect(band().onStep, isNotNull);
-    expect(band().directions.map((d) => d.onPressed), everyElement(isNotNull));
-    expect(band().camera.onPressed, isNotNull);
-
-    unawaited(state.export());
-    await tester.pump();
-    await tester.pump();
-
-    expect(band().onStep, isNull);
-    expect(band().directions.map((d) => d.onPressed), everyElement(isNull));
-    expect(band().camera.onPressed, isNull);
-    session.playbackRig.prerenderScheduler.cancel();
+    expect(pill(tester, 'export-cels-guides').onTap, isNull);
+    await tapKey(tester, 'export-cels-guides');
+    expect(deltaOf(session), isNull);
   });
 
   testWidgets('nothing is laid over a direction row\'s OWN drawing: stood '

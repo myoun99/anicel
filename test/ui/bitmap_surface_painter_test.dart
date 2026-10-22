@@ -9,6 +9,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
@@ -266,7 +267,7 @@ void main() {
           );
           applyViewportTransform(canvas, viewport);
           canvas.save();
-          canvas.clipRect(painter.pasteboardRect);
+          canvas.clipRect(painter.storableRect);
           painter.paintContentInto(canvas);
           canvas.restore();
           canvas.restore();
@@ -379,6 +380,53 @@ void main() {
       );
     });
 
+    test('🚨a file\'s picture laid past the wall is drawn there — on the '
+        'painter\'s own route too (F-374-Q8)', () async {
+      final pixels = Uint8List(tileSize * tileSize * 4);
+      for (var i = 0; i < pixels.length; i += 4) {
+        pixels[i] = 255;
+        pixels[i + 3] = 255;
+      }
+      // The 16-wide sheet's pasteboard begins at x -16: tile -5 is past it.
+      final surface = BitmapSurface(
+        canvasSize: const CanvasSize(width: 16, height: 4),
+        tileSize: tileSize,
+        tiles: {
+          TileCoord(x: -5, y: 0): BitmapTile(size: tileSize, pixels: pixels),
+        },
+        laidBounds: DirtyRegion(
+          left: -20,
+          top: 0,
+          rightExclusive: -16,
+          bottomExclusive: 4,
+        ),
+      );
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        viewport: CanvasViewport(panX: 20),
+        showTransparentBackground: false,
+        tileImageCache: await decodedCache(surface),
+      );
+
+      // Canvas x -20..-12 fills the 8-wide view.
+      final screen = await rasterize(
+        (canvas) => painter.paint(canvas, const Size(8, 4)),
+        width: 8,
+        height: 4,
+      );
+
+      expect(
+        _rgbaAt(screen, width: 8, x: 0, y: 0),
+        [255, 0, 0, 255],
+        reason: 'canvas x=-20, past the wall, where the file lies',
+      );
+      expect(
+        _rgbaAt(screen, width: 8, x: 4, y: 0),
+        [0, 0, 0, 0],
+        reason: 'canvas x=-16: nothing there',
+      );
+    });
+
     test('selection float: a Transform above the painter moves what is '
         'visible', () async {
       final surface = stripe();
@@ -482,10 +530,8 @@ void main() {
 /// stroke feed.
 class _AlphaAtOriginSource implements ActiveStrokePixelSource {
   @override
-  int get canvasWidth => 2;
-
-  @override
-  int get canvasHeight => 2;
+  PasteboardWall get pasteboard =>
+      const CanvasSize(width: 2, height: 2).pasteboardAt(PasteboardReach.whole);
 
   @override
   void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {

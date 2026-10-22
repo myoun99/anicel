@@ -104,6 +104,10 @@ void main() {
       'viewerPages',
       'imageCache',
       'storyboardThumbnails',
+      'sheetImages',
+      'textImages',
+      'strokePreviews',
+      'timelineTiles',
       'moviePictures',
       'tileImages',
       'enginePool',
@@ -195,6 +199,17 @@ void main() {
     ).items.singleWhere((item) => item.id == 'storyboardThumbnails');
     expect(row.bytes, 12345);
   });
+
+  test('the sheets\' media images are a census row — pushed by the '
+      'workspace, read here (I-97)', () {
+    final session = newSession();
+    addTearDown(session.dispose);
+    session.renderCaches.sheetImageBytes = 6789;
+    final row = collectMemoryCensusWhereTexturesAreRam(
+      [session],
+    ).items.singleWhere((item) => item.id == 'sheetImages');
+    expect(row.bytes, 6789);
+  });
   group('three tiers (유저 2026-09-11)', () {
     tearDown(() => AppMemory.settings.value = const AppMemorySettings());
 
@@ -255,7 +270,16 @@ void main() {
           )
           .data!;
       expect(line, startsWith('허용치 밖'));
-      for (final outside in ['그리기 엔진 작업 버퍼', '패널 래스터', '엔진·폰트·프레임워크']) {
+      for (final outside in [
+        '그리기 엔진 작업 버퍼',
+        '패널 래스터',
+        '엔진·폰트·프레임워크',
+        // Held by how many, not by bytes (card census-misses-bake-once-
+        // images): counted, and no budget line is their ceiling.
+        '글자 이미지',
+        '스트로크 미리보기',
+        '타임라인 타일 이미지',
+      ]) {
         expect(line, contains(outside), reason: outside);
       }
       // The tile pictures moved inside on 2026-09-16 (render round): a

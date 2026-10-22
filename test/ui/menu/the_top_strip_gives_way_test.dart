@@ -11,10 +11,12 @@
 // ⚠️In the app's faces or not at all ([loadTheAppFaces]): in the test font
 // every glyph is a square, the bars' writing asks for more than the full bar,
 // and there is nothing to narrow — the middle standing never happens.
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/native/device_battery.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
@@ -32,6 +34,8 @@ const groupButton = ValueKey<String>('top-strip-brush-group-button');
 const blendButton = ValueKey<String>('brush-tool-blend-menu-button');
 const tabList = ValueKey<String>('project-tab-overflow');
 const firstTab = ValueKey<String>('project-tab-0');
+const gauge = ValueKey<String>('top-strip-battery');
+const opacityCurve = ValueKey<String>('brush-tool-pressure-opacity');
 
 /// What one tab asks of the row, and so what its list button stands in —
 /// the tab row's own law (「넘치면 오버플로로 넘긴다」).
@@ -40,11 +44,16 @@ const tabPlace = 96.0;
 /// What the strip's brush group is at one window width.
 enum Standing { full, narrowed, button }
 
-Future<void> pumpAt(WidgetTester tester, double width) async {
+/// The app at [width] — on a device with [battery] where one is handed in.
+Future<void> pumpAt(
+  WidgetTester tester,
+  double width, {
+  ValueListenable<BatteryReading>? battery,
+}) async {
   await tester.binding.setSurfaceSize(Size(width, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    MaterialApp(theme: buildAppTheme(), home: HomePage(battery: battery)),
   );
   await tester.pumpAndSettle();
 }
@@ -54,10 +63,50 @@ Future<void> narrowTo(WidgetTester tester, double width) async {
   await tester.pumpAndSettle();
 }
 
-Finder inStrip(Key key) => find.descendant(
-  of: find.byType(EditorTopStrip),
-  matching: find.byKey(key),
+/// [key] in the strip — found by walking the strip alone.
+///
+/// ⛔Not `find.descendant(of: find.byType(EditorTopStrip), …)`: that walks
+/// the whole app to find the strip each time it is asked, and a sweep asks
+/// ten things of each width it stops at — a third of this file's time went
+/// to those walks (measured 2026-10-21, heavy-tests-common).
+Finder inStrip(Key key) =>
+    _InTheStrip((widget) => widget.key == key, 'the $key in the strip');
+
+/// The strip itself, found as [inStrip] finds what is in it.
+final Finder theStrip = _InTheStrip(
+  (widget) => widget is EditorTopStrip,
+  'the strip',
 );
+
+/// What [_picks] picks out under the strip's own element — found once and
+/// kept while it is mounted, as the app keeps its one strip from a test's
+/// first pump to its last.
+final class _InTheStrip extends MatchFinder {
+  _InTheStrip(this._picks, this._name);
+
+  final bool Function(Widget widget) _picks;
+  final String _name;
+
+  static Element? _strip;
+
+  @override
+  Iterable<Element> get allCandidates {
+    final kept = _strip;
+    final strip = kept != null && kept.mounted
+        ? kept
+        : _strip = find.byType(EditorTopStrip).evaluate().single;
+    // The walk leaves out the element it starts from.
+    return [
+      strip,
+    ].followedBy(collectAllElementsFrom(strip, skipOffstage: skipOffstage));
+  }
+
+  @override
+  bool matches(Element candidate) => _picks(candidate.widget);
+
+  @override
+  String get description => _name;
+}
 
 double widthOf(WidgetTester tester, Key key) =>
     tester.getSize(inStrip(key)).width;
@@ -84,33 +133,21 @@ double narrowestOf(WidgetTester tester, Key key) => tester
     .widget<FieldSlider>(inStrip(key))
     .narrowestIn(tester.element(inStrip(key)));
 
-/// The widths a sweep stops at, wide to narrow: EVERY PIXEL where the
-/// standings change hands, every tenth elsewhere.
+/// Narrows the window from [from] to [to], asking [at] of every width it
+/// stops at, and returns the standings in the order they came. It stops at
+/// every tenth, and at EVERY PIXEL of a tenth the standings change hands in
+/// — wherever this language, this text size and this strip put it.
 ///
-/// The bars start to narrow under 770 in any language and at any text size
-/// (the strip's fixed parts and the tabs' place are not words), and the
-/// group becomes the button no lower than the narrowest pair of names lets
-/// it — 727 in Korean, measured 2026-10-07. 780 down to 690 holds both with
-/// room; a pair of names short enough to pass 690 would fail 「went all the
-/// way to its narrowest」 below, which is the cue to widen this. ⚠️Each bar
-/// took its pencil since (tool-settings-panel-tidy, 2026-10-10), so the
-/// range stands two pencils further out.
-Iterable<double> widthsDown(double from, double to) sync* {
-  for (
-    var width = from;
-    width >= to;
-    width -=
-        width <= 780 + 2 * ValuePencil.reach &&
-            width > 690 + 2 * ValuePencil.reach
-        ? 1
-        : 10
-  ) {
-    yield width;
-  }
-}
-
-/// Narrows the window from [from] to [to] ([widthsDown]), asking [at] of
-/// every width, and returns the standings in the order they came.
+/// A tenth whose two ends stand alike is not walked: the group's standing
+/// is the room's alone, beside the strip's fixed parts (`_TabsAndBrushGroup`
+/// asks `_BrushValueBars.widthsIn` of it), so it cannot change and change
+/// back inside one.
+///
+/// ↩️It walked every pixel of one band in every sweep, 780 down to 690 and
+/// two pencils out — where the bars narrow and the button comes in any
+/// language (measured 2026-10-07): 140 widths a sweep, and 366s for this
+/// file, where the tenths the standings change in are two
+/// (2026-10-21, heavy-tests-common).
 ///
 /// ⚠️Never to under 300: at 280 two panel docks are left 24px, less than a
 /// tab (`editor_panel_tabs.dart`), and the strip's own fixed parts leave
@@ -128,11 +165,10 @@ Future<List<Standing>> sweep(
   required void Function(double width, Standing standing) at,
 }) async {
   final seen = <Standing>[];
-  for (final width in widthsDown(from, to)) {
-    await narrowTo(tester, width);
+  void stand(double width) {
     expect(tester.takeException(), isNull, reason: 'at $width');
     expect(
-      tester.getRect(find.byType(EditorTopStrip)).right,
+      tester.getRect(theStrip).right,
       lessThanOrEqualTo(width),
       reason: 'at $width',
     );
@@ -141,6 +177,18 @@ Future<List<Standing>> sweep(
       seen.add(standing);
     }
     at(width, standing);
+  }
+
+  for (var width = from; width >= to; width -= 10) {
+    await narrowTo(tester, width);
+    if (seen.isNotEmpty && standingOf(tester) != seen.last) {
+      for (var pixel = width + 9; pixel > width; pixel--) {
+        await narrowTo(tester, pixel);
+        stand(pixel);
+      }
+      await narrowTo(tester, width);
+    }
+    stand(width);
   }
   return seen;
 }
@@ -197,6 +245,16 @@ void main() {
           final now = (
             size: widthOf(tester, sizeBar),
             opacity: widthOf(tester, opacityBar),
+          );
+          // [widthOf] is the bar's own width, which a group the strip draws
+          // smaller keeps — 「Where it fits, nothing is scaled」
+          // (KeptTailRow). ↩️Without this, full bars held 3px past their
+          // room went unseen: the strip drew the group smaller and still
+          // fit (2026-10-21, a mutant the sweep let live).
+          expect(
+            tester.getRect(inStrip(sizeBar)).width,
+            closeTo(now.size, 0.01),
+            reason: 'the bars are drawn at their own width — at $width',
           );
           expect(now.size, lessThanOrEqualTo(last.size), reason: 'at $width');
           expect(
@@ -455,6 +513,125 @@ void main() {
 
       expect(find.byKey(sizeBar), findsNothing);
       expect(inStrip(groupButton), findsOneWidget);
+    });
+  });
+
+  // 🗣️I-103-Q1 (유저 2026-10-16): 「띠 오른쪽 끝에 아이콘 + 퍼센트」 — after
+  // the brush's group, at the very end; kept to the end as the list
+  // button's place is, and costing the group its room: the group becomes
+  // the button that much sooner.
+  group('the battery', () {
+    ValueNotifier<BatteryReading> batteryAt(int percent) {
+      final battery = ValueNotifier<BatteryReading>((
+        percent: percent,
+        charging: false,
+      ));
+      addTearDown(battery.dispose);
+      return battery;
+    }
+
+    testWidgets('stands at the very end, after the brush\'s group, at every '
+        'width the strip narrows through', (tester) async {
+      await pumpAt(tester, 900, battery: batteryAt(87));
+      final seen = await sweep(
+        tester,
+        from: 900,
+        to: 300,
+        at: (width, standing) {
+          expect(inStrip(gauge), findsOneWidget, reason: 'at $width');
+          final at = tester.getRect(inStrip(gauge));
+          final strip = tester.getRect(theStrip);
+          expect(
+            strip.right - at.right,
+            lessThanOrEqualTo(3),
+            reason: 'nothing stands after it — at $width',
+          );
+          expect(
+            at.left,
+            greaterThanOrEqualTo(
+              tester
+                  .getRect(
+                    inStrip(
+                      standing == Standing.button ? groupButton : opacityCurve,
+                    ),
+                  )
+                  .right,
+            ),
+            reason: 'after the group — at $width',
+          );
+        },
+      );
+      expect(seen, [Standing.full, Standing.narrowed, Standing.button]);
+    });
+
+    testWidgets('costs the brush\'s group its room: the group becomes the '
+        'button exactly that much sooner', (tester) async {
+      /// The widest whole width at which the group is the button.
+      Future<double> buttonFrom(ValueListenable<BatteryReading>? battery) async {
+        await pumpAt(tester, 1100, battery: battery);
+        expect(standingOf(tester), isNot(Standing.button), reason: '⛔');
+        var wide = 1100.0;
+        var narrow = 400.0;
+        while (wide - narrow > 1) {
+          final middle = ((wide + narrow) / 2).floorToDouble();
+          await narrowTo(tester, middle);
+          if (standingOf(tester) == Standing.button) {
+            narrow = middle;
+          } else {
+            wide = middle;
+          }
+        }
+        await narrowTo(tester, narrow);
+        expect(standingOf(tester), Standing.button, reason: '⛔premise');
+        return narrow;
+      }
+
+      final without = await buttonFrom(null);
+      final with_ = await buttonFrom(batteryAt(100));
+      final room =
+          tester.getRect(inStrip(gauge)).right -
+          tester.getRect(inStrip(groupButton)).right;
+      expect(room, greaterThan(0), reason: '⛔premise: the gauge takes room');
+      expect(with_ - without, closeTo(room, 0.5));
+    });
+
+    testWidgets('says the charge in its icon and its percent — the bolt '
+        'while on power — and stands at one width whatever it says', (
+      tester,
+    ) async {
+      final battery = batteryAt(100);
+      await pumpAt(tester, 1200, battery: battery);
+      final place = tester.getRect(inStrip(gauge));
+      Finder inGauge(Finder what) =>
+          find.descendant(of: inStrip(gauge), matching: what);
+
+      expect(inGauge(find.byIcon(Icons.battery_full)), findsOneWidget);
+      expect(inGauge(find.text('100%')), findsOneWidget);
+      expect(wordsCutAcross(inStrip(gauge)), isEmpty, reason: 'whole');
+      for (final (percent, icon) in const [
+        (87, Icons.battery_6_bar),
+        (50, Icons.battery_4_bar),
+        (7, Icons.battery_0_bar),
+      ]) {
+        battery.value = (percent: percent, charging: false);
+        await tester.pump();
+        expect(inGauge(find.byIcon(icon)), findsOneWidget, reason: '$percent');
+        expect(inGauge(find.text('$percent%')), findsOneWidget);
+        expect(
+          tester.getRect(inStrip(gauge)),
+          place,
+          reason: 'the same place at $percent%',
+        );
+      }
+      battery.value = (percent: 42, charging: true);
+      await tester.pump();
+      expect(inGauge(find.byIcon(Icons.battery_charging_full)), findsOneWidget);
+      expect(inGauge(find.text('42%')), findsOneWidget);
+    });
+
+    testWidgets('a device without one keeps no place for it', (tester) async {
+      await pumpAt(tester, 1200);
+      expect(inStrip(gauge), findsNothing);
     });
   });
 }

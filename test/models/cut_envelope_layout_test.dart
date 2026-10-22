@@ -90,52 +90,6 @@ void main() {
     expect(placed.height, 100);
   });
 
-  test('inkBoxAt finds the box under a point and skips display-only ones', () {
-    final layout = CutEnvelopeLayout.fit(
-      form: form(1, const [
-        EnvelopeBox(
-          id: 'cell',
-          rect: EnvelopeRect(x: 0, y: 0, width: 1, height: 1),
-        ),
-        EnvelopeBox(
-          id: 'logo',
-          rect: EnvelopeRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5),
-          takesInk: false,
-        ),
-      ]),
-      paperWidth: 100,
-      paperHeight: 100,
-    );
-
-    expect(layout.inkBoxAt(10, 10)?.id, 'cell');
-    expect(
-      layout.inkBoxAt(75, 75)?.id,
-      'cell',
-      reason: 'the logo takes no ink, so the cell under it keeps the stroke',
-    );
-    expect(layout.inkBoxAt(-1, 10), isNull);
-  });
-
-  test('an inner box wins over the one it sits on', () {
-    final layout = CutEnvelopeLayout.fit(
-      form: form(1, const [
-        EnvelopeBox(
-          id: 'outer',
-          rect: EnvelopeRect(x: 0, y: 0, width: 1, height: 1),
-        ),
-        EnvelopeBox(
-          id: 'inner',
-          rect: EnvelopeRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5),
-        ),
-      ]),
-      paperWidth: 100,
-      paperHeight: 100,
-    );
-
-    expect(layout.inkBoxAt(50, 50)?.id, 'inner');
-    expect(layout.inkBoxAt(5, 5)?.id, 'outer');
-  });
-
   test('paper with no size is refused rather than dividing by zero', () {
     expect(
       () => CutEnvelopeLayout.fit(

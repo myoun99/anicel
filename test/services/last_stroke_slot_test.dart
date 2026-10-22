@@ -51,10 +51,12 @@ void main() {
           canvasSize: const CanvasSize(width: 8, height: 8),
         ),
         promotedTiles: const [],
+        end: CanvasPoint(x: 4, y: 4),
       ),
     );
 
     final held = slot.stroke!;
+    expect(held.end, CanvasPoint(x: 4, y: 4), reason: 'I-119');
     expect(held.sourceDabs, hasLength(1));
     expect(identical(held.strokePixels, pixels), isTrue);
     expect(held.strokeBounds, bounds);

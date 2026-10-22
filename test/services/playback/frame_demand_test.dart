@@ -241,9 +241,10 @@ void main() {
     });
 
     test('a run does not stand aside for the editor, and leads by what it '
-        'is told', () {
+        'is told — told nothing, its clock waits, and where the walk starts '
+        'is the warmer\'s to say', () {
       expect(playing().yieldsToEditing, isFalse);
-      expect(playing().leadFor(const Duration(seconds: 1)), 0);
+      expect(playing().leadFor(const Duration(seconds: 1)), isNull);
       expect(
         playing(
           lead: (composeTime) => composeTime.inMilliseconds ~/ 100,

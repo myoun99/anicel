@@ -36,6 +36,7 @@ import 'package:anicel/src/ui/widgets/static_raster.dart';
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/collect_garbage.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🔬C-ipad-crash ① (유저 2026-09-14): 「2000x1400정도의 소재를 2배크게,
 /// 작게 변형을 반복해봤는데 반복시마다 약 150mb가 늘어남 … 2200mb정도에서 다음
@@ -91,14 +92,11 @@ void main() {
     sequence: 0,
   );
 
-  Future<void> settle(WidgetTester tester) async {
-    for (var i = 0; i < 12; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 16)),
-      );
-      await tester.pump();
-    }
-  }
+  Future<void> settle(WidgetTester tester) => lendBothClocks(
+    tester,
+    rounds: 12,
+    beat: const Duration(milliseconds: 16),
+  );
 
   String mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
 

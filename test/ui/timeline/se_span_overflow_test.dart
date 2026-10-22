@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/dialogue_fit_paint.dart'
     show dialogueNaturalExtent;
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
@@ -67,40 +68,34 @@ void main() {
       Widget along(double extent) => axis == Axis.horizontal
           ? host(width: extent, height: cross, name: 'SE')
           : host(width: cross, height: extent, name: 'SE', axis: axis);
-      double extentOf(Finder finder) {
-        final size = tester.getSize(finder);
-        return axis == Axis.horizontal ? size.width : size.height;
-      }
+      double extentOf(Finder finder) =>
+          extentAlong(axis, tester.getSize(finder));
 
       await tester.pumpWidget(along(400));
-      final natural =
-          seNameBoxExtent +
-          dialogueNaturalExtent(
-            'せりふのテキスト',
-            axis: axis,
-            style: dialogueFitStyle(
-              tester.element(find.byType(SeSpanVisual)),
-              color: Colors.black,
-            ),
-            maxCrossExtent: cross,
-          );
-      expect(natural, lessThan(400), reason: 'fixture: 400 holds both');
+      // The words' own length: they have the whole block (F-358, 10-19),
+      // and narrow once the block is shorter than they are.
+      final natural = dialogueNaturalExtent(
+        'せりふのテキスト',
+        axis: axis,
+        style: dialogueFitStyle(
+          tester.element(find.byType(SeSpanVisual)),
+          color: Colors.black,
+        ),
+        maxCrossExtent: cross,
+      );
+      expect(natural, lessThan(400), reason: 'fixture: 400 holds them');
+      expect(natural, greaterThan(20), reason: 'fixture: 20 does not');
 
       for (final extent in [natural, natural * 0.75, natural / 2, 20.0, 6.0]) {
         await tester.pumpWidget(along(extent));
         final chip = extentOf(find.bySemanticsLabel(RegExp('SE name')));
         final dialogue = extentOf(find.byType(DialogueFitText));
-        expect(chip + dialogue, closeTo(extent, 1e-6), reason: 'at $extent');
+        expect(dialogue, closeTo(extent, 1e-6), reason: 'at $extent');
         expect(
           chip / seNameBoxExtent,
           closeTo(extent / natural, 1e-6),
-          reason: 'at $extent: the chip narrows as the block does — ↩️it '
-              'kept its 16 until the block was under 32',
-        );
-        expect(
-          dialogue / (natural - seNameBoxExtent),
-          closeTo(extent / natural, 1e-6),
-          reason: 'at $extent: by the ratio the dialogue narrows by',
+          reason: 'at $extent: the chip narrows by the ratio the dialogue '
+              'narrows by — ↩️it kept its 16 until the block was under 32',
         );
       }
     });

@@ -89,6 +89,11 @@ abstract class ToolbarPanelContext {
   bool get canToggleMark;
   void toggleMark();
 
+  /// The ● every n koma down a block, from its head (I-58) — the
+  /// selection's blocks, else the block under this panel's cursor.
+  bool get canMarkEvery;
+  void markEvery(int every);
+
   /// The 1/2/3/4/N comma press: the selection's blocks, else THE BLOCK
   /// UNDER THIS PANEL'S CURSOR — on the storyboard that is the standing
   /// row's block at the global playhead, cut blocks included (컷블록 위
@@ -227,12 +232,16 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// WHAT the copy takes, on the pill's one ladder ([pillSubjectOn]): the
   /// selected rows, else the frame axis — 「선택안하면 현재프레임, 선택하면
   /// 해당 선택한 소재가 기준임」 (I-45's answer, which every verb here
-  /// follows).
+  /// follows). On the frame axis a LANE's keys come first, as Delete's do
+  /// (F-87): standing on a lane, the frame board has no place
+  /// ([FrameClipboard.timelinePlace]) and the key board answers (F-388).
   PillSubject get _copySubject => pillSubjectOn(
     cuts: false,
     layers: () =>
         rowsAreThisPanels && session.layerClipboard.canCopySelectedRows,
-    cells: () => session.clipboard.canCopyAt(clipboardPlace),
+    cells: () =>
+        session.keyClipboard.canCopy ||
+        session.clipboard.canCopyAt(clipboardPlace),
   );
 
   @override
@@ -243,6 +252,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
     switch (_copySubject) {
       case PillSubject.layers:
         session.layerClipboard.copySelectedRows();
+      case PillSubject.cells when session.keyClipboard.canCopy:
+        session.keyClipboard.copy();
       case PillSubject.cells:
         session.clipboard.copyAt(clipboardPlace);
       case PillSubject.cuts:
@@ -258,9 +269,15 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   bool get _pastesRows =>
       rowsAreThisPanels && session.layerClipboard.hasLayerClipboard;
 
+  /// Whether a paste here puts down KEYS: the hand holds them (F-388) — on
+  /// the lanes the press stands on, the frame paste's way.
+  bool get _pastesKeys => session.keyClipboard.holdsKeys;
+
   @override
   bool get canPasteIndependentFrame => _pastesRows
       ? session.layerClipboard.canPasteRows
+      : _pastesKeys
+      ? session.keyClipboard.canPasteIndependent
       : session.clipboard.canPasteIndependentAt(clipboardPlace);
 
   /// The board an independent paste here puts down — the one whose media a
@@ -270,6 +287,10 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
 
   @override
   void pasteIndependentFrame() {
+    if (_pastesKeys) {
+      session.keyClipboard.pasteIndependent();
+      return;
+    }
     final board = independentPasteBoard;
     // The place is asked when the paste LANDS — after the wait, where one
     // is held.
@@ -294,6 +315,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   @override
   bool get canPasteLinkedFrame => _pastesRows
       ? session.layerClipboard.canPasteRowsLinked
+      : _pastesKeys
+      ? session.keyClipboard.canPasteLinked
       : session.clipboard.canPasteLinkedAt(clipboardPlace);
 
   /// On a row the copy was not taken from it links by NAME, and asks before
@@ -302,7 +325,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// nothing until it is told to join.
   ///
   /// ROWS in hand are linked whole, each beside the row you stand on, and
-  /// have nothing to ask.
+  /// have nothing to ask. KEYS ask the same way, of a name the lane they
+  /// land on already holds at another value (F-388).
   @override
   void pasteLinkedFrame() {
     if (_pastesRows) {
@@ -311,11 +335,19 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
     }
     final context = waitIn;
     if (context == null) {
-      session.clipboard.pasteLinkedAt(clipboardPlace);
+      _pastesKeys
+          ? session.keyClipboard.pasteLinked()
+          : session.clipboard.pasteLinkedAt(clipboardPlace);
       return;
     }
     unawaited(
-      pasteLinkedAskingFirst(context, session, place: () => clipboardPlace),
+      _pastesKeys
+          ? pasteLinkedKeysAskingFirst(context, session)
+          : pasteLinkedAskingFirst(
+              context,
+              session,
+              place: () => clipboardPlace,
+            ),
     );
   }
 }
@@ -383,6 +415,12 @@ class TimelineToolbarPanelContext
   void toggleMark() => session.layerMarks.toggleMarkAtCurrentFrame();
 
   @override
+  bool get canMarkEvery => session.layerMarks.canMarkEvery;
+
+  @override
+  void markEvery(int every) => session.layerMarks.markEvery(every);
+
+  @override
   bool get canSetComma => session.storyboardCursor.canSetCommaForTimelineCursor;
 
   @override
@@ -434,6 +472,18 @@ sealed class StoryboardEditTarget {
 /// cursor — the same rename dialog the shared ladder's cuts rung opens.
 class StoryboardEditCut extends StoryboardEditTarget {
   const StoryboardEditCut();
+}
+
+/// The selected ROWS — the shared ladder's rows rung, whose Edit is the
+/// rename the timeline's opens (`renameableSelectedLayerIds`): an S row, a
+/// conte row this rail selects.
+///
+/// 🗣️F-359 (유저 2026-10-14): 「콘티패널에서 s행선택하고 삭제/편집버튼
+/// 활성화안됨. 타임라인패널은 되는데. 그러니 통일하고」. ↩️This ladder had
+/// no rows rung: a selected S row fell through to the block under the
+/// cursor.
+class StoryboardEditRows extends StoryboardEditTarget {
+  const StoryboardEditRows();
 }
 
 /// The SE block under the cursor on the standing S row, addressed on the
@@ -675,6 +725,12 @@ class StoryboardToolbarPanelContext
   void toggleMark() => _timelinesCells?.toggleMark();
 
   @override
+  bool get canMarkEvery => _timelinesCells?.canMarkEvery ?? false;
+
+  @override
+  void markEvery(int every) => _timelinesCells?.markEvery(every);
+
+  @override
   bool get canSetComma => session.storyboardCursor.canSetCommaForStoryboardCursor;
 
   @override
@@ -768,6 +824,10 @@ class StoryboardToolbarPanelContext
     // even cover (storyboard-band-names-no-cut, 2026-09-26).
     if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       return const StoryboardEditCut();
+    }
+    // The rows rung, second as on the shared ladder (F-359).
+    if (session.layerVerbs.renameableSelectedLayerIds().isNotEmpty) {
+      return const StoryboardEditRows();
     }
     // …and a band that names rows this press would MISS claims it before
     // the standing row speaks.
@@ -879,6 +939,11 @@ class StoryboardToolbarPanelContext
     if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       return PillSubject.cuts;
     }
+    // The rows rung, second as on the shared ladder (F-359) — its press
+    // confirms first ([deletePress]).
+    if (session.layerVerbs.deletableSelectedLayerIds().isNotEmpty) {
+      return PillSubject.layers;
+    }
     if (session.cells.canDeleteCellForSelection) {
       return PillSubject.cells;
     }
@@ -896,7 +961,8 @@ class StoryboardToolbarPanelContext
 
   @override
   void deleteSelectionSubject() {
-    if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
+    if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty ||
+        session.layerVerbs.deletableSelectedLayerIds().isNotEmpty) {
       session.deleteSelectionSubject();
       return;
     }
@@ -910,10 +976,17 @@ class StoryboardToolbarPanelContext
     session.storyboardCursor.deleteBlockAtStoryboardCursor();
   }
 
-  /// A cell band, or one of this rail's own.
+  /// A cell band, or one of this rail's own — or a LANE range.
+  ///
+  /// ↩️F-87: the lane range was not among them. A range over an S row's lane
+  /// stands the rail on that ROW, so with no key under it the press fell to
+  /// the cursor and deleted the row's sound — the lane's layer answering for
+  /// the lane, the bug the timeline's ladder closed on 09-16
+  /// ([CellVerbs.canDeleteCellAtCurrentFrame]).
   bool get _bandClaimsThePress =>
       session.cells.cellSelectionClaimsSubject ||
-      session.trackFrameRangeSelection.value != null;
+      session.trackFrameRangeSelection.value != null ||
+      session.laneRangeSelection.value != null;
 
   /// A band of this rail that does not cover the row the press lands on.
   bool get _bandMissesTheStandingRow {

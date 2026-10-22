@@ -19,6 +19,8 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, partAcross, startAlong;
 import 'package:anicel/src/ui/timeline/rail_eyes.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
@@ -168,16 +170,18 @@ void main() {
         final name = tester.getRect(
           find.named('$prefix-layer-name-${a.value}'),
         );
-        final letters = orientation == TimelineOrientation.vertical
-            ? Offset(name.center.dx, name.top + 3)
-            : Offset(name.left + 3, name.center.dy);
+        final axis = orientation.axis;
+        Offset intoTheName(double by) => offsetAlong(
+          axis,
+          along: startAlong(axis, name) + by,
+          across: partAcross(axis, name.center),
+        );
+        final letters = intoTheName(3);
         // The ground half the double click's reach past them — its slop is
         // the frame block's (kDoubleTapSlop), and a label is wider than
         // that since the lane values took their hands.
         const pastTheLetters = kDoubleTapSlop / 2;
-        final ground = orientation == TimelineOrientation.vertical
-            ? Offset(name.center.dx, name.top + pastTheLetters)
-            : Offset(name.left + pastTheLetters, name.center.dy);
+        final ground = intoTheName(pastTheLetters);
         expect(
           name.contains(ground),
           isTrue,

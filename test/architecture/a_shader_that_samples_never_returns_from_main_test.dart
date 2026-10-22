@@ -5,6 +5,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/source_brackets.dart';
+
 /// 🚨A FRAGMENT SHADER THAT SAMPLES A TEXTURE HAS NO `return` IN `main()`.
 ///
 /// Windows runs Impeller as GLES through ANGLE, which hands every shader to
@@ -29,7 +31,7 @@ void main() {
       if (!RegExp(r'\bsampler2D\b').hasMatch(source)) {
         continue;
       }
-      final body = mainBody(source);
+      final body = bodyOf(source, _main);
       expect(body, isNotNull, reason: '${file.path} has no main() to read');
       sampling.add(file.uri.pathSegments.last);
       if (RegExp(r'\breturn\b').hasMatch(body!)) {
@@ -60,37 +62,23 @@ void main() {
   fragColor = src;
 }
 ''';
-    final body = mainBody(withoutComments(crashShape))!;
+    final body = bodyOf(withoutComments(crashShape), _main)!;
     expect(body, contains('return;'));
     // The inner braces did not end main early: the body runs to its end.
-    expect(body.trim(), endsWith('fragColor = src;'));
+    expect(
+      body.substring(0, body.length - 1).trimRight(),
+      endsWith('fragColor = src;'),
+    );
     // A `return` inside a comment is not one.
     expect(
-      mainBody(withoutComments('void main() { // return;\n /* return; */ }')),
+      bodyOf(
+        withoutComments('void main() { // return;\n /* return; */ }'),
+        _main,
+      ),
       isNot(contains('return')),
     );
   });
 }
 
-String withoutComments(String source) =>
-    source.replaceAll(RegExp(r'//[^\n]*|/\*[\s\S]*?\*/'), '');
-
-/// The text between `main(...)`'s braces, or null when there is no main.
-String? mainBody(String source) {
-  final head = RegExp(r'\bmain\s*\([^)]*\)\s*\{').firstMatch(source);
-  if (head == null) {
-    return null;
-  }
-  var depth = 1;
-  var at = head.end;
-  while (at < source.length && depth > 0) {
-    final char = source[at];
-    if (char == '{') {
-      depth += 1;
-    } else if (char == '}') {
-      depth -= 1;
-    }
-    at += 1;
-  }
-  return source.substring(head.end, depth == 0 ? at - 1 : at);
-}
+/// Where `main(...)` begins; its body is read the one way ([bodyOf]).
+final _main = RegExp(r'\bmain\s*\([^)]*\)');

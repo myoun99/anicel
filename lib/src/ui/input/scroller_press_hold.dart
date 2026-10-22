@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../services/input/pen_sidecars.dart';
+import '../timeline/axis_turn.dart' show partAlong;
 import 'scroller_drive.dart';
 
 /// 🚨★★★**A PRESS THAT LANDS IN A SCROLLER IS THAT SCROLLER'S** — the
@@ -205,7 +206,7 @@ class _HeldAcross extends PanGestureRecognizer {
   @override
   void handleEvent(PointerEvent event) {
     if (event is PointerMoveEvent) {
-      _moved += across == Axis.horizontal ? event.delta.dx : event.delta.dy;
+      _moved += partAlong(across, event.delta);
     }
     super.handleEvent(event);
   }

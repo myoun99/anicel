@@ -8,20 +8,18 @@ import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
-import '../models/track_row_twirls.dart';
 import '../services/command.dart';
 import '../services/editing/default_layer_helpers.dart';
 import '../services/commands/cut_command_input_planner.dart';
+import '../services/commands/link_mirror.dart' show eyeMirrorRows;
 import '../services/commands/update_layer_blend_mode_command.dart';
 import '../services/commands/update_layer_collapsed_command.dart';
 import '../services/commands/update_layer_display_command.dart';
-import '../services/commands/update_layer_lane_group_expanded_command.dart';
-import '../services/commands/update_layer_lanes_expanded_command.dart';
 import '../services/commands/update_layer_opacity_command.dart';
-import '../services/commands/update_track_row_twirls_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_lookup.dart';
 import '../services/project_repository.dart';
+import 'row_twirl_writer.dart';
 
 class LayerController {
   LayerController({
@@ -252,7 +250,7 @@ class LayerController {
     required List<LayerId> layerIds,
     required bool visible,
   }) => _executeDisplayBatch(
-    layerIds: layerIds,
+    layerIds: eyeMirrorRows(_repository.requireProject(), layerIds),
     debugLabel: 'Set layer visibility',
     apply: (layer) =>
         layer.isVisible == visible ? layer : layer.copyWith(isVisible: visible),
@@ -319,22 +317,23 @@ class LayerController {
     }
   }
 
-  /// The cut a row's command is addressed in: the cut that HOLDS it, else
-  /// this controller's — a track's own row is held by none, and takes the
-  /// active cut as it always did (null in a gap: nothing to address it in).
+  /// The cut a row's command is addressed in ([cutWritingRow]): the cut
+  /// that HOLDS it, else this controller's — a track's own row is held by
+  /// none, and takes the active cut as it always did (null in a gap:
+  /// nothing to address it in).
   ///
   /// ↩️It was this controller's cut for every row, 「nothing in the gap
   /// state」. The storyboard draws ONE head for a track's conte rows (I-73)
   /// and presses it under whichever cut is active, or in a gap: the row is
   /// some cut's, and that cut is where its link group and its seat are.
   CutId? _cutOfRow(LayerId layerId) =>
-      cutIdOfLayer(_repository.requireProject(), layerId) ?? _cutId;
+      cutWritingRow(_repository.requireProject(), layerId, standing: _cutId);
 
   /// [command] for one row, addressed in its own cut ([_cutOfRow]) so it
   /// reaches the row's head — nothing for a track's own row in a gap, which
   /// no cut addresses. What the row's opacity, blend, group fold and
   /// twirls are each written through (F-360 brought the third and fourth)
-  /// — a track's own row's twirls aside ([_twirled]).
+  /// — a track's own row's twirls aside ([RowTwirlWriter]).
   void _executeInItsCut(
     LayerId layerId,
     Command Function(CutId cutId) command,
@@ -384,14 +383,12 @@ class LayerController {
     // row takes it, and the track's conte structure lays it on the rest
     // (F-343, `trackWithItsConteLaid`) — ↩️where every row at the seat was
     // written here.
-    _historyManager.execute(
-      UpdateLayerDisplayCommand(
-        repository: _repository,
-        layerId: layerId,
-        debugLabel: 'Toggle layer visibility',
-        apply: (layer) => layer.copyWith(isVisible: nextVisible),
-      ),
-    );
+    //
+    // 🚨AND A TRACK'S CAMERAS WEAR ONE EYE — the camera view's switch
+    // (F-363, 유저 2026-10-15: 「레이어가 눈이랑 불투명도 바꾸면 언두
+    // 저장되니까. 기본적으로 레이어 버튼은 그게 기준」): written to every one
+    // of them ([eyeMirrorRows]) as any set of eyes is.
+    setLayersVisible(layerIds: [layerId], visible: nextVisible);
   }
 
   /// The layer-list twirl, persisted like CSP — the LINK GROUP'S, one fold
@@ -430,77 +427,13 @@ class LayerController {
     ),
   );
 
-  /// The row's property-lane twirl — the fx and Transform lanes live under
-  /// it — on every row of its head ([UpdateLayerLanesExpandedCommand]), or
-  /// on a track's own row alone ([_twirled]).
-  void toggleLayerLanes(LayerId layerId) => _twirled(
-    layerId,
-    onItsTrack: (was) => (
-      lanesExpanded: !was.lanesExpanded,
-      expandedLaneGroups: was.expandedLaneGroups,
-    ),
-    inItsCut: (cutId) => UpdateLayerLanesExpandedCommand(
-      repository: _repository,
-      cutId: cutId,
-      layerId: layerId,
-      expanded: !requireLayerAnywhere(
-        _repository.requireProject(),
-        layerId,
-      ).lanesExpanded,
-    ),
+  /// Where this cut's rows' twirls are written — the property lanes and
+  /// the groups among them, a track's own rows on their track.
+  late final RowTwirlWriter twirls = RowTwirlWriter(
+    repository: _repository,
+    historyManager: _historyManager,
+    cutOfRow: _cutOfRow,
   );
-
-  /// [laneId]'s group inside the row's twirl-down, twirled to [expanded] on
-  /// every row of its head ([UpdateLayerLaneGroupExpandedCommand]), or on a
-  /// track's own row alone ([_twirled]).
-  void setLayerLaneGroupExpanded(
-    LayerId layerId,
-    String laneId, {
-    required bool expanded,
-  }) => _twirled(
-    layerId,
-    onItsTrack: (was) => (
-      lanesExpanded: was.lanesExpanded,
-      expandedLaneGroups: expanded
-          ? {...was.expandedLaneGroups, laneId}
-          : ({...was.expandedLaneGroups}..remove(laneId)),
-    ),
-    inItsCut: (cutId) => UpdateLayerLaneGroupExpandedCommand(
-      repository: _repository,
-      cutId: cutId,
-      layerId: layerId,
-      laneId: laneId,
-      expanded: expanded,
-    ),
-  );
-
-  /// Where [rowId]'s twirl is written, in one step either way: a TRACK's
-  /// own row — an S row, the V row by its lane carrier ([trackRowTwirlsOf])
-  /// — on its track, as [onItsTrack] turns it
-  /// ([UpdateTrackRowTwirlsCommand]); a row a cut holds on its head, by
-  /// [inItsCut] ([_executeInItsCut]).
-  ///
-  /// ⚠️A track's own row not through [_executeInItsCut]: no cut holds it,
-  /// and in a gap there is none to address it in — the storyboard, which
-  /// stands there, twirls its S and V rows all the same.
-  void _twirled(
-    LayerId rowId, {
-    required RowTwirls Function(RowTwirls was) onItsTrack,
-    required Command Function(CutId cutId) inItsCut,
-  }) {
-    final was = trackRowTwirlsOf(_repository.requireProject(), rowId);
-    if (was == null) {
-      _executeInItsCut(rowId, inItsCut);
-      return;
-    }
-    _historyManager.execute(
-      UpdateTrackRowTwirlsCommand(
-        repository: _repository,
-        rowId: rowId,
-        twirls: onItsTrack(was),
-      ),
-    );
-  }
 
   /// The audio counterpart of [toggleLayerVisibility]: silences the SE
   /// row's sounds without touching them.

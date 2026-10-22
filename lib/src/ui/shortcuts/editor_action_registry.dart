@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,6 +11,7 @@ import '../../models/layer_effect.dart' show EffectKind;
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/pixel_clipboard_verb.dart';
+import '../../native/window_full_screen.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../brush/brush_press.dart';
 import '../brush/brush_tool_state.dart'
@@ -59,6 +61,7 @@ class EditorActionDefinition {
     this.brushPress,
     this.menuRow = false,
     this.panelButton = false,
+    this.platforms,
   }) : composedName = null;
 
   /// An action whose name is COMPOSED rather than tabled: [name] says it in
@@ -81,7 +84,8 @@ class EditorActionDefinition {
        pixelVerb = null,
        pixelClipboardVerb = null,
        sheetMove = null,
-       brushPress = null;
+       brushPress = null,
+       platforms = null;
 
   final String id;
   final String label;
@@ -192,6 +196,17 @@ class EditorActionDefinition {
   /// (`PanelKeys` — the tool in hand's panels, and the panels of no tool).
   /// Like [menuRow], it has no road of its own to what the button does.
   final bool panelButton;
+
+  /// The platforms the action is offered on — null: every one. A platform
+  /// with no button for the action has no key for it either: the shortcut
+  /// list does not show it there ([offeredHere]).
+  ///
+  /// 🗣️I-103-Q2 (유저 2026-10-16): the window's full screen is a switch on
+  /// the desktops only — 「아이패드 · 안드로이드에는 이 줄이 없다」.
+  final Set<TargetPlatform>? platforms;
+
+  /// Whether this platform offers the action ([platforms]).
+  bool get offeredHere => platforms?.contains(defaultTargetPlatform) ?? true;
 }
 
 /// The move that walks [arrow] on the timeline: its one-frame step when
@@ -251,6 +266,8 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
         // 2026-10-03): 「올가미선택을 x로두고 z는 비워두도록. 언두 실수할때
         // z만 누르거나하니까」 — so bare Z presses NOTHING, on purpose: it
         // is the key a hand lands on when Ctrl slips off an undo.
+        // ↩️I-119 holds it for the line from the last stroke, which lays
+        // nothing until a click — asked on the board (I-119-Q3).
         if (verb == CanvasTool.select && shape == CanvasShapeKind.lasso)
           const SingleActivator(LogicalKeyboardKey.keyX),
         // 🗣️I-63 ⑤ (유저 2026-10-04, F-279): 「올가미채우기를 y로」.
@@ -340,7 +357,7 @@ const addLayerKinds = [
 
 /// The English of [EditorActionIds.layerAdd], which the kinds' names are
 /// composed over as well.
-const _addLayerLabel = 'Add Layer';
+const _addLayerLabel = 'New Layer';
 
 /// The add menu's kinds as actions, one per kind it offers.
 ///
@@ -668,8 +685,17 @@ String addEffectActionLabel(EffectKind kind, AppLanguage language) =>
 /// made from this list.
 ///
 /// 🗣️backlog-21-Q1 (유저 2026-10-08): 「「다른 이름으로 저장」에 둘째 단 —
-/// 프로젝트(.anicel) · PNG · JPG」. The two the answer names, and no more.
-const saveAsImageFormats = [ExportStillFormat.png, ExportStillFormat.jpg];
+/// 프로젝트(.anicel) · PNG · JPG」 — and I-117-Q1 (유저 2026-10-21): the
+/// four formats the export window learned then, after them: 「넷 다 넣음」.
+/// The formats the answers name, and no more.
+const saveAsImageFormats = [
+  ExportStillFormat.png,
+  ExportStillFormat.jpg,
+  ExportStillFormat.bmp,
+  ExportStillFormat.tga,
+  ExportStillFormat.tiff,
+  ExportStillFormat.webp,
+];
 
 /// Save As's picture rows as actions, one per format it writes.
 ///
@@ -709,6 +735,9 @@ abstract final class EditorActionIds {
   /// shortcut ([EditorActionDefinition.hold]).
   static const canvasPanHold = 'canvas-pan-hold';
   static const canvasRotateHold = 'canvas-rotate-hold';
+
+  /// 「직전 획에서 직선」 (I-119), held as the pan is.
+  static const canvasLineHold = 'canvas-line-hold';
   static const playbackToggle = 'playback-toggle';
 
   /// The sill transport's 「처음으로」 (F-261).
@@ -744,6 +773,7 @@ abstract final class EditorActionIds {
   static const toolCutStamp = 'tool-cut-stamp';
   static const selectionDeselect = 'selection-deselect';
   static const selectionInvert = 'selection-invert';
+  static const selectionInvertInCanvas = 'selection-invert-in-canvas';
   static const layerUp = 'layer-up';
   static const layerDown = 'layer-down';
   static const selectionTransformCancel = 'selection-transform-cancel';
@@ -772,6 +802,7 @@ abstract final class EditorActionIds {
   static const cutStampReset = 'cut-stamp-reset';
   static const cutStampRegisterTip = 'cut-stamp-register-tip';
   static const guideAddVanishingPoint = 'guide-add-vanishing-point';
+  static const guideRasterize = 'guide-rasterize';
   static const textCentreAcross = 'text-centre-across';
   static const textCentreDown = 'text-centre-down';
   static const textIntoDrawing = 'text-into-drawing';
@@ -799,6 +830,7 @@ abstract final class EditorActionIds {
   static const frameNewDrawing = 'frame-new-drawing';
   static const frameBlankExposure = 'frame-blank-exposure';
   static const frameToggleMark = 'frame-toggle-mark';
+  static const frameMarkEvery = 'frame-mark-every';
   static const timelinePushBlocks = 'timeline-push-blocks';
   static const timelinePullBlocks = 'timeline-pull-blocks';
 
@@ -872,6 +904,9 @@ abstract final class EditorActionIds {
   static const toolRailOnRight = 'window-tool-rail-right';
   static const regionOnTop = 'window-region-on-top';
 
+  /// The window's full screen (I-103-Q2) — the desktops' only.
+  static const fullScreen = 'window-full-screen';
+
   /// The floating region's fold chevron (I-40).
   static const regionFold = 'window-region-fold';
   static const resetLayout = 'window-reset-layout';
@@ -896,7 +931,6 @@ abstract final class EditorActionIds {
   static const cutSettings = 'cut-settings';
   static const cutCanvasSize = 'cut-canvas-size';
   static const cutConvertLinked = 'cut-convert-linked';
-  static const cutPinThumbnail = 'cut-pin-thumbnail';
   static const cutMoveLeft = 'cut-move-left';
   static const cutMoveRight = 'cut-move-right';
   static const cutCopyAeCamera = 'cut-copy-ae-camera';
@@ -1094,6 +1128,22 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true),
     ],
+  ),
+  // 🗣️I-119 (유저 2026-10-21): 「브러시 도구(브러시,지우개) 전용기능,
+  // 컨트롤키 누르고있으면 저번에 찍은 마지막 dab? 점 부터 현재 호버중인
+  // 커서까지 라이브로 직선 보여주고 … 거기서 찍으면 직선 그림」 — held, as
+  // the pan is. ↩️Asked for on Ctrl, which is every shortcut's modifier
+  // too; I-119-Q1: 「그럼 컨트롤 말고 다른 키로 배치하자. 추천대로」 — Z, the
+  // one letter left free under the left hand. ⚠️Bare Z was left free ON
+  // PURPOSE (I-63, the lasso tile's key above); whether the line may have
+  // it is asked on the board (I-119-Q3). Clip Studio and TVPaint have no
+  // key for this, so their presets leave it without one (F-417-Q1).
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasLineHold,
+    label: 'Line from the Last Stroke (hold)',
+    shelf: ShortcutShelf.edit,
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyZ)],
+    hold: true,
   ),
   // I-40: the stamp's three buttons — under Edit, where a paste in place
   // and a picture made a brush stand in the programs people come from.
@@ -1445,14 +1495,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // I-40: the guide list's two ＋ — one a kind of guide.
   const EditorActionDefinition(
     id: EditorActionIds.guideAddSymmetry,
-    label: 'Add symmetry guide',
+    label: 'New symmetry guide',
     shelf: ShortcutShelf.guides,
     defaultActivators: [],
     panelButton: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.guideAddPerspective,
-    label: 'Add perspective guide',
+    label: 'New perspective guide',
     shelf: ShortcutShelf.guides,
     defaultActivators: [],
     panelButton: true,
@@ -1461,6 +1511,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   EditorActionDefinition.composed(
     id: EditorActionIds.guideAddVanishingPoint,
     name: (language) => AppStrings.of(language).guideAddVanishingPoint,
+    shelf: ShortcutShelf.guides,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  // …and its 래스터라이즈 (vanishing-point-types-Q5).
+  EditorActionDefinition.composed(
+    id: EditorActionIds.guideRasterize,
+    name: (language) => AppStrings.of(language).guideRasterize,
     shelf: ShortcutShelf.guides,
     defaultActivators: const [],
     panelButton: true,
@@ -1572,7 +1630,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 🗣️선택 반전 is not pressed AS the settings: it answers whatever tool is
   // in hand, as 선택 해제 does (유저 2026-10-11, I-40-Q8: 「어느
   // 도구에서나(선택 해제처럼)」). Its button keeps its place in the Select
-  // tool's settings and runs the same verb.
+  // tool's settings and runs the same verb. Its two walls are two actions
+  // (I-108); the keys it had stay with the wall it had.
+  EditorActionDefinition.composed(
+    id: EditorActionIds.selectionInvertInCanvas,
+    name: (language) => AppStrings.of(language).selectionInvertInCanvas,
+    shelf: ShortcutShelf.selection,
+    defaultActivators: const [],
+  ),
   EditorActionDefinition.composed(
     id: EditorActionIds.selectionInvert,
     name: (language) => AppStrings.of(language).selectionInvert,
@@ -1655,9 +1720,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     zoomsView: true,
   ),
+  // ↩️F-381: 1:1 put the whole view back, and was named for it; it lands the
+  // zoom alone now. ⛔The id keeps the old words — saved shortcuts are bound
+  // to the id, not to the label.
   const EditorActionDefinition(
     id: EditorActionIds.canvasResetView,
-    label: 'Reset Canvas View (100%)',
+    label: 'Reset Canvas Zoom (100%)',
     shelf: ShortcutShelf.view,
     defaultActivators: [],
     zoomsView: true,
@@ -1734,7 +1802,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // next frame, the nearest key that program gives the verb.
   const EditorActionDefinition(
     id: EditorActionIds.frameNewDrawing,
-    label: 'Add Frame',
+    label: 'New Frame',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyI, shift: true)],
   ),
@@ -1750,15 +1818,27 @@ final List<EditorActionDefinition> editorActionDefinitions = [
       SingleActivator(LogicalKeyboardKey.keyN, control: true),
     ],
   ),
+  // 🗣️I-58 (유저 2026-10-18): 「x버튼은 비우기 … 마크 점은 중간나누기
+  // 마크」 — each named for the button it presses. ↩️They read 'Blank
+  // Exposure' and 'Toggle Mark'.
   const EditorActionDefinition(
     id: EditorActionIds.frameBlankExposure,
-    label: 'Blank Exposure',
+    label: 'Clear',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameToggleMark,
-    label: 'Toggle Mark',
+    label: 'In-between Mark',
+    shelf: ShortcutShelf.framePill,
+    defaultActivators: [],
+  ),
+  // 🗣️I-58 (유저 2026-10-01): the ● every n koma — 「중간나누기 마크
+  // 자동추가」 — from each selected block's head, else from the playhead's
+  // cell (F-402). No key was said for it.
+  const EditorActionDefinition(
+    id: EditorActionIds.frameMarkEvery,
+    label: 'Auto-add In-between Marks',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
@@ -1810,6 +1890,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // order: 컷 · 레이어 · 프레임. Each IS its row and is pressed as the row
   // ([EditorActionDefinition.menuRow]) on the panel being worked in. None has
   // a key: no key was ever said for one.
+  // 🗣️I-58 (유저 2026-10-18): 「컷 추가버튼은 새 컷이고 레이어는 레이어
+  // 추가고 프레임은 추가임 … 통일(레이어 추가 이런식으로 ㅁㅁ 추가. ㅁㅁ
+  // 삭제)」 — and at 12:31, the one form chosen: 「ㅁㅁ 추가말고 새 ㅁㅁ로
+  // 하자」. Every verb that makes a thing reads 「새 ㅁㅁ」 (New …), its pair
+  // 「ㅁㅁ 삭제」. ↩️It read 'New cut', then 'Add cut' (the first half, before
+  // the form was chosen).
   const EditorActionDefinition(
     id: EditorActionIds.cutNew,
     label: 'New cut',
@@ -1862,16 +1948,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.cutConvertLinked,
     label: 'Convert to linked cut…',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  // One name for the switch, and the row's check says which way it stands.
-  // ↩️The row read 「Pin thumbnail frame」 or 「Unpin thumbnail frame」 by its
-  // state, in English in every language.
-  const EditorActionDefinition(
-    id: EditorActionIds.cutPinThumbnail,
-    label: 'Pin thumbnail frame',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
@@ -1962,10 +2038,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     menuRow: true,
   ),
   // The frame pill's standing switch (F-61) — a button, not a row, so the
-  // shell presses what the button presses.
+  // shell presses what the button presses. 🗣️I-58 (유저 2026-10-18): 「빈
+  // 칸에 그리면 프레임 자동 생성은 프레임 자동 생성」. ↩️It read 'Make a
+  // frame where there is none'.
   const EditorActionDefinition(
     id: EditorActionIds.frameAutoCreate,
-    label: 'Make a frame where there is none',
+    label: 'Auto-create Frames',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
@@ -2101,6 +2179,17 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     menuRow: true,
   ),
+  // 🗣️I-103-Q2 (유저 2026-10-16): a row of the workspace drawer and a row of
+  // this list. Its default key waits on I-103-Q3 — the F11 the question
+  // named is the overlay blend's (I-31's F1–F12, in order).
+  const EditorActionDefinition(
+    id: EditorActionIds.fullScreen,
+    label: 'Full screen',
+    shelf: ShortcutShelf.panels,
+    defaultActivators: [],
+    menuRow: true,
+    platforms: WindowFullScreen.platforms,
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.regionFold,
     label: 'Fold / unfold the timeline region',
@@ -2114,4 +2203,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     menuRow: true,
   ),
+];
+
+/// The registry as this platform offers it — every action but those of a
+/// button it has none of ([EditorActionDefinition.offeredHere]): what the
+/// shortcut list holds (`EditorShortcutBindings`).
+List<EditorActionDefinition> editorActionsHere() => [
+  for (final definition in editorActionDefinitions)
+    if (definition.offeredHere) definition,
 ];

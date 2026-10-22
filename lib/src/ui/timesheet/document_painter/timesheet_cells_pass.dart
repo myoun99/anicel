@@ -72,35 +72,6 @@ class _TimesheetCellsPass {
     return (first.clamp(0, rowCount), last.clamp(0, rowCount));
   }
 
-  /// [firstRow], walked back to the start of the span that reaches it.
-  ///
-  /// 🗣️F-78 (유저 2026-09-11): 「타임시트의 se행. se블록의 이름란이 뷰포트에서
-  /// 안보이면 대사 텍스트가 사라짐」. A span's START cell writes down the
-  /// whole span — an SE entry its name and dialogue, a hold chain its word, a
-  /// repeat chain its word — so culling the start row dropped ink the clip
-  /// would have kept: the one thing [_rowRange] may not do. The rows a word
-  /// runs down read as EMPTY, so the walk steps over empty rows up to the
-  /// first cell that says where its span is.
-  int _spanStartRow(List<TimesheetCell> cells, int startFrame, int firstRow) {
-    for (var row = firstRow; row >= 0; row -= 1) {
-      final frame = startFrame + row;
-      if (frame >= cells.length) {
-        return firstRow;
-      }
-      final cell = cells[frame];
-      final length = cell.spanLength;
-      if (length == null) {
-        if (cell.kind == TimesheetCellKind.empty) {
-          continue;
-        }
-        return firstRow;
-      }
-      final start = row - (cell.spanOffset ?? 0);
-      return start + length > firstRow ? math.max(0, start) : firstRow;
-    }
-    return firstRow;
-  }
-
   void paintHalf(
     Canvas canvas, {
     required int pageIndex,
@@ -379,7 +350,19 @@ class _TimesheetCellsPass {
       final columnLeft = left + _painter.layout.columnLeftInHalf(column);
       final columnWidth = _painter.layout.columnWidthFor(spec.kind);
       final centerX = columnLeft + columnWidth / 2;
-      final (firstRow, lastRow) = _rowRange(rowsTop, rowCount);
+      final seColumn = spec.kind == TimesheetColumnKind.se;
+      // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
+      // 엔드라인) 넘어가는건 안보이게하고」 — an SE column's rows end at the
+      // line the cut is DRAWN to, so a sound running past it prints no
+      // words there, and no closing bar where it does not close.
+      final rowsShown = seColumn
+          ? (_painter.liveDrawnFrameCount - startFrame).clamp(0, rowCount)
+          : rowCount;
+      // How far before row 0 the block there began: the spill-in's head is
+      // an earlier cut's (F-358).
+      int leadOf(int blockStart) =>
+          blockStart == 0 ? spec.spillInLeadFrames ?? 0 : 0;
+      final (firstRow, lastRow) = _rowRange(rowsTop, rowsShown);
       for (
         var row = _spanStartRow(cells, startFrame, firstRow);
         row < lastRow;
@@ -390,14 +373,17 @@ class _TimesheetCellsPass {
           break;
         }
         final cell = cells[frame];
-        final seColumn = spec.kind == TimesheetColumnKind.se;
         final cellTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
         final cellBottom = cellTop + TimesheetDocumentLayout.rowHeight;
         final cellCenterY = cellTop + TimesheetDocumentLayout.rowHeight / 2;
         if (cell.kind == TimesheetCellKind.empty) {
           // SE columns mark their empty stretches the print-sheet way: a
-          // dotted center guide, washed light gray while the toggle is on.
-          if (seColumn && frame < _painter.document.playbackFrameCount) {
+          // dotted center guide, washed light gray while the toggle is on —
+          // on every row the column shows, down to the line the cut is
+          // drawn to ([rowsShown]). 🗣️F-340 (유저 2026-10-11): 「OL여백으로
+          // 생긴 엔드라인은 … 진짜 엔드라인을 대체하는 방식인데, SE행이 아직
+          // 그 방식 안쓰는듯」. ↩️It stopped at the conte 尺.
+          if (seColumn) {
             _painter._se.paintSeEmptyRow(
               canvas,
               columnLeft: columnLeft,
@@ -418,11 +404,13 @@ class _TimesheetCellsPass {
           cellBottom: cellBottom,
           cellCenterY: cellCenterY,
           seColumn: seColumn,
+          stretchFrom: _painter.document.stretchLineFrom(spec.kind),
+          lead: leadOf(frame),
         );
         _paintCellOfKind(
           canvas,
           slot,
-          rowCount: rowCount,
+          rowCount: rowsShown,
         );
         // F-165: an entry that began in an earlier half writes the rest of
         // its dialogue here, from this half's top — its share of the words
@@ -433,8 +421,9 @@ class _TimesheetCellsPass {
             canvas,
             start: cells[frame - offset],
             spanOffset: offset,
+            lead: leadOf(frame - offset),
             row: row,
-            rowCount: rowCount,
+            rowCount: rowsShown,
             centerX: centerX,
             cellTop: cellTop,
           );
@@ -453,6 +442,7 @@ class _TimesheetCellsPass {
       _painter._se.paintSeEntryStart(
         canvas,
         cell: slot.cell,
+        lead: slot.lead,
         row: slot.row,
         rowCount: rowCount,
         columnLeft: slot.columnLeft,
@@ -491,7 +481,7 @@ class _TimesheetCellsPass {
         size: const Size.square(timesheetInbetweenMarkRadius * 2),
       ), TimesheetDocumentPainter._ink);
 
-  /// A held cell's bar, by column: the SE red bar or the action hold bar.
+  /// A held cell's bar, by column: the SE red bar or the block's stretch line.
   void _paintHeldCell(Canvas canvas, _CellSlot slot) {
     if (slot.seColumn) {
       // Toei SE notation: no hold line down the dialogue; the
@@ -506,18 +496,7 @@ class _TimesheetCellsPass {
       }
       return;
     }
-    // ACTION hold bar: off by default; with a threshold N it runs
-    // from the (N+1)th comma of N+ holds only (industry N=3).
-    final threshold = _painter.document.exposureBarThreshold;
-    if (threshold != null && (slot.cell.spanOffset ?? 0) >= threshold) {
-      canvas.drawLine(
-        Offset(slot.centerX, slot.cellTop),
-        Offset(slot.centerX, slot.cellBottom),
-        Paint()
-          ..color = TimesheetDocumentPainter._ink
-          ..strokeWidth = 1.0,
-      );
-    }
+    slot.paintStretchLine(canvas);
   }
 
   /// A repeat chain's first cell: the cel it restarts on, then the
@@ -604,11 +583,9 @@ class _TimesheetCellsPass {
           centeredAtX: true,
         );
       case TimesheetCellKind.cameraKey:
-        canvas.drawCircle(
-          Offset(slot.centerX, slot.cellCenterY),
-          3.4,
-          Paint()..color = TimesheetDocumentPainter._ink,
-        );
+        if (slot.cell.keyLabel case final name?) {
+          _painter._instructions.paintEndpointName(canvas, slot, name);
+        }
         _painter._instructions.paintSpanNameOn(
           canvas,
           slot,
@@ -626,10 +603,41 @@ class _TimesheetCellsPass {
           slot,
           rows: _gridOf(slot, rowCount: rowCount),
         );
+      case TimesheetCellKind.emptyRunSpan:
+        slot.paintStretchLine(canvas);
       case TimesheetCellKind.empty:
         break;
     }
   }
+}
+
+/// [firstRow], walked back to the start of the span that reaches it.
+///
+/// 🗣️F-78 (유저 2026-09-11): 「타임시트의 se행. se블록의 이름란이 뷰포트에서
+/// 안보이면 대사 텍스트가 사라짐」. A span's START cell writes down the
+/// whole span — an SE entry its name and dialogue, a hold chain its word, a
+/// repeat chain its word — so culling the start row dropped ink the clip
+/// would have kept: the one thing [_TimesheetCellsPass._rowRange] may not
+/// do. The rows a word runs down read as EMPTY, so the walk steps over
+/// empty rows up to the first cell that says where its span is.
+int _spanStartRow(List<TimesheetCell> cells, int startFrame, int firstRow) {
+  for (var row = firstRow; row >= 0; row -= 1) {
+    final frame = startFrame + row;
+    if (frame >= cells.length) {
+      return firstRow;
+    }
+    final cell = cells[frame];
+    final length = cell.spanLength;
+    if (length == null) {
+      if (cell.kind == TimesheetCellKind.empty) {
+        continue;
+      }
+      return firstRow;
+    }
+    final start = row - (cell.spanOffset ?? 0);
+    return start + length > firstRow ? math.max(0, start) : firstRow;
+  }
+  return firstRow;
 }
 
 /// The top and the bottom of the grid [slot] is printed in — its half page.
@@ -652,6 +660,8 @@ class _CellSlot {
     required this.cellBottom,
     required this.cellCenterY,
     required this.seColumn,
+    required this.stretchFrom,
+    required this.lead,
   });
 
   final TimesheetCell cell;
@@ -663,6 +673,30 @@ class _CellSlot {
   final double cellBottom;
   final double cellCenterY;
   final bool seColumn;
+
+  /// Where a run in this column starts its stretch line, or null for none
+  /// ([TimesheetDocument.stretchLineFrom]).
+  final int? stretchFrom;
+
+  /// The block's stretch line down this cell's run — a held drawing's, or
+  /// the empty run past an × — from the (N+1)th comma of a run of N+
+  /// (industry N=3), each block by its own N ([stretchFrom]).
+  void paintStretchLine(Canvas canvas) {
+    final threshold = stretchFrom;
+    if (threshold != null && (cell.spanOffset ?? 0) >= threshold) {
+      canvas.drawLine(
+        Offset(centerX, cellTop),
+        Offset(centerX, cellBottom),
+        Paint()
+          ..color = TimesheetDocumentPainter._ink
+          ..strokeWidth = 1.0,
+      );
+    }
+  }
+
+  /// How many rows before the sheet's first the span this cell starts
+  /// began — a sound spilled in from an earlier cut (F-358) — else 0.
+  final int lead;
 }
 
 /// One half page's frame: where it sits, which rows are visible, the three

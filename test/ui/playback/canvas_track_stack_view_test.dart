@@ -114,7 +114,7 @@ void main() {
     required List<StoryboardTimelineLayoutEntry> layout,
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
     List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf,
-    StackRun? run,
+    TrackStackRun? run,
     void Function(Object cut, int bytes)? onBufferBytes,
     bool cameraViewEnabled = true,
     bool backdropNone = false,
@@ -436,13 +436,103 @@ void main() {
       tester,
       frame: f.frame,
       layout: f.layout,
-      run: (landings: landings, gaveUpOn: (_) => false),
+      run: (
+        cuts: (landings: landings, gaveUpOn: (_) => false),
+        frameIsThere: (_) => true,
+      ),
     );
     expect(
       [for (final unit in unitsOf(tester)) unit.stack.run?.landings],
       [same(landings), same(landings)],
       reason: 'a run: every cut it shows waits on the one maker',
     );
+  });
+
+  /// F-365-Q2 (유저 2026-10-15: 「컷을 넘을 때도 직전 그림을 남기고」): a cut
+  /// coming in is a view of its own, with no last whole frame to leave
+  /// standing — it showed its bare paper wherever the clock went on without
+  /// its picture (skipping frames).
+  testWidgets('🚨a run crossing into a cut whose picture is not there yet '
+      'shows the last whole frame, and the new one once it is whole', (
+    tester,
+  ) async {
+    final f = fixture();
+    final landings = ValueNotifier<int>(0);
+    addTearDown(landings.dispose);
+    var made = false;
+    f.frame.value = 1;
+    await pumpView(
+      tester,
+      frame: f.frame,
+      layout: f.layout,
+      run: (
+        cuts: (landings: landings, gaveUpOn: (_) => false),
+        frameIsThere: (frame) => frame != 2 || made,
+      ),
+    );
+    List<String?> told() => [
+      for (final unit in unitsOf(tester)) toldFrame(unit.stack),
+    ];
+    expect(told(), ['cut-a@1']);
+
+    // cut-c comes in at its frame 0.
+    f.frame.value = 2;
+    await tester.pump();
+    expect(
+      told(),
+      ['cut-a@1'],
+      reason: 'the last whole frame stands — never cut-c\'s bare paper',
+    );
+
+    made = true;
+    landings.value += 1;
+    await tester.pump();
+    expect(told(), ['cut-a@2', 'cut-c@0'], reason: 'whole, it goes up');
+
+    f.frame.value = 3;
+    await tester.pump();
+    expect(
+      told(),
+      ['cut-a@3', 'cut-c@1'],
+      reason: 'a frame already whole goes up as it is asked for',
+    );
+  });
+
+  testWidgets('a run that takes over a parked stack leaves its frame '
+      'standing until the run\'s is whole — and parked again, the frame '
+      'asked for goes up at once', (tester) async {
+    final f = fixture();
+    List<String?> told() => [
+      for (final unit in unitsOf(tester)) toldFrame(unit.stack),
+    ];
+    f.frame.value = 1;
+    await pumpView(tester, frame: f.frame, layout: f.layout);
+    expect(told(), ['cut-a@1']);
+
+    final clock = ValueNotifier<int?>(2);
+    addTearDown(clock.dispose);
+    final landings = ValueNotifier<int>(0);
+    addTearDown(landings.dispose);
+    var made = false;
+    await pumpView(
+      tester,
+      frame: clock,
+      layout: f.layout,
+      run: (
+        cuts: (landings: landings, gaveUpOn: (_) => false),
+        frameIsThere: (_) => made,
+      ),
+    );
+    expect(told(), ['cut-a@1'], reason: 'the run\'s frame is not whole yet');
+
+    made = true;
+    landings.value += 1;
+    await tester.pump();
+    expect(told(), ['cut-a@2', 'cut-c@0']);
+
+    f.frame.value = 3;
+    await pumpView(tester, frame: f.frame, layout: f.layout);
+    expect(told(), ['cut-a@3', 'cut-c@1']);
   });
 
   // ↩️Two pins stood here for the V row's own gates, which left its head on

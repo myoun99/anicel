@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import '../helpers/project_scratch_folder.dart';
+import '../helpers/settle_async.dart';
 
 /// THE WORKSPACE LAYOUT IS SAVED AFTER A CHANGE — MEASURED.
 ///
@@ -55,13 +56,10 @@ void main() {
     // steps completes in real time (a runAsync window) and its continuation
     // runs on the fake one (a pump). Alternate the two until the file reads.
     Map<String, Object?>? payload;
-    for (var tries = 0; tries < 40 && payload == null; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
+    await settleAsync(tester, () async {
       payload = await tester.runAsync<Map<String, Object?>?>(store.load);
-    }
+      return payload != null;
+    });
     expect(payload, isNotNull, reason: 'nothing was saved');
     expect(
       payload!['bottomCollapsed'],

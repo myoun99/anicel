@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
 import '../helpers/project_scratch_folder.dart';
+import '../helpers/wait_window.dart';
 import '../models/import/tvpp_test_builder.dart';
 
 /// PICK-7 through the window: a project in a Drive document on Android is
@@ -119,17 +120,6 @@ void main() {
     return tester.widget<EditorTopStrip>(find.byType(EditorTopStrip)).projects;
   }
 
-  // 🚨HOW LONG THE WAITS BELOW WAIT IS A TIME, NOT A NUMBER OF ROUNDS.
-  // ⛔They counted 200 rounds — about five seconds on an idle machine — and a
-  // round grows with the load. This file went red in a batch beside other
-  // runs with the save not yet in the document (`Expected: <2> Actual: <1>`)
-  // on 2026-10-06 and again on 10-07, on lanes that touched nothing of
-  // saving, and passed alone each time (board
-  // `a-poll-that-counts-rounds-runs-out-under-load`). A wait that passes
-  // returns the moment what it waits for is there, so the ceiling costs
-  // nothing; it is only how long a real failure takes to say so.
-  const patience = Duration(seconds: 60);
-
   Future<void> tapKey(WidgetTester tester, String key) async {
     final target = find.byKey(ValueKey<String>(key));
     await tester.ensureVisible(target);
@@ -138,20 +128,24 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// One beat of real time: the test clock moves, then the disk gets a turn.
-  Future<void> beat(WidgetTester tester) async {
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 25)),
-    );
-  }
-
-  /// Pumps real time until [done] says so, or [patience] has run out.
+  /// Lends the disk real time and the test clock a beat, by turns, until
+  /// [done] says so, or [settleAsync]'s patience has run out.
+  ///
+  /// 🚨HOW LONG IT WAITS IS A TIME, NOT A NUMBER OF ROUNDS.
+  /// ⛔It counted 200 rounds — about five seconds on an idle machine — and a
+  /// round grows with the load. This file went red in a batch beside other
+  /// runs with the save not yet in the document (`Expected: <2> Actual: <1>`)
+  /// on 2026-10-06 and again on 10-07, on lanes that touched nothing of
+  /// saving, and passed alone each time (board
+  /// `a-poll-that-counts-rounds-runs-out-under-load`). A wait that passes
+  /// returns the moment what it waits for is there, so the ceiling costs
+  /// nothing; it is only how long a real failure takes to say so.
+  /// ↩️The time was this file's own `patience` until 2026-10-16; it is the
+  /// one every wait in the suite shares now. ↩️It lent 25ms a round and
+  /// walked the open's linger 50ms a frame until 10-20; the wait behind the
+  /// window is one ([settleBehindTheWaitWindow]).
   Future<void> until(WidgetTester tester, bool Function() done) async {
-    final deadline = DateTime.now().add(patience);
-    while (!done() && DateTime.now().isBefore(deadline)) {
-      await beat(tester);
-    }
+    await settleBehindTheWaitWindow(tester, done);
     await tester.pumpAndSettle();
   }
 
@@ -239,7 +233,16 @@ void main() {
     await tapKey(tester, 'project-tab-0');
     expect(projects.active, isNot(same(opened)), reason: 'CONTROL');
 
-    await openDocument(tester, projects, drive, done: () => false);
+    // Waits for either answer — the tab shown, or a second one opened.
+    // ↩️It waited for nothing (`() => false`), which ran the whole patience
+    // out every time: sixty seconds of a seventy-second file (10-19).
+    await openDocument(
+      tester,
+      projects,
+      drive,
+      done: () =>
+          identical(projects.active, opened) || projects.sessions.length > 2,
+    );
 
     expect(projects.sessions, hasLength(2), reason: 'one writer per document');
     expect(projects.active, same(opened));

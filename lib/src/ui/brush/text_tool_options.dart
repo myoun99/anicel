@@ -3,7 +3,8 @@ import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
 
 /// What the NEXT text set with the text tool starts as (R9-rest): the
-/// letters' style, and the values of the whole box.
+/// letters' style, how its paragraph is set, and the values of the whole
+/// box.
 ///
 /// The app's, like every tool's settings — not the project's and not a
 /// text's: a text that is selected shows ITS values in the tool settings
@@ -24,8 +25,12 @@ class TextToolOptions {
     this.takesTheBrushColour = false,
     this.align = TextCelAlign.left,
     this.lineHeight = CelTextContent.defaultLineHeight,
+    this.letterWidth = 1,
     this.backgroundColor,
     this.vertical = false,
+    this.rotationDegrees = 0,
+    this.skewDegrees = 0,
+    this.flipped = false,
   }) : _letters = letters;
 
   /// What the tool starts as in a run of the app: the app's face at 48, no
@@ -55,12 +60,24 @@ class TextToolOptions {
   /// A line's pitch, as a multiple of its letters' size.
   final double lineHeight;
 
+  /// How wide the next text's letters are drawn ([CelTextContent.letterWidth]).
+  final double letterWidth;
+
   /// The box filled behind the next text, ARGB; null for none.
   final int? backgroundColor;
 
   /// Whether the next text is written in columns
   /// ([CelTextContent.vertical]).
   final bool vertical;
+
+  /// How far the next text is turned ([CelTextContent.rotationDegrees]).
+  final double rotationDegrees;
+
+  /// How far the next text leans ([CelTextContent.skewDegrees]).
+  final double skewDegrees;
+
+  /// Whether the next text is mirrored ([CelTextContent.flipped]).
+  final bool flipped;
 
   /// The letters of the next text — in [brushColour] while the tool takes
   /// the brush's. Null where there is no brush to read: the colour they
@@ -90,6 +107,18 @@ class TextToolOptions {
     TextLetterStyle Function(TextLetterStyle letters) change,
   ) => _with(change(_letters), takesTheBrushColour: takesTheBrushColour);
 
+  /// How the next text's one paragraph is set.
+  CelTextParagraph get paragraph =>
+      CelTextParagraph(align: align, lineHeight: lineHeight);
+
+  /// These with [change] made on the next text's paragraph.
+  TextToolOptions withParagraph(
+    CelTextParagraph Function(CelTextParagraph paragraph) change,
+  ) {
+    final changed = change(paragraph);
+    return copyWith(align: changed.align, lineHeight: changed.lineHeight);
+  }
+
   TextToolOptions _with(
     TextLetterStyle letters, {
     required bool takesTheBrushColour,
@@ -98,8 +127,12 @@ class TextToolOptions {
     takesTheBrushColour: takesTheBrushColour,
     align: align,
     lineHeight: lineHeight,
+    letterWidth: letterWidth,
     backgroundColor: backgroundColor,
     vertical: vertical,
+    rotationDegrees: rotationDegrees,
+    skewDegrees: skewDegrees,
+    flipped: flipped,
   );
 
   /// A text with no letters yet, standing at [anchor] — as wide as
@@ -116,25 +149,37 @@ class TextToolOptions {
     minHeight: minHeight,
     align: align,
     lineHeight: lineHeight,
+    letterWidth: letterWidth,
     backgroundColor: backgroundColor,
     vertical: vertical,
+    rotationDegrees: rotationDegrees,
+    skewDegrees: skewDegrees,
+    flipped: flipped,
   );
 
   /// These with the box's values given — the letters are [withLetters]'.
   TextToolOptions copyWith({
     TextCelAlign? align,
     double? lineHeight,
+    double? letterWidth,
     Object? backgroundColor = _sentinel,
     bool? vertical,
+    double? rotationDegrees,
+    double? skewDegrees,
+    bool? flipped,
   }) => TextToolOptions(
     letters: _letters,
     takesTheBrushColour: takesTheBrushColour,
     align: align ?? this.align,
     lineHeight: lineHeight ?? this.lineHeight,
+    letterWidth: letterWidth ?? this.letterWidth,
     backgroundColor: identical(backgroundColor, _sentinel)
         ? this.backgroundColor
         : backgroundColor as int?,
     vertical: vertical ?? this.vertical,
+    rotationDegrees: rotationDegrees ?? this.rotationDegrees,
+    skewDegrees: skewDegrees ?? this.skewDegrees,
+    flipped: flipped ?? this.flipped,
   );
 
   @override
@@ -145,8 +190,12 @@ class TextToolOptions {
           other.takesTheBrushColour == takesTheBrushColour &&
           other.align == align &&
           other.lineHeight == lineHeight &&
+          other.letterWidth == letterWidth &&
           other.backgroundColor == backgroundColor &&
-          other.vertical == vertical;
+          other.vertical == vertical &&
+          other.rotationDegrees == rotationDegrees &&
+          other.skewDegrees == skewDegrees &&
+          other.flipped == flipped;
 
   @override
   int get hashCode => Object.hash(
@@ -154,8 +203,12 @@ class TextToolOptions {
     takesTheBrushColour,
     align,
     lineHeight,
+    letterWidth,
     backgroundColor,
     vertical,
+    rotationDegrees,
+    skewDegrees,
+    flipped,
   );
 
   static const Object _sentinel = Object();

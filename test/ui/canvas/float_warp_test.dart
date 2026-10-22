@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/float_warp.dart';
 import 'package:anicel/src/ui/canvas/transform_box.dart';
 
+import '../../helpers/settle_async.dart';
+
 /// Where the open box puts the float, read without a selection layer
 /// around it: [FloatWarp]'s geometry, and the [FloatResamplePreview] that
 /// resamples through it.
@@ -48,15 +50,18 @@ void main() {
     bottomExclusive: 1000,
   );
 
-  TransformBox box({double scale = 1}) => TransformBox(
-    affine: SelectionAffine(
-      pivot: CanvasPoint(x: 100, y: 50),
-      sx: scale,
-      sy: scale,
-    ),
-    baseWidth: 40,
-    baseHeight: 20,
-  );
+  TransformBox box({double scale = 1, double tx = 0, double ty = 0}) =>
+      TransformBox(
+        affine: SelectionAffine(
+          pivot: CanvasPoint(x: 100, y: 50),
+          sx: scale,
+          sy: scale,
+          tx: tx,
+          ty: ty,
+        ),
+        baseWidth: 40,
+        baseHeight: 20,
+      );
 
   FloatWarp warp(
     TransformBox box, {
@@ -217,6 +222,77 @@ void main() {
         140 - 70,
         reason: 'the commit resamples the whole rect up to the wall',
       );
+    });
+  });
+
+  group('🚨a move is not uploaded '
+      '(a-drag-in-an-open-box-resamples-a-move)', () {
+    // One float, as a session holds it through every state of its box.
+    final lifted = float();
+    FloatWarp over(TransformBox box) => FloatWarp(
+      box: box,
+      base: stampRectOf(lifted),
+      float: lifted,
+      options: TransformToolOptions.defaults,
+      pasteboard: wall,
+    );
+
+    /// Lends a decode, were one asked for, a second to land in: the window
+    /// a test watches for a picture NOT to come in.
+    Future<void> window(WidgetTester tester) => lendBothClocks(
+      tester,
+      rounds: 100,
+      beat: const Duration(milliseconds: 10),
+    );
+
+    testWidgets('a box that only moves the float shows no picture of its own '
+        '— the float\'s pixels draw it — and lands it moved', (tester) async {
+      final now = over(box(tx: 40, ty: 30));
+      final preview = FloatResamplePreview(_Host(), () => now);
+      addTearDown(preview.discard);
+
+      preview.schedule();
+      await window(tester);
+
+      expect(preview.image, isNull);
+      final landed = preview.warped()!;
+      expect(landed.center, CanvasPoint(x: 140, y: 80));
+      expect(landed.stamp, same(lifted.stamp), reason: 'its own picture');
+    });
+
+    testWidgets('a picture shown for a scale is let go once the box only '
+        'moves again', (tester) async {
+      var now = over(box(scale: 2));
+      final preview = FloatResamplePreview(_Host(), () => now);
+      addTearDown(preview.discard);
+      preview.schedule();
+      await settleAsync(tester, () => preview.image != null);
+      expect(
+        preview.image,
+        isNotNull,
+        reason: '⛔premise: a scale shows its resample',
+      );
+
+      now = over(box(tx: 40, ty: 30));
+      preview.schedule();
+
+      expect(preview.image, isNull);
+      expect(preview.imageDab, isNull);
+    });
+
+    testWidgets('a decode still on its way when the box ends lands nowhere — '
+        'letting go of the picture takes the decode\'s claim with it', (
+      tester,
+    ) async {
+      final now = over(box(scale: 2));
+      final preview = FloatResamplePreview(_Host(), () => now);
+      addTearDown(preview.discard);
+      preview.schedule();
+
+      preview.discard();
+      await window(tester);
+
+      expect(preview.image, isNull);
     });
   });
 }

@@ -42,7 +42,7 @@ void main() {
           body: Material(
             child: TimelineFrameCellsRow(
               layer: layer,
-              playbackFrameCount: 12,
+              drawnFrameCount: 12,
               geometry: testFrameGeometry(
                 frameCellExtent: 48,
                 frameEndIndexExclusive: 12,

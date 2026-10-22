@@ -14,6 +14,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
@@ -91,6 +92,7 @@ final BrushTipMask _testTipMask = BrushTipMask(
 const int _canvasWidth = 40;
 const int _canvasHeight = 40;
 const _canvasSize = CanvasSize(width: _canvasWidth, height: _canvasHeight);
+final _pasteboard = _canvasSize.pasteboardAt(PasteboardReach.whole);
 
 /// Canvas-wide straight-alpha bytes of the sparse live rasterizer.
 Uint8List _rasterizerBytes(BrushLiveStrokeRasterizer rasterizer) {
@@ -102,7 +104,7 @@ Uint8List _rasterizerBytes(BrushLiveStrokeRasterizer rasterizer) {
 }
 
 Uint8List _liveBufferFor(List<BrushDab> dabs) {
-  final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+  final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
   rasterizer.blendFrom(dabs, from: 0);
   return _rasterizerBytes(rasterizer);
 }
@@ -295,7 +297,7 @@ void main() {
         for (var i = 0; i < 5; i += 1)
           _dab(x: 10.2 + i * 3.6, y: 13.4, color: 0x9040A0C0, sequence: i),
       ];
-      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
       rasterizer.blendFrom(strokeDabs, from: 0);
 
       final composite = compositeStrokePixelsOntoBitmapSurface(
@@ -361,7 +363,7 @@ void main() {
             sequence: i,
           ).copyWith(erase: true),
       ];
-      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
       rasterizer.blendFrom(eraseDabs, from: 0);
 
       final composite = compositeStrokePixelsOntoBitmapSurface(
@@ -405,7 +407,7 @@ void main() {
         for (var i = 0; i < 5; i += 1)
           _dab(x: 10.2 + i * 3.6, y: 13.4, sequence: i).copyWith(erase: true),
       ];
-      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
       rasterizer.blendFrom(eraseDabs, from: 0);
 
       final composite = compositeStrokePixelsOntoBitmapSurface(
@@ -444,7 +446,7 @@ void main() {
             sequence: i,
           ),
       ];
-      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
       rasterizer.blendFrom(strokeDabs, from: 0);
 
       final composite = compositeStrokePixelsOntoBitmapSurface(
@@ -508,7 +510,7 @@ void main() {
         _dab(x: 9.13, y: 8.62, size: 12, hardness: 0.4),
         _dab(x: 12.4, y: 10.1, size: 12, hardness: 0.4, sequence: 1),
       ];
-      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
       final region = rasterizer.blendFrom(dabs, from: 0)!;
 
       // A small tile size makes the stroke span several overlay tiles.
@@ -537,7 +539,7 @@ void main() {
         final secondBatch = [
           _dab(x: 12.5, y: 10.5, size: 12, color: 0x80C04010, sequence: 1),
         ];
-        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+        final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
         final model = ActiveStrokeOverlayModel(tileSize: 16);
         addTearDown(model.dispose);
 
@@ -585,7 +587,7 @@ void main() {
             hardness: 1.0,
           ),
         ];
-        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+        final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
         final region = rasterizer.blendFrom(strokeDabs, from: 0)!;
         final model = ActiveStrokeOverlayModel(tileSize: 16);
         addTearDown(model.dispose);
@@ -644,7 +646,7 @@ void main() {
             ),
           ];
           final rasterizer = BrushLiveStrokeRasterizer(
-            canvasSize: _canvasSize,
+            pasteboard: _pasteboard,
           );
           final region = rasterizer.blendFrom(strokeDabs, from: 0)!;
 
@@ -718,7 +720,7 @@ void main() {
             ),
           ]),
         ).surface;
-        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+        final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
         final region = rasterizer.blendFrom([
           _dab(x: 72.5, y: 14.5, size: 10, color: 0xFF2266AA),
         ], from: 0)!;
@@ -741,7 +743,7 @@ void main() {
     );
 
     test('reset clears the tile images and dabs', () async {
-      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
       final dabs = [_dab(x: 8.5, y: 8.5)];
       final region = rasterizer.blendFrom(dabs, from: 0)!;
       final model = ActiveStrokeOverlayModel(tileSize: 16);
@@ -760,7 +762,7 @@ void main() {
     test(
       'a decode landing after reset is discarded, not resurrected',
       () async {
-        final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+        final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
         final dabs = [_dab(x: 8.5, y: 8.5)];
         final region = rasterizer.blendFrom(dabs, from: 0)!;
         final model = ActiveStrokeOverlayModel(tileSize: 16);

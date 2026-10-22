@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -65,6 +66,42 @@ void main() {
     ),
   );
 
+  /// Two rows, each one cel held across the whole 24 frames.
+  EditorSessionManager twoRows() => EditorSessionManager(
+    initialProject: Project(
+      id: const ProjectId('project'),
+      name: 'P',
+      createdAt: DateTime.utc(2026),
+      tracks: [
+        Track(
+          id: const TrackId('track'),
+          name: 'T',
+          cuts: [
+            Cut(
+              id: const CutId('cut'),
+              name: '1',
+              duration: 24,
+              canvasSize: canvasSize,
+              layers: [
+                for (final row in ['over', 'under'])
+                  Layer(
+                    id: LayerId(row),
+                    name: row,
+                    frames: [
+                      Frame(id: FrameId(row), duration: 1, strokes: const []),
+                    ],
+                    timeline: {
+                      0: TimelineExposure.drawing(FrameId(row), length: 24),
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+
   /// The budget under test, held BY ITS OWN TYPE so the mutation campaign
   /// finds this file as its witness.
   PlaybackCacheBudget budgetOf(EditorSessionManager s) =>
@@ -96,14 +133,14 @@ void main() {
         frameIndex: 0,
       ), shouldAbort: () => false);
       expect(budget.playbackReadyRuns(0, 30), [
-        (startIndex: 0, endIndexExclusive: 30),
+        (startIndex: 0, endIndexExclusive: 30, unreadable: false),
       ], reason: 'one image answers the whole hold; past it is nothing');
 
       stroke(2, 2);
       expect(identical(s.activeCutOrNull, held), isTrue);
       expect(
         budget.playbackReadyRuns(0, 30),
-        [(startIndex: 24, endIndexExclusive: 30)],
+        [(startIndex: 24, endIndexExclusive: 30, unreadable: false)],
         reason: 'the image the row holds is of the cel before the stroke — '
             'the cel\'s revision moves the picture, not a new cut',
       );
@@ -128,7 +165,7 @@ void main() {
         size: 4,
       );
       expect(budget.playbackReadyRuns(3, 30), [
-        (startIndex: 24, endIndexExclusive: 30),
+        (startIndex: 24, endIndexExclusive: 30, unreadable: false),
       ], reason: '⛔premise: the drawn hold waits for its picture');
       await s.playbackRig.canvasPictures.make((
         cut: held,
@@ -136,7 +173,47 @@ void main() {
       ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(3, 30), [
-        (startIndex: 3, endIndexExclusive: 30),
+        (startIndex: 3, endIndexExclusive: 30, unreadable: false),
+      ]);
+    });
+  });
+
+  // 유저 2026-10-16 (frame-picture-indicator-Q1 b): red is for a cel that
+  // will never come — 「영영실패만 생각하면 될거같아」.
+  testWidgets('🚨a frame showing a cel that cannot be read is red only once '
+      'its other rows are there — until then it waits for them like any '
+      'frame', (tester) async {
+    await tester.runAsync(() async {
+      final s = twoRows();
+      addTearDown(s.dispose);
+      final cut = s.activeCutOrNull!;
+      BrushFrameKey celOf(String row) =>
+          s.brushFrameKeyForCut(cut, LayerId(row), FrameId(row));
+      for (final row in ['over', 'under']) {
+        inkCel(
+          s,
+          celOf(row),
+          canvasSize: canvasSize,
+          at: CanvasPoint(x: 4, y: 4),
+          size: 4,
+        );
+      }
+      // How the cache keeps a cel whose reading threw.
+      s.renderCaches.layerFrameImageCache.unreadable.note(celOf('over'));
+      final budget = budgetOf(s);
+      expect(
+        budget.playbackReadyRuns(0, 24),
+        isEmpty,
+        reason: 'the other row\'s picture is still to come',
+      );
+
+      await s.playbackRig.canvasPictures.make((
+        cut: cut,
+        frameIndex: 0,
+      ), shouldAbort: () => false);
+
+      expect(budget.playbackReadyRuns(0, 24), [
+        (startIndex: 0, endIndexExclusive: 24, unreadable: true),
       ]);
     });
   });

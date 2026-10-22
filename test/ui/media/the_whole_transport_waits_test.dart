@@ -8,6 +8,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 
@@ -108,7 +109,6 @@ void main() {
       // A movie, so `mediaKindCanCarrySound` says it can hold a soundtrack.
       path: 'C:/work/clip-$opens.mp4',
       kind: MediaAssetKind.video,
-      name: 'clip',
     );
     await settleLoadedPages(tester);
     return fake;
@@ -126,6 +126,17 @@ void main() {
       find.byKey(const ValueKey<String>('media-viewer-transport-play')),
     );
     await tester.pump();
+  }
+
+  /// Opens a movie, presses play and lets every page land while no time
+  /// passes, so what follows is the clock and never a wait for a page —
+  /// the sound has not moved, and the run stands on its first page.
+  Future<void> playEveryPageLanded(WidgetTester tester) async {
+    final fake = await openMovie(tester);
+    await pressPlay(tester);
+    await settleAsync(tester, () => fake.asked.contains(11));
+    await lendBothClocks(tester, rounds: 5);
+    expect(slot.position.value, 0, reason: 'fixture: no sound played yet');
   }
 
   /// The door itself. ⛔Without this the tests below can pass for the wrong
@@ -157,6 +168,35 @@ void main() {
     );
   });
 
+  // playback-waits-for-its-sound (유저 2026-10-16: 「소리가 준비될 때까지
+  // 기다린다」): the wait asks the sound as well as the pictures. Every page
+  // landed, so only the sound can hold the run — where the pictures are not
+  // there yet, they hold it, and a wait that never asked the sound passed
+  // (a mutant that unwired it lived, 10-21).
+  testWidgets('🚨a movie whose every page has landed still stands for its '
+      'sound on its way, and goes on with it from where it stood', (
+    tester,
+  ) async {
+    const look = Duration(microseconds: 16667);
+    sound.answers = const OutputComing();
+    final fake = await openMovie(tester);
+    await pressPlay(tester);
+    await settleAsync(tester, () => fake.asked.contains(11));
+    await lendBothClocks(tester, rounds: 5);
+    for (var i = 0; i < 15; i += 1) {
+      await tester.pump(look);
+    }
+
+    expect(playing(tester), isTrue, reason: 'a run that waits plays');
+    expect(sound.resumes, 0, reason: 'its sound has not come');
+    expect(slot.position.value, 0, reason: 'it stands where it was put');
+
+    sound.answers = RecordingViewerSound.armed;
+    await tester.pump(look);
+    expect(sound.resumedFrom, [0.0], reason: 'the sound started there');
+    await pressPlay(tester);
+  });
+
   testWidgets('🚨a buffer that runs dry HOLDS the sound, and refilling '
       'brings BOTH back', (tester) async {
     // Nothing past the first frame will decode: the cushion cannot fill.
@@ -178,7 +218,6 @@ void main() {
     await settleAsync(
       tester,
       () => sound.holds > 0,
-      attempts: 150,
       step: tick,
       everyFrame: () => sound.playOn(tick),
     );
@@ -196,9 +235,14 @@ void main() {
     // right after pressing play measures nothing about the buffer. What
     // separates 「waiting for these frames」 from 「waiting once, always」 is
     // that real time passes here and the playhead still does not move.
-    await settleAsync(
+    //
+    // ⛔A WINDOW, not a wait ([lendBothClocks] — its 60 rounds are the ones
+    // this watch had before 10-16): a wait for the playhead to move asks for
+    // what the law says never comes, and so ran its whole patience, 60
+    // seconds, on every run (measured 66.2s for this test, 10-21).
+    await lendBothClocks(
       tester,
-      () => slot.position.value > 0,
+      rounds: 60,
       step: tick,
       everyFrame: () => sound.playOn(tick),
     );
@@ -219,7 +263,6 @@ void main() {
     await settleAsync(
       tester,
       () => sound.resumes > 0,
-      attempts: 150,
       step: tick,
       everyFrame: () => sound.playOn(tick),
     );
@@ -262,7 +305,6 @@ void main() {
     await settleAsync(
       tester,
       () => fake.asked.contains(1),
-      attempts: 150,
       step: tick,
     );
     expect(
@@ -279,12 +321,11 @@ void main() {
     // frames however long the real waits take.
     const frames = 10;
     const looks = 25;
-    for (var look = 0; look < looks; look += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump(const Duration(microseconds: 16667));
-    }
+    await lendBothClocks(
+      tester,
+      rounds: looks,
+      step: const Duration(microseconds: 16667),
+    );
 
     final asks = fake.asked.length - before;
     expect(
@@ -301,17 +342,33 @@ void main() {
     expect(asks, greaterThan(0), reason: 'it is still trying');
   });
 
+  // board a-start-is-heard-ahead-of-its-first-picture: the look that keeps
+  // the sound streaming comes first in a tick, so it is the one that starts
+  // a sound armed since — and a start not told when its frame is shown
+  // hands no lead, and is heard ahead of its first picture.
+  testWidgets('🚨the look that keeps the sound streaming is told when its '
+      'frame is shown, as the clock\'s reading is', (tester) async {
+    await playEveryPageLanded(tester);
+    sound.keptAt.clear();
+    for (var i = 0; i < 3; i += 1) {
+      await tester.pump(tick);
+    }
+
+    expect(sound.keptAt, hasLength(3), reason: '⛔premise: a look a tick');
+    expect(sound.keptAt, everyElement(isNotNull));
+    expect(
+      sound.keptAt,
+      everyElement(isIn(sound.askedAt)),
+      reason: 'the moment the clock is read at — one moment for a tick',
+    );
+  });
+
   testWidgets('🚨a movie\'s pictures keep its SOUND\'s time — and a sound '
       'that ends before them hands the film on to the clock, from where it '
       'ended', (tester) async {
-    final fake = await openMovie(tester);
     // The track is half the movie: the device ends six frames in.
     sound.length = 0.25;
-    await pressPlay(tester);
-    // Every frame lands while no time passes, so what follows is the clock
-    // and never a wait for a frame.
-    await settleAsync(tester, () => fake.asked.contains(11), attempts: 150);
-    await settleAsync(tester, () => false, attempts: 5);
+    await playEveryPageLanded(tester);
 
     const look = Duration(microseconds: 16667);
     var looked = 0;
@@ -355,10 +412,108 @@ void main() {
     );
   });
 
-  testWidgets('🚨a held sound picks up where it was HANDED to — not where it '
-      'was heard, a latency back, which would play it again (④-b)', (
+  testWidgets('🚨a movie whose sound got ahead of its picture — a busy frame '
+      '— shows the next page all the same, and its sound is put back to it '
+      '(F-364-every-picture-even-when-late-Q1 a)', (tester) async {
+    await playEveryPageLanded(tester);
+    final resumes = sound.resumes;
+    const look = Duration(microseconds: 16667);
+
+    // The device played on through a look the app was half a second late.
+    sound.playOn(const Duration(milliseconds: 500));
+    await tester.pump(look);
+
+    expect(
+      slot.position.value,
+      1,
+      reason: '유저 2026-10-16: 「재생 전 굽기도 안 건너뛴다(뷰어도)」 — the page '
+          'after 0, where the sound is heard at 12',
+    );
+    expect(sound.resumes, resumes + 1);
+    expect(
+      sound.resumedFrom.last,
+      closeTo(1 / 24, 1e-12),
+      reason: '「소리를 그림에 다시 맞춘다」 — the sound put back to the page it '
+          'went on onto',
+    );
+
+    for (var i = 0; i < 3; i += 1) {
+      sound.playOn(look);
+      await tester.pump(look);
+    }
+    expect(slot.position.value, 2, reason: 'and the picture plays on with it');
+    expect(sound.resumes, resumes + 1, reason: 'on time: nothing put back');
+    await pressPlay(tester);
+  });
+
+  testWidgets('🚨a movie whose sound is heard pages ahead of its picture at '
+      'every start is not put back at every look: the first look after its '
+      'clock starts — a press, a clock put back — is the start, not '
+      'lateness', (tester) async {
+    await playEveryPageLanded(tester);
+    await pressPlay(tester);
+    // Heard three pages on from wherever the device is put — a frame is
+    // shown refreshes after its tick, and the user's correction is on top
+    // (`BehindItsClock`).
+    sound.lag = -3 / 24;
+    final resumes = sound.resumes;
+    const look = Duration(microseconds: 16667);
+
+    await pressPlay(tester);
+    expect(slot.position.value, 3, reason: 'its first heard page');
+    expect(sound.resumes, resumes, reason: 'its start: nothing put back');
+
+    // The app was long: the sound is two pages past the picture.
+    sound.playOn(const Duration(microseconds: 83334));
+    await tester.pump(look);
+    expect(slot.position.value, 4);
+    expect(sound.resumes, resumes + 1, reason: 'put back to the page after');
+
+    await tester.pump(look);
+    expect(
+      sound.resumes,
+      resumes + 1,
+      reason: 'put back, it is heard pages ahead again at once — and would '
+          'be put back at every look',
+    );
+    expect(slot.position.value, 7, reason: 'its first heard page from there');
+    await pressPlay(tester);
+  });
+
+  testWidgets('🚨a parked run going on is its clock\'s start, not lateness: '
+      'nothing is put back at it, however far the device was handed on', (
     tester,
   ) async {
+    final fake = await openMovie(tester, holdFrom: 1);
+    await pressPlay(tester);
+    await settleAsync(tester, () => fake.asked.contains(1));
+
+    // The device played on a quarter second at once, and the page after 0
+    // is not there: the run parks.
+    sound.playOn(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(microseconds: 16667));
+    expect(sound.holds, greaterThan(0), reason: 'fixture: it parked');
+    final resumes = sound.resumes;
+
+    fake.held.clear();
+    await settleAsync(
+      tester,
+      () => sound.resumes > resumes,
+      step: tick,
+    );
+
+    expect(
+      sound.resumes,
+      resumes + 1,
+      reason: 'it went on — and was not put back at the look it went on at',
+    );
+    await pressPlay(tester);
+  });
+
+  testWidgets('🚨a held sound picks up at the page the run goes on onto, as '
+      'the canvas\'s does (F-364-every-picture-even-when-late-Q2 a) — '
+      '↩️it picked up where the device had been handed to, a latency ahead '
+      'of what was heard', (tester) async {
     final fake = await openMovie(tester, holdFrom: 1);
     // What is heard trails what the device was handed by a tenth of a
     // second, as a device's latency does.
@@ -367,26 +522,29 @@ void main() {
     await settleAsync(
       tester,
       () => sound.holds > 0,
-      attempts: 150,
       step: tick,
       everyFrame: () => sound.playOn(tick),
     );
     expect(sound.holds, greaterThan(0), reason: 'fixture: it parked');
-    final handed = sound.at;
+    expect(slot.position.value, 0, reason: 'fixture: before page 1');
+    expect(
+      sound.at,
+      greaterThan(1 / 24 + 0.05),
+      reason: 'fixture: the device was handed well past page 1',
+    );
 
     fake.held.clear();
     await settleAsync(
       tester,
       () => sound.resumes > 0,
-      attempts: 150,
       step: tick,
     );
 
     expect(
       sound.resumedFrom.last,
-      handed,
-      reason: 'where the device had been handed to — what it played before '
-          'the hold, the listener heard',
+      closeTo(1 / 24, 1e-12),
+      reason: '유저 2026-10-16: 「캔버스처럼 보이는 그림에서 다시 튼다」 — page 1, '
+          'where the picture goes on: nothing heard is skipped',
     );
     await pressPlay(tester);
   });

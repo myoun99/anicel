@@ -145,6 +145,65 @@ void main() {
     expect(bake.recordCount, 3, reason: 'and the buffer its own again');
   });
 
+  // 🚨oil-family-vertical-stroke-paints-a-black-box (2026-10-22): a slot is
+  // replayed by every paint under its key and extent — a patch's few pixels,
+  // a carry's band, the whole buffer — so what it holds cannot depend on the
+  // clip of the one that recorded it. Recorded under a carry's 132×2 band
+  // after an undo moved the extent, the paper came back there alone: the
+  // next stroke's patch was black, and its undo the whole page.
+  //
+  // 🔬A draw recorded under a clip keeps that clip as its bounds, and a
+  // replay passes over a draw whose bounds miss the replay's own clip: the
+  // paper came back whole where the band and the next patch overlapped, and
+  // not at all where they did not — the box.
+  test('🚨a slot recorded under one patch\'s clip draws under another\'s',
+      () async {
+    final bake = StaticCompositeBake();
+    addTearDown(bake.dispose);
+    bake.keepFor('key');
+    const extent = Rect.fromLTWH(0, 0, 16, 8);
+    bake.ensureExtent(extent);
+    void paper(Canvas canvas) {
+      canvas.drawRect(extent, Paint()..color = const Color(0xFF00FF00));
+    }
+
+    await rasterBytes(
+      (canvas) {
+        canvas.clipRect(const Rect.fromLTWH(4, 0, 4, 2));
+        bake.draw(canvas, 'd0:backdrop', paper);
+      },
+      16,
+      8,
+    );
+    const patch = Rect.fromLTWH(4, 4, 8, 4);
+    final patched = await rasterBytes(
+      (canvas) {
+        canvas.clipRect(patch);
+        bake.draw(canvas, 'd0:backdrop', paper);
+      },
+      16,
+      8,
+    );
+
+    expect(
+      bake.recordCount,
+      1,
+      reason: '⛔CONTROL: the patch replayed the band\'s recording',
+    );
+    expect(
+      [
+        for (var y = 4; y < 8; y += 1)
+          for (var x = 4; x < 12; x += 1)
+            if (patched[(y * 16 + x) * 4 + 1] != 255 ||
+                patched[(y * 16 + x) * 4 + 3] != 255)
+              (x, y),
+      ],
+      isEmpty,
+      reason: 'the paper under all of the patch, not only where it met the '
+          'band it was recorded under',
+    );
+  });
+
   testWidgets('the painter declares its extent — a resized paint equals a '
       'fresh paint at the new size', (tester) async {
     // A 16-wide canvas with INK ON THE RIGHT: the narrow paint's backdrop
@@ -495,8 +554,12 @@ void main() {
           'the bake records draws it, so a hover replays the backdrop '
           'instead of rasterising it again under the pointer',
     );
-    // The counter is live: an extent that really moves re-records. Painted
+    // The counter is live: an extent that really moves re-records — once a
+    // paint there draws. A narrower view alone is a carry with nothing to
+    // recompose, which composes nothing at all (F-287: no region, no
+    // recompose), so the ghost comes back into the page under it. Painted
     // before the fresh mount below retires this stack's images.
+    ghost.value = ghostAt(inThePage);
     await tester.runAsync(() => paintAt(mounted.painter, const Size(48, 48)));
     expect(
       mounted.bake.recordCount,

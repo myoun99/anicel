@@ -220,6 +220,12 @@ void main() {
         tool.withActiveSize(1e9).shapeOptions.size,
         BrushToolState.clampSize(1e9),
       );
+      expect(
+        tool.withActiveSize(0.3).shapeOptions.size,
+        0.3,
+        reason: 'under a pixel, as the brush (size-rack-0-7-under-the-brush-'
+            'floor)',
+      );
       expect(tool.withActiveOpacity(3).shapeOptions.opacity, 1);
     });
 

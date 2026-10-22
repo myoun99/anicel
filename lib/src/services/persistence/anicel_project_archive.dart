@@ -65,6 +65,148 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v28 (2026-10-21, anchor-walks-a-path ② — 유저 10-13 「구조는 최대한
+/// AE랑 통일하려고」): a key on a path holds a handle on each side — in one
+/// line through the key (`joined`: the way the handle ahead points and the
+/// two reaches) or apart (`split`) — where it held one handle and its
+/// mirror (`tangent`). A v27 build turns the whole file away at such a key
+/// with 「Unknown key path」, a sentence that names nothing a person could
+/// act on. The bump turns that into the refusal of a newer Anicel's file
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⛔A key's `tangent` is NOT read here (the save law), and with it goes
+/// every file older than this one ([anicelOldestReadFormatVersion]) — 🗣️유저
+/// 10-06 「안열려도되」 · 10-18 (F-382-Q1) 「법 그대로 — 바닥을 올린다」, and
+/// 10-21 (anchor-walks-a-path-Q5) 「이 레인에서 같이 올린다」. What to carry
+/// when one is asked for: a key's `{"tangent": {"x": x, "y": y}}` was the
+/// handle ahead and the one behind its mirror, so it becomes
+/// `{"joined": {"degrees": atan2(y, x) in degrees, "ahead": √(x² + y²),
+/// "behind": √(x² + y²)}}`. Nothing else: v27 did not move the floor, so a
+/// v26 document is a v27 one.
+///
+/// v27 (2026-10-20, anchor-walks-a-path ① · ④ — 유저 10-13 「구조는 최대한
+/// AE랑 통일하려고」): an anchor point's keys walk a path as a position's
+/// do, so a key on the anchor's lane may rove (`rove: true`, `walksAPath`).
+/// A v26 build turns the whole file away at such a key — as one that roves
+/// on a lane walking no path, a sentence that names nothing a person could
+/// act on. The bump turns that into the refusal of a newer Anicel's file
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): an anchor key that does not rove is
+/// read as it was, so a v26 file is such a document.
+///
+/// v26 (2026-10-18, F-382 — 유저 10-17 「뷰어패널에서 파일을 마지막에
+/// 봣던 상태를 기억하게하고싶음」): the page a viewer was at is the FILE's,
+/// kept beside the project with the framing each viewer left it at
+/// (`ProjectResume.mediaFileViews`, by the file's path), and a viewer's
+/// bookmark says its file and no longer its page (`MediaViewerBookmark` —
+/// its `position` is neither written nor read). A v25 build reads such a
+/// bookmark as one at the first page, and its next save writes the resume
+/// back without the views. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⛔A bookmark's page is NOT read here (the save law), and with it goes
+/// every file older than this one ([anicelOldestReadFormatVersion]) — 🗣️유저
+/// 10-18 (F-382-Q1): 「법 그대로 — 바닥을 26 으로 올린다」, over keeping
+/// every older file open with its viewers at their first pages. What to
+/// carry when one is asked for: in the document, each
+/// `mediaViewerBookmarks` entry's `position` becomes the `page` of its
+/// `path` under `resume` → `mediaFileViews` (a file two viewers held at
+/// two pages keeps either — a file has one page now), and the entry loses
+/// the word. Nothing else: no version from v14 to v25 moved the floor, so
+/// a v13 document is a v25 one.
+///
+/// v25 (2026-10-18, text-letters-lean-and-underline ④⑤ — Q1 「일곱 전부」):
+/// each paragraph of a text says how it is aligned and how far apart its
+/// lines are (`CelTextContent.paragraphs`). A text whose paragraphs are all
+/// set alike is written as it was, its `align` and `lineHeight` on the
+/// text; only one set apart writes a `paragraphs` list. A v24 build reads
+/// that text without them: it opens every paragraph centred — what it
+/// reads where a text names no alignment — at the pitch a text has by
+/// default, and the first edit bakes them so and writes the text back
+/// without them — and nothing said. The bump turns that into a refusal; no
+/// older shape was read for it, and the floor stays where it is: a text
+/// that says no paragraphs is set alike at this version too.
+///
+/// v24 (2026-10-18, text-letters-lean-and-underline ⑥ — Q1 「일곱 전부」):
+/// a text says how wide its letters are drawn (`CelTextContent
+/// .letterWidth`, written only where it is not 1). A v23 build reads the
+/// text without it: it opens the letters at their own width, and the
+/// first edit bakes them so and writes the text back without it — and
+/// nothing said. The bump turns that into a refusal; no older shape was
+/// read for it, and the floor stays where it is: a text that says none is
+/// drawn at its letters' own width at this version too.
+///
+/// v23 (2026-10-18, text-letters-lean-and-underline — 유저 10-17 「기울임/밑줄
+/// 같은것도 어차피 넣어야할 기능이니까 넣도록」): a letter says whether it
+/// leans and whether a line runs under it or through it
+/// (`TextLetterStyle.italic` · `underline` · `strikethrough`, each written
+/// only where it is so), and an SE row's name tag keys the three as it
+/// keys bold (`SeNameTagTrack`). A v22 build reads a letter without the
+/// words: it opens the text upright and bare, and the first edit of it
+/// bakes the letters so and writes them back without the words — and
+/// nothing said. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a letter that says none of them is an
+/// upright, bare one at THIS version too, so a v22 file is such a document.
+///
+/// v22 (2026-10-18, F-374-Q8 — 유저 「맞춘다 — 참조 그림은 벽 밖까지
+/// 통째로」): a cel says WHERE A FILE'S PICTURE LIES on it, past the
+/// pasteboard when the picture is larger (cel stream v5,
+/// `anicelCelBinaryVersion`). A v21 build stops at such a cel with
+/// 「Unsupported cel entry version」 the first time it shows it — one cel at
+/// a time, deep in a session, with the rest of the project open — so the
+/// bump refuses the whole file up front instead, as a newer Anicel's
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a cel no file was laid on says so at
+/// THIS version too, and a v4 cel stream is read as one.
+///
+/// v21 (2026-10-17, F-374 — 유저 「참조fx도 똑같이 fx로서 법 통일 …
+/// 움직여도 키 안생긴다거나」): a reference row's reference fx holds KEYS —
+/// `fx` on its reference (`MediaReference.toJson`), a transform track of
+/// position, scale and turn — and where its file's pixels are laid is said
+/// apart from where it was placed (`laid` beside `pose`) once the two part.
+/// A v20 build reads neither: it opens the row standing still where its
+/// pixels were laid, and its next save writes the reference back without
+/// its keys. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a reference with no keys, laid where
+/// it was placed, says neither at THIS version too, so a v20 file is such a
+/// document.
+///
+/// v20 (2026-10-16, vanishing-point-types — 유저 09-17 「소실점 몇개든
+/// 추가할수있게」, Q4 「가이드마다 막대 하나」): a perspective guide holds
+/// any number of vanishing points, and says how densely they draw
+/// (`lineDensity` on its shape, `PerspectiveShape.toJson`). A v19 build
+/// refuses a guide of four points with an error that names nothing a person
+/// could act on, and reads no density — its next save writes the guide back
+/// drawing twelve. The bump turns both into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a guide that says no density draws
+/// twelve at THIS version too (`PerspectiveShape.toJson` leaves the word out
+/// there), so a v19 file is such a document.
+///
+/// v19 (2026-10-15, I-97 — a sheet's photos; 유저 I-97-Q1 「사진으로
+/// 남게(셀의 텍스트처럼)」): a cel's entry carries the PHOTOS laid on its
+/// picture after its texts (cel stream v4, `anicelCelBinaryVersion`) — a
+/// sheet's ink holds them, and any other entry writes a zero. A v18 build
+/// stops at such an entry with 「Unsupported cel entry version」 the first
+/// time it shows that cel, so the bump refuses the whole file up front
+/// instead, as a newer Anicel's ([decodeAnicelProjectDocument]).
+///
+/// ⚠️It did not move the floor ([anicelOldestReadFormatVersion]): v18 files
+/// open here unchanged — their cel streams say v3 and are read as v3, with
+/// no photos.
+///
 /// v18 (2026-10-15, F-360's second half — the storyboard rail's twirls):
 /// a track keeps its V row's twirl and the effect groups open inside it —
 /// `lanesExpanded` and `expandedLaneGroups` on a track (`Track.toJson`),
@@ -290,7 +432,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 18;
+const int anicelFormatVersion = 28;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -313,7 +455,9 @@ const int anicelFormatVersion = 18;
 /// 12: a reference that does not say where it stands is no longer read
 /// (v12 above).
 /// 13: a key's one interpolation is no longer read (v13 above).
-const int anicelOldestReadFormatVersion = 13;
+/// 26: a viewer bookmark's page is no longer read (v26 above).
+/// 28: a key's one handle and its mirror are no longer read (v28 above).
+const int anicelOldestReadFormatVersion = 28;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the

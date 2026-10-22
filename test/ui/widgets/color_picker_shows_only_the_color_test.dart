@@ -5,6 +5,7 @@ import 'package:anicel/src/ui/color/color_slot_pair.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
 /// **F-23 — the picker stopped saying what your finger is already on.**
 ///
@@ -175,7 +176,7 @@ void main() {
     final none = find.byKey(const ValueKey<String>('color-picker-none'));
     expect(none, findsOneWidget);
     expect(
-      tester.widget<TextButton>(none).onPressed,
+      tester.widget<Pill>(none).onTap,
       isNull,
       reason: 'present, and dead — 「없음이 가능한 자리에서만 눌리고」',
     );

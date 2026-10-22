@@ -191,7 +191,7 @@ void main() {
     expect(transformOn(), isTrue);
 
     await _press(tester, 'timeline-mode-storyboard-button');
-    await _pressNamed(tester, 'storyboard-se-lane-toggle-${_trackId.value}-1');
+    await _pressNamed(tester, 'storyboard-lane-toggle-${_seId.value}');
     await _pressNamed(
       tester,
       'storyboard-lane-group-fx-${_seId.value}-transform-group',

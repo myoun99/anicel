@@ -164,9 +164,10 @@ void main() {
             axis: axis,
             cellExtent: () => eighth,
           )),
-          axis == Axis.horizontal
-              ? const Offset(100.5, 40.7)
-              : const Offset(100.3, 40.5),
+          const {
+            Axis.horizontal: Offset(100.5, 40.7),
+            Axis.vertical: Offset(100.3, 40.5),
+          }[axis],
           reason: 'only along the frame axis',
         );
       }

@@ -35,6 +35,12 @@ List<CutFolderEntry> cutFolderEntriesFrom(
   ];
 }
 
+/// The file a parse names by [relativePath] ([CutFolderEntry]), found under
+/// [folderPath] again — what the import bakes a cel from, and what the
+/// window lists a reference as.
+String cutFolderFilePath(String folderPath, String relativePath) =>
+    '$folderPath/$relativePath';
+
 /// [parseCutFolder] addressed at a real folder: its own name is the cut's,
 /// and its PARENT's name is the process hint some studios put there
 /// (rule I — see [CutFolderParseConfig.parentFolderProcessHint]).

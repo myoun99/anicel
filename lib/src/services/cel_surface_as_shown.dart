@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
 import '../models/cel_text.dart';
 import '../models/dirty_region.dart';
 import '../models/layer_effect.dart';
@@ -31,6 +32,45 @@ BitmapSurface celSurfaceAsShown(
   BitmapSurface surface,
   List<ResolvedLayerEffect> effects,
 ) => celSurfaceWithSourceEffects(celSurfaceWithTextsLaid(surface), effects);
+
+/// THE SEAM, AT ONE COORDINATE: what a cel whose drawing holds [tile] there
+/// SHOWS there — [plates], the texts standing over the coordinate bottom →
+/// top (`celTextPlatesOver`; null where none does), laid over it, then the
+/// colour keys of [effects]. The very object [celSurfaceAsShown] holds at
+/// that coordinate once the cel holds [tile] — each pass answers a tile it
+/// has seen from its memo — so a picture made for one is the other's.
+///
+/// A live stroke's overlay shows its pictures in place of the cel's tiles,
+/// and pen-up hands each to the tile this answers
+/// (`ActiveStrokeOverlayModel.tileShownFor`).
+BitmapTile celTileAsShown(
+  BitmapTile tile,
+  List<BitmapTile>? plates,
+  List<ResolvedLayerEffect> effects,
+  int tileSize,
+) => celTileWithSourceEffects(
+  plates == null ? tile : celTileWithPlatesLaid(tile, plates, tileSize)!,
+  effects,
+  tileSize,
+);
+
+/// [celTileAsShown] over one tile's bytes that are not a tile yet:
+/// [straight], straight rgba written IN PLACE — a live stroke's result,
+/// shown in place of the cel's tile until the pen comes up. Equal to the
+/// last byte to what [celTileAsShown] makes of the tile they become: the
+/// laying ends in the same stamp, and the keys walk each pixel as they walk
+/// a tile's.
+void celStraightTileAsShown(
+  Uint8List straight,
+  List<BitmapTile>? plates,
+  List<ResolvedLayerEffect> effects,
+  int tileSize,
+) {
+  if (plates != null) {
+    layPlatesOverStraight(straight, plates, tileSize);
+  }
+  celSourceEffectsOverStraight(straight, effects);
+}
 
 /// THE SEAM, WHERE A TEXT A HAND CARRIES WILL LAND (F-344-Q3): the region
 /// of its cel the carried text's ink covers, and the straight rgba the cel
@@ -84,6 +124,7 @@ DirtyRegion? _landingRegion(BitmapSurface on, CelTextPixels carried) {
     celTextPlateSurface(
       carried.plate,
       canvasSize: on.canvasSize,
+      pasteboardReach: on.pasteboardReach,
       tileSize: on.tileSize,
     ),
   );

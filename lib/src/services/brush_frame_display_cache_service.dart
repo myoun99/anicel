@@ -20,12 +20,22 @@ class BrushFrameDisplayCacheService {
   final CanvasSize canvasSize;
   final int tileSize;
 
+  /// The preview [prepareFramePreview] answers [key] with where it is
+  /// prepared already — valid, at [canvasSize] — and null where it would
+  /// build one.
+  BrushFrameDisplayCache? preparedFramePreviewOrNull(BrushFrameKey key) {
+    final existing = frameStore.displayCacheOrNull(key);
+    return existing != null &&
+            existing.isValid &&
+            existing.previewSurface.canvasSize == canvasSize
+        ? existing
+        : null;
+  }
+
   BrushFrameDisplayCache prepareFramePreview(BrushFrameKey key) {
     frameStore.getOrCreateFrame(key);
-    final existing = frameStore.displayCacheOrNull(key);
-    if (existing != null &&
-        existing.isValid &&
-        existing.previewSurface.canvasSize == canvasSize) {
+    final existing = preparedFramePreviewOrNull(key);
+    if (existing != null) {
       return existing;
     }
 

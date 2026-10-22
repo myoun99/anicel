@@ -1,9 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 
 BrushTipMask _maskFor(String id) => BrushTipMask(
@@ -12,7 +14,7 @@ BrushTipMask _maskFor(String id) => BrushTipMask(
   alpha: Uint8List.fromList(const [10, 20, 30, 40]),
 );
 
-/// Every one of the 26 parameters at a NON-default value, so that any field a
+/// Every one of the parameters at a NON-default value, so that any field a
 /// copy/compare drops flips back to its default and the assertion below fails
 /// loudly (the same trap-proof shape the converter round-trip test uses).
 BrushShape _everyFieldNonDefault() => BrushShape(
@@ -30,10 +32,9 @@ BrushShape _everyFieldNonDefault() => BrushShape(
   ),
   roundness: 0.4,
   angleDegrees: 60,
-  tipMask: _maskFor('tip'),
+  tips: [_maskFor('tip'), _maskFor('tip-2')],
+  tipOrder: BrushTipOrder.pingPong,
   rotationMode: BrushTipRotationMode.direction,
-  sizeJitter: 0.2,
-  opacityJitter: 0.3,
   angleJitter: 0.4,
   scatterRadiusRatio: 0.5,
   scatterCount: 3,
@@ -46,6 +47,7 @@ BrushShape _everyFieldNonDefault() => BrushShape(
   textureContrast: 0.6,
   textureScale: 1.2,
   textureDensity: 0.9,
+  correction: const BrushCorrection(stabilization: 40),
 );
 
 void main() {
@@ -71,13 +73,17 @@ void main() {
       expect(base.copyWith(spacing: 0.1), isNot(base));
       expect(base.copyWith(roundness: 1.0), isNot(base));
       expect(base.copyWith(angleDegrees: 0), isNot(base));
-      expect(base.copyWith(tipMask: _maskFor('other')), isNot(base));
+      expect(base.copyWith(tips: [_maskFor('other')]), isNot(base));
+      expect(
+        base.copyWith(tips: [_maskFor('tip-2'), _maskFor('tip')]),
+        isNot(base),
+        reason: 'the order the dabs take the tips in is the brush too',
+      );
+      expect(base.copyWith(tipOrder: BrushTipOrder.repeat), isNot(base));
       expect(
         base.copyWith(rotationMode: BrushTipRotationMode.fixed),
         isNot(base),
       );
-      expect(base.copyWith(sizeJitter: 0), isNot(base));
-      expect(base.copyWith(opacityJitter: 0), isNot(base));
       expect(base.copyWith(angleJitter: 0), isNot(base));
       expect(base.copyWith(scatterRadiusRatio: 0), isNot(base));
       expect(base.copyWith(scatterCount: 1), isNot(base));
@@ -90,6 +96,7 @@ void main() {
       expect(base.copyWith(textureContrast: 0.0), isNot(base));
       expect(base.copyWith(textureScale: 1.0), isNot(base));
       expect(base.copyWith(textureDensity: 1.0), isNot(base));
+      expect(base.copyWith(correction: const BrushCorrection()), isNot(base));
       // The pressure curves too.
       expect(
         base.withPressureCurve(

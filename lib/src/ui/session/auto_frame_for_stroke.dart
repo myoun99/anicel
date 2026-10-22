@@ -7,6 +7,7 @@ import '../../models/new_row_placement.dart';
 import '../../models/storyboard_coverage.dart' show storyboardDivisionKeys;
 import '../../models/storyboard_timeline_layout.dart'
     show buildStoryboardTimelineLayout;
+import '../../models/timeline_coverage.dart' show isHeldCellAt;
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
@@ -95,15 +96,16 @@ class AutoFrameForStroke {
   /// The conte row a first stroke on [cut] leaves, and where it goes in the
   /// stack — null [index] for the row [cut] has, covered in place.
   ///
-  /// A cut with no row gets one on top, where a row made with nothing
-  /// selected goes ([newRowPlacement]): [cut] is not the cut the canvas
-  /// stands on, so it has no active row to go above. A row with no block
-  /// is covered by one cel, as a row is born ([coveringCelFor]).
+  /// A cut with no row gets one where every door makes a cut its conte row
+  /// — the bottom of ACTION ([conteRowPlacement], F-369). ↩️It went on top,
+  /// where a row made with nothing selected goes: [cut] is not the cut the
+  /// canvas stands on, so it has no active row to go above. A row with no
+  /// block is covered by one cel, as a row is born ([coveringCelFor]).
   ({Layer layer, int? index})? _conteCelPlan(Cut cut) {
     final row = storyboardLayerForCut(cut);
     if (row == null) {
       final layerId = _nextConteRow.putIfAbsent(cut.id, _layerIds.mint);
-      final placement = newRowPlacement(cut.layers, cut.layers.length);
+      final placement = conteRowPlacement(cut.layers);
       final born = bornRowOfKind(
         LayerKind.storyboard,
         layerId: layerId,
@@ -267,6 +269,22 @@ class AutoFrameForStroke {
       autoCreates &&
       _autoFrameForStroke == null &&
       _frameVerbs.canCreateDrawingAtCurrentFrame;
+
+  /// Whether a mark pressed now makes a cel of its own although one stands
+  /// under the playhead: on a HELD cell, as the ＋ does there.
+  ///
+  /// 🗣️I-113 (유저 2026-10-19): 「블록 홀드구간에서 그리면 해당부분에
+  /// 프레임 추가하듯이 추가하도록」. ⛔Not on the block's head: the ＋ pushes
+  /// the block there (F-151), and a mark goes on the drawing itself.
+  bool get markMakesItsOwnCel {
+    final layer = _selection.activeLayer;
+    return layer != null &&
+        canAutoCreateFrameForStroke &&
+        isHeldCellAt(
+          layer.timeline,
+          _controllers.timelineController.currentFrameIndex,
+        );
+  }
 
   /// 🚨F-171 — THE CEL A PRESS ON [layerId] WOULD MAKE, named before it
   /// exists.

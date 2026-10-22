@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../helpers/project_scratch_folder.dart';
+import '../helpers/settle_async.dart';
 
 /// APPLYING A PRESET FROM THE WORKSPACE — MEASURED.
 ///
@@ -90,26 +91,21 @@ void main() {
     // The loads are real file IO started on the fake clock: each step
     // completes in real time (a runAsync window) and its continuation runs
     // on the fake one (a pump). Alternate until the panel has presets.
-    for (var tries = 0; tries < 40; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-      // Loaded = the presets are listed AND a brush is in hand: the opening
-      // brush is taken up only once the hand-settings bank has landed too
-      // (H25-again), and that is one more file read after the libraries'.
+    //
+    // Loaded = the presets are listed AND a brush is in hand: the opening
+    // brush is taken up only once the hand-settings bank has landed too
+    // (H25-again), and that is one more file read after the libraries'.
+    await settleAsync(tester, () {
       final panels = find.byType(BrushPresetPanel).evaluate();
       final shown = panels.isEmpty
           ? null
           : tester.widget<BrushPresetPanel>(
               find.byType(BrushPresetPanel).first,
             );
-      if (shown != null &&
+      return shown != null &&
           shown.presets.isNotEmpty &&
-          shown.selectedPresetId != null) {
-        break;
-      }
-    }
+          shown.selectedPresetId != null;
+    });
     await tester.pumpAndSettle();
   }
 
@@ -555,12 +551,7 @@ void main() {
       }
     }
 
-    for (var tries = 0; tries < 40 && !forgotten(); tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, forgotten);
     expect(
       forgotten(),
       isTrue,
@@ -774,12 +765,7 @@ void main() {
       }
     }
 
-    for (var tries = 0; tries < 40 && !written(); tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, written);
     expect(
       written(),
       isTrue,

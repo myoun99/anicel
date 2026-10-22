@@ -10,9 +10,9 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 /// pick rebuilt every row of this panel, the ones two brushes share included.
 void main() {
   const flowKey = ValueKey<String>('brush-tool-flow-slider');
-  const jitterKey = ValueKey<String>('brush-tool-size-jitter-slider');
+  const angleKey = ValueKey<String>('brush-tool-angle-slider');
 
-  final a = BrushToolState.defaults.copyWith(flow: 0.5, sizeJitter: 0.2);
+  final a = BrushToolState.defaults.copyWith(flow: 0.5, angleJitter: 0.2);
 
   /// The panel the way the workspace drives it: the state it is handed is
   /// whatever the notifier holds, and a row's write lands in the notifier.
@@ -52,16 +52,16 @@ void main() {
   testWidgets('🚨a new brush keeps the rows whose numbers did not change — '
       'and rebuilds the ones that did', (tester) async {
     final (notifier, _) = await pumpPanel(tester);
-    final jitter = tester.widget(find.byKey(jitterKey));
+    final angle = tester.widget(find.byKey(angleKey));
     final flow = tester.widget(find.byKey(flowKey));
 
     notifier.value = a.copyWith(flow: 0.9);
     await tester.pump();
 
     expect(
-      identical(tester.widget(find.byKey(jitterKey)), jitter),
+      identical(tester.widget(find.byKey(angleKey)), angle),
       isTrue,
-      reason: 'the jitter row shows what it showed — the very instance, '
+      reason: 'the angle row shows what it showed — the very instance, '
           'skipped whole',
     );
     expect(identical(tester.widget(find.byKey(flowKey)), flow), isFalse);
@@ -73,11 +73,11 @@ void main() {
     final (notifier, written) = await pumpPanel(tester);
     notifier.value = a.copyWith(flow: 0.9);
     await tester.pump();
-    final jitter = tester.widget<FieldSlider>(find.byKey(jitterKey));
+    final angle = tester.widget<FieldSlider>(find.byKey(angleKey));
 
-    jitter.onChanged!(0.4);
+    angle.onChanged!(40);
 
-    expect(written.last.sizeJitter, 0.4);
+    expect(written.last.angleDegrees, 40);
     expect(
       written.last.flow,
       0.9,

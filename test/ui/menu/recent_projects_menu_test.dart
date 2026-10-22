@@ -10,6 +10,7 @@ import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// PICK-4: the Recent projects rows in the Project popover.
 ///
@@ -90,27 +91,23 @@ void main() {
   /// Taps a Recent row and lets the open RUN, answering whether the wait
   /// window was seen on the way.
   ///
-  /// ⚠️`runAsync` and hand-rolled pumping, NOT `pumpAndSettle`: the window
-  /// holds a turning spinner — an animation that never settles — and the
-  /// read is real IO that only completes in real time. The same harness
-  /// save_shows_progress_test uses, for the same two reasons. Polled until
-  /// the window has come and gone, so a stub that fails to parse in a
+  /// ⚠️Both clocks lent ([settleBehindTheWaitWindow]), NOT `pumpAndSettle`:
+  /// the window holds a turning spinner — an animation that never settles —
+  /// and the read is real IO that only completes in real time. The same
+  /// harness save_shows_progress_test uses, for the same two reasons. Polled
+  /// until the window has come and gone, so a stub that fails to parse in a
   /// millisecond and a file that takes a second are judged alike.
+  /// ↩️It tapped inside `runAsync` and pumped by hand until 10-20, where the
+  /// window's linger is 900ms of real time an open.
   Future<bool> tapRecentAndLetItOpen(WidgetTester tester, String path) async {
     final window = find.byKey(const ValueKey<String>('open-progress-dialog'));
     var seen = false;
-    await tester.runAsync(() async {
-      await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
-      final deadline = DateTime.now().add(const Duration(seconds: 30));
-      while (DateTime.now().isBefore(deadline)) {
-        await tester.pump();
-        final up = window.evaluate().isNotEmpty;
-        seen = seen || up;
-        if (seen && !up) {
-          break;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+    await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
+    await tester.pump();
+    await settleBehindTheWaitWindow(tester, () {
+      final up = window.evaluate().isNotEmpty;
+      seen = seen || up;
+      return seen && !up;
     });
     await tester.pumpAndSettle();
     return seen;

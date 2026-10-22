@@ -41,7 +41,25 @@ sealed class TimelineRowAddress {
   /// does, because you cannot re-order a property inside its layer. But it
   /// says so where the verb lives, with a reason, rather than by re-deriving
   /// "is this a real row" from the type.
+  ///
+  /// ⚠️It answers what a row BELONGS to — the layer you stand on and draw
+  /// on — never what a selection holds on it: that is [blockLayerId].
   LayerId? get owningLayerId;
+
+  /// WHOSE BLOCKS this row holds: the layer row's own, and null on a row
+  /// whose content is something else — a lane's is keys (an fx header's,
+  /// the fx), a cut row's is cuts.
+  ///
+  /// 🚨F-87 (유저 2026-10-18): 「fx행 선택범위로 선택하고, 삭제버튼누르면
+  /// 레이어의 프레임이 삭제됨 … fx를 넘어서 뭐든 선택된 대상으로 버튼의 대상이
+  /// 바껴야하는데 법 통일해서 해결하도록」 — and H20 (08-23): 「선택한 곳만
+  /// 움직이게하라고」. ↩️A selection read [owningLayerId] for this, so a band
+  /// that swept only an fx row held its layer's frames, which nobody swept
+  /// and the band never lit: one accessor answered two questions. The user's
+  /// law for a selection is 08-12's — 「선택 객체 하나가 종류 섞인 행들을 담고,
+  /// 각 동사가 행 종류별로 알아서 처리」 — so a lane row in a band is its own
+  /// row, and its layer's blocks are selected when the layer's row is.
+  LayerId? get blockLayerId;
 }
 
 /// A LAYER's cells row (the timeline and X-sheet grids, the storyboard's SE
@@ -53,6 +71,9 @@ final class LayerRowAddress extends TimelineRowAddress {
 
   @override
   LayerId? get owningLayerId => layerId;
+
+  @override
+  LayerId? get blockLayerId => layerId;
 
   @override
   String get keySuffix => layerId.value;
@@ -82,6 +103,10 @@ final class LayerRowAddress extends TimelineRowAddress {
 /// back to [layerId] rather than refusing: standing on a property must
 /// never cost you the layer you draw on, which is exactly the hazard the
 /// user named when asking for selectable fx properties.
+///
+/// ⚠️STANDING, not selecting: a selection that swept this row holds its
+/// keys — and an fx header's fx — never its layer's blocks
+/// ([TimelineRowAddress.blockLayerId], F-87).
 final class LaneRowAddress extends TimelineRowAddress {
   const LaneRowAddress(this.layerId, this.laneId);
 
@@ -93,6 +118,9 @@ final class LaneRowAddress extends TimelineRowAddress {
 
   @override
   LayerId? get owningLayerId => layerId;
+
+  @override
+  LayerId? get blockLayerId => null;
 
   @override
   String get keySuffix => '${layerId.value}-lane-$laneId';
@@ -121,6 +149,9 @@ final class TrackRowAddress extends TimelineRowAddress {
   /// A cut row belongs to no layer: its blocks are CUTS.
   @override
   LayerId? get owningLayerId => null;
+
+  @override
+  LayerId? get blockLayerId => null;
 
   @override
   String get keySuffix => 'track-${trackId.value}';

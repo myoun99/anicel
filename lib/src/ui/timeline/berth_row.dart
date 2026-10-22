@@ -115,8 +115,9 @@ typedef BerthWorld = ({
   /// #29: the (project, cut) world the row's tiles are baked for.
   String substrateGeneration,
 
-  /// The cut's frame count — where an SE row's `~` marks stand.
-  int playbackFrameCount,
+  /// How many frames the cut is DRAWN for — its 尺 plus the のりしろ — where
+  /// an SE row's end `~` stands (F-358: 「총합적인 엔드라인」).
+  int drawnFrameCount,
 
   /// How far into its block the cut's frame 0 already is (UI-R7 #6) — null
   /// when nothing spills in.

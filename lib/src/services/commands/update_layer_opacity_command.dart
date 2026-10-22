@@ -23,6 +23,10 @@ import 'link_mirrored_layer_field_command.dart';
 ///
 /// ⚠️THE WHOLE GROUP, a link-duplicated row of the SAME cut included — the
 /// blend command's note says why there is nothing narrower to ask for.
+///
+/// 🚨A CAMERA's is its whole track's (F-363, 유저 2026-10-15: 「카메라
+/// 불투명도는 레이어랑 통일」): the camera view's dim, which the track's
+/// cameras wear as one head (`cameraHeadTargets`).
 class UpdateLayerOpacityCommand extends LinkMirroredLayerFieldCommand<double> {
   UpdateLayerOpacityCommand({
     required super.repository,
@@ -34,6 +38,7 @@ class UpdateLayerOpacityCommand extends LinkMirroredLayerFieldCommand<double> {
          fieldName: 'opacity',
          read: (layer) => layer.opacity,
          write: _writeOpacity,
+         ofTheCameraHead: true,
        );
 
   static void _writeOpacity(

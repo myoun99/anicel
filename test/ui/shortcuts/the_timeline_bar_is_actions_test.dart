@@ -8,7 +8,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/working_panel.dart';
+import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
@@ -109,7 +111,7 @@ void main() {
   });
 
   testWidgets('the camera view key is the sill\'s switch', (tester) async {
-    await pumpApp(tester);
+    final session = await pumpApp(tester);
     await workIn(tester, WorkingPanel.timeline);
     bool lit() => button(tester, 'timeline-camera-view-button').isSelected;
     final before = lit();
@@ -119,6 +121,16 @@ void main() {
     expect(button(tester, 'timeline-camera-view-button').shortcuts, [
       EditorActionIds.cameraViewToggle,
     ]);
+
+    // 🗣️F-363: the switch is the camera row's eye — and the canvas reads
+    // the project's own view, never a value the window held.
+    expect(session.activeCutOrNull!.layers.cameraLayer!.isVisible, !before);
+    final canvas = tester.widget<EditorCanvasArea>(
+      find.byType(EditorCanvasArea),
+    );
+    expect(canvas.cameraViewEnabled, same(session.cameraViewMode.enabled));
+    expect(canvas.cameraDimOpacity, same(session.cameraViewMode.dim));
+    expect(canvas.cameraViewEnabled.value, !before);
   });
 
   testWidgets('the bar\'s buttons speak the program language', (
@@ -140,10 +152,11 @@ void main() {
       button(tester, 'timeline-orientation-toggle-button').tooltip,
       ko.tlShowXSheet,
     );
+    // A new project's camera is born with its view on (F-363-Q1).
     String camera() => button(tester, 'timeline-camera-view-button').tooltip;
-    expect(camera(), ko.cameraViewOff);
-    await pressKeyOf(tester, EditorActionIds.cameraViewToggle);
     expect(camera(), ko.cameraViewOn);
+    await pressKeyOf(tester, EditorActionIds.cameraViewToggle);
+    expect(camera(), ko.cameraViewOff);
     expect(ko.tlShowXSheet, isNot('Show X-sheet'), reason: 'premise');
     expect(ko.cameraViewOn, isNot('Camera view (on)'), reason: 'premise');
   });

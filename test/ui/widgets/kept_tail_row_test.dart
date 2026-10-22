@@ -2,7 +2,7 @@ import 'package:anicel/src/ui/widgets/kept_tail_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// A ROW THAT KEEPS ITS TAIL (the page strip's law): the tail whole at its
+/// A ROW THAT KEEPS ITS TAIL (the page turner's law): the tail whole at its
 /// own width, pinned to the end — where the row is narrower, all of it,
 /// smaller — and the head in what is left, never less than its own place.
 void main() {

@@ -43,7 +43,8 @@ typedef StagePlane = ({Color color, bool none});
 /// about 20% zoom. The bound became 3×3 at H2 (2026-08-22) while that number
 /// stayed at five, so the plane showed a pasteboard two canvases wider than
 /// anything could be drawn on. One wall now: the plane stops exactly where
-/// ink stops.
+/// ink stops — at the project's pasteboard size since I-109
+/// ([pasteboardReach]), the very wall the floor's pictures stand behind.
 ///
 /// 🚨F-114 (유저 2026-09-15: 「없음버튼 누르면 없는상태. 즉 해당 용지부분이
 /// 체크무늬되도록. 페이스트보드도 백그라운드도 동일하게」): an ABSENT plane is
@@ -55,6 +56,7 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
   const StagePlanesPainter({
     this.backdrop,
     this.pasteboard,
+    required this.pasteboardReach,
     this.paperNone = false,
     required this.canvasSize,
     required this.viewport,
@@ -67,6 +69,9 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
   /// Null on a canvas-base panel (`BrushCanvasPanel.canvasBase`): the
   /// backdrop alone.
   final StagePlane? pasteboard;
+
+  /// How far [pasteboard] reaches past the paper (I-109).
+  final PasteboardReach pasteboardReach;
   final bool paperNone;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
@@ -75,8 +80,9 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
   void paint(Canvas canvas, Size size) {
     final box = Offset.zero & size;
     // 🚨 Clip to our own box, because the quad below is built in VIEWPORT
-    // coordinates and therefore reaches as far as the pasteboard does —
-    // three canvas widths and heights, 7020 x 4962 units at the default cut
+    // coordinates and therefore reaches as far as the pasteboard does — up
+    // to three canvas widths and heights (its 3x size, I-109), 7020 x 4962
+    // units at the default cut
     // size (it was five, 11700 x 8270, when the figures below were
     // measured — the showing margin F-114 retired). A `CustomPaint` clips nothing on its own, so the
     // display list's BOUNDS became that whole quad, and the engine sizes
@@ -113,7 +119,12 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
       _paintPlane(canvas, box, null, backdrop);
     }
     if (pasteboard case final pasteboard?) {
-      _paintPlane(canvas, box, _quad(canvasSize.pasteboardRect), pasteboard);
+      _paintPlane(
+        canvas,
+        box,
+        _quad(canvasSize.pasteboardAt(pasteboardReach).rect),
+        pasteboard,
+      );
     }
     if (paperNone) {
       _paintPlane(
@@ -175,5 +186,12 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
   }
 
   @override
-  Object get props => (backdrop, pasteboard, paperNone, canvasSize, viewport);
+  Object get props => (
+    backdrop,
+    pasteboard,
+    pasteboardReach,
+    paperNone,
+    canvasSize,
+    viewport,
+  );
 }

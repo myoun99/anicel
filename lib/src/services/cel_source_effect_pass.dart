@@ -22,6 +22,8 @@
 library;
 
 import '../core/collection_equality.dart';
+import '../core/signed_memo.dart';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
@@ -29,6 +31,7 @@ import '../models/bitmap_tile.dart';
 import '../models/bitmap_tile_rewrite.dart';
 import '../models/layer_effect.dart';
 import '../models/tile_coord.dart';
+import '../native/qa_native_engine.dart';
 
 /// One color key sampled at one frame — the parameters as the pixel loop
 /// wants them (bytes, not the spec's doubles).
@@ -136,14 +139,18 @@ class CelColorKey {
   /// drawn as a second layer over the first, because a two-pass mix
   /// accumulates alpha ([[derived-cel-projection-pattern]] rule 6).
   /// ⛔The full-strength case is NOT a branch. `_keptFraction` is 0 there and
-  /// the arithmetic below lands on 0 by itself — a second path would be a
-  /// second place for the shader to fail to match.
+  /// the arithmetic ([_erased]) lands on 0 by itself — a second path would be
+  /// a second place for the shader to fail to match.
   int alphaFor(int red, int green, int blue, int alpha) {
     if (alpha == 0 || !erases(red, green, blue)) {
       return alpha;
     }
-    return (_asFloat32(alpha * _keptFraction) + 0.5).floor();
+    return _erased(alpha);
   }
+
+  /// What erasing leaves of [alpha] — [alphaFor]'s arithmetic, and the
+  /// walk's alpha table ([_keyTables]).
+  int _erased(int alpha) => (_asFloat32(alpha * _keptFraction) + 0.5).floor();
 
   /// Whether this key NAMES the pixel for erasure — PURELY a colour
   /// question, with no alpha in it.
@@ -289,17 +296,15 @@ BitmapSurface celSurfaceWithSourceEffects(
   // the surface, and rebuilding this list per tile allocated a list per
   // tile per frame while a slider was moving.
   final signature = [for (final key in keys) ...key.signature];
-  final cached = _signedHit(_derived, surface, signature);
-  if (cached != null) {
-    return cached;
-  }
-  final result = _applyKeys(surface, keys, signature);
   // ONE entry per surface, deliberately. Dragging Tolerance makes a new
   // signature every frame, and holding them all would retain a derived copy
   // of the cel per slider step; the value being dragged is the only one
   // anyone is looking at.
-  _derived[surface] = _Signed(signature, result);
-  return result;
+  return _derived.resolve(
+    surface,
+    signature,
+    () => _applyKeys(surface, keys, signature),
+  );
 }
 
 /// [straight] — straight rgba, a cel's bytes as its texts make them — with
@@ -322,6 +327,26 @@ void celSourceEffectsOverStraight(
   if (keys.isNotEmpty) {
     _keyedPixels(straight, keys, () => straight);
   }
+}
+
+/// [tile] — one of a cel's tiles as its texts make it — with every colour
+/// key in [effects] applied: the very tile [celSurfaceWithSourceEffects]
+/// makes of it in a surface (one memo, [_keyedTile]), or [tile] itself
+/// when there is nothing to do.
+///
+/// ⛔Called by the seam alone, for [celSurfaceWithSourceEffects]'s reason
+/// (`a_cel_is_shown_through_one_seam_test`).
+BitmapTile celTileWithSourceEffects(
+  BitmapTile tile,
+  List<ResolvedLayerEffect> effects,
+  int tileSize,
+) {
+  final keys = _keysOf(effects);
+  return keys.isEmpty
+      ? tile
+      : _keyedTile(tile, keys, [
+          for (final key in keys) ...key.signature,
+        ], tileSize);
 }
 
 /// The colour keys [effects] applies, in its order — a kind that keys
@@ -363,30 +388,63 @@ BitmapTile _keyedTile(
   List<double> signature,
   int tileSize,
 ) {
-  final cached = _signedHit(_keyedTiles, tile, signature);
-  if (cached != null) {
-    return cached;
-  }
-  final keyed =
-      rewriteTileLazily(
+  return _keyedTiles.resolve(
+    tile,
+    signature,
+    () =>
+        rewriteTileLazily(
+          tile,
+          tileSize,
+          (view) => _keyedPixels(view, keys, () => Uint8List.fromList(view)),
+        ) ??
         tile,
-        tileSize,
-        (view) => _keyedPixels(view, keys, () => Uint8List.fromList(view)),
-      ) ??
-      tile;
-  _keyedTiles[tile] = _Signed(signature, keyed);
-  return keyed;
+  );
 }
 
 /// [keys] over the straight rgba [view]: every pixel's alpha what they
 /// leave it, written to the bytes [into] answers — asked once, at the
 /// first pixel that changes — and null when none does. THE walk, a tile's
-/// ([_keyedTile]) and a region's ([celSourceEffectsOverStraight]) alike.
+/// ([_keyedTile]) and a region's ([celSourceEffectsOverStraight]) alike,
+/// [keyRgbaKeysAtOnce] keys at a time in the chain's order.
 Uint8List? _keyedPixels(
   Uint8List view,
   List<CelColorKey> keys,
   Uint8List Function() into,
 ) {
+  Uint8List? out;
+  for (var from = 0; from < keys.length; from += keyRgbaKeysAtOnce) {
+    final tables = _keyTables(
+      keys.sublist(from, math.min(from + keyRgbaKeysAtOnce, keys.length)),
+    );
+    final source = out;
+    out = source == null
+        ? _walk(view, tables, into)
+        : _walk(source, tables, () => source) ?? source;
+  }
+  return out;
+}
+
+/// [tables] over [view] as [_keyedPixels] says — in C where the engine is
+/// loaded (`qa_key_rgba`), and here, step for step the same, where it is
+/// not (`the_keys_walk_the_same_in_c_test`).
+///
+/// 🔬IN C BECAUSE A STROKE PAYS IT EVERY FLUSH: a live stroke on a keyed row
+/// shows each tile it changes through the keys, and asking each key of
+/// each pixel took 1.1–3.4 ms over one 256 px tile of a keyed sheet here
+/// (AOT, 10-16), and these tables walked in C take 0.13 ms, the copy into
+/// the engine's buffer and all — the C pool pre-blends a whole 1800 px
+/// brush's tiles in ~21 ms (`ActiveStrokeOverlayModel`).
+Uint8List? _walk(
+  Uint8List view,
+  KeyRgbaTables tables,
+  Uint8List Function() into,
+) {
+  final engine = QaNativeEngine.instance;
+  if (engine != null) {
+    final keyed = engine.keyRgba(view, tables);
+    return keyed == null ? null : (into()..setAll(0, keyed));
+  }
+  final (:red, :green, :blue, :keeps, alphaMaps: maps) = tables;
   Uint8List? out;
   final length = view.length;
   for (var offset = 0; offset < length; offset += 4) {
@@ -394,15 +452,15 @@ Uint8List? _keyedPixels(
     if (alpha == 0) {
       continue;
     }
-    final red = view[offset];
-    final green = view[offset + 1];
-    final blue = view[offset + 2];
+    var erasing =
+        (red[view[offset]] & green[view[offset + 1]] & blue[view[offset + 2]]) ^
+        keeps;
     var next = alpha;
-    for (final key in keys) {
-      next = key.alphaFor(red, green, blue, next);
-      if (next == 0) {
-        break;
+    for (var map = 0; erasing != 0 && next != 0; map += 256) {
+      if (erasing & 1 == 1) {
+        next = maps[map + next];
       }
+      erasing >>= 1;
     }
     if (next == alpha) {
       continue;
@@ -413,34 +471,53 @@ Uint8List? _keyedPixels(
   return out;
 }
 
-/// A memo entry: what was derived, plus the VALUES it was derived from.
+/// Up to [keyRgbaKeysAtOnce] colour keys as the walk reads them, here and
+/// in C ([KeyRgbaTables]).
 ///
-/// ⛔Values, not a hash — see [CelColorKey.signature]. The two grains
-/// (surface and tile) differ only in what `T` is, so they are one class.
-class _Signed<T> {
-  const _Signed(this.signature, this.value);
-
-  final List<double> signature;
-  final T value;
-}
-
-/// The memo's one lookup: an entry keyed on [key]'s identity counts only
-/// while its signature still says the same thing.
-T? _signedHit<T>(
-  Expando<_Signed<T>> memo,
-  Object key,
-  List<double> signature,
-) {
-  final cached = memo[key];
-  return cached != null && listEquals(cached.signature, signature)
-      ? cached.value
-      : null;
+/// ⛔MADE FROM THE KEYS' OWN ANSWERS, never a second spelling of them: a
+/// channel's bit is [CelColorKey.matches] asked with the other two channels
+/// at the key's own values, and an alpha's is [CelColorKey._erased] — so the
+/// walk, in either language, cannot drift from the definition the
+/// destructive verb and the shader are held to.
+KeyRgbaTables _keyTables(List<CelColorKey> keys) {
+  assert(keys.length <= keyRgbaKeysAtOnce);
+  final red = Uint32List(256);
+  final green = Uint32List(256);
+  final blue = Uint32List(256);
+  final alphaMaps = Uint8List(keys.length * 256);
+  for (final (k, key) in keys.indexed) {
+    final bit = 1 << k;
+    for (var value = 0; value < 256; value += 1) {
+      if (key.matches(value, key.green, key.blue)) {
+        red[value] |= bit;
+      }
+      if (key.matches(key.red, value, key.blue)) {
+        green[value] |= bit;
+      }
+      if (key.matches(key.red, key.green, value)) {
+        blue[value] |= bit;
+      }
+      alphaMaps[k * 256 + value] = key._erased(value);
+    }
+  }
+  return (
+    red: red,
+    green: green,
+    blue: blue,
+    keeps: keys.indexed.fold(
+      0,
+      (bits, entry) => entry.$2.keepsMatches ? bits | 1 << entry.$1 : bits,
+    ),
+    alphaMaps: alphaMaps,
+  );
 }
 
 /// One keyed tile per source tile — the newest values win, for the reason
-/// [_derived] states about a slider being dragged.
-final Expando<_Signed<BitmapTile>> _keyedTiles = Expando<_Signed<BitmapTile>>(
+/// [_derived] states about a slider being dragged — by the values, as
+/// [_derived] keeps its.
+final SignedMemo<List<double>, BitmapTile> _keyedTiles = SignedMemo(
   'celSourceEffectTiles',
+  same: sameCelSourceEffectSignature,
 );
 
 /// The keyed copy this pass made of [tile] and still holds, through whatever
@@ -449,12 +526,17 @@ final Expando<_Signed<BitmapTile>> _keyedTiles = Expando<_Signed<BitmapTile>>(
 ///
 /// A copy lives exactly as long as its source, so a picture made for the
 /// copy is let go with the source's (undo-held-tile-pictures, stage 2).
-BitmapTile? keyedCopyOf(BitmapTile tile) => _keyedTiles[tile]?.value;
+BitmapTile? keyedCopyOf(BitmapTile tile) => _keyedTiles.keptOf(tile);
 
 /// Derived render data keyed on the SOURCE surface's identity. Surfaces are
 /// immutable, so identity is a stable key and an edited cel is a different
 /// object that misses and recomputes — the same contract
-/// `BitmapTileImageCache` runs on. The [Expando] releases an entry when the
+/// `BitmapTileImageCache` runs on. The memo lets an entry go when the
 /// source surface itself goes.
-final Expando<_Signed<BitmapSurface>> _derived =
-    Expando<_Signed<BitmapSurface>>('celSourceEffectSurfaces');
+///
+/// ⛔Kept by the VALUES the keys were made from, not a hash — see
+/// [CelColorKey.signature].
+final SignedMemo<List<double>, BitmapSurface> _derived = SignedMemo(
+  'celSourceEffectSurfaces',
+  same: sameCelSourceEffectSignature,
+);

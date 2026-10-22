@@ -14,7 +14,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/clipboard/layer_copy_payload.dart';
 import 'package:anicel/src/services/commands/cut_command_input_planner.dart';
-import 'package:anicel/src/services/commands/paste_layer_command.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
 void main() {
@@ -68,7 +67,7 @@ void main() {
   });
 
   test(
-    'paste command undo removes and redo restores same layer at raw index',
+    'a pasted row\'s add undoes and redoes the same layer at its raw index',
     () {
       final repository = ProjectRepository(
         initialProject: _project(_cut(layers: [_layer()])),
@@ -80,7 +79,7 @@ void main() {
         payload: copyLayerToPayload(cut.layers.single),
         insertionIndex: 1,
       );
-      final command = PasteLayerCommand(
+      final command = plannedAddLayerCommand(
         repository: repository,
         cutId: cut.id,
         layer: plan.layer,

@@ -318,5 +318,6 @@ BrushStrokeCommitData? clipStrokeCommitToSelection(
     strokeBounds: clipped.bounds,
     blendMode: data.blendMode,
     strokeOpacity: data.strokeOpacity,
+    end: data.end,
   );
 }

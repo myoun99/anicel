@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/layout/device_grid_scroll_controller.dart'
     show ScrollStill;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
@@ -39,6 +40,8 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
+    show TimelineLaneKeyMarker;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
@@ -90,7 +93,7 @@ void main() {
     await tester.pumpAndSettle();
 
     List<(LayerId, String)> guests() => [
-      for (final (:layer, :lane) in _painter(tester).guests)
+      for (final (:layer, :lane, reach: _) in _painter(tester).guests)
         (layer.id, lane.laneId),
     ];
     expect(guests(), [(_drawId, _blurWidth), (_camId, 'position')]);
@@ -145,6 +148,59 @@ void main() {
     final mark = layerMarkColor(_layer.mark).toARGB32();
     expect(marks, List.filled(2 * 2 + 2, mark), reason: 'Position\'s two '
         'keys on each of its numbers, and the Blur\'s two');
+  });
+
+  // 🗣️F-367-Q3 (유저 2026-10-17): 「레인 멤버 키와 같은 크기」 — every line
+  // a graph draws is a member lane.
+  testWidgets('a key\'s mark is as big as its member lane marks it — at every '
+      'zoom', (tester) async {
+    final s = await _pump(tester);
+    await _openTransform(tester);
+    await _tapNamed(tester, 'timeline-lane-group-toggle-draw-$_blur');
+    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
+    s.standOnRow(const LaneRowAddress(_drawId, 'position'));
+    await tester.pumpAndSettle();
+
+    // The Blur's width, its group's graph shut: a member lane marking its
+    // key at 0 itself.
+    Size memberMark() => tester
+        .widget<TimelineLaneKeyMarker>(
+          find.byKey(ValueKey<String>('timeline-lane-key-draw-$_blurWidth-0')),
+        )
+        .markerSize;
+    // Each key's mark as drawn — the whole of its box, whatever its shape,
+    // to a float's precision: a path keeps its points in floats.
+    List<Size> graphMarks() {
+      final canvas = TestRecordingCanvas();
+      _painter(tester).paint(canvas, tester.getSize(_picture('timeline')));
+      return [
+        for (final call in canvas.invocations)
+          if (call.invocation.memberName == #drawPath &&
+              (call.invocation.positionalArguments[1] as Paint).style ==
+                  PaintingStyle.fill)
+            (call.invocation.positionalArguments[0] as Path).getBounds().size,
+      ];
+    }
+
+    // Zoomed in, a frame's cell is wider than a lane's row is tall and the
+    // row is the tighter of the two; zoomed out, the cell is.
+    await _tap(tester, 'timeline-zoom-in-button');
+    final seen = <Size>{};
+    for (var step = 0; step < 3; step += 1) {
+      final member = memberMark();
+      seen.add(member);
+      final marks = graphMarks();
+      expect(marks, hasLength(2 * 2), reason: '⛔전제: Position\'s keys');
+      for (final mark in marks) {
+        expect(
+          mark,
+          within(distance: 1e-3, from: member),
+          reason: 'zoom step $step',
+        );
+      }
+      await _tap(tester, 'timeline-zoom-out-button');
+    }
+    expect(seen, hasLength(3), reason: '⛔전제: the zoom moved the marks');
   });
 
   testWidgets('an edit in flight shows in it as its rows show it — its own '
@@ -231,7 +287,7 @@ void main() {
       reason: '⛔전제: the cut runs on past the window',
     );
     expect(window.startIndex, 0, reason: '⛔전제: the view starts at frame 0');
-    var frames = painter.grid.geometry.value;
+    var frames = painter.frameAxis.geometry.value;
     final drawn = _drawnAlong(tester);
     expect(
       drawn.start,
@@ -256,7 +312,7 @@ void main() {
 
     expect(identical(_painter(tester), painter), isTrue, reason: 'no rebuild');
     final moved = painter.visibleFrameWindow();
-    frames = painter.grid.geometry.value;
+    frames = painter.frameAxis.geometry.value;
     expect(moved.startIndex, greaterThan(window.endIndexExclusive));
     expect(moved.endIndexExclusive, frames.frameEndIndexExclusive);
     final after = _drawnAlong(tester);
@@ -639,7 +695,7 @@ bool _plots(WidgetTester tester, LaneGraphMode mode) => tester
     .selected;
 
 List<String> _ids(List<LaneGraphLine> lines) => [
-  for (final (:lane, layer: _) in lines) lane.laneId,
+  for (final (:lane, layer: _, reach: _) in lines) lane.laneId,
 ];
 
 CameraPose _pose(double x) =>
@@ -771,8 +827,8 @@ Future<void> _expectTheCompositorShowsTheTags(
   final end =
       port.globalToLocal(along ? tags.centerRight : tags.bottomCenter) *
       ratio;
-  final across = (along ? end.dy : end.dx).floor();
-  final edge = along ? end.dx : end.dy;
+  final across = partAcross(axis, end).floor();
+  final edge = partAlong(axis, end);
   bool isGround(int at) {
     final i = (along ? across * width + at : at * width + across) * 4;
     const ground = AppColors.surface;

@@ -204,6 +204,46 @@ void main() {
       expect(pixel(faint.tiles, 30, 20).$4, closeTo(64, 1));
     });
 
+    test('the picture is baked through the layer\'s mask as a stored one '
+        'is — where the mask stands on the canvas', () {
+      // The mask stands from x 20, hiding its first 16 columns; past its
+      // edges its fill shows everything.
+      final block = Uint8List(256 * 256);
+      for (var y = 0; y < 256; y += 1) {
+        for (var x = 16; x < 256; x += 1) {
+          block[y * 256 + x] = 255;
+        }
+      }
+      final drawn = clipVectorTiles(
+        [
+          vectorStrokeBytes([(10, 20, 1), (50, 20, 1)], radius: 3),
+        ],
+        (x: 0, y: 0),
+        canvas(),
+        mask: (
+          attribute: offscreenAttributeBytes(
+            width: 64,
+            height: 64,
+            columns: 1,
+            rows: 1,
+            colourChannels: 0,
+            fill: 1,
+          ),
+          blocks: blockRecordsBytes({0: block}),
+          left: 20,
+          top: 0,
+        ),
+      );
+
+      expect(pixel(drawn.tiles, 30, 20).$4, 0, reason: 'the mask\'s x 10');
+      expect(pixel(drawn.tiles, 40, 20).$4, closeTo(255, 1));
+      expect(
+        pixel(drawn.tiles, 15, 20).$4,
+        closeTo(255, 1),
+        reason: 'left of the mask',
+      );
+    });
+
     test('a line narrows toward a thin point as a pressed pen\'s does — and '
         'a point with no width, or less, lays nothing', () {
       final drawn = clipVectorTiles(
@@ -230,6 +270,43 @@ void main() {
       expect(across(25), greaterThan(across(36)), reason: 'narrower on');
       expect(across(36), greaterThan(0), reason: 'still a line');
       expect(across(48), 0, reason: 'nothing past the point with no width');
+    });
+
+    // 🗣️size-rack-0-7-under-the-brush-floor (유저 2026-10-17 「다른부분
+    // 발견되는거있으면 법 통일」): a stroke under a pixel lands as the brush
+    // lands one.
+    test('a stroke narrower than a pixel lands as the one-pixel stroke '
+        'does, lighter by its width', () {
+      // Below row 20's centre by more than a 0.6 dab's reach — ↩️where a
+      // stroke that thin landed nothing.
+      int Function(int, int) drawn(double width) {
+        final tiles = clipVectorTiles(
+          [
+            vectorStrokeBytes([
+              (10.2, 20.85, 1),
+              (50.2, 20.85, 1),
+            ], radius: width / 2),
+          ],
+          (x: 0, y: 0),
+          canvas(),
+        ).tiles;
+        return (x, y) => pixel(tiles, x, y).$4;
+      }
+
+      final whole = drawn(1);
+      expect(whole(30, 20), greaterThan(0), reason: 'premise: it draws');
+      for (final width in [0.2, 0.6]) {
+        final thin = drawn(width);
+        for (var x = 12; x < 49; x += 1) {
+          for (final y in [19, 20, 21]) {
+            expect(
+              thin(x, y),
+              closeTo(whole(x, y) * width, 2),
+              reason: '$width wide at $x, $y',
+            );
+          }
+        }
+      }
     });
 
     test('a stroke off the canvas lands nothing — and the strokes it cannot '

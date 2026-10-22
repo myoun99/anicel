@@ -11,6 +11,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
@@ -126,7 +127,7 @@ void main() {
       final dabs = [for (var i = 0; i < 12; i += 1) pixelDab(i)];
 
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: canvasSize,
+        pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
         tileSize: 8,
       )..strokeOpacity = opacity;
       rasterizer.blendFrom(dabs, from: 0);
@@ -207,7 +208,7 @@ void main() {
 
     test('with no selection the ceiling still reaches the kernel', () {
       final rasterizer = BrushLiveStrokeRasterizer(
-        canvasSize: canvasSize,
+        pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
         tileSize: 8,
       )..strokeOpacity = 0.5;
       rasterizer.blendFrom([
@@ -233,7 +234,10 @@ void main() {
 
     test('a selection still clips while the ceiling caps', () {
       final rasterizer =
-          BrushLiveStrokeRasterizer(canvasSize: canvasSize, tileSize: 8)
+          BrushLiveStrokeRasterizer(
+              pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+              tileSize: 8,
+            )
             ..strokeOpacity = 0.5
             ..selectionRegion = CanvasSelectionRegion.shape(
               CanvasSelectionShape.rect(left: 0, top: 0, right: 2, bottom: 8),

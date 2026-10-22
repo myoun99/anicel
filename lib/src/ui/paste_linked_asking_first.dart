@@ -4,7 +4,7 @@ import 'dialogs/frame_name_conflict_dialog.dart';
 import 'editor_session_manager.dart';
 import 'session/frame_clipboard.dart' show ClipboardPlace, LinkedPasteJoins;
 import 'text/app_strings.dart';
-import 'text/place_lines.dart' show drawingPlaceLines;
+import 'text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
 
 /// 링크 붙여넣기, asking first where it would link by NAME.
 ///
@@ -47,6 +47,33 @@ Future<void> pasteLinkedAskingFirst(
       ],
       join: (_) =>
           session.clipboard.pasteLinkedAt(place(), joinTakenNames: true),
+      decline: null,
+    ),
+  );
+}
+
+/// The KEYS' 링크 붙여넣기 (F-388), asking first as the frames' does: the
+/// keys land at once unless a name they carry already means another value
+/// on the lane they land on. Then nothing is written and the link window
+/// asks ONCE, listing what the key window's rename lists for the same
+/// question — the row the keys sit on. Joined, the pasted keys take what
+/// their names hold there, as one undo; Cancel writes nothing.
+Future<void> pasteLinkedKeysAskingFirst(
+  BuildContext context,
+  EditorSessionManager session,
+) async {
+  final joins = session.keyClipboard.pasteLinked();
+  final lane = session.laneVerbs.laneVerbRange;
+  if (joins == null || lane == null) {
+    return;
+  }
+  await offerLink<Set<String>>(
+    context,
+    joins,
+    onConflict: (
+      lines: (_) =>
+          rowPlaceLines(session.repository.requireProject(), lane.layerId),
+      join: (_) => session.keyClipboard.pasteLinked(joinTakenNames: true),
       decline: null,
     ),
   );

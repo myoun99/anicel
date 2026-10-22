@@ -50,12 +50,13 @@ import 'lane_graph_toggle.dart';
 import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
-import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
+import 'transform_lane_policy.dart' show laneSelectionPicksKey;
 import 'timeline_block_word.dart';
 import '../repaint_props.dart';
 import 'timeline_cell_style.dart'
     show
         TimelineBlockWordGrowth,
+        timelineBlockNameFontSize,
         timelineBlockWordStyle,
         timelineFittedGlyphFontSize,
         timelineInBlockInk,
@@ -75,14 +76,25 @@ import 'memo_token.dart' show ByList;
 /// not a second block edge.
 const double _selectedLaneKeyBorderWidth = 4 / 3;
 
+/// The ring a key inside the live lane selection wears — every key mark
+/// on the frame axis that shows one: a lane's row's, and a header graph's
+/// (I-3), where its keys are pressed and carried.
+({Color color, double width}) get selectedLaneKeyRing =>
+    (color: AppColors.accent, width: _selectedLaneKeyBorderWidth);
+
 /// How short a stood-up lane label may get before its column sheds a
 /// control instead — two frame rows of vertical writing, the same floor the
 /// x-sheet's layer heading keeps (R10 R6). Long names pack into it; what
 /// they must not do is pack into three pixels.
 const double _laneLabelFloor = 2 * timelineFrameCellWidth;
 
-/// The stood-up navigator (three 20px buttons), plus its leading gap.
-const double _laneNavigatorExtent = 3 * 20 + 4;
+/// The stood-up navigator: three 20px buttons.
+///
+/// ↩️It carried a leading gap of 4 from when the navigator stood under the
+/// name (R10 R6). Above the name since I-89-Q17, its gap is the one after
+/// it ([_laneStoodNavigatorGap]) — and the column paid that 4 twice, so the
+/// navigator stood 4px later than it fit (found by a mutant, 2026-10-16).
+const double _laneNavigatorExtent = 3 * 20;
 
 /// The stood-up chain of a linkable lane — [AppIconButtonSize.micro]'s
 /// height.
@@ -847,9 +859,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     final preview = lane.previewText;
     if (preview == null) return null;
     return Align(
-      alignment: widget.axis == Axis.horizontal
-          ? Alignment.centerRight
-          : Alignment.bottomCenter,
+      alignment: centerEndAlong(widget.axis),
       child: SeNameTagLanePreview(
         key: ValueKey<String>(
           '$_keyPrefix-lane-group-preview-${layer.id}-${lane.laneId}',
@@ -910,9 +920,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       // centered across it. The sheet centered on BOTH axes, which is what
       // made its lane names float in the middle of a column whose rail twin
       // begins at the leading edge.
-      alignment: widget.axis == Axis.horizontal
-          ? Alignment.centerLeft
-          : Alignment.topCenter,
+      alignment: centerStartAlong(widget.axis),
       child: lead == null
           ? content
           : Row(
@@ -1159,6 +1167,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// What a stood-up member column [extent] long shows: the NAME is paid
   /// first, then each control in turn, and what does not fit is shed.
   ///
+  /// 🚨ONE LAW FOR EVERY CONTROL, written once: each is paid after every
+  /// control before it that the LANE HAS — not after the ones this column
+  /// is showing — so what a column grew to show stays as it grows on. The
+  /// order is the gate's (2026-08-08): the value, the navigator, the
+  /// chain, the pin, the chips.
+  ///
   /// The chain is paid after the value and the navigator, once everything
   /// the column already showed has its room: it links the value, so it is
   /// never there without it, and no key button is shed to make it room.
@@ -1172,35 +1186,43 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// the value and went again as the column grew to take it — a window the
   /// turned value column, as long as the rail's value cell is wide, opened
   /// (2026-10-11).
+  /// ↩️The navigator was the last one asked of the value SHOWING: it stood
+  /// in a column too short for the value, made way when the value came and
+  /// stood again further up (10-11 to 10-16, board:
+  /// xsheet-stood-navigator-comes-and-goes). Each control spelled its own
+  /// floor then, and the one that drifted is why they are one walk now.
   _StoodShows _stoodShows(
     double extent, {
     required bool hasValue,
     required bool hasLink,
   }) {
-    final valueSlot =
-        _laneValueGap + layerRailColumnWidthsIn(context).laneValue;
-    final value = hasValue && extent >= _laneLabelFloor + valueSlot;
-    final valueExtent = value ? valueSlot : 0.0;
-    final navigatorExtent = lane.showsKeyNavigator
-        ? _laneStoodNavigatorGap + _laneNavigatorExtent
-        : 0.0;
-    final navigatorFloor = _laneLabelFloor + valueExtent;
-    final linkFloor = navigatorFloor + navigatorExtent;
-    final linked = value && hasLink;
-    final pinFloor =
-        _laneLabelFloor +
-        (hasValue ? valueSlot : 0.0) +
-        navigatorExtent +
-        (hasValue && hasLink ? _laneValueLinkExtent : 0.0);
+    var floor = _laneLabelFloor;
+    bool paid(bool has, double slot) {
+      final fits = has && extent >= floor + slot;
+      if (has) {
+        floor += slot;
+      }
+      return fits;
+    }
+
+    final value = paid(
+      hasValue,
+      _laneValueGap + layerRailColumnWidthsIn(context).laneValue,
+    );
+    final navigator = paid(
+      lane.showsKeyNavigator,
+      _laneStoodNavigatorGap + _laneNavigatorExtent,
+    );
+    final link = paid(hasValue && hasLink, _laneValueLinkExtent);
     final graphs = _drawsGraphs;
-    final chipsFloor = pinFloor + (graphs ? layerLanePinSlotWidth : 0.0);
+    final pin = paid(graphs, layerLanePinSlotWidth);
+    final chips = paid(graphs, layerLaneChipsSlotWidth);
     return (
       value: value,
-      navigator:
-          lane.showsKeyNavigator && extent >= navigatorFloor + navigatorExtent,
-      link: linked && extent >= linkFloor + _laneValueLinkExtent,
-      pin: graphs && extent >= pinFloor + layerLanePinSlotWidth,
-      chips: graphs && extent >= chipsFloor + layerLaneChipsSlotWidth,
+      navigator: navigator,
+      link: link,
+      pin: pin,
+      chips: chips,
     );
   }
 }
@@ -1299,8 +1321,10 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// single key the instant you pulled one, so the same axis had two
   /// grammars depending on whether you happened to grab a diamond.
   ///
-  /// Null keeps the band display-only (the storyboard's lanes). Every
-  /// timeline and x-sheet lane has one, camera included since 2026-08-08.
+  /// Null keeps the band display-only, for a host that hands no lane verbs.
+  /// Every timeline and x-sheet lane has one, camera included since
+  /// 2026-08-08, and every lane of the storyboard's rail since R5 ③b.
+  /// ↩️It named the storyboard's lanes as the display-only ones.
   final TimelineLaneRangeCallbacks? laneRange;
 
   /// Frame-axis direction; only the band's composition transposes.
@@ -1342,16 +1366,21 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// ONE metric law for every marker on this axis — see
   /// [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
   /// Build-time is correct HERE: the band rebuilds on zoom.
-  double get _markerSize => timelineLaneKeyMarkerSizeOf(
-    lane,
+  Size get _markerSize => timelineLaneKeyMarkerSizeOf(
     _crossExtent,
     frameCellExtent: _cellExtent,
+    heads: lane.isGroupHeader,
   );
-  /// The floor yields to the room, as a mark's does ([_squareInCell]): a
-  /// lane the enlarged graph folds is thinner than it (I-89 ③D).
-  double get _hitSize => (_markerSize + 8)
-      .clamp(math.min(14.0, _crossExtent), _crossExtent)
-      .toDouble();
+
+  /// The mark's box grown by 4px each side, either way held to the row —
+  /// the floor yields to the room, as a mark's does ([_markInCell]): a lane
+  /// the enlarged graph folds is thinner than it (I-89 ③D).
+  Size get _hitSize {
+    double grown(double side) => (side + 8)
+        .clamp(math.min(14.0, _crossExtent), _crossExtent)
+        .toDouble();
+    return Size(grown(_markerSize.width), grown(_markerSize.height));
+  }
 
   bool _inWindow(int frame) =>
       frame >= frameStartIndex && frame < frameEndIndexExclusive;
@@ -1390,12 +1419,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
       ),
     );
   }
-
-  /// R26 #3: the header row washes when the selection spans its WHOLE
-  /// member group — the SAME predicate the gesture uses to decide
-  /// move-vs-select, so what looks selected is what a drag grabs.
-  bool _selectionCoversRow(TimelineLaneSelection? selection) =>
-      laneSelectionCoversBandRow(selection, layer.id, lane.laneId);
 
   /// The band-wide LANE gesture (UI-R23 #3 part 2), UNDER the markers: pans
   /// on the band select THIS lane; marker drags keep their arena priority
@@ -1457,10 +1480,10 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final hit = _hitSize;
     return placedAlong(
       axis,
-      along: (_edge(frame) + _edge(frame + 1)) / 2 - hit / 2,
-      across: _crossExtent / 2 - hit / 2,
-      alongExtent: hit,
-      acrossExtent: hit,
+      along: (_edge(frame) + _edge(frame + 1)) / 2 - hit.width / 2,
+      across: _crossExtent / 2 - hit.height / 2,
+      alongExtent: hit.width,
+      acrossExtent: hit.height,
       child: TimelineLaneKeyMarker(
         key: ValueKey<String>(
           '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
@@ -1469,10 +1492,12 @@ class TimelineLaneFrameRow extends StatelessWidget {
         axis: axis,
         markerSize: _markerSize,
         color: layerMarkColor(layer.mark),
-        selected:
-            selection != null &&
-            _selectionCoversRow(selection) &&
-            selection.contains(frame),
+        selected: laneSelectionPicksKey(
+          selection,
+          layer.id,
+          lane.laneId,
+          frame,
+        ),
       ),
     );
   }
@@ -1542,12 +1567,13 @@ class TimelineLaneFrameRow extends StatelessWidget {
   );
 }
 
-/// A key name's type — the same at every zoom and on every row: the name
-/// narrows into its cell instead (B, 유저 2026-09-24).
-const double _laneKeyNameFontSize = 8;
-
 /// A named key's label, centred in its cell — a block word whose block is
-/// that one cell ([TimelineBlockText]).
+/// that one cell ([TimelineBlockText]), in a frame block name's type at
+/// every zoom and on every row: it narrows into its cell instead (B, 유저
+/// 2026-09-24).
+///
+/// ↩️Its type was a fixed 8px, sized to sit inside the mark (F-367 —
+/// [timelineBlockNameFontSize]).
 ///
 /// ↩️It was CLIPPED to the cell (「the first letters are what tell two names
 /// apart」 — mine, 2026-08-11) and its type shrank with the zoom; the law
@@ -1563,6 +1589,7 @@ class _LaneKeyName extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final style = DefaultTextStyle.of(context).style;
     return TimelineBlockText(
       text: text,
       // One cell: the word is centred on both axes whichever way the frame
@@ -1578,9 +1605,9 @@ class _LaneKeyName extends StatelessWidget {
       // makes centring read as centred (유저 2026-09-12: 「내부에 있는 텍스트
       // 디자인? 색도 똑같이 그대로 재사용」).
       style: timelineBlockWordStyle(
-        DefaultTextStyle.of(context).style,
+        style,
         ink: timelineInBlockInk(),
-        fontSize: _laneKeyNameFontSize,
+        fontSize: timelineBlockNameFontSize(style),
         bold: true,
       ),
     );
@@ -1601,82 +1628,96 @@ class _LaneKeyName extends StatelessWidget {
 /// "subtly different size" the device showed. One constant path now; a
 /// size change lands on every mark or on none.
 ///
+/// 🗣️F-367 (유저 2026-10-16): 「fx등의 키가 너무 작은데 최대한 키우도록. 칸
+/// 그냥 차지는 마름모라던가. 원도 칸 다 차지한다던가. 헤더는 그렇게하고
+/// 멤버키는 작게하는 구분 좋으니 그거보다 좀 더 작게」 — the union FILLS its
+/// cell ([timelineLaneUnionKeyMarkerSize]) and a member is the ㉗ step under
+/// it. ↩️The member was the row's 0.32 (6–11px) and the union half again
+/// that: 8.96 and 13.44px in a 24×28 cell.
+///
 /// D39 (2026-08-18): the law follows the ZOOM too — 「프레임블록
-/// 텍스트/엣지처럼 줌에 따라 작아지게」. The cross-derived base runs
-/// through [timelineFittedGlyphFontSize], so a 4–8px cell no longer wears
-/// a fixed 13px diamond spilling across its neighbours. At the default
-/// 24px cell nothing changes (the fit's knee is 14).
-/// ⚠️The block TEXT this was matched to keeps its type since B (유저
-/// 2026-09-24) and narrows into its block instead; a mark cannot narrow on
-/// one axis (D39-2 below), so the marks keep this shrink.
-double timelineLaneKeyMarkerSize(
+/// 텍스트/엣지처럼 줌에 따라 작아지게」 — and a mark that fills its cell
+/// does it by being the cell. ↩️The row's share ran through
+/// [timelineFittedGlyphFontSize] while the marks were sized off the row.
+///
+/// A box as the timeline lays it — its width along the frame axis, its
+/// height across ([keyMarkPath]).
+Size timelineLaneKeyMarkerSize(
   double crossExtent, {
   required double frameCellExtent,
-}) => _squareInCell(
-  timelineFittedGlyphFontSize(
-    (crossExtent * 0.32).clamp(6.0, 11.0).toDouble(),
-    frameCellExtent,
-    crossExtent: crossExtent,
-  ),
+}) => _markInCell(
+  timelineLaneUnionKeyMarkerSize(
+        crossExtent,
+        frameCellExtent: frameCellExtent,
+      ) /
+      _unionStep,
   crossExtent: crossExtent,
   frameCellExtent: frameCellExtent,
 );
 
-/// The UNION mark's size — half again a member's key (㉗), inside the same
-/// cell. The ×1.5 rides ON the fitted member size, so the summary keeps
-/// reading as "the sum of members" at every zoom.
-double timelineLaneUnionKeyMarkerSize(
+/// The UNION mark's box — the whole of its cell (F-367): as high as the
+/// row, and as wide as the cell where the cell is the narrower
+/// (F-367-Q4) — never wider than it is high.
+Size timelineLaneUnionKeyMarkerSize(
   double crossExtent, {
   required double frameCellExtent,
-}) => _squareInCell(
-  timelineLaneKeyMarkerSize(crossExtent, frameCellExtent: frameCellExtent) *
-      1.5,
-  crossExtent: crossExtent,
-  frameCellExtent: frameCellExtent,
-);
+}) => Size(math.min(crossExtent, frameCellExtent), crossExtent);
 
-/// The size of [lane]'s key marks: a group header's union ([timelineLaneUnionKeyMarkerSize]),
-/// a member's key ([timelineLaneKeyMarkerSize]) — the band's one answer,
-/// wherever a lane's keys are drawn ([TimelineLaneFrameRow], and the
-/// storyboard's camera rows through [timelineLaneKeySpan]).
-double timelineLaneKeyMarkerSizeOf(
-  PropertyLaneRow lane,
+/// How much bigger a union is than a member's key: half again (㉗).
+const double _unionStep = 1.5;
+
+/// The size of the key marks of a lane that [heads] a group or not: a
+/// header's union ([timelineLaneUnionKeyMarkerSize]), a member's key
+/// ([timelineLaneKeyMarkerSize]) — the band's one answer, wherever a lane's
+/// keys are drawn ([TimelineLaneFrameRow], the storyboard's camera rows
+/// through [timelineLaneKeySpan], the flip window's slots).
+Size timelineLaneKeyMarkerSizeOf(
   double crossExtent, {
   required double frameCellExtent,
-}) => lane.isGroupHeader
+  required bool heads,
+}) => heads
     ? timelineLaneUnionKeyMarkerSize(
         crossExtent,
         frameCellExtent: frameCellExtent,
       )
     : timelineLaneKeyMarkerSize(crossExtent, frameCellExtent: frameCellExtent);
 
-/// 🚨D39-2 (유저 스크린샷 3장, 2026-08-22) — **A KEY MARK IS A SQUARE, SO
-/// IT IS CAPPED BY THE TIGHTER AXIS OF ITS CELL.**
+/// 🚨F-367-Q4 (유저 2026-10-18 「세로 유지 · 가로만 줄임(프레임 블록처럼)」,
+/// asked at 00:39 「내가 타임라인등 줌 줄이면 프레임블록등이랑 같은 규칙으로
+/// 세로길이 최대한 유지한채 가로만 줄이라고 하지않았나?」) — **A KEY MARK
+/// KEEPS ITS HEIGHT AND NARROWS WITH ITS CELL**, as a frame block's word
+/// does: the row says how high it stands, the cell how wide.
 ///
-/// > 「1-일반상태, 2-**다이아몬드가 종횡비가 이상해지기 시작**, 3-이상해짐.
-/// > 크기가 종횡비 유지한채로 작아지는게아니라 **한 변만 작아지는** 느낌」
+/// ↩️🚨D39-2 (유저 스크린샷 3장, 2026-08-22) made it a SQUARE capped by the
+/// tighter axis of its cell: 「1-일반상태, 2-**다이아몬드가 종횡비가
+/// 이상해지기 시작**, 3-이상해짐. 크기가 종횡비 유지한채로 작아지는게아니라
+/// **한 변만 작아지는** 느낌」. What those screenshots stepped through was one
+/// `Container` rotated 45° (the halves came with I-89 ②): asked for more
+/// than the cell is wide, the parent's constraint squeezed the WIDTH while
+/// the height held — a rectangle, and a rotated rectangle is a lozenge, not
+/// a diamond. The shapes are DRAWN in their box now ([keyMarkPath]), so a
+/// narrowed diamond keeps a point on each of the box's four edges.
 ///
-/// [TimelineLaneKeyMarker] asks for a box of an explicit width AND height.
-/// ↩️It was one `Container` rotated 45° (the halves came with I-89 ②): ask
-/// for more than the cell is wide and the parent's constraint squeezed the
-/// WIDTH while the height held — a rectangle, and a rotated rectangle is a
-/// lozenge, not a diamond. That is exactly the degradation the three
-/// screenshots step through.
+/// The rule is still said in ONE place rather than as a patch on whichever
+/// caller showed it first: [TimelineLaneKeyMarker] asks for a box of an
+/// explicit width AND height, and no mark outgrows its cell or its row.
+/// (↩️Two sizes had escaped the glyph fit the member ran through: the fit's
+/// own 4px floor, and the union's ×1.5 on top.)
 ///
-/// The member size already ran through [timelineFittedGlyphFontSize], which
-/// takes whichever axis is tighter — but two things escaped it: the fit's
-/// own 4px floor, and the union's ×1.5 on top. Both are now caught here, in
-/// ONE place, so the rule is "a mark never outgrows its cell" rather than a
-/// patch on whichever caller showed it first.
-///
-/// ⚠️The floor yields to the room. A 3px cell gets a 3px mark, because a
-/// square that does not fit is not a smaller square.
-double _squareInCell(
-  double wanted, {
+/// ⚠️The floor yields to the room. A 3px cell gets a mark 3px wide, because
+/// a mark that does not fit is not a smaller mark.
+Size _markInCell(
+  Size wanted, {
   required double crossExtent,
   required double frameCellExtent,
-}) {
-  final room = crossExtent < frameCellExtent ? crossExtent : frameCellExtent;
+}) => Size(
+  _heldIn(wanted.width, frameCellExtent),
+  _heldIn(wanted.height, crossExtent),
+);
+
+/// [wanted] held inside [room], and above the floor while there is room
+/// for it.
+double _heldIn(double wanted, double room) {
   final floor = _keyMarkerFloor < room ? _keyMarkerFloor : room;
   return wanted.clamp(floor, room).toDouble();
 }
@@ -1791,16 +1832,11 @@ TimelineFrameSpan timelineLaneKeySpan({
     ),
     child: LayoutBuilder(
       builder: (context, constraints) {
-        // The tighter box dimension is the cell's zoom-driven extent on
-        // either axis (the fit takes the min of both anyway).
-        final cellExtent = math.min(
-          constraints.maxWidth,
-          constraints.maxHeight,
-        );
+        // The box along the frame axis is the cell's zoom-driven extent.
         final markerSize = timelineLaneKeyMarkerSizeOf(
-          lane,
           crossExtent,
-          frameCellExtent: cellExtent,
+          frameCellExtent: extentAlong(axis, constraints.biggest),
+          heads: lane.isGroupHeader,
         );
         final marker = TimelineLaneKeyMarker(
           key: ValueKey<String>(
@@ -1948,11 +1984,12 @@ Iterable<int> timelineHollowKeyFrames(PropertyLaneRow lane) => [
 /// as half a cell and never wider than [timelineKeysLineBendReach] on
 /// either side, so the line stays one line.
 ///
-/// A HOLLOW mark — a union's ○, where its members disagree
+/// A HOLLOW mark — a union's ◉, where its members disagree
 /// ([keyMarkIsHollow]) — is not run through: the line stops at the edge of
-/// its box and goes on past it ([rings]), so the ring stays empty, as the
+/// its box and goes on past it ([rings]), so its gap stays clear, as the
 /// drawing the user picked has it (I-89 ②, option 나 — 유저 2026-10-10
-/// 「2. 추천대로」); a ring with the line through it is another mark.
+/// 「2. 추천대로」, for the ○ it was then); a ring with the line through it
+/// is another mark.
 /// ⛔Every other mark stands ON the line, which shows wherever the mark
 /// leaves it room — an hourglass's sides, a chevron's notch — as that
 /// drawing has it too.
@@ -2071,11 +2108,11 @@ List<({double from, double to})> timelineKeysLineGaps(
   final cell = _cellAlong(line, along);
   ({double from, double to}) gapAt(TimelineKeysLineRing ring) {
     final middle = (ring.cell + 0.5) * cell;
-    final size = timelineLaneUnionKeyMarkerSize(
+    final wide = timelineLaneUnionKeyMarkerSize(
       across * ring.band,
       frameCellExtent: cell,
-    );
-    return (from: middle - size / 2, to: middle + size / 2);
+    ).width;
+    return (from: middle - wide / 2, to: middle + wide / 2);
   }
 
   return [for (final ring in line.rings) gapAt(ring)];
@@ -2208,7 +2245,9 @@ class TimelineLaneKeyMarker extends StatelessWidget {
   /// half arriving at the key toward the frames before it ([paintKeyMark]).
   final Axis axis;
 
-  final double markerSize;
+  /// The mark's box as the timeline lays it — its width along the frame
+  /// axis, its height across ([timelineLaneKeyMarkerSizeOf]).
+  final Size markerSize;
 
   /// The row's COLOUR LABEL, exactly as its frame blocks take it (유저
   /// 2026-09-12: 「유니언 키 색은 프레임블록이랑 마찬가지로 색라벨 그대로.
@@ -2226,7 +2265,7 @@ class TimelineLaneKeyMarker extends StatelessWidget {
     return IgnorePointer(
       child: Center(
         child: CustomPaint(
-          size: Size.square(markerSize),
+          size: axis == Axis.vertical ? markerSize.flipped : markerSize,
           painter: _KeyMarkPainter(
             mark: mark,
             standing: axis == Axis.vertical,
@@ -2240,9 +2279,7 @@ class TimelineLaneKeyMarker extends StatelessWidget {
             // 회색 존재하는거같은데 삭제. 그냥 심플하게 바탕색만 남겨서」). The
             // one ring left is the SELECTION's, in ACCENT 1 (UI-R23 #4) —
             // colour alone, the selection rule.
-            ring: selected
-                ? (color: AppColors.accent, width: _selectedLaneKeyBorderWidth)
-                : null,
+            ring: selected ? selectedLaneKeyRing : null,
           ),
         ),
       ),
@@ -2268,7 +2305,7 @@ class _KeyMarkPainter extends CustomPainter with RepaintOnProps {
     canvas,
     mark,
     center: size.center(Offset.zero),
-    size: size.shortestSide,
+    box: standing ? size.flipped : size,
     standing: standing,
     color: color,
     ring: ring,

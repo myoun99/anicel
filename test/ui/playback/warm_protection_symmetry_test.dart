@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/session/playback_cache_budget.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/poll_until.dart';
 
 /// B1 — THE WARM, THE BUDGET AND THE BAR REASON OVER ONE ORDER.
 ///
@@ -113,11 +114,6 @@ void main() {
 
   const picture = 8 * 8 * 4;
 
-  /// The walk at rest — or ten seconds gone: a walk that never rests is a
-  /// failure the test SAYS, not one it hangs on.
-  Future<void> rested(PlaybackPrerenderScheduler scheduler) => scheduler.idle
-      .timeout(const Duration(seconds: 10), onTimeout: () {});
-
   /// Whether frame [frameIndex]'s picture is there, as the screen counts it.
   bool held(EditorSessionManager s, int frameIndex) => s
       .playbackRig
@@ -141,7 +137,7 @@ void main() {
       // body cel (0..1) and the runway cel (5..6) — the nothing between asks
       // for none.
       s.warmActiveCut();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       expect(
         [for (final frame in [0, 2, 5]) held(s, frame)],
         [true, true, false],
@@ -162,7 +158,7 @@ void main() {
 
       // The playhead out on the runway: the window follows it.
       s.selectFrameIndex(5);
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       expect(
         [for (final frame in [0, 2, 5]) held(s, frame)],
         [false, true, true],
@@ -181,7 +177,7 @@ void main() {
       budget.debugSetPlaybackCacheBudgetBytes(picture);
       final scheduler = s.playbackRig.prerenderScheduler;
       s.warmActiveCut();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       // A second picture — the runway cel, made by another hand — and the
       // body cel is now the one used longest ago.
@@ -265,8 +261,8 @@ void main() {
       expect(
         budget.playbackReadyRunsForCut(activeCut, 0, 12),
         [
-          (startIndex: 2, endIndexExclusive: 5),
-          (startIndex: 7, endIndexExclusive: 12),
+          (startIndex: 2, endIndexExclusive: 5, unreadable: false),
+          (startIndex: 7, endIndexExclusive: 12, unreadable: false),
         ],
         reason: 'the body cel waits for its bake too; everything that '
             'composes to nothing is one stretch each',
@@ -279,7 +275,7 @@ void main() {
       expect(ready(5), isTrue);
       expect(
         budget.playbackReadyRunsForCut(activeCut, 0, 12),
-        [(startIndex: 2, endIndexExclusive: 12)],
+        [(startIndex: 2, endIndexExclusive: 12, unreadable: false)],
         reason: 'one image answers the whole held span — frame 6 shows the '
             'same cel, so it is the same picture',
       );
@@ -293,7 +289,7 @@ void main() {
 
     expect(
       storyboardReadyRuns(s, 999, 1000, layout: const []),
-      [(startIndex: 999, endIndexExclusive: 1000)],
+      [(startIndex: 999, endIndexExclusive: 1000, unreadable: false)],
       reason: 'no cut owns the frame, so there is nothing to prepare — '
           'the same two-kind law the in-cut answer follows',
     );

@@ -30,6 +30,8 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
+import '../../helpers/settle_async.dart';
+
 /// 🚨★★★BELOW 100% THE BUFFER IS A LEVEL (render round, 안 1 「선명」,
 /// 2026-09-16). One composite image, one blit, at every zoom — and below
 /// 100% that image is the artwork halved until the blit reduces it by
@@ -276,18 +278,18 @@ void main() {
       // awaits its raster): let real time pass for the engine and test
       // time for the frame until it lands.
       LayerFrameImage? made;
-      for (var i = 0; i < 60 && made == null; i += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-        await tester.pump(const Duration(milliseconds: 50));
-        made = images.validImageOrNull(
-          frameKey,
-          quality,
-          canvasSize: canvasSize,
-          sourceEffects: const [],
-        );
-      }
+      await settleAsync(
+        tester,
+        () =>
+            (made = images.validImageOrNull(
+              frameKey,
+              quality,
+              canvasSize: canvasSize,
+              sourceEffects: const [],
+            )) !=
+            null,
+        step: const Duration(milliseconds: 50),
+      );
       await tester.pumpAndSettle();
       expect(
         made,

@@ -5,7 +5,6 @@ import 'timesheet_sheet_kind.dart';
 class CutMetadata {
   const CutMetadata({
     this.pageNotes = const [],
-    this.thumbnailFrameIndex,
     this.mark = LayerMark.none,
     this.staff = const {},
     this.sheetKind = TimesheetSheetKind.sixSeconds,
@@ -13,7 +12,6 @@ class CutMetadata {
 
   const CutMetadata.empty()
     : pageNotes = const [],
-      thumbnailFrameIndex = null,
       mark = LayerMark.none,
       staff = const {},
       sheetKind = TimesheetSheetKind.sixSeconds;
@@ -43,11 +41,6 @@ class CutMetadata {
     }
     return copyWith(pageNotes: List.unmodifiable(notes));
   }
-
-  /// The cut-local frame the storyboard block's thumbnail shows; null means
-  /// the first frame. Clamped to the playback range at render time, so a
-  /// later trim never breaks it.
-  final int? thumbnailFrameIndex;
 
   /// The cut's 색 라벨 — the SAME label a layer carries, palette and all.
   ///
@@ -80,20 +73,14 @@ class CutMetadata {
   CutMetadata withStaffName(LayerMark mark, String name) =>
       copyWith(staff: staffWithName(staff, mark, name));
 
-  /// [thumbnailFrameIndex] passes as a closure so callers can CLEAR the pin
-  /// (`() => null`) — the plain-nullable convention cannot express that.
   CutMetadata copyWith({
     List<String>? pageNotes,
-    int? Function()? thumbnailFrameIndex,
     LayerMark? mark,
     Map<String, String>? staff,
     TimesheetSheetKind? sheetKind,
   }) {
     return CutMetadata(
       pageNotes: pageNotes ?? this.pageNotes,
-      thumbnailFrameIndex: thumbnailFrameIndex == null
-          ? this.thumbnailFrameIndex
-          : thumbnailFrameIndex(),
       mark: mark ?? this.mark,
       staff: staff ?? this.staff,
       sheetKind: sheetKind ?? this.sheetKind,
@@ -102,7 +89,6 @@ class CutMetadata {
 
   Map<String, dynamic> toJson() => {
     if (pageNotes.isNotEmpty) 'pageNotes': [...pageNotes],
-    if (thumbnailFrameIndex != null) 'thumbnailFrame': thumbnailFrameIndex,
     if (!mark.isNone) 'mark': mark.toJson(),
     if (staff.isNotEmpty) 'staff': {...staff},
     if (sheetKind != TimesheetSheetKind.sixSeconds)
@@ -111,6 +97,9 @@ class CutMetadata {
     // keys are ignored on read. ↩️F-192: the black or white a fade clears
     // from or closes to is the TERM's (F.x black, W.x white —
     // `transitionScreenColorOf`), not the cut's and not the backdrop's.
+    // ⛔The thumbnail frame pin is gone too — 🗣️F-379 (유저 2026-10-17):
+    // 「컷 버튼의 썸네일 프레임 고정 삭제. 기능 싹 잔재 삭제」. A block shows
+    // its first frame; a legacy 'thumbnailFrame' key is ignored on read.
   };
 
   factory CutMetadata.fromJson(Map<String, dynamic> json) {
@@ -118,7 +107,6 @@ class CutMetadata {
       pageNotes: List.unmodifiable([
         for (final note in json['pageNotes'] as List? ?? const []) '$note',
       ]),
-      thumbnailFrameIndex: json['thumbnailFrame'] as int?,
       mark: LayerMark.fromJson(json['mark']),
       staff: staffFromJson(json['staff']),
       sheetKind: TimesheetSheetKind.fromJson(json['sheetKind']),
@@ -130,7 +118,6 @@ class CutMetadata {
       identical(this, other) ||
       other is CutMetadata &&
           listEquals(other.pageNotes, pageNotes) &&
-          other.thumbnailFrameIndex == thumbnailFrameIndex &&
           other.mark == mark &&
           mapEquals(other.staff, staff) &&
           other.sheetKind == sheetKind;
@@ -138,7 +125,6 @@ class CutMetadata {
   @override
   int get hashCode => Object.hash(
     Object.hashAll(pageNotes),
-    thumbnailFrameIndex,
     mark,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
@@ -149,6 +135,5 @@ class CutMetadata {
   @override
   String toString() =>
       'CutMetadata(pageNotes: $pageNotes, '
-      'thumbnailFrame: $thumbnailFrameIndex, '
       'mark: $mark, staff: $staff, sheetKind: $sheetKind)';
 }

@@ -278,7 +278,7 @@ class _InstructionSpan extends StatelessWidget {
     final valueStyle = timelineBlockWordStyle(
       base,
       ink: timelineDrawingInkColor,
-      fontSize: base.fontSize ?? 12,
+      fontSize: timelineBlockNameFontSize(base),
       bold: true,
     );
     final valueA = event.valueA;

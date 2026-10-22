@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨F-73 ① (유저 2026-09-11): 「브러시 탭 그룹 이름이나 스트로크 프리뷰 상태가
 /// 저장안됨. 그룹 이름을 해제하거나 스트로크 이름이랑 프리뷰 해제하고 패널닫고
@@ -123,14 +124,11 @@ void main() {
     // IO whose steps complete in real time and continue on the fake clock.
     await tester.pump(const Duration(milliseconds: 900));
     Object? saved;
-    for (var tries = 0; tries < 40 && saved == null; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
+    await settleAsync(tester, () async {
       final payload = await tester.runAsync<Map<String, Object?>?>(store.load);
       saved = payload?['brushPresetView'];
-    }
+      return saved != null;
+    });
     expect(saved, isA<Map<String, Object?>>(), reason: 'nothing was saved');
     expect(
       (saved! as Map<String, Object?>)['strokePreview'],
@@ -146,12 +144,8 @@ void main() {
         .widget<BrushPresetPanel>(find.byType(BrushPresetPanel))
         .viewOptions
         .showStrokePreview;
-    for (var tries = 0; tries < 40 && !restored(); tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pumpAndSettle();
-    }
+    await settleAsync(tester, restored);
+    await tester.pumpAndSettle();
     expect(
       await strokePreviewsChecked(tester),
       isFalse,

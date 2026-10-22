@@ -22,7 +22,7 @@ import '../../helpers/run_edge_fixtures.dart';
 /// UI-R10 #9: the sheet paints in two strata — the CONTENT stratum
 /// substitutes in-flight drag previews per ACTION column (the UI-R9
 /// patch overlay, replaced) — plus the sheet's ghost display rules
-/// (#6/#11) and the CELL header mirror (#10).
+/// (#6/#11).
 void main() {
   Layer animationLayer(String id, {int length = 2}) => Layer(
     id: LayerId(id),
@@ -346,22 +346,5 @@ void main() {
     );
     final multiCells = documentFor([multi]).columns[0].cells;
     expect(multiCells[2].kind, TimesheetCellKind.empty);
-  });
-
-  test('the CELL block mirrors the ACTION layer names as headers '
-      '(UI-R10 #10)', () {
-    final document = documentFor([animationLayer('a'), animationLayer('b')]);
-    final celColumns = [
-      for (final column in document.columns)
-        if (column.kind == TimesheetColumnKind.cel) column,
-    ];
-    expect(celColumns[0].label, 'A');
-    expect(celColumns[1].label, 'B');
-    expect(celColumns[2].label, '');
-    expect(
-      celColumns[0].cells.every((c) => c.kind == TimesheetCellKind.empty),
-      isTrue,
-      reason: 'headers only — the content stays blank',
-    );
   });
 }

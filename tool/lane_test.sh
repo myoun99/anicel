@@ -44,6 +44,10 @@
 # still landed. ⚠️The script before THAT fails 4 of the 13 there: it ended
 # on 「mirrored …」 and on 0 with both pushes failed.
 #
+# 🆕And together (2026-10-18, tests-crowd-the-machine-Q2 — section S): the
+# architecture tests start while analyze still runs, and a red gate is shown
+# from the output it left, not run a second time to print it.
+#
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
 E="$(mktemp -d "${TMPDIR:-/tmp}/lane-test.XXXXXX")" || exit 2
@@ -60,6 +64,8 @@ case "${LANE_TEST_FLUTTER:-ok}" in
   red) [ "$1" = analyze ] && exit 1 ;;
   edit) [ "$1" = analyze ] && echo edited >> a.txt ;;
   commit) [ "$1" = analyze ] && { echo x >> during.txt; git add during.txt; git commit -q -m "during the gates"; } ;;
+  together) [ "$1" = analyze ] && { sleep 3; echo "$(basename "$PWD") analyze done" >> "$LANE_TEST_LOG"; } ;;
+  red_arch) [ "$1" = test ] && { echo "[E] the red one"; exit 1; } ;;
 esac
 exit 0
 EOF
@@ -106,8 +112,11 @@ AW="$E/away/.claude/worktrees"; HW="$E/home/.claude/worktrees"
 git init -q --bare "$E/mirror.git"
 git init -q -b master "$E/home" 2>/dev/null
 mkdir -p "$E/home/tool"; cp "$SCRIPT" "$E/home/tool/lane.sh"; echo one > "$E/home/a.txt"
+# The launcher the gates ask the room through, and the stamp law it reads.
+# No tool sources beside them, so it hands every call to the stand-in `dart`.
+cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_stamp.sh" "$E/home/tool/"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
-git -C "$E/home" add -f tool/lane.sh a.txt .gitignore 2>/dev/null; git -C "$E/home" commit -q -m first
+git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh a.txt .gitignore 2>/dev/null; git -C "$E/home" commit -q -m first
 git -C "$E/home" remote add backup "$E/mirror.git"
 quiet "$E/home" backup
 git clone -q -o backup "$E/mirror.git" "$E/away"
@@ -352,6 +361,25 @@ check "the mirror has the trunk" "$(git -C "$E/mirror.git" rev-parse master)" "$
 O=$(out "$E/away" backup)
 has "and so does the away machine's, of its own lanes" "$O" "lane: mirrored"
 has "which succeeds" "$O" "[exit 0]"
+
+say "S TOGETHER: analyze and the architecture tests run side by side — and a red one is shown from what it left"
+quiet "$E/home" open tg; commit "$HW/lane-tg" tg.txt "tg"
+: > "$LANE_TEST_LOG"
+O=$(LANE_TEST_FLUTTER=together out "$E/home" land tg)
+has "it lands" "$O" "merged work/tg"
+check "the architecture tests start while analyze still runs" \
+  "$(grep -m1 -o 'flutter test test/architecture\|analyze done' "$LANE_TEST_LOG")" "flutter test test/architecture"
+quiet "$E/home" open tr; commit "$HW/lane-tr" tr.txt "tr"
+: > "$LANE_TEST_LOG"
+O=$(LANE_TEST_FLUTTER=red out "$E/home" land tr)
+has "a red analyze refuses the land" "$O" "analyze is not clean"
+check "and analyze ran once" "$(grep -c 'flutter analyze' "$LANE_TEST_LOG")" 1
+quiet "$E/home" open ta; commit "$HW/lane-ta" ta.txt "ta"
+: > "$LANE_TEST_LOG"
+O=$(LANE_TEST_FLUTTER=red_arch out "$E/home" land ta)
+has "a red architecture test refuses the land" "$O" "the architecture gate is red"
+has "and shows what failed" "$O" "[E] the red one"
+check "and the architecture tests ran once" "$(grep -c 'flutter test test/architecture' "$LANE_TEST_LOG")" 1
 
 echo
 echo "== $FAILS failed"

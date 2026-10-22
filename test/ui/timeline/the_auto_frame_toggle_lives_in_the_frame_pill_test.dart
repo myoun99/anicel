@@ -10,7 +10,10 @@ import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 /// 결정한거지? 내가 분명 타임라인 헤더쪽에 두라하지않았나?** 프레임 알약 안,
 /// **중간나누기 버튼 오른쪽**에 두도록. 기존 잔재는 삭제」.
 ///
-/// 「중간나누기 버튼」 is `blank-exposure-button` — 「중간 없음 / ×」, 中割なし.
+/// ↩️A session read 「중간나누기 버튼」 as `blank-exposure-button` (中割なし)
+/// and stood the toggle to its right. The user names the × 「비우기」 and the
+/// ● 「중간나누기 마크」 (I-58, 2026-10-18), and keeps the toggle where it
+/// stands — I-58-Q1: 「토글은 지금 자리, 새 버튼만 ● 오른쪽」.
 ///
 /// ⚠️These drive the REAL toolbar rather than a stand-in, because two of the
 /// three claims are about the toolbar's own machinery: the group is memoized

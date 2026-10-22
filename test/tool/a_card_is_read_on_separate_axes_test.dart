@@ -132,6 +132,24 @@ void main() {
       );
     });
 
+    // 2026-10-18: a status added to the model and not to the page's own
+    // list of names is drawn with no name — the page keeps that list itself.
+    test('🚨the page names every status the board offers, by the model\'s '
+        'name for it', () {
+      final script = boardScript();
+      for (final s in BoardStatus.values) {
+        expect(script, contains("${s.name}:'${kStatusName[s]}'"),
+            reason: s.name);
+      }
+    });
+
+    // 유저 2026-10-16: 「기록용은 따로 백로그말고 항목두는게 나아보이는데」.
+    test('🆕기록 has its own list, drawn the way 알려진 문제 is', () {
+      final script = boardScript();
+      expect(script, contains("['records','기록']"));
+      expect(script, contains("if (view === 'known' || view === 'records')"));
+    });
+
     test('⛔every word the fold places a card by reads as a status', () {
       // [statusOf] reads a place with `!`: a section value it does not map
       // throws on the first card written with that word.

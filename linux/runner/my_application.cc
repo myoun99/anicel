@@ -1,6 +1,9 @@
 #include "my_application.h"
 
+#include "launch_splash.h"
 #include "pen_sidecar.h"
+#include "window_full_screen.h"
+#include "window_place.h"
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -12,6 +15,8 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  // Stands on screen from before the engine starts until its first frame.
+  GtkWidget* launch_splash;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
@@ -19,11 +24,18 @@ G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
+  // After the window shows, so the screen is never left with neither.
+  anicel_launch_splash_close(self->launch_splash);
+  self->launch_splash = nullptr;
 }
 
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+  anicel_app_icon_set();
+  // Before the engine starts: starting it is the wait the splash covers.
+  self->launch_splash = anicel_launch_splash_show();
+  anicel_launch_splash_say_runner_stage(self->launch_splash, 0);
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
@@ -73,12 +85,22 @@ static void my_application_activate(GApplication* application) {
   // drops (flutter/flutter#63209).
   qa_pen_sidecar_register(window, view);
 
+  // The window's full screen (I-103-Q2), switched from Dart and reported
+  // back.
+  anicel_window_full_screen_register(window, view);
+
+  // Where the window stands (I-116), put back from Dart and reported.
+  anicel_window_place_register(window, view);
+
   // Show the window when Flutter renders.
   // Requires the view to be realized so we can start rendering.
   g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
                            self);
   gtk_widget_realize(GTK_WIDGET(view));
 
+  // I-106: the stages Dart runs, after the two the runner says itself.
+  anicel_launch_splash_listen(&self->launch_splash, view);
+  anicel_launch_splash_say_runner_stage(self->launch_splash, 1);
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
   gtk_widget_grab_focus(GTK_WIDGET(view));

@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -12,7 +13,7 @@ import '../models/pasteboard_bounds.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart' show Cut;
 import '../models/layer_id.dart';
-import '../models/position_path.dart' show keyPathKnobs;
+import '../models/key_path_walk.dart' show KeyPathKnob, keyPathKnobs;
 import '../models/project_background.dart';
 import '../models/property_track.dart' show PropertyTrack;
 import '../services/canvas_color_sampler.dart';
@@ -37,6 +38,7 @@ import 'brush/cel_text_commands.dart';
 import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
+import 'canvas/display_resample.dart' show displayScaleOf;
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'brush/brush_canvas_panel.dart' show BrushCanvasPanel, CanvasFloats;
@@ -48,6 +50,7 @@ import 'canvas/active_stroke_overlay.dart';
 import 'canvas/camera_adjust_layer.dart';
 import 'canvas/canvas_adjust_layer.dart';
 import 'cut_command_group.dart' show landCanvasAdjust;
+import 'dialogs/behind_the_wait_window.dart' show resizeBehindTheWaitWindow;
 import 'session/canvas_adjust.dart' show CameraSizeDraft;
 import 'canvas/bitmap_surface_painter.dart';
 import 'canvas/flip_hud_controller.dart';
@@ -77,14 +80,20 @@ import 'timeline/timeline_drag_preview.dart'
 import '../models/layer.dart' show Layer;
 import '../models/layer_kind.dart';
 import '../models/reference_swap.dart' show referenceRedrawFor;
-import '../services/import/raster_cel_import.dart' show picturePlacement;
 import '../services/layer_pose_matrix.dart'
-    show LayerPlacement, canvasToArtwork, placementOf;
+    show
+        LayerPlacement,
+        canvasToArtwork,
+        picturePlacement,
+        placedCorners,
+        placementOf;
 import '../models/canvas_point.dart';
 import '../models/transform_track.dart'
     show
         TransformPose,
+        TransformPropertyId,
         TransformTrack,
+        transformPathLaneOf,
         transformPropertyOfLaneId,
         uniformScale,
         walksAPath;
@@ -112,7 +121,7 @@ typedef _TrackStackMount = ({
   List<TrackStackContribution> Function(int globalFrame) positionsOf,
   bool paintsFloor,
   bool cameraView,
-  StackRun? run,
+  TrackStackRun? run,
   Key key,
 });
 
@@ -124,9 +133,17 @@ typedef _ShownSpace = ({
   CanvasPoint Function(CanvasPoint point) fromCanvas,
 });
 
-/// A row's position [lane] as the canvas shows it: its frames [axisOffset]
-/// ahead of the cut's, its points shown through [space].
-typedef _PositionShown = ({
+/// What a row's transform fx box frames, in the row's own space before its
+/// pose: what it [drawn] at the playhead — null when it shows nothing — and
+/// the whole [space] it is posed in, which stands in for a picture with
+/// nothing in it (F-387 ③).
+typedef _RowPicture = ({Rect? drawn, Rect space});
+
+/// A row's [lane] — its transform [property] — whose keys walk a path, as
+/// the canvas shows it: its frames [axisOffset] ahead of the cut's, its
+/// points shown through [space].
+typedef _PathShown = ({
+  TransformPropertyId property,
   PropertyTrack<CanvasPoint> lane,
   int axisOffset,
   _ShownSpace space,
@@ -714,8 +731,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     cameraView: ofTheRun && widget.cameraViewEnabled.value,
     run: ofTheRun
         ? (
-            landings: session.playbackRig.prerenderScheduler.landings,
-            gaveUpOn: session.playbackRig.canvasPictures.gaveUpOn,
+            cuts: (
+              landings: session.playbackRig.prerenderScheduler.landings,
+              gaveUpOn: session.playbackRig.canvasPictures.gaveUpOn,
+            ),
+            frameIsThere: session.playbackRig.frameIsThere,
           )
         : null,
     key: const ValueKey<String>('canvas-track-stack-view'),
@@ -774,6 +794,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         backdropNone: project.backdropNone,
         pasteboardArgb: project.pasteboardArgb,
         pasteboardNone: project.pasteboardNone,
+        pasteboardReach: project.pasteboardReach,
       ),
     );
   }
@@ -950,13 +971,52 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// its path's points alike.
   _ShownSpace _positionSpaceOf(EditorSessionManager session, Layer layer) =>
       layer.kind == LayerKind.se
-      ? _shownThrough(
-          session.seEntries.shotForCutFrame(
-            session.requireActiveCut,
-            session.currentFrameIndex,
-          ),
-        )
+      ? _shownThrough(_shotAtThePlayhead(session))
       : _parentSpaceOf(session, layer);
+
+  /// Where the active cut's SHOT lies on the canvas at the playhead — the
+  /// space an SE row's position is in (I-67-Q1).
+  static LayerPlacement _shotAtThePlayhead(EditorSessionManager session) =>
+      session.seEntries.shotForCutFrame(
+        session.requireActiveCut,
+        session.currentFrameIndex,
+      );
+
+  /// Where a point of [layer]'s own picture shows on the canvas: its own
+  /// placement at the playhead — its pose about its anchor
+  /// ([placementOf]) — under where its position shows ([_positionSpaceOf]).
+  LayerPlacement _picturePlacementOf(
+    EditorSessionManager session,
+    Layer layer,
+    CanvasSize canvasSize,
+  ) {
+    final at = session.laneVerbs.laneValueSourceAt(
+      _shownRow(session, layer),
+      session.currentFrameIndex,
+    );
+    final own = placementOf((
+      pose: session.layerPoseAtFrame(at.layer, at.frame),
+      anchorPoint: session.layerAnchorPointAtFrame(at.layer, at.frame),
+    ), canvasSize);
+    return _positionSpaceOf(session, layer).placement?.compose(own) ?? own;
+  }
+
+  /// Where a value of [layer]'s lane [property] — one whose keys walk a
+  /// path — shows on the canvas, and back: a position where the row's
+  /// position shows ([_positionSpaceOf]); an anchor point on the row's
+  /// picture as it stands now ([_picturePlacementOf]), where After Effects
+  /// draws an anchor's path in the layer panel — on the layer's own
+  /// picture (anchor-walks-a-path-Q1 A, 유저 2026-10-13 「A로 가자」: 「그
+  /// 행의 그림 위에 — 그림과 같이 움직인다」). The anchor where it stands now
+  /// lands on the position, so the cross is always on its path.
+  _ShownSpace _pathSpaceOf(
+    EditorSessionManager session,
+    Layer layer,
+    TransformPropertyId property,
+    CanvasSize canvasSize,
+  ) => property == TransformPropertyId.anchorPoint
+      ? _shownThrough(_picturePlacementOf(session, layer, canvasSize))
+      : _positionSpaceOf(session, layer);
 
   /// [layer] as the canvas shows it — the drag in flight on it, if one is
   /// (F-195, canvas-follows-block-moves), so a handle stands where the
@@ -965,42 +1025,55 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       timelineDragPreviewLayerFor(session.dragPreview.value, layer.id) ??
       layer;
 
-  /// [layer]'s position lane, of the row as the canvas shows it and where
-  /// its values come from ([LaneVerbs.laneValueSourceAt]: a track-SE row's
-  /// is the track's) — and how far that lane's frames run ahead of the
-  /// cut's ([EditorSessionManager.rowAxisOffset]).
-  static ({PropertyTrack<CanvasPoint> lane, int axisOffset}) _positionLaneOf(
+  /// [layer]'s lane [property] — one whose keys walk a path ([walksAPath])
+  /// — of the row as the canvas shows it and where its values come from
+  /// ([LaneVerbs.laneValueSourceAt]: a track-SE row's is the track's), and
+  /// how far that lane's frames run ahead of the cut's
+  /// ([EditorSessionManager.rowAxisOffset]). Null for a lane that walks
+  /// none.
+  static ({PropertyTrack<CanvasPoint> lane, int axisOffset})? _pathLaneOf(
     EditorSessionManager session,
     Layer layer,
-  ) => (
-    lane: session.laneVerbs
-        .laneValueSourceAt(_shownRow(session, layer), session.currentFrameIndex)
-        .layer
-        .transformTrack
-        .position,
-    axisOffset: session.rowAxisOffset(layer.id),
-  );
+    TransformPropertyId property,
+  ) {
+    final source = session.laneVerbs.laneValueSourceAt(
+      _shownRow(session, layer),
+      session.currentFrameIndex,
+    );
+    final lane = transformPathLaneOf(source.layer.transformTrack, property);
+    return lane == null
+        ? null
+        : (lane: lane, axisOffset: session.rowAxisOffset(layer.id));
+  }
 
-  /// The path [layer]'s position walks ([CameraPath.ofPosition]) — built
+  /// The path [layer]'s lane [property] walks ([CameraPath.ofLane]) — built
   /// again only for another lane: its points between keys are read as the
   /// canvas asks for them, and kept while it asks again at every step of a
   /// scrub.
-  CameraPath? _positionPathOf(EditorSessionManager session, Layer layer) {
-    final (:lane, :axisOffset) = _positionLaneOf(session, layer);
-    if (_positionPathMemo case (
+  CameraPath? _rowPathOf(
+    EditorSessionManager session,
+    Layer layer,
+    TransformPropertyId property,
+  ) {
+    final shown = _pathLaneOf(session, layer, property);
+    if (shown == null) {
+      return null;
+    }
+    final (:lane, :axisOffset) = shown;
+    if (_rowPathMemo case (
       lane: final memoLane,
       axisOffset: final memoOffset,
       :final path,
     ) when identical(memoLane, lane) && memoOffset == axisOffset) {
       return path;
     }
-    final path = CameraPath.ofPosition(lane, axisOffset: axisOffset);
-    _positionPathMemo = (lane: lane, axisOffset: axisOffset, path: path);
+    final path = CameraPath.ofLane(lane, axisOffset: axisOffset);
+    _rowPathMemo = (lane: lane, axisOffset: axisOffset, path: path);
     return path;
   }
 
   ({PropertyTrack<CanvasPoint> lane, int axisOffset, CameraPath? path})?
-  _positionPathMemo;
+  _rowPathMemo;
 
   /// A canvas handle's ONE edit, landed two ways (F-195): shown while the
   /// handle moves, written when it lets go — and dropped when it is
@@ -1010,6 +1083,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// ⛔[editOf] is the SAME edit for both landings — the release keeps what
   /// the drag showed because it is the drag's own computation, not a second
   /// one that happens to agree.
+  ///
+  /// [reference]: the edit is of the row's REFERENCE FX (F-374) — the
+  /// transform's lanes in their other home, keyed the same way.
   RowBoxLanding<T> _handleLandings<T>(
     EditorSessionManager session,
     LayerId layerId,
@@ -1018,23 +1094,36 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     )
     editOf, {
     required String description,
+    bool reference = false,
   }) {
     final verbs = session.laneVerbs;
+    final (preview, edit) = reference
+        ? (verbs.previewReferenceFxAtPlayhead, verbs.editReferenceFxAtPlayhead)
+        : (
+            verbs.previewLayerTransformAtPlayhead,
+            verbs.editLayerTransformAtPlayhead,
+          );
     return (
-      changed: (value) =>
-          verbs.previewLayerTransformAtPlayhead(layerId, editOf(value)),
-      committed: (value) => verbs.editLayerTransformAtPlayhead(
-        layerId,
-        editOf(value),
-        description: description,
-      ),
+      changed: (value) => preview(layerId, editOf(value)),
+      committed: (value) =>
+          edit(layerId, editOf(value), description: description),
     );
   }
 
-  /// The active layer's fx box (F-222 ②): the inside moves its position, a
-  /// corner scales it, outside on stage turns it, and the cross places its
-  /// anchor point — as much of that as the standing lane declares (R5 #10:
-  /// the box for position, scale and rotation, the cross for the anchor).
+  /// The active row's transform fx box (F-222 ②): the inside moves its
+  /// position, a corner scales it, outside on stage turns it, and the cross
+  /// places its anchor point — as much of that as the standing lane
+  /// declares (R5 #10: the box for position, scale and rotation, the cross
+  /// for the anchor).
+  ///
+  /// ONE box for every row a transform fx poses — a layer's picture and an
+  /// SE row's name tag alike; [picture] is all that differs
+  /// ([_layerPicture], [_sePicture]).
+  ///
+  /// 🗣️F-387 (유저 2026-10-19): 「일반 그림 레이어에서는 트랜스폼fx의 헤더에
+  /// 서면 변형도구 ui 그대로써서 회전같은거 가능한데 se의 트랜스폼fx는
+  /// 그런게안됨. 그런 관련 로직 사본만든거같은데 법 통일. 같은 fx인데
+  /// 다른건 말이안됨」. ↩️An SE row's box was a second one that only moved.
   ///
   /// ONE key at the playhead per drag (AE rule, one undo) — on the row the
   /// project holds, at the playhead on its own axis. ⚠️Not on the active
@@ -1043,8 +1132,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   Widget _layerBox(
     _HostFrame frame,
     CanvasViewport viewport,
-    CanvasSize canvasSize,
-  ) {
+    CanvasSize canvasSize, {
+    required _RowPicture picture,
+  }) {
     final session = frame.session;
     final activeLayer = frame.activeLayer!;
     // The handles stand where the row's value IS: for a track-SE row that is
@@ -1055,9 +1145,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
     final own = session.layerPoseAtFrame(at.layer, at.frame);
     final anchorPoint = session.layerAnchorPointAtFrame(at.layer, at.frame);
-    final parent = _parentSpaceOf(session, activeLayer);
-    // The box draws the row as the canvas SHOWS it — its own pose under the
-    // folders' — and turns and scales about the row's anchor where that
+    final parent = _positionSpaceOf(session, activeLayer);
+    // The box draws the row as the canvas SHOWS it — its own pose where
+    // its position shows ([_positionSpaceOf]: under the folders', or an SE
+    // row's shot) — and turns and scales about the row's anchor where that
     // shows. The scale and the turn it stands on are the ROW'S OWN: a
     // handle scales by a ratio and outside turns by an angle, and what
     // comes back is the value the lane keys.
@@ -1073,29 +1164,26 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final pose = own.copyWith(center: parent.toCanvas(own.center));
     final name = activeLayer.name;
     final box = frame.boxGrabbable;
-    final ownPlacement = placementOf((
-      pose: own,
-      anchorPoint: anchorPoint,
-    ), canvasSize);
-    final shown = parent.placement?.compose(ownPlacement) ?? ownPlacement;
+    final shown = _picturePlacementOf(session, activeLayer, canvasSize);
+    // 🗣️F-387 (유저 2026-10-17): 「그림이나 소재 … 가 없을때 변형에 서면
+    // 움직여지는데 기준점은 움직이는게 안보인다던가 하는 문제 해결. 위치
+    // 변형하듯 무언가 변형되는 박스를 임시로 만들어서 조작중임을 표시하도록」
+    // — a row that shows nothing has its box drawn under the cross alone
+    // too: the anchor's drag moves it as it moves a picture.
+    final drawn = picture.drawn;
     return RowTransformBox(
-      // The box frames the layer's PICTURE (the user chose that on the
+      // The box frames the row's PICTURE (the user chose that on the
       // mockup: 「레이어 그림의 바운드에 걸리는게 알기쉬울거같기도하고?
-      // 그렇게하자」) — and a blank cel's box is the canvas, the transform
-      // tool's own rule for a picture with nothing in it.
-      corners: box
-          ? [
-              for (final point in CanvasSelectionShape.wholePicture(
-                canvasSize,
-                frame.inkBounds,
-              ).points)
-                shown.apply(point),
-            ]
+      // 그렇게하자」) — and a row with nothing to show frames the whole of
+      // the space it is posed in, the transform tool's own rule for a
+      // picture with nothing in it.
+      corners: box || drawn == null
+          ? placedCorners(shown, drawn ?? picture.space)
           : const [],
       pose: pose,
-      canvasSize: canvasSize,
+      pasteboard: session.pasteboardOf(canvasSize),
       viewport: viewport,
-      claimsCanvas: frame.boxClaimsCanvas,
+      presses: frame.boxPresses,
       onCancelled: session.laneVerbs.endLaneEditPreview,
       move: box
           ? _handleLandings<CanvasPoint>(
@@ -1166,17 +1254,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               ),
             )
           : null,
-      tangents: _positionPathTangents(frame, parent),
+      tangents: _rowPathTangents(frame, canvasSize),
     );
   }
 
   /// A REFERENCE row's box (I-68): where the file it shows stands. The
   /// inside moves it, a corner or an edge's middle scales it, outside on
   /// stage turns it — the layer's box's grabs — and what each writes is the
-  /// row's reference fx, one value with no keys (유저 2026-10-10 「참조
-  /// 행에서 이동(변형) 도구로 끌면 참조 fx 의 값이 바뀐다」). It frames the
-  /// PICTURE — its own corners where its pose lays them, under the row's
-  /// transform and its folders, where the canvas shows it.
+  /// row's reference fx (유저 2026-10-10 「참조 행에서 이동(변형) 도구로 끌면
+  /// 참조 fx 의 값이 바뀐다」): ONE key at the playhead, as the layer's box
+  /// writes its transform's (F-374 — 「지금 움직여도 키 안생긴다거나 … 싹
+  /// 통일」). It frames the PICTURE — its own corners where the fx stands
+  /// them at the playhead, under the row's transform and its folders, where
+  /// the canvas shows it.
   Widget _referenceBox(
     _HostFrame frame,
     CanvasViewport viewport,
@@ -1185,132 +1275,133 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final session = frame.session;
     final row = _shownRow(session, frame.activeLayer!);
     final reference = row.mediaReference!;
-    final pose = reference.pose;
-    final parent = session.frameVerbs.layerCanvasPoseSample(row.id);
+    final pose = reference.poseAt(session.currentFrameIndex);
+    final parent = session.frameVerbs.layerReferenceSpace(row.id);
     final back = parent == null ? null : canvasToArtwork(parent);
     CanvasPoint toCanvas(CanvasPoint point) => parent?.apply(point) ?? point;
     CanvasPoint fromCanvas(CanvasPoint point) => back?.apply(point) ?? point;
-    final verbs = session.laneVerbs;
-    RowBoxLanding<T> landing<T>(TransformPose Function(T value) poseOf) => (
-      changed: (value) => verbs.previewReferencePose(row.id, poseOf(value)),
-      committed: (value) => verbs.editReferencePose(row.id, poseOf(value)),
-    );
-    final laid = picturePlacement(pose, reference.pictureSize);
-    final width = reference.pictureSize.width.toDouble();
-    final height = reference.pictureSize.height.toDouble();
+    final name = row.name;
     return RowTransformBox(
-      corners: [
-        for (final (x, y) in [
-          (0.0, 0.0),
-          (width, 0.0),
-          (width, height),
-          (0.0, height),
-        ])
-          toCanvas(laid.apply(CanvasPoint(x: x, y: y))),
-      ],
+      corners: _referenceBoxCorners(pose, reference.pictureSize, toCanvas),
       pose: pose.copyWith(center: toCanvas(pose.center)),
-      canvasSize: canvasSize,
+      pasteboard: session.pasteboardOf(canvasSize),
       viewport: viewport,
-      claimsCanvas: frame.boxClaimsCanvas,
-      onCancelled: verbs.endLaneEditPreview,
-      move: landing<CanvasPoint>(
-        (dropped) => pose.copyWith(center: fromCanvas(dropped)),
+      presses: frame.boxPresses,
+      onCancelled: session.laneVerbs.endLaneEditPreview,
+      move: _handleLandings<CanvasPoint>(
+        session,
+        row.id,
+        (dropped) => (track, frameIndex) => transformTrackWithPositionDragged(
+          track,
+          frameIndex: frameIndex,
+          position: fromCanvas(dropped),
+        ),
+        description: 'Move $name reference',
+        reference: true,
       ),
       scale: RowBoxTwoScales(
-        landing<CanvasPoint>(
-          (scale) => pose.copyWith(scaleX: scale.x, scaleY: scale.y),
+        _handleLandings<CanvasPoint>(
+          session,
+          row.id,
+          (scale) => (track, frameIndex) => transformTrackWithScaleDragged(
+            track,
+            frameIndex: frameIndex,
+            scale: scale,
+          ),
+          description: 'Scale $name reference',
+          reference: true,
         ),
       ),
       turnSpace: fromCanvas,
-      turn: landing<double>(
-        (degrees) => pose.copyWith(rotationDegrees: degrees),
-      ),
-    );
-  }
-
-  /// An SE row's box (F-222 ②): its name tag, and it only MOVES — the tag
-  /// is placed by position alone (a tag has no scale or turn to drive).
-  /// With no tag under the playhead the box is the canvas, the law for a
-  /// box with nothing in it.
-  ///
-  /// The row's position is the SHOT's (I-67-Q1): the box stands where the
-  /// shot lies on the canvas and each drag comes back through it, as a
-  /// row's in a folder comes back through the folder ([_parentSpaceOf]).
-  Widget _seBox(
-    _HostFrame frame,
-    CanvasViewport viewport,
-    CanvasSize canvasSize,
-    List<ResolvedSeNameTag> tags,
-  ) {
-    final session = frame.session;
-    final activeLayer = frame.activeLayer!;
-    final at = session.laneVerbs.laneValueSourceAt(
-      _shownRow(session, activeLayer),
-      session.currentFrameIndex,
-    );
-    final shot = _positionSpaceOf(session, activeLayer);
-    return RowTransformBox(
-      corners: _seBoxCorners(activeLayer, tags, shot.toCanvas, canvasSize),
-      pose: TransformPose(
-        center: shot.toCanvas(
-          session.layerPoseAtFrame(at.layer, at.frame).center,
+      turn: _handleLandings<double>(
+        session,
+        row.id,
+        (degrees) => (track, frameIndex) => transformTrackWithRotationDragged(
+          track,
+          frameIndex: frameIndex,
+          rotationDegrees: degrees,
         ),
+        description: 'Rotate $name reference',
+        reference: true,
       ),
-      canvasSize: canvasSize,
-      viewport: viewport,
-      claimsCanvas: frame.boxClaimsCanvas,
-      onCancelled: session.laneVerbs.endLaneEditPreview,
-      move: frame.boxGrabbable
-          ? _handleLandings<CanvasPoint>(
-              session,
-              activeLayer.id,
-              (dropped) =>
-                  (track, frameIndex) => transformTrackWithPositionDragged(
-                    track,
-                    frameIndex: frameIndex,
-                    position: shot.fromCanvas(dropped),
-                  ),
-              description: 'Move ${activeLayer.name}',
-            )
-          : null,
-      tangents: _positionPathTangents(frame, shot),
     );
   }
 
-  /// [row]'s name tag box among [tags], laid on the canvas through [shot] —
-  /// or the canvas, with no tag of the row under the playhead.
-  static List<CanvasPoint> _seBoxCorners(
+  /// [picture]'s own corners where [pose] lays it, on the canvas through
+  /// [toCanvas] — the reference box's frame, as [_seTagBoxOf] is the SE
+  /// box's.
+  static List<CanvasPoint> _referenceBoxCorners(
+    TransformPose pose,
+    CanvasSize picture,
+    CanvasPoint Function(CanvasPoint point) toCanvas,
+  ) => [
+    for (final corner in placedCorners(
+      picturePlacement(pose, picture),
+      Offset.zero & Size(picture.width.toDouble(), picture.height.toDouble()),
+    ))
+      toCanvas(corner),
+  ];
+
+  /// A layer's picture at the playhead (F-222 ②): its ink, and the canvas
+  /// it is posed in ([CanvasSelectionShape.wholePicture] — the transform
+  /// tool's rule for the whole picture).
+  static _RowPicture _layerPicture(
+    _HostFrame frame,
+    PasteboardWall pasteboard,
+  ) {
+    final ink = frame.inkBounds;
+    Rect rectOf(CanvasSelectionShape shape) => Rect.fromPoints(
+      Offset(shape.points[0].x, shape.points[0].y),
+      Offset(shape.points[2].x, shape.points[2].y),
+    );
+    return (
+      drawn: ink == null
+          ? null
+          : rectOf(CanvasSelectionShape.wholePicture(pasteboard, ink)),
+      space: rectOf(CanvasSelectionShape.wholePicture(pasteboard, null)),
+    );
+  }
+
+  /// An SE row's picture at the playhead: its name tag among [tags]
+  /// ([_seTagBoxOf]), and the SHOT it is posed in (I-67-Q1).
+  ///
+  /// 🗣️F-387 (유저 2026-10-17): 「특히 지금 se행 네임태그 se블록없는곳에서
+  /// 변형 조작되는데 화면엔 안보임」. ↩️The stand-in was the canvas, laid as
+  /// it stood: a drag keyed the row's position and nothing on screen
+  /// moved. A layer's blank cel stands in the same way ([_layerPicture]) —
+  /// the whole of the space the row is posed in, placed as its picture is.
+  static _RowPicture _sePicture(
+    EditorSessionManager session,
     Layer row,
     List<ResolvedSeNameTag> tags,
-    CanvasPoint Function(CanvasPoint point) shot,
     CanvasSize canvasSize,
   ) {
-    final bounds = canvasSize.canvasRect;
-    var box = [
-      bounds.topLeft,
-      bounds.topRight,
-      bounds.bottomRight,
-      bounds.bottomLeft,
-    ];
-    var through = (CanvasPoint point) => point;
+    final shot = session.camera.cameraFrameSize;
+    return (
+      drawn: _seTagBoxOf(row, tags, canvasSize),
+      space: Offset.zero &
+          Size(shot.width.toDouble(), shot.height.toDouble()),
+    );
+  }
+
+  /// [row]'s name tag box among [tags], in the tag's own space
+  /// ([ResolvedSeNameTag.placement] lays it) — null with no tag of the row
+  /// under the playhead.
+  static Rect? _seTagBoxOf(
+    Layer row,
+    List<ResolvedSeNameTag> tags,
+    CanvasSize canvasSize,
+  ) {
+    Rect? box;
     for (final tag in tags) {
       final tagBox = tag.layerId == row.id.value
           ? seNameTagBoxBounds(tag, canvasSize: canvasSize)
           : Rect.zero;
       if (!tagBox.isEmpty) {
-        box = [
-          tagBox.topLeft,
-          tagBox.topRight,
-          tagBox.bottomRight,
-          tagBox.bottomLeft,
-        ];
-        through = shot;
+        box = tagBox;
       }
     }
-    return [
-      for (final corner in box)
-        through(CanvasPoint(x: corner.dx, y: corner.dy)),
-    ];
+    return box;
   }
 
   /// The camera row's box ([CameraFrameBox], F-222 ③).
@@ -1371,9 +1462,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       (pose) => CameraFrameBox(
         pose: pose,
         cameraFrameSize: session.camera.cameraFrameSize,
-        canvasSize: canvasSize,
+        pasteboard: session.pasteboardOf(canvasSize),
         viewport: viewport,
-        claimsCanvas: frame.boxClaimsCanvas,
+        presses: frame.boxPresses,
         onCancelled: session.laneVerbs.endLaneEditPreview,
         move: move,
         zoom: zoom,
@@ -1398,49 +1489,99 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return _pathTangents(
       session,
       cameraRowId,
-      (lane: track.position, axisOffset: 0, space: _shownThrough(null)),
+      (
+        property: TransformPropertyId.position,
+        lane: track.position,
+        axisOffset: 0,
+        space: _shownThrough(null),
+      ),
       description: 'Bend camera path',
     );
   }
 
-  /// The handles of the active layer's curved position keys on its path
-  /// ([_pathTangents]: I-89-Q9), standing on its position lane while the
-  /// path is drawn ([_positionPath]) — where [space] shows its position.
-  List<RowBoxTangent> _positionPathTangents(
+  /// The handles of the active layer's curved keys on the path of the lane
+  /// it stands on ([_pathTangents]: I-89-Q9), while that path is drawn
+  /// ([_rowPath]) — where that lane's values show ([_pathSpaceOf]).
+  List<RowBoxTangent> _rowPathTangents(
     _HostFrame frame,
-    _ShownSpace space,
+    CanvasSize canvasSize,
   ) {
     final session = frame.session;
     final layer = frame.activeLayer!;
-    if (!frame.walksAPath || _positionPathOf(session, layer) == null) {
+    final property = frame.pathLane;
+    final shown = property == null
+        ? null
+        : _pathLaneOf(session, layer, property);
+    if (property == null ||
+        shown == null ||
+        _rowPathOf(session, layer, property) == null) {
       return const [];
     }
-    final (:lane, :axisOffset) = _positionLaneOf(session, layer);
+    final (:lane, :axisOffset) = shown;
     return _pathTangents(
       session,
       layer.id,
-      (lane: lane, axisOffset: axisOffset, space: space),
+      (
+        property: property,
+        lane: lane,
+        axisOffset: axisOffset,
+        space: _pathSpaceOf(session, layer, property, canvasSize),
+      ),
       description: 'Bend ${layer.name} path',
     );
   }
 
-  /// The handles of a row's curved [position] keys on its path (I-89 ④):
-  /// drawn with it in time (유저 2026-10-10, 「공간 + 시간」 — the mock's
-  /// 5판 draws them there), over the frames it is drawn for, each tangent
-  /// carried bending its key — one undo where it is let go — where the
-  /// canvas shows the row's position (a camera's is on it already).
+  /// The handles of a row's curved keys on the path its [path]'s lane
+  /// walks (I-89 ④): drawn wherever it is, in space and in space and time
+  /// alike (🗣️F-368, 유저 2026-10-16: 「공간이든 공간+시간이든 공간이라는
+  /// 정보로서」 · F-368-Q1 A 「중앙 궤적 선 + 핸들(두 모드 공통, 서 있을
+  /// 때)」 — ↩️in time alone, 2026-10-10, where the mock's 5판 drew them),
+  /// over the frames it is drawn for, each tangent carried bending its key
+  /// — one undo where it is let go — where the canvas shows the lane's
+  /// values (a camera's position is on it already).
   List<RowBoxTangent> _pathTangents(
     EditorSessionManager session,
     LayerId rowId,
-    _PositionShown position, {
+    _PathShown path, {
     required String description,
   }) {
     final settings = CameraPathSettings.settings.value;
-    if (settings.show != CameraPathShow.spaceAndTime) {
+    if (settings.show == CameraPathShow.off) {
       return const [];
     }
-    final (:lane, :axisOffset, space: shown) = position;
+    final (:property, :lane, :axisOffset, space: shown) = path;
     final (:from, :to) = settings.framesShownAt(session.currentFrameIndex);
+    RowBoxKnob? knobOf(KeyPathKnob knob, {required bool ahead}) {
+      final end = ahead ? knob.ahead : knob.behind;
+      if (end == null) {
+        return null;
+      }
+      return (
+        at: shown.toCanvas(end),
+        landing: _handleLandings<CanvasPoint>(
+          session,
+          rowId,
+          (carried) => (track, _) {
+            final reached = shown.fromCanvas(carried);
+            return transformTrackWithPathHandle(
+              track,
+              property: property,
+              frameIndex: knob.frame,
+              handle: (
+                ahead: ahead,
+                reach: CanvasPoint(
+                  x: reached.x - knob.at.x,
+                  y: reached.y - knob.at.y,
+                ),
+              ),
+            );
+          },
+          description: '$description at frame '
+              '${knob.frame - axisOffset + 1}',
+        ),
+      );
+    }
+
     return [
       for (final knob in keyPathKnobs(
         lane.keys,
@@ -1448,25 +1589,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         to: to == null ? null : to + axisOffset,
       ))
         (
-          at: shown.toCanvas(knob.ahead),
-          behind: shown.toCanvas(knob.behind),
-          landing: _handleLandings<CanvasPoint>(
-            session,
-            rowId,
-            (end) => (track, _) {
-              final reached = shown.fromCanvas(end);
-              return transformTrackWithPositionHandle(
-                track,
-                frameIndex: knob.frame,
-                tangent: CanvasPoint(
-                  x: reached.x - knob.at.x,
-                  y: reached.y - knob.at.y,
-                ),
-              );
-            },
-            description: '$description at frame '
-                '${knob.frame - axisOffset + 1}',
-          ),
+          at: shown.toCanvas(knob.at),
+          ahead: knobOf(knob, ahead: true),
+          behind: knobOf(knob, ahead: false),
         ),
     ];
   }
@@ -1476,14 +1601,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   static CanvasSize _cameraFrameSizeShown(EditorSessionManager session) =>
       session.canvasAdjust.cameraSizeShown ?? session.camera.cameraFrameSize;
 
-  /// The camera's path (I-89 ④) under its frame, wherever the frame is drawn
-  /// (유저 2026-10-12: 「비지블버튼처럼 어느 상태에 있던 카메라 사각형을
-  /// 보여주는 규칙 그대로 경로도」 — ↩️ it was drawn standing on the camera
-  /// row or its position lane alone), as the canvas's camera path settings
-  /// say — at the size the frame is shown at, around the playhead the cursor
-  /// moves, and nowhere in a gap. Standing on the camera's row, where its
-  /// box is ([_cameraBox]), it is drawn in time as well; elsewhere as the
-  /// export writes it ([CameraPathOverlay.standing]).
+  /// The camera's path (I-89 ④) under its frame, as the canvas's camera path
+  /// settings say, whether or not the frame is drawn (유저 2026-10-13: 「카메라
+  /// on하든 off하든 상관없어보이니까 on하든 off하든 설정한대로 보이도록」 —
+  /// ↩️ it was drawn wherever the frame was, 10-12 「비지블버튼처럼 어느
+  /// 상태에 있던 카메라 사각형을 보여주는 규칙 그대로 경로도」, and before
+  /// that standing on the camera row or its position lane alone) — at the
+  /// size the frame is shown at, around the playhead the cursor moves, and
+  /// nowhere in a gap. Standing on the camera's row, where its box is
+  /// ([_cameraBox]), it is drawn with the line its middle walks, and in
+  /// time where the settings say; elsewhere as the export writes it
+  /// ([CameraPathOverlay.standing]). What the export writes lies on the
+  /// picture as large as it prints at the playhead's camera
+  /// ([CameraPathOverlay.printedAt]).
   Positioned _cameraPath(
     _HostFrame frame,
     CanvasViewport viewport,
@@ -1494,7 +1624,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ? const SizedBox.shrink()
           : ListenableBuilder(
               listenable: frame.session.canvasAdjust,
-              builder: (context, _) => _atTheCameraPose(frame.session, (_) {
+              builder: (context, _) => _atTheCameraPose(frame.session, (pose) {
                 final path = frame.session.camera.activeCutCameraPath(
                   _cameraFrameSizeShown(frame.session),
                 );
@@ -1506,41 +1636,52 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         settings: settings,
                         viewport: viewport,
                         standing: frame.isCameraLayerActive,
+                        printedAt: pose,
                       );
               }),
             ),
     ),
   );
 
-  /// The path the active layer's position walks (I-89-Q9, 유저 2026-10-12
-  /// 「같은 코드로 레이어 위치 레인에도」) by the camera's path's code —
-  /// a point where the camera has its frame — drawn standing on that lane,
-  /// where the box that moves its keys is: as the canvas's camera path
-  /// settings say, in time as well, and laid where the layer's position
-  /// shows ([_positionSpaceOf]).
-  Positioned _positionPath(_HostFrame frame, CanvasViewport viewport) =>
-      Positioned.fill(
-        child: ValueListenableBuilder<CameraPathSettings>(
-          valueListenable: CameraPathSettings.settings,
-          builder: (context, settings, _) {
-            final session = frame.session;
-            final layer = frame.activeLayer!;
-            final path = settings.show == CameraPathShow.off
-                ? null
-                : _positionPathOf(session, layer);
-            return path == null
-                ? const SizedBox.shrink()
-                : CameraPathOverlay(
-                    path: path,
-                    playhead: session.currentFrameIndex,
-                    settings: settings,
-                    viewport: viewport,
-                    standing: true,
-                    toCanvas: _positionSpaceOf(session, layer).toCanvas,
-                  );
-          },
-        ),
-      );
+  /// The path the active layer's lane [property] walks — its position's
+  /// (I-89-Q9, 유저 2026-10-12 「같은 코드로 레이어 위치 레인에도」) or its
+  /// anchor point's (anchor-walks-a-path-Q1 A) — by the camera's path's
+  /// code, a point where the camera has its frame, drawn standing on that
+  /// lane, where the box that moves its keys is: as the canvas's camera
+  /// path settings say, in time as well, and laid where the lane's values
+  /// show ([_pathSpaceOf]).
+  Positioned _rowPath(
+    _HostFrame frame,
+    TransformPropertyId property,
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+  ) => Positioned.fill(
+    child: ValueListenableBuilder<CameraPathSettings>(
+      valueListenable: CameraPathSettings.settings,
+      builder: (context, settings, _) {
+        final session = frame.session;
+        final layer = frame.activeLayer!;
+        final path = settings.show == CameraPathShow.off
+            ? null
+            : _rowPathOf(session, layer, property);
+        return path == null
+            ? const SizedBox.shrink()
+            : CameraPathOverlay(
+                path: path,
+                playhead: session.currentFrameIndex,
+                settings: settings,
+                viewport: viewport,
+                standing: true,
+                toCanvas: _pathSpaceOf(
+                  session,
+                  layer,
+                  property,
+                  canvasSize,
+                ).toCanvas,
+              );
+      },
+    ),
+  );
 
   /// The camera's frame — the dim outside it and its hairline — drawn for
   /// every row. It takes no press: on the camera row the frame's box does
@@ -1645,7 +1786,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 viewport: viewport,
                 unit: throughCamera
                     ? frame.canvasRect
-                    : canvasSize.pasteboardRect,
+                    : session.pasteboardOf(canvasSize).rect,
                 veils: veils,
                 color: Color(
                   session.repository.requireProject().backdropArgb,
@@ -1757,7 +1898,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               canvasSize: canvasSize,
               emphasized: tool == CanvasTool.guide,
               vanishingPointLabel: AppText.strings.guideVanishingPoint,
-              color: Theme.of(context).colorScheme.primary,
+              color: guideColorOf(context),
               face: appFaceOf(DefaultTextStyle.of(context).style),
               selectedGuideId: session.cutVerbs.selectedGuideId,
             ),
@@ -1842,7 +1983,12 @@ class _SeNameTagOverlayPainter extends CustomPainter with RepaintOnProps {
       viewport,
       devicePixelRatio: devicePixelRatio,
     );
-    paintSeNameTags(canvas, tags: tags, canvasSize: canvasSize);
+    paintSeNameTags(
+      canvas,
+      tags: tags,
+      canvasSize: canvasSize,
+      rasterScale: displayScaleOf(viewport.zoom, devicePixelRatio),
+    );
     canvas.restore();
   }
 

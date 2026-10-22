@@ -42,7 +42,6 @@ enum Why { aRow, aSetting, aSecondLevel, inAWindow, declined }
 const ledger = <String, Why>{
   // ── ON A ROW ────────────────────────────────────────────────────────
   "brush/guide_panels.dart | 'guide-delete-\${guide.id.value}'": Why.aRow,
-  "brush/guide_panels.dart | 'guide-make-vertical'": Why.aRow,
   "brush/guide_panels.dart | 'guide-remove'": Why.aRow,
   "brush/guide_panels.dart | 'guide-rename-\${guide.id.value}'": Why.aRow,
   "media/media_pool_panel.dart | 'media-asset-in-use-\${asset.path}'":
@@ -90,6 +89,12 @@ const ledger = <String, Why>{
   // panel-tidy (2026-10-10); they were the settings bar's own until then.
   'widgets/value_hands.dart | '
           "'\$keyPrefix-\${direction > 0 ? 'up' : 'down'}'":
+      Why.aSetting,
+  // The text tool's mirror (text-letters-lean-and-underline ⑦): a switch
+  // of the held box's own `flipped`, the next text's when none is held.
+  // The transform tool's flip names its action: it flips a selection,
+  // not a value the tool keeps.
+  "brush/text_tool_settings.dart | 'text-tool-flip-horizontal'":
       Why.aSetting,
 
   // ── THE DOOR TO A SECOND LEVEL ──────────────────────────────────────
@@ -154,13 +159,14 @@ const ledger = <String, Why>{
   // 🗣️I-40-Q7 (유저 2026-10-10, the sheets' own pills — the 붓 that lets a
   // sheet take ink, on the timesheet, the conte and the cut envelope alike,
   // and the page turns of the first two: one button per panel, so which
-  // panel's would a key press?): 「주지 않는다」.
-  'brush/sheet_canvas_panel.dart | '
-          "'\${brush.keyPrefix}-brush-toggle-button'":
+  // panel's would a key press?): 「주지 않는다」. The viewers wear the same
+  // button since I-114 (「다른 캔버스 베이스패널의 브러시 허용이랑 똑같은」),
+  // one per viewer, so the same answer.
+  "brush/sheet_canvas_panel.dart | '\$keyPrefix-brush-toggle-button'":
       Why.declined,
-  "widgets/page_turn_strip.dart | '\$keyPrefix-next-page-button'":
+  "widgets/page_turn_bar.dart | '\$keyPrefix-next-page-button'":
       Why.declined,
-  "widgets/page_turn_strip.dart | '\$keyPrefix-previous-page-button'":
+  "widgets/page_turn_bar.dart | '\$keyPrefix-previous-page-button'":
       Why.declined,
 };
 

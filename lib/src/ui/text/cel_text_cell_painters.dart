@@ -40,8 +40,12 @@ class _CellPainters {
   /// The painters some layout holds.
   final Map<_CellPainterKey, _HeldCellPainter> _held = {};
 
-  /// The painters no layout holds — the longest let go of first.
-  final Map<_CellPainterKey, _HeldCellPainter> _idle = {};
+  /// The painters no layout holds — the longest let go of first, and past
+  /// [_idleCellPainterLimit] disposed in that order ([Lru]).
+  final Lru<_CellPainterKey, _HeldCellPainter> _idle = Lru(
+    limit: () => _idleCellPainterLimit,
+    letGo: (_, idle) => idle.painter.dispose(),
+  );
 
   /// The painter made of [key], held once more: one that is kept, or made
   /// now. [foreground] is the paint [key] names (`key.paint`) — null for
@@ -49,7 +53,7 @@ class _CellPainters {
   _HeldCellPainter hold(_CellPainterKey key, ui.Paint? foreground) {
     final kept =
         _held[key] ??
-        _idle.remove(key) ??
+        _idle.take(key) ??
         _HeldCellPainter._(key, _painterOf(key, foreground));
     kept._holders += 1;
     _held[key] = kept;
@@ -87,10 +91,7 @@ class _CellPainters {
       return;
     }
     _held.remove(painter.key);
-    _idle[painter.key] = painter;
-    while (_idle.length > _idleCellPainterLimit) {
-      _idle.remove(_idle.keys.first)!.painter.dispose();
-    }
+    _idle.keep(painter.key, painter);
   }
 
   /// Disposes every painter no layout holds.

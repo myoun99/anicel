@@ -107,6 +107,56 @@ List<Rect> pdfImagePlacements(Uint8List pdf) => [
           Rect.fromLTWH(x, y, w, h),
 ];
 
+/// Where each image lands on its page, through every `cm` in force at its
+/// `Do` (`q` saves the matrix, `Q` restores it): the corners its unit
+/// square is carried to — the image's first row is that square's top — so
+/// an image turned or flipped by the matrices above it reads as well as
+/// one laid square.
+List<({Offset topLeft, Offset topRight, Offset bottomLeft})> pdfImageCorners(
+  Uint8List pdf,
+) {
+  const identity = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+  final corners = <({Offset topLeft, Offset topRight, Offset bottomLeft})>[];
+  for (final tokens in _streamTokens(pdf)) {
+    var matrix = identity;
+    final saved = <List<double>>[];
+    for (var i = 0; i < tokens.length; i += 1) {
+      switch (tokens[i]) {
+        case 'q':
+          saved.add(matrix);
+        case 'Q':
+          matrix = saved.isEmpty ? identity : saved.removeLast();
+        case 'cm' when i >= 6:
+          if ([for (var j = i - 6; j < i; j += 1) double.tryParse(tokens[j])]
+              case final numbers when !numbers.contains(null)) {
+            matrix = _concat([for (final n in numbers) n!], matrix);
+          }
+        case 'Do' when i >= 1 && tokens[i - 1].startsWith('/'):
+          final m = matrix;
+          Offset at(double x, double y) =>
+              Offset(m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]);
+          corners.add((
+            topLeft: at(0, 1),
+            topRight: at(1, 1),
+            bottomLeft: at(0, 0),
+          ));
+      }
+    }
+  }
+  return corners;
+}
+
+/// [inner] (`a b c d e f`) set by a `cm` under [outer]: a point goes
+/// through [inner] first.
+List<double> _concat(List<double> inner, List<double> outer) => [
+  outer[0] * inner[0] + outer[2] * inner[1],
+  outer[1] * inner[0] + outer[3] * inner[1],
+  outer[0] * inner[2] + outer[2] * inner[3],
+  outer[1] * inner[2] + outer[3] * inner[3],
+  outer[0] * inner[4] + outer[2] * inner[5] + outer[4],
+  outer[1] * inner[4] + outer[3] * inner[5] + outer[5],
+];
+
 /// Every stroked path the pages draw: `x y m`, then `x y l` …, then `S` —
 /// or `s`, which closes it first — and the graphics state it is stroked
 /// under: the name of the last `/Name gs` still in force (`q` saves it,

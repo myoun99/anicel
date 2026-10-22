@@ -68,8 +68,9 @@ void main() {
       return clipsBeforeTheImages(
         (canvas) => drawPosedLayerImage(
           canvas,
-          image: image,
-          worldRect: atOrigin ? atOriginRect : rect,
+          pieces: [
+            (image: image, worldRect: atOrigin ? atOriginRect : rect),
+          ],
           extent: atOrigin ? atOriginRect : rect,
           placement: null,
           opacity: 1,

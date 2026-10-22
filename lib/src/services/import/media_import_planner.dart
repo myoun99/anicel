@@ -1,40 +1,34 @@
 import 'dart:collection';
+import 'dart:math' as math;
 
 import '../editing/default_cut_helpers.dart';
 import '../editing/default_layer_helpers.dart'
     show defaultLayerIdForSequence;
 import '../editing/run_id_mint.dart' show mintFrameId;
+import '../../models/attached_layer_resolve.dart' show attachedMirrorCelId;
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
-import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
+import '../../models/import/cut_folder_edits.dart';
 import '../../models/import/cut_folder_parse.dart';
+import '../../models/import/import_destination.dart';
 import '../../models/layer.dart';
-import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/media_asset.dart';
 import '../../models/media_reference.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/import/import_warning.dart';
 
-/// PURE construction of the models an import lands (§6-z21's
-/// interpretation table IS this plan rendered): the session mints ids and
-/// does IO/decoding around it, the planner decides layer/cut/asset SHAPE.
-/// Testable without a byte of pixel data.
+export '../../models/import/import_destination.dart';
 
-/// Where an import lands (§2's three destinations; PROJECT — a new
-/// project sized to the media — is a later round, documented).
-enum ImportDestination {
-  /// A layer in the ACTIVE cut.
-  activeCutLayer,
-
-  /// A new cut appended to the selected track.
-  newCut,
-}
+/// PURE construction of the models an import lands: the session mints ids
+/// and does IO/decoding around it, the planner decides layer/cut/asset
+/// SHAPE. Testable without a byte of pixel data.
 
 /// Id minting seams (the session's counters, injected).
 class ImportIdMint {
@@ -121,6 +115,10 @@ class ImageLayerImportPlan {
 /// placed, and the pool is not the command's to empty.
 bool placementRegisters({required bool baked, bool soundReadsIt = false}) =>
     !baked || soundReadsIt;
+
+/// How long a still holds in [cut], the cut it joins: the cut's own length
+/// — one frame in a cut that has none.
+int stillHoldIn(Cut cut) => cut.duration < 1 ? 1 : cut.duration;
 
 /// Builds one IMAGE layer for [sourceFile]: born covering [duration]
 /// (the write normalization keeps it at the cut length afterwards).
@@ -263,9 +261,8 @@ SequenceLayerImportPlan planSequenceLayer({
   List<int>? sourceFrameIndices,
 
   /// Each position's cel NAME, when the source names its pictures — a
-  /// numbered run's cel labels, as the cut folder names its cels
-  /// ([planCutFolderImport]). A folded run of duplicates takes its first
-  /// position's name.
+  /// numbered run's numbers (`pictureRunOf`). A folded run of duplicates
+  /// takes its first position's name.
   List<String>? frameNames,
 
   /// The picture of the file the first position is — a span's IN — so the
@@ -407,226 +404,358 @@ Layer planMovieReferenceLayer({
   );
 }
 
-/// The whole-folder plan: ONE fully-formed cut (default fixtures kept,
-/// drawing layer replaced by the parsed structure), the cel bakes, and
-/// the reference registrations. Multi-cut folders (rule H) report the
-/// EXTRA cut numbers — the session follows up with linked-cut creation.
+/// The whole-folder plan, as the import window answered it: the cuts it
+/// lands as — the folder's ONE cut, or under 「커스텀」 one for each row sent
+/// to a cut of its own (default fixtures kept, drawing layer replaced by
+/// the rows) — what it lays into the cut the project has open, the cel
+/// bakes, and the fit each layer's cels are laid with.
 class CutFolderImportPlan {
   const CutFolderImportPlan({
-    required this.cut,
+    required this.cuts,
+    required this.openCutLayers,
     required this.bakes,
-    required this.assets,
-    required this.extraCutNumbers,
+    required this.fits,
     required this.warnings,
   });
 
-  final Cut cut;
+  /// The new cuts, in the order the track takes them.
+  final List<Cut> cuts;
+
+  /// The rows 「커스텀」 sent into the cut the project has open, bottom
+  /// first.
+  final List<Layer> openCutLayers;
   final List<PlannedCelBake> bakes;
-  final List<MediaAsset> assets;
-  final List<String> extraCutNumbers;
+
+  /// How each layer's cels are laid on its cut's canvas — the fit its row
+  /// was answered ([CutFolderEdits.fitOf]).
+  final Map<LayerId, MediaFitMode> fits;
   final List<ImportWarning> warnings;
 }
 
+/// [parsed] as [edits] answered it: its rows stacked as the timeline stacks
+/// them — pictures at the bottom, each symbol's own layer with its
+/// corrections right above it — each the kind, colour label and fit it was
+/// given, in the cut its 넣을 곳 names: the folder's ONE cut, or under
+/// 「커스텀」 [openCut] or a cut of the row's own ([CutFolderEdits.intoOf]).
+///
+/// A new cut is [openCut]'s size — the project's, not the scans' — and
+/// runs as long as the longest layer in it; a picture is held over its
+/// cut, [openCut]'s own length for one that joins it.
+///
+/// ↩️The folder's references (timesheet scans, the reference movie) were
+/// registered here too, under the window's one carry answer; they are the
+/// window's own rows now, asked what every file is asked (F-429-Q4).
 CutFolderImportPlan planCutFolderImport({
   required CutFolderParseResult parsed,
+  CutFolderEdits edits = const CutFolderEdits(),
   required String Function(String relativePath) resolveFile,
-  required CanvasSize canvasSize,
+  required Cut? openCut,
   required ImportIdMint mint,
-}) {
-  final warnings = [...parsed.warnings];
-  final cutId = mint.nextCutId();
+}) => _FolderPlan(parsed, edits, resolveFile, openCut, mint).plan();
 
-  // Duration: every symbol layer lays its cels one comma each — the cut
-  // runs as long as the longest layer (min 1).
-  var duration = 1;
-  for (final layer in parsed.layers) {
-    if (layer.cells.length > duration) {
-      duration = layer.cells.length;
+/// A cut the folder's rows land in while they are planned, and the rows
+/// that go there, bottom first.
+class _FolderLanding {
+  _FolderLanding(this.name);
+
+  /// What a new cut is named — the folder's, or the row's it is made for.
+  final String name;
+  final pictures = <ParsedPicture>[];
+  final layers = <ParsedCelLayer>[];
+
+  /// How long a new cut runs: its longest layer, one comma a cel (min 1).
+  int get length => layers.fold(
+    1,
+    (longest, layer) => math.max(longest, layer.cells.length),
+  );
+}
+
+/// [planCutFolderImport]'s working: the rows gathered by the cut each goes
+/// to, then laid cut by cut.
+class _FolderPlan {
+  _FolderPlan(
+    this.parsed,
+    this.edits,
+    this.resolveFile,
+    this.openCut,
+    this.mint,
+  );
+
+  final CutFolderParseResult parsed;
+  final CutFolderEdits edits;
+  final String Function(String relativePath) resolveFile;
+  final Cut? openCut;
+  final ImportIdMint mint;
+
+  final _cuts = <Cut>[];
+  final _openCutLayers = <Layer>[];
+  final _bakes = <PlannedCelBake>[];
+  final _fits = <LayerId, MediaFitMode>{};
+
+  /// Where the folder's ONE cut and the open cut gather their rows — a
+  /// row's own cut is keyed by the row ([_landingOf]).
+  static const _theFolder = 'folder';
+  static const _theOpenCut = 'open';
+
+  CutFolderImportPlan plan() {
+    final landings = <String, _FolderLanding>{};
+    _FolderLanding at(String rowKey, String name) =>
+        landings.putIfAbsent(_landingOf(rowKey), () => _FolderLanding(name));
+    for (final picture in parsed.pictures) {
+      at(picture.rowKey, picture.name).pictures.add(picture);
     }
-  }
-
-  final layers = <Layer>[];
-  final bakes = <PlannedCelBake>[];
-
-  // Pictures first = bottom of the stack (BG under the cels).
-  for (final picture in parsed.pictures) {
-    final layerId = mint.nextLayerId();
-    final frameId = mint.nextFrameId(layerId);
-    layers.add(
-      Layer(
-        id: layerId,
-        name: picture.name,
-        kind: LayerKind.image,
-        frames: [Frame(id: frameId, duration: duration, strokes: const [])],
-        timeline: {0: TimelineExposure.drawing(frameId, length: duration)},
-      ),
-    );
-    bakes.add(
-      PlannedCelBake(
-        cutId: cutId,
-        layerId: layerId,
-        frameId: frameId,
-        sourceFile: resolveFile(picture.file),
-      ),
+    for (final layer in parsed.layers) {
+      // A correction riding its symbol goes where the symbol goes.
+      final row = edits.ridesItsBase(parsed, layer)
+          ? parsed.baseOf(layer)!
+          : layer;
+      at(row.rowKey, row.symbol).layers.add(layer);
+    }
+    for (final MapEntry(:key, value: landing) in landings.entries) {
+      _land(key, landing);
+    }
+    return CutFolderImportPlan(
+      cuts: _cuts,
+      openCutLayers: _openCutLayers,
+      bakes: _bakes,
+      fits: _fits,
+      warnings: [
+        ...parsed.warnings,
+        if (landings.isEmpty)
+          const ImportWarning(
+            'folderNothing',
+            'The folder held no importable cels or pictures.',
+          ),
+      ],
     );
   }
 
-  // Symbol layers in symbol order, each with its archived-process attach
-  // structure (rule G/M → the R2 attach-folder shape: FREE attach rows
-  // BELOW the base, one organizer folder per process).
-  for (final parsedLayer in parsed.layers) {
-    final baseId = mint.nextLayerId();
+  /// Where the row keyed [rowKey] goes when it goes on its own: the
+  /// folder's one cut, or under 「커스텀」 the open cut or a cut of its own.
+  String _landingOf(String rowKey) => !edits.custom
+      ? _theFolder
+      : switch (edits.intoOf(rowKey, hasOpenCut: openCut != null)) {
+          ImportDestination.activeCutLayer => _theOpenCut,
+          ImportDestination.newCut => 'own $rowKey',
+        };
 
-    for (final group in parsed.processGroups) {
-      final processLayer = group.layers.where(
-        (layer) => layer.symbol == parsedLayer.symbol,
-      );
-      if (processLayer.isEmpty) {
-        continue;
-      }
-      final organizerId = mint.nextLayerId();
-      final attachId = mint.nextLayerId();
-      final attachCels = processLayer.first.cells;
-      final attachFrames = <Frame>[];
-      final attachTimeline = SplayTreeMap<int, TimelineExposure>();
-      for (var i = 0; i < attachCels.length; i += 1) {
-        final frameId = mint.nextFrameId(attachId);
-        attachFrames.add(Frame(id: frameId, duration: 1, strokes: const []));
-        attachTimeline[i] = TimelineExposure.drawing(frameId, length: 1);
-        bakes.add(
+  /// [landing]'s rows laid, bottom first, and its cut made — or, for the
+  /// open cut's, the rows handed to it.
+  void _land(String key, _FolderLanding landing) {
+    final open = key == _theOpenCut ? openCut : null;
+    final cutId = open?.id ?? mint.nextCutId();
+    final rows = _FolderCut(
+      open == null ? landing.length : stillHoldIn(open),
+      mint,
+    );
+    final layers = <Layer>[];
+    void lay(_FolderRow row, String rowKey, List<String> files) {
+      layers.add(row.layer);
+      _fits[row.layer.id] = edits.fitOf(rowKey);
+      for (final (index, file) in files.indexed) {
+        _bakes.add(
           PlannedCelBake(
             cutId: cutId,
-            layerId: attachId,
-            frameId: frameId,
-            sourceFile: resolveFile(attachCels[i].file),
+            layerId: row.layer.id,
+            frameId: row.celIds[index],
+            sourceFile: resolveFile(file),
           ),
         );
       }
-      // Members precede their folder row; the whole run sits BELOW the
-      // base (the archived process shows through under the newest one).
-      layers.add(
-        Layer(
-          id: attachId,
-          name: '${parsedLayer.symbol} ${group.process}',
-          frames: attachFrames,
-          timeline: attachTimeline,
-          onTimesheet: false,
-          attachedToLayerId: baseId,
-          attachedPlacement: AttachedPlacement.below,
-          attachedMode: AttachedMode.free,
-          folderId: organizerId,
-        ),
-      );
-      layers.add(
-        createFolderLayer(id: organizerId, name: group.process),
-      );
     }
 
-    final baseFrames = <Frame>[];
-    final baseTimeline = SplayTreeMap<int, TimelineExposure>();
-    for (var i = 0; i < parsedLayer.cells.length; i += 1) {
-      final cell = parsedLayer.cells[i];
-      final frameId = mint.nextFrameId(baseId);
-      baseFrames.add(
-        Frame(
-          id: frameId,
-          duration: 1,
-          strokes: const [],
-          name: cell.label,
+    // Pictures first = bottom of the stack (BG under the cels).
+    for (final picture in landing.pictures) {
+      lay(
+        rows.layer(
+          name: picture.name,
+          kind: edits.kindOfPicture(picture),
+          mark: edits.markOfPicture(picture),
+          cels: const [null],
         ),
+        picture.rowKey,
+        [picture.file],
       );
-      baseTimeline[i] = TimelineExposure.drawing(frameId, length: 1);
-      bakes.add(
-        PlannedCelBake(
+    }
+    // Each symbol's own layer, and the corrections riding it right above
+    // it — the parse already stands them in that order.
+    final bases = <ParsedCelLayer, _FolderBase>{};
+    for (final layer in landing.layers) {
+      final row = _rowOf(rows, layer, bases[parsed.baseOf(layer)]);
+      bases[layer] = (
+        layer: row.layer,
+        cels: {
+          for (final (index, cel) in layer.cells.indexed)
+            cel.label: row.celIds[index],
+        },
+      );
+      lay(row, layer.rowKey, [for (final cel in layer.cells) cel.file]);
+    }
+
+    if (open != null) {
+      _openCutLayers.addAll(layers);
+      return;
+    }
+    _cuts.add(
+      importedCut(
+        defaultCut: createDefaultCut(
           cutId: cutId,
-          layerId: baseId,
-          frameId: frameId,
-          sourceFile: resolveFile(cell.file),
+          name: key == _theFolder ? edits.nameOf(parsed) : landing.name,
+          layerId: mint.nextLayerId(),
+          canvasSize: openCut?.canvasSize ?? defaultCutCanvasSize,
         ),
+        layers: layers,
+        duration: rows.duration,
+      ),
+    );
+  }
+
+  /// [layer] as a row of [rows]' cut: its symbol's attach row while it
+  /// rides [base] — SYNCED when it corrects only cels [base] has, FREE
+  /// otherwise ([CutFolderParseResult.correctsOnlyItsBaseCels]) — else a
+  /// layer of its own.
+  _FolderRow _rowOf(_FolderCut rows, ParsedCelLayer layer, _FolderBase? base) {
+    final kind = edits.kindOfLayer(parsed, layer);
+    final mark = edits.markOfLayer(parsed, layer);
+    if (base == null || !edits.ridesItsBase(parsed, layer)) {
+      return rows.layer(
+        name: layer.symbol,
+        kind: kind,
+        mark: mark,
+        cels: [for (final cel in layer.cells) cel.label],
       );
     }
-    layers.add(
-      Layer(
-        id: baseId,
-        name: parsedLayer.symbol,
-        frames: baseFrames,
-        timeline: baseTimeline,
+    return parsed.correctsOnlyItsBaseCels(layer)
+        ? rows.syncedCorrectionOf(base, layer, kind, mark)
+        : rows.freeCorrectionOf(base, layer, kind, mark);
+  }
+}
+
+/// A row the folder lands, and the cel each of its parsed cels bakes into —
+/// in the parse's order, which a synced row's bank does not keep.
+typedef _FolderRow = ({Layer layer, List<FrameId> celIds});
+
+/// A symbol's own layer as its corrections ride it: the layer, and its cel
+/// for each label the folder named — by the label, as an image layer's
+/// one cel goes nameless.
+typedef _FolderBase = ({Layer layer, Map<String, FrameId> cels});
+
+/// The rows of ONE cut a folder lands in: each laid over the cut's
+/// [duration], its ids from [mint].
+///
+/// 🗣️07-29 (유저), what a correction becomes: 「연출수정 = 그 위에 싱크
+/// 어태치로 해당 프레임 위치에 넣기. 작감수정도 동일. LO에 없는 번호를
+/// 수정에서 새로 만들면 = 프리 어태치로」 — SYNCED when every cel corrects
+/// one its base has ([syncedCorrectionOf]); FREE when one is new, laid as
+/// the folder's every layer is ([freeCorrectionOf]). Named by the symbol
+/// alone — the colour label tells the two apart (F-429-Q2).
+class _FolderCut {
+  const _FolderCut(this.duration, this.mint);
+
+  final int duration;
+  final ImportIdMint mint;
+
+  /// A row of the folder as a layer of its own, its cels named [cels] (a
+  /// picture's are not): an image layer's one cel held over the cut's
+  /// [duration], an animation layer's cels one comma each — the kind
+  /// decides the shape, whatever file the row came from (🗣️F-429: 「레이어
+  /// 타입(이미지,애니메이션)으로서 지정가능하고 그게 인식기준」).
+  _FolderRow layer({
+    required String name,
+    required LayerKind kind,
+    required LayerMark mark,
+    required List<String?> cels,
+  }) {
+    final layerId = mint.nextLayerId();
+    final held = kind.holdsSingleCel;
+    final length = held ? duration : 1;
+    final frames = [
+      for (final cel in cels)
+        Frame(
+          id: mint.nextFrameId(layerId),
+          duration: length,
+          strokes: const [],
+          name: held ? null : cel,
+        ),
+    ];
+    return (
+      layer: Layer(
+        id: layerId,
+        name: name,
+        kind: kind,
+        mark: mark,
+        frames: frames,
+        timeline: {
+          for (final (index, frame) in frames.indexed)
+            index: TimelineExposure.drawing(frame.id, length: length),
+        },
       ),
+      celIds: [for (final frame in frames) frame.id],
     );
   }
 
-  if (layers.isEmpty) {
-    warnings.add(
-      const ImportWarning(
-        'folderNothing',
-        'The folder held no importable cels or pictures.',
+  /// [correction]'s cels as [base]'s FREE attach row, right above it, laid
+  /// as a layer of its own is.
+  _FolderRow freeCorrectionOf(
+    _FolderBase base,
+    ParsedCelLayer correction,
+    LayerKind kind,
+    LayerMark mark,
+  ) {
+    final (:layer, :celIds) = this.layer(
+      name: correction.symbol,
+      kind: kind,
+      mark: mark,
+      cels: [for (final cel in correction.cells) cel.label],
+    );
+    return (
+      layer: layer.copyWith(
+        // An attach row is born off the sheet (`addAttachedLayer`).
+        onTimesheet: false,
+        attachedToLayerId: base.layer.id,
+        attachedPlacement: AttachedPlacement.above,
+        attachedMode: AttachedMode.free,
       ),
+      celIds: celIds,
     );
   }
 
-  // Nothing exits silently (§6-z21): an archived-process symbol with no
-  // matching top-level layer has no base to attach to — say so.
-  final baseSymbols = {for (final layer in parsed.layers) layer.symbol};
-  for (final group in parsed.processGroups) {
-    for (final layer in group.layers) {
-      if (!baseSymbols.contains(layer.symbol)) {
-        warnings.add(
-          ImportWarning(
-            'folderNoBase',
-            '{process}/{symbol}: no matching top-level layer — {n} cel(s) '
-            'skipped.',
-            {
-              'process': group.process,
-              'symbol': layer.symbol,
-              'n': '${layer.cells.length}',
-            },
-          ),
-        );
-      }
-    }
-  }
-
-  // References register (never baked — §6-z22); timing sheets are noted
-  // for the later XDTS-read round.
-  final assets = <MediaAsset>[];
-  for (final reference in parsed.references) {
-    final kind = switch (reference.kind) {
-      ParsedReferenceKind.timesheetScan => MediaAssetKind.image,
-      ParsedReferenceKind.movie => MediaAssetKind.video,
-      ParsedReferenceKind.timingSheet => null,
-      ParsedReferenceKind.workFile => null,
-    };
-    if (kind == null) {
-      continue;
-    }
-    final path = resolveFile(reference.file);
-    assets.add(
-      MediaAsset(path: path, name: mediaAssetDefaultName(path), kind: kind),
+  /// [correction]'s cels as [base]'s SYNCED attach row, right above it:
+  /// one mirror cel per base cel — the always-mirror shape
+  /// (`cutWithReconciledAttachedMirrors`) made here, as the .clip import's
+  /// attach rows are; the corrected ones are the cels that get pixels.
+  _FolderRow syncedCorrectionOf(
+    _FolderBase base,
+    ParsedCelLayer correction,
+    LayerKind kind,
+    LayerMark mark,
+  ) {
+    final layerId = mint.nextLayerId();
+    FrameId mirrorOf(FrameId baseCel) =>
+        attachedMirrorCelId(layerId, baseCel);
+    return (
+      layer: Layer(
+        id: layerId,
+        name: correction.symbol,
+        kind: kind,
+        mark: mark,
+        frames: [
+          for (final frame in base.layer.frames)
+            Frame(id: mirrorOf(frame.id), duration: 1, strokes: const []),
+        ],
+        timeline: const {},
+        onTimesheet: false,
+        attachedToLayerId: base.layer.id,
+        attachedPlacement: AttachedPlacement.above,
+        attachedMode: AttachedMode.synced,
+        baseFrameLinks: {
+          for (final frame in base.layer.frames)
+            frame.id: mirrorOf(frame.id),
+        },
+      ),
+      celIds: [
+        for (final cel in correction.cells) mirrorOf(base.cels[cel.label]!),
+      ],
     );
   }
-
-  final cutName = parsed.cutNumbers.isEmpty
-      ? parsed.folderName
-      : parsed.cutNumbers.first;
-  final defaultCut = createDefaultCut(
-    cutId: cutId,
-    name: cutName,
-    layerId: mint.nextLayerId(),
-    canvasSize: canvasSize,
-  );
-  final cut = importedCut(
-    defaultCut: defaultCut,
-    layers: layers,
-    duration: duration,
-  );
-
-  return CutFolderImportPlan(
-    cut: cut,
-    bakes: bakes,
-    assets: assets,
-    extraCutNumbers: parsed.cutNumbers.length > 1
-        ? parsed.cutNumbers.sublist(1)
-        : const [],
-    warnings: warnings,
-  );
 }

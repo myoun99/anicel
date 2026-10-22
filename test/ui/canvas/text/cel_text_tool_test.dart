@@ -12,6 +12,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/history_run.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/text/cel_text_layout.dart';
@@ -63,7 +64,6 @@ void main() {
       coordinator: editingStackOn(
         drawingOf({drawn: ink}).withTexts(texts),
       ),
-      canvasSize: celTextTestCanvas,
       cacheInvalidationSink: null,
     );
     // The cel under the tool, until a test says another is.
@@ -78,6 +78,19 @@ void main() {
 
   BitmapSurface pictureOf(CelTextCel cel) =>
       cel.coordinator.currentSurfaceOf(cel.key);
+
+  /// What the press that makes a cel for its text leaves: the run it began
+  /// ([CelTextTool.beginRun]), and the step the door then files for the
+  /// cel as the press comes up — stood in for.
+  ({HistoryRun made, _Elsewhere filed}) celFiledFor(
+    CelTextTool tool,
+    _Host host,
+  ) {
+    final made = tool.beginRun()!;
+    final filed = _Elsewhere();
+    host.history.execute(filed);
+    return (made: made, filed: filed);
+  }
 
   List<(int, String)> textsOn(CelTextCel cel) => [
     for (final text in pictureOf(cel).texts) (text.id, text.content.text),
@@ -163,8 +176,8 @@ void main() {
 
       final content = tool.session!.content;
       expect(content.spans, [run('a', big)]);
-      expect(content.align, TextCelAlign.center);
-      expect(content.lineHeight, 2);
+      expect(content.paragraphs.single.align, TextCelAlign.center);
+      expect(content.paragraphs.single.lineHeight, 2);
       expect(content.backgroundColor, 0xFF00FF00);
       expect(content.wrapWidth, 24);
     });
@@ -472,7 +485,6 @@ void main() {
       final CelTextCel other = (
         key: elsewhere,
         coordinator: cel.coordinator,
-        canvasSize: cel.canvasSize,
         cacheInvalidationSink: null,
       );
       tool.takeText(cel, pictureOf(cel).texts.single);
@@ -520,7 +532,7 @@ void main() {
 
       expect(textsOn(cel), [(5, 'zz')]);
       expect(tool.session, isNull);
-      expect(host.ran.single.command.description, 'Delete text');
+      expect(host.ran.single.description, 'Delete text');
 
       host.history.undo();
 
@@ -553,7 +565,7 @@ void main() {
         celSurfaceWithTextsLaid(pictureOf(cel));
 
     List<String> stepsOf(_Host host) => [
-      for (final ran in host.ran) ran.command.description,
+      for (final command in host.ran) command.description,
     ];
 
     /// One pixel of [cel]'s DRAWING at the plate's tile — the stand-in
@@ -583,7 +595,6 @@ void main() {
       expect(tool.holdsAnything, isFalse);
       expect(stepsOf(host), ['Text to drawing']);
       expect(host.setInOf.single, isEmpty, reason: 'it registers no face');
-      expect(host.ran.single.withCelMadeSince, isNull);
 
       host.history.undo();
 
@@ -620,20 +631,21 @@ void main() {
     test('a NEW text is set on its cel — with the cel its press made — and '
         'then turned: the turning takes no cel with it', () async {
       final (:tool, :host, :baker, :cel) = hand();
-      tool.beginText(cel, at, celMadeSince: host.historyMark);
+      final (:made, :filed) = celFiledFor(tool, host);
+      tool.beginText(cel, at, celMade: made);
       typeInto(tool, 'ab');
       await baker.pending.answer();
 
       tool.turnIntoDrawing();
 
       expect(stepsOf(host), ['Set text', 'Text to drawing']);
-      expect(host.ran.first.withCelMadeSince, isNotNull);
-      expect(host.ran.last.withCelMadeSince, isNull);
+      expect(host.history.undoCount, 2, reason: 'the cel rode the setting');
       expect(textsOn(cel), isEmpty);
       expect(drawnAt(cel, 0, 0), [2, 0, 0, 255]);
 
       host.history.undo();
       expect(textsOn(cel), [(1, 'ab')]);
+      expect(filed.undone, isFalse, reason: 'the turning took no cel');
     });
 
     test('🚨its last want still being set, it stays on the canvas as it was '
@@ -703,7 +715,6 @@ void main() {
       final CelTextCel there = (
         key: elsewhere,
         coordinator: cel.coordinator,
-        canvasSize: cel.canvasSize,
         cacheInvalidationSink: null,
       );
       tool
@@ -1071,12 +1082,12 @@ void main() {
 
       tool
         ..changeLetters((style) => style.copyWith(bold: true))
-        ..changeBox((content) => content.copyWith(lineHeight: 2));
+        ..changeBox((content) => content.copyWith(letterWidth: 0.5));
 
       final held = tool.letters!.content;
       expect(held.text, 'abc');
       expect(held.spans.single.style.bold, isTrue);
-      expect(held.lineHeight, 2);
+      expect(held.letterWidth, 0.5);
     });
 
     test('with nothing in hand it changes nothing', () {
@@ -1084,10 +1095,85 @@ void main() {
 
       tool
         ..changeLetters((style) => style.copyWith(fontSize: 16))
-        ..changeBox((content) => content.copyWith(lineHeight: 3));
+        ..changeBox((content) => content.copyWith(letterWidth: 0.5));
 
       expect(host.ran, isEmpty);
       expect(baker.asked, isEmpty);
+    });
+  });
+
+  group('a PARAGRAPH setting changed on the text in hand', () {
+    const right = CelTextParagraph(align: TextCelAlign.right, lineHeight: 2);
+    const apart = CelTextParagraph(align: TextCelAlign.center, lineHeight: 3);
+    // 「ab」 set to the right, then 「cd」 set apart.
+    final two = CelTextContent(
+      spans: [run('ab\ncd')],
+      anchor: CanvasPoint(x: 8, y: 8),
+      paragraphs: const [right, apart],
+    );
+    CelTextParagraph centred(CelTextParagraph paragraph) =>
+        paragraph.copyWith(align: TextCelAlign.center);
+
+    test('🚨held by its BOX it reaches every paragraph, each keeping what '
+        'the change leaves alone — one step, the text still in hand', () async {
+      final (:tool, :host, :baker, :cel) = hand(texts: [carried(4, two)]);
+      tool.takeText(cel, pictureOf(cel).texts.single);
+
+      tool.changeParagraphs(centred);
+      await baker.pending.answer();
+
+      expect(host.ran, hasLength(1));
+      expect(pictureOf(cel).texts.single.content.paragraphs, const [
+        CelTextParagraph(align: TextCelAlign.center, lineHeight: 2),
+        apart,
+      ]);
+      expect(tool.hold, CelTextHold.box);
+
+      host.history.undo();
+
+      expect(pictureOf(cel).texts.single.content, two);
+    });
+
+    test('🚨with letters SELECTED it reaches the paragraphs they are in '
+        'alone; with a caret and none selected, every one', () {
+      final (:tool, host: _, baker: _, :cel) = hand(texts: [carried(4, two)]);
+      tool
+        ..takeText(cel, pictureOf(cel).texts.single)
+        ..typeAt(const TextSelection(baseOffset: 4, extentOffset: 3))
+        ..changeParagraphs((paragraph) => paragraph.copyWith(lineHeight: 5));
+
+      expect(tool.letters!.content.paragraphs, const [
+        right,
+        CelTextParagraph(align: TextCelAlign.center, lineHeight: 5),
+      ]);
+
+      tool
+        ..typeAt(const TextSelection.collapsed(offset: 1))
+        ..changeParagraphs((paragraph) => paragraph.copyWith(lineHeight: 4));
+
+      expect([
+        for (final paragraph in tool.letters!.content.paragraphs)
+          paragraph.lineHeight,
+      ], [4, 4]);
+    });
+
+    test('what it shows is how those paragraphs are set — the selection\'s, '
+        'or with none selected every one', () {
+      final (:tool, host: _, baker: _, :cel) = hand(texts: [carried(4, two)]);
+
+      expect(tool.paragraphsSpokenFor, isNull, reason: 'nothing in hand');
+
+      tool.takeText(cel, pictureOf(cel).texts.single);
+
+      expect(tool.paragraphsSpokenFor, [right, apart]);
+
+      tool.typeAt(const TextSelection(baseOffset: 0, extentOffset: 3));
+
+      expect(tool.paragraphsSpokenFor, [right], reason: '「ab」 and its break');
+
+      tool.typeAt(const TextSelection(baseOffset: 1, extentOffset: 4));
+
+      expect(tool.paragraphsSpokenFor, [right, apart]);
     });
   });
 
@@ -1098,11 +1184,11 @@ void main() {
       );
       tool
         ..takeText(cel, pictureOf(cel).texts.single)
-        ..changeBox((content) => content.copyWith(align: TextCelAlign.right));
+        ..changeBox((content) => content.copyWith(letterWidth: 0.5));
       await baker.pending.answer();
 
       expect(host.ran, hasLength(1));
-      expect(pictureOf(cel).texts.single.content.align, TextCelAlign.right);
+      expect(pictureOf(cel).texts.single.content.letterWidth, 0.5);
     });
 
     test('a value still being dragged is shown and does not land; the one '
@@ -1111,37 +1197,37 @@ void main() {
         texts: [carried(4, said([run('ab')]))],
       );
       tool.takeText(cel, pictureOf(cel).texts.single);
-      double pitchOf(BitmapSurface surface) =>
-          surface.texts.single.content.lineHeight;
-      final before = pitchOf(pictureOf(cel));
+      double widthOf(BitmapSurface surface) =>
+          surface.texts.single.content.letterWidth;
+      final before = widthOf(pictureOf(cel));
 
       tool.changeBox(
-        (content) => content.copyWith(lineHeight: 2),
+        (content) => content.copyWith(letterWidth: 0.5),
         settled: false,
       );
       await baker.pending.answer();
       tool.changeBox(
-        (content) => content.copyWith(lineHeight: 2.5),
+        (content) => content.copyWith(letterWidth: 0.75),
         settled: false,
       );
       await baker.pending.answer();
 
       expect(host.ran, isEmpty);
-      expect(pitchOf(shownFor(tool, cel)!), 2.5);
-      expect(pitchOf(pictureOf(cel)), before);
+      expect(widthOf(shownFor(tool, cel)!), 0.75);
+      expect(widthOf(pictureOf(cel)), before);
 
-      tool.changeBox((content) => content.copyWith(lineHeight: 3));
+      tool.changeBox((content) => content.copyWith(letterWidth: 0.25));
 
       expect(host.ran, isEmpty, reason: 'not baked yet');
 
       await baker.pending.answer();
 
       expect(host.ran, hasLength(1));
-      expect(pitchOf(pictureOf(cel)), 3);
+      expect(widthOf(pictureOf(cel)), 0.25);
 
       host.history.undo();
 
-      expect(pitchOf(pictureOf(cel)), before);
+      expect(widthOf(pictureOf(cel)), before);
     });
 
     test('while the letters are held it is set on what is being TYPED, and '
@@ -1154,10 +1240,10 @@ void main() {
         ..typeAt(const TextSelection.collapsed(offset: 2));
       typeInto(tool, 'abc');
 
-      tool.changeBox((content) => content.copyWith(lineHeight: 2));
+      tool.changeBox((content) => content.copyWith(letterWidth: 0.5));
 
       expect(tool.letters!.content.text, 'abc');
-      expect(tool.letters!.content.lineHeight, 2);
+      expect(tool.letters!.content.letterWidth, 0.5);
       expect(host.ran, isEmpty);
 
       await baker.asked[0].answer();
@@ -1166,7 +1252,7 @@ void main() {
 
       final landed = pictureOf(cel).texts.single.content;
       expect(host.ran, hasLength(1));
-      expect((landed.text, landed.lineHeight), ('abc', 2));
+      expect((landed.text, landed.letterWidth), ('abc', 0.5));
     });
   });
 
@@ -1616,7 +1702,6 @@ void main() {
       host.cel = (
         key: elsewhere,
         coordinator: cel.coordinator,
-        canvasSize: cel.canvasSize,
         cacheInvalidationSink: null,
       );
       cel.coordinator.restoreSurfaceSnapshot(
@@ -1686,7 +1771,6 @@ void main() {
         final CelTextCel other = (
           key: elsewhere,
           coordinator: cel.coordinator,
-          canvasSize: cel.canvasSize,
           cacheInvalidationSink: null,
         );
         cel.coordinator.restoreSurfaceSnapshot(
@@ -1800,7 +1884,6 @@ void main() {
         final CelTextCel other = (
           key: elsewhere,
           coordinator: cel.coordinator,
-          canvasSize: cel.canvasSize,
           cacheInvalidationSink: null,
         );
         cel.coordinator.restoreSurfaceSnapshot(
@@ -1841,33 +1924,62 @@ void main() {
   });
 
   group('the cel a press made for its text', () {
-    test('rides the text\'s FIRST landing, and no later one', () async {
+    test('🚨rides the text\'s FIRST landing — the two ONE step — and no '
+        'later one', () async {
       final (:tool, :host, :baker, :cel) = hand();
-      final since = tool.historyMark;
-      tool.beginText(cel, at, celMadeSince: since);
+      final (:made, :filed) = celFiledFor(tool, host);
+      tool.beginText(cel, at, celMade: made);
       typeInto(tool, 'ab');
       await baker.pending.answer();
 
       tool.stopTyping();
 
-      expect(host.ran.single.withCelMadeSince, since);
+      expect(host.history.undoCount, 1, reason: 'the cel and its text');
 
-      tool.changeBox((content) => content.copyWith(lineHeight: 2));
+      tool.changeBox((content) => content.copyWith(letterWidth: 0.5));
       await baker.pending.answer();
 
       expect(host.ran, hasLength(2));
-      expect(host.ran.last.withCelMadeSince, isNull);
+      expect(tool.canStepBack, isTrue, reason: 'the box\'s own step');
+      tool.confirm();
+      expect(host.history.undoCount, 2);
+      host.history.undo();
+      expect(filed.undone, isFalse, reason: 'the box\'s step alone');
+      host.history.undo();
+      expect(filed.undone, isTrue, reason: 'the cel goes with its text');
+      expect(textsOn(cel), isEmpty);
     });
 
-    test('a text begun on a cel that was there hands nothing over', () async {
+    test('⛔with a step filed between the cel and its text, the two stay '
+        'apart: the text\'s undo leaves the cel', () async {
       final (:tool, :host, :baker, :cel) = hand();
+      final (:made, :filed) = celFiledFor(tool, host);
+      host.history.execute(_Elsewhere());
+      tool.beginText(cel, at, celMade: made);
+      typeInto(tool, 'ab');
+      await baker.pending.answer();
+
+      tool.confirm();
+
+      expect(host.history.undoCount, 3);
+      host.history.undo();
+      expect(textsOn(cel), isEmpty);
+      expect(filed.undone, isFalse);
+    });
+
+    test('a text begun on a cel already there takes no step with it', () async {
+      final (:tool, :host, :baker, :cel) = hand();
+      final before = _Elsewhere();
+      host.history.execute(before);
       tool.beginText(cel, at);
       typeInto(tool, 'ab');
       await baker.pending.answer();
 
       tool.confirm();
 
-      expect(host.ran.single.withCelMadeSince, isNull);
+      expect(host.history.undoCount, 2);
+      host.history.undo();
+      expect(before.undone, isFalse);
     });
   });
 
@@ -1969,6 +2081,251 @@ void main() {
     expect(host.redrawn, redrawn);
     expect(told, 0);
   });
+
+  // 🗣️F-377 (유저 2026-10-17): 「변형중 언두가 직전변형 취소라던가. 끝나면
+  // 한번에 취소라던가 하듯이 변형 상태는 모두 기본적으로 그걸 따르도록.
+  // 텍스트 변형이든 뭐든」 — the transform box's law (유저 2026-09-20), for a
+  // text held by its box; a visit to its letters stays a step of its own
+  // (F-377-Q1's recommended 「변형만 묶는다」).
+  group('🗣️F-377: what the box lands while it holds a text', () {
+    /// A hand holding the text 「ab」 its cel carries, by its box.
+    ({CelTextTool tool, _Host host, HeldBaker baker, CelTextCel cel})
+    holdingAb() {
+      final holding = hand(texts: [carried(4, said([run('ab')]))]);
+      holding.tool.takeText(holding.cel, pictureOf(holding.cel).texts.single);
+      return holding;
+    }
+
+    double xOn(CelTextCel cel) => pictureOf(cel).texts.single.content.anchor.x;
+
+    /// The box carries the text in hand [dx] across, and lets go there.
+    void carryBy(CelTextTool tool, int dx) => tool
+      ..carry(dx: dx, dy: 0)
+      ..landEdit();
+
+    /// Set to the right — a setting that lands once its bake is made.
+    CelTextParagraph toTheRight(CelTextParagraph paragraph) =>
+        paragraph.copyWith(align: TextCelAlign.right);
+
+    test('🚨each step it landed goes back one at a time while it holds the '
+        'text — still in hand, as its cel carries it — and none is left once '
+        'it stands as it was taken', () {
+      final (:tool, :host, baker: _, :cel) = holdingAb();
+      carryBy(tool, 4);
+      carryBy(tool, 3);
+      expect(xOn(cel), 15, reason: '⛔전제: carried 7 from 8');
+      expect(host.history.undoCount, 2, reason: '⛔전제: a step a carry');
+
+      expect(tool.canStepBack, isTrue);
+      tool.stepBack();
+
+      expect(xOn(cel), 12);
+      expect(tool.hold, CelTextHold.box, reason: 'still in hand');
+      expect(tool.session!.shown.content.anchor.x, 12);
+      expect(tool.session!.shownAsCarried, isTrue);
+      expect(host.history.undoCount, 1);
+      expect(
+        host.history.canRedo,
+        isFalse,
+        reason: 'a step the hold took back is not one it made',
+      );
+
+      tool.stepBack();
+
+      expect(xOn(cel), 8);
+      expect(tool.canStepBack, isFalse, reason: 'it stands as it was taken');
+    });
+
+    test('🚨let go, what it landed is ONE step — one undo puts the text '
+        'back where it was taken', () {
+      final (:tool, :host, baker: _, :cel) = holdingAb();
+      carryBy(tool, 4);
+      carryBy(tool, 3);
+
+      tool.confirm();
+
+      expect(host.history.undoCount, 1);
+      host.history.undo();
+      expect(xOn(cel), 8);
+    });
+
+    test('taking up its letters closes the box\'s steps into one: the visit '
+        'is its own step, and what the box lands after it another', () async {
+      final (:tool, :host, :baker, :cel) = holdingAb();
+      carryBy(tool, 4);
+      carryBy(tool, 3);
+
+      tool.typeAt(const TextSelection.collapsed(offset: 2));
+
+      expect(host.history.undoCount, 1, reason: 'the carries are ONE');
+      expect(tool.canStepBack, isFalse, reason: 'the letters answer now');
+
+      typeInto(tool, 'abc');
+      await baker.pending.answer();
+      tool.stopTyping();
+      expect(host.history.undoCount, 2, reason: '⛔전제: the visit');
+      carryBy(tool, 2);
+      carryBy(tool, 2);
+      tool.confirm();
+
+      expect(host.history.undoCount, 3);
+      host.history.undo();
+      expect(xOn(cel), 15, reason: 'the carries after the visit, in one');
+      host.history.undo();
+      expect(pictureOf(cel).texts.single.content.text, 'ab');
+      host.history.undo();
+      expect(xOn(cel), 8);
+    });
+
+    test('🚨one still being set is given up: nothing of it lands, and the '
+        'bake it asked for is never shown', () async {
+      final (:tool, :host, :baker, :cel) = holdingAb();
+      final taken = pictureOf(cel).texts.single;
+      tool.changeParagraphs(toTheRight);
+      expect(host.history.undoCount, 0, reason: '⛔전제: still being set');
+
+      expect(tool.canStepBack, isTrue);
+      tool.stepBack();
+      expect(tool.canStepBack, isFalse, reason: 'it was the only one');
+
+      await baker.pending.answer();
+
+      expect(
+        tool.session!.shown.content,
+        taken.content,
+        reason: 'shown, it would flash for a frame',
+      );
+      expect(tool.session!.shown.plate, taken.plate);
+      expect(host.history.undoCount, 0, reason: 'nothing landed');
+    });
+
+    test('one that lands once its bake is made is a step like any other: '
+        'taken back, and owed no more', () async {
+      final (:tool, :host, :baker, :cel) = holdingAb();
+      final taken = pictureOf(cel).texts.single.content;
+      tool.changeParagraphs(toTheRight);
+      await baker.pending.answer();
+      expect(host.history.undoCount, 1, reason: '⛔전제: landed');
+
+      tool.stepBack();
+
+      expect(pictureOf(cel).texts.single.content, taken);
+      expect(tool.canStepBack, isFalse);
+    });
+
+    test('what lands it before the box lets go — a save, or a step about to '
+        'be taken elsewhere — lands among the box\'s steps', () {
+      final saved = holdingAb();
+      carryBy(saved.tool, 4);
+      saved.tool.carry(dx: 3, dy: 0);
+      expect(saved.tool.landShown(), isTrue, reason: '⛔전제: a save');
+      saved.tool
+        ..landEdit()
+        ..confirm();
+      expect(saved.host.history.undoCount, 1, reason: 'saved, still one');
+
+      final taken = holdingAb();
+      carryBy(taken.tool, 4);
+      taken.tool
+        ..carry(dx: 3, dy: 0)
+        ..landNow();
+      expect(taken.host.history.undoCount, 1, reason: 'landed now, one');
+      taken.host.history.undo();
+      expect(xOn(taken.cel), 8);
+    });
+
+    test('🚨a visit still being set when the box takes the text again is the '
+        'visit\'s step: what the box did meanwhile rides it, and none of it '
+        'is the box\'s to take back', () async {
+      final (:tool, :host, :baker, :cel) = holdingAb();
+      tool.typeAt(const TextSelection.collapsed(offset: 2));
+      typeInto(tool, 'abc');
+      tool
+        ..stopTyping()
+        ..changeParagraphs(toTheRight);
+      expect(host.history.undoCount, 0, reason: '⛔전제: nothing set yet');
+
+      await baker.pending.answer();
+      await baker.pending.answer();
+
+      expect(host.history.undoCount, 1, reason: 'one step, the visit');
+      expect(
+        pictureOf(cel).texts.single.content.paragraphs.single.align,
+        TextCelAlign.right,
+      );
+      expect(tool.canStepBack, isFalse);
+    });
+
+    test('a step the box still owes when its letters are taken rides the '
+        'visit: while they are held the box has none to take back', () async {
+      final (:tool, :host, :baker, :cel) = holdingAb();
+      tool
+        ..changeParagraphs(toTheRight)
+        ..typeAt(const TextSelection.collapsed(offset: 2));
+
+      expect(tool.canStepBack, isFalse);
+
+      await baker.pending.answer();
+      tool.stopTyping();
+      expect(host.history.undoCount, 1, reason: 'the visit, the setting in it');
+      expect(
+        pictureOf(cel).texts.single.content.paragraphs.single.align,
+        TextCelAlign.right,
+      );
+    });
+
+    test('taken off its cel after the box landed steps: those are ONE, and '
+        'taking it off another', () {
+      final (:tool, :host, baker: _, :cel) = holdingAb();
+      carryBy(tool, 4);
+      carryBy(tool, 3);
+
+      tool.deleteText();
+
+      expect(host.history.undoCount, 2);
+      host.history.undo();
+      expect(xOn(cel), 15, reason: 'back on, where the box had it');
+      host.history.undo();
+      expect(xOn(cel), 8, reason: 'and the box\'s steps back in one');
+    });
+
+    test('⛔a step written elsewhere while it was held stays its own: the box '
+        'takes back and folds only what it landed after it', () {
+      final (:tool, :host, baker: _, :cel) = holdingAb();
+      carryBy(tool, 4);
+      host.history.execute(_Elsewhere());
+      carryBy(tool, 3);
+
+      tool.stepBack();
+
+      expect(xOn(cel), 12);
+      expect(tool.canStepBack, isFalse, reason: 'the step under it is not its');
+
+      carryBy(tool, 3);
+      carryBy(tool, 3);
+      tool.confirm();
+
+      expect(host.history.undoCount, 3, reason: 'a carry, theirs, two in one');
+      host.history.undo();
+      expect(xOn(cel), 12);
+    });
+  });
+}
+
+/// A step of somebody else's, written while the hand holds a text — or the
+/// one the door files for the cel a press made.
+class _Elsewhere implements Command {
+  /// Whether undo has taken it back.
+  bool undone = false;
+
+  @override
+  String get description => 'Elsewhere';
+
+  @override
+  void execute() => undone = false;
+
+  @override
+  void undo() => undone = true;
 }
 
 /// The canvas panel the hand works on, stood in for: real history, and a
@@ -1984,7 +2341,7 @@ class _Host implements CelTextToolHost {
   @override
   int? get brushColour => null;
 
-  final List<({Command command, HistoryMark? withCelMadeSince})> ran = [];
+  final List<Command> ran = [];
 
   /// The families each step was said to be set in, in the order they ran.
   final List<Set<String>> setInOf = [];
@@ -1996,16 +2353,12 @@ class _Host implements CelTextToolHost {
   CelTextCel? cel;
 
   @override
-  HistoryMark? get historyMark => history.gestures.mark;
+  HistoryGestures get gestures => history.gestures;
 
   @override
-  void run(
-    Command command, {
-    HistoryMark? withCelMadeSince,
-    Set<String> setIn = const {},
-  }) {
+  void run(Command command, {Set<String> setIn = const {}}) {
     setInOf.add(setIn);
-    ran.add((command: command, withCelMadeSince: withCelMadeSince));
+    ran.add(command);
     history.execute(command);
   }
 

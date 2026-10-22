@@ -20,10 +20,12 @@ import '../../models/cut_id.dart';
 import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/playback_mode.dart' show defaultPlaybackMode;
 import '../../models/project.dart';
+import '../../models/viewer_ink_keys.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/media_moves.dart';
+import '../../services/media/sheet_photo_edits.dart';
 import '../../services/media/project_font_sources.dart'
     show
         ProjectFontsToStore,
@@ -56,6 +58,7 @@ import '../timeline/property_lane_model.dart' show parseLaneGroupKey;
 import 'project_resume.dart';
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
+import 'media_file_views.dart';
 import 'media_grant_ledger.dart';
 import 'media_pool.dart';
 import 'panel_view_memory.dart';
@@ -136,11 +139,13 @@ class ProjectFileDoor {
     required TimelineZoomMemory timelineZoom,
     required PanelViewMemory panelViews,
     required ValueNotifier<LaneGraphsView> laneGraphs,
+    required MediaFileViews mediaFileViews,
   }) : _file = file,
        _playback = playback,
        _timelineZoom = timelineZoom,
        _panelViews = panelViews,
        _laneGraphs = laneGraphs,
+       _mediaFileViews = mediaFileViews,
        _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
@@ -175,6 +180,10 @@ class ProjectFileDoor {
   /// Whose header graphs and pinned lanes a save keeps and an open puts
   /// back ([ProjectResume.laneGraphs]) — the rail's (`RailView.laneGraphs`).
   final ValueNotifier<LaneGraphsView> _laneGraphs;
+
+  /// Whose files' pages and framings in the viewers a save keeps and an
+  /// open puts back ([ProjectResume.mediaFileViews], F-382).
+  final MediaFileViews _mediaFileViews;
 
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
@@ -905,6 +914,7 @@ class ProjectFileDoor {
       _panelViews.layerAxisOffsets,
     ),
     laneGraphs: _laneGraphs.value,
+    mediaFileViews: _mediaFileViews.views,
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -1100,7 +1110,8 @@ class ProjectFileDoor {
       fontsInFile: projectFontEntryNames(read.project),
       // Dirty when the cels are being read out of a staged copy rather than
       // the project's own address — and when the load just HEALED
-      // mismatched cels, where memory no longer matches the file (R7q2).
+      // mismatched cels, where memory no longer matches the file (R7q2), or
+      // moved a sheet's photos onto a file it found moved (I-97).
       unsaved: read.bindTo != null || healed,
     );
     warmAudioConforms();
@@ -1114,7 +1125,8 @@ class ProjectFileDoor {
   }
 
   /// Every cel [read] holds, into the store that owns it — and whether any
-  /// had to be HEALED to its cut's size on the way (R7q2).
+  /// had to be HEALED to its cut's size on the way (R7q2), or had its photos
+  /// follow a file the open found moved (I-97).
   ///
   /// R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
   /// until a cel is first shown (near-zero RAM for 1500-cut projects).
@@ -1123,7 +1135,12 @@ class ProjectFileDoor {
   /// ([_sortLoadedCels]).
   bool _landCels(ProjectFileRead read) {
     final cels = _sortLoadedCels(read._result, _renderCaches);
-    _renderCaches.brushFrameStore.restoreFromFile(cels.main);
+    // The canvas's cels stand behind the project's pasteboard (I-109); a
+    // sheet's ink keeps the whole wall — it sets no size.
+    _renderCaches.brushFrameStore.restoreFromFile(
+      cels.main,
+      pasteboardReach: read.project.pasteboardReach,
+    );
     final healed = _healStaleCelSizes(
       cels.main,
       project: read.project,
@@ -1132,7 +1149,13 @@ class ProjectFileDoor {
     for (final store in _renderCaches.sheetInkStores) {
       store.restoreFromFile(cels.ink[store] ?? const {});
     }
-    return healed;
+    // The sheets' photos follow the files the open found moved, as the
+    // project's references just did — the relative-path remap first, then
+    // the bookmarks' — in the order [readProjectFile] applied them.
+    final photos = SheetPhotoEdits(() => _renderCaches.sheetInkStores);
+    final remapped = photos.followOpened(read._result.mediaMoved);
+    final rebound = photos.followOpened(read._grants.moved);
+    return healed || remapped || rebound;
   }
 
   /// Where the work stood when it was saved (F-123) — each part only if
@@ -1185,6 +1208,9 @@ class ProjectFileDoor {
     // session, skipping only the ids in use, so a graph kept for a row
     // deleted since would open on the next row minted with its id.
     _laneGraphs.value = _graphsOnRowsOf(project, resume.laneGraphs);
+    // Each file the viewers showed, at the page and the framing it was left
+    // at (F-382) — set before a viewer is seeded from the project.
+    _mediaFileViews.standAt(resume.mediaFileViews);
   }
 }
 
@@ -1322,18 +1348,25 @@ _sortLoadedCels(AnicelOpenResult result, RenderCaches caches) {
 /// is the cells' alone (H44) — holds nothing. An envelope's and a timesheet's
 /// belong to the cut the sheet describes — which box or band a stroke sits
 /// in is never pruned: swapping the envelope's form back has to bring the
-/// writing back with it.
+/// writing back with it. A viewer's belongs to the carry of the file it is
+/// written on (I-114): a file the pool no longer carries takes it along.
 class _InkOwners {
   _InkOwners(this._project);
 
   final Project _project;
   late final Set<CutId> _cuts = _everyCutId(_project);
   late final Set<(CutId, String)> _blocks = writtenConteBlocks(_project);
+  late final Set<String> _carries = {
+    for (final asset in _project.mediaAssets) ?asset.carriedAs,
+  };
 
   bool stillHold(BrushFrameKey key) {
     if (isConteInkKey(key)) {
       final inkId = conteInkRowIdOf(key);
       return inkId != null && _blocks.contains((key.cutId, inkId));
+    }
+    if (isViewerInkKey(key)) {
+      return _carries.contains(viewerInkCarryOf(key));
     }
     return _cuts.contains(key.cutId);
   }

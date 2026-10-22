@@ -10,8 +10,14 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/ime_draft.dart';
 
-const _bar = ValueKey<String>('timesheet-format-exposure-bar');
-const _threshold = ValueKey<String>('timesheet-format-exposure-bar-threshold');
+const _bar = ValueKey<String>('timesheet-format-stretch-line-action');
+const _threshold = ValueKey<String>(
+  'timesheet-format-stretch-line-action-threshold',
+);
+const _cellBar = ValueKey<String>('timesheet-format-stretch-line-cell');
+const _cellThreshold = ValueKey<String>(
+  'timesheet-format-stretch-line-cell-threshold',
+);
 const _seFill = ValueKey<String>('timesheet-format-se-empty-fill');
 const _save = ValueKey<String>('timesheet-format-save-button');
 
@@ -118,23 +124,25 @@ void main() {
     expect(result!.hiddenFields, {TimesheetHeaderField.scene});
   });
 
-  testWidgets('each yes/no is one pill that says its state: the hold bar '
-      'and the SE wash flip, and the save carries N and the wash', (
+  testWidgets('each yes/no is one pill that says its state: the ACTION '
+      'stretch line and the SE wash flip, and the save carries N and the '
+      'wash', (
     tester,
   ) async {
     final strings = AppText.strings;
     TimesheetInfo? result;
     await _openWindow(tester, TimesheetInfo.empty, (r) => result = r);
 
-    // Defaults: bar off, SE wash on.
+    // Defaults: the ACTION line off (F-430 「액션은 늘림선 기본 없음」),
+    // SE wash on.
     expect(_pill(tester, _bar).selected, isFalse);
-    expect(_pill(tester, _bar).label, strings.sheetBarNotDrawn);
+    expect(_pill(tester, _bar).label, strings.sheetStretchLineOff);
     expect(_pill(tester, _seFill).selected, isTrue);
     expect(_pill(tester, _seFill).label, strings.sheetFillOn);
 
     await _press(tester, _bar);
     expect(_pill(tester, _bar).selected, isTrue);
-    expect(_pill(tester, _bar).label, strings.sheetBarDrawn);
+    expect(_pill(tester, _bar).label, strings.sheetStretchLineOn);
     await tester.enterText(find.byKey(_threshold), '4');
     await _press(tester, _seFill);
     expect(_pill(tester, _seFill).selected, isFalse);
@@ -220,6 +228,54 @@ void main() {
     expect(
       second!.exposureBarThreshold,
       TimesheetInfo.defaultExposureBarThreshold,
+    );
+  });
+
+  // F-430: 「액션란이랑 셀란 늘림선 따로따로 적용가능하게 나누고, 액션은
+  // 늘림선 기본 없음 … 셀란은 기본 있음, 1코마」.
+  testWidgets('the CELL block has a stretch line of its own: on at N 1 by '
+      'default, and each block\'s pill and N leave the other\'s alone', (
+    tester,
+  ) async {
+    final strings = AppText.strings;
+    TimesheetInfo? result;
+    await _openWindow(tester, TimesheetInfo.empty, (r) => result = r);
+
+    expect(_pill(tester, _cellBar).selected, isTrue);
+    expect(_pill(tester, _cellBar).label, strings.sheetStretchLineOn);
+    expect(
+      tester.widget<TextField>(find.byKey(_cellThreshold)).controller!.text,
+      '1',
+    );
+
+    await _press(tester, _bar);
+    expect(_pill(tester, _cellBar).selected, isTrue);
+    await tester.enterText(find.byKey(_cellThreshold), '2');
+    expect(
+      tester.widget<TextField>(find.byKey(_threshold)).controller!.text,
+      '${TimesheetInfo.defaultExposureBarThreshold}',
+    );
+    await _press(tester, _save);
+    expect(result!.exposureBarThreshold, 3);
+    expect(result!.cellExposureBarThreshold, 2);
+
+    TimesheetInfo? second;
+    await _openWindow(tester, TimesheetInfo.empty, (r) => second = r);
+    await _press(tester, _cellBar);
+    expect(_pill(tester, _cellBar).label, strings.sheetStretchLineOff);
+    expect(_pill(tester, _bar).selected, isFalse);
+    await _press(tester, _save);
+    expect(second!.cellExposureBarThreshold, isNull);
+    expect(second!.exposureBarThreshold, isNull);
+
+    TimesheetInfo? third;
+    await _openWindow(tester, TimesheetInfo.empty, (r) => third = r);
+    await tester.enterText(find.byKey(_cellThreshold), 'abc');
+    await _press(tester, _save);
+    expect(
+      third!.cellExposureBarThreshold,
+      TimesheetInfo.defaultCellExposureBarThreshold,
+      reason: 'garbage N falls back to the CELL line\'s own default',
     );
   });
 

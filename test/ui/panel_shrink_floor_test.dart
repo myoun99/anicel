@@ -489,14 +489,14 @@ void main() {
         );
         expect(tester.takeException(), isNull, reason: 'conte at $height');
         // The book always turns (a cover, its blank back, the body), so the
-        // page strip is always there — whole, inside the panel, at a sliver
-        // too.
+        // page turner's band is always there — whole, inside the panel, at a
+        // sliver too.
         final host = tester.getRect(find.byType(ConteTabHost));
-        final strip = tester.getRect(
-          find.byKey(const ValueKey<String>('canvas-page-strip')),
+        final band = tester.getRect(
+          find.byKey(const ValueKey<String>('canvas-transport')),
         );
-        expect(strip.top, greaterThanOrEqualTo(host.top - 0.01));
-        expect(strip.bottom, lessThanOrEqualTo(host.bottom + 0.01));
+        expect(band.top, greaterThanOrEqualTo(host.top - 0.01));
+        expect(band.bottom, lessThanOrEqualTo(host.bottom + 0.01));
         expect(
           find.byKey(const ValueKey<String>('conte-next-page-button')),
           findsOneWidget,

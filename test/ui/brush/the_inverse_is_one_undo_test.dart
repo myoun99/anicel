@@ -15,7 +15,8 @@ import 'package:anicel/src/ui/brush/selection_shape_history_command.dart';
 /// the move under it.
 void main() {
   const canvas = CanvasSize(width: 20, height: 15);
-  final wall = canvas.pasteboardRect;
+  final pasteboard = canvas.pasteboardAt(PasteboardReach.whole);
+  final wall = pasteboard.rect;
 
   CanvasSelectionShape rect(double l, double t, double r, double b) =>
       CanvasSelectionShape.rect(left: l, top: t, right: r, bottom: b);
@@ -45,7 +46,10 @@ void main() {
     commands.setRegion(selected);
     final inverse = CanvasSelectionRegion.invertedWithin(selected, wall);
 
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      pasteboard: pasteboard,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(history.undoCount, 1);
     expect(commands.region, inverse);
@@ -58,7 +62,10 @@ void main() {
   test('with nothing selected it selects the whole wall', () {
     final (:commands, :history) = wired();
 
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      pasteboard: pasteboard,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(commands.region, wholeWall());
     expect(history.undoCount, 1);
@@ -69,8 +76,14 @@ void main() {
   test('pressed twice from nothing it comes back to nothing', () {
     final (:commands, :history) = wired();
 
-    commands.invertSelection(canvasSize: canvas);
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      pasteboard: pasteboard,
+      reach: InvertReach.pasteboard,
+    );
+    commands.invertSelection(
+      pasteboard: pasteboard,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(commands.region, isNull, reason: 'the inverse of everything');
     expect(history.undoCount, 2, reason: 'each press is its own step');
@@ -84,7 +97,10 @@ void main() {
       implicit: true,
     );
 
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      pasteboard: pasteboard,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(commands.region, wholeWall());
     expect(history.undoCount, 1);
@@ -116,7 +132,10 @@ void main() {
     );
     addTearDown(() => commands.unbind(owner));
 
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      pasteboard: pasteboard,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(history.undoCount, 2, reason: 'the landing, then the inverse');
     expect(
@@ -128,10 +147,71 @@ void main() {
     expect(commands.region, landed, reason: 'one undo: the inverse only');
   });
 
+  test('🎯in the canvas, the inverse stops at the canvas\'s edge, and to the '
+      'pasteboard at the pasteboard\'s (I-108)', () {
+    final selected = CanvasSelectionRegion.shape(rect(2, 3, 12, 9));
+    CanvasSelectionRegion? invertedTo(InvertReach reach) {
+      final commands = CanvasSelectionCommands()..setRegion(selected);
+      commands.invertSelection(pasteboard: pasteboard, reach: reach);
+      return commands.region;
+    }
+
+    expect(
+      invertedTo(InvertReach.canvas),
+      CanvasSelectionRegion.invertedWithin(selected, canvas.canvasRect),
+    );
+    expect(
+      invertedTo(InvertReach.pasteboard),
+      CanvasSelectionRegion.invertedWithin(selected, wall),
+    );
+    expect(
+      invertedTo(InvertReach.canvas),
+      isNot(invertedTo(InvertReach.pasteboard)),
+      reason: 'two walls',
+    );
+  });
+
+  test('🗣️to the pasteboard, it stops at the wall of the size in use — at '
+      'the canvas\'s edge when the pasteboard is off (I-109: 「다른 '
+      '선택도구 페이스트보드부분까지 선택반전 작동되는거라던가」)', () {
+    final selected = CanvasSelectionRegion.shape(rect(2, 3, 12, 9));
+    CanvasSelectionRegion? invertedAt(PasteboardReach reach) {
+      final commands = CanvasSelectionCommands()..setRegion(selected);
+      commands.invertSelection(
+        pasteboard: canvas.pasteboardAt(reach),
+        reach: InvertReach.pasteboard,
+      );
+      return commands.region;
+    }
+
+    for (final reach in PasteboardReach.values) {
+      expect(
+        invertedAt(reach),
+        CanvasSelectionRegion.invertedWithin(
+          selected,
+          canvas.pasteboardAt(reach).rect,
+        ),
+        reason: '$reach',
+      );
+    }
+    expect(
+      invertedAt(PasteboardReach.none),
+      CanvasSelectionRegion.invertedWithin(selected, canvas.canvasRect),
+      reason: 'off, the pasteboard\'s inverse is the canvas\'s',
+    );
+    expect(
+      invertedAt(PasteboardReach.quarter),
+      isNot(invertedAt(PasteboardReach.whole)),
+    );
+  });
+
   test('without a history host it applies directly', () {
     final commands = CanvasSelectionCommands();
 
-    commands.invertSelection(canvasSize: canvas);
+    commands.invertSelection(
+      pasteboard: pasteboard,
+      reach: InvertReach.pasteboard,
+    );
 
     expect(commands.region, wholeWall());
   });

@@ -2,8 +2,12 @@ import 'dart:ui' show Offset;
 
 import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/drawing_guide.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/guide_geometry.dart'
+    show GuideTransform, symmetryTransforms;
+import '../../services/guide_stroke_input.dart';
 import '../../services/shape_ratio_lock.dart';
 
 /// ONE in-flight selection drag, as its own object — begun by CONSTRUCTING
@@ -40,6 +44,44 @@ sealed class SelectionDrag {
 /// and whether the stroke comes back to the first of them.
 typedef DrawnShapePath = ({List<CanvasPoint> points, bool closed});
 
+/// The carries [guides]' symmetry makes its copies by, in order — the first
+/// the identity; none without a symmetry.
+List<GuideTransform> guideCarriesOf(CutGuides? guides) {
+  final symmetry = guides?.actingSymmetry;
+  return symmetry == null ? const [] : symmetryTransforms(symmetry);
+}
+
+/// [points] and every copy [carries] make of them, the original first and
+/// itself — what a symmetry guide makes of a path drawn, and of a trace
+/// still being dragged.
+List<List<CanvasPoint>> guideCopiesOf(
+  List<CanvasPoint> points,
+  List<GuideTransform> carries,
+) {
+  if (carries.isEmpty) {
+    return [points];
+  }
+  return [
+    for (final copy in carries)
+      if (copy.isIdentity)
+        points
+      else
+        [for (final point in points) copy.apply(point)],
+  ];
+}
+
+/// [path] and every copy [carries] make of it, the original first — or
+/// null for no path (a drag too small to have meant a shape).
+List<DrawnShapePath>? drawnCopiesOf(
+  DrawnShapePath? path,
+  List<GuideTransform> carries,
+) => path == null
+    ? null
+    : [
+        for (final points in guideCopiesOf(path.points, carries))
+          (points: points, closed: path.closed),
+      ];
+
 /// The marquee/lasso drag: the tools that TRACE a new outline.
 ///
 /// Rect, ellipse and lasso are one drag with one geometry rule — the shape
@@ -47,15 +89,57 @@ typedef DrawnShapePath = ({List<CanvasPoint> points, bool closed});
 /// state it is. The polygon is NOT here: it has no drag verb at all
 /// ([VertexTapDrag]).
 final class MarqueeDrag extends SelectionDrag {
-  MarqueeDrag({
+  /// A drag pressed at [at]. A path traced under the hold that kept [line]
+  /// starts on it and goes along it, as a stroke does (I-121) — unless the
+  /// Shift held at the press is the fold's, whose hold keeps no line.
+  factory MarqueeDrag({
+    required int pointer,
+    required CanvasShapeKind shapeKind,
+    required CanvasSelectionRegion? before,
+    required CanvasPoint at,
+    required CutGuides guides,
+    required double zoom,
+    SelectionCombineMode? combine,
+    bool shiftAtThePress = false,
+    bool byTouch = false,
+    ShiftLine? line,
+  }) {
+    final shiftIsTheFolds = combine != null && shiftAtThePress;
+    final traceLine = shiftIsTheFolds ? null : line;
+    final traces = tracesPointerPath(shapeKind);
+    final pressed = traces ? traceLine?.onTheLine(at) ?? at : at;
+    return MarqueeDrag._(
+      pointer: pointer,
+      shapeKind: shapeKind,
+      before: before,
+      start: pressed,
+      lock: traces
+          ? StrokeLock(
+              guides: guides,
+              start: pressed,
+              zoom: zoom,
+              line: traceLine,
+            )
+          : null,
+      combine: combine,
+      shiftIsTheFolds: shiftIsTheFolds,
+      byTouch: byTouch,
+    );
+  }
+
+  MarqueeDrag._({
     required super.pointer,
     required this.shapeKind,
     required this.before,
-    required CanvasPoint at,
-    this.byTouch = false,
-  }) : start = at,
-       _current = at,
-       _traced = tracesPointerPath(shapeKind) ? [at] : const [];
+    required this.start,
+    required StrokeLock? lock,
+    required this.combine,
+    required bool shiftIsTheFolds,
+    required this.byTouch,
+  }) : _current = start,
+       _traced = lock == null ? const [] : [start],
+       _lock = lock,
+       _shiftIsTheFolds = shiftIsTheFolds;
 
   /// Which outline this drag traces — fixed at the press, because the tool
   /// setting must not change what a gesture already started drawing.
@@ -67,6 +151,24 @@ final class MarqueeDrag extends SelectionDrag {
   /// Null for the verbs that never touch the region (cut, shape fill): the
   /// drag leaves it alone, so a cancel has nothing to put back.
   final CanvasSelectionRegion? before;
+
+  /// The mode the outline folds into the region under — read at the PRESS
+  /// (🗣️I-110-Q1, 유저 2026-10-20: 「누른 시점으로 가른다」), so a Shift
+  /// pressed while the drag runs is the trace's and not the fold's. Null
+  /// for the verbs that fold nothing (cut, shape fill, the shape tool).
+  final SelectionCombineMode? combine;
+
+  /// The traced path's lock — the stroke's own ([StrokeLock]): Shift's
+  /// eight ways while it is held, the snapping perspectives' rays where it
+  /// is not (🗣️I-110 「프리핸드로 하는 모든것들도 스냅되도록. 최대한 법
+  /// 통일」 · I-110-Q2 「따른다」). Null for the shapes read from their
+  /// corners, which have no path to lock.
+  final StrokeLock? _lock;
+
+  /// Whether the Shift held now is still the one the FOLD took at the
+  /// press (I-110-Q1 — Photoshop's read: held before the drag it adds, and
+  /// only a Shift pressed again during it locks the trace).
+  bool _shiftIsTheFolds;
 
   /// Where the drag went down, in canvas space.
   final CanvasPoint start;
@@ -102,17 +204,39 @@ final class MarqueeDrag extends SelectionDrag {
   /// The hand has moved to [at]. With [keepsRatio] the shape ends where
   /// its ratio is kept instead ([ratioKeptEnd]) — asked at every move, so
   /// it can come and go under the hand; a shape that is the hand's own
-  /// path has none to keep.
-  void update(CanvasPoint at, {bool keepsRatio = false}) {
+  /// path has none to keep, and goes where its lock takes it, [shift]
+  /// being whether Shift is held now ([StrokeLock.follow]).
+  void update(
+    CanvasPoint at, {
+    bool keepsRatio = false,
+    bool shift = false,
+  }) {
     _current = keepsRatio
         ? ratioKeptEnd(from: start, to: at, shape: shapeKind)
         : at;
-    if (tracesPointerPath(shapeKind)) {
-      _traced = [..._traced, at];
+    final lock = _lock;
+    if (lock != null) {
+      if (!shift) {
+        _shiftIsTheFolds = false;
+      }
+      _traced = [
+        ..._traced,
+        ...lock.follow(at, shift: shift && !_shiftIsTheFolds),
+      ];
     } else if (shapeKind == CanvasShapeKind.line) {
       // The line has no outline for the ants to walk; what they draw while
       // it is dragged is the line itself, end to end.
       _traced = [start, _current];
+    }
+  }
+
+  /// The hand has lifted: what the lock still holds lands on the path
+  /// ([StrokeLock.finish]) — before the release reads the shape, as a
+  /// stroke's lands before its commit.
+  void lift() {
+    final held = _lock?.finish() ?? const [];
+    if (held.isNotEmpty) {
+      _traced = [..._traced, ...held];
     }
   }
 
@@ -326,11 +450,10 @@ final class WarpPointDrag extends TransformDrag {
   /// moves?" — and the day they disagreed the drag would move a corner AND
   /// an edge ([[make-the-invariant-unrepresentable]]).
   ///
-  /// ⚠️NULL IS REACHABLE and means something: the press landed INSIDE the
-  /// mesh boundary but not on a point. It carried no point before this
-  /// field became a list, and it still carries none — `[null]` would make
-  /// the update move offset 0.
-  final List<int>? points;
+  /// ↩️It could be null — a 메쉬 press inside the grid but on no point,
+  /// which then moved nothing. Inside is the move in every mode now
+  /// (`BoxOnScreen.grabAt`, F-412), so a warp drag always carries a point.
+  final List<int> points;
 
   /// The offsets as the press found them — the drag adds ONE displacement
   /// to these rather than accumulating frame by frame.

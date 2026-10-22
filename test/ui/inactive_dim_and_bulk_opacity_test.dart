@@ -19,17 +19,32 @@ void main() {
   // asks instead of a proxy for it, and the next such row is covered too.
   test('setAllLayersOpacity sets every picture-opacity layer', () {
     final s = session();
+    final before = {for (final layer in s.layers) layer.id: layer.opacity};
+    expect(
+      before.values,
+      contains(isNot(1.0)),
+      reason: '⛔premise: the camera is born at half (F-363-Q1), so a row '
+          'that takes no bulk set is told apart from one set back to full',
+    );
     s.opacityVerbs.setAllLayersOpacity(0.4);
     for (final layer in s.layers) {
       if (layer.kind.hasPictureOpacity) {
         expect(layer.opacity, moreOrLessEquals(0.4, epsilon: 1e-9));
       } else {
-        expect(layer.opacity, 1.0, reason: '${layer.kind} takes no bulk set');
+        expect(
+          layer.opacity,
+          before[layer.id],
+          reason: '${layer.kind} takes no bulk set',
+        );
       }
     }
     s.opacityVerbs.resetAllLayersOpacity();
     for (final layer in s.layers) {
-      expect(layer.opacity, 1.0);
+      expect(
+        layer.opacity,
+        layer.kind.hasPictureOpacity ? 1.0 : before[layer.id],
+        reason: '${layer.kind}',
+      );
     }
   });
 }

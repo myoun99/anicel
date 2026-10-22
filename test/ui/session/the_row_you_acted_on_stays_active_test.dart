@@ -96,6 +96,7 @@ void main() {
     final selection = _StandingOn(first);
     final changes = _RecordingChanges();
     final edits = ActiveCutEdits(
+      project: s,
       timeline: _OneCut(s.requireActiveCut),
       selection: selection,
       changes: changes,
@@ -128,6 +129,7 @@ void main() {
     final s = session();
     final changes = _RecordingChanges();
     final edits = ActiveCutEdits(
+      project: s,
       timeline: _OneCut(s.requireActiveCut),
       selection: _StandingOn(s.requireActiveCut.layers.first),
       changes: changes,

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../widgets/tick_layer.dart';
+import 'axis_turn.dart' show alongBox;
 import 'timeline_beat_lines.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_body_norishiro_boundary.dart';
@@ -157,13 +158,10 @@ class TimelineFrameGridStack extends StatelessWidget {
   /// together with a layout scope of its own (I-22 ③). ⛔So no boundary
   /// here as well: wrapped around that one it would hold nothing back.
   Widget _playheadSlot() {
-    final horizontal = axis == Axis.horizontal;
     return Positioned(
       left: 0,
       top: 0,
-      width: horizontal ? playheadExtent : null,
-      height: horizontal ? null : playheadExtent,
-      child: playhead,
+      child: alongBox(axis, playheadExtent, child: playhead),
     );
   }
 

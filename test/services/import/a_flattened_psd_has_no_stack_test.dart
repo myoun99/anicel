@@ -34,6 +34,7 @@ void main() {
     canvas: const CanvasSize(width: 64, height: 64),
     fit: MediaFitMode.contain,
     mint: mint(),
+    newCut: false,
   );
 
   /// A valid 8BPS header with no layer section and no image data — what a

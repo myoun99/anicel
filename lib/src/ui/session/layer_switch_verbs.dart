@@ -57,13 +57,13 @@ class LayerSwitchVerbs {
   /// rails read them off the document ([RailView.readFolds]), which every
   /// history change re-reads — as they heard the view's sets before.
   void toggleLayerLanes(LayerId layerId) =>
-      _controllers.layerController.toggleLayerLanes(layerId);
+      _controllers.layerController.twirls.toggleLayerLanes(layerId);
 
   void setLayerLaneGroupExpanded(
     LayerId layerId,
     String laneId, {
     required bool expanded,
-  }) => _controllers.layerController.setLayerLaneGroupExpanded(
+  }) => _controllers.layerController.twirls.setLayerLaneGroupExpanded(
     layerId,
     laneId,
     expanded: expanded,
@@ -125,7 +125,8 @@ class LayerSwitchVerbs {
     }
   }
 
-  /// Shows or hides every layer of the active cut.
+  /// Shows or hides every layer of the active cut — but the camera, whose
+  /// eye is the camera view ([LayerKind.hasPictureEye], F-363-Q2).
   void setAllLayersVisibility(bool visible) {
     // ⛔ONE undo step for one legend press — the loop used to make one per
     // row, which is 유저's 「일괄로 버튼 조작하고 언두하면 바꼈던 레이어들
@@ -133,7 +134,7 @@ class LayerSwitchVerbs {
     _controllers.layerController.setLayersVisible(
       layerIds: [
         for (final layer in _project.layers)
-          if (layer.isVisible != visible) layer.id,
+          if (layer.kind.hasPictureEye && layer.isVisible != visible) layer.id,
       ],
       visible: visible,
     );
@@ -170,14 +171,6 @@ class LayerSwitchVerbs {
       rowTwirlsOf(_project.repository.requireProject(), layerId)
           ?.lanesExpanded ??
       false;
-
-  /// Whether [layerId]'s TRANSFORM group is applied right now.
-  ///
-  /// 🚨A LIVE READ, like [isLayerEyeOn] and [isLayerOnTimesheet]: a lane row
-  /// built at the last frame carries a stale `groupEnabled`, and the rail's
-  /// bulk-drag has to spread what the press just set.
-  bool isLayerTransformOn(LayerId layerId) =>
-      _rowAnywhere(layerId).transformEnabled;
 
   /// Whether [layerId]'s own eye is on RIGHT NOW.
   ///
@@ -329,8 +322,12 @@ class LayerSwitchVerbs {
     // A storyboard row TILES its cut, so a row that becomes one is filled
     // to cover before it changes kind — otherwise its holes would show as
     // "X" cells in the timeline while the strip, which reads the coverage
-    // rule, showed none. An empty row becomes a fresh blank panel, which
-    // is what a new storyboard row is born as.
+    // rule, showed none. An empty row takes a fresh blank panel, which is
+    // what a new storyboard row is born with.
+    //
+    // ↩️It took a whole new storyboard row's place (#752), the row's name
+    // carried over and nothing else — what the row wears went, its label
+    // first (F-424). The panel is the birth's; the row stays the row.
     if (toStoryboard) {
       final cut = _project.requireActiveCut;
       final filled = storyboardTimelineFilledToCover(
@@ -344,13 +341,18 @@ class LayerSwitchVerbs {
           cut.id,
         ).head,
       );
-      final covered = filled == null
-          ? createStoryboardLayer(
-              layerId: targetLayer.id,
+      final blank = filled == null
+          ? coveringCelFor(
               frameId: _frameIds.mintFrameId(targetLayer.id),
-              cut: cut,
-            ).copyWith(name: targetLayer.name)
-          : targetLayer.copyWith(timeline: filled);
+              cutDuration: cut.duration,
+            )
+          : null;
+      final covered = blank == null
+          ? targetLayer.copyWith(timeline: filled)
+          : targetLayer.copyWith(
+              frames: [blank.frame],
+              timeline: blank.timeline,
+            );
       if (covered != targetLayer) {
         _controllers.timelineController.commitLayerTimelineDrag(
           before: targetLayer,

@@ -884,6 +884,34 @@ void main() {
       expect(renderObjects, lessThanOrEqualTo(6));
     });
   });
+
+  group('a glyph is laid out once for the app — past 256 the least '
+      'recently drawn is let go of', () {
+    const style = TextStyle(fontSize: 12);
+    TextPainter glyph(String text) => debugRailTextGlyph(text, style);
+
+    testWidgets('the same glyph again is the same painter', (_) async {
+      final first = glyph('lru a');
+      glyph('lru b');
+
+      expect(identical(glyph('lru a'), first), isTrue);
+    });
+
+    testWidgets('🚨past 256 the least recently drawn goes, disposed — not '
+        'one drawn again since', (_) async {
+      final again = glyph('lru 0');
+      final oldest = glyph('lru 1');
+      for (var i = 2; i < 256; i += 1) {
+        glyph('lru $i');
+      }
+      expect(identical(glyph('lru 0'), again), isTrue);
+
+      glyph('lru 256');
+
+      expect(oldest.debugDisposed, isTrue, reason: 'the least recently drawn');
+      expect(again.debugDisposed, isFalse, reason: 'drawn again since');
+    });
+  });
 }
 
 /// A target that has a context to show from and no box on screen — a

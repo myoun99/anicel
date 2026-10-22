@@ -87,7 +87,7 @@ class _LayerGridRailRows {
       row,
       grid,
       fold: fold,
-      hasLanes: _state._lanes.lanesFor(row.layer).isNotEmpty,
+      hasLanes: _state.widget.hooks.lanesOf(row.layer).isNotEmpty,
     );
     return _state._railRowMemo.keep(
       berths,
@@ -137,44 +137,8 @@ class _LayerGridRailRows {
   /// The legend header — which keeps itself while what it shows holds
   /// ([TimelineLayerControlsHeader.facts]): zoom steps, unrelated notifies
   /// and cut switches hand back the cells it had.
-  Widget legendHeader() => _published(
-    TimelineLayerControlsHeader(
-      metrics: _state._metrics,
-      optionalColumns: _state.widget.hooks.optionalRailColumns,
-      legend: _state.widget.legend,
-      hiddenSections: _state.widget.hooks.hiddenSections,
-      onToggleSection: _state.widget.onToggleSection,
-      rowFilter: _state.widget.hooks.rowFilter,
-      marksInUse: _state._marksInUse,
-      kindsInUse: _state._kindsInUse,
-      visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
-      anyLanesExpanded: _state.widget.hooks.expandedLaneLayerIds.isNotEmpty,
-      allSeMuted: _state._allSeMuted(),
-      // The set a bulk verb ACTS on, read at the press — of the rows the
-      // latest pass drew. 🚨I-57 ㉢-2 (10-13, measured on the user's
-      // project): captured here and kept fresh by the token, it changed at
-      // every cut switch and built the whole header again — 223 widgets of
-      // a crossing's 855, for a set no cell of the header shows.
-      displayedLayerIds: () => _state._displayedLayerIds(_state._dragRows),
-      displayedOpacity: _state.widget.masterOpacityValue,
-      displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
-      onExpandAllLanes: _state.widget.hooks.onToggleLayerLanes == null
-          ? null
-          : _state._lanes._expandAllLanes,
-      onCollapseAllLanes: _state.widget.hooks.onToggleLayerLanes == null
-          ? null
-          : _state._lanes._collapseAllLanes,
-    ),
-  );
-
-  /// [header], its menus handed to whoever presses its rows by key (I-40):
-  /// the very menus it opens, counted on this grid's rows.
-  TimelineLayerControlsHeader _published(TimelineLayerControlsHeader header) {
-    _state.widget.onLegendMenus?.call(
-      header.legend == null ? null : header.menus,
-    );
-    return header;
-  }
+  Widget legendHeader() =>
+      _state._legendRail.header(metrics: _state._metrics);
 
   /// One lane label row, extracted so the windowed rail loop stays
   /// readable. Rows reserve an empty leading section slot — the section
@@ -198,7 +162,7 @@ class _LayerGridRailRows {
         lane: previewedLaneRow(
           row: row,
           previewLayer: layer,
-          lanesForLayer: _state._lanes.lanesFor,
+          lanesForLayer: _state.widget.hooks.lanesOf,
         ),
         metrics: _state._metrics,
         frameCursor: _state.widget.hooks.frameCursor,
@@ -408,33 +372,46 @@ class _LayerGridRailRows {
                   // The layer area as a place entrance, on top so a file let
                   // go anywhere on the rail finds it — an empty box the rest
                   // of the time, so every row keeps its own pointer.
-                  if (_state.widget.hooks.onDropMediaAssetBetweenLayers
-                      case final onDrop?)
-                    Positioned.fill(
-                      child: LayerPlacementEntrance(
+                  if (placementEntrance(
                         key: const ValueKey<String>(
                           'timeline-layer-placement-entrance',
                         ),
-                        rowAxis: Axis.vertical,
-                        rows: () => (
-                          rows: _state._dragRows,
-                          edges: _state._dragEdges,
-                        ),
-                        onHover:
-                            _state.widget.hooks.rowDragHooks?.onPlacementHover,
-                        onLeave:
-                            _state.widget.hooks.rowDragHooks?.onPlacementLeave,
-                        accepts:
-                            _state.widget.hooks.rowDragHooks?.acceptsPlacement,
-                        onDrop: onDrop,
-                      ),
-                    ),
+                      )
+                      case final entrance?)
+                    Positioned.fill(child: entrance),
                 ],
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  /// The layer area as a place entrance — over the rail's rows, and over
+  /// the room under them where the body is taller than they are, [lead]
+  /// the rows' extent there — or null where the host takes no file
+  /// between layers.
+  ///
+  /// ONE entrance for both, so a gap is counted in the rows the same way
+  /// wherever the file is let go: under the rows is past the last of them,
+  /// the foot — where ACTION stands on the rail, and where an ACTION with
+  /// no row is (F-372).
+  Widget? placementEntrance({required Key key, double lead = 0}) {
+    final onDrop = _state.widget.hooks.onDropMediaAssetBetweenLayers;
+    if (onDrop == null) {
+      return null;
+    }
+    final rowDrag = _state.widget.hooks.rowDragHooks;
+    return LayerPlacementEntrance(
+      key: key,
+      rowAxis: Axis.vertical,
+      lead: lead,
+      rows: () => (rows: _state._dragRows, edges: _state._dragEdges),
+      onHover: rowDrag?.onPlacementHover,
+      onLeave: rowDrag?.onPlacementLeave,
+      accepts: rowDrag?.acceptsPlacement,
+      onDrop: onDrop,
     );
   }
 }

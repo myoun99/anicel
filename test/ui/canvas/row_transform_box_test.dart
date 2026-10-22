@@ -7,6 +7,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
@@ -54,7 +55,7 @@ void main() {
     List<CanvasPoint>? at,
     CanvasSize size = canvasSize,
     CanvasViewport? viewport,
-    bool claimsCanvas = true,
+    RowBoxPresses presses = RowBoxPresses.viewport,
     List<CanvasPoint>? moves,
     List<CanvasPoint>? scales,
     List<double>? zooms,
@@ -62,12 +63,17 @@ void main() {
     CanvasPoint Function(CanvasPoint onCanvas)? turnSpace,
     List<CanvasPoint>? anchors,
     VoidCallback? onCancelled,
+    bool Function(CanvasPoint at)? stage,
+    ValueChanged<PointerDownEvent>? onPressedPast,
+    List<RowBoxTangent> tangents = const [],
   }) => RowTransformBox(
     corners: at ?? corners,
     pose: pose ?? TransformPose(center: anchor),
-    canvasSize: size,
+    pasteboard: size.pasteboardAt(PasteboardReach.whole),
     viewport: viewport ?? CanvasViewport(),
-    claimsCanvas: claimsCanvas,
+    presses: presses,
+    stage: stage,
+    onPressedPast: onPressedPast,
     onCancelled: onCancelled ?? () {},
     move: moves == null ? null : into(moves),
     scale: scales != null
@@ -80,6 +86,7 @@ void main() {
     cross: anchors == null
         ? null
         : (at: anchor, value: anchor, landing: into(anchors)),
+    tangents: tangents,
   );
 
   Future<void> pumpBox(WidgetTester tester, Widget child) async {
@@ -366,9 +373,9 @@ void main() {
                 CanvasPoint(x: 200 + (corner.x - 200) * across, y: corner.y),
             ],
             pose: TransformPose(center: anchor, scaleX: across),
-            canvasSize: canvasSize,
+            pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
             viewport: CanvasViewport(),
-            claimsCanvas: true,
+            presses: RowBoxPresses.viewport,
             onCancelled: () {},
             scale: RowBoxTwoScales((
               changed: (next) => shown.value = next.x,
@@ -682,9 +689,9 @@ void main() {
       RowTransformBox(
         corners: corners,
         pose: TransformPose(center: anchor),
-        canvasSize: canvasSize,
+        pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
         viewport: CanvasViewport(),
-        claimsCanvas: true,
+        presses: RowBoxPresses.viewport,
         onCancelled: () {},
         cross: (
           at: anchor,
@@ -700,8 +707,8 @@ void main() {
     expect(anchors, [CanvasPoint(x: 290, y: 140)]);
   });
 
-  testWidgets('a box that does not scale has no corners to grab — an SE '
-      'tag\'s: the press on its corner is the move', (tester) async {
+  testWidgets('a box that does not scale has no corners to grab: the press '
+      'on its corner is the move', (tester) async {
     final moves = <CanvasPoint>[];
     await pumpBox(tester, box(moves: moves));
 
@@ -728,9 +735,12 @@ void main() {
       '도구」)', () {
     Future<List<Offset>> pumpOverATool(
       WidgetTester tester, {
-      required bool claimsCanvas,
+      required RowBoxPresses presses,
       required List<CanvasPoint> moves,
       required List<CanvasPoint> scales,
+      List<double>? turns,
+      bool Function(CanvasPoint at)? stage,
+      ValueChanged<PointerDownEvent>? onPressedPast,
     }) async {
       final toolPresses = <Offset>[];
       await pumpBox(
@@ -745,9 +755,12 @@ void main() {
             ),
             Positioned.fill(
               child: box(
-                claimsCanvas: claimsCanvas,
+                presses: presses,
                 moves: moves,
                 scales: scales,
+                turns: turns,
+                stage: stage,
+                onPressedPast: onPressedPast,
               ),
             ),
           ],
@@ -756,13 +769,13 @@ void main() {
       return toolPresses;
     }
 
-    testWidgets('claiming the canvas, every press is the box\'s — the tool '
+    testWidgets('taking the viewport, every press is the box\'s — the tool '
         'beneath hears none, an empty one included', (tester) async {
       final moves = <CanvasPoint>[];
       final scales = <CanvasPoint>[];
       final toolPresses = await pumpOverATool(
         tester,
-        claimsCanvas: true,
+        presses: RowBoxPresses.viewport,
         moves: moves,
         scales: scales,
       );
@@ -775,13 +788,13 @@ void main() {
       expect(toolPresses, isEmpty);
     });
 
-    testWidgets('not claiming it, the box keeps its corners and the cross — '
-        'the inside falls to the tool', (tester) async {
+    testWidgets('taking its handles alone, the box keeps its corners and the '
+        'cross — the inside falls to the tool', (tester) async {
       final moves = <CanvasPoint>[];
       final scales = <CanvasPoint>[];
       final toolPresses = await pumpOverATool(
         tester,
-        claimsCanvas: false,
+        presses: RowBoxPresses.handles,
         moves: moves,
         scales: scales,
       );
@@ -795,6 +808,82 @@ void main() {
       await tester.pumpAndSettle();
       expect(scales, hasLength(1));
       expect(toolPresses, hasLength(1), reason: 'the corner was the box\'s');
+    });
+
+    // A photo held on a sheet (I-97-Q4): what lies under the box keeps every
+    // press the box takes nothing by.
+    testWidgets('taking what it takes something by, the box keeps its inside '
+        'and its corners — the empty canvas falls to the tool', (
+      tester,
+    ) async {
+      final moves = <CanvasPoint>[];
+      final scales = <CanvasPoint>[];
+      final toolPresses = await pumpOverATool(
+        tester,
+        presses: RowBoxPresses.taken,
+        moves: moves,
+        scales: scales,
+      );
+
+      await tester.dragFrom(const Offset(150, 100), const Offset(20, 0));
+      await tester.dragFrom(const Offset(300, 250), const Offset(100, 100));
+      await tester.pumpAndSettle();
+      expect(moves, hasLength(1));
+      expect(scales, hasLength(1));
+      expect(toolPresses, isEmpty);
+
+      await tester.dragFrom(const Offset(380, 20), const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(toolPresses, hasLength(1), reason: 'nothing of the box there');
+    });
+
+    // 🗣️I-97-Q4 (유저 2026-10-15): 「그 칸 안은 회전, 칸 밖은 해제」.
+    testWidgets('🚨its stage says where outside it the box turns — past it '
+        'the press is the tool\'s, on the canvas all the same', (
+      tester,
+    ) async {
+      final turns = <double>[];
+      final toolPresses = await pumpOverATool(
+        tester,
+        presses: RowBoxPresses.taken,
+        moves: [],
+        scales: [],
+        turns: turns,
+        stage: (at) => at.x < 200,
+      );
+
+      await tester.dragFrom(const Offset(50, 150), const Offset(0, 60));
+      await tester.pumpAndSettle();
+      expect(turns, hasLength(1), reason: 'outside it, on its stage');
+      expect(toolPresses, isEmpty);
+
+      await tester.dragFrom(const Offset(350, 150), const Offset(0, 60));
+      await tester.pumpAndSettle();
+      expect(turns, hasLength(1), reason: 'the canvas, off its stage');
+      expect(toolPresses, hasLength(1));
+    });
+
+    testWidgets('a press it takes nothing by is told of, and not stopped — '
+        'one it takes is not told of', (tester) async {
+      final told = <Offset>[];
+      final moves = <CanvasPoint>[];
+      final toolPresses = await pumpOverATool(
+        tester,
+        presses: RowBoxPresses.taken,
+        moves: moves,
+        scales: [],
+        onPressedPast: (event) => told.add(event.position),
+      );
+
+      await tester.dragFrom(const Offset(150, 100), const Offset(20, 0));
+      await tester.pumpAndSettle();
+      expect(moves, hasLength(1));
+      expect(told, isEmpty, reason: 'its own');
+
+      await tester.tapAt(const Offset(380, 20));
+      await tester.pumpAndSettle();
+      expect(told, [const Offset(380, 20)]);
+      expect(toolPresses, hasLength(1));
     });
   });
 
@@ -977,9 +1066,9 @@ void main() {
               ),
           ],
           pose: TransformPose.uniform(center: anchor, zoom: zoom),
-          canvasSize: canvasSize,
+          pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
           viewport: CanvasViewport(),
-          claimsCanvas: true,
+          presses: RowBoxPresses.viewport,
           onCancelled: () {},
           // The app's loop: the value in flight comes back as the pose.
           scale: RowBoxTwoScales((
@@ -1066,5 +1155,87 @@ void main() {
 
     expect(cancels, 1, reason: 'no release will come to drop it');
     await gesture.up();
+  });
+
+  group('a path\'s handles (I-89 ②)', () {
+    /// A key off the picture at (20, 20), its knob ahead at [ahead] and
+    /// its knob behind at [behind] (none where null), each landing in its
+    /// own list.
+    RowBoxTangent tangent({
+      required CanvasPoint? ahead,
+      required CanvasPoint? behind,
+      required List<CanvasPoint> aheads,
+      required List<CanvasPoint> behinds,
+    }) => (
+      at: CanvasPoint(x: 20, y: 20),
+      ahead: ahead == null ? null : (at: ahead, landing: into(aheads)),
+      behind: behind == null ? null : (at: behind, landing: into(behinds)),
+    );
+
+    testWidgets('either knob carried lands where it was let go, on its own '
+        'side', (tester) async {
+      final aheads = <CanvasPoint>[];
+      final behinds = <CanvasPoint>[];
+      final handle = tangent(
+        ahead: CanvasPoint(x: 50, y: 20),
+        behind: CanvasPoint(x: 20, y: 280),
+        aheads: aheads,
+        behinds: behinds,
+      );
+      await pumpBox(tester, box(tangents: [handle]));
+
+      await tester.dragFrom(const Offset(20, 280), const Offset(10, -20));
+      await tester.pumpAndSettle();
+      expect(behinds, [CanvasPoint(x: 30, y: 260)]);
+      expect(aheads, isEmpty);
+
+      await tester.dragFrom(const Offset(50, 20), const Offset(0, 10));
+      await tester.pumpAndSettle();
+      expect(aheads, [CanvasPoint(x: 50, y: 30)]);
+      expect(behinds, hasLength(1));
+    });
+
+    testWidgets('where the two stand on one point the one drawn over the '
+        'other — ahead — is taken; an end key\'s one knob is taken alone', (
+      tester,
+    ) async {
+      final aheads = <CanvasPoint>[];
+      final behinds = <CanvasPoint>[];
+      await pumpBox(
+        tester,
+        box(
+          tangents: [
+            tangent(
+              ahead: CanvasPoint(x: 20, y: 20),
+              behind: CanvasPoint(x: 20, y: 20),
+              aheads: aheads,
+              behinds: behinds,
+            ),
+          ],
+        ),
+      );
+      await tester.dragFrom(const Offset(20, 20), const Offset(10, 0));
+      await tester.pumpAndSettle();
+      expect(aheads, [CanvasPoint(x: 30, y: 20)]);
+      expect(behinds, isEmpty);
+
+      final ends = <CanvasPoint>[];
+      await pumpBox(
+        tester,
+        box(
+          tangents: [
+            tangent(
+              ahead: null,
+              behind: CanvasPoint(x: 20, y: 20),
+              aheads: aheads,
+              behinds: ends,
+            ),
+          ],
+        ),
+      );
+      await tester.dragFrom(const Offset(20, 20), const Offset(10, 0));
+      await tester.pumpAndSettle();
+      expect(ends, [CanvasPoint(x: 30, y: 20)]);
+    });
   });
 }

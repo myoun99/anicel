@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_overlay.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -84,6 +85,7 @@ void main() {
     axis: axis,
     celContent: TimelineCelContentSource(
       hasContent: (_, _) => worked,
+      cannotRead: (_, _) => false,
       revision: ValueNotifier<int>(0),
     ),
     paperGround: paperGround ?? host,
@@ -97,14 +99,14 @@ void main() {
     int frame,
   ) {
     final paper = painter.paperRectFor(frame);
-    final horizontal = painter.axis == Axis.horizontal;
     return timelineBlockFrameLine(
       axis: painter.axis,
       frameIndex: frame,
-      boundary: horizontal ? paper.left : paper.top,
-      across: horizontal
-          ? (from: paper.top, to: paper.bottom)
-          : (from: paper.left, to: paper.right),
+      boundary: startAlong(painter.axis, paper),
+      across: (
+        from: startAcross(painter.axis, paper),
+        to: endAcross(painter.axis, paper),
+      ),
       frameCellExtent: painter.frameCellExtent,
       framesPerSecond: 24,
       colorScheme: scheme,
@@ -198,6 +200,7 @@ void main() {
         baseTextStyle: const TextStyle(fontSize: 11),
         celContent: TimelineCelContentSource(
           hasContent: (_, _) => false,
+          cannotRead: (_, _) => false,
           revision: ValueNotifier<int>(0),
         ),
         blockFrameLines: true,

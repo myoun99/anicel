@@ -29,6 +29,12 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
+import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/commands/cel_photo_edit_command.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import '../helpers/cel_photo_fixture.dart';
 import '../helpers/reference_to.dart';
 import '../helpers/named_finders.dart';
 
@@ -572,6 +578,58 @@ void main() {
 
       final pool = tester.widget<MediaPoolPanel>(find.byType(MediaPoolPanel));
       expect(pool.usesOf(still).toList(), ['${cut.name} · ${row.name}']);
+    });
+
+    testWidgets('🚨I-97: the in-use mark follows a sheet\'s photo — the ink '
+        'is written without a word to the session, and the mark lights as '
+        'the photo lands and goes dim on its undo', (tester) async {
+      const still = 'C:/media/sky.png';
+      final base = createDefaultProject();
+      await _pumpHome(
+        tester,
+        project: base.copyWith(
+          mediaAssets: [MediaAsset(path: still, name: 'sky.png')],
+        ),
+      );
+      await _openMedia(tester);
+      await tester.ensureVisible(find.byKey(_mediaTabKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_mediaTabKey));
+      await tester.pumpAndSettle();
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      bool lit() => tester
+          .widget<AppIconButton>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is AppIconButton &&
+                  widget.keyValue == 'media-asset-in-use-$still',
+            ),
+          )
+          .onPressed !=
+          null;
+      expect(lit(), isFalse, reason: '⛔fixture: nothing uses it yet');
+
+      // A photo on an envelope box, through the history as a drop puts it.
+      final box = envelopeInkBoxKey(base.tracks.first.cuts.first.id, 'memo');
+      session.historyManager.execute(
+        CelPhotoEditCommand.put(
+          coordinator: BrushFrameEditingCoordinator.overInk(
+            store: session.renderCaches.envelopeInkStore,
+            canvasSize: const CanvasSize(width: 64, height: 48),
+            initialFrameKey: box,
+          ),
+          frameKey: box,
+          reference: photoOf(1, path: still).reference,
+        ),
+      );
+      await tester.pump();
+      expect(lit(), isTrue);
+
+      session.undo();
+      await tester.pump();
+      expect(lit(), isFalse);
     });
   });
 

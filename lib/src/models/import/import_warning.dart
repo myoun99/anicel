@@ -98,3 +98,44 @@ ImportWarning unsupportedLayerKind(String name) => ImportWarning(
   '{name}: this kind of layer is not supported.',
   {'name': name},
 );
+
+/// A layer that came in without the effects its program drew over its own
+/// pixels — Photoshop's layer effects, CLIP STUDIO's layer properties'
+/// (a border, a tone, its layer colour …) — named, as every decoder says
+/// it: they used to fall away without a word (F-306 for Photoshop; CLIP
+/// STUDIO's, 10-17, under 유저 10-07 「없는 기능은 알리는거 ok」).
+ImportWarning layerEffectsNotApplied(String name) => ImportWarning(
+  'layerEffectsNotApplied',
+  '{name}: layer effects not applied.',
+  {'name': name},
+);
+
+/// A layer clipped to the one under it, come in unclipped — named, as
+/// every decoder says it (CLIP STUDIO's, 10-17, by the same 10-07 law as
+/// [layerEffectsNotApplied]).
+ImportWarning clippingNotApplied(String name) => ImportWarning(
+  'clippingNotApplied',
+  '{name}: clipping mask not applied.',
+  {'name': name},
+);
+
+/// A layer whose mask, switched on, came in unapplied — a folder's (유저
+/// 10-07: 「폴더마스크는 나중에 구현할예정」), a text layer's, one this
+/// import cannot read — named, as every decoder says it. A mask that is
+/// baked into its layer's picture says nothing; one switched off is not
+/// applied by its program either (보드 `the-clip-import-leaves-masks-and-
+/// locks-unsaid`, 10-17).
+ImportWarning layerMaskNotApplied(String name) => ImportWarning(
+  'layerMaskNotApplied',
+  '{name}: layer mask not applied.',
+  {'name': name},
+);
+
+/// A layer that was locked, come in unlocked — no row here carries a lock
+/// — named, as every decoder says it (the same card, by the same 10-07 law
+/// as [layerEffectsNotApplied]; 유저 10-09 「다른 디코드 마찬가지 통일해서」).
+ImportWarning lockNotImported(String name) => ImportWarning(
+  'lockNotImported',
+  '{name}: lock not imported.',
+  {'name': name},
+);

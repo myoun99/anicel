@@ -307,7 +307,18 @@ void main() {
   /// other five (Invert Selection, Paste at original position, Register as
   /// Tip…, Add vanishing point, Rasterize) are composed from the table and
   /// add none. The ceiling stood at the count (131) when it came.
-  const untranslatedElsewhere = 135;
+  ///
+  /// 136 (I-103, the window's full screen, 2026-10-16): the English row of
+  /// one new registry action, 「Full screen」 — answered in the other four
+  /// languages by id (`shortcutAction.window-full-screen`). The ceiling
+  /// stood at the count (135) when it came.
+  ///
+  /// 137 (I-58, the ● every n koma, 2026-10-19): the English row of one new
+  /// registry action, 「Auto-add In-between Marks」 — answered in the other
+  /// four languages by id (`shortcutAction.frame-mark-every`). The round's
+  /// renamed verbs (New …, Clear, In-between Mark) are rows that stood and
+  /// add none. The ceiling stood at the count (136) when it came.
+  const untranslatedElsewhere = 137;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

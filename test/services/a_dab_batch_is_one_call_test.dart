@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
@@ -49,7 +50,12 @@ void main() {
     return true;
   }
 
-  BrushDab dabAt(int i, {BrushTipMask? tip, double size = 60}) => BrushDab(
+  BrushDab dabAt(
+    int i, {
+    BrushTipMask? tip,
+    BrushTipMask? dual,
+    double size = 60,
+  }) => BrushDab(
     center: CanvasPoint(x: 80.5 + i * 1.0, y: 120.25 + i * 0.4),
     color: 0xFF2A5599,
     size: size,
@@ -60,7 +66,20 @@ void main() {
     pressure: 1,
     sequence: i,
     tipMask: tip,
+    dualMask: dual,
   );
+
+  /// [count] masks the cache tells apart, by [name].
+  List<BrushTipMask> masksNamed(String name, int count) => [
+    for (var k = 0; k < count; k += 1)
+      BrushTipMask(
+        id: '$name-$k',
+        size: 8,
+        alpha: Uint8List.fromList([
+          for (var index = 0; index < 64; index += 1) (index * 3 + k) % 256,
+        ]),
+      ),
+  ];
 
   test('a run of the commit is one call per batch of dabs', () {
     if (engineMissing()) {
@@ -78,28 +97,42 @@ void main() {
     if (engineMissing()) {
       return;
     }
+    // Two masks of its own a dab — a tip and a dual tip — so the allowance
+    // runs out at half as many dabs. ⚠️With one a dab, the allowance ran
+    // out exactly where a call runs out of dabs once both were 64, so the
+    // cut on the masks could go and this would still count two.
     final allowance = QaNativeEngine.instance!.batchMaskAllowance.count;
-    final tips = [
-      for (var k = 0; k <= allowance; k += 1)
-        BrushTipMask(
-          id: 'batch-call-tip-$k',
-          size: 8,
-          alpha: Uint8List.fromList([
-            for (var index = 0; index < 64; index += 1) (index * 3 + k) % 256,
-          ]),
-        ),
-    ];
+    final dabs = allowance ~/ 2 + 1;
+    expect(dabs, lessThan(NativeDabBatcher.maxDabs), reason: 'premise');
+    final masks = masksNamed('batch-call-tip', dabs * 2);
     materializeBrushDabSequenceOnBitmapSurface(
       surface: BitmapSurface(canvasSize: canvasSize, tileSize: 256),
       sequence: BrushDabSequence([
-        for (var i = 0; i < tips.length; i += 1) dabAt(i, tip: tips[i]),
+        for (var i = 0; i < dabs; i += 1)
+          dabAt(i, tip: masks[2 * i], dual: masks[2 * i + 1]),
       ]),
     );
     expect(
       QaNativeEngine.debugDabBatchCalls,
       2,
-      reason: 'the mask one past the allowance opens the second call',
+      reason: 'the masks past the allowance open the second call',
     );
+  });
+
+  test('🚨a brush\'s whole tip list rides one call — 遠くの雲\'s thirteen, '
+      'taken in turn (F-176-Q3)', () {
+    if (engineMissing()) {
+      return;
+    }
+    final tips = masksNamed('batch-call-turn', 13);
+    materializeBrushDabSequenceOnBitmapSurface(
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 256),
+      sequence: BrushDabSequence([
+        for (var i = 0; i < NativeDabBatcher.maxDabs; i += 1)
+          dabAt(i, tip: tips[i % tips.length]),
+      ]),
+    );
+    expect(QaNativeEngine.debugDabBatchCalls, 1);
   });
 
   test('dabs whose tips change share the call while the cache holds them', () {
@@ -179,7 +212,9 @@ void main() {
       return;
     }
     final dabs = [for (var i = 0; i < 60; i += 1) dabAt(i)];
-    final raster = BrushLiveStrokeRasterizer(canvasSize: canvasSize);
+    final raster = BrushLiveStrokeRasterizer(
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+    );
     raster.blendFrom(dabs.sublist(0, 30));
     expect(QaNativeEngine.debugDabBatchCalls, 1);
     raster.blendFrom(dabs);

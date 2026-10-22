@@ -707,4 +707,80 @@ void main() {
       );
     });
   });
+
+  // 🗣️F-424 (유저 2026-10-21): 「기존 레이어 콘티레이어 변경하고 언두하면
+  // 색라벨도 돌아오도록」 — what a write's laying put on a row that joined a
+  // conte is what that write's undo takes off (`ConteStepScope`).
+  group('the heads a write puts on rows', () {
+    Project projectOf(Track track) => Project(
+      id: const ProjectId('heads'),
+      name: 'Heads',
+      createdAt: DateTime.utc(2026, 10, 21),
+      tracks: [track],
+    );
+
+    /// Cuts a and b with a conte each, c with a cel and none — laid.
+    Track threeCuts() => write(
+      trackOf([
+        ...twoCuts().cuts,
+        cutOf('c', [cel('c')]),
+      ]),
+    );
+
+    List<ConteHeadPut> putBy(Track before, Track written) => conteHeadsPut(
+      projectOf(before),
+      projectOf(written),
+      projectOf(write(written, settled: before)),
+    );
+
+    test('a row made a cut\'s conte wears the track\'s head as laid — a head '
+        'put on it, beside the one it wore of its own', () {
+      final before = threeCuts();
+      final written = edited(before, 'c', (layers) => [
+        for (final layer in layers) layer.copyWith(kind: LayerKind.storyboard),
+      ]);
+
+      expect(
+        [
+          for (final put in putBy(before, written))
+            (put.cutId, put.laid.name, put.own.name),
+        ],
+        [(const CutId('c'), 'Conte', 'A')],
+      );
+    });
+
+    test('a head edit the laying carries to the other cuts puts none: those '
+        'rows rode the conte, and the laying lays them back', () {
+      final before = threeCuts();
+      final written = edited(
+        before,
+        'a',
+        (layers) => renamed(layers, 'Conte', 'Board'),
+      );
+      expect(
+        rowOf(write(written, settled: before), 'b', 'Board').id,
+        const LayerId('b-conte'),
+        reason: '⛔전제: carried to cut b',
+      );
+
+      expect(putBy(before, written), isEmpty);
+    });
+
+    test('a row the write MADE is none of them — its undo takes the row, '
+        'head and all', () {
+      final before = threeCuts();
+      final written = edited(
+        before,
+        'c',
+        (layers) => [...layers, conte('c').copyWith(name: 'New')],
+      );
+      expect(
+        rowOf(write(written, settled: before), 'c', 'Conte').id,
+        const LayerId('c-conte'),
+        reason: '⛔전제: born wearing the head',
+      );
+
+      expect(putBy(before, written), isEmpty);
+    });
+  });
 }

@@ -18,8 +18,10 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/widgets/instant_tap_region.dart'
+    show InstantTapRegion;
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️F-322 (유저 2026-10-09): 「선택범위 드래그로 어태치 조정」 — and
 /// 10-10: 「드래그로 어태치 순서이동이라던가 피드백했을텐데 다 되도록 하는거
@@ -82,25 +84,12 @@ LayerRowAddress _seat(int seat) =>
     LayerRowAddress(trackConteRowId(_trackId, seat: seat));
 
 EditorSessionManager _sessionOf(WidgetTester tester) =>
-    tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+    tester.widget<StoryboardTabHost>(find.byType(StoryboardTabHost)).session;
 
-Future<void> _pump(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 1300));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
-  await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    const Offset(0, -700),
-  );
-  await tester.pumpAndSettle();
-}
+/// The conte as its tab hosts it ([pumpStoryboardHost]), the whole height
+/// its own.
+Future<void> _pump(WidgetTester tester) =>
+    pumpStoryboardHost(tester, _project(), surface: const Size(1400, 1300));
 
 final _rail = find.byKey(const ValueKey<String>('storyboard-track-label-rail'));
 
@@ -132,11 +121,20 @@ Future<void> _drag(
   await tester.pumpAndSettle();
 }
 
-/// A press on [name] that wanders a few pixels and lets go — the first
-/// drag: it selects the row.
+/// A press on [name] that travels past [InstantTapRegion.travelSlop] along
+/// its row and lets go — the first drag: it selects the row.
+///
+/// ↩️It wandered three pixels, and the rail's own label kept what that
+/// selected. The row is the timeline's now (I-89 ①): a press that travels
+/// less is a TAP, and a tap clears (T10's second half) — the timeline's
+/// rail tests travel past the slop for the same reason.
 Future<void> _select(WidgetTester tester, String name) async {
-  final at = tester.getCenter(_name(name));
-  await _drag(tester, name, at + const Offset(0, 3));
+  await tester.dragFrom(
+    tester.getCenter(_name(name)),
+    const Offset(InstantTapRegion.travelSlop + 2, 0),
+    kind: PointerDeviceKind.mouse,
+  );
+  await tester.pumpAndSettle();
 }
 
 /// Every cut's conte group, top seat first, by name and side.

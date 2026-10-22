@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -237,6 +238,37 @@ void main() {
       expect(sanitizeExportFileComponent('name...'), 'name');
       expect(sanitizeExportFileComponent('   '), 'untitled');
       expect(sanitizeExportFileComponent(''), 'untitled');
+    });
+  });
+
+  /// 🗣️F-404-Q1 (유저 2026-10-20): 「작품 설정의 작품명_화수로」 — and what
+  /// stands for a word the work has not been given.
+  group('unnamedExportName, of the whole', () {
+    Project work(TimesheetInfo words) =>
+        project(const []).copyWith(timesheetInfo: words);
+
+    test('a work with no episode is named after its title alone', () {
+      expect(
+        unnamedExportName(work(const TimesheetInfo(title: 'AMMI'))),
+        'AMMI',
+      );
+    });
+
+    test('a work with no title goes by the project\'s name, as on paper', () {
+      expect(
+        unnamedExportName(work(const TimesheetInfo(episode: 'OP'))),
+        'Project_OP',
+      );
+      expect(unnamedExportName(work(TimesheetInfo.empty)), 'Project');
+    });
+
+    test('the work\'s words become a name a file can have', () {
+      expect(
+        unnamedExportName(
+          work(const TimesheetInfo(title: 'AMMI: Re', episode: 'OP/1')),
+        ),
+        'AMMI_ Re_OP_1',
+      );
     });
   });
 

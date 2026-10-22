@@ -5,7 +5,7 @@ library;
 
 import 'package:flutter/widgets.dart';
 
-import 'axis_turn.dart' show extentAlong;
+import 'axis_turn.dart' show extentAlong, partAlong;
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_hooks.dart';
@@ -128,8 +128,7 @@ class TimelineFrameScrub {
 
   /// The pointer's position ALONG the strip, in the viewport's own frame.
   double _alongLocal(RenderBox viewport, Offset globalPosition) {
-    final local = viewport.globalToLocal(globalPosition);
-    return axis == Axis.horizontal ? local.dx : local.dy;
+    return partAlong(axis, viewport.globalToLocal(globalPosition));
   }
 
   void _selectFrameAt(RenderBox viewport, Offset globalPosition) {

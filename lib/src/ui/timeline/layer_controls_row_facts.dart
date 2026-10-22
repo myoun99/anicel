@@ -87,9 +87,6 @@ typedef LayerControlsRowFacts = ({
   // layer it stands for then (I-57 ㉣).
   bool headsGraph,
   bool graphOpen,
-  // The camera row's dim — the workspace's own notifier, one object for
-  // the row's whole life, so its identity is the fact.
-  ByIdentity<ValueListenable<double>?> opacityOverride,
   ByIdentity<ValueListenable<({Set<LayerId> layerIds, double opacity})?>?>
   opacityDragPreview,
   double layerRowHeight,
@@ -159,7 +156,6 @@ LayerControlsRowFacts layerControlsRowFacts(
     headsGraph: graphKey != null,
     graphOpen:
         graphKey != null && hooks.laneGraphs.open.containsKey(graphKey),
-    opacityOverride: ByIdentity(hooks.layerOpacityOverrideOf?.call(id)),
     opacityDragPreview: ByIdentity(hooks.opacityDragPreview),
     layerRowHeight: grid.metrics.layerRowHeight,
     layerControlsWidth: grid.metrics.layerControlsWidth,
@@ -222,7 +218,6 @@ Widget layerControlsRowFrom(
     opacityDragPreview: facts.opacityDragPreview.value,
     linkPartners: facts.linkPartners.value,
     onLayerBlendModeSelected: hooks.onLayerBlendModeSelected,
-    opacityOverride: facts.opacityOverride.value,
     laneGraphVerbs: hooks.laneGraphVerbs,
     headsGraph: facts.headsGraph,
     graphOpen: facts.graphOpen,

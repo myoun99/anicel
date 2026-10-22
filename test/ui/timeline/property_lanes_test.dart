@@ -25,6 +25,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show offsetAlong;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineDrawingStartColor;
@@ -165,9 +166,7 @@ Future<void> _scrubBy(
     tester.getCenter(cell),
     kind: kind,
   );
-  await gesture.moveBy(
-    along == Axis.horizontal ? Offset(dx, 0) : Offset(0, dx),
-  );
+  await gesture.moveBy(offsetAlong(along, along: dx, across: 0));
   await tester.pump();
   await gesture.up();
 }

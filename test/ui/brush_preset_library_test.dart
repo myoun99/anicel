@@ -544,7 +544,7 @@ void main() {
       final imported = BrushPreset(
         id: const BrushPresetId('p1'),
         name: 'Wet wash',
-        settings: BrushSettings(size: 9, tipMask: tip),
+        settings: BrushSettings(size: 9, tips: [tip]),
       );
       await File(service.filePath).parent.create(recursive: true);
       await File(service.filePath).writeAsString(
@@ -602,7 +602,7 @@ void main() {
           BrushPreset(
             id: const BrushPresetId('p1'),
             name: 'Wet wash',
-            settings: BrushSettings(size: 9, tipMask: tip),
+            settings: BrushSettings(size: 9, tips: [tip]),
           ),
         ],
       ));
@@ -628,7 +628,7 @@ void main() {
         library: (groups: const [], presets: [_preset('mine')]),
         imported: [_preset('abr-1'), _preset('abr-2')],
         sourceName: 'Noah',
-      );
+      ).library;
 
       expect(merged.groups.single.name, 'Noah');
       expect(merged.groups.single.id, importedBrushGroupId('Noah'));
@@ -638,23 +638,33 @@ void main() {
       expect(merged.presets.first.groupId, isNull);
     });
 
-    test('re-importing REPLACES the group contents', () {
+    test('🚨importing a file again keeps what its group holds, and lands the '
+        'new copies beside it (F-433)', () {
       final first = mergeImportedBrushPresets(
         library: (groups: const [], presets: const []),
         imported: [_preset('abr-1'), _preset('abr-gone')],
         sourceName: 'Noah',
-      );
+      ).library;
 
       final second = mergeImportedBrushPresets(
         library: first,
         imported: [_preset('abr-1'), _preset('abr-new')],
         sourceName: 'Noah',
-      );
+      ).library;
 
-      // A brush the file no longer defines does not linger, and the group is
-      // not duplicated.
+      // A brush the file no longer defines stays — an import only adds —
+      // and the group is not duplicated.
       expect(second.groups.length, 1);
-      expect(second.presets.map((p) => p.id.value), ['abr-1', 'abr-new']);
+      expect(second.presets.map((p) => p.id.value), [
+        'abr-1',
+        'abr-gone',
+        'abr-1-2',
+        'abr-new',
+      ]);
+      expect(
+        second.presets.map((p) => p.groupId).toSet(),
+        {importedBrushGroupId('Noah')},
+      );
     });
 
     test('keeps the name and fold state the user gave the group', () {
@@ -662,7 +672,7 @@ void main() {
         library: (groups: const [], presets: const []),
         imported: [_preset('abr-1')],
         sourceName: 'Noah',
-      );
+      ).library;
       final renamed = (
         groups: [library.groups.single.copyWith(name: 'Mine', collapsed: true)],
         presets: library.presets,
@@ -672,28 +682,63 @@ void main() {
         library: renamed,
         imported: [_preset('abr-1')],
         sourceName: 'Noah',
-      );
+      ).library;
 
       expect(merged.groups.single.name, 'Mine');
       expect(merged.groups.single.collapsed, isTrue);
     });
 
-    test('a member dragged out is replaced, never duplicated', () {
-      // Ids key the rows: the same id may not appear twice, so a brush the
-      // user moved elsewhere still loses to the incoming copy.
-      final library = (
-        groups: [BrushGroup(id: importedBrushGroupId('Noah'), name: 'Noah')],
-        presets: [_preset('abr-1', groupId: _ink)],
+    test('🚨an id the library already holds is minted afresh — the brush '
+        'already there stays as and where it was (F-433)', () {
+      // 유저: 「기존 같은 이름? 브러시인지 다른 브러시인지 삭제되는데, 그러지
+      // 않도록」 — their sharp, exported from the edited built-in, carried
+      // the built-in's id and took the built-in out on the way in.
+      final builtIn = BrushPreset(
+        id: const BrushPresetId('builtin-mechanical-pencil'),
+        name: 'Mechanical Pencil',
+        groupId: _ink,
+        settings: BrushSettings(size: 3),
+      );
+      final edited = BrushPreset(
+        id: const BrushPresetId('builtin-mechanical-pencil'),
+        name: 'Mechanical Pencil',
+        settings: BrushSettings(size: 2),
       );
 
-      final merged = mergeImportedBrushPresets(
-        library: library,
-        imported: [_preset('abr-1')],
+      final landing = mergeImportedBrushPresets(
+        library: (
+          groups: const [BrushGroup(id: _ink, name: 'Ink')],
+          presets: [builtIn],
+        ),
+        imported: [edited],
+        sourceName: 'Sharp',
+      );
+
+      final presets = landing.library.presets;
+      expect(presets, hasLength(2));
+      expect(identical(presets.first, builtIn), isTrue);
+      expect(presets.last.id.value, 'builtin-mechanical-pencil-2');
+      expect(presets.last.name, 'Mechanical Pencil', reason: 'same name, both');
+      expect(presets.last.settings.size, 2);
+      expect(presets.last.groupId, importedBrushGroupId('Sharp'));
+      expect(landing.landedAs, {
+        'builtin-mechanical-pencil': presets.last.id,
+      });
+    });
+
+    test('a file that gives two brushes one id lands both, and says the '
+        'first is the one its id names', () {
+      final landing = mergeImportedBrushPresets(
+        library: (groups: const [], presets: const []),
+        imported: [_preset('twin'), _preset('twin')],
         sourceName: 'Noah',
       );
 
-      expect(merged.presets.length, 1);
-      expect(merged.presets.single.groupId, importedBrushGroupId('Noah'));
+      expect(landing.library.presets.map((p) => p.id.value), [
+        'twin',
+        'twin-2',
+      ]);
+      expect(landing.landedAs, {'twin': const BrushPresetId('twin')});
     });
   });
 
@@ -819,6 +864,65 @@ void _exportRoundTripTests() {
       landed.containsKey('ghost'),
       isFalse,
       reason: 'and the entry for a brush that never arrived is gone',
+    );
+  });
+
+  test('🚨a pack of an edited built-in lands BESIDE the built-in, and its '
+      'hand settings follow it to the id it was given (F-433)', () async {
+    // The user's sharp: exported from the built-in they had edited, so it
+    // carries the built-in's id. It used to replace the built-in.
+    final service = BrushPresetFileService(
+      filePath: '${tempDirectory.path}/library.json',
+    );
+    final pack = encodeBrushPack(
+      BrushPack(
+        presets: [
+          BrushPreset(
+            id: const BrushPresetId('builtin-mechanical-pencil'),
+            name: 'Sharp',
+            settings: BrushSettings(size: 2, hardness: 0.9),
+          ),
+        ],
+        handSettings: const {
+          'builtin-mechanical-pencil': {'size': 33.0},
+        },
+      ),
+    );
+    final bank = <String, BrushHandSettings>{
+      'builtin-mechanical-pencil': {'size': 5.0},
+    };
+    final receiver = libraryOf(
+      service: service,
+      bank: bank,
+      picked: (
+        name: 'Sharp.anibrush',
+        bytes: Uint8List.fromList(utf8.encode(pack)),
+      ),
+    );
+    addTearDown(receiver.dispose);
+    await receiver.load();
+    final builtIn = receiver.presets.firstWhere(
+      (preset) => preset.id.value == 'builtin-mechanical-pencil',
+    );
+    final before = receiver.presets.length;
+
+    expect(await receiver.importFromFile(), contains('Imported'));
+
+    expect(receiver.presets, hasLength(before + 1));
+    expect(
+      receiver.presets.where((p) => p.id == builtIn.id).single,
+      same(builtIn),
+      reason: 'the built-in is still there, untouched',
+    );
+    final arrived = receiver.presets.last;
+    expect(arrived.id.value, 'builtin-mechanical-pencil-2');
+    expect(arrived.name, 'Sharp');
+    expect(arrived.settings.size, 2);
+    expect(bank[arrived.id.value]?['size'], 33.0);
+    expect(
+      bank['builtin-mechanical-pencil']?['size'],
+      5.0,
+      reason: 'the built-in keeps what the hand had set on it',
     );
   });
 

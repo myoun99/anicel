@@ -179,14 +179,18 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
 /// Whether the cells selection covers [row] at [frameIndex] — one law for
 /// both grids: a lane row answers with the layer it sits inside
 /// ([TimelineRowAddress.owningLayerId]).
+///
+/// ↩️F-87: the row ITSELF is asked ([TimelineFrameRangeSelection.coversRow]),
+/// the law the storyboard's rail already presses by. A swept lane is inside
+/// the band whether or not its layer's row was swept; a lane nobody swept
+/// is not inside it because its layer's row was (H20: 「선택한 곳만」). Asked
+/// through its layer, a band over an fx row and another row's cells pressed
+/// on the fx row as outside — the silent re-select C3 closed.
 bool timelineRowFrameInSelection(
   TimelineRowAddress row,
   int frameIndex,
   TimelineFrameRangeSelection? selection,
-) {
-  final layerId = row.owningLayerId;
-  return layerId != null &&
-      selection != null &&
-      selection.coversLayer(layerId) &&
-      selection.contains(frameIndex);
-}
+) =>
+    selection != null &&
+    selection.coversRow(row) &&
+    selection.contains(frameIndex);

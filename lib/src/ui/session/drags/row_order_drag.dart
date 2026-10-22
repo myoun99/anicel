@@ -27,6 +27,8 @@ import '../../timeline/layer_row_drag.dart'
         LayerRowDragSubject,
         LayerRowSubject,
         TrackRowSubject;
+import '../../timeline/timeline_section_runs.dart'
+    show timelineSectionRunsOf;
 
 /// The row-order drag (layer / track / effect rows) as its own object.
 ///
@@ -288,24 +290,12 @@ class RowOrderDrag {
     if (cut == null) {
       return;
     }
-    final landing = _nearestLanding(displayLayers, subject.layerId, slot, (
-      probe,
-    ) {
-      final insertAt = modelInsertionForSlot(
-        stack: cut.layers,
-        displayRows: displayLayers,
-        slot: probe,
-      );
-      return insertAt == null
-          ? null
-          : resolveLayerDrop(
-              stack: cut.layers,
-              movingId: subject.layerId,
-              insertAt: insertAt,
-              pointerInRow: pointerInRow,
-              alsoMoving: _rowSelectionCarriedBy(subject.layerId),
-            );
-    });
+    final landing = _nearestLanding(
+      displayLayers,
+      subject.layerId,
+      slot,
+      _cutLandings(cut, displayLayers, subject.layerId, pointerInRow),
+    );
     final plan = landing?.value;
     _plan = plan;
     _channel.value = LayerRowDragState(
@@ -315,6 +305,40 @@ class RowOrderDrag {
       joinLabel: _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
     );
   }
+
+  /// What letting [movingId] go at a slot of [displayLayers] does to
+  /// [cut]'s stack, asked slot by slot — null where it is no landing.
+  LayerDropPlan? Function(int probe) _cutLandings(
+    Cut cut,
+    List<Layer> displayLayers,
+    LayerId movingId,
+    LayerId? pointerInRow,
+  ) => (probe) {
+    final insertAt = modelInsertionForSlot(
+      stack: cut.layers,
+      displayRows: displayLayers,
+      slot: probe,
+    );
+    if (insertAt == null) {
+      return null;
+    }
+    LayerDropPlan? read(LayerId? pointer) => resolveLayerDrop(
+      stack: cut.layers,
+      movingId: movingId,
+      insertAt: insertAt,
+      pointerInRow: pointer,
+      alsoMoving: _rowSelectionCarriedBy(movingId),
+    );
+    // 결정 6 at ONE gap: the half the pointer is in picks a boundary's
+    // meaning (F-31②), and where that meaning is no landing — a row riding
+    // the conte is never let go — the gap's other meaning is the last place
+    // the row can reach that way, read as if the pointer still stood on the
+    // row itself. Left to the walk instead, the caret fell a row INSIDE
+    // while the pointer was at the edge and came back to the edge once it
+    // went further (F-393's sweep, 10-18).
+    return read(pointerInRow) ??
+        (pointerInRow == null ? null : read(movingId));
+  };
 
   /// 결정 6 (유저 확정 2026-08-22) — **THE CARET STANDS AT THE NEAREST SLOT
   /// THAT WOULD ACTUALLY LAND**, searching back toward the row's own place.
@@ -331,10 +355,12 @@ class RowOrderDrag {
   /// "illegal caret" state left to hide.
   ///
   /// ⛔The search stops AT the row's own place rather than passing through it.
-  /// A run owns the gaps at both its ends and putting it back there is not a
-  /// landing (④, 2026-08-12) — walking past would let a drag that has gone
+  /// A run owns the gaps at both its ends and putting it back there changes
+  /// nothing (④, 2026-08-12) — walking past would let a drag that has gone
   /// nowhere draw a caret on the far side, which is the announcement ④
   /// removed. So "nothing legal between here and home" still draws nothing.
+  /// (The home gaps are still ASKED: letting go of a group where the row
+  /// stands is a landing — F-312, [resolveLayerDrop].)
   ///
   /// ⚠️It walks one slot at a time because legality is not an interval: a
   /// section boundary, a group that cannot be split and a folder run all
@@ -357,7 +383,10 @@ class RowOrderDrag {
     while (true) {
       final value = resolveAt(probe);
       if (value != null) {
-        return (slot: probe, value: value);
+        return (
+          slot: _drawnInItsSection(displayLayers, movingId, probe),
+          value: value,
+        );
       }
       if (probe >= lower && probe <= upper) {
         return null;
@@ -417,7 +446,11 @@ class RowOrderDrag {
       // because an organizer was FLAT. 유저 2026-08-29 lifted that ban, so
       // the notice went with it: an anwer nobody refuses any more is a
       // sentence that would only confuse whoever reads it next.
-      updateLayerRow(displayLayers, slot);
+      //
+      // The pointer is still IN that row, so the gap hears it: a band with
+      // no say of its own was the one place a boundary's half went unread,
+      // and kept a row in its group from the middle of the row past it.
+      updateLayerRow(displayLayers, slot, pointerInRow: targetId);
       return;
     }
     _plan = plan;
@@ -576,4 +609,28 @@ class RowOrderDrag {
     _trackSlot = null;
     _channel.value = null;
   }
+}
+
+/// [slot] as the caret DRAWS it: a landing found past the end of the moving
+/// row's section — over the rows of another, which draw no line (a camera
+/// row is no drop target) — is the seat at the section's own edge on that
+/// side, and its line stands there.
+///
+/// 🗣️F-423 (유저 2026-10-20): 「선택한 파일을 폴더 위로 옮기는게 불가. 위
+/// 폴더밖에 레이어가 존재해야만 이동되는거같은데」 — a member of the top
+/// folder carried up over the camera's rows landed out of the folder all
+/// along, but its line stood on the transitions row, which draws none.
+int _drawnInItsSection(
+  List<Layer> displayLayers,
+  LayerId movingId,
+  int slot,
+) {
+  final home = displayLayers.indexWhere((layer) => layer.id == movingId);
+  for (final run in timelineSectionRunsOf(displayLayers, (row) => row.kind)) {
+    final end = run.startRowIndex + run.rowCount;
+    if (home >= run.startRowIndex && home < end) {
+      return slot.clamp(run.startRowIndex, end);
+    }
+  }
+  return slot;
 }

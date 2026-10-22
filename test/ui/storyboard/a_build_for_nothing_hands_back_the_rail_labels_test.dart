@@ -144,15 +144,14 @@ void main() {
   );
 
   /// The tab as the workspace mounts it, on [project]: built again on every
-  /// notify the session makes and every twirl its rows turn — and on the
-  /// camera VIEW [cameraView], which is none. [turned] hears every lane
-  /// twirl the rail turns, in place of the session's verb; [openLanes] are
-  /// the layers whose lanes stand open and [openGroups] the conte rows' lane
-  /// groups that do, in place of the session's; [rowFilter] is the legend's.
+  /// notify the session makes and every twirl its rows turn. [turned] hears
+  /// every lane twirl the rail turns, in place of the session's verb;
+  /// [openLanes] are the layers whose lanes stand open and [openGroups] the
+  /// conte rows' lane groups that do, in place of the session's; [rowFilter]
+  /// is the legend's.
   Future<EditorSessionManager> pumpPanel(
     WidgetTester tester,
     Project project, {
-    ValueNotifier<bool>? cameraView,
     List<LayerId>? turned,
     Set<LayerId>? openLanes,
     Set<String>? openGroups,
@@ -175,7 +174,6 @@ void main() {
               onShowSecondsChanged: (_) {},
               thumbnails: null,
               rowFilter: rowFilter,
-              cameraViewEnabled: cameraView,
               expandedLaneLayerIds: openLanes ?? twirls.expandedLaneLayerIds,
               expandedLaneGroupKeys: openGroups ?? twirls.expandedLaneGroupKeys,
               onToggleLayerLanes: turned?.add ?? twirls.onToggleLayerLanes,
@@ -274,14 +272,13 @@ void main() {
     expectRowsAsThey(tester, before);
   });
 
-  testWidgets('🚨the camera head shows the VIEW as it flips — the view is no '
+  testWidgets('🚨the camera head shows its eye as it flips — the eye is no '
       'part of the face it is kept by', (tester) async {
-    final view = ValueNotifier<bool>(true);
-    addTearDown(view.dispose);
-    await pumpPanel(tester, film(), cameraView: view);
+    final session = await pumpPanel(tester, film());
     expect(eyeOn(tester, cameraLabel), isTrue, reason: 'premise');
 
-    view.value = false;
+    // The camera view's own switch (F-363): the camera row's eye.
+    session.cameraViewMode.toggle();
     await tester.pump();
 
     expect(eyeOn(tester, cameraLabel), isFalse);
@@ -356,8 +353,13 @@ void main() {
     );
   });
 
-  testWidgets('an S row\'s layer edited is its label built again — the eye '
-      'it shows', (tester) async {
+  /// ↩️It was pinned the other way — 「an S row's layer edited is its label
+  /// built again — the eye it shows」 — while the S row was a label of this
+  /// rail's own, kept while its layer's eye held. It is the timeline's row
+  /// now (I-89 ①), kept by its FACE as every head is: the eye rides past
+  /// the keep ([RailEyes]), so a flip builds the eye alone (I-19).
+  testWidgets('🚨an S row shows its eye as it flips — the eye is no part of '
+      'the face it is kept by, as on the timeline', (tester) async {
     final session = await pumpPanel(tester, film());
     final before = rowsNow(tester);
     expect(eyeOn(tester, seLabel), isTrue, reason: 'premise');
@@ -367,7 +369,7 @@ void main() {
     ).toggleVisibility(const LayerId('t1-s1'));
     await tester.pump();
 
-    expectRowsAsThey(tester, before, builtAgain: {'se', 'se wrapper'});
+    expectRowsAsThey(tester, before);
     expect(eyeOn(tester, seLabel), isFalse);
   });
 
@@ -376,6 +378,31 @@ void main() {
       project.copyWith(
         tracks: [for (final track in project.tracks) edit(track)],
       );
+
+  testWidgets('an S row\'s layer given another face is its row built again '
+      '— the name it shows', (tester) async {
+    final session = await pumpPanel(tester, film());
+    final before = rowsNow(tester);
+
+    session.repository.updateProject(
+      (project) => editTracks(
+        project,
+        (track) => track.copyWith(
+          seLayers: [
+            for (final row in track.seLayers) row.copyWith(name: 'Rain'),
+          ],
+        ),
+      ),
+    );
+    session.notifyChanged();
+    await tester.pump();
+
+    expectRowsAsThey(tester, before, builtAgain: {'se', 'se wrapper'});
+    expect(
+      find.descendant(of: seLabel, matching: find.text('Rain')),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('🚨an S row added over S1 builds S1\'s wrapper again, its caret '
       'at the slot it stands at now', (tester) async {
@@ -704,17 +731,17 @@ void main() {
     final s2 = key('storyboard-se-label-t1-2');
     // S3 over S2: S2 the lower of the two shown.
     expect(wrapper(tester, s2).slotBefore, 1, reason: 'premise');
-    expect(wrapper(tester, s2).isLastRow, isTrue, reason: 'premise');
+    expect(wrapper(tester, s2).drawsTheGapAfter, isTrue, reason: 'premise');
 
     // S2 over S1: the upper of two.
     await resheet(tester, session, {'t1-s3'});
     expect(wrapper(tester, s2).slotBefore, 0);
-    expect(wrapper(tester, s2).isLastRow, isFalse);
+    expect(wrapper(tester, s2).drawsTheGapAfter, isFalse);
 
     // S2 alone: the upper, and the last.
     await resheet(tester, session, {'t1-s1', 't1-s3'});
     expect(wrapper(tester, s2).slotBefore, 0);
-    expect(wrapper(tester, s2).isLastRow, isTrue);
+    expect(wrapper(tester, s2).drawsTheGapAfter, isTrue);
   });
 
   testWidgets('🚨a conte row the filter shows somewhere else builds its '
@@ -728,17 +755,17 @@ void main() {
     final seat1 = key('storyboard-conte+1-label-t1');
     // +2 over +1: +1 the lower of the two shown.
     expect(wrapper(tester, seat1).slotBefore, 1, reason: 'premise');
-    expect(wrapper(tester, seat1).isLastRow, isTrue, reason: 'premise');
+    expect(wrapper(tester, seat1).drawsTheGapAfter, isTrue, reason: 'premise');
 
     // +1 over the conte: the upper of two.
     await resheet(tester, session, {'a-conte+2'});
     expect(wrapper(tester, seat1).slotBefore, 0);
-    expect(wrapper(tester, seat1).isLastRow, isFalse);
+    expect(wrapper(tester, seat1).drawsTheGapAfter, isFalse);
 
     // +1 alone: the upper, and the last.
     await resheet(tester, session, {'a-conte', 'a-conte+2'});
     expect(wrapper(tester, seat1).slotBefore, 0);
-    expect(wrapper(tester, seat1).isLastRow, isTrue);
+    expect(wrapper(tester, seat1).drawsTheGapAfter, isTrue);
   });
 
   /// The twirl that opens the Transform group of the lanes now open.
@@ -748,20 +775,24 @@ void main() {
         widget.name.endsWith('-transform-group'),
   );
 
+  /// ↩️It read the S row's label itself, kept whole while its wrapper was
+  /// built again. The label is the timeline's row now (I-89 ①), made anew
+  /// with the wrapper and keeping what it built while its face holds — the
+  /// head, as the conte row's twin below reads it.
   testWidgets('🚨an S row\'s wrapper takes its group\'s height as a group of '
-      'its lanes twirls open — its label as it was', (tester) async {
+      'its lanes twirls open — its head as it was', (tester) async {
     await pumpPanel(tester, film());
     await tester.tap(
       find.descendant(of: seLabel, matching: find.byType(LayerFoldTwirl)),
     );
     await tester.pump();
-    final label = tester.widget(seLabel);
+    final head = tester.widget(headIn(seLabel));
     final open = wrapper(tester, seLabel).rowExtent;
 
     await tester.tap(transformGroupTwirl.first);
     await tester.pump();
 
-    expect(tester.widget(seLabel), same(label), reason: 'premise: kept');
+    expect(tester.widget(headIn(seLabel)), same(head), reason: 'kept');
     expect(wrapper(tester, seLabel).rowExtent, greaterThan(open));
   });
 
@@ -801,7 +832,7 @@ void main() {
       'it — it is not the last row any more', (tester) async {
     final session = await pumpPanel(tester, twoTracks());
     final v2 = key('storyboard-track-select-t2');
-    expect(wrapper(tester, v2).isLastRow, isTrue, reason: 'premise');
+    expect(wrapper(tester, v2).drawsTheGapAfter, isTrue, reason: 'premise');
 
     session.repository.updateProject(
       (project) => project.copyWith(
@@ -814,7 +845,7 @@ void main() {
     session.notifyChanged();
     await tester.pump();
 
-    expect(wrapper(tester, v2).isLastRow, isFalse);
+    expect(wrapper(tester, v2).drawsTheGapAfter, isFalse);
   });
 
   testWidgets('🚨a V row its tracks can re-order takes its group\'s height '

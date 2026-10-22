@@ -85,6 +85,25 @@ void main() {
     expect(lru.peek('c'), 3);
   });
 
+  test('🚨what the finished values weigh is told, never bounded: capacity '
+      'is how many, however much they weigh (card '
+      'census-misses-bake-once-images)', () async {
+    final retired = <int>[];
+    final lru = BakeOnceLru<String, int>(
+      capacity: 2,
+      costOf: (weight) => weight,
+      retire: retired.add,
+    );
+    await lru.ensure('a', () async => 1000);
+    await lru.ensure('b', () async => 2000);
+    expect(retired, isEmpty, reason: 'two at a capacity of two');
+    expect(lru.held, 3000);
+
+    await lru.ensure('c', () async => 5);
+    expect(retired, [1000], reason: 'the oldest, not the heaviest');
+    expect(lru.held, 2005, reason: 'b and c, weighed');
+  });
+
   test('a touch moves an entry off the eviction edge', () async {
     final retired = <int>[];
     final lru = BakeOnceLru<String, int>(capacity: 2, retire: retired.add);

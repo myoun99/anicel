@@ -52,7 +52,6 @@ import 'row_berths.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
-import 'timeline_layer_controls_header.dart';
 import '../input/two_axis_drag.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
@@ -71,6 +70,7 @@ import 'timeline_grid_sheet.dart';
 import 'timeline_layer_controls_row.dart';
 import '../layout/device_grid_scroll_controller.dart';
 import 'timeline_grid_hooks.dart';
+import 'timeline_grid_legend_rail.dart';
 import 'rail_eyes.dart';
 import 'timeline_swipe_columns.dart';
 import '../input/wheel_law.dart';
@@ -229,7 +229,8 @@ class XSheetTimelineGrid extends StatefulWidget {
   State<XSheetTimelineGrid> createState() => _XSheetTimelineGridState();
 }
 
-class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
+class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
+    implements TimelineLegendHost {
   /// The integer rate the grid COUNTS with — the ruler's second marks
   /// and row labels are frame arithmetic, never real time (see
   /// [ProjectFrameRate.countingBase]).
@@ -473,8 +474,17 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// #16) — recorded by build's outer LayoutBuilder. Zero until layout.
   int _viewportFillFrameCells = 0;
 
-  List<PropertyLaneRow> _lanesFor(Layer layer) =>
-      widget.hooks.lanesForLayer?.call(layer) ?? const [];
+  /// The legend in the corner, the rail's hand ([TimelineGridLegendRail]).
+  late final TimelineGridLegendRail _legendRail = TimelineGridLegendRail(this);
+
+  @override
+  TimelineGridHooks get hooks => widget.hooks;
+
+  @override
+  List<Layer> get layers => widget.layers;
+
+  @override
+  List<TimelineDisplayRow> get drawnRows => _dragRows;
 
   /// The row's fold twirl — [timelineGroupFoldFor] bound to this grid's hooks.
   TimelineGroupFold _groupFoldFor(TimelineDisplayRow row) =>
@@ -1102,7 +1112,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             // policy with the horizontal grid).
             final entries = widget.hooks.displayRows(
               widget.layers,
-              lanesForLayer: _lanesFor,
+              lanesForLayer: widget.hooks.lanesOf,
               // R9 #23: the sheet's lanes open LEFTWARD — one axis rule
               // with the horizontal grid's downward one, so "further from
               // the layer means applied later" reads the same in both.
@@ -1241,18 +1251,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   rail: _railExtent,
                                   naturalExtent: naturalHeaderBlockExtent,
                                   availableExtent: availableHeaderExtent,
-                                  child: TimelineLayerControlsHeader(
+                                  child: _legendRail.header(
                                     axis: Axis.vertical,
                                     metrics: _metrics,
                                     railExtent: naturalHeaderBlockExtent,
-                                    // The legend has no flyouts here to infer
-                                    // the optional columns from, so it is told
-                                    // what the ROWS carry — or its icons stop
-                                    // naming the columns under them.
-                                    optionalColumns:
-                                        widget.hooks.optionalRailColumns,
-                                    hiddenSections:
-                                        widget.hooks.hiddenSections,
                                   ),
                                 ),
                                 SizedBox(height: splitterSlotExtent),

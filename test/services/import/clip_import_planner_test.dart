@@ -16,6 +16,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -26,6 +27,8 @@ import 'package:anicel/src/services/import/clip_import_planner.dart';
 import 'package:anicel/src/services/import/clip_placement.dart';
 import 'package:anicel/src/services/import/clip_track_clip.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+
+import 'clip_test_builder.dart';
 
 /// The shape a CLIP STUDIO file opens as (보드 `csp-clip-import-analysis`,
 /// the 10-07 「상담 끝」 memo): every timeline a 겸용 cut, folders as they
@@ -46,6 +49,11 @@ void main() {
     bool drawn = true,
     ClipLayerKind kind = ClipLayerKind.raster,
     List<String> vectorData = const [],
+    int? mainColour,
+    bool effects = false,
+    bool clipped = false,
+    ClipLayerMask? mask,
+    bool locked = false,
   }) {
     nextId += 1;
     return ClipLayer(
@@ -66,6 +74,11 @@ void main() {
       original: null,
       originalTransform: null,
       vectorData: vectorData,
+      mainColour: mainColour,
+      effectsOn: effects,
+      clipped: clipped,
+      mask: mask,
+      locked: locked,
       children: const [],
     );
   }
@@ -80,6 +93,9 @@ void main() {
     bool collapsed = false,
     bool animation = false,
     ClipPlacement? camera,
+    bool effects = false,
+    ClipLayerMask? mask,
+    bool locked = false,
   }) {
     nextId += 1;
     return ClipLayer(
@@ -100,12 +116,27 @@ void main() {
       original: null,
       originalTransform: null,
       camera: camera,
+      effectsOn: effects,
+      mask: mask,
+      locked: locked,
       children: children,
     );
   }
 
-  ClipLayer animation(String name, List<ClipLayer> cels, {int composite = 2}) =>
-      folder(name, cels, animation: true, composite: composite);
+  ClipLayer animation(
+    String name,
+    List<ClipLayer> cels, {
+    int composite = 2,
+    bool effects = false,
+    bool locked = false,
+  }) => folder(
+    name,
+    cels,
+    animation: true,
+    composite: composite,
+    effects: effects,
+    locked: locked,
+  );
 
   ClipLayer root(List<ClipLayer> children) {
     nextId += 1;
@@ -181,6 +212,7 @@ void main() {
     List<ClipTimeline> timelines, {
     Map<String, String> sounds = const {},
     ClipFrame? frame,
+    double resolution = 72,
   }) {
     var layers = 0;
     var frames = 0;
@@ -194,6 +226,7 @@ void main() {
         currentTimeline: 0,
         warnings: const [],
         frame: frame,
+        resolution: resolution,
       ),
       name: 'file',
       trackId: const TrackId('track'),
@@ -1075,7 +1108,6 @@ void main() {
         layer('v', kind: ClipLayerKind.vector, drawn: false),
         // Each declares a render, as the file's do: left out, nothing of
         // them is baked.
-        layer('words', kind: ClipLayerKind.lettering),
         layer('p', kind: ClipLayerKind.paper),
         layer('f', kind: ClipLayerKind.fill),
         // A sound is no row of pictures — and its timeline plays nothing
@@ -1095,17 +1127,97 @@ void main() {
       ],
       [
         ('clipVector', 'v'),
-        ('unsupportedLayerKind', 'words'),
         ('unsupportedLayerKind', 'p'),
         ('unsupportedLayerKind', 'f'),
         ('unsupportedLayerKind', 'o'),
         ('clipBlend', 'odd'),
       ],
     );
-    expect(result.warnings[1], unsupportedLayerKind('words'));
+    expect(result.warnings[1], unsupportedLayerKind('p'));
     expect(names(cut), ['v', 'odd']);
     expect(row(cut, 'odd').blendMode, LayerBlendMode.normal);
     expect(result.bakes.single.source.name, 'odd');
+  });
+
+  group('F-370: the paper with no row under it is the PROJECT\'s paper', () {
+    const colour = 0xFF204060;
+    ClipLayer paper(String name, {bool shown = true, int opacity = 256}) =>
+        layer(
+          name,
+          kind: ClipLayerKind.paper,
+          shown: shown,
+          opacity: opacity,
+          mainColour: colour,
+        );
+
+    List<(String, String?)> said(ClipImportPlan result) => [
+      for (final warning in result.warnings)
+        (warning.key, warning.values['name']),
+    ];
+
+    test('🎯its colour at its opacity, and said nowhere — what is left out '
+        'stands under nothing, and a second paper is a kind not carried', () {
+      final result = plan(
+        root([
+          // A layer of another kind that names a colour is no paper.
+          layer('fill', kind: ClipLayerKind.fill, mainColour: 0xFF000000),
+          paper('sheet', opacity: 100),
+          paper('second'),
+          layer('BG'),
+        ]),
+        [timeline(const [])],
+      );
+
+      expect(result.paper, const ProjectBackground.color(0x64204060));
+      expect(said(result), [
+        ('unsupportedLayerKind', 'fill'),
+        ('unsupportedLayerKind', 'second'),
+      ]);
+      expect(names(result.cuts.single), ['BG']);
+    });
+
+    test('a hidden one is an ABSENT paper, its colour kept', () {
+      final result = plan(
+        root([paper('sheet', shown: false, opacity: 200), layer('BG')]),
+        [timeline(const [])],
+      );
+
+      expect(
+        result.paper,
+        const ProjectBackground.color(0xC7204060, none: true),
+      );
+      expect(result.warnings, isEmpty);
+    });
+
+    test('⛔one with a row under it covers that row, and one in a folder '
+        'takes its folder\'s look — neither is the project\'s, and both are '
+        'said', () {
+      final result = plan(
+        root([
+          folder('LO', [paper('inside')]),
+          layer('BG'),
+          paper('over'),
+        ]),
+        [timeline(const [])],
+      );
+
+      expect(result.paper, isNull);
+      expect(said(result), [
+        ('unsupportedLayerKind', 'inside'),
+        ('unsupportedLayerKind', 'over'),
+      ]);
+    });
+
+    test('a paper the file names no colour for is said, and leaves the '
+        'project none', () {
+      final result = plan(
+        root([layer('p', kind: ClipLayerKind.paper), layer('BG')]),
+        [timeline(const [])],
+      );
+
+      expect(result.paper, isNull);
+      expect(said(result), [('unsupportedLayerKind', 'p')]);
+    });
   });
 
   test('a kind not carried inside a cel is left out before it takes a place '
@@ -1114,7 +1226,7 @@ void main() {
     final a = animation('A', [
       folder('1', [
         layer('line1'),
-        layer('words', kind: ClipLayerKind.lettering),
+        layer('fill', kind: ClipLayerKind.fill),
       ]),
       folder('2', [layer('line2')]),
     ]);
@@ -1128,13 +1240,120 @@ void main() {
       (layer) => layer.kind == LayerKind.animation,
     );
 
-    expect(names(cut), ['A', 'A'], reason: 'no row for the text');
+    expect(names(cut), ['A', 'A'], reason: 'no row for the fill');
     expect(
       {for (final bake in result.bakes) bake.source.name: bake.frameId},
       {'line1': base.frames[0].id, 'line2': base.frames[1].id},
-      reason: 'cel 1\'s top is the layer under the text',
+      reason: 'cel 1\'s top is the layer under the fill',
     );
     expect(result.warnings, contains(unsupportedLayerKind('A / 1')));
+  });
+
+  group('🎯F-370-Q3: a text layer comes in as the app\'s own texts (유저 '
+      '10-17: 「이제 들인다(앱의 글자로)」)', () {
+    ClipLayer letters(
+      String name,
+      String says, {
+      int opacity = 256,
+      ClipLayerMask? mask,
+    }) {
+      nextId += 1;
+      return ClipLayer(
+        id: nextId,
+        name: name,
+        kind: ClipLayerKind.lettering,
+        visibility: 1,
+        opacity: opacity,
+        composite: 0,
+        folderFlags: 0,
+        isAnimationFolder: false,
+        uuid: 'uuid$nextId',
+        left: 0,
+        top: 0,
+        offsetX: 0,
+        offsetY: 0,
+        // A text layer's render is declared and never stored.
+        render: null,
+        original: null,
+        originalTransform: null,
+        texts: [(text: says, attributes: clipTextAttributesBytes())],
+        mask: mask,
+        children: const [],
+      );
+    }
+
+    test('outside the cels: a row of its own, its cel its texts — set at '
+        'the canvas\'s resolution, and nothing said of a kind not '
+        'carried', () {
+      final result = plan(
+        root([layer('BG'), letters('words', 'Hi')]),
+        [timeline(const [])],
+        resolution: 144,
+      );
+
+      expect(names(result.cuts.single), ['BG', 'words']);
+      final bake = result.bakes.singleWhere(
+        (bake) => bake.source.name == 'words',
+      );
+      expect(bake.label, 'words');
+      final content = bake.texts.single.content;
+      expect(content.text, 'Hi');
+      expect(
+        content.spans.single.style.fontSize,
+        24,
+        reason: '12 points at 144 dpi',
+      );
+      expect(content.spans.single.style.color, 0xFF000000);
+      expect(result.warnings, isEmpty);
+    });
+
+    test('in a cel: at the cel\'s opacity its letters are that faint, as '
+        'every picture of a cel is baked (Q5) — and it is named by its '
+        'folder and cel', () {
+      final a = animation('A', [
+        folder('1', [letters('words', 'Hi', opacity: 128)]),
+      ]);
+      final result = plan(root([a]), [
+        timeline([
+          keyed(a, [(0, '1')]),
+        ]),
+      ]);
+
+      final bake = result.bakes.single;
+      expect(bake.alpha, 0.5);
+      expect(bake.texts.single.content.spans.single.style.color, 0x80000000);
+      expect(bake.label, 'A / 1');
+    });
+
+    test('its mask is said — the app\'s texts have none, and no picture of '
+        'its is baked through one', () {
+      final mask = (
+        source: ClipPictureSource(
+          attribute: offscreenAttributeBytes(
+            width: 4,
+            height: 4,
+            columns: 1,
+            rows: 1,
+            colourChannels: 0,
+          ),
+          blocksId: 'm',
+        ),
+        left: 0,
+        top: 0,
+      );
+      final result = plan(
+        root([letters('words', 'Hi', mask: mask)]),
+        [timeline(const [])],
+      );
+
+      expect(result.warnings, [layerMaskNotApplied('words')]);
+    });
+
+    test('every other layer bakes no text', () {
+      final result = plan(root([layer('BG')]), [timeline(const [])]);
+
+      expect(result.bakes.single.texts, isEmpty);
+    });
   });
 
   test('a vector layer with strokes is baked like any picture — and what its '
@@ -1155,6 +1374,167 @@ void main() {
       'clipVector',
     ]);
     expect(result.bakes.single.source.name, 'lines');
+  });
+
+  test('what CLIP STUDIO draws over what comes in — an effect of its '
+      'properties on, or a clip to the layer under it — is said in every '
+      'decoder\'s words: a layer or folder outside the cels by its own '
+      'name, one in a cel (the cel\'s folder too) by its folder and cel, '
+      'and one left out only as left out', () {
+    final a = animation(
+      'A',
+      [
+        folder('1', [layer('trace', effects: true), layer('line1')]),
+        folder('2', [layer('line2', clipped: true)], effects: true),
+      ],
+      effects: true,
+    );
+    final result = plan(
+      root([
+        layer('tinted', effects: true),
+        folder('LO', [layer('clipped', clipped: true)], effects: true),
+        a,
+        layer('f', kind: ClipLayerKind.fill, effects: true, clipped: true),
+      ]),
+      [
+        timeline([
+          keyed(a, [(0, '1'), (6, '2')]),
+        ]),
+      ],
+    );
+
+    expect(
+      [
+        for (final warning in result.warnings)
+          (warning.key, warning.values['name']),
+      ],
+      [
+        ('layerEffectsNotApplied', 'tinted'),
+        ('layerEffectsNotApplied', 'LO'),
+        ('clippingNotApplied', 'clipped'),
+        ('layerEffectsNotApplied', 'A'),
+        ('layerEffectsNotApplied', 'A / 1'),
+        ('layerEffectsNotApplied', 'A / 2'),
+        ('clippingNotApplied', 'A / 2'),
+        ('clipCelLayers', 'A'),
+        ('unsupportedLayerKind', 'f'),
+      ],
+    );
+    expect(result.warnings.first, layerEffectsNotApplied('tinted'));
+    expect(result.warnings[2], clippingNotApplied('clipped'));
+  });
+
+  group('🎯a layer mask that is on (보드 the-clip-import-leaves-masks-and-'
+      'locks-unsaid)', () {
+    ClipLayerMask maskOf({int colourChannels = 0, bool held = true}) => (
+      source: held
+          ? ClipPictureSource(
+              attribute: offscreenAttributeBytes(
+                width: 4,
+                height: 4,
+                columns: 1,
+                rows: 1,
+                colourChannels: colourChannels,
+              ),
+              blocksId: 'm',
+            )
+          : null,
+      left: 0,
+      top: 0,
+    );
+
+    test('is baked into its layer\'s picture, as Photoshop\'s is — said only '
+        'where no picture is baked through it: a folder\'s, the cel '
+        'folder\'s too, one the file holds no picture of, one that is not '
+        'one byte a pixel', () {
+      final inCel = layer('c', mask: maskOf());
+      final a = animation('A', [
+        folder('1', [inCel], mask: maskOf()),
+      ]);
+      final masked = layer('masked', mask: maskOf());
+      final strokes = layer(
+        'vectors',
+        kind: ClipLayerKind.vector,
+        drawn: false,
+        vectorData: const ['strokes'],
+        mask: maskOf(),
+      );
+      final lost = layer('lost', mask: maskOf(held: false));
+      final colour = layer('colour', mask: maskOf(colourChannels: 4));
+      final result = plan(
+        root([
+          masked,
+          strokes,
+          folder('LO', [layer('in')], mask: maskOf()),
+          lost,
+          colour,
+          a,
+        ]),
+        [
+          timeline([
+            keyed(a, [(0, '1')]),
+          ]),
+        ],
+      );
+
+      expect(
+        [
+          for (final warning in result.warnings)
+            (warning.key, warning.values['name']),
+        ],
+        [
+          ('clipVector', 'vectors'),
+          ('layerMaskNotApplied', 'LO'),
+          ('layerMaskNotApplied', 'lost'),
+          ('layerMaskNotApplied', 'colour'),
+          ('layerMaskNotApplied', 'A / 1'),
+          ('clipCelLayers', 'A'),
+        ],
+      );
+      expect(result.warnings[1], layerMaskNotApplied('LO'));
+      expect(
+        [for (final bake in result.bakes) bake.source.name],
+        ['masked', 'vectors', 'in', 'lost', 'colour', 'c'],
+        reason: 'a mask said is a picture baked without it — never one lost',
+      );
+    });
+  });
+
+  test('a lock comes in as no row here has one — said in every decoder\'s '
+      'word, a folder\'s and a cel\'s as much as a layer\'s; one left out '
+      'is said only as left out', () {
+    final a = animation('A', [
+      folder('1', [layer('c', locked: true)]),
+    ], locked: true);
+    final result = plan(
+      root([
+        layer('held', locked: true),
+        folder('LO', [layer('in')], locked: true),
+        a,
+        layer('f', kind: ClipLayerKind.fill, locked: true),
+      ]),
+      [
+        timeline([
+          keyed(a, [(0, '1')]),
+        ]),
+      ],
+    );
+
+    expect(
+      [
+        for (final warning in result.warnings)
+          (warning.key, warning.values['name']),
+      ],
+      [
+        ('lockNotImported', 'held'),
+        ('lockNotImported', 'LO'),
+        ('lockNotImported', 'A'),
+        ('lockNotImported', 'A / 1'),
+        ('clipCelLayers', 'A'),
+        ('unsupportedLayerKind', 'f'),
+      ],
+    );
+    expect(result.warnings.first, lockNotImported('held'));
   });
 
   test('a cel holding folders says its layers\' names are not kept, and '
@@ -1181,11 +1561,12 @@ void main() {
 
   group('🗣️a sound plays on its cut\'s SE rows (유저 10-09: 「소리도 가져오게 '
       '못하나? 단일파일안에있을거아냐」)', () {
-    ClipLayer sound(String name, {bool shown = true}) {
+    ClipLayer sound(String name, {bool shown = true, bool locked = false}) {
       nextId += 1;
       return ClipLayer(
         id: nextId,
         name: name,
+        locked: locked,
         kind: ClipLayerKind.sound,
         visibility: shown ? 1 : 0,
         opacity: 256,
@@ -1283,6 +1664,23 @@ void main() {
       );
       expect(result.warnings, isEmpty);
       expect(result.bakes, isEmpty, reason: 'a sound has no picture to bake');
+    });
+
+    test('a locked sound comes in on an SE row, which has no lock — said, '
+        'as every row that comes in is', () {
+      final voice = sound('voice', locked: true);
+      final result = plan(
+        root([voice]),
+        [
+          timeline([
+            plays(voice, [cue(voice)]),
+          ]),
+        ],
+        sounds: takenOut(voice),
+      );
+
+      expect(seRow(result.cuts.single).name, 'voice');
+      expect(result.warnings, [lockNotImported('voice')]);
     });
 
     test('a cut that starts after the sound did plays it from where the cut '

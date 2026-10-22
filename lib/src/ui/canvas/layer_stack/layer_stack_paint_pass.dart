@@ -43,11 +43,16 @@ class _SurfaceSlot {
   _SurfaceSlot({
     required this.painter,
     required this.float,
+    required this.keys,
     required LayerPlacement? placement,
   }) : canvasToSlot = _undoneWrap(placement);
 
   final BitmapSurfacePainter painter;
   final SelectionFloatOverlay? float;
+
+  /// The row's leading colour keys — the half its surface already went
+  /// through, which a float over it is shown through as well ([shown]).
+  final List<ResolvedLayerEffect> keys;
 
   /// What takes the float — CANVAS space, by its contract
   /// ([SelectionFloatPaint]) — into the slot, which is drawn under its row's
@@ -68,18 +73,28 @@ class _SurfaceSlot {
     return wrap.invert() == 0 ? null : wrap;
   }
 
+  /// The float as this row shows it ([SelectionFloatPaint.shownOn]), or
+  /// null when nothing floats — read ONCE per paint, as [extent] is: on a
+  /// keyed row the answer can be a landing.
+  late final RowFloat? shown = switch (float?.value) {
+    null => null,
+    final value when value.isEmpty => null,
+    final value => value.shownOn(keys, canvasToRow: canvasToSlot),
+  };
+
   /// What the slot draws, in its own space — the law is
   /// [_LayerStackPaintPass._activeSurfaceExtent]'s (F-85).
   late final Rect extent = () {
     final drawn = painter.drawnWorldRect;
-    final onCanvas = float?.value?.drawnWorldRect;
-    if (onCanvas == null || onCanvas.isEmpty) {
+    final shown = this.shown;
+    final told = shown?.preview.drawnWorldRect;
+    if (shown == null || told == null || told.isEmpty) {
       return drawn;
     }
-    final intoSlot = canvasToSlot;
+    final intoSlot = shown.canvasToRow;
     final floated = intoSlot == null
-        ? onCanvas
-        : MatrixUtils.transformRect(intoSlot, onCanvas);
+        ? told
+        : MatrixUtils.transformRect(intoSlot, told);
     // A slot that draws nothing answers [Rect.zero], and a union with it
     // would reach back to the origin.
     return drawn.isEmpty ? floated : drawn.expandToInclude(floated);
@@ -224,8 +239,9 @@ class _LayerStackPaintPass {
       }
     }
     // The group buffer's bounds are a SIZE HINT to the engine: it
-    // allocates an offscreen that big. The pasteboard is 3×3 canvases —
-    // 9× the area (5×5 and 25× until H2, 2026-08-22) — so handing it over
+    // allocates an offscreen that big. The pasteboard is up to 3×3
+    // canvases — 9× the area (5×5 and 25× until H2, 2026-08-22) at its 3x
+    // size (I-109) — so handing it over
     // verbatim would make every folder buffer 9× more expensive than the
     // picture it holds. Only what is ON SCREEN can matter, so intersect
     // with the visible canvas-space rect (the same rect the surface painter
@@ -240,7 +256,9 @@ class _LayerStackPaintPass {
       ),
       Offset.zero & size,
     );
-    final pasteboardRect = _painter.canvasSize.pasteboardRect;
+    final pasteboardRect = _painter.canvasSize
+        .pasteboardAt(_painter.pasteboardReach)
+        .rect;
     // Hole ① of the clamp plan: NOT ON SCREEN means NOT PAINTED, and one
     // law covers both ways off-screen happens — a degenerate view
     // (collapsed panel: empty visibleRect, which used to substitute the
@@ -363,7 +381,8 @@ class _LayerStackPaintPass {
         // that works. See [DisplayBufferCache.derivedDepth] and
         // [DisplayBufferCache.promotedCount]. `drawn` — how many of the
         // patches rastered no head ([DisplayBufferCache.drawnCount]) — for
-        // the same reason again.
+        // the same reason again, and `apart` — how many recomposes went
+        // apart ([DisplayBufferCache.composedApartCount]) — too.
         final cadence =
             'full~${cache.fullCount ~/ 8}'
             ' patched~${cache.patchedCount ~/ 32}'
@@ -374,6 +393,7 @@ class _LayerStackPaintPass {
             'buf full=${cache.fullCount}'
             ' patched=${cache.patchedCount}'
             ' drawn=${cache.drawnCount}'
+            ' apart=${cache.composedApartCount}'
             ' carried=${cache.scrolledCount}'
             ' chain=${cache.derivedDepth}'
             ' real=${cache.promotedCount}',
@@ -469,8 +489,9 @@ class _LayerStackPaintPass {
     // no layer is ever asked what it is.
     //
     // 📐The buffer is the VISIBLE canvas-space rect, not the pasteboard —
-    // the pasteboard is 3×3 canvases (5×5 until H2) and rasterising all of
-    // it would cost 9× what is on screen. It is not the canvas rect either:
+    // the pasteboard is up to 3×3 canvases (5×5 until H2) and rasterising
+    // all of it would cost 9× what is on screen. It is not the canvas rect
+    // either:
     // artwork parked on the pasteboard is visible and must composite with
     // the rest (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
     switch (_composeDisplayBuffer(_contentExtent)) {
@@ -545,11 +566,15 @@ class _LayerStackPaintPass {
   late final _SurfaceSlot? _activeSlot =
       switch (_painter.activeSurfacePainter) {
         null => null,
-        final painter => _SurfaceSlot(
-          painter: painter,
-          float: _painter.floatOverlay,
-          placement: _activeRowIn(_painter.nodes)?.placement,
-        ),
+        final painter => () {
+          final row = _activeRowIn(_painter.nodes);
+          return _SurfaceSlot(
+            painter: painter,
+            float: _painter.floatOverlay,
+            keys: row?.keys ?? const [],
+            placement: row?.placement,
+          );
+        }(),
       };
 
   /// Each row a lift holds beside the live one, by its surface (I-37 ·
@@ -562,6 +587,7 @@ class _LayerStackPaintPass {
         () => _SurfaceSlot(
           painter: row.lifted.surface,
           float: row.lifted.float,
+          keys: row.keys,
           placement: row.placement,
         ),
       );
@@ -971,8 +997,7 @@ class _LayerStackPaintPass {
     // redraws every step.
     void paintLiveBody(Canvas into) {
       into.save();
-      into.clipRect(slot.painter.pasteboardRect);
-      final float = slot.float?.value;
+      into.clipRect(slot.painter.storableRect);
         slot.painter.paintContentInto(
           into,
           layerPaint: ridingPaint,
@@ -1000,9 +1025,11 @@ class _LayerStackPaintPass {
           // drawn here after it — below 100% the surface draws level
           // tiles, and a float laid over them 1:1 at `none` was sampled one
           // pixel in two, so it looked sharper than what it landed as.
-          float: float == null
-              ? null
-              : (preview: float, canvasToRow: slot.canvasToSlot),
+          //
+          // 🚨transform-float-skips-colour-key: on a keyed row the float is
+          // shown through the row's keys, as what it lands as
+          // ([_SurfaceSlot.shown]) — not as the unkeyed pixels it holds.
+          float: slot.shown,
         );
       into.restore();
     }
@@ -1045,7 +1072,7 @@ class _LayerStackPaintPass {
       if (needsBuffer) {
         canvas.saveLayer(
           effectBufferBounds(
-            slot.painter.pasteboardRect,
+            slot.painter.storableRect,
             activeEffects.outsetPixels,
           ),
           activePaint,
@@ -1063,8 +1090,7 @@ class _LayerStackPaintPass {
   /// unposed.
   void _paintImageNode(Canvas canvas, _PaintImage node, double rasterScale) {
     final _PaintImage(
-      :image,
-      :worldRect,
+      :pieces,
       :extent,
       :laidBack,
       :placement,
@@ -1081,8 +1107,7 @@ class _LayerStackPaintPass {
     // same matrix.
     drawPosedLayerImage(
       canvas,
-      image: image,
-      worldRect: worldRect,
+      pieces: pieces,
       extent: extent,
       placement: null,
       opacity: opacity,
@@ -1405,6 +1430,25 @@ class _LayerStackPaintPass {
     return null;
   }
 
+  /// A canvas onto the buffer over [rect], in the buffer's own pixels:
+  /// canvas pixels at level 0, 2^level canvas pixels below 100% — one
+  /// scale, then the translate, so every draw (the carried base, the paper,
+  /// the level images) lands 1:1. Bounded by those pixels, so a draw into
+  /// it can ask what it can land on (`drawPosedLayerImage`, a picture in
+  /// pieces).
+  Canvas _bufferCanvas(ui.PictureRecorder recorder, Rect rect) =>
+      Canvas(
+          recorder,
+          Rect.fromLTWH(
+            0,
+            0,
+            (rect.width / _levelStep).roundToDouble(),
+            (rect.height / _levelStep).roundToDouble(),
+          ),
+        )
+        ..scale(1 / _levelStep)
+        ..translate(-rect.left, -rect.top);
+
   /// A miss: the buffer recomposed — patched over the carried base, scrolled
   /// from the previous buffer, or rastered whole — and stored when the
   /// cache can keep it.
@@ -1419,12 +1463,7 @@ class _LayerStackPaintPass {
     final scroll = miss.scroll;
     final canScroll = miss.canScroll;
     final recorder = ui.PictureRecorder();
-    final into = Canvas(recorder);
-    // The buffer's own pixels: canvas pixels at level 0, 2^level canvas
-    // pixels below 100% — one scale, then the translate, so every draw
-    // below (the carried base, the paper, the level images) lands 1:1.
-    into.scale(1 / _levelStep);
-    into.translate(-rect.left, -rect.top);
+    final into = _bufferCanvas(recorder, rect);
     // ⛔SET AT THE BRANCH THAT DECIDES IT. Two of these three draw a base
     // into this recorder; when that base is the cache's deferred HEAD the
     // new image retains it (`DisplayBufferCache._derivedDepth` says what
@@ -1527,7 +1566,9 @@ class _LayerStackPaintPass {
                 blendMode: row.blendMode,
                 effects: row.effects,
               ) &&
-              drawsAsTexelCopy(row.image, row.worldRect),
+              row.pieces.every(
+                (piece) => drawsAsTexelCopy(piece.image, piece.worldRect),
+              ),
         CompositeLeaf(payload: final _SurfaceRow row) => inkCropDrawsTheSame(
           placement: row.placement,
           blendMode: row.blendMode,
@@ -1715,16 +1756,126 @@ class _LayerStackPaintPass {
   ///
   /// ⛔NO ANTIALIAS on the clip: a soft edge would blend the region into the
   /// carried pixels and leave a seam of its own.
+  ///
+  /// 🚨★★★F-287 — THE CLIP DOES NOT HOLD A BLEND THAT IS NOT IN PLACE (유저
+  /// 2026-10-04 · 10-05 · 10-12, 실기: 「곱하기레이어가 두개이상있을때, 세번째
+  /// 일반 레이어에서 그리면 선을 긋거나 캔버스 줌인 줌아웃할때마다 그림
+  /// 이상한곳이 진해짐. 현재 레이어 바꾸거나 하면 초기화됨 … 이 문제는 고쳐도
+  /// 3번째 발생이니 다양한 각도에서 확인하고 해결」 — the family of F-172 and
+  /// F-243). 🔬Measured on the Windows app (Impeller GLES, 2026-10-08): A and
+  /// B both multiply, every stroke on B patched three times, and each patch
+  /// multiplied B's colour in once more OUTSIDE the patch — wherever B lay
+  /// (f0d060 → c87105 → a73d00 …), A alone and the paper untouched; one
+  /// blend alone changed nothing. The carried pixels already hold the
+  /// composite, so a draw that escapes the clip lays a second copy of itself
+  /// over them, on every patch and every carry until a full composite —
+  /// switching the row — draws it once again.
+  /// 🔬Again on the same app (2026-10-19), on dark paper so that any mode
+  /// could show it, each stroke's dabs counted: a stroke on a NORMAL row
+  /// above both blends or between them — the user's case — laid B in three
+  /// times more, as one on B did, while one on A, or over a single blend,
+  /// did nothing. A notch of the wheel OUT within a level laid it in once
+  /// more, at levels 2, 1 and 0 alike (multiply and screen; the notch back
+  /// in, and a notch out of the fitted view with the whole page in sight,
+  /// changed nothing). Every mode that shows being laid twice did it —
+  /// multiply, color burn, screen, color dodge, overlay, soft and hard
+  /// light, difference, exclusion; darken and lighten laid twice are what
+  /// they are laid once. Composed apart, not one of them moved a pixel. The
+  /// same draws on the engine alone (200+ stacks, the clip and all) never
+  /// escaped, so WHERE the app lets them out is still not known — and
+  /// composing apart does not need to know it.
+  /// ⇒ When anything in the stack does not blend in place, the region is
+  /// composed APART ([_drawComposedApart]): on nothing, in an image of its
+  /// own, and laid onto the carried pixels by a draw that does — what a lost
+  /// clip lets through lands on that image's margin, which is not copied.
+  /// ⛔ONLY THEN. The image is a render pass a step (a snapshot costs the
+  /// same 1.6–2.0 ms whatever its size, measured 2026-09-25), which a stack
+  /// of in-place draws does not need and still draws as a picture
+  /// ([_pictureDrawsTheSame]). The question is [blendsInPlace]'s, the one
+  /// every other site asks of a blend ([_everyDrawBlendsInPlace]) — a mode
+  /// left out costs time, never a pixel.
   void _recomposeOverCarried(Canvas into, List<Rect> region) {
+    // ⛔NO REGION, NO RECOMPOSE: a carry into a rect inside the one it had
+    // — a zoom in on the same level — with nothing live changed has no
+    // band, a patch whose change lies wholly outside the buffer has no part
+    // in it, and the carried pixels are the whole buffer.
+    if (region.isEmpty) {
+      return;
+    }
     final clip = Path();
     for (final part in region) {
       clip.addRect(part);
     }
     into.save();
     into.clipPath(clip, doAntiAlias: false);
-    into.drawPaint(Paint()..blendMode = BlendMode.clear);
-    _paintContent(into, intoTheBuffer: true, rasterScale: 1 / _levelStep);
+    if (!debugRecomposeApart || _everyDrawBlendsInPlace()) {
+      into.drawPaint(Paint()..blendMode = BlendMode.clear);
+      _paintContent(into, intoTheBuffer: true, rasterScale: 1 / _levelStep);
+    } else {
+      _drawComposedApart(into, region, clip);
+    }
     into.restore();
+  }
+
+  /// [region] composed apart — in an image of its own over the parts'
+  /// bounds, on nothing — and laid onto [into], already held to [clip],
+  /// `src`: where the composite draws nothing the carried pixels go too
+  /// (F-104), with no clear before it.
+  void _drawComposedApart(Canvas into, List<Rect> region, Path clip) {
+    final bounds = region.reduce((a, b) => a.expandToInclude(b));
+    final recorder = ui.PictureRecorder();
+    final apart = Canvas(recorder)
+      ..scale(1 / _levelStep)
+      ..translate(-bounds.left, -bounds.top)
+      // Only to spare the margin's pixels: whatever gets past it lands on
+      // the margin, and the blit leaves the margin behind.
+      ..clipPath(clip, doAntiAlias: false);
+    _paintContent(apart, intoTheBuffer: true, rasterScale: 1 / _levelStep);
+    final picture = recorder.endRecording();
+    final ui.Image image;
+    try {
+      image = picture.toImageSync(
+        (bounds.width / _levelStep).round(),
+        (bounds.height / _levelStep).round(),
+      );
+    } finally {
+      picture.dispose();
+    }
+    _layLevelPixels(into, image, bounds, blendMode: BlendMode.src);
+    // The recording holds its own reference to what it draws.
+    image.dispose();
+    _painter.bufferCache?.composedApartCount += 1;
+  }
+
+  /// Whether every draw the stack makes blends in place ([blendsInPlace]) —
+  /// what a recompose over carried pixels may stand its clip on. A folder's
+  /// children count although the folder composes them in an image of its
+  /// own, and a stamp ghost counts whatever its blend: a mode left out costs
+  /// time, never a pixel.
+  bool _everyDrawBlendsInPlace() =>
+      _painter.activeSurfacePainter?.stampPreview?.value?.image == null &&
+      _nodesBlendInPlace(_painter.nodes);
+
+  bool _nodesBlendInPlace(List<CompositeNode<_PaintRow>> nodes) {
+    for (final node in nodes) {
+      final inPlace = switch (node) {
+        CompositeLeaf(payload: final _PaintImage row) => blendsInPlace(
+          row.blendMode.paintBlendMode,
+        ),
+        CompositeLeaf(payload: final _SurfaceRow row) => blendsInPlace(
+          row.blendMode.paintBlendMode,
+        ),
+        CompositeGroup(:final blendMode, :final children) =>
+          blendsInPlace(blendMode.paintBlendMode) &&
+              _nodesBlendInPlace(children),
+        // Its own passes are `srcOver` and `plus`.
+        CompositeAdjustment(:final children) => _nodesBlendInPlace(children),
+      };
+      if (!inPlace) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Recomposes only [dirty] over the carried [base]: the old pixels are
@@ -1736,16 +1887,43 @@ class _LayerStackPaintPass {
   /// dirty rect is grown to whole buffer pixels first — a level pixel the
   /// stroke touched by a third would otherwise be kept as it was, its
   /// centre outside the clip.
+  ///
+  /// ⛔HELD TO [rect], as the carry's bands are: the dirty rect is the live
+  /// tiles a step changed, and those reach past the view — by up to a tile
+  /// for a dab at its edge, by the whole canvas for a fill or an undo made
+  /// zoomed in. A region composed apart (F-287) is an image of what it is
+  /// given, every pixel of which outside [rect] would be thrown away — and
+  /// on a large canvas one past the side the buffer itself is capped at
+  /// ([_LayerStackPainter._maxBufferSide]).
   void _blitPatched(Canvas into, ui.Image base, Rect rect, Rect dirty) {
+    _layLevelPixels(into, base, rect);
+    final part = wholeLevelPixelsOutward(dirty, _level).intersect(rect);
+    _recomposeOverCarried(into, [if (!part.isEmpty) part]);
+  }
+
+  /// Lays [image] — pixels made at this buffer's level, the whole of it or
+  /// its [source] — onto [target] one texel to a pixel: the patch's base,
+  /// the scroll carry's overlap and a region composed apart (F-287) are
+  /// all laid so. A COPY, so `none` — a filter would resample what is
+  /// already aligned — and no antialias at edges that lie on the level's
+  /// grid. `src` lays it in place of what is there.
+  void _layLevelPixels(
+    Canvas into,
+    ui.Image image,
+    Rect target, {
+    Rect? source,
+    BlendMode blendMode = BlendMode.srcOver,
+  }) {
     into.drawImageRect(
-      base,
-      Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
-      rect,
+      image,
+      source ??
+          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      target,
       Paint()
+        ..blendMode = blendMode
         ..filterQuality = ui.FilterQuality.none
         ..isAntiAlias = false,
     );
-    _recomposeOverCarried(into, [wholeLevelPixelsOutward(dirty, _level)]);
   }
 
   /// Carries the overlap of the previous buffer ([scroll]) into [rect]
@@ -1754,21 +1932,19 @@ class _LayerStackPaintPass {
   double _blitScrolled(Canvas into, _Base scroll, Rect rect, Rect? dirty) {
     final was = scroll.rect;
     final overlap = was.intersect(rect);
-    into.drawImageRect(
+    _layLevelPixels(
+      into,
       scroll.image,
+      overlap,
       // The overlap in the OLD image's own pixels: the offset between the
       // two rects, in buffer pixels — both rects lie on the same level's
       // grid (the level is in the key), so it is whole.
-      Rect.fromLTWH(
+      source: Rect.fromLTWH(
         (overlap.left - was.left) / _levelStep,
         (overlap.top - was.top) / _levelStep,
         overlap.width / _levelStep,
         overlap.height / _levelStep,
       ),
-      overlap,
-      Paint()
-        ..filterQuality = ui.FilterQuality.none
-        ..isAntiAlias = false,
     );
     // ⛔THE BANDS, LISTED. Up to four of them — the strips of the new rect
     // the old one did not reach — plus the live dirty rect, because the

@@ -49,7 +49,7 @@ CelPixelWalk celPixelWalkFor({
   // a seam at every tile boundary.
   final read = selectionMaskOnPasteboard(
     region,
-    canvasSize: surface.canvasSize,
+    wall: surface.pasteboard,
     options: options,
   );
   if (read == null) {

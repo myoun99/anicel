@@ -14,9 +14,10 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 
+import '../helpers/cels_kept_in_a_file.dart';
+import '../helpers/cels_parked_cold.dart';
 import '../helpers/project_scratch_folder.dart';
 
 /// R20-A1 two-tier baked truth: cold cels are encoded+compressed blobs
@@ -51,16 +52,12 @@ void main() {
     );
   }
 
-  AnicelCelBlob blobOf(BrushFrameKey k, BitmapSurface surface) =>
-      AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, surface));
-
   test('a restore ACCOUNTS for the bytes it took on — a tier put that '
       'forgot its increment would read as free RAM', () {
     final store = BrushFrameStore();
     final a = key(frame: 'a');
     final b = key(frame: 'b');
-    final blobs = {a: blobOf(a, inkSurface()), b: blobOf(b, inkSurface(seed: 3))};
-    store.restoreBaked(blobs);
+    final blobs = parkCold(store, {a: inkSurface(), b: inkSurface(seed: 3)});
 
     expect(
       store.coldBakedBytes,
@@ -78,7 +75,7 @@ void main() {
     final store = BrushFrameStore();
     final k = key();
     final source = inkSurface();
-    store.restoreBaked({k: blobOf(k, source)});
+    parkCold(store, {k: source});
 
     expect(
       store.celHasRenderableContent(k),
@@ -111,7 +108,7 @@ void main() {
       'and rejects a mismatched one', () {
     final store = BrushFrameStore();
     final k = key();
-    store.restoreBaked({k: blobOf(k, inkSurface())});
+    parkCold(store, {k: inkSurface()});
 
     expect(
       store.currentSurfaceWithoutReplay(
@@ -166,7 +163,7 @@ void main() {
     () async {
       final store = BrushFrameStore();
       final k = key();
-      store.restoreBaked({k: blobOf(k, inkSurface(seed: 7))});
+      parkCold(store, {k: inkSurface(seed: 7)});
 
       final donated = inkSurface(seed: 9);
       store.storeBakedSurface(k, donated);
@@ -186,8 +183,7 @@ void main() {
     // to the already-encoded bytes says just as well.
     final store = BrushFrameStore();
     final k = key();
-    final blob = blobOf(k, inkSurface());
-    store.restoreBaked({k: blob});
+    final blob = parkCold(store, {k: inkSurface()})[k]!;
 
     final snapshot = store.bakedSnapshotForSave();
     expect(snapshot.hot, isEmpty);
@@ -217,7 +213,7 @@ void main() {
     final store = BrushFrameStore();
     final from = key(layer: 'a');
     final to = key(layer: 'b');
-    store.restoreBaked({from: blobOf(from, inkSurface())});
+    parkCold(store, {from: inkSurface()});
 
     store.rekeyFrames([(from, to)]);
 
@@ -229,23 +225,10 @@ void main() {
   test('a FILE-BACKED cel counts as content, materializes byte-exactly, '
       'keeps its ref through the clean promotion, and re-cools for FREE '
       '(no encode, no cold blob) — R22-C', () async {
-    final directory = await Directory.systemTemp.createTemp('qa-fileref');
-    deleteAfterSessionEnds(directory);
     final store = BrushFrameStore();
     final k = key(frame: 'f1');
     final s = inkSurface(seed: 19);
-    final blob = blobOf(k, s);
-    final path = '${directory.path}/cel.bin';
-    File(path).writeAsBytesSync(blob.bytes);
-    store.restoreFromFile({
-      k: AnicelCelFileRef(
-        filePath: path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: canvasSize,
-        tileSize: blob.tileSize,
-      ),
-    });
+    keepInAFile(store, {k: s});
 
     expect(store.celHasRenderableContent(k), isTrue);
     expect(store.isCelFileBacked(k), isTrue);
@@ -301,6 +284,7 @@ void main() {
         length: 1,
         canvasSize: canvasSize,
         tileSize: 8,
+        photoPaths: [],
       ),
     }, dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks);
     expect(store.dirtyCelKeysSinceSave, isEmpty);
@@ -353,6 +337,7 @@ void main() {
       length: 1,
       canvasSize: canvasSize,
       tileSize: 8,
+      photoPaths: [],
     );
     store.adoptSavedFile({
       edited: ref(),
@@ -386,7 +371,7 @@ void main() {
     final store = BrushFrameStore();
     final k = key();
     final s = inkSurface(seed: 17);
-    store.restoreBaked({k: blobOf(k, s)});
+    parkCold(store, {k: s});
 
     final path = '${directory.path}/full.anicel';
     await const AnicelFileService().save(
@@ -643,6 +628,7 @@ void main() {
         length: 1,
         canvasSize: CanvasSize(width: 32, height: 32),
         tileSize: 8,
+        photoPaths: [],
       ),
     }, dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks);
 
@@ -670,7 +656,7 @@ void main() {
     final store = BrushFrameStore();
     final k = key();
     final source = inkSurface();
-    store.restoreBaked({k: blobOf(k, source)});
+    parkCold(store, {k: source});
 
     const grown = CanvasSize(width: 32, height: 32);
     store.resizeBakedSurfaces(grown, cutId: const CutId('c'));
@@ -696,7 +682,7 @@ void main() {
     // COLD arm.
     final store = BrushFrameStore();
     final k = key(frame: 'cold-victim');
-    store.restoreBaked({k: blobOf(k, inkSurface())});
+    parkCold(store, {k: inkSurface()});
     expect(store.isCelCold(k), isTrue, reason: 'fixture: really cold');
     store.storeBakedSurface(k, BitmapSurface(canvasSize: canvasSize));
     expect(store.celHasRenderableContent(k), isFalse);
@@ -715,22 +701,9 @@ void main() {
     );
 
     // FILE arm.
-    final directory = await Directory.systemTemp.createTemp('qa-empty-arm');
-    deleteAfterSessionEnds(directory);
     final fileStore = BrushFrameStore();
     final fk = key(frame: 'file-victim');
-    final blob = blobOf(fk, inkSurface(seed: 7));
-    final path = '${directory.path}/cel.bin';
-    File(path).writeAsBytesSync(blob.bytes);
-    fileStore.restoreFromFile({
-      fk: AnicelCelFileRef(
-        filePath: path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: canvasSize,
-        tileSize: blob.tileSize,
-      ),
-    });
+    keepInAFile(fileStore, {fk: inkSurface(seed: 7)});
     expect(fileStore.isCelFileBacked(fk), isTrue, reason: 'fixture');
     fileStore.storeBakedSurface(fk, BitmapSurface(canvasSize: canvasSize));
     expect(fileStore.celHasRenderableContent(fk), isFalse);

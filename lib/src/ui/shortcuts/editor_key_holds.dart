@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 
 import '../brush/brush_tool_state.dart';
 import '../brush/temporary_tool.dart';
+import '../canvas/canvas_line_hold.dart';
 import '../canvas/canvas_view_hold.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
@@ -24,6 +25,8 @@ import 'shortcut_activator_codec.dart' show isModifierKey;
 /// (PEN-7a — the tool switches through [TemporaryTool], a wheel click
 /// pans); a held key now goes through the same two doors: the eyedropper
 /// through [TemporaryTool], the pan and the turn through [CanvasViewHold].
+/// The line from the last stroke (I-119) is held the same way, through
+/// [CanvasLineHold].
 ///
 /// ⚠️TAKEN on the shortcut road, LET GO on the keyboard's. A press is taken
 /// where every shortcut is (`EditorShortcutManager`), so a focused text
@@ -38,6 +41,7 @@ final class EditorKeyHolds {
     required ValueListenable<bool> strokeLive,
   }) : _strokeLive = strokeLive {
     HardwareKeyboard.instance.addHandler(_onKey);
+    CanvasViewHold.reask = _reaskTheView;
     strokeLive.addListener(_onStrokeLive);
   }
 
@@ -81,22 +85,28 @@ final class EditorKeyHolds {
   /// moment the stroke ends.
   final Set<LogicalKeyboardKey> _waiting = {};
 
-  /// A key event on the shortcut road. HANDLED when it holds the view — the
-  /// space bar then does nothing else, its repeats included; the
-  /// eyedropper's Alt passes on, because it still modifies whatever it is
-  /// held with.
+  /// A key event on the shortcut road. HANDLED when it holds the view or
+  /// the line — the space bar then does nothing else, its repeats
+  /// included; the eyedropper's Alt passes on, because it still modifies
+  /// whatever it is held with.
   KeyEventResult engage(KeyEvent event) {
     final key = event.logicalKey;
     if (event is! KeyDownEvent || _held.containsKey(key)) {
-      return _held[key] == _KeyHold.view
-          ? KeyEventResult.handled
-          : KeyEventResult.ignored;
+      return switch (_held[key]) {
+        _KeyHold.view || _KeyHold.line => KeyEventResult.handled,
+        _ => KeyEventResult.ignored,
+      };
     }
     final view = _viewHoldOf(event);
     if (view != null) {
       _held[key] = _KeyHold.view;
       _viewPresses[key] = event;
       CanvasViewHold.held.value = view;
+      return KeyEventResult.handled;
+    }
+    if (bindings.presses(EditorActionIds.canvasLineHold, event)) {
+      _held[key] = _KeyHold.line;
+      CanvasLineHold.held.value = true;
       return KeyEventResult.handled;
     }
     if (_isEyedropperKey(key)) {
@@ -166,15 +176,25 @@ final class EditorKeyHolds {
         _end(hold);
       }
     }
-    if (_viewPresses.isNotEmpty && isModifierKey(event.logicalKey)) {
-      // A modifier that turns the press into neither keeps the hold as it
-      // is: Alt under Space is not a reason to let the view go.
-      final view = _viewHoldOf(_viewPresses.values.last);
-      if (view != null) {
-        CanvasViewHold.held.value = view;
-      }
+    if (isModifierKey(event.logicalKey)) {
+      _reaskTheView();
     }
     return false;
+  }
+
+  /// The held view press asked again, with the modifiers as they are held
+  /// now: when one goes down or up, and when a press reads the hold
+  /// ([CanvasViewHold.atThePress]). A modifier that turns the press into
+  /// neither keeps the hold as it is: Alt under Space is not a reason to
+  /// let the view go.
+  void _reaskTheView() {
+    if (_viewPresses.isEmpty) {
+      return;
+    }
+    final view = _viewHoldOf(_viewPresses.values.last);
+    if (view != null) {
+      CanvasViewHold.held.value = view;
+    }
   }
 
   /// Ends [hold] — unless another key still holds it.
@@ -185,6 +205,8 @@ final class EditorKeyHolds {
     switch (hold) {
       case _KeyHold.view:
         CanvasViewHold.held.value = null;
+      case _KeyHold.line:
+        CanvasLineHold.held.value = false;
       case _KeyHold.eyedropper:
         temporaryTool.release(keep: false);
     }
@@ -206,17 +228,22 @@ final class EditorKeyHolds {
   /// it back would rebuild a tree that is being taken down.
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
+    if (CanvasViewHold.reask == _reaskTheView) {
+      CanvasViewHold.reask = null;
+    }
     _strokeLive.removeListener(_onStrokeLive);
     _waiting.clear();
     _viewPresses.clear();
     _held.clear();
     CanvasViewHold.held.value = null;
+    CanvasLineHold.held.value = false;
   }
 }
 
 /// What a held key stands for while it is down — the view (a pan or a
-/// turn, [CanvasViewHold]) or the eyedropper.
-enum _KeyHold { view, eyedropper }
+/// turn, [CanvasViewHold]), the line from the last stroke
+/// ([CanvasLineHold]) or the eyedropper.
+enum _KeyHold { view, line, eyedropper }
 
 /// The eyedropper's key — Alt, as it always was (유저: 「스포이드는
 /// 그대로」). ⛔Not a registry binding: Flutter's [SingleActivator] refuses

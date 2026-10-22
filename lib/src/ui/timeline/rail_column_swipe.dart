@@ -16,6 +16,7 @@ import 'layer_label_controls.dart'
         layerOnionSlotWidth,
         layerVisibilitySlotWidth;
 import '../widgets/axis_gesture_detector.dart';
+import 'axis_turn.dart' show partAcross, partAlong;
 import 'timeline_row_edges.dart';
 import 'timeline_visible_range.dart';
 
@@ -295,16 +296,14 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
 
   /// The coordinate that runs ALONG the rail — down the layer rail, ACROSS
   /// the x-sheet's layer columns. It names the row.
-  double _along(Offset local) =>
-      widget.axis == Axis.vertical ? local.dy : local.dx;
+  double _along(Offset local) => partAlong(widget.axis, local);
 
   /// The coordinate that runs ACROSS the rail. It names the column.
   ///
   /// 🚨These two are the whole axis story. Everything else here — the latch,
   /// the held stretch, the "only rows that disagree" rule — is written in
   /// along/across and does not know which way the rail points.
-  double _across(Offset local) =>
-      widget.axis == Axis.vertical ? local.dx : local.dy;
+  double _across(Offset local) => partAcross(widget.axis, local);
 
   /// The row under a POINT — the segment of no length, asked of the one
   /// resolver the host implements.

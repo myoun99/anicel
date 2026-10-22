@@ -7,6 +7,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_relink_flow.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 /// RELINK-2's flow, driven whole — no test reached it before, which is how
@@ -65,10 +66,10 @@ void main() {
     await tester.runAsync(() async {
       final flow = runMediaRelinkFlow(context, session);
       final apply = find.byKey(const ValueKey<String>('media-relink-apply'));
-      for (var i = 0; i < 200 && apply.evaluate().isEmpty; i += 1) {
+      await pollUntil(() async {
         await tester.pump(const Duration(milliseconds: 10));
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+        return apply.evaluate().isNotEmpty;
+      });
       expect(apply, findsOneWidget, reason: 'one candidate matched by name');
       await tester.tap(apply);
       await tester.pump();

@@ -8,6 +8,7 @@ import 'package:anicel/src/models/timeline_frame_range.dart'
     show TimelineLaneSelection;
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
+import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_span_resolver.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
@@ -320,10 +321,11 @@ void main() {
       expect(edited.single.parameterOf('blurX').track.keyAt(5)!.value, 9);
     });
 
-    test('toggle and remove behave like the transform lanes', () {
+    test('the toggle keys and unkeys like the transform lanes', () {
       // The single-key MOVE left with the key marker's private drag
-      // (2026-08-08). Re-timing is `effectsWithLaneSpanKeysShifted` now —
-      // select the span, move the span.
+      // (2026-08-08). Re-timing is the span's move now (`LaneHome.shifted`)
+      // — select the span, move the span. ↩️A remover of its own went when
+      // a span's Delete became one edit for every home (F-374).
       final laneId = effectLaneId(const EffectId('e1'), 'blurX');
       var effects = effectsWithLaneKeyToggled(
         [blur(x: 6)],
@@ -332,7 +334,7 @@ void main() {
       )!;
       expect(effects.single.parameterOf('blurX').track.keyAt(9)!.value, 6);
 
-      effects = effectsWithLaneKeyRemoved(
+      effects = effectsWithLaneKeyToggled(
         effects,
         laneId: laneId,
         frameIndex: 9,
@@ -393,7 +395,7 @@ void main() {
         frames: {0, 4, 8},
         pick: const KeyTypePick(
           sides: KeySidesEdit.hold,
-          curved: true,
+          path: KeyPathKind.bezier,
           roving: true,
         ),
       )!;
@@ -444,9 +446,10 @@ void main() {
         'blurX': {2: 4, 3: 6},
         'blurY': {2: 1},
       });
-      final moved = effectsWithLaneSpanKeysShifted(
+      final moved = laneSpanKeysShifted(
         effects,
         laneIds: [laneOf('blurX'), laneOf('blurY')],
+        lensOf: effectLaneLens,
         rangeStartIndex: 2,
         rangeEndIndexExclusive: 4,
         frameDelta: 5,
@@ -461,9 +464,10 @@ void main() {
         'blurY': {2: 1},
       });
       expect(
-        effectsWithLaneSpanKeysShifted(
+        laneSpanKeysShifted(
           effects,
           laneIds: [laneOf('blurX'), laneOf('blurY')],
+          lensOf: effectLaneLens,
           rangeStartIndex: 2,
           rangeEndIndexExclusive: 3,
           frameDelta: 4,
@@ -472,9 +476,10 @@ void main() {
         reason: 'blurX would land on its own unshifted key at 6',
       );
       expect(
-        effectsWithLaneSpanKeysShifted(
+        laneSpanKeysShifted(
           effects,
           laneIds: [laneOf('blurX')],
+          lensOf: effectLaneLens,
           rangeStartIndex: 2,
           rangeEndIndexExclusive: 3,
           frameDelta: -5,
@@ -488,9 +493,10 @@ void main() {
       final effects = withKeys({
         'blurX': {2: 4},
       });
-      final moved = effectsWithLaneSpanKeysShifted(
+      final moved = laneSpanKeysShifted(
         effects,
         laneIds: [laneOf('blurX'), laneOf('blurY')],
+        lensOf: effectLaneLens,
         rangeStartIndex: 2,
         rangeEndIndexExclusive: 3,
         frameDelta: 1,

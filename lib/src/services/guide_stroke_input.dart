@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/services.dart'
+    show KeyDownEvent, KeyEvent, LogicalKeyboardKey;
+
 import '../models/brush_dab.dart';
 import '../models/canvas_point.dart';
 import '../models/drawing_guide.dart';
@@ -90,6 +93,14 @@ class RayLock {
     zoom: zoom,
     space: space,
   )!;
+
+  /// A lock already on [ray] — a ray of the CANVAS — from the first point
+  /// it is fed: what a stroke drawn under the line Shift holds takes
+  /// ([ShiftLine]).
+  factory RayLock.along(
+    SnapCandidate ray, {
+    GuideSpace space = GuideSpace.canvas,
+  }) => RayLock._([ray], ray.origin, 0, space).._locked = ray;
 
   static RayLock? _onto(
     List<SnapCandidate> Function(CanvasPoint onCanvas) candidatesAt, {
@@ -188,15 +199,22 @@ class RayLock {
 ///
 /// The guides, the zoom and the [space] are the stroke's, read once at its
 /// start: an edit landing mid-stroke changes no stretch of it.
+///
+/// ★[line] is what Shift held past the stroke before this one (I-121,
+/// [ShiftLine]): a stretch under Shift goes on along it, and the line it
+/// locks onto is kept there for the next. A stroke with none of its own
+/// keeps one for itself alone — what every stroke did before I-121.
 class StrokeLock {
   StrokeLock({
     required CutGuides guides,
     required CanvasPoint start,
     required double zoom,
     GuideSpace space = GuideSpace.canvas,
+    ShiftLine? line,
   }) : _guides = guides,
        _zoom = zoom,
        _space = space,
+       _line = line ?? ShiftLine(),
        _end = start,
        _lock = RayLock.ofGuides(
          guides: guides,
@@ -208,6 +226,7 @@ class StrokeLock {
   final CutGuides _guides;
   final double _zoom;
   final GuideSpace _space;
+  final ShiftLine _line;
 
   /// The lock of the stretch under way — null where it is free.
   RayLock? _lock;
@@ -227,16 +246,22 @@ class StrokeLock {
   List<CanvasPoint> follow(CanvasPoint point, {required bool shift}) {
     final out = <CanvasPoint>[];
     if (shift != _shift) {
-      _shift = shift;
       out.addAll(_handOut(_lock?.finish() ?? const []));
-      _lock = shift
-          ? RayLock.eightWays(start: _end, zoom: _zoom, space: _space)
-          : RayLock.ofGuides(
+    }
+    _line.heldNow(shift);
+    if (shift != _shift) {
+      _shift = shift;
+      final held = _line._ray;
+      _lock = !shift
+          ? RayLock.ofGuides(
               guides: _guides,
               start: _end,
               zoom: _zoom,
               space: _space,
-            );
+            )
+          : held != null
+          ? RayLock.along(held, space: _space)
+          : RayLock.eightWays(start: _end, zoom: _zoom, space: _space);
     }
     final lock = _lock;
     out.addAll(_handOut(lock == null ? [point] : lock.follow(point)));
@@ -247,11 +272,72 @@ class StrokeLock {
   /// ([RayLock.finish]).
   List<CanvasPoint> finish() => _handOut(_lock?.finish() ?? const []);
 
+  /// [points] handed out — the stroke now stands at the last — and the
+  /// line a stretch under Shift locked onto kept for the next stroke.
   List<CanvasPoint> _handOut(List<CanvasPoint> points) {
     if (points.isNotEmpty) {
       _end = points.last;
     }
+    if (_shift) {
+      _line._ray ??= _lock?.lockedRay;
+    }
     return points;
+  }
+}
+
+/// THE LINE SHIFT HOLDS — the ray a stretch under Shift locked onto, kept
+/// past its stroke for as long as Shift stays held, so the next stroke
+/// drawn under the same hold goes on along it from its press ([onTheLine],
+/// [StrokeLock]). A ray of the CANVAS, as every lock's is.
+///
+/// 🗣️I-121 (유저 2026-10-21): 「스냅 발생하면 쉬프트 떼기 전까지는 같은스냅.
+/// 즉 스트로크로 라인 그리다가 스트로크만 떼고 다음 포인트에서 같은 라인의
+/// 직선을 그릴 수 있게되는거지. 그걸 기본으로.」
+///
+/// ⚠️THE HOLD ENDS WHERE ITS OWNER HEARS IT END, between strokes too: a
+/// press, and a finger holding Shift lifting, say whether Shift is held
+/// now ([heldNow]); a Shift pressed anew says the hold before it ended
+/// ([heardKey]). ⛔Not the key's release: on Windows a pen hovering lets
+/// Shift go in the engine's record with the key still down, and the real
+/// release after it is never heard (I-61, `ModifierKeys`) — so "held now"
+/// is asked of `ModifierKeys`, and a release is known by the press after it.
+final class ShiftLine {
+  SnapCandidate? _ray;
+
+  /// Shift as it stands now — let go, the line goes with it.
+  void heldNow(bool shift) {
+    if (!shift) {
+      _ray = null;
+    }
+  }
+
+  /// A key [event] as the keyboard hears it (`HardwareKeyboard.addHandler`):
+  /// a Shift pressed anew lets go of the line the hold before it kept.
+  /// Always false — the key goes on to its other readers.
+  ///
+  /// ⚠️Not a synthesized press: the Windows engine puts Shift back down of
+  /// its own when a mouse move carries it after a pen let it go (I-61) —
+  /// the same hold.
+  bool heardKey(KeyEvent event) {
+    if (event is KeyDownEvent &&
+        !event.synthesized &&
+        (event.logicalKey == LogicalKeyboardKey.shiftLeft ||
+            event.logicalKey == LogicalKeyboardKey.shiftRight)) {
+      _ray = null;
+    }
+    return false;
+  }
+
+  /// [point] — a press, in a stroke's [space] — on the line held, or as
+  /// it is when none is.
+  CanvasPoint onTheLine(
+    CanvasPoint point, {
+    GuideSpace space = GuideSpace.canvas,
+  }) {
+    final ray = _ray;
+    return ray == null
+        ? point
+        : RayLock.along(ray, space: space).follow(point).single;
   }
 }
 

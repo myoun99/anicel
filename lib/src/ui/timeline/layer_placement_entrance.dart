@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../media/media_asset_drop_target.dart';
+import 'axis_turn.dart' show partAlong;
 import 'layer_drop_policy.dart' show layerRowsOf, nearestLayerGap;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 import 'timeline_row_edges.dart';
@@ -26,10 +27,16 @@ class LayerPlacementEntrance extends StatelessWidget {
     this.onHover,
     this.onLeave,
     this.accepts,
+    this.lead = 0,
   });
 
   /// The axis the rows run along: down the rail, across the sheet.
   final Axis rowAxis;
+
+  /// Where along [rowAxis] this box begins in the strip of rows: 0 for a
+  /// box that is the strip, the rows' extent for the room past the last of
+  /// them — where the body is longer than its rows (F-372).
+  final double lead;
 
   /// The rows as drawn and where they sit along [rowAxis], read when the
   /// drag moves rather than when this built: the gap is counted in what is
@@ -68,9 +75,9 @@ class LayerPlacementEntrance extends StatelessWidget {
     },
   );
 
-  /// This widget's box IS the strip, row 0 at its start — the window's
-  /// spacers stand for whole rows — so a local offset along [rowAxis] is
-  /// the strip position [nearestLayerGap] counts in.
+  /// This widget's box is the strip from [lead] on — the window's spacers
+  /// stand for whole rows — so a local offset along [rowAxis], [lead]
+  /// added, is the strip position [nearestLayerGap] counts in.
   ({List<Layer> layers, int slot}) _gapAt(
     BuildContext context,
     Offset globalPosition,
@@ -84,7 +91,7 @@ class LayerPlacementEntrance extends StatelessWidget {
       layers: [for (final row in layerRowsOf(drawn.rows)) row.layer],
       slot: nearestLayerGap(
         drawn.rows,
-        rowAxis == Axis.vertical ? local.dy : local.dx,
+        lead + partAlong(rowAxis, local),
         drawn.edges,
       ),
     );

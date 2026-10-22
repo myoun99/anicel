@@ -39,7 +39,7 @@ void main() {
     final second = track.cuts[1];
 
     // Give the first cut a conte row covering it, then divide it in two.
-    final row = createStoryboardLayer(
+    final row = createCoveringLayer(
       layerId: const LayerId('conte-1'),
       frameId: const FrameId('conte-1-a'),
       cut: first,

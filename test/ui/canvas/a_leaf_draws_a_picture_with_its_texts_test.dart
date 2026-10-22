@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/cel_text_fixture.dart';
+import '../../helpers/one_piece.dart';
 
 /// 🚨★★★A LEAF CANNOT DRAW A PICTURE WITHOUT ITS TEXTS (R9-rest, the text
 /// tool — 유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).

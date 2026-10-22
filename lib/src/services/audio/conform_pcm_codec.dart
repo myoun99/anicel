@@ -357,8 +357,18 @@ class ConformHeader {
 /// for the same file: what an old conform holds is then not what opening the
 /// file today would play. 0 = before 2026-10-09; 1 = a container's head says
 /// whether dr_mp3 may try it, and the frames an encoder put before the sound
-/// come off (board sound-lands-on-its-exact-sample).
-const int conformDecodeRecipe = 1;
+/// come off (board sound-lands-on-its-exact-sample); 2 = a movie that says
+/// it only in iTunes' note starts where the note says (2026-10-15, board
+/// itunes-gapless-note-is-what-an-m4a-says). ⚠️2 also covers two changes
+/// that should have moved it and did not: a movie that says nothing losing
+/// AAC's standard unless Windows wrote it (10-09, Q7), and AudioToolbox no
+/// longer trimming 2,112 off such a movie on a Mac (10-15). 3 = a movie's
+/// uncompressed sound is read by the engine itself, as a WAV of it is
+/// (2026-10-16, board mac-reads-no-movie-pcm): Media Foundation read 8-bit
+/// sound up to 1/128 off that and 32-bit integers a last bit off, and
+/// Android's path takes what MediaCodec hands back as 16 bits unless it is
+/// float (`qa_os_take_output`).
+const int conformDecodeRecipe = 3;
 
 /// Whether [head] starts with the conform magic — the cheap half of「is this
 /// file ours」, and all the cache collector needs before it counts or deletes
@@ -411,7 +421,8 @@ Uint8List encodeConform({
   return out;
 }
 
-/// 16-bit PCM to float32, at the one scale this app uses.
+/// 16-bit PCM to float32, at the one scale this app uses — into a new list,
+/// or into [into] when one is given.
 ///
 /// 🚨**32768, not 32767** — the industry convention, and what dr_wav uses (it
 /// multiplies by the literal 0.000030517578125f). Matching it is not
@@ -432,8 +443,17 @@ Uint8List encodeConform({
 /// byte offset — [ConformHeader.length] is 64, so a buffer that starts even
 /// always qualifies — and the `ByteData` path stays for the ones that do not
 /// rather than as a claim that they cannot happen.
-Float32List conformPcmToFloat32(Uint8List pcm, int sampleCount) {
-  final out = Float32List(sampleCount);
+///
+/// 🚨[into] may hold [pcm] itself, from the middle of its own bytes on — a
+/// window read in place (`ConformPcmStreamReader.readWindow`). Front to
+/// back, each sample is read before its float lands, and no float lands on
+/// a sample still to be read.
+Float32List conformPcmToFloat32(
+  Uint8List pcm,
+  int sampleCount, {
+  Float32List? into,
+}) {
+  final out = into ?? Float32List(sampleCount);
   const scale = 1.0 / 32768.0;
   if (pcm.offsetInBytes.isEven) {
     final src = Int16List.view(pcm.buffer, pcm.offsetInBytes, sampleCount);

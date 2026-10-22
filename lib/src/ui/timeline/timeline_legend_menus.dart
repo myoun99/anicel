@@ -99,6 +99,11 @@ class LayerLegendCallbacks {
 /// column opens none.
 typedef LegendFlyout = List<PanelFlyoutEntry> Function();
 
+/// The kinds the TIMELINE's rows can be ([TimelineLegendMenus.kinds]):
+/// every kind — a cut's layers, its track's S rows, transition row and
+/// camera row all stand on its rail (F-408).
+final Set<LayerKind> timelineRailKinds = Set.unmodifiable(LayerKind.values);
+
 /// The rail legend's menus as they open, for ONE panel's header: each
 /// column's flyout, and with [rows] every row of them at once.
 ///
@@ -120,18 +125,14 @@ class TimelineLegendMenus {
     this.onToggleSection,
     this.rowFilter = TimelineRowFilter.none,
     this.marksInUse = noMarks,
-    this.kindsInUse = noKinds,
+    this.kinds = const {},
     this.visibilitySoloEnabled = false,
     this.displayedLayerIds,
     this.displayedOnionSkinOn = false,
-    this.showRowSolos = true,
   });
 
   /// No marks in use — a legend over no rows that carry one.
   static Set<LayerMark> noMarks() => const {};
-
-  /// No kinds in use.
-  static Set<LayerKind> noKinds() => const {};
 
   /// Null for a display-only legend: no column but the sections opens.
   final LayerLegendCallbacks? legend;
@@ -151,9 +152,15 @@ class TimelineLegendMenus {
   /// — `displayedLayerIds` went this way on 10-13 for the same reason.
   final Set<LayerMark> Function() marksInUse;
 
-  /// Kinds present across the panel's layers — the kind solos (R4 #8) —
-  /// read when they are, as [marksInUse] is.
-  final Set<LayerKind> Function() kindsInUse;
+  /// The kinds this panel's rows can be — the kind solos (R4 #8), every one
+  /// listed whether a row of it is on the panel now or not.
+  ///
+  /// 🗣️F-408 (유저 2026-10-19): 「타임라인패널의 레전드의 종류솔로,
+  /// 애니메이션레이어가 없으니 추가. 대응하는 레이어가 다 있어야함.
+  /// 콘티패널엔 이미지레이어 없으니 대응안되는거 리스트 정리」. ↩️It listed
+  /// the kinds the rows carried, so a cut with no animation row had no
+  /// animation solo.
+  final Set<LayerKind> kinds;
 
   /// Whether the visibility SOLO MODE is on (the eye flyout's check).
   final bool visibilitySoloEnabled;
@@ -164,11 +171,6 @@ class TimelineLegendMenus {
 
   /// Whether every displayed drawing layer is ghosting (UI-R17 #5).
   final bool displayedOnionSkinOn;
-
-  /// Hosts without a row filter (the storyboard's track-global rail, UI-R5)
-  /// pass false: the solo entries and the kind solos stand down while the
-  /// bulk ops keep working.
-  final bool showRowSolos;
 
   /// Every row of every flyout the legend opens right now ([flyoutRowsOf])
   /// — what a key presses one of.
@@ -210,10 +212,14 @@ class TimelineLegendMenus {
     ),
   ];
 
-  /// One column's flyout: its BULK OPS, then — only where the host shows
-  /// row solos — a divider and the SOLO entries. A solo half that comes
-  /// back EMPTY takes its divider with it, so a host with row solos on but
-  /// nothing to solo never shows a stray line. No legend, no flyout.
+  /// One column's flyout: its BULK OPS, then a divider and the SOLO
+  /// entries. A solo half that comes back EMPTY takes its divider with it,
+  /// so a legend with nothing to solo never shows a stray line. No legend,
+  /// no flyout.
+  ///
+  /// ↩️A host could turn the solos off (`showRowSolos`) — the storyboard's,
+  /// until it took every chip (#904, 2026-08-09: 「있는거면 다 달아서
+  /// 통일」); no host has since, and the switch went with I-89 ① ⓖ.
   ///
   /// The template four columns spell out (timesheet, mark, fill-ref, fx).
   /// [kind] deliberately does not: its whole flyout is solos with no bulk
@@ -226,7 +232,7 @@ class TimelineLegendMenus {
     final legend = this.legend;
     if (legend == null) return null;
     return () {
-      final solo = showRowSolos ? solos(legend) : const <PanelFlyoutEntry>[];
+      final solo = solos(legend);
       return [
         ...bulk(legend),
         if (solo.isNotEmpty) const PanelFlyoutDivider(),
@@ -320,20 +326,18 @@ class TimelineLegendMenus {
           ];
   }
 
-  /// The kind solos (R4 #8) — the kinds on the rows AND every kind the
-  /// filter holds: a kind whose last row went away stays listed so its solo
-  /// can still be undone, as the mark solo's does
-  /// (mark-filter-held-after-its-mark-is-gone).
+  /// The kind solos (R4 #8) — the panel's [kinds] AND every kind the filter
+  /// holds: the filter is every panel's (R5 #9), so a kind held from a
+  /// panel that has it stays listed on one that has not, where its solo can
+  /// still be undone (mark-filter-held-after-its-mark-is-gone).
   LegendFlyout? get kind {
     final legend = this.legend;
     if (legend == null ||
-        !showRowSolos ||
-        kindsInUse().isEmpty && rowFilter.kinds.isEmpty) {
+        kinds.isEmpty && rowFilter.kinds.isEmpty) {
       return null;
     }
-    // Listed as it opens ([kindsInUse]).
     return () {
-      final listed = {...kindsInUse(), ...rowFilter.kinds};
+      final listed = {...kinds, ...rowFilter.kinds};
       return [
         PanelFlyoutHeader(AppText.strings.tlSoloKind),
         for (final kind in LayerKind.values)

@@ -5,9 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_hand_settings.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/services/brush_hand_overlay.dart';
 
 /// 🚨H25-again (유저 2026-09-11): 「사이즈말고도 불투명도나 필압이나 이런거
@@ -28,7 +30,7 @@ void main() {
     hardness: 1.0,
     spacing: 0.08,
     sizePressureCurve: BrushPressureCurve.linearFrom(0.08),
-    tipMask: tip('nib'),
+    tips: [tip('nib')],
   );
 
   bool nameable(BrushTipMask _) => true;
@@ -64,7 +66,14 @@ void main() {
         s.copyWith(opacityPressureCurve: BrushPressureCurve.identity()),
     'the blend': (s) => s.copyWith(blendMode: BrushBlendMode.multiply),
     'the edge': (s) => s.copyWith(antiAlias: BrushAntiAlias.none),
-    'the size jitter': (s) => s.copyWith(sizeJitter: 0.4),
+    // A row with a floor of its own: the curve's object form (F-176-Q2).
+    'the size random row': (s) => BrushSettings.fromShape(
+      s.shape.withCurve(
+        BrushPressureTarget.size,
+        BrushInputSource.random,
+        BrushPressureCurve.linearFrom(0.6),
+      ),
+    ),
   };
   for (final MapEntry(key: what, value: edit) in edits.entries) {
     test('🚨$what comes back with its brush', () {
@@ -80,7 +89,7 @@ void main() {
   test('a setting the hand REMOVED stays removed', () {
     final hand = BrushSettings.fromJson(
       file.toJson(withMasks: false)..remove('sizePressureCurve'),
-    ).copyWith(tipMask: file.tipMask);
+    ).copyWith(tips: file.tips);
 
     final overlay = brushHandOverlay(file: file, hand: hand, byName: nameable);
 
@@ -109,7 +118,7 @@ void main() {
       final other = tip('other', 128);
       final overlay = brushHandOverlay(
         file: file,
-        hand: file.copyWith(tipMask: other),
+        hand: file.copyWith(tips: [other]),
         byName: nameable,
       );
 
@@ -129,7 +138,7 @@ void main() {
       final stray = tip('stray', 77);
       final overlay = brushHandOverlay(
         file: file,
-        hand: file.copyWith(tipMask: stray),
+        hand: file.copyWith(tips: [stray]),
         byName: unnameable,
       );
 
@@ -162,6 +171,91 @@ void main() {
 
       expect(overlay, {'tipMask': null});
       expect(brushSettingsUnderHand(file, overlay).tipMask, isNull);
+    });
+
+    // F-176-Q3: a brush carries several tips, in an order of the hand's.
+    List<String> idsOf(BrushSettings settings) => [
+      for (final tip in settings.tips) tip.id,
+    ];
+
+    test('the tips after the first are written by their ids, in order, and '
+        'come back so', () {
+      final a = tip('a', 10);
+      final b = tip('b', 20);
+      final overlay = brushHandOverlay(
+        file: file,
+        hand: file.copyWith(tips: [file.tipMask!, a, b]),
+        byName: nameable,
+      );
+
+      expect(overlay, {
+        'moreTipMasksId': ['a', 'b'],
+      });
+      final back = brushSettingsUnderHand(
+        file,
+        overlay,
+        resolveTip: (id) => {'a': a, 'b': b}[id],
+      );
+      expect(idsOf(back), ['nib', 'a', 'b']);
+    });
+
+    test('🚨a list holding one tip the library cannot hand back travels '
+        'WHOLE — names and pixels never mix in one entry', () {
+      final a = tip('a', 10);
+      final stray = tip('stray', 77);
+      final overlay = brushHandOverlay(
+        file: file,
+        hand: file.copyWith(tips: [file.tipMask!, a, stray]),
+        byName: (tip) => tip.id != 'stray',
+      );
+
+      expect(overlay.keys, ['moreTipMasks']);
+      final back = brushSettingsUnderHand(
+        file,
+        jsonDecode(jsonEncode(overlay)) as Map<String, Object?>,
+      );
+      expect(idsOf(back), ['nib', 'a', 'stray']);
+      expect(back.tips.last.alpha, stray.alpha);
+    });
+
+    test('a brush the hand cut back to one tip stays cut', () {
+      final several = file.copyWith(tips: [file.tipMask!, tip('a', 10)]);
+      final overlay = brushHandOverlay(
+        file: several,
+        hand: file,
+        byName: nameable,
+      );
+
+      expect(overlay, {'moreTipMasks': null});
+      expect(idsOf(brushSettingsUnderHand(several, overlay)), ['nib']);
+    });
+
+    test('ids that are not ALL answered leave the file\'s tips', () {
+      final a = tip('a', 10);
+      final several = file.copyWith(tips: [file.tipMask!, tip('b', 20)]);
+      final back = brushSettingsUnderHand(
+        several,
+        {
+          'moreTipMasksId': ['a', 'gone'],
+        },
+        resolveTip: (id) => id == 'a' ? a : null,
+      );
+
+      expect(idsOf(back), ['nib', 'b']);
+    });
+
+    test('the order the dabs take them in is the hand\'s too', () {
+      final overlay = brushHandOverlay(
+        file: file,
+        hand: file.copyWith(tipOrder: BrushTipOrder.random),
+        byName: nameable,
+      );
+
+      expect(overlay, {'tipOrder': 'random'});
+      expect(
+        brushSettingsUnderHand(file, overlay).tipOrder,
+        BrushTipOrder.random,
+      );
     });
   });
 

@@ -33,8 +33,6 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart'
-    show layerIdentityPose;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart'
@@ -108,7 +106,12 @@ void main() {
       ),
     );
     final recorder = ui.PictureRecorder();
-    paintSeNameTags(ui.Canvas(recorder), tags: [tag], canvasSize: size);
+    paintSeNameTags(
+      ui.Canvas(recorder),
+      tags: [tag],
+      canvasSize: size,
+      rasterScale: 1,
+    );
     final picture = recorder.endRecording();
     final image = picture.toImageSync(size.width, size.height);
     picture.dispose();
@@ -152,7 +155,12 @@ void main() {
       s.seEntries.seNameTagsForCutFrame(s.requireActiveCut, 0).single;
 
   /// Where [tag]'s anchor lies on the canvas.
-  CanvasPoint onTheCanvas(ResolvedSeNameTag tag) => tag.shot.apply(
+  CanvasPoint onTheCanvas(ResolvedSeNameTag tag) => tag.placement.apply(
+    CanvasPoint(x: tag.content.position!.dx, y: tag.content.position!.dy),
+  );
+
+  /// Where [tag]'s anchor lies in its shot — where its row lays it.
+  CanvasPoint inTheShot(ResolvedSeNameTag tag) => tag.inShot.apply(
     CanvasPoint(x: tag.content.position!.dx, y: tag.content.position!.dy),
   );
 
@@ -257,8 +265,8 @@ void main() {
       description: 'Set Position',
     );
     expect(
-      tagOf(s).content.position,
-      const Offset(100, 200),
+      inTheShot(tagOf(s)),
+      CanvasPoint(x: 100, y: 200),
       reason: '⛔전제: the row moved it',
     );
 
@@ -268,8 +276,8 @@ void main() {
     );
 
     expect(
-      tagOf(s).content.position,
-      Offset(centreOfTheFrame.x, centreOfTheFrame.y),
+      inTheShot(tagOf(s)),
+      centreOfTheFrame,
     );
   });
 
@@ -348,10 +356,29 @@ void main() {
       closeTo(tag.content.position!.dx, 1e-6),
       reason: 'the box frames the tag where the shot holds it',
     );
+    // And it is the TAG's box — the stand-in a row with no block shows
+    // (F-387) stands at the same centre, the whole shot wide.
+    final tagBox = seNameTagBoxBounds(tag, canvasSize: cut.canvasSize);
+    expect(
+      [corners[2].x - corners[0].x, corners[2].y - corners[0].y],
+      [closeTo(tagBox.width, 1e-6), closeTo(tagBox.height, 1e-6)],
+      reason: 'the box is the tag\'s own, not the shot it stands in',
+    );
 
-    final grabbed = box.viewport.canvasToViewportOffset(box.pose.center);
+    // Inside the tag, a quarter across it — off the cross at its centre,
+    // which is the anchor's and is grabbed first, as a layer's is (F-262).
+    final edge = box.corners;
+    final inside = CanvasPoint(
+      x: edge[0].x * 0.75 + edge[1].x * 0.25,
+      y: (edge[0].y + edge[3].y) / 2,
+    );
+    final grabbed = box.viewport.canvasToViewportOffset(inside);
     final letGo = grabbed + const Offset(40, 0);
     final dropped = box.viewport.viewportOffsetToCanvas(letGo);
+    final travel = CanvasPoint(
+      x: dropped.x - inside.x,
+      y: dropped.y - inside.y,
+    );
     final origin = tester.getTopLeft(find.byType(RowTransformBox));
     final gesture = await tester.startGesture(
       origin + grabbed,
@@ -369,9 +396,9 @@ void main() {
         .value;
     final landed = shotPlacement(panned, frame).apply(written);
     const why =
-        'what is written is the shot\'s — through the camera it lands where '
-        'the handle was let go';
-    expect(landed.x, closeTo(dropped.x, 1), reason: why);
-    expect(landed.y, closeTo(dropped.y, 1), reason: why);
+        'what is written is the shot\'s — through the camera it lands as far '
+        'as the hand went';
+    expect(landed.x, closeTo(box.pose.center.x + travel.x, 1), reason: why);
+    expect(landed.y, closeTo(box.pose.center.y + travel.y, 1), reason: why);
   });
 }

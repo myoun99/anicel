@@ -191,12 +191,17 @@ void main() {
       const MaterialApp(home: InputInspectorHost(child: SizedBox.expand())),
     );
     InputInspector.visible.value = true;
+    // What the binding kept out as a pen's echo (F-400): on the card's
+    // counter line, and the session's like the rest.
+    InputInspector.echoes = 2;
     await tester.pump();
     await tester.tapAt(const Offset(100, 100));
+    await tester.pump();
     expect(
       InputInspector.touchDownCount + InputInspector.samples.length,
       greaterThan(0),
     );
+    expect(find.textContaining(' echo=2'), findsOneWidget);
 
     await tester.tap(
       find.byKey(const ValueKey<String>('input-inspector-close')),
@@ -207,6 +212,7 @@ void main() {
     expect(InputInspector.samples, isEmpty);
     expect(InputInspector.touchDownCount, 0);
     expect(InputInspector.arrivals, 0);
+    expect(InputInspector.echoes, 0);
   });
 }
 

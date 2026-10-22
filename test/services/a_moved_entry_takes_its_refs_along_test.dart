@@ -28,6 +28,7 @@ void main() {
         length: length,
         canvasSize: const CanvasSize(width: 16, height: 16),
         tileSize: 8,
+        photoPaths: const [],
       );
 
   test('🎯a ref at a moved offset in THIS file reads its bytes where they '

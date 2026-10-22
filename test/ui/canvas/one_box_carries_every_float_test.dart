@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/stamp_carry.dart';
@@ -18,6 +19,8 @@ import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/canvas/float_warp.dart'
     show debugLastResampledFloat;
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+
+import '../../helpers/settle_async.dart';
 
 /// I-37 — ONE BOX CARRIES EVERY FLOAT.
 ///
@@ -99,7 +102,7 @@ void main() {
               child: CanvasSelectionLayer(
                 tool: CanvasSelectionTool.move,
                 viewport: CanvasViewport(),
-                canvasSize: canvasSize,
+                pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
                 frameToken: frame,
                 selectionCommands: commands,
                 alwaysShowTransformBox: true,
@@ -115,8 +118,8 @@ void main() {
                     : (
                         liftToken: 7,
                         floats: [
-                          (stampDab: a, showsOn: slotA),
-                          (stampDab: b, showsOn: slotB),
+                          (stampDab: a, showsOn: slotA, landsOn: null),
+                          (stampDab: b, showsOn: slotB, landsOn: null),
                         ],
                       ),
                 onLiftConfirmed: (token, stamps, carry) {
@@ -203,15 +206,12 @@ void main() {
     env.commands.editTransformValues((now) => now.copyWith(sx: 2, sy: 2));
     await tester.pump();
     // The decodes are real: let them land.
-    final watch = Stopwatch()..start();
-    while ((env.slotA.value?.image == null ||
-            env.slotB.value?.image == null) &&
-        watch.elapsed < const Duration(seconds: 15)) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () =>
+          env.slotA.value?.image != null && env.slotB.value?.image != null,
+      beat: const Duration(milliseconds: 10),
+    );
 
     final shownA = env.slotA.value;
     final shownB = env.slotB.value;

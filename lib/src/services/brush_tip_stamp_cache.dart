@@ -1,12 +1,13 @@
-import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/lru.dart';
 import '../models/brush_anti_alias.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/brush_tip_shape.dart';
 import 'brush_dab_tip_geometry.dart';
+import 'mark_under_a_pixel.dart';
 
 /// The prerendered tip-stamp cache (R20-B — the CSP/Photoshop brush
 /// architecture): every ANALYTIC tip renders ONCE per quantized parameter
@@ -60,18 +61,22 @@ class BrushTipStampCache {
   /// copy the samplers read).
   int byteBudget;
 
-  final LinkedHashMap<String, BrushTipMask> _masks = LinkedHashMap();
-  int _bytes = 0;
+  late final Lru<String, BrushTipMask> _masks = Lru(
+    limit: () => byteBudget,
+    costOf: _maskCost,
+  );
 
-  int get residentBytes => _bytes;
+  int get residentBytes => _masks.held;
   int get entryCount => _masks.length;
 
-  /// Rewrites an analytic [dab] to its cached-stamp form: quantized size,
-  /// the prerendered mask, `angleDegrees: 0`, `roundness: 1` (both baked
-  /// into the mask). A dab that already carries a mask — a raster tip, or
-  /// one this cache resolved — and a stamp dab (lift/fill pixels) pass
-  /// through untouched.
-  BrushDab resolveDab(BrushDab dab) {
+  /// Rewrites an analytic [raw] dab to its cached-stamp form: quantized
+  /// size, the prerendered mask, `angleDegrees: 0`, `roundness: 1` (both
+  /// baked into the mask). A dab that already carries a mask — a raster
+  /// tip, or one this cache resolved — and a stamp dab (lift/fill pixels)
+  /// pass through untouched, but for a size under a pixel
+  /// ([liftedToOnePixel] — every dab a stroke lays comes through here).
+  BrushDab resolveDab(BrushDab raw) {
+    final dab = liftedToOnePixel(raw);
     if (dab.stamp != null || dab.tipMask != null) {
       return dab;
     }
@@ -97,11 +102,9 @@ class BrushTipStampCache {
         '${resolvedIdPrefix}analytic:${dab.tipShape.name}'
         '|$sizeQ|$hardnessQ|$roundnessQ|$angleQ$step';
 
-    var mask = _masks.remove(key);
-    if (mask != null) {
-      _masks[key] = mask; // LRU touch.
-    } else {
-      mask = _render(
+    final mask = _masks.resolve(
+      key,
+      () => _render(
         key: key,
         tipShape: dab.tipShape,
         size: size,
@@ -109,14 +112,8 @@ class BrushTipStampCache {
         roundness: roundnessQ / 128.0,
         angleDegrees: angleQ.toDouble(),
         bakedStep: bakedStep,
-      );
-      _masks[key] = mask;
-      _bytes += _maskCost(mask);
-      while (_masks.length > 1 && _bytes > byteBudget) {
-        final oldest = _masks.keys.first;
-        _bytes -= _maskCost(_masks.remove(oldest)!);
-      }
-    }
+      ),
+    );
 
     return dab.copyWith(
       size: size,
@@ -131,11 +128,6 @@ class BrushTipStampCache {
       return dabs;
     }
     return [for (final dab in dabs) resolveDab(dab)];
-  }
-
-  void clear() {
-    _masks.clear();
-    _bytes = 0;
   }
 
   static int _maskCost(BrushTipMask mask) => mask.size * mask.size * 9;

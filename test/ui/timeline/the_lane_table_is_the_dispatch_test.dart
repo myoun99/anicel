@@ -88,19 +88,25 @@ void main() {
           seNameTagSizeLaneId: ((t) => t.fontSize, 1),
           seNameTagTrackingLaneId: ((t) => t.letterSpacing, 2),
           seNameTagBoldLaneId: ((t) => t.bold, 3),
-          seNameTagNameInkLaneId: ((t) => t.nameInk, 4),
-          seNameTagBoxColorLaneId: ((t) => t.boxColor, 5),
-          seNameTagLineInkLaneId: ((t) => t.lineInk, 6),
-          seNameTagShowLineLaneId: ((t) => t.showLine, 7),
+          seNameTagItalicLaneId: ((t) => t.italic, 4),
+          seNameTagUnderlineLaneId: ((t) => t.underline, 5),
+          seNameTagStrikethroughLaneId: ((t) => t.strikethrough, 6),
+          seNameTagNameInkLaneId: ((t) => t.nameInk, 7),
+          seNameTagBoxColorLaneId: ((t) => t.boxColor, 8),
+          seNameTagLineInkLaneId: ((t) => t.lineInk, 9),
+          seNameTagShowLineLaneId: ((t) => t.showLine, 10),
         };
     SeNameTagTrack allKeyed() => SeNameTagTrack(
       fontSize: keyed(12.0, at: 1),
       letterSpacing: keyed(1.0, at: 2),
       bold: keyed(true, at: 3),
-      nameInk: keyed(0xFF000000, at: 4),
-      boxColor: keyed(0xFFFF0000, at: 5),
-      lineInk: keyed(0xFF0000FF, at: 6),
-      showLine: keyed(false, at: 7),
+      italic: keyed(true, at: 4),
+      underline: keyed(true, at: 5),
+      strikethrough: keyed(true, at: 6),
+      nameInk: keyed(0xFF000000, at: 7),
+      boxColor: keyed(0xFFFF0000, at: 8),
+      lineInk: keyed(0xFF0000FF, at: 9),
+      showLine: keyed(false, at: 10),
     );
 
     test('every member lane id reads and writes its own field and no '

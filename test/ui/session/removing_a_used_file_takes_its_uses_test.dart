@@ -174,6 +174,10 @@ void main() {
             (LayerId(picture.name), null),
           RowMediaUse(:final layerId) => (layerId, null),
           FrameMediaUse(:final layerId, :final frameId) => (layerId, frameId),
+          // A sheet's photo — the sheets' ink is not the project's, and
+          // removing a file takes it off there (I-97): the pool's own test
+          // of that is a_pool_file_on_a_sheet_is_used_there_test.
+          SheetPhotoMediaUse(:final key) => (key.layerId, key.frameId),
         },
     ];
     expect(uses(), [
@@ -184,7 +188,7 @@ void main() {
       (const LayerId('walk-over'), null),
       (const LayerId('walk-again'), null),
       (const LayerId('t2-s1'), const FrameId('beat')),
-    ], reason: 'fixture premise: every kind of use is there');
+    ], reason: 'fixture premise: every kind of use the project holds is there');
 
     Layer? layer(String id) => layerAnywhereOrNull(
       session.repository.requireProject(),

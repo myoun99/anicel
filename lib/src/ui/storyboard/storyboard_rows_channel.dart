@@ -12,13 +12,15 @@ import '../timeline/timeline_frame_geometry.dart'
 /// height, the window's picture of it, and its own rail label and strip —
 /// built by the panel that draws them, display-only and chromeless. A null
 /// [rail] or [frames] is drawn from the [snapshot], as the timeline's folded
-/// lanes are.
+/// lanes are. [dashes] are the frames whose boundary its strip strokes a
+/// dash on, for the grid under it to leave to it (F-347).
 typedef StoryboardFoldedRow = ({
   double height,
   FlipHudSnapshot Function() snapshot,
   Widget Function()? rail,
   Widget Function(BuildContext context, TimelineFrameGeometryHandle geometry)?
   frames,
+  List<int> dashes,
 });
 
 /// What the STORYBOARD panel stacks, handed to the shell's walkers — the

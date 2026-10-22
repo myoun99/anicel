@@ -22,12 +22,13 @@ import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../helpers/cels_parked_cold.dart';
+import '../helpers/no_guides_laid.dart';
 import '../helpers/opened_session.dart';
 import '../helpers/temp_dir.dart';
 
@@ -158,6 +159,7 @@ void main() {
           fileName: 'c.png',
         ),
         ExportSizeMode.canvas,
+        guideColor: noGuidesLaid,
       );
 
       expect(image, isNotNull, reason: 'a loaded cel must export');
@@ -188,9 +190,7 @@ void main() {
     final baked = materializeSingleDabSurface(canvasSize);
     // R20-A1: opens land cels COLD (encoded blobs) — the rebuild path
     // must materialize and serve the same pixels.
-    store.restoreBaked({
-      key: AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, baked)),
-    });
+    parkCold(store, {key: baked});
     // The cache seeds on first materialization; drop it to simulate any
     // invalidation and force the service down its rebuild path.
     store.clearDisplayCaches();

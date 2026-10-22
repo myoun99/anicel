@@ -93,4 +93,48 @@ class _ProjectSettingCommands {
       pasteboardNone: true,
     ),
   );
+
+  /// The pasteboard's size (I-109) — one undo step with every picture its
+  /// wall cuts ([SetProjectPasteboardCommand]); no-op when unchanged.
+  void setProjectPasteboardSize(PasteboardSize size) =>
+      _coordinator._executeIfChanged(
+        subject: _project,
+        value: size,
+        read: (project) => project.pasteboardSize,
+        command: (_) => _pasteboard(size: size),
+      );
+
+  /// What the pasteboard at [size] or [inUse] — the setters' — will cut of
+  /// the pictures, worked out ahead as the step itself asks
+  /// ([SetProjectPasteboardCommand.workAhead]): for a wait window to hold up
+  /// while it runs, hearing through [report] how much is done (F-432).
+  Future<void> cutProjectPasteboardAhead({
+    PasteboardSize? size,
+    bool? inUse,
+    void Function(double done)? report,
+  }) async {
+    await _pasteboard(
+      size: size,
+      inUse: inUse,
+    ).workAhead(undo: false)?.run(report ?? (_) {});
+  }
+
+  SetProjectPasteboardCommand _pasteboard({
+    PasteboardSize? size,
+    bool? inUse,
+  }) => SetProjectPasteboardCommand(
+    repository: _coordinator.repository,
+    brushFrameStore: _coordinator.brushFrameStore,
+    size: size,
+    inUse: inUse,
+  );
+
+  /// Whether the pasteboard is there at all (I-109) — off, nothing reaches
+  /// past the paper; one undo step, no-op when unchanged.
+  void setProjectPasteboardInUse(bool inUse) => _coordinator._executeIfChanged(
+    subject: _project,
+    value: inUse,
+    read: (project) => project.pasteboardInUse,
+    command: (_) => _pasteboard(inUse: inUse),
+  );
 }

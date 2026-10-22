@@ -182,20 +182,31 @@ int _commitOffsetFor(
 /// band that advertised a move quietly became a re-select — the move
 /// machine got a null span and the press fell through to the select path,
 /// with nothing on screen to say so.
+///
+/// ↩️F-87: the rows it plans are the ones whose BLOCKS were swept
+/// ([TimelineRowAddress.blockLayerId]); a lane row holds its keys, never
+/// its layer's sounds (유저 H20: 「선택한 곳만 움직이게하라고」). The anchor
+/// is the drag's own row when that is one of them, else the first of them.
 TimelineFrameRangeSelection? _spanOfTrackSelection(
   TrackFrameRangeSelection? live,
 ) {
-  final anchorLayerId = live?.anchorRow.owningLayerId;
-  if (live == null || anchorLayerId == null) {
+  if (live == null) {
+    return null;
+  }
+  // Deduped in display order: a layer row and its own lane rows are
+  // several rows of ONE layer, and the move machine plans per layer.
+  final blockIds = [
+    ...{for (final row in live.spanRows) ?row.blockLayerId},
+  ];
+  final anchorLayerId = live.anchorRow.blockLayerId;
+  if (blockIds.isEmpty) {
     return null;
   }
   return TimelineFrameRangeSelection(
-    layerId: anchorLayerId,
+    layerId: blockIds.contains(anchorLayerId) ? anchorLayerId! : blockIds.first,
     startIndex: live.startFrame,
     endIndexExclusive: live.endFrameExclusive,
-    // Deduped in display order: a layer row and its own lane rows are
-    // several rows of ONE layer, and the move machine plans per layer.
-    layerIds: {for (final row in live.spanRows) ?row.owningLayerId}.toList(),
+    layerIds: blockIds,
   );
 }
 
@@ -218,9 +229,12 @@ _castTrackSources(
   // through to a silent re-select. The `seen` set is the other half: a
   // layer row and its own lane rows are several rows of ONE layer, and
   // sourcing that layer twice would plan its slide twice.
+  // ↩️F-87: keyed by the layer whose BLOCKS the row holds. A swept lane
+  // holds its keys, not its layer's sounds — keyed by the owner, a band
+  // over an S row's lane slid sounds nobody swept (H20).
   final seen = <LayerId>{};
   for (final row in live.spanRows) {
-    final rowLayerId = row.owningLayerId;
+    final rowLayerId = row.blockLayerId;
     if (rowLayerId == null || !seen.add(rowLayerId)) {
       continue;
     }
@@ -741,6 +755,24 @@ class FrameRangeMoveDrag {
   /// frame delta has come back to: the row grabbed, or the selection's
   /// anchor for a caller that names none.
   LayerId get _hopOrigin => _grabLayerId ?? _selectionBefore.layerId;
+
+  /// The row [row] — the span's ONE moving row — lands on while the hand
+  /// points at [pointedAt]: carried as far as the hand has moved from the
+  /// row it grabbed ([_hopOrigin]). Null when the carry walks off the rows.
+  ///
+  /// 🚨F-87 (유저 2026-10-18): 「fx를 넘어서 뭐든 선택된 대상으로」 — a
+  /// band's lane row holds none of its layer's blocks, so the band can be
+  /// grabbed by a row that is not the row it moves. Read as the landing,
+  /// the pointed row carried a sideways drag off its row: a hand sliding
+  /// along S1's lane took S2's sound up into S1.
+  LayerId? _carriedRow(LayerId row, LayerId? pointedAt) {
+    if (pointedAt == null || _hopOrigin == row) {
+      return pointedAt;
+    }
+    final rows = _rangeRowOrder();
+    final hop = layerIndexDelta(rows, _hopOrigin, pointedAt);
+    return hop == null ? null : _rowWalkedTo(rows, row, hop)?.id;
+  }
 
   /// The single-row subject: the row as it stood, and the start of the
   /// block that anchors the group. ⛔ONE field for the pair — they are
@@ -1669,7 +1701,10 @@ class FrameRangeMoveDrag {
       return;
     }
     final source = singleRow.layer;
-    final target = _singleRowMoveTarget(source, pointedAt);
+    final target = _singleRowMoveTarget(
+      source,
+      _carriedRow(source.id, pointedAt),
+    );
     final plan = target == null
         ? null
         : planDrawingRangeMove(
@@ -1751,10 +1786,12 @@ class FrameRangeMoveDrag {
     List<({Layer commit, int offset})> multiSources,
   ) {
     final selection = _selectionBefore;
-    if (targetLayerId != null &&
-        targetLayerId != selection.layerId &&
-        selection.spanLayerIds.length == 1 &&
-        _updateRowChange(frameDelta, targetLayerId)) {
+    final landing = selection.spanLayerIds.length == 1
+        ? _carriedRow(selection.layerId, targetLayerId)
+        : null;
+    if (landing != null &&
+        landing != selection.layerId &&
+        _updateRowChange(frameDelta, landing)) {
       return;
     }
     // MULTI-ROW rigid move (UI-R23 #9): a multi-layer drawing selection
@@ -2288,14 +2325,23 @@ class FrameRangeMoveDrag {
     required LayerId layerId,
     required int displayDelta,
   }) {
+    final landed = _rowWalkedTo(rows, layerId, displayDelta);
+    return landed == null
+        ? null
+        : layerIndexDelta(lattice, layerId, landed.id);
+  }
+
+  /// The display row [hop] rows from [layerId] in [rows] — the walk a row
+  /// hop takes on screen — or null when it leaves the screen.
+  static Layer? _rowWalkedTo(List<Layer> rows, LayerId layerId, int hop) {
     final rowIndex = rows.indexWhere((layer) => layer.id == layerId);
     if (rowIndex == -1) {
       return null;
     }
-    final landingIndex = rowIndex + displayDelta;
+    final landingIndex = rowIndex + hop;
     if (landingIndex < 0 || landingIndex >= rows.length) {
       return null;
     }
-    return layerIndexDelta(lattice, layerId, rows[landingIndex].id);
+    return rows[landingIndex];
   }
 }

@@ -101,10 +101,11 @@ Future<void> _openStoryboard(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// The S row at [slot]'s twirl — the timeline's own row's, named by its
+/// layer (I-89 ①).
 Future<void> _twirl(WidgetTester tester, int slot) async {
-  final toggle = find.named(
-    'storyboard-se-lane-toggle-${_trackId.value}-${slot + 1}',
-  );
+  final layer = _project().tracks.single.seLayers[slot];
+  final toggle = find.named('storyboard-lane-toggle-${layer.id.value}');
   await tester.ensureVisible(toggle);
   await tester.pumpAndSettle();
   await tester.tap(toggle);

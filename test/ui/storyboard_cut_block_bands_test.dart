@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -873,6 +874,33 @@ void main() {
     );
   });
 
+  // 🗣️F-348 (유저 2026-10-12): 「1G컷이 코마텍스트가 사라짐. 콘티레이어나
+  // 기존 프레임 블록은 공간 부족하면 글자 좌우 길이 짧게한다던가 그런식으로
+  // 하면서 최대한 버티는데 컷블록은 그런게없음. 법 통일해서 적용」.
+  testWidgets('F-348: a block too narrow for its length keeps it, narrowed '
+      'into the right end of its bottom band — as its title narrows', (
+    tester,
+  ) async {
+    await _pump(tester, pixelsPerFrame: 1);
+    final block = requireCutBlock(tester, 'cut-1');
+    expect(
+      block.rect.width,
+      lessThan(48),
+      reason: '⛔전제: under the width that used to print no length',
+    );
+    expect(block.total, '12');
+    final band = block.bottomBand;
+    final inset = math.min(4, band.width / 2);
+    final length = _wordsIn(band, _painted(tester));
+    expect(length, hasLength(1), reason: 'the length is painted');
+    expect(length.single.right, closeTo(band.right - inset, 0.01));
+    expect(
+      length.single.left,
+      greaterThanOrEqualTo(band.left + inset - 0.01),
+      reason: 'narrowed into its band',
+    );
+  });
+
   // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」. The word is first
   // painted at a roomy zoom, where it runs its natural length.
   testWidgets('a title a few pixels long gives up its letter gaps and is '
@@ -1001,13 +1029,21 @@ void main() {
       layerMarkColor(_art),
     ]);
     // Panel a (4 frames) is wider than its picture, which is drawn the
-    // strip's height tall from the panel's left: past it, the plate.
+    // strip's height tall in the panel's middle: either side of it, the
+    // plate.
     final strip = block.strip;
     final drawnWidth = 160 * strip.height / 90;
     expect(drawnWidth, lessThan(4 * cell), reason: '⛔전제');
     expect(
       grounds[2].rect,
-      Rect.fromLTWH(block.rect.left, strip.top, drawnWidth, strip.height),
+      rectMoreOrLessEquals(
+        Rect.fromLTWH(
+          block.rect.left + (4 * cell - drawnWidth) / 2,
+          strip.top,
+          drawnWidth,
+          strip.height,
+        ),
+      ),
     );
     expect(grounds[2].color, storyboardPanelPictureGroundColor);
     expect(
@@ -1034,6 +1070,43 @@ void main() {
       ],
       reason: 'a picture still being made is its placeholder\'s shade',
     );
+  });
+
+  // 🗣️F-356 (유저 2026-10-14): 「세로 가로 둘다 신경써서 안에 들어가게 …
+  // 그림 자체가 작아지도록」. ↩️The picture kept the strip's height and the
+  // panel cut off what ran past its right edge.
+  testWidgets('a panel NARROWER than its picture shows the whole picture, '
+      'smaller and undistorted, in its middle — never a cut-off one', (
+    tester,
+  ) async {
+    final picture = (await tester.runAsync(() async {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        const Rect.fromLTWH(0, 0, 160, 90),
+        Paint()..color = const Color(0xFFFFFFFF),
+      );
+      return recorder.endRecording().toImage(160, 90);
+    }))!;
+    const cell = 6.0;
+    await _pump(
+      tester,
+      storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
+      cutMark: _art,
+      pixelsPerFrame: cell,
+      thumbnailFor: (cut, frame, {required shownHeight, region}) =>
+          frame == 0 ? picture : null,
+    );
+    final block = requireCutBlock(tester, 'cut-1');
+    final strip = block.strip;
+    const panel = 4 * cell;
+    expect(160 * strip.height / 90, greaterThan(panel), reason: '⛔전제');
+
+    final drawn = cutBlocksPainter(tester).groundsOf(block)[2].rect;
+
+    expect(drawn.left, block.rect.left);
+    expect(drawn.width, panel, reason: 'the whole width, in the panel');
+    expect(drawn.height, closeTo(panel * 90 / 160, 1e-9));
+    expect(drawn.center.dy, closeTo(strip.center.dy, 1e-9));
   });
 
   testWidgets('each edge reads the grounds of the block it stands in', (

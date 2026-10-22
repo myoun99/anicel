@@ -34,8 +34,10 @@ void main() {
       find.byKey(const ValueKey<String>('new-frame-button')),
       findsOneWidget,
     );
-    // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame ships with Shift+I.
-    expect(find.byTooltip('Add (Shift+I)'), findsOneWidget);
+    // An install opens on Clip Studio's layout, where Add Frame has no key:
+    // TVPaint's I is the eyedropper's there (F-417-Q2). ↩️It showed
+    // anicel's Shift+I until then (I-63-Q4).
+    expect(find.byTooltip('New Frame'), findsOneWidget);
     await expectCutName(tester, 'default-cut-1', '1');
     await expectActiveCutName(tester, '1');
     expect(find.text('New Drawing'), findsNothing);
@@ -53,7 +55,6 @@ void main() {
       'edit-cut-note-button',
       'resize-cut-canvas-button',
       'duplicate-cut-button',
-      'set-cut-thumbnail-button',
       'move-cut-left-button',
       'move-cut-right-button',
     ]) {

@@ -455,8 +455,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(began, isEmpty);
+      // F-316: no band before the step off the pressed cell — the first
+      // update IS that step.
       expect(dragSteps, isNotEmpty);
-      expect(dragSteps.first, (const TrackId('track-a'), 12, 12));
+      expect(dragSteps.first, (const TrackId('track-a'), 12, 32));
       expect(dragSteps.last, (const TrackId('track-a'), 12, 32));
     });
 
@@ -578,7 +580,8 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
-      expect(dragSteps.first, (28, 28));
+      // F-316: no band before the step off the pressed cell.
+      expect(dragSteps.first, (28, 38));
       expect(dragSteps.last, (28, 38));
     });
 
@@ -1562,7 +1565,7 @@ void main() {
           onTapAt: (_, _, _) {},
           onTapClear: () {},
           onMoveBegin: () => false,
-          onMoveUpdate: (_) {},
+          onMoveUpdate: (_, {values}) {},
           onMoveEnd: () {},
           onMoveCancel: () {},
         ),
@@ -1995,7 +1998,7 @@ void main() {
           onTapAt: (_, _, _) {},
           onTapClear: () {},
           onMoveBegin: () => false,
-          onMoveUpdate: (_) {},
+          onMoveUpdate: (_, {values}) {},
           onMoveEnd: () {},
           onMoveCancel: () {},
         ),
