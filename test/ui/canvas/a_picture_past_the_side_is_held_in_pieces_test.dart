@@ -804,6 +804,8 @@ void main() {
           case CompositeGroup(:final children):
           case CompositeAdjustment(:final children):
             yield* requestsIn(children);
+          case CompositeBackdropBlend(:final backdrop, :final source):
+            yield* requestsIn([...backdrop, source]);
         }
       }
     }

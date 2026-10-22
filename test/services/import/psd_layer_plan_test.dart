@@ -11,6 +11,7 @@ import 'package:anicel/src/models/media_asset.dart' show MediaFitMode;
 import 'package:anicel/src/services/import/media_import_planner.dart'
     show ImportIdMint;
 import 'package:anicel/src/services/import/psd_layer_plan.dart';
+import 'package:anicel/src/services/photoshop/psd_blend_modes.dart';
 import 'package:anicel/src/services/photoshop/psd_pixels.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
 import 'package:anicel/src/models/import/import_warning.dart';

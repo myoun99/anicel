@@ -1956,11 +1956,17 @@ class _LayerStackPaintPass {
         CompositeLeaf(payload: final _SurfaceRow row) => blendsInPlace(
           row.blendMode.paintBlendMode,
         ),
+        CompositeLeaf(payload: _PaintPaper()) => true,
         CompositeGroup(:final blendMode, :final children) =>
           blendsInPlace(blendMode.paintBlendMode) &&
               _nodesBlendInPlace(children),
         // Its own passes are `srcOver` and `plus`.
         CompositeAdjustment(:final children) => _nodesBlendInPlace(children),
+        // Its result is laid `srcOver` — the composite rastered, or the
+        // backdrop read in the frame in a layer of its own
+        // (`drawBlendOverBackdrop`).
+        CompositeBackdropBlend(:final backdrop, :final source) =>
+          _nodesBlendInPlace(backdrop) && _nodesBlendInPlace([source]),
       };
       if (!inPlace) {
         return false;
