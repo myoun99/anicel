@@ -417,40 +417,48 @@ void _scatterDots(Uint8List alpha, int seed, _ScatterRecipe recipe) {
   }
 }
 
+/// The value law [_textureMask] asks at every texel: the texel's cell ([x],
+/// [y]) and its [index] in the alpha, row-major. The mask rounds and clamps
+/// the answer to a byte.
+typedef _TexelLaw = double Function(int x, int y, int index);
+
+/// A mask laid texel by texel by [law] over the whole of its [size]×[size]
+/// — ONE walk for every texture and every tip that fills its square, as
+/// [_discMask] is for the round tips. ↩️Each generator kept its own walk
+/// until the pencils (F-433) brought the fifth.
+BrushTipMask _textureMask(String id, _TexelLaw law, {int size = _maskSize}) {
+  final alpha = Uint8List(size * size);
+  for (var index = 0; index < alpha.length; index += 1) {
+    alpha[index] =
+        law(index % size, index ~/ size, index).round().clamp(0, 255);
+  }
+  return BrushTipMask(id: id, size: size, alpha: alpha);
+}
+
 /// Paper tooth: two octaves of wrapping value noise, kept in the upper half
 /// of the range so the texture bites into a stroke without erasing it.
 BrushTipMask _generatePaperGrainMask() {
   final coarse = _seamlessValueNoise(8, 0x68E31DA4);
   final fine = _seamlessValueNoise(16, 0xB5297A4D);
-  final alpha = Uint8List(_maskSize * _maskSize);
-  for (var index = 0; index < alpha.length; index += 1) {
+  return _textureMask('builtin-paper-grain', (x, y, index) {
     final noise = coarse[index] * 0.6 + fine[index] * 0.4;
-    alpha[index] = (255 * (0.35 + noise * 0.65)).round().clamp(0, 255);
-  }
-  return BrushTipMask(id: 'builtin-paper-grain', size: _maskSize, alpha: alpha);
+    return 255 * (0.35 + noise * 0.65);
+  });
 }
 
 /// Canvas weave: warp and weft threads alternating over and under on an
 /// 8px period, which divides the mask exactly — no seam arithmetic needed.
 BrushTipMask _generateCanvasWeaveMask() {
   const period = 8;
-  final alpha = Uint8List(_maskSize * _maskSize);
-  for (var y = 0; y < _maskSize; y += 1) {
-    for (var x = 0; x < _maskSize; x += 1) {
-      final overUnder = ((x ~/ period) + (y ~/ period)).isEven;
-      // The thread on top is shaded across its width; the one beneath keeps
-      // a dimmer, flatter face.
-      final across = overUnder ? y % period : x % period;
-      final profile = 1.0 - ((across + 0.5) / period - 0.5).abs() * 2.0;
-      final value = overUnder ? 0.55 + profile * 0.45 : 0.4 + profile * 0.3;
-      alpha[y * _maskSize + x] = (255 * value).round().clamp(0, 255);
-    }
-  }
-  return BrushTipMask(
-    id: 'builtin-canvas-weave',
-    size: _maskSize,
-    alpha: alpha,
-  );
+  return _textureMask('builtin-canvas-weave', (x, y, index) {
+    final overUnder = ((x ~/ period) + (y ~/ period)).isEven;
+    // The thread on top is shaded across its width; the one beneath keeps a
+    // dimmer, flatter face.
+    final across = overUnder ? y % period : x % period;
+    final profile = 1.0 - ((across + 0.5) / period - 0.5).abs() * 2.0;
+    final value = overUnder ? 0.55 + profile * 0.45 : 0.4 + profile * 0.3;
+    return 255 * value;
+  });
 }
 
 /// Cold-press paper: three layers of height, each wrapping at the tile edge.
@@ -477,16 +485,14 @@ BrushTipMask _generateColdPressMask() {
   final (tooth, highest) = _coldPressTooth(size);
   final swell = _seamlessValueNoise(8, 0x51ED270B, size: size);
   final fibre = _seamlessValueNoise(64, 0x7C3A9E25, size: size);
-  final alpha = Uint8List(size * size);
-  for (var index = 0; index < alpha.length; index += 1) {
+  return _textureMask('builtin-cold-press', size: size, (x, y, index) {
     final height =
         tooth[index] / highest * 0.65 + swell[index] * 0.2 + fibre[index] * 0.15;
     // Smoothstep of the depth: broad hollows, broad crowns.
     final depth = (1.0 - height).clamp(0.0, 1.0);
     final paint = 0.3 + depth * depth * (3.0 - 2.0 * depth) * 0.7;
-    alpha[index] = (255 * paint).round().clamp(0, 255);
-  }
-  return BrushTipMask(id: 'builtin-cold-press', size: size, alpha: alpha);
+    return 255 * paint;
+  });
 }
 
 /// The cold-press TOOTH (see [_generateColdPressMask]): the dome heights of
@@ -498,12 +504,7 @@ BrushTipMask _generateColdPressMask() {
   final pointX = List<double>.filled(cells * cells, 0);
   final pointY = List<double>.filled(cells * cells, 0);
   final crown = List<double>.filled(cells * cells, 0);
-  var state = 0x2F6B3A91;
-  double draw() {
-    state = _nextSeed(state);
-    return ((state >> 8) & 0xFFFF) / 65535.0;
-  }
-
+  final draw = _Draws(0x2F6B3A91).next;
   for (var index = 0; index < cells * cells; index += 1) {
     pointX[index] = (index % cells + draw()) * cell;
     pointY[index] = (index ~/ cells + draw()) * cell;
@@ -554,26 +555,21 @@ BrushTipMask _generatePencilSideMask() {
   const radius = size / 2.0 - 3.0;
   final ragged = _seamlessValueNoise(48, 0x3C6EF372, size: size);
   final mottle = _seamlessValueNoise(7, 0x2545F491, size: size);
-  final alpha = Uint8List(size * size);
-  for (var y = 0; y < size; y += 1) {
+  return _textureMask('builtin-pencil-side', size: size, (x, y, index) {
     final down = (y + 0.5 - centre) / radius;
     final down4 = down * down * down * down;
-    for (var x = 0; x < size; x += 1) {
-      final across = (x + 0.5 - centre) / radius;
-      final across4 = across * across * across * across;
-      final fourth = math.sqrt(math.sqrt(across4 + down4));
-      final eighth = math.sqrt(
-        math.sqrt(math.sqrt(across4 * across4 + down4 * down4)),
-      );
-      final reach = (fourth + eighth) / 2.0;
-      final index = y * size + x;
-      final rim = 0.988 + ragged[index] * 0.024;
-      // A texel and a half of ramp across the rim: hard, never aliased.
-      final cover = ((rim - reach) * radius / 1.5 + 0.5).clamp(0.0, 1.0);
-      alpha[index] = (255 * cover * (0.9 + mottle[index] * 0.1)).round();
-    }
-  }
-  return BrushTipMask(id: 'builtin-pencil-side', size: size, alpha: alpha);
+    final across = (x + 0.5 - centre) / radius;
+    final across4 = across * across * across * across;
+    final fourth = math.sqrt(math.sqrt(across4 + down4));
+    final eighth = math.sqrt(
+      math.sqrt(math.sqrt(across4 * across4 + down4 * down4)),
+    );
+    final reach = (fourth + eighth) / 2.0;
+    final rim = 0.988 + ragged[index] * 0.024;
+    // A texel and a half of ramp across the rim: hard, never aliased.
+    final cover = ((rim - reach) * radius / 1.5 + 0.5).clamp(0.0, 1.0);
+    return 255 * cover * (0.9 + mottle[index] * 0.1);
+  });
 }
 
 /// Graphite tooth ([graphiteToothTextureMask]): per texel a hashed speck
@@ -583,16 +579,11 @@ BrushTipMask _generatePencilSideMask() {
 BrushTipMask _generateGraphiteToothMask() {
   const size = 256;
   final swell = _seamlessValueNoise(85, 0xB5297A4D, size: size);
-  final alpha = Uint8List(size * size);
-  for (var y = 0; y < size; y += 1) {
-    for (var x = 0; x < size; x += 1) {
-      final index = y * size + x;
-      final speck = _texelHash(x, y) / 65535.0;
-      final height = speck * 0.6 + swell[index] * 0.4;
-      alpha[index] = (255 * ((height - 0.15) / 0.6).clamp(0.0, 1.0)).round();
-    }
-  }
-  return BrushTipMask(id: 'builtin-graphite-tooth', size: size, alpha: alpha);
+  return _textureMask('builtin-graphite-tooth', size: size, (x, y, index) {
+    final speck = _texelHash(x, y) / 65535.0;
+    final height = speck * 0.6 + swell[index] * 0.4;
+    return 255 * ((height - 0.15) / 0.6).clamp(0.0, 1.0);
+  });
 }
 
 /// A texel's own 16 pseudo-random bits, from its cell alone. ⛔Not a walk of
@@ -617,12 +608,7 @@ BrushTipMask _generateColorFleckMask() {
   final envelope = _seamlessValueNoise(6, 0x1234567, size: size);
   final clumps = _seamlessValueNoise(22, 0x0C0FFEE, size: size);
   final laid = List<double>.filled(size * size, 0);
-  var state = 0x5EED;
-  double draw() {
-    state = _nextSeed(state);
-    return ((state >> 8) & 0xFFFF) / 65535.0;
-  }
-
+  final draw = _Draws(0x5EED).next;
   var placed = 0;
   while (placed < 1800) {
     final across = draw() * 2.0 - 1.0;
@@ -653,11 +639,11 @@ BrushTipMask _generateColorFleckMask() {
       laid[index] += strength * fade * (1.0 - laid[index]);
     }
   }
-  final alpha = Uint8List(size * size);
-  for (var index = 0; index < alpha.length; index += 1) {
-    alpha[index] = (255 * laid[index].clamp(0.0, 1.0)).round();
-  }
-  return BrushTipMask(id: 'builtin-color-flecks', size: size, alpha: alpha);
+  return _textureMask(
+    'builtin-color-flecks',
+    size: size,
+    (x, y, index) => 255 * laid[index].clamp(0.0, 1.0),
+  );
 }
 
 /// Value noise on a [lattice]×[lattice] grid, smoothly interpolated up to
@@ -668,12 +654,12 @@ List<double> _seamlessValueNoise(
   int seed, {
   int size = _maskSize,
 }) {
-  final grid = List<double>.filled(lattice * lattice, 0);
-  var state = seed;
-  for (var index = 0; index < grid.length; index += 1) {
-    state = _nextSeed(state);
-    grid[index] = ((state >> 8) & 0xFFFF) / 65535.0;
-  }
+  final draws = _Draws(seed);
+  final grid = List<double>.generate(
+    lattice * lattice,
+    (_) => draws.next(),
+    growable: false,
+  );
 
   double smooth(double t) => t * t * (3.0 - 2.0 * t);
 
@@ -701,6 +687,21 @@ List<double> _seamlessValueNoise(
 
 /// Deterministic 31-bit LCG so the masks are identical everywhere.
 int _nextSeed(int seed) => (seed * 1103515245 + 12345) & 0x7FFFFFFF;
+
+/// The [_nextSeed] stream read as fractions of one: bits 8..23 of each next
+/// state over 65535 — ONE reading for every generator that draws from it
+/// (the value noise's lattice, the cold press's domes, the colour flecks).
+/// ↩️Each kept its own until the flecks (F-433) brought the third.
+final class _Draws {
+  _Draws(this._state);
+
+  int _state;
+
+  double next() {
+    _state = _nextSeed(_state);
+    return ((_state >> 8) & 0xFFFF) / 65535.0;
+  }
+}
 
 /// Stamps a disc of [radius] at ([centerX], [centerY]) into [alpha]: [law]
 /// at each covered pixel, max-blended so overlapping blobs merge instead of

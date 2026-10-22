@@ -469,8 +469,24 @@ import '../../tool/refactor/clone_scan.dart';
 /// 🔬Measured on the lane against its base (`ebefaea8b`, at 88): this one
 /// added, none gone. Measured again on the lane over master (`d13d76aa6`,
 /// at 89): 90, this one added, none gone.
+///
+/// 88 → 87 (2026-10-22, F-433 pencils-draw-like-pencils — the pencils'
+/// three new masks first came with a walk and a draw of their own each, 96;
+/// the mask file now lays every texture and every square tip in ONE walk
+/// (`_textureMask`) and reads the LCG as fractions in ONE place
+/// (`_Draws`)). The pair gone:
+///
+///     43 tokens
+///       lib/src/services/brush_tip_mask_defaults.dart
+///         _generateCanvasWeaveMask
+///       lib/src/ui/session/editor_voice_recording.dart
+///         EditorVoiceRecording._playCountInBeeps
+///
+/// 🔬Measured on the lane over master (`22c980e4b`, at 88): none added,
+/// that one
+/// gone.
 void main() {
-  const ceiling = 88;
+  const ceiling = 87;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

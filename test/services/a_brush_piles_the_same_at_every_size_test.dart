@@ -212,6 +212,9 @@ void main() {
       'builtin-blending-stump': 0.4,
       'builtin-hatching': 0.9,
       'builtin-concrete': 0.85,
+      // F-433 (10-22): the pencil laid on its lead's side, made since — what
+      // it lays at its own size, not what it laid before.
+      'builtin-shading-pencil': 0.3806,
     };
     final byId = {for (final p in defaultBrushPresets) p.id.value: p};
     for (final preset in defaultBrushPresets) {
