@@ -583,14 +583,17 @@ class _ZoomSnapsRowState extends State<_ZoomSnapsRow> {
             PanelFlyoutItem(
               keyValue: 'settings-zoom-snap-${_shownPercent(stop)}',
               label: '${_shownPercent(stop)}%',
-              action: PanelFlyoutRowAction(
-                keyValue: 'settings-zoom-snap-${_shownPercent(stop)}-remove',
-                icon: Icons.remove,
-                tooltip: strings.commonDelete,
-                does: PanelFlyoutActionDoes.deletes,
-                enabled: _stops.length > 1,
-                onPressed: () => _keep(_stops.where((other) => other != stop)),
-              ),
+              actions: [
+                PanelFlyoutRowAction(
+                  keyValue: 'settings-zoom-snap-${_shownPercent(stop)}-remove',
+                  icon: Icons.remove,
+                  tooltip: strings.commonDelete,
+                  does: PanelFlyoutActionDoes.deletes,
+                  enabled: _stops.length > 1,
+                  onPressed: () =>
+                      _keep(_stops.where((other) => other != stop)),
+                ),
+              ],
             ),
         ],
         foot: () => PanelFlyoutLiveFoot(
