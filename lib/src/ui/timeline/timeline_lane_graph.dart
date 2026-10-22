@@ -581,6 +581,42 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   _KeyInHand? _keyInHand;
   _BoxInHand? _box;
 
+  /// The ANCHOR POINT of the box round the keys picked where the hand has
+  /// put it (graph-box-handles-more ⓓ) — null where it stands in the
+  /// middle, as on keys picked anew ([_pickedAnew]).
+  LaneGraphBoxPoint? _pivot;
+
+  /// How far off the anchor point the hand holding it holds it — null where
+  /// no hand holds it.
+  Offset? _pivotGrab;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.lanes?.selection.addListener(_pickedAnew);
+  }
+
+  @override
+  void didUpdateWidget(LaneGraphPicture oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final was = oldWidget.lanes?.selection;
+    final now = widget.lanes?.selection;
+    if (was != now) {
+      was?.removeListener(_pickedAnew);
+      now?.addListener(_pickedAnew);
+    }
+  }
+
+  /// The keys picked anew: the anchor point back in the middle, as AE's on
+  /// a new box. A carry's selection riding with its keys is the same keys
+  /// picked, and keeps it ([_letTheKeyGo]).
+  void _pickedAnew() {
+    if (_pivot == null || (_keyInHand?.moving ?? false)) {
+      return;
+    }
+    setState(() => _pivot = null);
+  }
+
   /// The painter the last build drew with — what a press is asked of.
   late TimelineLaneGraphPainter _painter;
 
@@ -603,6 +639,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       held: _inHand?.fits ?? _keyInHand?.fits ?? const {},
       box: _box?.rect,
       transformBox: widget.transformBox,
+      pivot: _pivot ?? laneGraphBoxMiddle,
     );
     final picture = HitGate(
       admits: _takesPressAt,
@@ -686,6 +723,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     return _painter.handleAt(position, size) != null ||
         (widget.lanes != null &&
             (_painter.pickedIn(size).handleAt(position) != null ||
+                _pivotTakenAt(position) != null ||
                 _keyTakenAt(position) != null ||
                 _lineTakenAt(position) != null)) ||
         _penAt(position) != null;
@@ -702,6 +740,14 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
             ? _painter.pickedIn(size).nearest(position)
             : null);
   }
+
+  /// Where the box's anchor point stands, where a press at [position] takes
+  /// it — off a line the pen puts a key on ([_penAt]) or Alt picks whole
+  /// ([_lineTakenAt]), as a key is taken inside the box ([_keyTakenAt]).
+  Offset? _pivotTakenAt(Offset position) =>
+      _penAt(position) == null && _lineTakenAt(position) == null
+      ? _painter.pickedIn(context.size!).pivotPressedAt(position)
+      : null;
 
   /// The line whose keys a press at [position] picks, every one — with Alt
   /// held (⌥ on a Mac), on its stroke as drawn: AE's Alt-click between two
@@ -742,14 +788,17 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
 
   /// Let go of before it moved: a key picked stays picked, as AE's click
   /// leaves it.
-  void _cancelled() => _letTheKeyGo(widget.lanes?.onMoveCancel);
+  void _cancelled() {
+    _pivotGrab = null;
+    _letTheKeyGo(widget.lanes?.onMoveCancel);
+  }
 
   /// A press on a key PICKS it (I-3, AE's graph editor: a click selects the
   /// key) — the key's cell, as the lane selection its row's band makes —
   /// unless the selection holds it already: then it stands, and the drag
   /// carries all of it, as a drag begun inside a band's selection does. A
   /// press inside the box round the keys picked takes one of them so
-  /// ([_keyTakenAt]).
+  /// ([_keyTakenAt]); one on its anchor point takes that.
   ///
   /// ⚠️Mine: the press does not stand the playhead on the key, as a press
   /// on a band does. AE's click on a key leaves the current time where it
@@ -764,6 +813,10 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     }
     if (_painter.pickedIn(size).handleAt(position) case final handle?) {
       setState(() => _keyInHand = _boxTaken(handle, position, size));
+      return;
+    }
+    if (_pivotTakenAt(position) case final pivot?) {
+      _pivotGrab = pivot - position;
       return;
     }
     final key = _keyTakenAt(position);
@@ -809,28 +862,23 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// is — with the first of them in hand: what holds its row, and says how
   /// far its line's own frames stand from the graph's.
   _KeyInHand _boxTaken(LaneGraphBoxHandle handle, Offset position, Size size) {
-    final axis = widget.frameAxis.axis;
-    final picked = _painter.pickedIn(size).keys;
-    LaneGraphSpan spanOf(double Function(LaneGraphKey key) of) {
-      final all = picked.map(of);
-      return (low: all.reduce(math.min), high: all.reduce(math.max));
-    }
-
+    final picked = _painter.pickedIn(size);
+    final times = picked.keys.map(
+      (key) =>
+          (key.frame + TimelineLaneGraphPainter._shiftOf(key.line)).toDouble(),
+    );
     final fits = _painter.fits;
     return _KeyInHand(
-      picked.first,
+      picked.keys.first,
       position,
       fits,
       box: (
         handle: handle,
-        times: spanOf(
-          (key) =>
-              (key.frame + TimelineLaneGraphPainter._shiftOf(key.line))
-                  .toDouble(),
-        ),
-        across: spanOf((key) => partAcross(axis, key.at)),
+        times: (low: times.reduce(math.min), high: times.reduce(math.max)),
+        across: picked.acrossSpan,
+        pivot: _pivot ?? laneGraphBoxMiddle,
       ),
-      marks: _lift.marksOf(picked, fits),
+      marks: _lift.marksOf(picked.keys, fits),
     );
   }
 
@@ -881,9 +929,9 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
 
   /// The keys the box holds STRETCHED as far as its handle in hand has
   /// been pulled (I-3 ⑥, AE's transform box): along the frames about the
-  /// box's other end — its middle with Ctrl held (⌘ on a Mac) — and across
-  /// a value graph; a corner with Shift held keeps the box's shape. The
-  /// view pans where the hand reaches its edge, as under a key carried.
+  /// box's other end — its anchor point with Ctrl held (⌘ on a Mac) — and
+  /// across a value graph; a corner with Shift held keeps the box's shape.
+  /// The view pans where the hand reaches its edge, as under a key carried.
   void _stretchTo(
     _KeyInHand inHand,
     LaneGraphBoxHeld held,
@@ -897,7 +945,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       axis: axis,
     );
     final moved = details.localPosition - inHand.press;
-    final (:handle, :times, :across) = held;
+    final (:handle, :times, :across, pivot: _) = held;
     final edge = handle.along > 0 ? times.high : times.low;
     final (time: (:anchor, :factor), across: crossed) = laneGraphBoxPulled(
       held,
@@ -911,7 +959,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
             partAcross(axis, moved),
       ),
       (
-        centred: ModifierKeys.isControlOrCommandPressed,
+        pivoted: ModifierKeys.isControlOrCommandPressed,
         square: ModifierKeys.isShiftPressed,
       ),
     );
@@ -965,12 +1013,16 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     if (lanes == null || finished == null) {
       return;
     }
+    final pivot = _pivot;
     reportRangeDragFinished(
       dragging: inHand.moving,
       moving: inHand.moving,
       onMoveFinished: finished,
       releaseGrip: () => lanes.onGripReleased?.call(inHand.row),
     );
+    // The keys landed are the keys picked still: the anchor point stays
+    // where the hand put it, whatever the landing told [_pickedAnew].
+    setState(() => _pivot = pivot);
   }
 
   void _take(DragStartDetails details) {
@@ -992,8 +1044,14 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   }
 
   /// The handle follows the hand by as far as the hand has gone — and a key
-  /// in hand carries the selection that far.
+  /// in hand carries the selection that far, and the box's anchor point in
+  /// hand goes where the hand has (graph-box-handles-more ⓓ).
   void _pull(DragUpdateDetails details) {
+    if (_pivotGrab case final grab?) {
+      final picked = _painter.pickedIn(context.size!);
+      setState(() => _pivot = picked.pointOf(details.localPosition + grab));
+      return;
+    }
     final key = _keyInHand;
     if (key != null) {
       _carryTo(key, details);
@@ -1021,6 +1079,10 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// Let go of: written where it was pulled to — nothing, where it never
   /// moved; a key's move lands where it was carried.
   void _drop() {
+    if (_pivotGrab != null) {
+      _pivotGrab = null;
+      return;
+    }
     if (_keyInHand != null) {
       _letTheKeyGo(widget.lanes?.onMoveEnd);
       return;
@@ -1044,6 +1106,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
 
   @override
   void dispose() {
+    widget.lanes?.selection.removeListener(_pickedAnew);
     // A picture taken away with a handle in hand never sees its release:
     // what it was showing is dropped once the tree settles — a notifier
     // fired while the tree is torn down would be too soon.
@@ -2150,6 +2213,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
     this.held = const {},
     this.box,
     this.transformBox = true,
+    this.pivot = laneGraphBoxMiddle,
   }) : super(
          repaint: Listenable.merge([
            frameAxis.geometry,
@@ -2182,6 +2246,10 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// Whether the box round the keys picked stands — drawn, its handles and
   /// the inside of it taking a press ([LaneGraph.transformBox]).
   final bool transformBox;
+
+  /// Where the box's anchor point stands between the keys picked
+  /// ([LaneGraphPicked.pivotAt]).
+  final LaneGraphBoxPoint pivot;
 
   Axis get axis => frameAxis.axis;
 
@@ -2379,6 +2447,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
     markOf: _markOf,
     axis: axis,
     boxed: transformBox,
+    pivot: pivot,
   );
 
   /// Where a pen press at [position] puts a key on a picture [size] big
@@ -2726,14 +2795,16 @@ class TimelineLaneGraphPainter extends CustomPainter {
       oldDelegate.selection != selection ||
       oldDelegate.held != held ||
       oldDelegate.box != box ||
-      oldDelegate.transformBox != transformBox;
+      oldDelegate.transformBox != transformBox ||
+      oldDelegate.pivot != pivot;
 }
 
 /// The keys a lane selection picks on a header graph's picture, in the
 /// order they are marked, and the BOX ROUND them (I-3 ⑤b, AE's transform
 /// box) — their marks' bounds, where it picks two or more — with its eight
-/// handles on it (I-3 ⑥). A drag begun inside the box carries the keys
-/// ([nearest]); one begun on a handle stretches them.
+/// handles on it (I-3 ⑥) and its anchor point (graph-box-handles-more ⓓ).
+/// A drag begun inside the box carries the keys ([nearest]); one begun on
+/// a handle stretches them, one on the anchor point moves it.
 ///
 /// 🗣️I-3-Q5 (유저 2026-10-22): 「경계 상자를 둔다 (AE 변형 상자)」.
 class LaneGraphPicked {
@@ -2742,9 +2813,11 @@ class LaneGraphPicked {
     required Rect Function(LaneGraphKey key) markOf,
     required Axis axis,
     required bool boxed,
+    required LaneGraphBoxPoint pivot,
   }) : _markOf = markOf,
        _axis = axis,
-       _boxed = boxed;
+       _boxed = boxed,
+       _pivot = pivot;
 
   final List<LaneGraphKey> keys;
 
@@ -2754,6 +2827,56 @@ class LaneGraphPicked {
 
   /// Whether the graph's transform box is shown ([LaneGraph.transformBox]).
   final bool _boxed;
+
+  /// Where the box's anchor point stands between [keys].
+  final LaneGraphBoxPoint _pivot;
+
+  /// How far along the frames the keys stand, the lowest and the highest.
+  late final LaneGraphSpan alongSpan = _spanOf(
+    (key) => partAlong(_axis, key.at),
+  );
+
+  /// How far across the graph the keys stand, the lowest and the highest.
+  late final LaneGraphSpan acrossSpan = _spanOf(
+    (key) => partAcross(_axis, key.at),
+  );
+
+  LaneGraphSpan _spanOf(double Function(LaneGraphKey key) of) {
+    final all = keys.map(of);
+    return (low: all.reduce(math.min), high: all.reduce(math.max));
+  }
+
+  /// The box's ANCHOR POINT (graph-box-handles-more ⓓ, AE's): [_pivot] of
+  /// the way between the keys each way — null where there is no box.
+  late final Offset? pivotAt = box == null
+      ? null
+      : offsetAlong(
+          _axis,
+          along: laneGraphSpanAt(alongSpan, _pivot.along),
+          across: laneGraphSpanAt(acrossSpan, _pivot.across),
+        );
+
+  /// [at] as a point between the keys — [pivotAt] read back. A way the
+  /// keys do not spread, it stands where the anchor point does.
+  LaneGraphBoxPoint pointOf(Offset at) => (
+    along: laneGraphSpanOf(alongSpan, partAlong(_axis, at)) ?? _pivot.along,
+    across:
+        laneGraphSpanOf(acrossSpan, partAcross(_axis, at)) ?? _pivot.across,
+  );
+
+  /// Where the anchor point stands, where a press at [position] takes it —
+  /// on the ring drawn of it; null off it, and where there is no box.
+  Offset? pivotPressedAt(Offset position) {
+    final at = pivotAt;
+    return at != null && _pivotRect(at).contains(position) ? at : null;
+  }
+
+  /// The square the anchor point standing [at] is drawn in — a handle's.
+  static Rect _pivotRect(Offset at) => Rect.fromCenter(
+    center: at,
+    width: _laneGraphBoxHandleSide,
+    height: _laneGraphBoxHandleSide,
+  );
 
   /// The box round [keys] — null for fewer than two keys: a key of two
   /// numbers is marked twice and is one key — and where the graph's
@@ -2772,8 +2895,8 @@ class LaneGraphPicked {
               .reduce((round, mark) => round.expandToInclude(mark));
   }
 
-  /// The [box] in the rings' ink, and its eight handles on it — filled in
-  /// the same ink (I-3 ⑥, AE's transform box).
+  /// The [box] in the rings' ink, its eight handles on it — filled in the
+  /// same ink (I-3 ⑥, AE's transform box) — and its anchor point.
   void paint(Canvas canvas) {
     final round = box;
     if (round == null) {
@@ -2791,6 +2914,17 @@ class LaneGraphPicked {
     for (final handle in laneGraphBoxHandles) {
       canvas.drawRect(_handleRect(handle, round), ink);
     }
+    // ⚠️Mine: AE's anchor point is a ring crossed by two lines; this one is
+    // drawn so, in the ring's ink, as wide as a handle.
+    final pivot = _pivotRect(pivotAt!);
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = ring.width
+      ..color = ring.color;
+    canvas
+      ..drawCircle(pivot.center, pivot.width / 2, stroke)
+      ..drawLine(pivot.centerLeft, pivot.centerRight, stroke)
+      ..drawLine(pivot.topCenter, pivot.bottomCenter, stroke);
   }
 
   /// The handle of the [box] a press at [position] takes (I-3 ⑥) — on the

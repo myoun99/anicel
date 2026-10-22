@@ -893,6 +893,99 @@ void main() {
       expect(rotations(s), {2: 0, 10: 45});
     });
 
+    // graph-box-handles-more ⓓ — AE's 「an anchor point appears in the
+    // center」, dragged to move, 「Ctrl-drag to scale around the anchor
+    // point」.
+    Offset pivotOnScreen(WidgetTester tester) {
+      final (:painter, :box) = _graphOf(tester);
+      return box.localToGlobal(painter.pickedIn(box.size).pivotAt!);
+    }
+
+    testWidgets('the box\'s anchor point stands between the keys, a ring '
+        'in the ring\'s ink; dragged, it goes with the hand, and a Ctrl-pull '
+        'stretches about it', (tester) async {
+      final s = await _pump(tester, transform: rotating(4, 8));
+      await _openTheGraph(tester, s);
+      await _pick(tester, s, from: 4);
+      final first = _keyOnScreen(tester, 4);
+      final last = _keyOnScreen(tester, 8);
+      final middle = Offset.lerp(first, last, 0.5)!;
+      expect(pivotOnScreen(tester), within(distance: 1e-6, from: middle));
+      final box = _graphOf(tester).box;
+      expect(
+        _paintOf(tester),
+        paints..circle(
+          x: box.globalToLocal(middle).dx,
+          y: box.globalToLocal(middle).dy,
+          color: selectedLaneKeyRing.color,
+        ),
+      );
+
+      // Pressed off its middle, it keeps as far off the hand as it was.
+      const off = Offset(2, 2);
+      await _carry(tester, middle + off, Offset(first.dx - middle.dx, 0));
+      expect(pivotOnScreen(tester).dx, moreOrLessEquals(first.dx));
+      expect(rotations(s), {4: 0, 8: 45}, reason: 'it moves no key');
+
+      // Out past the box, it is the hand's still.
+      final cell = _cellExtent(tester);
+      await _carry(tester, pivotOnScreen(tester), Offset(-cell * 3, 0));
+      final outside = pivotOnScreen(tester);
+      final (:painter, box: graph) = _graphOf(tester);
+      expect(
+        graph.globalToLocal(outside).dx,
+        lessThan(painter.pickedIn(graph.size).box!.left),
+        reason: '⛔전제: out past the box',
+      );
+      await _carry(tester, outside, Offset(cell * 3, 0));
+      expect(pivotOnScreen(tester).dx, moreOrLessEquals(first.dx));
+
+      // A tap on it lets it go as a drag does.
+      await tester.tapAt(pivotOnScreen(tester), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await _carry(
+        tester,
+        handleOnScreen(tester, (along: 1, across: 0)),
+        Offset(cell * 2, 0),
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(rotations(s), {4: 0, 10: 45});
+    });
+
+    testWidgets('a carry keeps the anchor point where the hand put it; '
+        'picked anew, it is back in the middle', (tester) async {
+      final s = await _pump(tester, transform: rotating(4, 8));
+      await _openTheGraph(tester, s);
+      await _pick(tester, s, from: 4);
+      final first = _keyOnScreen(tester, 4);
+      final middle = pivotOnScreen(tester);
+      await _carry(tester, middle, Offset(first.dx - middle.dx, 0));
+
+      final cell = _cellExtent(tester);
+      await _carry(tester, _keyOnScreen(tester, 8), Offset(cell * 2, 0));
+      expect(rotations(s), {6: 0, 10: 45}, reason: '⛔전제');
+      expect(
+        pivotOnScreen(tester).dx,
+        moreOrLessEquals(_keyOnScreen(tester, 6).dx),
+      );
+
+      s.laneRangeSelection.value = null;
+      await _pick(tester, s, from: 6, to: 10);
+      expect(
+        pivotOnScreen(tester),
+        within(
+          distance: 1e-6,
+          from: Offset.lerp(
+            _keyOnScreen(tester, 6),
+            _keyOnScreen(tester, 10),
+            0.5,
+          )!,
+        ),
+      );
+    });
+
     testWidgets('the top\'s handle pulled up stretches the values about the '
         'bottom: the key there stays, the other goes up, and none moves '
         'along the frames', (tester) async {

@@ -47,13 +47,33 @@ Offset laneGraphBoxHandleAt(LaneGraphBoxHandle handle, Rect box, Axis axis) {
 /// The lowest and the highest of something a box holds.
 typedef LaneGraphSpan = ({double low, double high});
 
+/// What stands [of] of the way across [span] — its low at 0, its high at 1.
+double laneGraphSpanAt(LaneGraphSpan span, double of) =>
+    span.low * (1 - of) + span.high * of;
+
+/// How far of the way across [span] [at] stands — [laneGraphSpanAt] read
+/// back; null where [span] has no width.
+double? laneGraphSpanOf(LaneGraphSpan span, double at) =>
+    span.high == span.low ? null : (at - span.low) / (span.high - span.low);
+
+/// A POINT between the keys a box holds (graph-box-handles-more ⓓ): how
+/// far of the way from the lowest of them to the highest it stands, along
+/// the frames and across them — 0 the lowest, 1 the highest.
+typedef LaneGraphBoxPoint = ({double along, double across});
+
+/// Where the box's ANCHOR POINT stands until the hand moves it: in the
+/// middle — AE's 「an anchor point appears in the center」.
+const LaneGraphBoxPoint laneGraphBoxMiddle = (along: 0.5, across: 0.5);
+
 /// A box's handle TAKEN (I-3 ⑥): which one, and what the keys it holds
 /// stood at — the [times] of the first and the last of them, on the graph's
-/// frames, and how far [across] the graph their marks stood.
+/// frames, and how far [across] the graph their marks stood — and where
+/// the box's anchor point stood between them ([pivot]).
 typedef LaneGraphBoxHeld = ({
   LaneGraphBoxHandle handle,
   LaneGraphSpan times,
   LaneGraphSpan across,
+  LaneGraphBoxPoint pivot,
 });
 
 /// Where the hand has pulled the end of the box its handle stands at to:
@@ -61,9 +81,9 @@ typedef LaneGraphBoxHeld = ({
 typedef LaneGraphBoxNow = ({double time, double across});
 
 /// What a stretch is held to while it is pulled: whether it goes about
-/// the box's middle (Ctrl held — ⌘ on a Mac) and whether a corner keeps
-/// the box's shape (Shift) — AE's.
-typedef LaneGraphBoxKeys = ({bool centred, bool square});
+/// the box's anchor point (Ctrl held — ⌘ on a Mac) and whether a corner
+/// keeps the box's shape (Shift) — AE's.
+typedef LaneGraphBoxKeys = ({bool pivoted, bool square});
 
 /// What a box's handle pulled stretches its keys by, each way: how far
 /// [factor] times as far from [anchor] as they stood — a factor of 1 where
@@ -75,8 +95,8 @@ typedef LaneGraphBoxPull = ({
 
 /// What [held]'s handle pulled to [now] stretches the keys it holds by
 /// (I-3 ⑥, AE's transform box): each way the handle stands at an end of,
-/// from that end about the box's other — or, [LaneGraphBoxKeys.centred],
-/// about its middle — and a corner, [LaneGraphBoxKeys.square], both ways
+/// from that end about the box's other — or, [LaneGraphBoxKeys.pivoted],
+/// about its anchor point — and a corner, [LaneGraphBoxKeys.square], both ways
 /// by the one that has gone further. A side's middle stretches the one way
 /// alone; past the other end, the factor goes under 0 and turns them
 /// about.
@@ -85,13 +105,18 @@ LaneGraphBoxPull laneGraphBoxPulled(
   LaneGraphBoxNow now,
   LaneGraphBoxKeys keys,
 ) {
-  final (:handle, :times, :across) = held;
-  final time = _pulled(handle.along, times, now.time, centred: keys.centred);
+  final (:handle, :times, :across, :pivot) = held;
+  final time = _pulled(
+    handle.along,
+    times,
+    now.time,
+    about: keys.pivoted ? pivot.along : null,
+  );
   final crossed = _pulled(
     handle.across,
     across,
     now.across,
-    centred: keys.centred,
+    about: keys.pivoted ? pivot.across : null,
   );
   if (!keys.square || handle.along == 0 || handle.across == 0) {
     return (time: time, across: crossed);
@@ -105,15 +130,18 @@ LaneGraphBoxPull laneGraphBoxPulled(
   );
 }
 
-/// One way of [laneGraphBoxPulled]: [span]'s [end] pulled to [now].
+/// One way of [laneGraphBoxPulled]: [span]'s [end] pulled to [now] — about
+/// the point [about] of the way across it, or its other end.
 ({double anchor, double factor}) _pulled(
   int end,
   LaneGraphSpan span,
   double now, {
-  required bool centred,
+  required double? about,
 }) {
   final (:low, :high) = span;
-  final anchor = centred ? (low + high) / 2 : (end > 0 ? low : high);
+  final anchor = about == null
+      ? (end > 0 ? low : high)
+      : laneGraphSpanAt(span, about);
   final edge = end > 0 ? high : low;
   return (
     anchor: anchor,

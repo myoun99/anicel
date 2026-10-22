@@ -12,6 +12,8 @@ import 'package:anicel/src/models/timeline_frame_range.dart'
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
+import 'package:anicel/src/ui/timeline/lane_graph_box_stretch.dart'
+    show LaneGraphBoxPoint, laneGraphBoxMiddle;
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show LaneGraphLine, LaneGraphReach;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -497,12 +499,13 @@ void main() {
       expect(heard, ['rows c:rotation 10-47']);
     });
 
-    test('a box moved, or the transform box shown or hidden, repaints the '
-        'picture', () {
+    test('a box moved, the transform box shown or hidden, or its anchor '
+        'point moved, repaints the picture', () {
       final own = [lineOf(rising, 'rotation')];
       TimelineLaneGraphPainter painter(
         Rect? box, {
         bool transformBox = true,
+        LaneGraphBoxPoint pivot = laneGraphBoxMiddle,
       }) => TimelineLaneGraphPainter(
         own: own,
         guests: const [],
@@ -515,6 +518,7 @@ void main() {
         ),
         box: box,
         transformBox: transformBox,
+        pivot: pivot,
       );
 
       expect(
@@ -523,6 +527,13 @@ void main() {
       );
       expect(
         painter(null, transformBox: false).shouldRepaint(painter(null)),
+        isTrue,
+      );
+      expect(
+        painter(
+          null,
+          pivot: (along: 0, across: 0),
+        ).shouldRepaint(painter(null)),
         isTrue,
       );
       expect(painter(null).shouldRepaint(painter(null)), isFalse);

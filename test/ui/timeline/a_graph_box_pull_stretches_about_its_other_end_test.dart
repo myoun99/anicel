@@ -8,13 +8,19 @@ import 'package:anicel/src/ui/timeline/lane_graph_box_stretch.dart';
 /// the anchor point」, 「Shift-drag to constrain the ratio」, 「Scale by
 /// negative amounts to reverse the keyframes in time」).
 void main() {
-  const plain = (centred: false, square: false);
+  const plain = (pivoted: false, square: false);
 
-  /// Keys from frame 0 to 8, their marks 100 to 200 across the graph.
-  LaneGraphBoxHeld held(int along, int across) => (
+  /// Keys from frame 0 to 8, their marks 100 to 200 across the graph, the
+  /// box's anchor point at [pivot] between them.
+  LaneGraphBoxHeld held(
+    int along,
+    int across, {
+    LaneGraphBoxPoint pivot = laneGraphBoxMiddle,
+  }) => (
     handle: (along: along, across: across),
     times: (low: 0, high: 8),
     across: (low: 100, high: 200),
+    pivot: pivot,
   );
 
   test('the end of the frames pulled stretches them about the other end: '
@@ -55,15 +61,39 @@ void main() {
     final pull = laneGraphBoxPulled(
       held(1, 1),
       (time: 12, across: 250),
-      (centred: true, square: false),
+      (pivoted: true, square: false),
     );
     expect(pull.time, (anchor: 4, factor: 2));
     expect(pull.across, (anchor: 150, factor: 2));
   });
 
+  // graph-box-handles-more ⓓ — AE's 「Ctrl-drag to scale around the anchor
+  // point」, its anchor point moved.
+  test('with Ctrl held, about the anchor point where the hand has put it',
+      () {
+    final pull = laneGraphBoxPulled(
+      held(1, 1, pivot: (along: 0.25, across: 0)),
+      (time: 14, across: 300),
+      (pivoted: true, square: false),
+    );
+    expect(pull.time, (anchor: 2, factor: 2));
+    expect(pull.across, (anchor: 100, factor: 2));
+  });
+
+  test('a point of the way across a span, and back — none where it has no '
+      'width', () {
+    const span = (low: 100.0, high: 200.0);
+    expect(
+      [for (final of in [0.0, 0.25, 0.5, 1.0]) laneGraphSpanAt(span, of)],
+      [100, 125, 150, 200],
+    );
+    expect(laneGraphSpanOf(span, 125), 0.25);
+    expect(laneGraphSpanOf((low: 4, high: 4), 4), isNull);
+  });
+
   test('with Shift held, a corner keeps the box\'s shape: both ways by the '
       'one that has gone further — and a side is not held to it', () {
-    const square = (centred: false, square: true);
+    const square = (pivoted: false, square: true);
     final further = laneGraphBoxPulled(
       held(1, 1),
       (time: 24, across: 150),
@@ -104,6 +134,7 @@ void main() {
         handle: (along: 1, across: 1),
         times: (low: 4, high: 4),
         across: (low: 100, high: 200),
+        pivot: laneGraphBoxMiddle,
       ),
       (time: 9, across: 300),
       plain,
