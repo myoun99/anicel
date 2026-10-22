@@ -194,6 +194,11 @@ PropertyLaneEdit laneKeysRemovedWhere(bool Function(int frame) covers) =>
             );
     };
 
+/// Where a paste puts its run in ([laneKeysSpliced]): the frame it goes
+/// in at, how many frames from there it lifts, how many it puts in, and
+/// the last a key may be left on — none but a camera's.
+typedef KeysSplice = ({int start, int liftCount, int length, int? last});
+
 /// [keys], by their frame from the paste's first, put in at [start] as a
 /// frame paste puts its run in: the [liftCount] frames from [start] taken
 /// out with their keys, and every key after them moved by what the
@@ -216,15 +221,13 @@ PropertyLaneEdit laneKeysRemovedWhere(bool Function(int frame) covers) =>
 /// 남고, 밖으로 밀린 나머지는 버린다」 — the end key keeps to the cut's end
 /// as it does when the cut is drawn longer (I-73-camera-row-Q4).
 PropertyLaneEdit laneKeysSpliced({
-  required int start,
-  required int liftCount,
-  required int length,
+  required KeysSplice splice,
   required Map<int, PropertyKey<Object?>> keys,
-  int? last,
 }) => <U>(PropertyTrack<U> lane) {
   if (!keys.values.every((key) => key is PropertyKey<U>)) {
     return null;
   }
+  final (:start, :liftCount, :length, :last) = splice;
   final end = start + liftCount;
   final shift = length - liftCount;
   bool fits(int frame) => last == null || frame <= last;

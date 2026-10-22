@@ -377,8 +377,9 @@ class LaneVerbs {
         : null;
   }
 
-  /// The last frame a paste may leave a key on [layer]'s OWN lanes: on the
-  /// camera row its cut's last drawn frame, else none ([laneKeysSpliced]).
+  /// The last frame a paste may leave a key on [layer]: on the camera row,
+  /// whose lanes are its cut's camera's, the cut's last drawn frame; else
+  /// none ([laneKeysSpliced]).
   /// 🗣️F-388-Q3 (유저 2026-10-22): 「끝 키는 끝에 남고, 밖으로 밀린 나머지는
   /// 버린다」. ↩️A paste that pushed a key past the end was refused whole,
   /// its buttons dark (F-388, 관제 10-22).
@@ -1507,14 +1508,13 @@ class LaneVerbs {
         : (scope: scope, edit: pasted.edit, joins: pasted.joins);
   }
 
-  /// [paired]'s keys put in on [scope]'s lanes over [span] — the frames
-  /// from its start it lifts, the frames it puts in and the last its own
-  /// lanes keep a key on ([laneKeysSpliced]) — with the names they join at
-  /// another value ([keepNames]).
+  /// [paired]'s keys put in on [scope]'s lanes over [span]
+  /// ([laneKeysSpliced]) — with the names they join at another value
+  /// ([keepNames]).
   ({LaneEdit edit, Set<String> joins}) _keysSplicedInto(
     _SpanScope scope,
     Map<_PastedLane, Map<int, PropertyKey<Object?>>> paired,
-    ({int start, int liftCount, int length, int? last}) span, {
+    KeysSplice span, {
     required bool keepNames,
   }) {
     final homes = scope.homes;
@@ -1528,16 +1528,12 @@ class LaneVerbs {
     // key there ([heldOf]: what holds a name on a lane of it, or null).
     T? pastedOn<T>(
       LaneHome<T> home,
-      PropertyKey<Object?>? Function(String laneId, String name) heldOf, {
-      int? last,
-    }) => home.editedEach(
+      PropertyKey<Object?>? Function(String laneId, String name) heldOf,
+    ) => home.editedEach(
       (laneId) => switch (paired[(home: home, laneId: laneId)]) {
         null => null,
         final keys => laneKeysSpliced(
-          start: span.start,
-          liftCount: span.liftCount,
-          length: span.length,
-          last: last,
+          splice: span,
           keys: {
             for (final MapEntry(key: frame, value: key) in keys.entries)
               frame: _pastedKey(
@@ -1556,11 +1552,7 @@ class LaneVerbs {
         _keyNamed(home, laneId, holder(laneId, name, lifted), name);
     final edit = LaneEdit(
       transform: (
-        own: pastedOn(
-          homes.own,
-          namedIn(homes.own, holders.own),
-          last: span.last,
-        ),
+        own: pastedOn(homes.own, namedIn(homes.own, holders.own)),
         reference: pastedOn(
           homes.reference,
           namedIn(homes.reference, holders.reference),
