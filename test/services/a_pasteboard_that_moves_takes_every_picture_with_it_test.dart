@@ -512,6 +512,15 @@ void main() {
         expect(parkedAhead().difference(before), isEmpty);
       });
 
+      test('hot, worked out for another wall: not taken', () async {
+        final store = BrushFrameStore();
+        _keepHot(store, {cut: drawn()});
+        await store.cutCelsAhead(PasteboardReach.none);
+        expect(store.cutAheadOf(cut), isNotNull);
+        store.adoptPasteboardReach(PasteboardReach.quarter);
+        expectCut(store.bakedSurfaceOrNull(cut));
+      });
+
       test('worked out again, the last round goes', () async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
