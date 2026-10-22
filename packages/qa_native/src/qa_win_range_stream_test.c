@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include "qa_framed_fixture.h"
+#include "qa_win_media_foundation.h"
 #include "qa_win_range_stream.h"
 
 static int g_failures;
@@ -258,7 +259,9 @@ int main(void) {
   // 🚨BEGIN/END READ. A source reader is free to use the async pair, and
   // returning E_NOTIMPL there can fail to open a file the stream can plainly
   // read — so the pair is implemented, and therefore has to be checked.
-  if (SUCCEEDED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) {
+  // Media Foundation is started the engine's one way, and left up as the
+  // engine leaves it (qa_win_media_foundation.c).
+  if (qa_win_media_foundation_up()) {
     qa_test_callback callback = callback_on(stream, NULL);
     IMFByteStream_SetCurrentPosition(stream, 200);
     memset(got, 0, sizeof(got));
@@ -321,7 +324,6 @@ int main(void) {
       expect_int("and finishes on it", late.ended, 8);
       CloseHandle(go);
     }
-    MFShutdown();
   } else {
     printf("FAIL BeginRead: Media Foundation would not start\n");
     g_failures += 1;

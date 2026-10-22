@@ -381,6 +381,7 @@ static void qa_rotate_rgba(const uint8_t* stored,
 /// `qa_win_range_stream.c` for why Media Foundation needs one written by
 /// hand.
 #include "qa_win_range_stream.h"
+#include "qa_win_media_foundation.h"
 
 /// ⚠️What is left here is the PLATFORM's own state — the reader itself and
 /// how Media Foundation lays out its rows. Size, rate, length and 「where am
@@ -391,7 +392,6 @@ typedef struct {
   // magnitude is the row pitch either way.
   int32_t stride;
   int32_t bottom_up;
-  int32_t mf_started;
 } qa_video_decode_state;
 
 /// ⚠️In the SLOT, not a global of its own — the law picks the document
@@ -409,10 +409,6 @@ static void qa_backend_close(void) {
     IMFSourceReader_Release(g_dec.reader);
     g_dec.reader = NULL;
   }
-  if (g_dec.mf_started) {
-    MFShutdown();
-    g_dec.mf_started = 0;
-  }
   memset(&g_dec, 0, sizeof(g_dec));
 }
 
@@ -426,11 +422,10 @@ static int32_t qa_backend_open(const char* path,
     return 0;
   }
 
-  if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) {
+  if (!qa_win_media_foundation_up()) {
     qa_decode_set_error("MFStartup failed");
     return 0;
   }
-  g_dec.mf_started = 1;
 
   // ENABLE_ADVANCED_VIDEO_PROCESSING is what lets us ask for RGB32 from a
   // source that is YUV — without it the reader refuses the format and the

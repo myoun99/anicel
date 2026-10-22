@@ -737,10 +737,10 @@ static void qa_audio_container_start(const qa_audio_cursor* cursor,
 // thing this must not become: it is 200 lines of hand-written COM, and two
 // of those drift.
 #include "qa_win_range_stream.h"
+#include "qa_win_media_foundation.h"
 
 typedef struct {
   int co_balanced;
-  int mf_started;
   IMFByteStream* byte_stream;
   IMFSourceReader* reader;
   /// The reader said the stream ended, with the block handed back last.
@@ -1712,12 +1712,6 @@ static void qa_os_close(qa_audio_stream* stream) {
   if (os->byte_stream != NULL) {
     IMFByteStream_Release(os->byte_stream);
   }
-  // MFStartup is process-wide and refcounted; pairing it with MFShutdown per
-  // stream keeps this self-contained (decodes are rare import-time events,
-  // not a hot path).
-  if (os->mf_started) {
-    MFShutdown();
-  }
   if (os->co_balanced) {
     CoUninitialize();
   }
@@ -1743,10 +1737,9 @@ static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
   UINT32 sample_rate = 0;
   int opened = 0;
 
-  if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) {
+  if (!qa_win_media_foundation_up()) {
     goto done;
   }
-  os->mf_started = 1;
 
   os->byte_stream = qa_win_range_stream_create(src->path, src->base,
                                                src->stored_length, src->framed);
