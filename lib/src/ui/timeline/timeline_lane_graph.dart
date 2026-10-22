@@ -725,25 +725,40 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       };
 
   /// Whether a press at [position] is the picture's: on a handle, on a
-  /// key where a key takes a press, or on a line where the pen puts a key.
+  /// key where a key takes a press, or on a line where the pen puts a key
+  /// or Alt picks its keys.
   bool _takesPressAt(Offset position) {
     final size = context.size!;
     return _painter.handleAt(position, size) != null ||
         (widget.lanes != null &&
             (_painter.pickedIn(size).handleAt(position) != null ||
-                _keyTakenAt(position) != null)) ||
+                _keyTakenAt(position) != null ||
+                _lineTakenAt(position) != null)) ||
         _penAt(position) != null;
   }
 
   /// The key a press at [position] takes in hand: the one it is on — or,
-  /// off every key and off a line the pen puts one on ([_penAt]), inside
-  /// the box round the keys picked, the picked key nearest it (I-3 ⑤b).
+  /// off every key and off a line the pen puts one on ([_penAt]) or Alt
+  /// picks whole ([_lineTakenAt]), inside the box round the keys picked,
+  /// the picked key nearest it (I-3 ⑤b).
   LaneGraphKey? _keyTakenAt(Offset position) {
     final size = context.size!;
     return _painter.keyAt(position, size) ??
-        (_penAt(position) == null
+        (_penAt(position) == null && _lineTakenAt(position) == null
             ? _painter.pickedIn(size).nearest(position)
             : null);
+  }
+
+  /// The line whose keys a press at [position] picks, every one — with Alt
+  /// held (⌥ on a Mac), on its stroke as drawn: AE's Alt-click between two
+  /// keys of a line (graph-key-pick-rest ⓑ). Null off every line, and on
+  /// one with no key.
+  LaneGraphLine? _lineTakenAt(Offset position) {
+    if (widget.lanes?.onSelectRows == null || !ModifierKeys.isAltPressed) {
+      return null;
+    }
+    final line = _painter.curveAt(position, context.size!)?.line;
+    return line == null || line.lane.keyedFrames.isEmpty ? null : line;
   }
 
   /// Where a press at [position] puts a key (I-3 ④): the line it lands on
@@ -799,11 +814,17 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     }
     final key = _keyTakenAt(position);
     if (key == null) {
-      _putKeyAt(position, lanes);
+      if (_lineTakenAt(position) case final line?) {
+        _pickLine(lanes, line);
+      } else {
+        _putKeyAt(position, lanes);
+      }
       return;
     }
     final (:line, :frame, part: _, at: _, mark: _) = key;
-    if (!laneSelectionPicksKey(
+    if (ModifierKeys.isShiftPressed) {
+      _pickOnTo(lanes, line, frame);
+    } else if (!laneSelectionPicksKey(
       lanes.selection.value,
       line.layer.id,
       line.lane.laneId,
@@ -812,6 +833,53 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       _pickCell(lanes, line, frame);
     }
     setState(() => _keyInHand = _KeyInHand(key, position, _painter.fits));
+  }
+
+  /// [line]'s key on [frame] picked ON TO what is picked, with Shift held
+  /// (🗣️graph-key-pick-rest-Q1, 유저 2026-10-22: 「사각형을 그 키까지
+  /// 넓힌다」): the lane selection widened to the key's cell — its frames
+  /// to the key's, its lanes to the key's, as the box picks rows
+  /// ([_pickBoxed]) — a key picked already staying picked. With nothing
+  /// picked, the key's cell alone.
+  void _pickOnTo(
+    TimelineLaneRangeCallbacks lanes,
+    LaneGraphLine line,
+    int frame,
+  ) {
+    final picked = lanes.selection.value;
+    if (picked == null || lanes.onSelectRows == null) {
+      _pickCell(lanes, line, frame);
+      return;
+    }
+    final anchor = [...widget.own, ...widget.guests]
+        .where(
+          (each) =>
+              each.layer.id == picked.layerId &&
+              each.lane.laneId == picked.laneId,
+        )
+        .firstOrNull;
+    final drawn = frame + TimelineLaneGraphPainter._shiftOf(line);
+    final at = anchor == null ? drawn : _ownFrameOf(anchor, drawn);
+    lanes.onSelectRows!(
+      {
+        for (final lane in picked.spanLaneIds)
+          LaneRowAddress(picked.layerId, lane),
+        LaneRowAddress(line.layer.id, line.lane.laneId),
+      }.toList(),
+      math.min(picked.startIndex, at),
+      math.max(picked.endIndexExclusive - 1, at),
+    );
+  }
+
+  /// Every key of [line] picked: its lane's cells from its first key to its
+  /// last, the way the box picks the keys it holds ([_pickBoxed]).
+  static void _pickLine(TimelineLaneRangeCallbacks lanes, LaneGraphLine line) {
+    final keyed = line.lane.keyedFrames;
+    lanes.onSelectRows!(
+      [LaneRowAddress(line.layer.id, line.lane.laneId)],
+      keyed.reduce(math.min),
+      keyed.reduce(math.max),
+    );
   }
 
   /// A press on a line where the pen puts a key ([_penAt]) PUTS ONE THERE

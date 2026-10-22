@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -32,7 +33,8 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 /// 든 키의 레인)」 — the frames the box spans, across the lanes of the keys
 /// inside it. 🗣️I-3-Q4 (유저 2026-10-22): 「레인 행을 끌 때와 똑같이」 — the
 /// keys of two layers, or of two cuts, picked as a lane drag across them
-/// picks.
+/// picks. And a key picked on to them with Shift, and a line's every key
+/// with Alt (graph-key-pick-rest), the same way.
 void main() {
   Layer layerOf(String id, TransformTrack transform) => Layer(
     id: LayerId(id),
@@ -247,6 +249,153 @@ void main() {
       expect(painterOf(tester).box, isNull);
       expect(paintOf(tester), isNot(ants));
       expect(heard, hasLength(3), reason: 'the pick stays as it was');
+    });
+
+    group('Shift and Alt (graph-key-pick-rest)', () {
+      tearDown(() => selection.value = null);
+
+      /// Where [layer]'s [laneId] line is drawn on [frame].
+      Offset onTheLine(
+        WidgetTester tester,
+        Layer layer,
+        String laneId,
+        int frame,
+      ) {
+        final painter = painterOf(tester);
+        final line = painter.own.singleWhere(
+          (line) => line.layer.id == layer.id && line.lane.laneId == laneId,
+        );
+        final fit = painter.fits[laneGroupKey(layer.id, laneId)]!;
+        return Offset(
+          laneGraphAlong(frame.toDouble(), geometry.value),
+          laneGraphAcross(
+            line.lane.curve!.at(frame.toDouble()).single,
+            fit.ranges.single,
+            size.height,
+            Axis.horizontal,
+          ),
+        );
+      }
+
+      Offset keyOn(WidgetTester tester, String laneId, int frame) =>
+          painterOf(tester)
+              .keysIn(size)
+              .singleWhere(
+                (key) => key.line.lane.laneId == laneId && key.frame == frame,
+              )
+              .at;
+
+      Future<void> press(WidgetTester tester, Offset at) async {
+        await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      // 🗣️graph-key-pick-rest-Q1 (유저 2026-10-22): 「사각형을 그 키까지
+      // 넓힌다」.
+      testWidgets('with Shift held, a press on a key widens what is picked '
+          'to it — its lanes and its frames, as a box picks them — and a '
+          'key picked already stays picked', (tester) async {
+        final heard = <String>[];
+        await pump(
+          tester,
+          heard,
+          own: [lineOf(both, 'rotation'), lineOf(both, 'opacity')],
+        );
+        selection.value = const TimelineLaneSelection(
+          layerId: LayerId('c'),
+          laneId: 'rotation',
+          startIndex: 0,
+          endIndexExclusive: 1,
+        );
+        await press(tester, keyOn(tester, 'opacity', 12));
+        expect(heard, ['pick c opacity'], reason: '⛔전제: no Shift, its own');
+
+        heard.clear();
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await press(tester, keyOn(tester, 'opacity', 12));
+        expect(heard, ['rows c:rotation,c:opacity 0-12']);
+
+        heard.clear();
+        selection.value = const TimelineLaneSelection(
+          layerId: LayerId('c'),
+          laneId: 'opacity',
+          startIndex: 12,
+          endIndexExclusive: 13,
+        );
+        await press(tester, keyOn(tester, 'rotation', 0));
+        expect(heard, ['rows c:opacity,c:rotation 0-12'], reason: 'back');
+
+        heard.clear();
+        selection.value = const TimelineLaneSelection(
+          layerId: LayerId('c'),
+          laneId: 'rotation',
+          startIndex: 0,
+          endIndexExclusive: 13,
+          laneIds: ['rotation', 'opacity'],
+        );
+        await press(tester, keyOn(tester, 'rotation', 0));
+        expect(heard, ['rows c:rotation,c:opacity 0-12']);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      });
+
+      testWidgets('with Alt held, a press on a line picks every key of its '
+          'lane, its first to its last', (tester) async {
+        final heard = <String>[];
+        await pump(tester, heard, own: [lineOf(both, 'rotation')]);
+        await press(tester, onTheLine(tester, both, 'rotation', 8));
+        expect(heard, ['clear'], reason: '⛔전제: no Alt, a tap on the ground');
+
+        heard.clear();
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+        await press(tester, onTheLine(tester, both, 'rotation', 8));
+        expect(heard, ['rows c:rotation 0-16']);
+
+        // Inside the box round two keys picked, where a press takes the
+        // key nearest it: the line, not the key.
+        heard.clear();
+        selection.value = const TimelineLaneSelection(
+          layerId: LayerId('c'),
+          laneId: 'rotation',
+          startIndex: 0,
+          endIndexExclusive: 17,
+        );
+        await tester.pump();
+        expect(painterOf(tester).pickedIn(size).box, isNotNull);
+        await press(tester, onTheLine(tester, both, 'rotation', 8));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+        expect(heard, ['rows c:rotation 0-16']);
+      });
+
+      testWidgets('of the lines a cut, a key widened on to from another cut '
+          'is counted in the frames of the cut the pick began in — held to '
+          'them, as a box is', (tester) async {
+        final heard = <String>[];
+        await pump(
+          tester,
+          heard,
+          own: [
+            lineOf(rising, 'rotation', reach: (start: 0, end: 10)),
+            lineOf(falling, 'rotation', reach: (start: 10, end: 20)),
+          ],
+        );
+        selection.value = const TimelineLaneSelection(
+          layerId: LayerId('b'),
+          laneId: 'rotation',
+          startIndex: 0,
+          endIndexExclusive: 1,
+        );
+        final dsOwnEight = painterOf(tester)
+            .keysIn(size)
+            .singleWhere(
+              (key) => key.line.layer.id == falling.id && key.frame == 8,
+            )
+            .at;
+
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await press(tester, dsOwnEight);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        expect(heard, ['rows b:rotation,d:rotation 0-9']);
+      });
     });
 
     testWidgets('a box the platform cancels goes, as one let go of does', (
