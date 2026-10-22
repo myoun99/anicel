@@ -504,8 +504,26 @@ import '../../tool/refactor/clone_scan.dart';
 /// merges the three.
 /// 🔬Measured on the lane over master (`7fde89b50`, at 87): this one
 /// added, none gone.
+/// 88 → 89 (2026-10-23, graph-box-handles-more ⓔ — AE's 「Show Transform
+/// Box」, a header graph's second switch beside its pen). The new pair is
+/// named:
+///
+///     46 tokens
+///       lib/src/ui/session/session_row_button_presses.dart
+///         SessionRowButtonPresses.penLaneGraph
+///       lib/src/ui/session/session_row_button_presses.dart
+///         SessionRowButtonPresses.transformBoxLaneGraph
+///
+/// They ARE one algorithm — "turn one switch of a group's open graph to
+/// what the pressed one does not have, on every use of its row" — and the
+/// reading KEEPS them a pair, by the rule of three (CLAUDE.md): merged, one
+/// verb would take which switch it turns, a flag answering for two
+/// buttons. The enlarge button is not the third — it lets every other
+/// graph back as well. A third switch merges the three.
+/// 🔬Measured on the lane over master (`05733d19d`, at 88): this one
+/// added, none gone.
 void main() {
-  const ceiling = 88;
+  const ceiling = 89;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
