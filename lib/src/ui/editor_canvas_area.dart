@@ -73,7 +73,7 @@ import 'text/app_strings.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
-import 'timeline/memo_token.dart' show ByList;
+import 'timeline/memo_token.dart' show ByIdentity, ByList;
 import 'timeline/timeline_drag_preview.dart'
     show
         TimelineDragPreview,
@@ -286,6 +286,61 @@ class EditorCanvasArea extends StatefulWidget {
   /// The transform tool's settings (mode, scale anchor, resampler, mesh
   /// grid); null keeps the defaults.
   final ValueListenable<TransformToolOptions>? transformOptions;
+
+  /// What the canvas shows of the session: the area hears the session only
+  /// when this changes ([SlicedListenableBuilder]).
+  ///
+  /// 🔬Every session notify built the area again — 77 elements, and the
+  /// panel laid out under them — for a guide picked with another tool in
+  /// hand or a sheet's title typed (session-news-rebuilds-unsliced,
+  /// measured 2026-10-22 in the app at 1600x1000).
+  ///
+  /// The session announces from 165 places (counted 2026-10-22). The 137
+  /// that change the project reach the canvas through the project's fields
+  /// it draws from — every field but the work's name, id and date, the
+  /// sheet's, the sound's rate, the export's and the viewer's, which
+  /// `the_canvas_hears_what_it_shows_test` names. The other 28 change what
+  /// is kept beside the project. Where the user stands — a gap is no cut
+  /// stood on — and the cels' pictures (an open or an import lays them
+  /// without a project change) are drawn and heard here; the frame and a
+  /// run come by channels of their own (`_FrameRetargetScope`, the playback
+  /// flag). The clipboards, the solo switches, the timeline's master
+  /// opacity, the media's existence and movies' lengths, the file the work
+  /// is bound to, the playback mode and the sound's conforms are drawn
+  /// nowhere on the canvas; the guide picked and a recording's streamer
+  /// are, by the guides and the streamer, which hear them themselves.
+  static Object shownBy(EditorSessionManager session) {
+    final project = session.repository.requireProject();
+    final cels = session.renderCaches.brushFrameStore;
+    // ⚠️A project's lists are made anew by every write (`Project` holds them
+    // unmodifiable), so they compare by what they hold: the tracks each by
+    // identity — a write keeps the ones it did not touch — and the media's
+    // and the fonts' entries, small values, by `==`.
+    return (
+      tracks: ByList([for (final track in project.tracks) ByIdentity(track)]),
+      frameRate: project.frameRate,
+      cameraSize: project.cameraSize,
+      trailingFrames: project.trailingFrames,
+      background: project.background,
+      backdrop: (project.backdropArgb, project.backdropNone),
+      pasteboard: (
+        project.pasteboardArgb,
+        project.pasteboardNone,
+        project.pasteboardSize,
+        project.pasteboardInUse,
+      ),
+      cameraInstructions: ByIdentity(project.cameraInstructions),
+      mediaAssets: ByList(project.mediaAssets),
+      fonts: ByList(project.fonts),
+      linkRegistry: ByIdentity(project.linkRegistry),
+      // A movie's frames are timed by the sound's pull (`MovieClock`).
+      audioSpeed: (project.audioSpeedNumerator, project.audioSpeedDenominator),
+      cut: session.activeCutId,
+      layer: session.activeLayerId,
+      celContent: cels.celContentRevision.value,
+      celPixels: cels.celPixelRevision.value,
+    );
+  }
 
   @override
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
@@ -627,14 +682,23 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 
   Widget _buildFollowingSession(EditorSessionManager session) {
+    // The session subscription lives HERE now (HomePage no longer setStates
+    // the world), for what the canvas shows of it
+    // ([EditorCanvasArea.shownBy]). Committed seeks retarget the editing
+    // stack through the _FrameRetargetScope below — deliberately NOT the
+    // frame cursor, whose per-move scrub firehose must never rebuild the
+    // brush host — and only when the playhead actually changed frames
+    // (R13-3).
+    return SlicedListenableBuilder<Object>(
+      listenable: session,
+      slice: () => EditorCanvasArea.shownBy(session),
+      builder: (context, _) => _buildFollowingItsChannels(session),
+    );
+  }
+
+  Widget _buildFollowingItsChannels(EditorSessionManager session) {
     return ListenableBuilder(
-      // The session subscription lives HERE now (HomePage no longer
-      // setStates the world). Committed seeks retarget the editing stack
-      // through the _FrameRetargetScope below — deliberately NOT the frame
-      // cursor, whose per-move scrub firehose must never rebuild the brush
-      // host — and only when the playhead actually changed frames (R13-3).
       listenable: Listenable.merge([
-        session,
         // Onion-skin pegs + the per-layer set re-plan the underlay
         // ghosts (P2 → UI-R17 #5).
         session.onionSkin.settings,
@@ -1910,19 +1974,25 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       child: IgnorePointer(
         // The drag in flight repaints the guides and nothing else: the
         // preview is a channel of its own, where a `setState` here used to
-        // rebuild the whole canvas area per pointer sample.
-        child: ValueListenableBuilder<CutGuides?>(
-          valueListenable: verbs.guidesDragPreview,
-          builder: (context, _, _) => CustomPaint(
+        // rebuild the whole canvas area per pointer sample. So does the
+        // guide picked, which the area does not hear
+        // ([EditorCanvasArea.shownBy]).
+        child: SlicedListenableBuilder<({CutGuides guides, GuideId? picked})>(
+          listenable: Listenable.merge([session, verbs.guidesDragPreview]),
+          slice: () => (
+            guides: verbs.activeCutGuidesForDisplay,
+            picked: verbs.selectedGuideId,
+          ),
+          builder: (context, shown) => CustomPaint(
             painter: GuideOverlayPainter(
-              guides: verbs.activeCutGuidesForDisplay,
+              guides: shown.guides,
               viewport: viewport,
               canvasSize: canvasSize,
               emphasized: tool == CanvasTool.guide,
               vanishingPointLabel: AppText.strings.guideVanishingPoint,
               color: guideColorOf(context),
               face: appFaceOf(DefaultTextStyle.of(context).style),
-              selectedGuideId: session.cutVerbs.selectedGuideId,
+              selectedGuideId: shown.picked,
             ),
           ),
         ),
