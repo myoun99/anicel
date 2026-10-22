@@ -407,11 +407,30 @@ void drawBlendOverBackdrop({
     );
     return;
   }
-  final backdrop = rasterOf(paintBackdrop);
+  _composeInARaster(
+    canvas: canvas,
+    plan: plan,
+    backdrop: rasterOf(paintBackdrop),
+    source: () => source(onTheGrid: true),
+    blendMode: blendMode,
+  );
+}
+
+/// [backdrop], rasterised on [plan]'s grid, and the row [source] makes
+/// composed in a raster of [plan]'s size ([_composedOverBackdrop]) and
+/// blitted the way a group's raster is — the route where the frame cannot
+/// be read ([_readsInTheFrame]). It disposes [backdrop].
+void _composeInARaster({
+  required Canvas canvas,
+  required SubtreeRasterPlan plan,
+  required ui.Image backdrop,
+  required _BlendSource Function() source,
+  required LayerBlendMode blendMode,
+}) {
   _BlendSource? row;
   ui.Image? composed;
   try {
-    row = source(onTheGrid: true);
+    row = source();
     composed = _composedOverBackdrop(
       backdrop: backdrop,
       source: row,

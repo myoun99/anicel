@@ -642,7 +642,20 @@ void main() {
   /// `LayerStackPaintPass._layLevelPixels` gone. ⛔Not bundled to fit: each
   /// parameter is one the draw reads, and a value made of them would be
   /// built by every caller out of the same fields first.
-  const wideSignatures = 415;
+  /// ⚠️415 → 416 on 2026-10-23, named as the rule above asks (the same
+  /// card — the row handed to the shader as it is where it lands texel for
+  /// texel). `_composeInARaster` (five) is `_composeInTheFrame`'s sibling,
+  /// the road where the frame cannot be read: the canvas, the grid, the
+  /// backdrop already rasterised, the row (made inside, so a raster of it
+  /// is disposed with the rest), the blend. The same change widened two
+  /// already counted: `drawBlendOverBackdrop` (nine) takes the row's own
+  /// image, and `LayerBlendShader.shaderFor` (six) where the row lies on
+  /// the draw; the row `_composeInTheFrame` takes may now be that image.
+  /// 🔬`clean_code_diff` against the lane's base (`6f900eab3`, at 415)
+  /// named that one added and nothing gone. ⛔Not kept inside
+  /// `drawBlendOverBackdrop` to save the count: there its body ran past
+  /// sixty lines, and the two roads read better side by side, each named.
+  const wideSignatures = 416;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
