@@ -67,6 +67,11 @@ const ledger = <String, Why>{
   'timeline/timeline_lane_graph.dart | '
           "'\$keyPrefix-lane-graph-pen-\$groupKey'":
       Why.aRow,
+  // Its transform box (AE's 「Show Transform Box」): it shows or hides the
+  // box round the keys picked in the graph it stands in.
+  'timeline/timeline_lane_graph.dart | '
+          "'\$keyPrefix-lane-graph-box-\$groupKey'":
+      Why.aRow,
   'timeline/timeline_lane_rows.dart | '
           "'\$_keyPrefix-lane-group-fx-\${layer.id}-\${lane.laneId}'":
       Why.aRow,

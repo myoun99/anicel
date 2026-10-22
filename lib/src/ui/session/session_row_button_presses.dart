@@ -224,6 +224,7 @@ class SessionRowButtonPresses {
     resize: resizeLaneGraph,
     enlarge: enlargeLaneGraph,
     pen: penLaneGraph,
+    transformBox: transformBoxLaneGraph,
   );
 
   /// A group's HEADER GRAPH on or off, by the group's key — on every use of
@@ -307,6 +308,20 @@ class SessionRowButtonPresses {
       return;
     }
     _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(pen: !pressed.pen));
+  }
+
+  /// A group's open graph's TRANSFORM BOX shown or hidden (AE's 「Show
+  /// Transform Box」), on every use of its row — what the pressed one has,
+  /// all of them turned to the other. View state, no undo.
+  void transformBoxLaneGraph(String groupKey) {
+    final pressed = session.railView.laneGraphs.value.open[groupKey];
+    if (pressed == null) {
+      return;
+    }
+    _reshapeLaneGraph(
+      groupKey,
+      (graph) => graph.copyWith(transformBox: !pressed.transformBox),
+    );
   }
 
   /// How far a group's open graph stands along the rail — its grip's — on

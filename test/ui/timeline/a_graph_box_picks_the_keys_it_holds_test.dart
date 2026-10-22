@@ -497,9 +497,13 @@ void main() {
       expect(heard, ['rows c:rotation 10-47']);
     });
 
-    test('a box moved repaints the picture', () {
+    test('a box moved, or the transform box shown or hidden, repaints the '
+        'picture', () {
       final own = [lineOf(rising, 'rotation')];
-      TimelineLaneGraphPainter painter(Rect? box) => TimelineLaneGraphPainter(
+      TimelineLaneGraphPainter painter(
+        Rect? box, {
+        bool transformBox = true,
+      }) => TimelineLaneGraphPainter(
         own: own,
         guests: const [],
         frameAxis: (
@@ -510,10 +514,15 @@ void main() {
           laneExtent: timelineLayerRowHeight,
         ),
         box: box,
+        transformBox: transformBox,
       );
 
       expect(
         painter(const Rect.fromLTWH(0, 0, 4, 4)).shouldRepaint(painter(null)),
+        isTrue,
+      );
+      expect(
+        painter(null, transformBox: false).shouldRepaint(painter(null)),
         isTrue,
       );
       expect(painter(null).shouldRepaint(painter(null)), isFalse);

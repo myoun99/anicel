@@ -345,7 +345,7 @@ void main() {
   });
 
   testWidgets('its tools turn the graph of the camera in hand — the plot '
-      'pill, the pen, and the enlarging', (tester) async {
+      'pill, the pen, the transform box, and the enlarging', (tester) async {
     final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
     SessionRowButtonPresses(session).toggleLaneGraph(inHand);
     await tester.pumpAndSettle();
@@ -366,6 +366,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(graphs(session).open[inHand]!.pen, isTrue);
+
+    await tester.tap(
+      find.byKey(ValueKey<String>('storyboard-lane-graph-box-$cameraGraph')),
+    );
+    await tester.pumpAndSettle();
+    expect(graphs(session).open[inHand]!.transformBox, isFalse);
 
     await tester.tap(
       find.byKey(

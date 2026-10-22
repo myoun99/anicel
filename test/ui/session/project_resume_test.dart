@@ -112,7 +112,8 @@ void main() {
 
   group('the header graphs and the lanes pinned to them (F-360-Q1)', () {
     test('round-trip through the JSON — each graph\'s height, what it '
-        'plots, whether it is enlarged and whether its pen is up', () {
+        'plots, whether it is enlarged, whether its pen is up and whether '
+        'its transform box is shown', () {
       const graphs = LaneGraphsView(
         open: {
           'a|transform-group': LaneGraph(),
@@ -121,6 +122,7 @@ void main() {
             mode: LaneGraphMode.speed,
             enlarged: true,
             pen: true,
+            transformBox: false,
           ),
         },
         pinned: {'a|x', 'b|fx:1:size'},
@@ -143,6 +145,7 @@ void main() {
             'mode': 'sideways',
             'enlarged': 'yes',
             'pen': 'yes',
+            'transformBox': 'no',
           },
           'c|t': {'extent': 120.5},
         },

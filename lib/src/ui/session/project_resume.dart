@@ -118,6 +118,7 @@ class ProjectResume {
             if (graph.mode != LaneGraphMode.value) 'mode': graph.mode.name,
             if (graph.enlarged) 'enlarged': true,
             if (graph.pen) 'pen': true,
+            if (!graph.transformBox) 'transformBox': false,
           },
       },
     if (laneGraphs.pinned.isNotEmpty) 'pinnedLanes': [...laneGraphs.pinned],
@@ -176,8 +177,8 @@ class ProjectResume {
   }
 
   /// The header graph [json] holds — a part it does not hold readably
-  /// stands as on a graph nobody has sized, plotted, enlarged or taken
-  /// the pen up in.
+  /// stands as on a graph nobody has sized, plotted, enlarged, taken the
+  /// pen up in or hidden the transform box of.
   static LaneGraph _laneGraph(Map<String, Object?> json) => LaneGraph(
     extent: _positive(json['extent']),
     mode:
@@ -187,6 +188,7 @@ class ProjectResume {
         LaneGraphMode.value,
     enlarged: json['enlarged'] == true,
     pen: json['pen'] == true,
+    transformBox: json['transformBox'] != false,
   );
 
   /// [value] as a zoom or an offset can be read back: a finite number above

@@ -378,6 +378,7 @@ void main() {
                           resize: (_, _) {},
                           enlarge: (_) {},
                           pen: (_) {},
+                          transformBox: (_) {},
                         )
                       : null,
                   seat: graphs ? seat : null,
@@ -574,6 +575,7 @@ void main() {
                         resize: (_, _) {},
                         enlarge: (_) {},
                         pen: (_) {},
+                        transformBox: (_) {},
                       )
                     : null,
                 seat: graphs ? seat : null,

@@ -5,7 +5,8 @@ import 'package:flutter/foundation.dart'
 /// group or the lane it was pressed on (`laneGroupKey`): a group's graph
 /// on or off, a lane pinned to every graph or let go, what a graph plots,
 /// how far it stands along the rail, a graph enlarged over every other
-/// row or let back, and its pen taken up or put down.
+/// row or let back, its pen taken up or put down, and its transform box
+/// shown or hidden.
 typedef LaneGraphVerbs = ({
   ValueChanged<String> toggle,
   ValueChanged<String> togglePin,
@@ -13,6 +14,7 @@ typedef LaneGraphVerbs = ({
   void Function(String groupKey, double extent) resize,
   ValueChanged<String> enlarge,
   ValueChanged<String> pen,
+  ValueChanged<String> transformBox,
 });
 
 /// What a header graph plots: the values, or how fast they change — a
@@ -36,8 +38,8 @@ double laneGraphMostExtent(double view, double rowExtent) =>
     view - rowExtent > 0 ? view - rowExtent : 0;
 
 /// ONE group's open header graph (I-89 ③): how far it stands along the
-/// rail, what it plots, whether it is enlarged over the rest, and whether
-/// its pen is up.
+/// rail, what it plots, whether it is enlarged over the rest, whether its
+/// pen is up, and whether its transform box is shown.
 @immutable
 class LaneGraph {
   const LaneGraph({
@@ -45,6 +47,7 @@ class LaneGraph {
     this.mode = LaneGraphMode.value,
     this.enlarged = false,
     this.pen = false,
+    this.transformBox = true,
   });
 
   /// The grip's extent; null until a grip has said one.
@@ -71,6 +74,16 @@ class LaneGraph {
   /// one tool of the window; this app's graph tools are each graph's own.
   final bool pen;
 
+  /// Whether its TRANSFORM BOX is shown (AE's 「Show Transform Box」,
+  /// graph-box-handles-more ⓔ): the box round the keys picked, with its
+  /// handles and the carry from inside it — hidden, the keys picked are
+  /// carried from a key, and a drag inside where it stood draws a new box.
+  /// Shown on a graph nobody has turned it off on, as AE's is.
+  ///
+  /// ⚠️Mine: one graph's and kept as [pen] is — AE's is one switch of the
+  /// window.
+  final bool transformBox;
+
   /// How far the graph stands on a rail of [rowExtent] rows: the grip's,
   /// or [laneGraphOpeningRows] rows — so a graph nobody has sized follows
   /// the OS text size its rows do.
@@ -82,11 +95,13 @@ class LaneGraph {
     LaneGraphMode? mode,
     bool? enlarged,
     bool? pen,
+    bool? transformBox,
   }) => LaneGraph(
     extent: extent ?? this.extent,
     mode: mode ?? this.mode,
     enlarged: enlarged ?? this.enlarged,
     pen: pen ?? this.pen,
+    transformBox: transformBox ?? this.transformBox,
   );
 
   @override
@@ -95,10 +110,12 @@ class LaneGraph {
       other.extent == extent &&
       other.mode == mode &&
       other.enlarged == enlarged &&
-      other.pen == pen;
+      other.pen == pen &&
+      other.transformBox == transformBox;
 
   @override
-  int get hashCode => Object.hash(extent, mode, enlarged, pen);
+  int get hashCode =>
+      Object.hash(extent, mode, enlarged, pen, transformBox);
 }
 
 /// THE RAIL'S HEADER GRAPHS (I-89 ③) — a view setting, kept in the file

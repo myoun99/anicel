@@ -650,6 +650,49 @@ void main() {
       );
     });
 
+    // graph-box-handles-more ⓔ — AE's 「Show Transform Box」.
+    testWidgets('the box button hides the box, its handles and the carry '
+        'from inside it — a drag there draws a new box — and shows them '
+        'again, its face on while it is shown', (tester) async {
+      final s = await _pump(tester);
+      await _openTheGraph(tester, s);
+      await _pick(tester, s);
+      bool shown() =>
+          s.railView.laneGraphs.value.open[_transformGroup]!.transformBox;
+      AppIconButtonFace face() => tester.widget<AppIconButtonFace>(_boxButton);
+      final round = boxed(tester)!;
+      expect(shown(), isTrue, reason: '⛔전제: shown on a new graph');
+      expect(face().isSelected, isTrue);
+      expect(face().tooltip, AppText.strings.laneGraphTransformBoxOn);
+
+      await tester.tap(_boxButton);
+      await tester.pumpAndSettle();
+      expect(shown(), isFalse);
+      expect(face().isSelected, isFalse);
+      expect(face().tooltip, AppText.strings.laneGraphTransformBox);
+      expect(boxed(tester), isNull);
+      expect(
+        _paintOf(tester),
+        isNot(paints..rect(rect: round, color: selectedLaneKeyRing.color)),
+      );
+
+      final first = _keyOnScreen(tester, 0);
+      final last = _keyOnScreen(tester, 8);
+      final cell = _cellExtent(tester);
+      await _carry(
+        tester,
+        bare(tester, Offset(last.dx - cell * 2, first.dy)),
+        Offset(cell * 2, 0),
+      );
+      expect(_keyedFrames(s), [0, 8], reason: 'a box moves nothing');
+
+      await _pick(tester, s);
+      await tester.tap(_boxButton);
+      await tester.pumpAndSettle();
+      expect(shown(), isTrue);
+      expect(boxed(tester), round);
+    });
+
     testWidgets('a drag begun on the box\'s ground carries the keys picked, '
         'as one begun on a key does; outside it, a drag draws a new box', (
       tester,
@@ -967,6 +1010,9 @@ Future<void> _tapThePen(WidgetTester tester) async {
   await tester.tap(_penButton);
   await tester.pumpAndSettle();
 }
+
+Finder get _boxButton =>
+    find.byKey(ValueKey<String>('timeline-lane-graph-box-$_transformGroup'));
 
 /// A tap of [kind] on the graph's line at [frame].
 Future<void> _tapTheLine(

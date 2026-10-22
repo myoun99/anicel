@@ -950,6 +950,8 @@ void main() {
     'laneGraphEnlargeOn': (s) => s.laneGraphEnlargeOn,
     'laneGraphPen': (s) => s.laneGraphPen,
     'laneGraphPenOn': (s) => s.laneGraphPenOn,
+    'laneGraphTransformBox': (s) => s.laneGraphTransformBox,
+    'laneGraphTransformBoxOn': (s) => s.laneGraphTransformBoxOn,
     'railFillReferenceOn': (s) => s.railFillReferenceOn,
     'railFillReference': (s) => s.railFillReference,
     'tlLayerMark': (s) => s.tlLayerMark,

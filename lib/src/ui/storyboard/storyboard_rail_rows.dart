@@ -2104,6 +2104,7 @@ class _StoryboardRailRows {
       resize: (key, extent) => verbs.resize(held(key), extent),
       enlarge: (key) => verbs.enlarge(held(key)),
       pen: (key) => verbs.pen(held(key)),
+      transformBox: (key) => verbs.transformBox(held(key)),
     );
   }
 

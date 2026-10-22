@@ -343,6 +343,7 @@ class TimelineLaneGraph extends StatelessWidget {
                 lanes: grid.laneRange,
                 mode: seat.graph.mode,
                 pen: seat.graph.pen,
+                transformBox: seat.graph.transformBox,
               ),
             ),
           ),
@@ -377,6 +378,10 @@ class TimelineLaneGraph extends StatelessWidget {
                 : () => verbs.enlarge(seat.groupKey),
             pen: seat.graph.pen,
             onPen: verbs == null ? null : () => verbs.pen(seat.groupKey),
+            transformBox: seat.graph.transformBox,
+            onTransformBox: verbs == null
+                ? null
+                : () => verbs.transformBox(seat.groupKey),
           ),
         ),
         if (guests.isNotEmpty)
@@ -464,6 +469,7 @@ class LaneGraphPicture extends StatefulWidget {
     required this.lanes,
     required this.mode,
     this.pen = false,
+    this.transformBox = true,
   });
 
   final List<LaneGraphLine> own;
@@ -483,6 +489,9 @@ class LaneGraphPicture extends StatefulWidget {
 
   /// Whether its graph's pen is up ([LaneGraph.pen]).
   final bool pen;
+
+  /// Whether its graph's transform box is shown ([LaneGraph.transformBox]).
+  final bool transformBox;
 
   @override
   State<LaneGraphPicture> createState() => _LaneGraphPictureState();
@@ -590,6 +599,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       selection: widget.lanes?.selection,
       held: _inHand?.fits ?? _keyInHand?.fits ?? const {},
       box: _box?.rect,
+      transformBox: widget.transformBox,
     );
     final picture = HitGate(
       admits: _takesPressAt,
@@ -1360,8 +1370,9 @@ const double _graphToolsPadding = 2;
 const double _graphToolsGap = 6;
 
 /// A graph's own tools, at the view's start (I-89 ③, the mock's 5판): what
-/// it plots — its values, or how fast they change — its pen (I-3 ④), and
-/// the button that enlarges it over every other row or lets it back (③D).
+/// it plots — its values, or how fast they change — its pen (I-3 ④), its
+/// transform box shown or hidden (AE's 「Show Transform Box」), and the
+/// button that enlarges it over every other row or lets it back (③D).
 class LaneGraphTools extends StatelessWidget {
   const LaneGraphTools({
     super.key,
@@ -1373,6 +1384,8 @@ class LaneGraphTools extends StatelessWidget {
     required this.onEnlarge,
     this.pen = false,
     this.onPen,
+    this.transformBox = true,
+    this.onTransformBox,
   });
 
   /// The grid's key prefix and the graph's group, which its pills' keys
@@ -1399,14 +1412,22 @@ class LaneGraphTools extends StatelessWidget {
   /// Null where the host hands the graph no verbs, as [onPlot].
   final VoidCallback? onPen;
 
-  /// The pills and the pen are laid out in the room they are given, but
-  /// never in less than the pen's own.
-  static BoxConstraints _roomForThePen(BoxConstraints room) => room.copyWith(
-    maxWidth: math.max(
-      room.maxWidth,
-      _graphToolsGap + AppIconButtonSize.strip.maxWidth,
-    ),
-  );
+  /// Whether the graph's transform box is shown — its button on
+  /// ([LaneGraph.transformBox]).
+  final bool transformBox;
+
+  /// Null where the host hands the graph no verbs, as [onPlot].
+  final VoidCallback? onTransformBox;
+
+  /// The pills, the pen and the box are laid out in the room they are
+  /// given, but never in less than the pen's and the box's own.
+  static BoxConstraints _roomForTheButtons(BoxConstraints room) =>
+      room.copyWith(
+        maxWidth: math.max(
+          room.maxWidth,
+          2 * (_graphToolsGap + AppIconButtonSize.strip.maxWidth),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -1421,16 +1442,16 @@ class LaneGraphTools extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ⚠️Mine: in a view too narrow for both buttons, the pen gives
-            // its width up after the pills — cut where their room ends —
-            // and the enlarge button keeps all of its own, as it did before
-            // the pen stood beside it.
+            // ⚠️Mine: in a view too narrow for every button, the pen and the
+            // box give their width up after the pills — cut where their room
+            // ends — and the enlarge button keeps all of its own, as it did
+            // before the pen stood beside it.
             Flexible(
               child: ConstraintsTransformBox(
                 alignment: AlignmentDirectional.centerStart,
                 clipBehavior: Clip.hardEdge,
-                constraintsTransform: _roomForThePen,
-                child: _pillsAndPen(strings),
+                constraintsTransform: _roomForTheButtons,
+                child: _pillsPenAndBox(strings),
               ),
             ),
             const SizedBox(width: _graphToolsGap),
@@ -1452,8 +1473,8 @@ class LaneGraphTools extends StatelessWidget {
     );
   }
 
-  /// The plot's two pills, and the pen beside them.
-  Widget _pillsAndPen(AppStrings strings) {
+  /// The plot's two pills, and the pen and the box beside them.
+  Widget _pillsPenAndBox(AppStrings strings) {
     final onPlot = this.onPlot;
     PillItem pill(LaneGraphMode plotted, String label) => PillItem(
       keyValue: '$keyPrefix-lane-graph-plot-${plotted.name}-$groupKey',
@@ -1482,6 +1503,19 @@ class LaneGraphTools extends StatelessWidget {
           isSelected: pen,
           icon: const Icon(Icons.draw),
           onPressed: onPen,
+        ),
+        const SizedBox(width: _graphToolsGap),
+        // ⚠️Mine: AE's glyph is a box with its handles; Material's nearest
+        // is the corners of a frame.
+        AppIconButton(
+          keyValue: '$keyPrefix-lane-graph-box-$groupKey',
+          tooltip: transformBox
+              ? strings.laneGraphTransformBoxOn
+              : strings.laneGraphTransformBox,
+          size: AppIconButtonSize.strip,
+          isSelected: transformBox,
+          icon: const Icon(Icons.crop_free),
+          onPressed: onTransformBox,
         ),
       ],
     );
@@ -2104,6 +2138,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
     this.selection,
     this.held = const {},
     this.box,
+    this.transformBox = true,
   }) : super(
          repaint: Listenable.merge([
            frameAxis.geometry,
@@ -2132,6 +2167,10 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// The box a drag on the graph's ground is drawing (I-3 ⑤) — in the
   /// ants, standing still ([antsColour]) — or null.
   final Rect? box;
+
+  /// Whether the box round the keys picked stands — drawn, its handles and
+  /// the inside of it taking a press ([LaneGraph.transformBox]).
+  final bool transformBox;
 
   Axis get axis => frameAxis.axis;
 
@@ -2328,6 +2367,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
     keysIn(size).where(_picks).toList(),
     markOf: _markOf,
     axis: axis,
+    boxed: transformBox,
   );
 
   /// Where a pen press at [position] puts a key on a picture [size] big
@@ -2674,7 +2714,8 @@ class TimelineLaneGraphPainter extends CustomPainter {
       oldDelegate.mode != mode ||
       oldDelegate.selection != selection ||
       oldDelegate.held != held ||
-      oldDelegate.box != box;
+      oldDelegate.box != box ||
+      oldDelegate.transformBox != transformBox;
 }
 
 /// The keys a lane selection picks on a header graph's picture, in the
@@ -2689,8 +2730,10 @@ class LaneGraphPicked {
     this.keys, {
     required Rect Function(LaneGraphKey key) markOf,
     required Axis axis,
+    required bool boxed,
   }) : _markOf = markOf,
-       _axis = axis;
+       _axis = axis,
+       _boxed = boxed;
 
   final List<LaneGraphKey> keys;
 
@@ -2698,9 +2741,13 @@ class LaneGraphPicked {
   final Rect Function(LaneGraphKey key) _markOf;
   final Axis _axis;
 
+  /// Whether the graph's transform box is shown ([LaneGraph.transformBox]).
+  final bool _boxed;
+
   /// The box round [keys] — null for fewer than two keys: a key of two
-  /// numbers is marked twice and is one key.
-  late final Rect? box = _boxRound();
+  /// numbers is marked twice and is one key — and where the graph's
+  /// transform box is hidden.
+  late final Rect? box = _boxed ? _boxRound() : null;
 
   Rect? _boxRound() {
     final distinct = {
