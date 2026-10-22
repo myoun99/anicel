@@ -897,6 +897,34 @@ void main() {
 
       expect(rotations(s), {0: 45, 4: 0});
     });
+
+    testWidgets('⏸a line of two numbers is not stretched across yet: its '
+        'keys stay as they stand (graph-box-handles-scale-keys-Q1)', (
+      tester,
+    ) async {
+      final s = await _pump(
+        tester,
+        transform: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>()
+              .withKey(0, CanvasPoint(x: 100, y: 300))
+              .withKey(8, CanvasPoint(x: 200, y: 50)),
+        ),
+      );
+      await _openTheGraph(tester, s, lane: 'position');
+      await _pick(tester, s, lane: 'position');
+
+      await _carry(
+        tester,
+        handleOnScreen(tester, (along: 0, across: -1)),
+        _up30,
+      );
+
+      final keys = _transformOf(s).position.keys;
+      expect(
+        [for (final frame in [0, 8]) keys[frame]?.value],
+        [CanvasPoint(x: 100, y: 300), CanvasPoint(x: 200, y: 50)],
+      );
+    });
   });
 }
 

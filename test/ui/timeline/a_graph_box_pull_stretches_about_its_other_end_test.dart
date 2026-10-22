@@ -83,6 +83,12 @@ void main() {
       square,
     );
     expect((side.time.factor, side.across.factor), (3, 1));
+    final top = laneGraphBoxPulled(
+      held(0, 1),
+      (time: 99, across: 300),
+      square,
+    );
+    expect((top.time.factor, top.across.factor), (1, 2));
   });
 
   test('pulled past the other end, the factor goes under 0 — the keys turn '
