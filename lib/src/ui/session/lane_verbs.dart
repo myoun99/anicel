@@ -362,10 +362,9 @@ class LaneVerbs {
   /// The cut whose camera the camera row [layer] writes as [track] — null
   /// where no cut holds the row, or where [track] puts a key out of the
   /// frames the cut is drawn for ([cameraWriteKeepsKeysIn],
-  /// 🗣️I-73-camera-row-Q2). The commit, a drag's preview and a paste's
-  /// gate all ask it, so what a drag shows and a button lights is what the
-  /// press keeps. ↩️The gate did not ask, and a paste that pushed a key
-  /// past the cut's end lit and wrote nothing (F-388, 관제 10-22).
+  /// 🗣️I-73-camera-row-Q2). The commit and a drag's preview both ask it,
+  /// so what a drag shows is what the press keeps; a paste keeps its keys
+  /// in by itself ([_cameraLastFrameOf]).
   Cut? _cutTakingCamera(Layer layer, TransformTrack track) {
     final cut = _cutWriting(layer);
     return cut != null &&
@@ -378,14 +377,16 @@ class LaneVerbs {
         : null;
   }
 
-  /// Whether the commit of [edit] on [layer] refuses its OWN transform
-  /// lanes: the camera's, where a key would leave the cut
-  /// ([_cutTakingCamera]).
-  bool _refusesOwn(Layer layer, LaneEdit edit) {
-    final own = edit.transform.own;
-    return own != null &&
-        _transformHomeOf(layer) == _TransformHome.cutCamera &&
-        _cutTakingCamera(layer, own) == null;
+  /// The last frame a paste may leave a key on [layer]'s OWN lanes: on the
+  /// camera row its cut's last drawn frame, else none ([laneKeysSpliced]).
+  /// 🗣️F-388-Q3 (유저 2026-10-22): 「끝 키는 끝에 남고, 밖으로 밀린 나머지는
+  /// 버린다」. ↩️A paste that pushed a key past the end was refused whole,
+  /// its buttons dark (F-388, 관제 10-22).
+  int? _cameraLastFrameOf(Layer layer) {
+    final cut = _transformHomeOf(layer) == _TransformHome.cutCamera
+        ? _cutWriting(layer)
+        : null;
+    return cut == null ? null : _drawnFramesOf(cut) - 1;
   }
 
   /// The cut [layer] is read and written in ([ActiveCutEdits.cutOfRow]):
@@ -1478,9 +1479,9 @@ class LaneVerbs {
   }
 
   /// What a paste of [copy] here writes, and with [keepNames] the names it
-  /// joins at another value — null where it lands nothing, the commit's
-  /// refusal included ([_refusesOwn]): one answer for the gate and the
-  /// press (I-19/T25).
+  /// joins at another value — null where it lands nothing: one answer for
+  /// the gate and the press (I-19/T25). The camera's keys stay in its cut
+  /// ([_cameraLastFrameOf]).
   ({_SpanScope scope, LaneEdit edit, Set<String> joins})? _laneKeysPasted(
     KeyCopy copy, {
     required bool keepNames,
@@ -1497,21 +1498,23 @@ class LaneVerbs {
         start: lane.startIndex,
         liftCount: _selectedLaneSpan == null ? 0 : lane.lengthFrames,
         length: copy.length,
+        last: _cameraLastFrameOf(scope.layer),
       ),
       keepNames: keepNames,
     );
-    return pasted.edit.isEmpty || _refusesOwn(scope.layer, pasted.edit)
+    return pasted.edit.isEmpty
         ? null
         : (scope: scope, edit: pasted.edit, joins: pasted.joins);
   }
 
   /// [paired]'s keys put in on [scope]'s lanes over [span] — the frames
-  /// from its start it lifts, and the frames it puts in ([laneKeysSpliced])
-  /// — with the names they join at another value ([keepNames]).
+  /// from its start it lifts, the frames it puts in and the last its own
+  /// lanes keep a key on ([laneKeysSpliced]) — with the names they join at
+  /// another value ([keepNames]).
   ({LaneEdit edit, Set<String> joins}) _keysSplicedInto(
     _SpanScope scope,
     Map<_PastedLane, Map<int, PropertyKey<Object?>>> paired,
-    ({int start, int liftCount, int length}) span, {
+    ({int start, int liftCount, int length, int? last}) span, {
     required bool keepNames,
   }) {
     final homes = scope.homes;
@@ -1525,14 +1528,16 @@ class LaneVerbs {
     // key there ([heldOf]: what holds a name on a lane of it, or null).
     T? pastedOn<T>(
       LaneHome<T> home,
-      PropertyKey<Object?>? Function(String laneId, String name) heldOf,
-    ) => home.editedEach(
+      PropertyKey<Object?>? Function(String laneId, String name) heldOf, {
+      int? last,
+    }) => home.editedEach(
       (laneId) => switch (paired[(home: home, laneId: laneId)]) {
         null => null,
         final keys => laneKeysSpliced(
           start: span.start,
           liftCount: span.liftCount,
           length: span.length,
+          last: last,
           keys: {
             for (final MapEntry(key: frame, value: key) in keys.entries)
               frame: _pastedKey(
@@ -1551,7 +1556,11 @@ class LaneVerbs {
         _keyNamed(home, laneId, holder(laneId, name, lifted), name);
     final edit = LaneEdit(
       transform: (
-        own: pastedOn(homes.own, namedIn(homes.own, holders.own)),
+        own: pastedOn(
+          homes.own,
+          namedIn(homes.own, holders.own),
+          last: span.last,
+        ),
         reference: pastedOn(
           homes.reference,
           namedIn(homes.reference, holders.reference),

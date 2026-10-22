@@ -208,33 +208,39 @@ PropertyLaneEdit laneKeysRemovedWhere(bool Function(int frame) covers) =>
 /// the copy's length; a selection is replaced, and what follows it moves by
 /// the difference. AE leaves the keys after alone — the board weighed that
 /// and was answered.
+///
+/// With [last] — a camera's, its cut's last drawn frame (`cameraKeyFits`)
+/// — no key goes past it: the key on [last] the run pushes out stays on
+/// it, holding it against whatever lands there, and every other key past
+/// it goes, a pasted one too. 🗣️F-388-Q3 (유저 2026-10-22): 「끝 키는 끝에
+/// 남고, 밖으로 밀린 나머지는 버린다」 — the end key keeps to the cut's end
+/// as it does when the cut is drawn longer (I-73-camera-row-Q4).
 PropertyLaneEdit laneKeysSpliced({
   required int start,
   required int liftCount,
   required int length,
   required Map<int, PropertyKey<Object?>> keys,
+  int? last,
 }) => <U>(PropertyTrack<U> lane) {
   if (!keys.values.every((key) => key is PropertyKey<U>)) {
     return null;
   }
   final end = start + liftCount;
-  final moved = lane.keys.keys.any(
-    (frame) => frame >= start && (frame < end || length != liftCount),
-  );
-  if (keys.isEmpty && !moved) {
-    return null;
-  }
-  return PropertyTrack<U>(
+  final shift = length - liftCount;
+  bool fits(int frame) => last == null || frame <= last;
+  final next = PropertyTrack<U>(
     keys: {
       for (final MapEntry(key: frame, value: key) in lane.keys.entries)
         if (frame < start)
           frame: key
-        else if (frame >= end)
-          frame + length - liftCount: key,
+        else if (frame >= end && fits(frame + shift))
+          frame + shift: key,
       for (final MapEntry(key: offset, value: key) in keys.entries)
-        start + offset: key as PropertyKey<U>,
+        if (fits(start + offset)) start + offset: key as PropertyKey<U>,
+      if (last != null && last >= end && shift > 0) last: ?lane.keys[last],
     },
   );
+  return next == lane ? null : next;
 };
 
 /// [made] put on the lane as they are — each a key of this very lane, made
