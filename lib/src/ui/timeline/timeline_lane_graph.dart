@@ -589,6 +589,9 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// What its hand lifts of its lines, on the picture as it is laid out.
   _LaneGraphLift get _lift => _LaneGraphLift(widget, context.size!);
 
+  /// What a press picks on its lines.
+  _LaneGraphPicks get _picks => _LaneGraphPicks(widget);
+
   @override
   Widget build(BuildContext context) {
     final painter = _painter = TimelineLaneGraphPainter(
@@ -669,70 +672,11 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       axis: widget.frameAxis.axis,
     );
     setState(() => box.now = details.localPosition);
-    _pickBoxed(box);
+    _picks.heldBy(box, _painter.keysIn(context.size!));
   }
 
   /// Let go of: the box goes, and what it picked stays picked.
   void _closeBox() => setState(() => _box = null);
-
-  /// What [box] holds, picked: the frames it spans, across the lanes of the
-  /// keys inside it — and the selection let go of where it holds none. Of
-  /// the lines a cut, the keys of the one cut it began in, in that cut's
-  /// own frames: a sweep on a projection row's lane picks so.
-  ///
-  /// 🗣️I-3-Q3 (유저 2026-10-21): 「레인 칸 선택으로 (상자가 걸친 프레임 ×
-  /// 안에 든 키의 레인)」. 🗣️I-3-Q4 (유저 2026-10-22): 「레인 행을 끌 때와
-  /// 똑같이」 — the lanes of two layers, or two cuts, picked as a lane drag
-  /// across them picks.
-  void _pickBoxed(_BoxInHand box) {
-    final lanes = widget.lanes!;
-    final axis = widget.frameAxis.axis;
-    final frames = widget.frameAxis.geometry.value;
-    final pressed = frames.frameIndexAt(partAlong(axis, box.press));
-    final rect = box.rect;
-    final held = [
-      for (final key in _painter.keysIn(context.size!))
-        if (rect.contains(key.at) &&
-            TimelineLaneGraphPainter._reaches(
-              key.line,
-              pressed - TimelineLaneGraphPainter._shiftOf(key.line),
-            ))
-          key.line,
-    ];
-    final rows = {
-      for (final line in held) LaneRowAddress(line.layer.id, line.lane.laneId),
-    }.toList();
-    final anchor = held.isEmpty ? 0 : _ownFrameOf(held.first, pressed);
-    final head = held.isEmpty
-        ? 0
-        : _ownFrameOf(
-            held.first,
-            frames.frameIndexAt(partAlong(axis, box.now)),
-          );
-    if (listEquals(rows, box.rows) &&
-        anchor == box.anchor &&
-        head == box.head) {
-      return;
-    }
-    box
-      ..rows = rows
-      ..anchor = anchor
-      ..head = head;
-    if (rows.isEmpty) {
-      lanes.onTapClear();
-      return;
-    }
-    lanes.onSelectRows!(rows, anchor, head);
-  }
-
-  /// The graph's frame [frame] as one of [line]'s own — held to them, as a
-  /// sweep on a cut's lane is held to the cut (`CameraRowReach.ownFrameAt`).
-  static int _ownFrameOf(LaneGraphLine line, int frame) =>
-      switch (line.reach) {
-        null => frame,
-        (:final start, :final end) =>
-          math.max(start, math.min(frame, end - 1)) - start,
-      };
 
   /// Whether a press at [position] is the picture's: on a handle, on a
   /// key where a key takes a press, or on a line where the pen puts a key
@@ -825,7 +769,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final key = _keyTakenAt(position);
     if (key == null) {
       if (_lineTakenAt(position) case final line?) {
-        _pickLine(lanes, line);
+        _picks.everyKeyOf(line);
       } else {
         _putKeyAt(position, lanes);
       }
@@ -833,63 +777,16 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     }
     final (:line, :frame, part: _, at: _, mark: _) = key;
     if (ModifierKeys.isShiftPressed) {
-      _pickOnTo(lanes, line, frame);
+      _picks.onTo(line, frame);
     } else if (!laneSelectionPicksKey(
       lanes.selection.value,
       line.layer.id,
       line.lane.laneId,
       frame,
     )) {
-      _pickCell(lanes, line, frame);
+      _picks.cellOf(line, frame);
     }
     setState(() => _keyInHand = _KeyInHand(key, position, _painter.fits));
-  }
-
-  /// [line]'s key on [frame] picked ON TO what is picked, with Shift held
-  /// (🗣️graph-key-pick-rest-Q1, 유저 2026-10-22: 「사각형을 그 키까지
-  /// 넓힌다」): the lane selection widened to the key's cell — its frames
-  /// to the key's, its lanes to the key's, as the box picks rows
-  /// ([_pickBoxed]) — a key picked already staying picked. With nothing
-  /// picked, the key's cell alone.
-  void _pickOnTo(
-    TimelineLaneRangeCallbacks lanes,
-    LaneGraphLine line,
-    int frame,
-  ) {
-    final picked = lanes.selection.value;
-    if (picked == null || lanes.onSelectRows == null) {
-      _pickCell(lanes, line, frame);
-      return;
-    }
-    final anchor = [...widget.own, ...widget.guests]
-        .where(
-          (each) =>
-              each.layer.id == picked.layerId &&
-              each.lane.laneId == picked.laneId,
-        )
-        .firstOrNull;
-    final drawn = frame + TimelineLaneGraphPainter._shiftOf(line);
-    final at = anchor == null ? drawn : _ownFrameOf(anchor, drawn);
-    lanes.onSelectRows!(
-      {
-        for (final lane in picked.spanLaneIds)
-          LaneRowAddress(picked.layerId, lane),
-        LaneRowAddress(line.layer.id, line.lane.laneId),
-      }.toList(),
-      math.min(picked.startIndex, at),
-      math.max(picked.endIndexExclusive - 1, at),
-    );
-  }
-
-  /// Every key of [line] picked: its lane's cells from its first key to its
-  /// last, the way the box picks the keys it holds ([_pickBoxed]).
-  static void _pickLine(TimelineLaneRangeCallbacks lanes, LaneGraphLine line) {
-    final keyed = line.lane.keyedFrames;
-    lanes.onSelectRows!(
-      [LaneRowAddress(line.layer.id, line.lane.laneId)],
-      keyed.reduce(math.min),
-      keyed.reduce(math.max),
-    );
   }
 
   /// A press on a line where the pen puts a key ([_penAt]) PUTS ONE THERE
@@ -901,18 +798,10 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// mouse's Ctrl+click and the pen's tap alike, on the line as drawn.
   void _putKeyAt(Offset position, TimelineLaneRangeCallbacks lanes) {
     if (_penAt(position) case (:final line, :final frame)) {
-      _pickCell(lanes, line, frame);
+      _picks.cellOf(line, frame);
       lanes.onCreateKeys!();
     }
   }
-
-  /// [line]'s cell on [frame] picked — the lane selection its row's band
-  /// makes there.
-  static void _pickCell(
-    TimelineLaneRangeCallbacks lanes,
-    LaneGraphLine line,
-    int frame,
-  ) => lanes.onSelectUpdate(line.layer.id, line.lane.laneId, frame, frame, 0);
 
   /// A press on a handle of the box round the keys picked TAKES IT (I-3 ⑥,
   /// AE's transform box): the times of the keys picked and their marks
@@ -1176,6 +1065,128 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     }
     super.dispose();
   }
+}
+
+/// WHAT A PRESS PICKS on a header graph's lines (I-3): the lane selection
+/// a key's cell makes, a key picked on to what is picked, a line's every
+/// key, and what a box drawn holds — told to the [picture]'s lanes.
+class _LaneGraphPicks {
+  const _LaneGraphPicks(this.picture);
+
+  final LaneGraphPicture picture;
+
+  /// [line]'s cell on [frame] picked — the lane selection its row's band
+  /// makes there.
+  void cellOf(LaneGraphLine line, int frame) => picture.lanes!.onSelectUpdate(
+    line.layer.id,
+    line.lane.laneId,
+    frame,
+    frame,
+    0,
+  );
+
+  /// [line]'s key on [frame] picked ON TO what is picked, with Shift held
+  /// (🗣️graph-key-pick-rest-Q1, 유저 2026-10-22: 「사각형을 그 키까지
+  /// 넓힌다」): the lane selection widened to the key's cell — its frames
+  /// to the key's, its lanes to the key's, as the box picks rows
+  /// ([heldBy]) — a key picked already staying picked. With nothing
+  /// picked, the key's cell alone.
+  void onTo(LaneGraphLine line, int frame) {
+    final lanes = picture.lanes!;
+    final picked = lanes.selection.value;
+    if (picked == null || lanes.onSelectRows == null) {
+      cellOf(line, frame);
+      return;
+    }
+    final anchor = [...picture.own, ...picture.guests]
+        .where(
+          (each) =>
+              each.layer.id == picked.layerId &&
+              each.lane.laneId == picked.laneId,
+        )
+        .firstOrNull;
+    final drawn = frame + TimelineLaneGraphPainter._shiftOf(line);
+    final at = anchor == null ? drawn : _ownFrameOf(anchor, drawn);
+    lanes.onSelectRows!(
+      {
+        for (final lane in picked.spanLaneIds)
+          LaneRowAddress(picked.layerId, lane),
+        LaneRowAddress(line.layer.id, line.lane.laneId),
+      }.toList(),
+      math.min(picked.startIndex, at),
+      math.max(picked.endIndexExclusive - 1, at),
+    );
+  }
+
+  /// Every key of [line] picked: its lane's cells from its first key to its
+  /// last, the way the box picks the keys it holds ([heldBy]).
+  void everyKeyOf(LaneGraphLine line) {
+    final keyed = line.lane.keyedFrames;
+    picture.lanes!.onSelectRows!(
+      [LaneRowAddress(line.layer.id, line.lane.laneId)],
+      keyed.reduce(math.min),
+      keyed.reduce(math.max),
+    );
+  }
+
+  /// What [box] holds, picked: the frames it spans, across the lanes of the
+  /// keys inside it — and the selection let go of where it holds none. Of
+  /// the lines a cut, the keys of the one cut it began in, in that cut's
+  /// own frames: a sweep on a projection row's lane picks so.
+  ///
+  /// 🗣️I-3-Q3 (유저 2026-10-21): 「레인 칸 선택으로 (상자가 걸친 프레임 ×
+  /// 안에 든 키의 레인)」. 🗣️I-3-Q4 (유저 2026-10-22): 「레인 행을 끌 때와
+  /// 똑같이」 — the lanes of two layers, or two cuts, picked as a lane drag
+  /// across them picks.
+  void heldBy(_BoxInHand box, List<LaneGraphKey> keys) {
+    final lanes = picture.lanes!;
+    final axis = picture.frameAxis.axis;
+    final frames = picture.frameAxis.geometry.value;
+    final pressed = frames.frameIndexAt(partAlong(axis, box.press));
+    final rect = box.rect;
+    final held = [
+      for (final key in keys)
+        if (rect.contains(key.at) &&
+            TimelineLaneGraphPainter._reaches(
+              key.line,
+              pressed - TimelineLaneGraphPainter._shiftOf(key.line),
+            ))
+          key.line,
+    ];
+    final rows = {
+      for (final line in held) LaneRowAddress(line.layer.id, line.lane.laneId),
+    }.toList();
+    final anchor = held.isEmpty ? 0 : _ownFrameOf(held.first, pressed);
+    final head = held.isEmpty
+        ? 0
+        : _ownFrameOf(
+            held.first,
+            frames.frameIndexAt(partAlong(axis, box.now)),
+          );
+    if (listEquals(rows, box.rows) &&
+        anchor == box.anchor &&
+        head == box.head) {
+      return;
+    }
+    box
+      ..rows = rows
+      ..anchor = anchor
+      ..head = head;
+    if (rows.isEmpty) {
+      lanes.onTapClear();
+      return;
+    }
+    lanes.onSelectRows!(rows, anchor, head);
+  }
+
+  /// The graph's frame [frame] as one of [line]'s own — held to them, as a
+  /// sweep on a cut's lane is held to the cut (`CameraRowReach.ownFrameAt`).
+  static int _ownFrameOf(LaneGraphLine line, int frame) =>
+      switch (line.reach) {
+        null => frame,
+        (:final start, :final end) =>
+          math.max(start, math.min(frame, end - 1)) - start,
+      };
 }
 
 /// WHAT A HAND LIFTS of a header graph's own lines (I-3): the keys it
