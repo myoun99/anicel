@@ -24,7 +24,7 @@ import '../../services/input/modifier_keys.dart' show ModifierKeys;
 import '../dashed_path.dart' show DashPattern, dashesAlong;
 import '../input/hit_gate.dart' show HitGate;
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
-import '../text/app_strings.dart' show AppText;
+import '../text/app_strings.dart' show AppStrings, AppText;
 import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/app_icon_button.dart'
     show AppIconButton, AppIconButtonSize;
@@ -1003,13 +1003,6 @@ class LaneGraphTools extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    final onPlot = this.onPlot;
-    PillItem pill(LaneGraphMode plotted, String label) => PillItem(
-      keyValue: '$keyPrefix-lane-graph-plot-${plotted.name}-$groupKey',
-      label: label,
-      selected: mode == plotted,
-      onTap: onPlot == null ? null : () => onPlot(plotted),
-    );
     return DecoratedBox(
       decoration: ShapeDecoration(
         color: AppColors.surface,
@@ -1029,32 +1022,7 @@ class LaneGraphTools extends StatelessWidget {
                 alignment: AlignmentDirectional.centerStart,
                 clipBehavior: Clip.hardEdge,
                 constraintsTransform: _roomForThePen,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: PillStrip(
-                        items: [
-                          pill(LaneGraphMode.value, strings.laneGraphValue),
-                          pill(LaneGraphMode.speed, strings.laneGraphSpeed),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: _graphToolsGap),
-                    // ⚠️Mine: Material draws no pen nib (AE's glyph); this
-                    // one is a pen drawing its line.
-                    AppIconButton(
-                      keyValue: '$keyPrefix-lane-graph-pen-$groupKey',
-                      tooltip: pen
-                          ? strings.laneGraphPenOn
-                          : strings.laneGraphPen,
-                      size: AppIconButtonSize.strip,
-                      isSelected: pen,
-                      icon: const Icon(Icons.draw),
-                      onPressed: onPen,
-                    ),
-                  ],
-                ),
+                child: _pillsAndPen(strings),
               ),
             ),
             const SizedBox(width: _graphToolsGap),
@@ -1073,6 +1041,41 @@ class LaneGraphTools extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// The plot's two pills, and the pen beside them.
+  Widget _pillsAndPen(AppStrings strings) {
+    final onPlot = this.onPlot;
+    PillItem pill(LaneGraphMode plotted, String label) => PillItem(
+      keyValue: '$keyPrefix-lane-graph-plot-${plotted.name}-$groupKey',
+      label: label,
+      selected: mode == plotted,
+      onTap: onPlot == null ? null : () => onPlot(plotted),
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: PillStrip(
+            items: [
+              pill(LaneGraphMode.value, strings.laneGraphValue),
+              pill(LaneGraphMode.speed, strings.laneGraphSpeed),
+            ],
+          ),
+        ),
+        const SizedBox(width: _graphToolsGap),
+        // ⚠️Mine: Material draws no pen nib (AE's glyph); this one is a pen
+        // drawing its line.
+        AppIconButton(
+          keyValue: '$keyPrefix-lane-graph-pen-$groupKey',
+          tooltip: pen ? strings.laneGraphPenOn : strings.laneGraphPen,
+          size: AppIconButtonSize.strip,
+          isSelected: pen,
+          icon: const Icon(Icons.draw),
+          onPressed: onPen,
+        ),
+      ],
     );
   }
 }

@@ -62,6 +62,11 @@ const ledger = <String, Why>{
   'timeline/timeline_lane_graph.dart | '
           "'\$keyPrefix-lane-graph-enlarge-\$groupKey'":
       Why.aRow,
+  // Its pen (I-3, AE's): it takes up the pen of the graph it stands in,
+  // and Ctrl held (Cmd on a Mac) is that pen from the keyboard.
+  'timeline/timeline_lane_graph.dart | '
+          "'\$keyPrefix-lane-graph-pen-\$groupKey'":
+      Why.aRow,
   'timeline/timeline_lane_rows.dart | '
           "'\$_keyPrefix-lane-group-fx-\${layer.id}-\${lane.laneId}'":
       Why.aRow,
