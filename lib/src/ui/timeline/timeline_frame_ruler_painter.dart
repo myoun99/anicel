@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../../core/bounded_memo.dart';
+import '../../core/neighbour_pairs.dart';
 import 'axis_turn.dart' show extentAlong, offsetAlong, startAlong;
 import 'frame_window_semantics.dart';
 
@@ -684,9 +685,7 @@ final class TimelineRulerScale {
       playbackFrameCount,
     }.where((edge) => edge >= from && edge <= to).toList()..sort();
     final step = timelineFrameLineStep(metrics.frameCellWidth, framesPerSecond);
-    for (var index = 0; index + 1 < edges.length; index += 1) {
-      final start = edges[index];
-      final end = edges[index + 1];
+    for (final (start, end) in neighbourPairs(edges)) {
       final ground = modelAt(start).background;
       canvas.drawRect(
         cellRectFor(start).expandToInclude(cellRectFor(end - 1)),

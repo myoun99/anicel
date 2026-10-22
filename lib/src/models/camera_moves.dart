@@ -1,3 +1,4 @@
+import '../core/neighbour_pairs.dart';
 import 'canvas_point.dart';
 import 'transform_track.dart';
 
@@ -25,13 +26,10 @@ typedef CameraMove = ({int from, int to, String term});
 List<CameraMove> cameraMoves(TransformTrack track) {
   final keys = track.keyedFrames.toList(growable: false);
   return [
-    for (var index = 0; index + 1 < keys.length; index += 1)
-      if (cameraMoveTermBetween(
-            _poseAt(track, keys[index]),
-            _poseAt(track, keys[index + 1] - 1),
-          )
+    for (final (from, to) in neighbourPairs(keys))
+      if (cameraMoveTermBetween(_poseAt(track, from), _poseAt(track, to - 1))
           case final term?)
-        (from: keys[index], to: keys[index + 1], term: term),
+        (from: from, to: to, term: term),
   ];
 }
 

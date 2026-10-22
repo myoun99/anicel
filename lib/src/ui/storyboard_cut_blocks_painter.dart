@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../core/contain_rect.dart';
+import '../core/neighbour_pairs.dart';
 import '../models/cut_id.dart';
 import '../models/storyboard_coverage.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
@@ -408,8 +409,8 @@ class StoryboardCutBlocksPainter extends CustomPainter
   /// Where the cut after each one starts — [entries] are in track order,
   /// and the last cut has no one to stop for.
   late final Map<CutId, int> _nextStartByCut = {
-    for (var index = 0; index + 1 < entries.length; index += 1)
-      entries[index].cutId: entries[index + 1].startFrame,
+    for (final (entry, next) in neighbourPairs(entries))
+      entry.cutId: next.startFrame,
   };
 
   /// The frame span worth drawing — the full track under the classic

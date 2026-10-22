@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart';
 
+import '../../core/neighbour_pairs.dart';
 import '../../models/key_mark.dart' show KeyMark;
 import '../../models/key_side.dart'
     show
@@ -1380,9 +1381,7 @@ Iterable<({double time, double speed})> laneGraphSpeeds(
 /// A line that never moves is given 0 to 1.
 LaneGraphRange laneGraphSpeedRange(LaneCurve curve, List<int> keyed) {
   var fastest = 0.0;
-  for (var index = 0; index + 1 < keyed.length; index += 1) {
-    final from = keyed[index];
-    final to = keyed[index + 1];
+  for (final (from, to) in neighbourPairs(keyed)) {
     for (var step = 0; step <= _laneGraphRangeSteps; step += 1) {
       final time = from + (to - from) * step / _laneGraphRangeSteps;
       fastest = math.max(
@@ -1950,8 +1949,8 @@ class TimelineLaneGraphPainter extends CustomPainter {
   ) sync* {
     final way = curve.way;
     if (way == null) {
-      for (var index = 0; index + 1 < keyed.length; index += 1) {
-        yield (from: keyed[index], to: keyed[index + 1]);
+      for (final (from, to) in neighbourPairs(keyed)) {
+        yield (from: from, to: to);
       }
       return;
     }
