@@ -213,10 +213,12 @@ void main() {
         transform: Matrix4.diagonal3Values(-1, 1, 1)
           ..setTranslationRaw(64, 0, 0),
       ),
+      // Shown well past the layer, so the half pixel alone says no.
       'off a whole pixel': () => landed(
         clip: whole,
         rasterScale: 1,
         transform: Matrix4.translationValues(0.5, 0, 0),
+        shownWithin: const Rect.fromLTWH(-8, -8, 80, 80),
       ),
       'where it is shown cut': () => landed(
         clip: whole,
