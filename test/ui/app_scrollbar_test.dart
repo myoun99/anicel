@@ -450,6 +450,20 @@ void main() {
     });
   });
 
+  test('a scope that changes its lane tells the bars under it; one that '
+      'keeps it does not', () {
+    const thick = AppScrollbarLaneScope(
+      lane: AppScrollbarLane.thick,
+      child: SizedBox(),
+    );
+    const thin = AppScrollbarLaneScope(
+      lane: AppScrollbarLane.thin,
+      child: SizedBox(),
+    );
+    expect(thick.updateShouldNotify(thin), isTrue);
+    expect(thin.updateShouldNotify(thin), isFalse);
+  });
+
   group('AppControllerScrollbar', () {
     testWidgets('thumb drag scrolls the controller', (tester) async {
       final controller = ScrollController();

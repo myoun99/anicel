@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
-    show timelineVerticalScrollbarWidth;
+    show timelineBottomScrollbarRailHeight, timelineVerticalScrollbarWidth;
 import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import '../helpers/dart_sources.dart';
 
@@ -30,6 +30,10 @@ void main() {
 
   test('the frame area\'s vertical bar is the thick one (F-409)', () {
     expect(timelineVerticalScrollbarWidth, AppScrollbarLane.thick);
+  });
+
+  test('the frame area\'s bottom rail is the thin one (F-409)', () {
+    expect(timelineBottomScrollbarRailHeight, AppScrollbarLane.thin);
   });
 
   test('🚨every minThumbExtent in lib/ reads the shared constant — three '
