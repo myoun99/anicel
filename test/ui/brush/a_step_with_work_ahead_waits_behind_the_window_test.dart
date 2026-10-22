@@ -84,7 +84,10 @@ void main() {
       BitmapSurface(canvasSize: cut.canvasSize, tileSize: 8).putTiles([
         (
           coord: TileCoord(x: 1, y: 1),
-          tile: BitmapTile(size: 8, pixels: Uint8List(256)..fillRange(0, 256, 9)),
+          tile: BitmapTile(
+            size: 8,
+            pixels: Uint8List(256)..fillRange(0, 256, 9),
+          ),
         ),
       ]),
     );
@@ -100,7 +103,11 @@ void main() {
     final resized = sizeNow();
 
     verbs.undo();
-    expect(waited, isEmpty, reason: 'an undo puts the pictures back as they were');
+    expect(
+      waited,
+      isEmpty,
+      reason: 'an undo puts the pictures back as they were',
+    );
     expect(sizeNow(), before);
 
     verbs.redo();
@@ -116,7 +123,8 @@ void main() {
     expect(store.celsMovedHere, movedHere, reason: 'moved ahead, not here');
   });
 
-  test('a step that waited is not taken over a history that moved on', () async {
+  test('a step that waited is not taken over a history that moved on', (
+  ) async {
     shrink();
     shrink();
     verbs.undo();

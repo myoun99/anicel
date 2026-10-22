@@ -64,7 +64,10 @@ void main() {
       BitmapSurface(canvasSize: cut.canvasSize, tileSize: 8).putTiles([
         (
           coord: at ?? TileCoord(x: 1, y: 1),
-          tile: BitmapTile(size: 8, pixels: Uint8List(256)..fillRange(0, 256, 9)),
+          tile: BitmapTile(
+            size: 8,
+            pixels: Uint8List(256)..fillRange(0, 256, 9),
+          ),
         ),
       ]),
     );
