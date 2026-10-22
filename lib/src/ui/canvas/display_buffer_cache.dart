@@ -342,14 +342,6 @@ class DisplayBufferCache {
   /// beside the others for the same reason they are.
   int drawnCount = 0;
 
-  /// How many recomposes over carried pixels — patches and carries alike —
-  /// were composed APART, in an image of their own, because the stack
-  /// draws something that does not blend in place (F-287 — the paint
-  /// pass's `_recomposeOverCarried` has the measurement). Printed beside
-  /// the others for the same reason again, and one more: the engine it is
-  /// for is the one no test runs on.
-  int composedApartCount = 0;
-
   /// How many stores IN A ROW were drawn from the kept image instead of
   /// from nothing — which is exactly how many canvases the kept image
   /// pins, because NOTHING ELSE EVER LETS ONE GO.

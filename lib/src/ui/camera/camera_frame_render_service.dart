@@ -317,7 +317,6 @@ class CameraFrameRenderService {
                     rowsAsInk &&
                         inkCropDrawsTheSame(
                           placement: layer.placement,
-                          blendMode: layer.blendMode,
                           effects: layer.effects,
                         )
                     ? surfaceInkWorldRect(layer.surface)

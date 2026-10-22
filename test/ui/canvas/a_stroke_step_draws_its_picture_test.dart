@@ -163,6 +163,25 @@ void main() {
     ),
   );
 
+  CompositeNode<CanvasStackRow> folder(CompositeNode<CanvasStackRow> child) =>
+      CompositeGroup<CanvasStackRow>(
+        children: [child],
+        opacity: 1,
+        blendMode: LayerBlendMode.normal,
+      );
+
+  /// [source] in [blendMode] over [over], as the plan hands a row in an
+  /// advanced blend over: composed over what lies below it in its scope.
+  CompositeNode<CanvasStackRow> blended(
+    CompositeNode<CanvasStackRow> source,
+    LayerBlendMode blendMode, {
+    List<CompositeNode<CanvasStackRow>> over = const [],
+  }) => CompositeBackdropBlend<CanvasStackRow>(
+    backdrop: over,
+    source: source,
+    blendMode: blendMode,
+  );
+
   Iterable<CanvasLayerImageRequest> requestsIn(
     List<CompositeNode<CanvasStackRow>> nodes,
   ) sync* {
@@ -255,10 +274,8 @@ void main() {
   }
 
   /// A stroke painted step by step over [below], each step's screen
-  /// captured, and how many of its steps patched, drew their picture and
-  /// were composed apart.
-  Future<({List<Uint8List> screens, int patched, int pictures, int apart})>
-  stroke(
+  /// captured, and how many of its steps patched and drew their picture.
+  Future<({List<Uint8List> screens, int patched, int pictures})> stroke(
     WidgetTester tester, {
     required CanvasViewport viewport,
     List<CompositeNode<CanvasStackRow>> below = const [],
@@ -302,7 +319,6 @@ void main() {
       screens: screens,
       patched: buffers.patchedCount,
       pictures: buffers.drawnCount,
-      apart: buffers.composedApartCount,
     );
   }
 
@@ -327,6 +343,43 @@ void main() {
     } finally {
       debugDrawBufferPictures = true;
     }
+  }
+
+  /// Each step of the stroke as a first paint of it shows it — on a buffer
+  /// that carries nothing — the screens a step over carried pixels must
+  /// reproduce.
+  Future<List<Uint8List>> firstPaints(
+    WidgetTester tester, {
+    required List<CompositeNode<CanvasStackRow>> nodes,
+    required CanvasViewport viewport,
+    bool paintPaper = true,
+  }) async {
+    final images = await imagesFor(
+      tester,
+      nodes,
+      level: displayLevelOf(
+        displayScaleOf(viewport.zoom, tester.view.devicePixelRatio),
+      ),
+    );
+    final screens = <Uint8List>[];
+    await tester.runAsync(() async {
+      for (var step = 1; step <= steps; step += 1) {
+        final buffers = DisplayBufferCache();
+        addTearDown(buffers.dispose);
+        await paint(
+          tester,
+          buffers: buffers,
+          images: images,
+          nodes: nodes,
+          surface: onPaper[step],
+          viewport: viewport,
+          background: paper,
+          paintPaper: paintPaper,
+        );
+        screens.add(await capture());
+      }
+    });
+    return screens;
   }
 
   void expectSameScreens(List<Uint8List> pictures, List<Uint8List> heads) {
@@ -411,23 +464,7 @@ void main() {
     // ↩️Through an advanced blend these rastered their heads, every step,
     // while a row composed over its backdrop never drew its picture — the
     // stroke under one included, whose step composes the row again.
-    // The trees as the plan hands them over: each row in an advanced blend
-    // already composed over what lies below it in its scope.
-    CompositeNode<CanvasStackRow> folder(CompositeNode<CanvasStackRow> child) =>
-        CompositeGroup<CanvasStackRow>(
-          children: [child],
-          opacity: 1,
-          blendMode: LayerBlendMode.normal,
-        );
-    CompositeNode<CanvasStackRow> blended(
-      CompositeNode<CanvasStackRow> source,
-      LayerBlendMode blendMode, {
-      List<CompositeNode<CanvasStackRow>> over = const [],
-    }) => CompositeBackdropBlend<CanvasStackRow>(
-      backdrop: over,
-      source: source,
-      blendMode: blendMode,
-    );
+    // The trees as the plan hands them over ([blended]).
     final throughABlend = <String, List<CompositeNode<CanvasStackRow>>>{
       'the live row through multiply': [
         blended(activeRow, LayerBlendMode.multiply),
@@ -621,49 +658,43 @@ void main() {
     });
   });
 
-  // 🚨★★★F-287: a step over a stack holding a blend that is not in place is
-  // composed APART. On the Windows app the clip such a step stood on did
-  // not hold the blend, which was laid over the carried pixels once more
-  // on every patch (the paint pass's `_recomposeOverCarried` has the
-  // measurement). This engine's clip holds, so what is pinned here is the
-  // route — every patch goes apart, and only such a stack's — and that the
-  // route lays down the bytes the clip did.
-  group('F-287 — a step through a blend that is not in place is composed '
-      'apart, and lays the bytes the clip did', () {
+  // 🚨★★★F-287: a step over a stack holding a blend laid that blend over
+  // the carried pixels once more on every patch, on the Windows app — the
+  // clip such a step stood on did not hold the GPU's blend (the paint
+  // pass's `_recomposeOverCarried` has the measurement). ↩️Such a step was
+  // composed APART, and these pinned that route, until every advanced blend
+  // went over its backdrop in the shader
+  // (a-blurred-folder-cut-by-the-view-moves-on-vulkan); what they pin now
+  // is what the route was for — the user's stacks, as the plan hands them
+  // over, each step over the carried pixels the screen a first paint of it
+  // makes.
+  group('F-287 — a step through a blend over carried pixels is the screen '
+      'a first paint makes', () {
     const multiplied = LayerBlendMode.multiply;
-    // The user's: two rows in multiply, a normal row drawn on above.
-    final usersStack = <CompositeNode<CanvasStackRow>>[
-      row('below', blendMode: multiplied),
-      row('aside', blendMode: multiplied),
-      activeRow,
-    ];
     final stacks = <String, List<CompositeNode<CanvasStackRow>>>{
-      'two rows in multiply under the live row': usersStack,
-      'the live row itself in screen': [
-        row('below'),
-        const CompositeLeaf<CanvasStackRow>(
-          CanvasActiveLayerRow(opacity: 1, blendMode: LayerBlendMode.screen),
-        ),
-      ],
-      'a folder in overlay': [
-        CompositeGroup<CanvasStackRow>(
-          children: [row('below')],
-          opacity: 1,
-          blendMode: LayerBlendMode.overlay,
+      // The user's: two rows in multiply, a normal row drawn on above.
+      'two rows in multiply under the live row': [
+        blended(
+          row('aside'),
+          multiplied,
+          over: [blended(row('below'), multiplied)],
         ),
         activeRow,
       ],
+      'the live row itself in screen': [
+        blended(activeRow, LayerBlendMode.screen, over: [row('below')]),
+      ],
+      'a folder in overlay': [
+        blended(folder(row('below')), LayerBlendMode.overlay),
+        activeRow,
+      ],
       'a row in multiply inside a normal folder': [
-        CompositeGroup<CanvasStackRow>(
-          children: [row('below', blendMode: multiplied)],
-          opacity: 1,
-          blendMode: LayerBlendMode.normal,
-        ),
+        folder(blended(row('below'), multiplied)),
         activeRow,
       ],
       'a row in multiply under an adjustment': [
         CompositeAdjustment<CanvasStackRow>(
-          children: [row('below', blendMode: multiplied)],
+          children: [blended(row('below'), multiplied)],
           effects: [
             ResolvedLayerEffect(
               kind: EffectKind.brightnessContrast,
@@ -677,60 +708,35 @@ void main() {
     };
     final views = <String, (CanvasViewport, bool)>{
       '100%': (CanvasViewport(), true),
-      // Below 100% the buffer is a level image: the region composed apart
-      // lands 1:1 only if it is drawn at the buffer's own scale.
+      // Below 100% the buffer is a level image.
       '50%': (CanvasViewport(zoom: 0.5), true),
-      // Translucent where nothing is drawn: a blit that blended instead of
-      // replacing would lay the step over its own previous frame.
+      // Translucent where nothing is drawn: a blend laid twice shows.
       '100%, no paper': (CanvasViewport(), false),
     };
-
-    Future<void> expectApart(
-      WidgetTester tester, {
-      required List<CompositeNode<CanvasStackRow>> nodes,
-      required CanvasViewport viewport,
-      bool paintPaper = true,
-      List<BitmapSurfacePainter>? painters,
-    }) async {
-      useView(tester);
-      final apart = await stroke(
-        tester,
-        viewport: viewport,
-        nodes: nodes,
-        painters: painters,
-        paintPaper: paintPaper,
-      );
-      expect(
-        apart.patched,
-        greaterThanOrEqualTo(steps),
-        reason: 'the steps did not patch, so nothing here was compared',
-      );
-      expect(apart.apart, apart.patched, reason: 'a patch stood on its clip');
-      debugRecomposeApart = false;
-      try {
-        final clipped = await stroke(
-          tester,
-          viewport: viewport,
-          nodes: nodes,
-          painters: painters,
-          paintPaper: paintPaper,
-        );
-        expect(clipped.apart, 0, reason: 'the reference went apart');
-        expectSameScreens(apart.screens, clipped.screens);
-      } finally {
-        debugRecomposeApart = true;
-      }
-    }
-
     for (final MapEntry(key: stack, value: nodes) in stacks.entries) {
       for (final MapEntry(key: at, value: (viewport, paintPaper))
           in views.entries) {
         testWidgets('$stack, at $at', (tester) async {
-          await expectApart(
+          useView(tester);
+          final made = await stroke(
             tester,
-            nodes: nodes,
             viewport: viewport,
+            nodes: nodes,
             paintPaper: paintPaper,
+          );
+          expect(
+            made.patched,
+            greaterThanOrEqualTo(steps),
+            reason: 'the steps did not patch, so nothing here was compared',
+          );
+          expectSameScreens(
+            made.screens,
+            await firstPaints(
+              tester,
+              nodes: nodes,
+              viewport: viewport,
+              paintPaper: paintPaper,
+            ),
           );
         });
       }
@@ -741,40 +747,9 @@ void main() {
     // mode, a blend not in place. Since brush-fidelity-Q9 (유저 2026-10-18
     // 「통일하면 좋음」) the ghost is the overlay's pre-blended tiles and
     // draws in no blend, so the stroke's own cases above are its cases.
-
-    // A region composed apart is an image of what it is given, and a step's
-    // dirty rect is the live tiles it changed — which reach past the view.
-    testWidgets('a step that changes only what lies past the view composes '
-        'nothing apart: the region is held to the buffer', (tester) async {
-      useView(tester);
-      // At 200% the view holds the canvas's top-left quarter; the stroke
-      // is in its bottom-right tile, a tile away from it.
-      final made = await stroke(
-        tester,
-        viewport: CanvasViewport(zoom: 2),
-        nodes: usersStack,
-        painters: strokeIn(TileCoord(x: 3, y: 3)),
-      );
-      expect(
-        made.patched,
-        greaterThanOrEqualTo(steps),
-        reason: 'the steps did not patch, so nothing here was asked',
-      );
-      expect(made.apart, 0, reason: 'a step composed apart past the buffer');
-    });
-
-    testWidgets('…and a stack that blends in place stands on its clip, its '
-        'steps still drawn as their pictures', (tester) async {
-      useView(tester);
-      final made = await stroke(
-        tester,
-        viewport: CanvasViewport(),
-        below: [row('below'), row('aside')],
-      );
-      expect(made.patched, greaterThanOrEqualTo(steps));
-      expect(made.apart, 0);
-      expect(made.pictures, steps);
-    });
+    // ↩️So were 'a step that changes only what lies past the view composes
+    // nothing apart' and '…a stack that blends in place stands on its clip',
+    // the route's own.
   });
 
   // 🚨A dab's tile is not where a POSED live row shows it. The row's
@@ -800,25 +775,11 @@ void main() {
     ];
     final made = await stroke(tester, viewport: CanvasViewport(), nodes: posed);
 
-    final images = await imagesFor(tester, posed);
-    final first = <Uint8List>[];
-    await tester.runAsync(() async {
-      for (var step = 1; step <= steps; step += 1) {
-        final buffers = DisplayBufferCache();
-        addTearDown(buffers.dispose);
-        await paint(
-          tester,
-          buffers: buffers,
-          images: images,
-          nodes: posed,
-          surface: onPaper[step],
-          viewport: CanvasViewport(),
-          background: paper,
-          paintPaper: true,
-        );
-        first.add(await capture());
-      }
-    });
+    final first = await firstPaints(
+      tester,
+      nodes: posed,
+      viewport: CanvasViewport(),
+    );
 
     final width = view.width.toInt();
     for (var step = 1; step <= steps; step += 1) {

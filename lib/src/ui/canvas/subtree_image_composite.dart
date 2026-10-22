@@ -5,7 +5,6 @@ import 'package:flutter/widgets.dart';
 import '../../core/draw_space.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
-import 'blends_in_place.dart';
 import 'colour_key_shader.dart';
 import 'display_resample.dart';
 import 'layer_blend_shader.dart';
@@ -139,12 +138,17 @@ class SubtreeRasterPlan {
   /// from a magnification without being told twice.
   final double rasterScale;
 
-  /// Put a recorder's canvas into the sub-tree's own space, so whatever paints
-  /// into it does not know it is being rasterised.
-  void applyTo(Canvas into) {
-    into.scale(scale);
-    into.translate(-destination.left, -destination.top);
-  }
+  /// A canvas recording into [recorder] in the sub-tree's own space, so
+  /// whatever paints into it does not know it is being rasterised — and
+  /// bounded by the pixels it rasters, so a draw into it can ask what it
+  /// can land on (`drawPosedLayerImage`, a picture in pieces).
+  Canvas recordInto(ui.PictureRecorder recorder) =>
+      Canvas(
+          recorder,
+          Rect.fromLTWH(0, 0, pixelWidth.toDouble(), pixelHeight.toDouble()),
+        )
+        ..scale(scale)
+        ..translate(-destination.left, -destination.top);
 }
 
 /// What the last blit actually did, so a test can read the GEOMETRY rather
@@ -233,10 +237,12 @@ SubtreeRasterPlan? _planSubtreeRaster({
 ///
 /// ↩️🚨F-243: the image bounds unfiltered content only where the blend acts
 /// in place. On the Windows app an image blitted in multiply or screen
-/// stretches its border across everything the pass reaches, so an
-/// UNfiltered blit in such a blend IS held to its destination
-/// ([drawHeldToItsRect]) — it paints nothing there that the clip could cut.
-/// A filtered one keeps the rule above.
+/// stretched its border across everything the pass reached, so an
+/// UNfiltered blit in such a blend was held to its destination
+/// (`drawHeldToItsRect`) — until every advanced blend went over its
+/// backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-on-vulkan):
+/// a blit's paint is a row's or a folder's, `srcOver` or `plus`, or the
+/// composite's own `srcOver`.
 void _blitSubtreeRaster({
   required Canvas canvas,
   required ui.Image image,
@@ -253,21 +259,16 @@ void _blitSubtreeRaster({
     debugLastSubtreeRaster = plan;
     return true;
   }());
-  drawHeldToItsRect(
-    canvas,
+  canvas.drawImageRect(
+    image,
+    Rect.fromLTWH(
+      0,
+      0,
+      plan.pixelWidth.toDouble(),
+      plan.pixelHeight.toDouble(),
+    ),
     plan.destination,
     paint,
-    () => canvas.drawImageRect(
-      image,
-      Rect.fromLTWH(
-        0,
-        0,
-        plan.pixelWidth.toDouble(),
-        plan.pixelHeight.toDouble(),
-      ),
-      plan.destination,
-      paint,
-    ),
   );
 }
 
@@ -311,14 +312,7 @@ void drawSubtreeAsImage({
     return;
   }
   final recorder = ui.PictureRecorder();
-  // Bounded by the pixels it rasters, so a draw into it can ask what it can
-  // land on (`drawPosedLayerImage`, a picture in pieces).
-  final into = Canvas(
-    recorder,
-    Rect.fromLTWH(0, 0, plan.pixelWidth.toDouble(), plan.pixelHeight.toDouble()),
-  );
-  plan.applyTo(into);
-  paintSubtree(into, plan.scale);
+  paintSubtree(plan.recordInto(recorder), plan.scale);
   _finishSubtreeRaster(
     canvas: canvas,
     recorder: recorder,
@@ -374,9 +368,7 @@ void drawBlendOverBackdrop({
   }
   ui.Image rasterOf(void Function(Canvas into, double rasterScale) paint) {
     final recorder = ui.PictureRecorder();
-    final into = Canvas(recorder);
-    plan.applyTo(into);
-    paint(into, plan.scale);
+    paint(plan.recordInto(recorder), plan.scale);
     assert(() {
       debugSubtreeRasterCount += 1;
       return true;
@@ -507,7 +499,19 @@ void _composeInTheFrame({
         plan.destination,
         Paint()..imageFilter = ui.ImageFilter.shader(shader),
       )
-      ..clipRect(plan.destination);
+      ..clipRect(plan.destination)
+      // 🚨THE LAYER IS AS LARGE AS WHAT IS DRAWN INTO IT, not as the bounds
+      // it is saved with: 🔬on Impeller Vulkan (the test runner, 10-22) a
+      // backdrop with nothing on its paper filled only part of the layer,
+      // the engine handed the shader that part, and the source was read
+      // shifted — a stroke in screen over one row laid a red ghost where
+      // nothing was. Nothing, `src`, over the whole destination first.
+      ..drawRect(
+        plan.destination,
+        Paint()
+          ..blendMode = BlendMode.src
+          ..color = const Color(0x00000000),
+      );
     paintBackdrop(canvas, rasterScale);
     canvas.restore();
   } finally {

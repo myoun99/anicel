@@ -373,6 +373,7 @@ void main() {
       TransformPose? pose,
       double panX = 0,
       double panY = 0,
+      bool paintPaper = true,
     }) async {
       debugLiveLayerRodeTheDraws = null;
       await tester.pumpWidget(
@@ -403,7 +404,7 @@ void main() {
                   activeSurfacePainter: inkedPainter(
                     landingPreview: landingPreview,
                   ),
-                  paintPaper: true,
+                  paintPaper: paintPaper,
                   paperBackground: ProjectBackground.defaultBackground,
                   floatOverlay: floatOverlay,
                   debugDisableSingleBuffer: disableBuffer,
@@ -731,19 +732,21 @@ void main() {
               .where((call) => call.memberName == member)
               .map((call) => call.positionalArguments[at] as Paint);
 
-      for (final blend in [LayerBlendMode.multiply, LayerBlendMode.screen]) {
-        final calls = await callsFor(blend);
-        expect(
-          paintsOf(calls, #saveLayer, 1).map((paint) => paint.blendMode),
-          everyElement(BlendMode.srcOver),
-          reason: '${blend.name} rode a saveLayer',
-        );
-        expect(
-          paintsOf(calls, #drawImageRect, 3).map((paint) => paint.blendMode),
-          contains(blend.paintBlendMode),
-          reason: 'the ${blend.name} blend rides the image instead',
-        );
-      }
+      // ↩️Multiply and screen were the blends read here, until such a row
+      // painted normal over its backdrop
+      // (a-blurred-folder-cut-by-the-view-moves-on-vulkan): add's `plus` is
+      // the one a buffered row still wears.
+      final calls = await callsFor(LayerBlendMode.add);
+      expect(
+        paintsOf(calls, #saveLayer, 1).map((paint) => paint.blendMode),
+        everyElement(BlendMode.srcOver),
+        reason: 'add rode a saveLayer',
+      );
+      expect(
+        paintsOf(calls, #drawImageRect, 3).map((paint) => paint.blendMode),
+        contains(BlendMode.plus),
+        reason: 'the add blend rides the image instead',
+      );
 
       // ⛔And a srcOver row keeps the cheaper saveLayer: the image route's
       // price is paid only where it buys something.
@@ -754,117 +757,49 @@ void main() {
       );
     });
 
-    testWidgets('🚨F-243: an advanced blend on the row itself never rides the '
-        'tiles — the layer is one image, blended once', (tester) async {
-      // 유저 2026-09-30: 「레이어 합성모드 곱하기나 스크린등 표준이 아닌걸로
-      // 바꾸면 화면이 스샷처럼 이상해짐」. On the Windows app each tile drawn
-      // in multiply blended the whole screen by its edge colour
-      // ([blendsInPlace] has the measurement). This VM rasters with Skia and
-      // never shows it, so the pin is the ROUTE: no tile draw carries the
-      // blend, and the one image does.
-      Future<List<Invocation>> callsFor(LayerBlendMode blend) async {
-        final canvas = _ClippedRecordingCanvas(
-          const Rect.fromLTWH(0, 0, 200, 150),
-        );
-        await paintActive(
-          tester,
-          effects: const [],
-          blendMode: blend,
-          disableBuffer: true,
-          recordInto: canvas,
-        );
-        return [for (final call in canvas.invocations) call.invocation];
-      }
+    // ↩️🚨F-243 — 'an advanced blend on the row itself never rides the tiles
+    // — the layer is one image, blended once' was pinned here (유저
+    // 2026-09-30: 「레이어 합성모드 곱하기나 스크린등 표준이 아닌걸로 바꾸면
+    // 화면이 스샷처럼 이상해짐」): on the Windows app each tile drawn in
+    // multiply blended the whole screen by its edge colour. Since
+    // a-blurred-folder-cut-by-the-view-moves-on-vulkan such a row paints
+    // normal over its backdrop, so its tiles carry no blend to escape.
 
-      Iterable<BlendMode> blendsOf(
-        List<Invocation> calls,
-        Symbol member,
-        int at,
-      ) => calls
-          .where((call) => call.memberName == member)
-          .map((call) => (call.positionalArguments[at] as Paint).blendMode);
-
-      for (final blend in [
-        LayerBlendMode.multiply,
-        LayerBlendMode.screen,
-        LayerBlendMode.overlay,
-      ]) {
-        final calls = await callsFor(blend);
-        expect(
-          debugLiveLayerRodeTheDraws,
-          isFalse,
-          reason: '${blend.name} rode the tiles',
-        );
-        expect(
-          blendsOf(calls, #drawImage, 2),
-          isNot(contains(blend.paintBlendMode)),
-          reason: 'no tile is drawn in ${blend.name}',
-        );
-        expect(
-          blendsOf(calls, #drawImageRect, 3),
-          contains(blend.paintBlendMode),
-          reason: 'the layer is, once, as one image',
-        );
-      }
-      for (final blend in [LayerBlendMode.normal, LayerBlendMode.add]) {
-        await callsFor(blend);
-        expect(
-          debugLiveLayerRodeTheDraws,
-          isTrue,
-          reason: '${blend.name} blends pixel by pixel, so the tiles keep it',
-        );
-      }
-    });
-
-    testWidgets('🚨F-243: the row being drawn on rasters the rect its image '
-        'would cover — the page in an advanced blend, the ink where a crop '
+    testWidgets('🚨F-243: the row being drawn on rasters its ink where a crop '
         'is exact', (tester) async {
-      // On Impeller Vulkan an advanced blend rounds by the area it blends
-      // through: rastered to its ink alone, a multiply row being drawn on
-      // came out up to 14/255 off the same row drawn as an image; over the
-      // page, as the image row is, not a byte. The pin is the raster's
-      // bounds — the page here is 64×64 and in full view, the ink one tile.
-      Future<Rect> rasteredFor(
-        LayerBlendMode blend, {
-        List<ResolvedLayerEffect> effects = const [],
-      }) async {
-        debugLastSubtreeRaster = null;
-        await paintActive(
-          tester,
-          effects: effects,
-          opacity: 1,
-          blendMode: blend,
-          disableBuffer: true,
-        );
-        expect(
-          debugLastSubtreeRaster,
-          isNotNull,
-          reason: '⛔premise: ${blend.name} took the image route',
-        );
-        return debugLastSubtreeRaster!.bounds;
-      }
-
-      const page = Rect.fromLTWH(0, 0, 64, 64);
-      const ink = Rect.fromLTWH(0, 0, 16, 16);
-      expect(await rasteredFor(LayerBlendMode.multiply), page);
-      expect(await rasteredFor(LayerBlendMode.screen), page);
       // A colour key below a painted effect takes the image route in
-      // normal too — and a normal row's image is its ink.
+      // normal, and a normal row's image is its ink. The pin is the raster's
+      // bounds — the page here is 64×64 and in full view, the ink one tile.
+      // ↩️A row in an advanced blend rastered the page: on Impeller Vulkan
+      // such a blend rounded by the area it blended through, and rastered
+      // to its ink alone a multiply row being drawn on came out up to
+      // 14/255 off the same row drawn as an image. Since
+      // a-blurred-folder-cut-by-the-view-moves-on-vulkan it paints normal
+      // over its backdrop.
+      debugLastSubtreeRaster = null;
+      await paintActive(
+        tester,
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.brightnessContrast,
+            values: const [10, 0],
+          ),
+          ResolvedLayerEffect(
+            kind: EffectKind.keepColor,
+            values: const [240, 192, 32, 60, 100],
+          ),
+        ],
+        opacity: 1,
+        disableBuffer: true,
+      );
       expect(
-        await rasteredFor(
-          LayerBlendMode.normal,
-          effects: [
-            ResolvedLayerEffect(
-              kind: EffectKind.brightnessContrast,
-              values: const [10, 0],
-            ),
-            ResolvedLayerEffect(
-              kind: EffectKind.keepColor,
-              values: const [240, 192, 32, 60, 100],
-            ),
-          ],
-        ),
-        ink,
+        debugLastSubtreeRaster,
+        isNotNull,
+        reason: '⛔premise: the key took the image route',
+      );
+      expect(
+        debugLastSubtreeRaster!.bounds,
+        const Rect.fromLTWH(0, 0, 16, 16),
       );
     });
 
@@ -873,10 +808,22 @@ void main() {
       // The live slot is drawn under its row's pose wrap, so the image
       // route's bounds are the SLOT's coordinates. Read as the canvas rect
       // the pose moves the ink to, a row moved right and down rastered the
-      // wrong rect and its drawing was cut away — and since F-243 every
-      // posed multiply row takes that route. Over white paper an opaque
-      // stroke lays the same bytes in multiply as in normal, so the normal
-      // row, which rides its tiles, is the reference.
+      // wrong rect and its drawing was cut away (F-243's review, when every
+      // posed multiply row took that route). A row in add with a landing
+      // preview over it takes it (F-172); on no paper `plus` lays the same
+      // bytes as `srcOver`, so the normal row, buffered through a
+      // saveLayer, is the reference. ↩️It was a multiply row over white
+      // paper, until such a row painted normal over its backdrop
+      // (a-blurred-folder-cut-by-the-view-moves-on-vulkan).
+      final preview = ValueNotifier<LandingPreview?>(
+        SelectionFloatPaint(
+          image: await tester.runAsync(_decodedSquare),
+          imageLeft: 8,
+          imageTop: 8,
+        ),
+      );
+      addTearDown(preview.dispose);
+
       Future<Uint8List> pixelsFor(
         LayerBlendMode blend, {
         required TransformPose pose,
@@ -893,6 +840,8 @@ void main() {
           zoom: zoom,
           panX: panX,
           panY: panY,
+          paintPaper: false,
+          landingPreview: preview,
         );
         final painted = tester
             .widgetList<CustomPaint>(
@@ -926,6 +875,7 @@ void main() {
         double panX = 0,
         double panY = 0,
       }) async {
+        debugLastSubtreeRaster = null;
         final normal = await pixelsFor(
           LayerBlendMode.normal,
           pose: pose,
@@ -933,29 +883,34 @@ void main() {
           panX: panX,
           panY: panY,
         );
-        final multiply = await pixelsFor(
-          LayerBlendMode.multiply,
+        expect(
+          debugLastSubtreeRaster,
+          isNull,
+          reason: '$what: ⛔premise: the normal row buffers in a saveLayer',
+        );
+        final added = await pixelsFor(
+          LayerBlendMode.add,
           pose: pose,
           zoom: zoom,
           panX: panX,
           panY: panY,
         );
         expect(
-          debugLiveLayerRodeTheDraws,
-          isFalse,
-          reason: '$what: ⛔premise: the multiply row takes the image route',
+          debugLastSubtreeRaster,
+          isNotNull,
+          reason: '$what: ⛔premise: the add row takes the image route',
         );
         var inked = 0;
         var differing = 0;
         for (var i = 0; i < normal.length; i += 4) {
-          // The stroke is pure blue; the paper is white.
+          // The stroke is pure blue; nothing is under it.
           if (normal[i + 2] == 255 && normal[i] == 0) {
             inked += 1;
           }
-          if (normal[i] != multiply[i] ||
-              normal[i + 1] != multiply[i + 1] ||
-              normal[i + 2] != multiply[i + 2] ||
-              normal[i + 3] != multiply[i + 3]) {
+          if (normal[i] != added[i] ||
+              normal[i + 1] != added[i + 1] ||
+              normal[i + 2] != added[i + 2] ||
+              normal[i + 3] != added[i + 3]) {
             differing += 1;
           }
         }
@@ -963,8 +918,8 @@ void main() {
         expect(
           differing,
           0,
-          reason: '$what: the posed multiply row must show its stroke where '
-              'the normal row does — $differing pixels differ',
+          reason: '$what: the posed add row must show its stroke where the '
+              'normal row does — $differing pixels differ',
         );
       }
 

@@ -540,10 +540,13 @@ void main() {
                 height: 150,
                 child: CanvasLayerStackView(
                   nodes: [
+                    // ↩️A multiply folder, until an advanced blend went
+                    // over its backdrop (a-blurred-folder-cut-by-the-view-
+                    // moves-on-vulkan); add's still needs the buffer.
                     const CompositeGroup<CanvasStackRow>(
                       children: [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                       opacity: 1,
-                      blendMode: LayerBlendMode.multiply,
+                      blendMode: LayerBlendMode.add,
                     ),
                   ],
                   imageCache: LayerFrameImageCache(

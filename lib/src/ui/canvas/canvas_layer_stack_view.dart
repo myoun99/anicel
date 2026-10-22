@@ -32,7 +32,6 @@ import 'selection_float_overlay.dart';
 import 'subtree_image_composite.dart';
 import 'static_composite_bake.dart';
 import 'layer_image_draw.dart';
-import 'blends_in_place.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -200,11 +199,10 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
 
   /// Whether this row's image may be stored as its ink alone — asked of the
-  /// same placement, blend and chain the draw is handed
+  /// same placement and chain the draw is handed
   /// ([inkCropDrawsTheSame]).
   bool get inkSuffices => inkCropDrawsTheSame(
     placement: placement,
-    blendMode: blendMode,
     effects: paintEffects,
   );
 }
@@ -2405,9 +2403,3 @@ int debugCappedFallbacks = 0;
 /// — the reference a parity test compares the pictures against.
 @visibleForTesting
 bool debugDrawBufferPictures = true;
-
-/// Off, every recompose over carried pixels stands on its clip, as it did
-/// before F-287 — the reference a parity test compares the composite made
-/// apart against, and the engine the device probe measures it beside.
-@visibleForTesting
-bool debugRecomposeApart = true;
