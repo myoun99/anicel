@@ -115,9 +115,10 @@ void main() {
   const carriers = <String, ({int texts, int photos, int laid})>{
     // The fourth text is a picture put behind a nearer wall (I-109): it
     // derives (`copyWith`), so its photos and where its file lies come
-    // with it, and only its letters are cut and handed back.
+    // with it, and only its letters are cut and handed back. The fifth is
+    // what of it the wall crossed (`wallCrossingsOf`), the same way.
     'lib/src/services/bitmap_surface_geometry.dart': (
-      texts: 4,
+      texts: 5,
       photos: 3,
       laid: 3,
     ),
@@ -131,11 +132,13 @@ void main() {
     // `cel-thaw-holds-the-ui-thread`). A photo has no tile to lay, so the
     // worker hands its list on as it came — and the laid cel's record type
     // will not let it be left out. Where a file lies is four numbers, and
-    // goes the photos' way.
+    // goes the photos' way — once more where an entry is made of a
+    // picture's parts, the same parts a worker reads a hot cel's blocks by
+    // (`_partsOf`).
     'lib/src/services/persistence/brush_drawing_binary_codec.dart': (
       texts: 3,
       photos: 2,
-      laid: 5,
+      laid: 6,
     ),
   };
 

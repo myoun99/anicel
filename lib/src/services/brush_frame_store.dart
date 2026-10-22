@@ -266,12 +266,7 @@ class BrushFrameStore {
   ) async {
     final worked = await _remadeOnAWorker(
       surface,
-      (at, standsBehind) => cutHotCelInWorker(
-        key,
-        at,
-        standsBehind: standsBehind,
-        reach: ahead.reach,
-      ),
+      () => cutHotCelInWorker(key, surface, ahead.reach),
     );
     if (worked != null) {
       ahead.hot[key] = worked;
@@ -1884,8 +1879,7 @@ class BrushFrameStore {
     }
     final worked = await _remadeOnAWorker(
       surface,
-      (at, standsBehind) =>
-          moveHotCelInWorker(key, at, standsBehind: standsBehind, move: move),
+      () => moveHotCelInWorker(key, surface, move: move),
     );
     final moved = worked?.made;
     if (worked != null && moved != null) {
@@ -1894,23 +1888,15 @@ class BrushFrameStore {
   }
 
   /// [surface] — a hot cel's — made anew on a worker that reads its blocks
-  /// where they lie, behind the wall it stands behind ([remake]), in
-  /// [celThawTurns]: [made] behind the wall the worker made it at, or null
-  /// where the remake leaves the picture as it is. Null as a whole where the
-  /// worker failed: the step makes it as it always did.
+  /// where they lie ([remake]), in [celThawTurns]: [made] null where the
+  /// remake leaves the picture as it is. Null as a whole where the worker
+  /// failed: the step makes it as it always did.
   Future<_RemadeCel?> _remadeOnAWorker(
     BitmapSurface surface,
-    Future<BitmapSurface?> Function(
-      AnicelLaidCel at,
-      PasteboardReach standsBehind,
-    )
-    remake,
+    Future<BitmapSurface?> Function() remake,
   ) => celThawTurns.run(() async {
     try {
-      final made = await remake(
-        celBlocksOf(surface),
-        surface.pasteboardReach,
-      );
+      final made = await remake();
       // [surface] is held to here, past the worker that read its blocks.
       return (from: surface, made: made);
     } on Object {

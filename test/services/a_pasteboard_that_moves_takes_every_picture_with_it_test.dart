@@ -181,6 +181,27 @@ void main() {
       );
     });
 
+    test('what the wall crossed, cleared elsewhere, is taken as it came — '
+        'the rest decided here, the very tiles', () {
+      final surface = drawn();
+      final here = surfaceBehindReach(surface, PasteboardReach.quarter);
+      final crossed = wallCrossingsOf(surface, here);
+      expect(crossed.tiles.keys, [straddling]);
+      final taken = surfaceBehindReach(
+        surface,
+        PasteboardReach.quarter,
+        crossed: crossed,
+      );
+      expect(taken.tiles.keys.toSet(), here.tiles.keys.toSet());
+      expect(
+        identical(taken.tileAt(straddling), crossed.tileAt(straddling)),
+        isTrue,
+      );
+      for (final coord in [inside, onTheBoard, onTheRight]) {
+        expect(identical(taken.tileAt(coord), surface.tileAt(coord)), isTrue);
+      }
+    });
+
     // A paper 18 wide does not end on a tile: at 1.5x the wall stands 5
     // past it — x in [-5, 23) — so a tile can straddle it across, and a
     // file laid on the same tile keeps columns of its own.
@@ -461,6 +482,13 @@ void main() {
         await store.cutCelsAhead(PasteboardReach.quarter);
         final worked = store.cutAheadOf(cut);
         expectCut(worked);
+        for (final coord in [inside, onTheBoard, onTheRight]) {
+          expect(
+            identical(worked!.tileAt(coord), before.tileAt(coord)),
+            isTrue,
+            reason: '$coord kept whole: the very tile, shared with the undo',
+          );
+        }
         expect(store.cutAheadOf(clean), isNull, reason: 'nothing of it cut');
         final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
         expect(identical(taken[cut], before), isTrue);
@@ -474,6 +502,7 @@ void main() {
         addTearDown(() => debugWorkersRunHere = true);
         final store = BrushFrameStore();
         _keepHot(store, {cut: drawn(), clean: inkInside()});
+        final before = store.hotBakedSurfaceOrNull(cut)!;
         final reports = <double>[];
         await store.cutCelsAhead(
           PasteboardReach.quarter,
@@ -482,8 +511,28 @@ void main() {
         expect(reports, [0.5, 1.0]);
         final worked = store.cutAheadOf(cut);
         expectCut(worked);
+        expect(identical(worked!.tileAt(inside), before.tileAt(inside)), isTrue);
         store.adoptPasteboardReach(PasteboardReach.quarter);
         expect(identical(store.hotBakedSurfaceOrNull(cut), worked), isTrue);
+      });
+
+      test('a kept cel that will not read is left to the move, and the rest '
+          'is still worked out', () async {
+        final store = BrushFrameStore();
+        final other = key('other');
+        final refs = keepInAFile(store, {cut: drawn(), other: drawn()});
+        final unread = File(refs[cut]!.filePath);
+        final bytes = unread.readAsBytesSync();
+        unread.deleteSync();
+        await store.cutCelsAhead(PasteboardReach.quarter);
+        unread.writeAsBytesSync(bytes);
+        unreadable(store, {other: refs[other]!});
+        expect(
+          store.adoptPasteboardReach(PasteboardReach.quarter).keys.toSet(),
+          {cut, other},
+        );
+        expectCut(store.bakedSurfaceOrNull(cut));
+        expectCut(store.bakedSurfaceOrNull(other));
       });
 
       test('hot: a cel drawn on since is cut where the move is taken', (

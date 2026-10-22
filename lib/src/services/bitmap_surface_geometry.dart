@@ -219,10 +219,15 @@ BitmapSurface resizeBitmapSurfaceCanvas(
 /// are. A FILE laid on it stays whole (Q4: 「참조 그림은 그대로 둔다」 —
 /// [BitmapSurface.laidBounds]). A tile wholly inside is kept as the very
 /// tile, so the picture and its undo share it.
+///
+/// The tiles the wall CROSSES — the only ones it copies — may have been
+/// cleared already, on a worker ([wallCrossingsOf]): handed in as [crossed],
+/// each is taken as it came, and every other tile is still decided here.
 BitmapSurface surfaceBehindReach(
   BitmapSurface surface,
-  PasteboardReach reach,
-) {
+  PasteboardReach reach, {
+  BitmapSurface? crossed,
+}) {
   if (surface.pasteboardReach == reach) {
     return surface;
   }
@@ -233,13 +238,42 @@ BitmapSurface surfaceBehindReach(
   );
   return surface.copyWith(
     pasteboardReach: reach,
-    tiles: behind.tilesOf(surface.tiles),
+    tiles: behind.tilesOf(surface.tiles, crossed: crossed?.tiles),
     texts: [
-      for (final text in surface.texts)
+      for (final (index, text) in surface.texts.indexed)
         CelText(
           id: text.id,
           content: text.content,
-          plate: behind.tilesOf(text.plate),
+          plate: behind.tilesOf(
+            text.plate,
+            crossed: crossed?.texts[index].plate,
+          ),
+        ),
+    ],
+  );
+}
+
+/// Of [behind] — [surface] behind a wall ([surfaceBehindReach]) — only the
+/// tiles the wall crossed, cleared past it: what a cut made anew, for a
+/// [surfaceBehindReach] where [surface]'s own tiles are to take as its
+/// `crossed`. The ones it kept as they were stay there, shared with the
+/// undo, and are not copied to cross back.
+BitmapSurface wallCrossingsOf(BitmapSurface surface, BitmapSurface behind) {
+  Map<TileCoord, BitmapTile> made(
+    Map<TileCoord, BitmapTile> was,
+    Map<TileCoord, BitmapTile> now,
+  ) => {
+    for (final MapEntry(key: coord, value: tile) in now.entries)
+      if (!identical(was[coord], tile)) coord: tile,
+  };
+  return behind.copyWith(
+    tiles: made(surface.tiles, behind.tiles),
+    texts: [
+      for (final (index, text) in behind.texts.indexed)
+        CelText(
+          id: text.id,
+          content: text.content,
+          plate: made(surface.texts[index].plate, text.plate),
         ),
     ],
   );
@@ -284,14 +318,22 @@ final class _BehindWall {
   final DirtyRegion? laid;
   final int tileSize;
 
-  Map<TileCoord, BitmapTile> tilesOf(Map<TileCoord, BitmapTile> tiles) => {
+  Map<TileCoord, BitmapTile> tilesOf(
+    Map<TileCoord, BitmapTile> tiles, {
+    Map<TileCoord, BitmapTile>? crossed,
+  }) => {
     for (final MapEntry(key: coord, value: tile) in tiles.entries)
-      coord: ?_kept(coord, tile),
+      coord: ?_kept(coord, tile, crossed),
   };
 
   /// [tile] at [coord] with what lies outside cleared: the very tile where
-  /// nothing does, null where nothing of it is left.
-  BitmapTile? _kept(TileCoord coord, BitmapTile tile) {
+  /// nothing does, null where nothing of it is left — as [crossed] has it
+  /// already where it was cleared elsewhere.
+  BitmapTile? _kept(
+    TileCoord coord,
+    BitmapTile tile,
+    Map<TileCoord, BitmapTile>? crossed,
+  ) {
     final box = DirtyRegion(
       left: coord.x * tileSize,
       top: coord.y * tileSize,
@@ -305,6 +347,9 @@ final class _BehindWall {
     }
     if (inWall == null && inLaid == null) {
       return null;
+    }
+    if (crossed != null) {
+      return crossed[coord];
     }
     final cleared = BitmapTile.written(
       size: tileSize,
