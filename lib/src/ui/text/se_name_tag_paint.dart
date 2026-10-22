@@ -52,14 +52,16 @@ void paintSeNameTags(
   }
 }
 
-/// [tag]'s picture composited as a layer's is — its opacity, its blend and
-/// its effect chain on the tag as ONE picture, the way a folder takes its
-/// members: a sub-tree rastered whole ([drawSubtreeAsImage]), so the box
-/// under the name is not seen through the name, and a blur reads both.
+/// [tag]'s picture composited as a layer's is — its opacity and its effect
+/// chain on the tag as ONE picture, the way a folder takes its members: a
+/// sub-tree rastered whole ([drawSubtreeAsImage]), so the box under the name
+/// is not seen through the name, and a blur reads both. It is laid normal,
+/// whatever the row's blend ([ResolvedSeNameTag.opacity] has the 🗣️F-387-Q5
+/// decision).
 ///
 /// 🗣️F-387 (유저 2026-10-19): 「같은 fx인데 다른건 말이안됨. 다른것도
 /// 확인해서 통일」. ↩️The row's opacity alone reached the tag, through a
-/// `saveLayer` of its own; its blend and its effects reached nothing.
+/// `saveLayer` of its own; its effects reached nothing.
 ///
 /// A tag the row composites plainly draws straight on: a raster of it would
 /// be the same pixels.
@@ -81,7 +83,6 @@ void _composite(
 
   final effects = resolveCompositeEffectPlan(tag.effects);
   if (tag.opacity >= 1 &&
-      tag.blendMode == LayerBlendMode.normal &&
       effects.isSingleDraw &&
       effects.finalPaint.isEmpty) {
     paintTag(canvas);
@@ -109,7 +110,7 @@ void _composite(
     compose: (blit) => blit(
       layerCompositePaint(
         opacity: tag.opacity,
-        blendMode: tag.blendMode,
+        blendMode: LayerBlendMode.normal,
         effects: effects.finalPaint,
       ),
     ),
