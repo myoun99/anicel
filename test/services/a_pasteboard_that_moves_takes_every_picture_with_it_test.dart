@@ -156,6 +156,24 @@ void main() {
       expect(plate.keys.toSet(), {straddling, inside});
       expect(rowsOf(plate[straddling]!), [0, 0, 40, 40]);
       expect(behind.texts.single.content, surface.texts.single.content);
+
+      // What the wall crossed of the letters, cleared elsewhere, is taken as
+      // it came, as the drawing's is.
+      final crossed = wallCrossingsOf(surface, behind);
+      expect(crossed.texts.single.plate.keys, [straddling]);
+      final taken = surfaceBehindReach(
+        surface,
+        PasteboardReach.quarter,
+        crossed: crossed,
+      ).texts.single.plate;
+      expect(
+        identical(taken[straddling], crossed.texts.single.plate[straddling]),
+        isTrue,
+      );
+      expect(
+        identical(taken[inside], surface.texts.single.plate[inside]),
+        isTrue,
+      );
     });
 
     test('leaves a file\'s picture laid past the wall as it is (Q4)', () {
@@ -511,7 +529,10 @@ void main() {
         expect(reports, [0.5, 1.0]);
         final worked = store.cutAheadOf(cut);
         expectCut(worked);
-        expect(identical(worked!.tileAt(inside), before.tileAt(inside)), isTrue);
+        expect(
+          identical(worked!.tileAt(inside), before.tileAt(inside)),
+          isTrue,
+        );
         store.adoptPasteboardReach(PasteboardReach.quarter);
         expect(identical(store.hotBakedSurfaceOrNull(cut), worked), isTrue);
       });
