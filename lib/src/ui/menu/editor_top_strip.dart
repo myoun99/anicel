@@ -432,7 +432,7 @@ class EditorTopStrip extends StatelessWidget {
         for (final format in saveAsImageFormats)
           _item(
             id: saveAsImageActionId(format),
-            label: '${format.label}',
+            label: format.label,
             shortcuts: [saveAsImageActionId(format)],
             onPressed: _onACut && stillFormatWritable(format)
                 ? () => unawaited(saveFrameAsImage(context, session, format))
