@@ -137,29 +137,39 @@ class _PanelBuild {
   /// do.
   ///
   /// The mapped buttons are read INSIDE the gate, with the tools: what one
-  /// holds is a tool, and it stands down for the view with the rest.
-  /// ⚠️As an ANCESTOR of the deck, so it hears a press whichever tool's
-  /// layer took it — and after every control floating on the canvas has
-  /// claimed its own (pointer-down is dispatched deepest-first).
+  /// holds is a tool, and it stands down for the view with the rest
+  /// ([_toolsHeard]).
+  Widget _cursorDeck(BuildContext context) =>
+      ViewHoldGate(child: _toolDeck(context));
+
+  /// What the line from the last stroke stands down while it is in force
+  /// (I-119) — the drawing view would draw: the tools and what the
+  /// buttons are mapped to under the census, and the controls over them.
+  /// The census hears its press ([_CanvasPanelLine]).
   ///
-  /// The line from the last stroke stands the deck down the same way while
-  /// it is in force (I-119) — the drawing view would draw — and the census
-  /// hears its press ([_CanvasPanelLine]).
-  Widget _cursorDeck(BuildContext context) => ViewHoldGate(
-    child: ValueListenableBuilder<bool>(
-      valueListenable: _state._line.inForce,
-      builder: (context, inForce, deck) =>
-          IgnorePointer(ignoring: inForce, child: deck),
-      child: Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerHover: _state._mappedButtons.hover,
-        onPointerDown: _state._mappedButtons.down,
-        onPointerMove: _state._mappedButtons.move,
-        onPointerUp: _state._mappedButtons.up,
-        onPointerCancel: _state._mappedButtons.up,
-        child: _toolDeck(context),
-      ),
-    ),
+  /// ↩️It stood the whole deck down, the census with it once the census
+  /// went into the tool's entrance (F-377): the line no longer heard the
+  /// hand it runs to, nor the click that lands it.
+  Widget _standsDownForTheLine(Widget child) => ValueListenableBuilder<bool>(
+    valueListenable: _state._line.inForce,
+    builder: (context, inForce, child) =>
+        IgnorePointer(ignoring: inForce, child: child),
+    child: child,
+  );
+
+  /// The tool's layers, heard by the mapped buttons — so they hear a press
+  /// whichever tool's layer took it. ↩️They were an ancestor of the whole
+  /// deck, and heard a control's press after it had claimed its own
+  /// (pointer-down is dispatched deepest-first); under the tool's entrance
+  /// a control's press never reaches them (F-377).
+  Widget _toolsHeard(BuildContext context) => Listener(
+    behavior: HitTestBehavior.translucent,
+    onPointerHover: _state._mappedButtons.hover,
+    onPointerDown: _state._mappedButtons.down,
+    onPointerMove: _state._mappedButtons.move,
+    onPointerUp: _state._mappedButtons.up,
+    onPointerCancel: _state._mappedButtons.up,
+    child: _toolLayers(context),
   );
 
   /// The deck: two ENTRANCES, one over the other — the CONTROLS on top
@@ -202,7 +212,7 @@ class _PanelBuild {
           // gate; a lift opens this one.
           child: HitGate(
             admits: (_) => !_state._controlHolds.held,
-            child: _toolEntrance(_toolLayers(context)),
+            child: _toolEntrance(_standsDownForTheLine(_toolsHeard(context))),
           ),
         ),
         // F-222: the standing row's box sits over every tool, and claims the
@@ -214,10 +224,15 @@ class _PanelBuild {
           Positioned.fill(
             // Hit only where a control is, so what it records are the
             // presses the controls took.
-            child: Listener(
-              behavior: HitTestBehavior.deferToChild,
-              onPointerDown: _state._controlHolds.hold,
-              child: controlsBuilder(context, _state._viewportState._viewport),
+            child: _standsDownForTheLine(
+              Listener(
+                behavior: HitTestBehavior.deferToChild,
+                onPointerDown: _state._controlHolds.hold,
+                child: controlsBuilder(
+                  context,
+                  _state._viewportState._viewport,
+                ),
+              ),
             ),
           ),
       ],
