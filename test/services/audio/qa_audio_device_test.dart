@@ -454,8 +454,13 @@ void main() {
         sources: [constantSource(0.25, 16, 2)],
       );
       // No whole number of callbacks of any size a device asks for (480,
-      // 512, 1024 …): the lead ends inside one.
-      device.play(startSample: first, leadSamples: 48007);
+      // 512, 1024 …): the lead ends inside one. The run ends with the
+      // sound, so the last block the meter is left on is the sound's.
+      device.play(
+        startSample: first,
+        stopSample: first + 16,
+        leadSamples: 48007,
+      );
       // ⛔The meter is the engine's one: a peak the last run left on it
       // passed this for nothing (a lead held silent to its block's end
       // lived as a mutant, 10-18). Watched only once the lead has zeroed
@@ -470,19 +475,19 @@ void main() {
         lessThan(first),
         reason: '⛔premise: still in the lead',
       );
-      // It sounds for one callback: watched without a pause, not polled —
-      // for three seconds of what the device hands, as every wait on it.
-      var heard = false;
-      final handed = Handed(device);
-      final wall = Stopwatch()..start();
-      while (!heard &&
-          handed.samples < 3 * device.sampleRate &&
-          wall.elapsed < deviceStoppedAfter) {
-        heard = device.peakFor(0) > 0;
-      }
+      // Read once the run has played out: a run that runs OUT is not
+      // stopped, and keeps its last block on the meter
+      // (`qa_audio_device_stop`). ↩️It was watched without a pause for the
+      // one callback the sound is mixed in, and on the Mac runners the
+      // watch never saw it (release 10-22, macOS · TestFlight).
       expect(
-        heard,
+        await waitOnTheDevice(device, () => !device.isPlaying),
         isTrue,
+        reason: '⛔premise: the run played out',
+      );
+      expect(
+        device.peakFor(0),
+        greaterThan(0),
         reason: 'a lead held silent to the end of the callback it ends in '
             'drops what the run sounds first',
       );

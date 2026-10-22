@@ -1,3 +1,4 @@
+import 'dart:developer' show Timeline;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -146,16 +147,20 @@ void main() {
   // shown, whichever of the viewer's two looks comes first.
   group('🚨the sound\'s first sample is heard as the first look\'s frame is '
       'shown', () {
-    /// When a look's frame is shown: [ahead] from now, on the device's clock
-    /// (the frame clock's own, on this machine — `FrameTimeOnDevice`).
-    Duration shownIn(QaAudioDevice device, Duration ahead) =>
-        Duration(microseconds: device.clockNowMicros) + ahead;
+    /// When a look's frame is shown: [ahead] from now, on the FRAME clock —
+    /// the clock the engine's frame times are on, which the sound reads them
+    /// on (`HeardOnTheDevice`, `FrameTimeOnDevice`). ↩️It was the device's
+    /// clock, the frame clock's own on Windows alone: on the Mac runners the
+    /// frame clock stood further ahead of it than the 300ms looked ahead,
+    /// and the lead came out nothing (release 10-22, macOS · TestFlight).
+    Duration shownIn(Duration ahead) =>
+        Duration(microseconds: Timeline.now) + ahead;
 
     test('the look that reads the clock first', () async {
       final (device, sound) = await playing(fromSeconds: 1, look: false);
       final heard = sound
           .heardAt(
-            frameTime: shownIn(device, const Duration(milliseconds: 300)),
+            frameTime: shownIn(const Duration(milliseconds: 300)),
           )!
           .seconds;
       final handed = device.positionSamples;
@@ -178,7 +183,7 @@ void main() {
         'looks (`MediaRun`)', () async {
       final (device, sound) = await playing(fromSeconds: 1, look: false);
       sound.keepStreaming(
-        frameTime: shownIn(device, const Duration(milliseconds: 300)),
+        frameTime: shownIn(const Duration(milliseconds: 300)),
       );
       expect(device.isPlaying, isTrue, reason: '⛔premise: it started');
       expect(device.positionSamples, lessThan(rate));

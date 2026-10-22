@@ -129,11 +129,19 @@ void main() {
 
   test('🚨the head is what the microphone had taken in when the anchor was '
       'HEARD — not the output latency the press estimated', () async {
-    final manager = session(createDefaultProject());
-    manager.selectLayer(manager.activeTrack.seLayers.first.id);
-    manager.selectFrameIndex(0);
+    // ⚠️THE FIRST TAKE OF A RUN OF TESTS PAYS ITS FIRST-TIME WORK between
+    // the press and the roll's first look, and its anchor is heard that much
+    // later — measured, as it should be (🔬Windows: 153ms, where the take
+    // after it took 23; on the Mac runners enough for a take of 3, release
+    // 10-22). The take pinned is the second.
+    late EditorSessionManager manager;
+    for (var take = 0; take < 2; take += 1) {
+      manager = session(createDefaultProject());
+      manager.selectLayer(manager.activeTrack.seLayers.first.id);
+      manager.selectFrameIndex(0);
 
-    await takeOver(manager);
+      await takeOver(manager);
+    }
 
     expect(
       drawingBlocks(manager.activeTrack.seLayers.first.timeline).single.length,
