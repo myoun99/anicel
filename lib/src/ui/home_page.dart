@@ -366,7 +366,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final TimelineLayerNavCommands _timelineLayerNav = TimelineLayerNavCommands();
   final WorkspaceBarCommands _workspaceBar = WorkspaceBarCommands();
 
-  /// The one door (F-282) as the top strip's 「파일 열기…」 · 「폴더 열기…」
+  /// The one door (F-282) as the top strip's 「파일 열기」 · 「폴더 열기」
   /// reach it: the workspace binds it, holding what the door hands files to.
   final WorkspaceDoorCommands _workspaceDoor = WorkspaceDoorCommands();
 

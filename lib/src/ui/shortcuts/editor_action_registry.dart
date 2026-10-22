@@ -662,7 +662,7 @@ List<EditorActionDefinition> _projectSettingsActions() {
     String Function(AppStrings strings) title,
   ) => EditorActionDefinition.composed(
     id: id,
-    name: (language) => '${title(AppStrings.of(language))}…',
+    name: (language) => title(AppStrings.of(language)),
     shelf: ShortcutShelf.settings,
     defaultActivators: const [],
     menuRow: true,
@@ -1241,8 +1241,8 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 🗣️I-18 (유저): 「타임라인 공용 알약에 새 버튼 신설 … 버튼은 자동 이름
   // 지정」 — a button, so a row a key can be put on (유저 2026-09-13:
   // 「버튼이면 왠만해선 숏컷 지정 가능하게」). It ships unbound: nobody named a
-  // key. The label is the button's own, and a bar button's writing carries
-  // no '…' (B9).
+  // key. The label is the button's own, and no action's name carries a '…'
+  // (B9, F-437).
   // 🗣️F-261: the Edit beside it — D, with the left hand's other keys (see
   // the play key). ↩️X once D walked right (「편집을 x」). ↩️I-63 (유저
   // 2026-10-03): 「지금 편집버튼 x인데 쉬프트+f로」 — X is the lasso
@@ -1356,14 +1356,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileOpen,
-    label: 'Open File…',
+    label: 'Open File',
     shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileOpenFolder,
-    label: 'Open Folder…',
+    label: 'Open Folder',
     shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
@@ -1379,7 +1379,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileSaveAs,
-    label: 'Save as…',
+    label: 'Save as',
     shelf: ShortcutShelf.file,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true),
@@ -1389,14 +1389,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ..._saveAsImageActions(),
   const EditorActionDefinition(
     id: EditorActionIds.fileBackUpFailedCopy,
-    label: 'Back up failed copy…',
+    label: 'Back up failed copy',
     shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileExport,
-    label: 'Export…',
+    label: 'Export',
     shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
@@ -1800,7 +1800,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timelineCommaN,
-    label: 'Set N Commas…',
+    label: 'Set N Commas',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.digit5)],
   ),
@@ -1936,35 +1936,35 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutRename,
-    label: 'Rename cut…',
+    label: 'Rename cut',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutEditNote,
-    label: 'Edit cut note…',
+    label: 'Edit cut note',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutSettings,
-    label: 'Cut settings…',
+    label: 'Cut settings',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutCanvasSize,
-    label: 'Canvas size…',
+    label: 'Canvas size',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutConvertLinked,
-    label: 'Convert to linked cut…',
+    label: 'Convert to linked cut',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
@@ -2076,14 +2076,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // its notation ⇄ data switch.
   EditorActionDefinition.composed(
     id: EditorActionIds.mediaPoolImport,
-    name: (language) => '${AppStrings.of(language).imImport}…',
+    name: (language) => AppStrings.of(language).imImport,
     shelf: ShortcutShelf.media,
     defaultActivators: const [],
     panelButton: true,
   ),
   EditorActionDefinition.composed(
     id: EditorActionIds.timesheetFormat,
-    name: (language) => '${AppStrings.of(language).sheetFormatTitle}…',
+    name: (language) => AppStrings.of(language).sheetFormatTitle,
     shelf: ShortcutShelf.timesheet,
     defaultActivators: const [],
     panelButton: true,
@@ -2101,14 +2101,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // as every window's, take no key (I-40-Q1).
   EditorActionDefinition.composed(
     id: EditorActionIds.conteFormat,
-    name: (language) => '${AppStrings.of(language).conteFormatTitle}…',
+    name: (language) => AppStrings.of(language).conteFormatTitle,
     shelf: ShortcutShelf.conteSheet,
     defaultActivators: const [],
     panelButton: true,
   ),
   EditorActionDefinition.composed(
     id: EditorActionIds.envelopeFormat,
-    name: (language) => '${AppStrings.of(language).envelopeFormatTitle}…',
+    name: (language) => AppStrings.of(language).envelopeFormatTitle,
     shelf: ShortcutShelf.envelope,
     defaultActivators: const [],
     panelButton: true,
@@ -2118,7 +2118,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // nothing and is no action; the rows under it are.
   const EditorActionDefinition(
     id: EditorActionIds.workSettings,
-    label: 'Work settings…',
+    label: 'Work settings',
     shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,
@@ -2126,14 +2126,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ..._projectSettingsActions(),
   const EditorActionDefinition(
     id: EditorActionIds.keyboardShortcuts,
-    label: 'Keyboard shortcuts…',
+    label: 'Keyboard shortcuts',
     shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.preferences,
-    label: 'Preferences…',
+    label: 'Preferences',
     shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,

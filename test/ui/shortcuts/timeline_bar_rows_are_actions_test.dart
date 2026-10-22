@@ -385,7 +385,7 @@ void main() {
       await tester.pumpAndSettle();
       final row = find.byKey(const ValueKey<String>('rename-cut-button'));
       expect(
-        find.descendant(of: row, matching: find.text('Rename cut…')),
+        find.descendant(of: row, matching: find.text('Rename cut')),
         findsOneWidget,
       );
       expect(

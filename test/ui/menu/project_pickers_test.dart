@@ -83,7 +83,7 @@ void main() {
     return result;
   }
 
-  /// 「파일 열기…」's pick (F-282), and the project the door opens from it.
+  /// 「파일 열기」's pick (F-282), and the project the door opens from it.
   Future<ProjectPick?> openedProject(WidgetTester tester) async {
     final picked = await runFlow(tester, pickFilesToOpen);
     final projects = sortOpened(picked ?? const []).projects;
@@ -182,7 +182,7 @@ void main() {
       );
     });
 
-    testWidgets('「파일 열기…」 takes several of every kind at once, each '
+    testWidgets('「파일 열기」 takes several of every kind at once, each '
         'where it goes — the project with its token', (tester) async {
       installFilePicker(const [
         FolderGrant.granted(

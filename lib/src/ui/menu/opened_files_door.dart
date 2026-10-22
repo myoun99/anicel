@@ -82,7 +82,7 @@ FolderGrant handedPath(String path) => FolderGrant.granted(
       : GrantKind.file,
 );
 
-/// 「파일 열기…」's pick: every kind some door takes, several at once — a
+/// 「파일 열기」's pick: every kind some door takes, several at once — a
 /// file nothing takes is named by the pick itself, and a document with no
 /// filesystem path is taken as one (PICK-7).
 ///
@@ -108,8 +108,8 @@ Future<List<FolderGrant>> pickFilesToOpen(BuildContext context) =>
 /// THE ONE DOOR. F-282 (유저 2026-10-09): 「열기랑 임포트랑 되도록 하나로
 /// 합치고싶고, 드래그앤드롭으로 파일 여는거라던가 풀에 등록할떄? 등 관련
 /// 임포트 전부 점검하는게 목표」 · 「최대한 통일하고싶음」. Every way a file
-/// comes in hands what it holds here — the menu's 「파일 열기…」 and
-/// 「폴더 열기…」, a drop on the window, the media panel's ＋, the viewer's
+/// comes in hands what it holds here — the menu's 「파일 열기」 and
+/// 「폴더 열기」, a drop on the window, the media panel's ＋, the viewer's
 /// 「미디어에 등록」 — and one judgement ([sortOpened]) says where each goes.
 ///
 /// ↩️Each door judged on its own until then: the menu's Open took projects

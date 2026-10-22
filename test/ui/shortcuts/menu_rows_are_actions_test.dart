@@ -450,7 +450,7 @@ void main() {
       await tester.pumpAndSettle();
       final row = find.byKey(const ValueKey<String>('menu-edit-preferences'));
       expect(
-        find.descendant(of: row, matching: find.text('Preferences…')),
+        find.descendant(of: row, matching: find.text('Preferences')),
         findsOneWidget,
       );
       expect(
@@ -487,7 +487,7 @@ void main() {
       }
       expect(
         editorActionLabel(EditorActionIds.projectFrameRate),
-        'Project frame rate…',
+        'Project frame rate',
       );
     });
 

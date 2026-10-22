@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
+    show actionLabelOf;
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// The key contract behind the fallback table.
@@ -1116,32 +1118,37 @@ void main() {
     );
   });
 
-  test('B9: bar-button writing carries no trailing ellipsis — 編集, not '
-      '編集… (유저 2026-08-17: 「심플하게 編集」)', () {
-    // The '…' convention belongs to menu ENTRIES that open a dialog; on a
-    // bar button it reads as an ellipsized label. These two are the bar
-    // buttons that wore it.
-    // ↩️F-261: the Edit button wears its registry action's name now, so
-    // that is where its writing is read.
+  test('no action\'s name carries a trailing ellipsis, in any language — '
+      '編集, not 編集… (B9, 유저 2026-08-17: 「심플하게 編集」; F-437, '
+      '10-21: 「점 세개 삭제 … 앱에서 찾아서 전부」)', () {
+    // ↩️B9 took it off the two bar buttons that wore it and left it on the
+    // menu entries that open a window; F-437 takes it off every name — a
+    // button's, a menu row's (every row is an action, I-40) and the
+    // shortcut list's, which are one name.
+    final before = AppText.settings.value;
+    addTearDown(() => AppText.settings.value = before);
+    for (final language in AppLanguage.values) {
+      AppText.settings.value = AppLanguageSettings(
+        programLanguage: language,
+        notationLanguage: language,
+      );
+      for (final definition in editorActionDefinitions) {
+        final name = actionLabelOf(definition);
+        expect(
+          name.endsWith('…') || name.endsWith('...'),
+          isFalse,
+          reason: '${definition.id} in ${language.name} is 「$name」',
+        );
+      }
+      expect(
+        AppText.strings.tlSetCommasN.endsWith('…'),
+        isFalse,
+        reason: 'the bar\'s N-commas button in ${language.name}',
+      );
+    }
     final editLabel = editorActionDefinitions
         .firstWhere((it) => it.id == EditorActionIds.editInstance)
         .label;
-    for (final language in AppLanguage.values) {
-      final strings = AppStrings.of(language);
-      for (final entry in {
-        'edit-instance': strings.shortcutLabel(
-          EditorActionIds.editInstance,
-          editLabel,
-        ),
-        'tlSetCommasN': strings.tlSetCommasN,
-      }.entries) {
-        expect(
-          entry.value.endsWith('…') || entry.value.endsWith('...'),
-          isFalse,
-          reason: '${entry.key} in ${language.name} ends with an ellipsis',
-        );
-      }
-    }
     // The reported case, verbatim: the edit button says 編集 and nothing
     // more.
     expect(

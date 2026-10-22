@@ -107,7 +107,7 @@ const List<String> projectOpenExtensions = [
 ];
 
 /// What a file OPENS AS — the one judgement every door a file comes in
-/// through asks: the menu's 「파일 열기…」, a drop on the window, the media
+/// through asks: the menu's 「파일 열기」, a drop on the window, the media
 /// panel's ＋ and the viewer's 「미디어에 등록」 (F-282, 유저 2026-10-09:
 /// 「열기랑 임포트랑 되도록 하나로 합치고싶고, 드래그앤드롭으로 파일
 /// 여는거라던가 풀에 등록할떄? 등 관련 임포트 전부 점검」 · 「최대한
@@ -163,7 +163,7 @@ OpenedAs? openedAs(String pathOrUri) {
   return mediaAssetKindForPath(name) == null ? null : OpenedAs.media;
 }
 
-/// Every extension some door takes ([openedAs]) — what 「파일 열기…」
+/// Every extension some door takes ([openedAs]) — what 「파일 열기」
 /// accepts, and what the notice for a file it does not names.
 const List<String> openableExtensions = [
   ...projectOpenExtensions,

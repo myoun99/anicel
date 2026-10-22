@@ -265,7 +265,7 @@ void main() {
   ///
   /// ⚠️387 → 388 on 2026-10-09, one named as the rule above asks (F-282,
   /// the one door): `pickFileGrantsForUser` (five) took `initialDirectory`.
-  /// 「파일 열기…」 is that pick now — every kind, several at once — and it
+  /// 「파일 열기」 is that pick now — every kind, several at once — and it
   /// keeps the starting folder the project Open had on a desktop, which
   /// `pickProjectGrantForUser` already takes for the same reason. The Open
   /// pick that passed it, `pickProjectToOpen`, is gone.

@@ -313,7 +313,7 @@ void main() {
     );
   });
 
-  testWidgets('「실패본 백업…」 is always in the Project list — off until '
+  testWidgets('「실패본 백업」 is always in the Project list — off until '
       'there is a failed copy', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();

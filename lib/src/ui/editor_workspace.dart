@@ -339,7 +339,7 @@ class EditorWorkspace extends StatefulWidget {
   /// the zooms, the ⇄ and the camera view (I-40).
   final WorkspaceBarCommands? barCommands;
 
-  /// The shell-owned channel the top strip's 「파일 열기…」 and 「폴더
+  /// The shell-owned channel the top strip's 「파일 열기」 and 「폴더
   /// 열기…」 knock on: this state holds what the door hands files to.
   final WorkspaceDoorCommands? doorCommands;
 
@@ -2256,7 +2256,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     },
   );
 
-  /// The top strip's 「파일 열기…」 — and the media panel's ＋, which
+  /// The top strip's 「파일 열기」 — and the media panel's ＋, which
   /// [toPool] says: the files it brings register.
   Future<void> _pickAndOpen({bool toPool = false}) async {
     final picked = await pickFilesToOpen(context);
@@ -2266,7 +2266,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     await _door.open(context, picked, toPool: toPool);
   }
 
-  /// The top strip's 「폴더 열기…」: a cut folder, into the import window.
+  /// The top strip's 「폴더 열기」: a cut folder, into the import window.
   Future<void> _pickFolderAndOpen() async {
     // PICK-2: not `getDirectoryPath`. That call is unimplemented on iOS and
     // returns a SAF tree URI on Android — and the window the folder goes to

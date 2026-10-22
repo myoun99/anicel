@@ -226,8 +226,8 @@ List<PanelFlyoutEntry> cutMenuEntries(
       icon: Icons.tune,
       onSelected: () => unawaited(_editCutSettings(context, session)),
     ),
-    // ↩️It wore the window's title, 「Canvas size」; the action's name ends
-    // in the 「…」 every row that opens a window ends in.
+    // ↩️It wore the window's title, 「Canvas size」; it wears its action's
+    // name, as every row does.
     PanelFlyoutItem(
       keyValue: 'resize-cut-canvas-button',
       label: editorActionLabel(EditorActionIds.cutCanvasSize),

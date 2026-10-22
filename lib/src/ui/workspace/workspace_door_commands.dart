@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-/// The workspace's door as the top strip's 「파일 열기…」 and 「폴더 열기…」
+/// The workspace's door as the top strip's 「파일 열기」 and 「폴더 열기」
 /// reach it (F-282): the WORKSPACE holds what the door hands files to —
 /// the import window, the brush library, the fonts — and the strip only
 /// knocks. The mounted `EditorWorkspace` binds the verbs; a row pressed by
@@ -35,10 +35,10 @@ class WorkspaceDoorCommands {
     _openPaths = null;
   }
 
-  /// 「파일 열기…」: pick files of any kind, and take each where it goes.
+  /// 「파일 열기」: pick files of any kind, and take each where it goes.
   void openFiles() => _openFiles?.call();
 
-  /// 「폴더 열기…」: pick a folder, and take it in as a cut folder.
+  /// 「폴더 열기」: pick a folder, and take it in as a cut folder.
   void openFolder() => _openFolder?.call();
 
   /// Paths the OS handed the app, each where it goes — as a drop on the

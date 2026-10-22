@@ -312,10 +312,10 @@ void main() {
         editorActionLabel(EditorActionIds.guideAddSymmetry),
         '새 대칭 가이드',
       );
-      expect(editorActionLabel(EditorActionIds.mediaPoolImport), '임포트…');
-      expect(editorActionLabel(EditorActionIds.timesheetFormat), '타임시트 서식…');
-      expect(editorActionLabel(EditorActionIds.conteFormat), '콘티 용지 서식…');
-      expect(editorActionLabel(EditorActionIds.envelopeFormat), '컷 봉투 서식…');
+      expect(editorActionLabel(EditorActionIds.mediaPoolImport), '임포트');
+      expect(editorActionLabel(EditorActionIds.timesheetFormat), '타임시트 서식');
+      expect(editorActionLabel(EditorActionIds.conteFormat), '콘티 용지 서식');
+      expect(editorActionLabel(EditorActionIds.envelopeFormat), '컷 봉투 서식');
       expect(
         editorActionLabel(EditorActionIds.timesheetDataMode),
         '표기 시트 / 데이터 시트',
@@ -332,7 +332,7 @@ void main() {
           '변형 초기화',
           '원래 위치에 붙여넣기',
           '스탬프 초기화',
-          '팁으로 등록…',
+          '팁으로 등록',
           '새 소실점',
           '래스터라이즈',
           '가로 가운데',

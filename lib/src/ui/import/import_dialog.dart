@@ -63,7 +63,7 @@ import '../text/model_vocabulary.dart';
 /// The import window (§6-z21): ONE window for every import, defaults
 /// filled so the simple case is a single Enter. It picks nothing itself:
 /// what the one door hands it comes in ([picked] — the menu's 「파일
-/// 열기…」 and 「폴더 열기…」, a drop on the window, the media panel's ＋,
+/// 열기」 and 「폴더 열기」, a drop on the window, the media panel's ＋,
 /// the viewer's 「미디어에 등록」), and so do files the app already holds
 /// ([initialPaths]). Its table says what each source becomes, a row a
 /// thing: a file, or a layer of the cut a cut FOLDER lands as — and a row

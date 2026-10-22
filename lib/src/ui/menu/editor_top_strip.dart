@@ -113,7 +113,7 @@ class EditorTopStrip extends StatelessWidget {
 
   final WorkspacePanelsMenuController panelsMenu;
 
-  /// The one door the 「파일 열기…」 and 「폴더 열기…」 rows knock on
+  /// The one door the 「파일 열기」 and 「폴더 열기」 rows knock on
   /// (F-282) — the workspace's, which holds what it hands files to. Null
   /// leaves the two rows dim (focused tests).
   final WorkspaceDoorCommands? door;
@@ -425,14 +425,14 @@ class EditorTopStrip extends StatelessWidget {
       submenuBuilder: () => [
         _item(
           id: 'file-save-as',
-          label: 'Project (.anicel)…',
+          label: 'Project (.anicel)',
           shortcuts: const [EditorActionIds.fileSaveAs],
           onPressed: () => unawaited(promptSaveProjectAs(context, session)),
         ),
         for (final format in saveAsImageFormats)
           _item(
             id: saveAsImageActionId(format),
-            label: '${format.label}…',
+            label: '${format.label}',
             shortcuts: [saveAsImageActionId(format)],
             onPressed: _onACut && stillFormatWritable(format)
                 ? () => unawaited(saveFrameAsImage(context, session, format))
@@ -1430,7 +1430,7 @@ class _StripPopoverButton extends StatelessWidget {
 /// What it answers for the file it is granted is what every project pick
 /// answers ([projectPickOf]).
 ///
-/// ↩️Open was its other caller until F-282 (2026-10-09): 「파일 열기…」
+/// ↩️Open was its other caller until F-282 (2026-10-09): 「파일 열기」
 /// takes every kind now, several at once, through the one door's pick
 /// (`pickFilesToOpen`).
 Future<ProjectPick?> pickProjectFile(
@@ -1835,7 +1835,7 @@ String saveFailureMessage(SaveFailure failure) {
   return '$why\n\n$where\n\n${strings.saveFailedRetry}';
 }
 
-/// 「실패본 백업…」: a failed copy, saved where the person chooses.
+/// 「실패본 백업」: a failed copy, saved where the person chooses.
 ///
 /// 🗣️유저 2026-09-23: 「유저가 그 파일 따로 뭐 복사해서 저장해놔서 나중에
 /// 실패본에서 백업하기 … 해당파일 지정해서 백업할수있게」. [copy] names the

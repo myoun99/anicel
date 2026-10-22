@@ -16,7 +16,7 @@ import '../../helpers/temp_dir.dart';
 
 /// F-282 (유저 2026-10-09): every entrance a file comes in through, pressed
 /// the way a person presses it, reaches the ONE door — the menu's 「파일
-/// 열기…」 and 「폴더 열기…」, the media panel's ＋, the viewer's 「미디어에
+/// 열기…」 and 「폴더 열기」, the media panel's ＋, the viewer's 「미디어에
 /// 등록」. The door's own sorting is `the_one_door_test.dart`'s; this is
 /// the wiring: what each entrance hands it, and whether the window it opens
 /// registers (a pool's door) or places.
@@ -93,7 +93,7 @@ void main() {
     for (final grant in window(tester).picked) grant.path,
   ];
 
-  testWidgets('「파일 열기…」 hands the pick to the door — a picture comes in '
+  testWidgets('「파일 열기」 hands the pick to the door — a picture comes in '
       'through a window that places', (tester) async {
     final png = await picture(tester, 'A1.png');
     await pumpApp(tester);
@@ -119,7 +119,7 @@ void main() {
     );
   });
 
-  testWidgets('「폴더 열기…」 hands the folder over — a cut folder, into the '
+  testWidgets('「폴더 열기」 hands the folder over — a cut folder, into the '
       'window', (tester) async {
     final cut = Directory('${folder.path}/upn_02_063_lo')..createSync();
     await pumpApp(tester);

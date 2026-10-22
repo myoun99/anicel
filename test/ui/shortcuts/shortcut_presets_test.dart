@@ -905,7 +905,7 @@ void main() {
       expect(english['Clip Studio based'], isNot(contains('| $screen |')));
       // A key that is another one on a Mac is written both ways.
       expect(
-        rowOf(clipStudio, '다른 이름으로 저장…'),
+        rowOf(clipStudio, '다른 이름으로 저장'),
         contains('<kbd class="k-mac">⌥⇧S</kbd>'),
       );
     });
