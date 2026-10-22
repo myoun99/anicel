@@ -940,8 +940,13 @@ void main() {
       await _carry(tester, outside, Offset(cell * 3, 0));
       expect(pivotOnScreen(tester).dx, moreOrLessEquals(first.dx));
 
-      // A tap on it lets it go as a drag does.
-      await tester.tapAt(pivotOnScreen(tester), kind: PointerDeviceKind.mouse);
+      // A press on it the platform cancels lets it go as a release does.
+      final cancelled = await tester.startGesture(
+        pivotOnScreen(tester),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await cancelled.cancel();
       await tester.pumpAndSettle();
 
       await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);

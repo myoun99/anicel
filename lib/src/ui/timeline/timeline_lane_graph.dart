@@ -609,7 +609,8 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
 
   /// The keys picked anew: the anchor point back in the middle, as AE's on
   /// a new box. A carry's selection riding with its keys is the same keys
-  /// picked, and keeps it ([_letTheKeyGo]).
+  /// picked, and keeps it — and its landing leaves the selection where the
+  /// ride put it.
   void _pickedAnew() {
     if (_pivot == null || (_keyInHand?.moving ?? false)) {
       return;
@@ -1013,16 +1014,12 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     if (lanes == null || finished == null) {
       return;
     }
-    final pivot = _pivot;
     reportRangeDragFinished(
       dragging: inHand.moving,
       moving: inHand.moving,
       onMoveFinished: finished,
       releaseGrip: () => lanes.onGripReleased?.call(inHand.row),
     );
-    // The keys landed are the keys picked still: the anchor point stays
-    // where the hand put it, whatever the landing told [_pickedAnew].
-    setState(() => _pivot = pivot);
   }
 
   void _take(DragStartDetails details) {
