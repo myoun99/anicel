@@ -587,7 +587,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   LaneGraphBoxPoint? _pivot;
 
   /// How far off the anchor point the hand holding it holds it — null where
-  /// no hand holds it.
+  /// the press under way did not take it ([_pick] asks anew at every one).
   Offset? _pivotGrab;
 
   @override
@@ -789,10 +789,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
 
   /// Let go of before it moved: a key picked stays picked, as AE's click
   /// leaves it.
-  void _cancelled() {
-    _pivotGrab = null;
-    _letTheKeyGo(widget.lanes?.onMoveCancel);
-  }
+  void _cancelled() => _letTheKeyGo(widget.lanes?.onMoveCancel);
 
   /// A press on a key PICKS it (I-3, AE's graph editor: a click selects the
   /// key) — the key's cell, as the lane selection its row's band makes —
@@ -809,6 +806,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final lanes = widget.lanes;
     final position = details.localPosition;
     final size = context.size!;
+    _pivotGrab = null;
     if (lanes == null || _painter.handleAt(position, size) != null) {
       return;
     }
@@ -1076,10 +1074,6 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// Let go of: written where it was pulled to — nothing, where it never
   /// moved; a key's move lands where it was carried.
   void _drop() {
-    if (_pivotGrab != null) {
-      _pivotGrab = null;
-      return;
-    }
     if (_keyInHand != null) {
       _letTheKeyGo(widget.lanes?.onMoveEnd);
       return;

@@ -940,7 +940,8 @@ void main() {
       await _carry(tester, outside, Offset(cell * 3, 0));
       expect(pivotOnScreen(tester).dx, moreOrLessEquals(first.dx));
 
-      // A press on it the platform cancels lets it go as a release does.
+      // A press on it the platform cancels: the next press, on a handle, is
+      // the handle's.
       final cancelled = await tester.startGesture(
         pivotOnScreen(tester),
         kind: PointerDeviceKind.mouse,
