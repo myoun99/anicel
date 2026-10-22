@@ -115,6 +115,10 @@ void main() {
     // any more, and a plain tap there lost its tap whenever the hand moved.
     // Both are claimed presses now.
     '-lane-stand-cell-': 'the lane grid surface, like the frame cell',
+    // And a header graph's GROUND, under its picture (I-3 ⑤): a drag there
+    // draws the box that picks keys — the graph's own band — and a finger
+    // scrolls where the band's devices do not, as on the lane grid.
+    'lane-graph-ground': 'the graph\'s ground: its drag draws a box',
   };
 
   /// The four names the scan read first. A bare one of these fails outright.

@@ -19,7 +19,7 @@ import '../../models/key_side.dart'
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
-import '../../core/segment_share.dart' show shareAlongSegment;
+import '../../core/segment_share.dart' show nearestOnSegment;
 import '../../services/input/modifier_keys.dart' show ModifierKeys;
 import '../dashed_path.dart'
     show
@@ -612,6 +612,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// band selects with, a finger scrolling where they do not — and a tap
   /// lets every key go, as a tap on the band does (H18).
   Widget _ground(TimelineLaneRangeCallbacks lanes) => GestureDetector(
+    key: const ValueKey<String>('lane-graph-ground'),
     behavior: HitTestBehavior.opaque,
     onTap: lanes.onTapClear,
     child: timelineEagerPanDetector(
@@ -1915,18 +1916,16 @@ typedef _LaneGraphStroke = ({
 bool _laneGraphStrokeHolds(_LaneGraphStroke stroke, Offset position) {
   final (line: _, :points, color: _, :dashed) = stroke;
   var along = 0.0;
-  for (var index = 0; index + 1 < points.length; index += 1) {
-    final from = points[index];
-    final to = points[index + 1];
-    final share = shareAlongSegment(position, from, to).clamp(0.0, 1.0);
-    final length = (to - from).distance;
-    final nearest = from + (to - from) * share;
+  for (final (from, to) in neighbourPairs(points)) {
+    final nearest = nearestOnSegment(position, from, to);
     if ((nearest - position).distance <= _laneGraphStroke / 2 &&
         (!dashed ||
-            _laneGraphGuestDashes.dashesAt(along + share * length))) {
+            _laneGraphGuestDashes.dashesAt(
+              along + (nearest - from).distance,
+            ))) {
       return true;
     }
-    along += length;
+    along += (to - from).distance;
   }
   return false;
 }
