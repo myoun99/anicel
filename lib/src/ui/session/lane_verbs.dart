@@ -1631,8 +1631,8 @@ class LaneVerbs {
   /// PAIRING (결정 14 ③ⓐ): a copied lane goes on its own lane where that is
   /// among them; where none is, ONE copied lane goes on every target (「모든
   /// 행에 같은 것을」) and several pair with them in order, as a frame copy's
-  /// rows pair with a band's. A lane of another kind of value takes nothing
-  /// ([laneKeysSpliced]).
+  /// rows pair with a band's. A lane of another kind of data takes nothing
+  /// ([_sameKind]).
   static Map<_PastedLane, Map<int, PropertyKey<Object?>>> _keysPairedWith(
     List<LaneKeys> copied,
     List<_PastedLane> targets,
@@ -1643,14 +1643,26 @@ class LaneVerbs {
         for (final target in targets) target: ?byId[target.laneId],
       };
     }
+    LaneKeys? pairedAt(int index) =>
+        copied.length == 1 ? copied.single : copied.elementAtOrNull(index);
     return {
       for (final (index, target) in targets.indexed)
-        if (copied.length == 1)
-          target: copied.single.keys
-        else if (index < copied.length)
-          target: copied[index].keys,
+        if (pairedAt(index) case final lane?
+            when _sameKind(lane.laneId, target.laneId))
+          target: lane.keys,
     };
   }
+
+  /// Whether keys copied on lane [from] mean on lane [to] what they meant
+  /// there — AE's 「the same type of data」: a place in space
+  /// ([laneWalksAPath] — a position or an anchor, a reference's too: its
+  /// home names its lanes bare) on a place, any other on any other of its
+  /// value type ([laneKeysSpliced]).
+  /// 🗣️key-paste-across-lanes-keeps-the-raw-value-Q1 (유저 2026-10-22):
+  /// 「AE 그대로 — 같은 종류의 데이터끼리」 — a position's 1170 put on a
+  /// scale made it 117000%.
+  static bool _sameKind(String from, String to) =>
+      laneWalksAPath(from) == laneWalksAPath(to);
 
   /// The names the range's keys carry — null for an unnamed one.
   Set<String?> _laneRangeKeyNames() => {
@@ -1691,9 +1703,7 @@ class LaneVerbs {
   /// walks a path: the row is offered and refused.
   List<KeyPath> get laneKeyPathsForSelection => [
     for (final (:laneId, :key, canRove: _, takesSides: _) in _laneRangeKeys())
-      if (transformPropertyOfLaneId(laneId) case final property?
-          when walksAPath(property))
-        key.path,
+      if (laneWalksAPath(laneId)) key.path,
   ];
 
   /// Whether each key the range covers that may give its time up roves

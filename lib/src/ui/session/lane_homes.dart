@@ -198,8 +198,9 @@ PropertyLaneEdit laneKeysRemovedWhere(bool Function(int frame) covers) =>
 /// frame paste puts its run in: the [liftCount] frames from [start] taken
 /// out with their keys, and every key after them moved by what the
 /// [length] pasted puts in their place. Null for a lane whose values are
-/// not those keys' kind — a position's keys go on a position, a number's
-/// on a number — and where nothing changes.
+/// not those keys' value type — a point's keys go on a point, a number's
+/// on a number; which points pair is the caller's — and where nothing
+/// changes.
 ///
 /// 🗣️F-388-Q1 (유저 2026-10-20): 「프레임과 똑같이 끼워 넣기 — 그냥
 /// 생각할것도없이 프레임블록 복붙이랑 똑같은 규칙」: with nothing selected

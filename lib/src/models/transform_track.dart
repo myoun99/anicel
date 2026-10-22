@@ -374,6 +374,15 @@ bool walksAPath(TransformPropertyId property) =>
     property == TransformPropertyId.anchorPoint ||
     property == TransformPropertyId.position;
 
+/// Whether the keys of the BARE transform lane [laneId]
+/// ([transformPropertyOfLaneId]) walk a path ([walksAPath]); false for
+/// any other lane.
+bool laneWalksAPath(String laneId) =>
+    switch (transformPropertyOfLaneId(laneId)) {
+      final property? => walksAPath(property),
+      null => false,
+    };
+
 /// [lane] — one whose keys walk a path ([walksAPath]) — with [value] keyed
 /// at [frameIndex]: the one write of such a key. A key new there is smooth
 /// through its neighbours ([KeyPath.auto]), as After Effects lays a new

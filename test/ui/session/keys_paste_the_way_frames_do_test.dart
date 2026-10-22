@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
@@ -189,6 +190,40 @@ void main() {
     standOn('opacity', at: 30);
     pill.pasteIndependentFrame();
     expect(now().transformTrack.opacity.keys[30]?.value, 0.5);
+  });
+
+  // 🗣️key-paste-across-lanes-keeps-the-raw-value-Q1 (유저 2026-10-22): 「AE
+  // 그대로 — 같은 종류의 데이터끼리」 — a position's 1170 went on a scale as
+  // 117000%.
+  test('a place in space goes on a place alone — a position\'s key on an '
+      'anchor as it is, on a scale neither paste lit', () {
+    final place = CanvasPoint(x: 1170, y: 300);
+    final track = now().transformTrack;
+    s.laneVerbs.updateLayerTransformTrack(
+      before.id,
+      track.copyWith(
+        position: track.position.withKey(3, place).withKeyName(3, 'A'),
+      ),
+    );
+    standOn('position', at: 3);
+    pill.copyFrame();
+    final scale = now().transformTrack.scale;
+
+    standOn('scale', at: 8);
+    expect(
+      (pill.canPasteIndependentFrame, pill.canPasteLinkedFrame),
+      (false, false),
+    );
+    pill.pasteIndependentFrame();
+    expect(now().transformTrack.scale, scale);
+
+    standOn('anchor-point', at: 8);
+    expect(
+      (pill.canPasteIndependentFrame, pill.canPasteLinkedFrame),
+      (true, true),
+    );
+    pill.pasteIndependentFrame();
+    expect(now().transformTrack.anchorPoint.keys[8]?.value, place);
   });
 
   group('where none of the copied lanes is there', () {

@@ -109,13 +109,12 @@ TransformTrack? transformTrackWithLaneKeysWritten(
   TransformTrack? adoptFrom,
   KeyTypePick pick = const KeyTypePick(),
 }) {
-  final property = transformPropertyOfLaneId(laneId);
   return transformLaneLens(laneId)?.keysWritten(
     track,
     frames: frames,
     naming: naming,
     adoptFrom: adoptFrom,
-    pick: property != null && walksAPath(property) ? pick : pick.sidesAlone,
+    pick: laneWalksAPath(laneId) ? pick : pick.sidesAlone,
   );
 }
 
