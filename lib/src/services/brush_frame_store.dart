@@ -231,7 +231,7 @@ class BrushFrameStore {
     if (!wallShrinksTo(reach)) {
       return;
     }
-    final jobs = [
+    final jobs = <_KeptRead>[
       for (final (from, read) in _keptSources)
         for (final MapEntry(:key, value: ref) in from.entries)
           if (!_wallPasses(key, ref, reach)) (key: key, ref: ref, read: read),
@@ -249,55 +249,68 @@ class BrushFrameStore {
 
     await Future.wait([
       for (final MapEntry(:key, value: surface) in hotCels.entries)
-        _remadeOnAWorker(
-              surface,
-              (at, standsBehind) => cutHotCelInWorker(
-                key,
-                at,
-                standsBehind: standsBehind,
-                reach: reach,
-              ),
-            )
-            .then((worked) {
-              if (worked != null) {
-                hot[key] = worked;
-              }
-            })
+        _cutHotAhead(key, surface, ahead).whenComplete(counted),
+      for (final job in jobs)
+        celThawTurns
+            .run(() => _cutKeptAhead(job, ahead, round))
             .whenComplete(counted),
-      for (final (:key, :ref, :read) in jobs)
-        celThawTurns.run(() async {
-          try {
-            final blob = read(ref);
-            if (blob == null) {
-              return;
-            }
-            final cut = await cutCelInWorker(
-              key,
-              blob,
-              reach,
-              parkAt: ScratchCelFiles.pathFor(
-                _scratchNamespace,
-                '${anicelCelEntryName(key)}-ahead$round',
-              ),
-            );
-            answers[ref] = cut == null
-                ? null
-                : (
-                    kept: _parkedRef(cut.path, cut.blob),
-                    was: laidCelSurface(cut.was),
-                  );
-            if (!identical(_cutAhead?.answers, answers)) {
-              _dropCutAhead(ahead);
-            }
-          } on Object {
-            // The move reads it again, as it always did. A throw after the
-            // park leaves its bytes to the room's own ending, as a removal
-            // that fails does (`ScratchFile.remove`).
-          } finally {
-            counted();
-          }
-        }),
     ]);
+  }
+
+  /// HOT [key]'s [surface] cut behind [ahead]'s wall on a worker, held in
+  /// [ahead] for the move to take.
+  Future<void> _cutHotAhead(
+    BrushFrameKey key,
+    BitmapSurface surface,
+    _CutAhead ahead,
+  ) async {
+    final worked = await _remadeOnAWorker(
+      surface,
+      (at, standsBehind) => cutHotCelInWorker(
+        key,
+        at,
+        standsBehind: standsBehind,
+        reach: ahead.reach,
+      ),
+    );
+    if (worked != null) {
+      ahead.hot[key] = worked;
+    }
+  }
+
+  /// A KEPT cel's bytes, read as [job] says, cut behind [ahead]'s wall on a
+  /// worker and parked for [round], held in [ahead] by the ref they were
+  /// read off.
+  Future<void> _cutKeptAhead(_KeptRead job, _CutAhead ahead, int round) async {
+    final (:key, :ref, :read) = job;
+    try {
+      final blob = read(ref);
+      if (blob == null) {
+        return;
+      }
+      final cut = await cutCelInWorker(
+        key,
+        blob,
+        ahead.reach,
+        parkAt: ScratchCelFiles.pathFor(
+          _scratchNamespace,
+          '${anicelCelEntryName(key)}-ahead$round',
+        ),
+      );
+      ahead.answers[ref] = cut == null
+          ? null
+          : (
+              kept: _parkedRef(cut.path, cut.blob),
+              was: laidCelSurface(cut.was),
+            );
+      if (!identical(_cutAhead?.answers, ahead.answers)) {
+        _dropCutAhead(ahead);
+      }
+    } on Object {
+      // The move reads it again, as it always did. A throw after the park
+      // leaves its bytes to the room's own ending, as a removal that fails
+      // does (`ScratchFile.remove`).
+    }
   }
 
   /// What [cutCelsAhead] last worked out — until the next
@@ -2295,6 +2308,14 @@ typedef _CutAhead = ({
 /// A hot cel made anew on a worker, with the picture it was made [from]:
 /// [made] null where the work left it as it is.
 typedef _RemadeCel = ({BitmapSurface from, BitmapSurface? made});
+
+/// A kept cel and how its bytes are [read] off its [ref], as
+/// [BrushFrameStore.cutCelsAhead] walks them.
+typedef _KeptRead = ({
+  BrushFrameKey key,
+  AnicelCelFileRef ref,
+  AnicelCelBlob? Function(AnicelCelFileRef ref) read,
+});
 
 /// A cel as a [CelMove] leaves it, with the picture it was worked out [from].
 typedef _MovedCel = ({BitmapSurface from, BitmapSurface moved});
