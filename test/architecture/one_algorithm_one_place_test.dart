@@ -485,8 +485,27 @@ import '../../tool/refactor/clone_scan.dart';
 /// 🔬Measured on the lane over master (`22c980e4b`, at 88): none added,
 /// that one
 /// gone.
+///
+/// 87 → 88 (2026-10-22, I-13 2치화 — the colour edit list's knob rides at
+/// its row's end, the threshold's bar beside the row's command). The new
+/// pair is named:
+///
+///     45 tokens
+///       lib/src/ui/dialogs/app_prompt_dialog.dart
+///         _AppPromptDialogState._besideTrailing
+///       lib/src/ui/widgets/panel_flyout.dart  _knobbed
+///
+/// The reading KEEPS it as a pair and does not merge it, by the rule of
+/// three (CLAUDE.md): both lay a widget with something 8 px to its right,
+/// or the widget alone where there is nothing — the same row. What sits on
+/// the right differs: the prompt's field trailing is as wide as it is,
+/// the knob is a fixed column that holds the press over its row's height
+/// (「컨트롤 위에서 시작한 제스처는 그 컨트롤의 것이다」). A third such row
+/// merges the three.
+/// 🔬Measured on the lane over master (`7fde89b50`, at 87): this one
+/// added, none gone.
 void main() {
-  const ceiling = 87;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
