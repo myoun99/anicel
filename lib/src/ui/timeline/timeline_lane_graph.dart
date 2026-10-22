@@ -2553,12 +2553,12 @@ class TimelineLaneGraphPainter extends CustomPainter {
     final shift = _shiftOf(line);
     double across(double value) =>
         laneGraphAcross(value, ranges.single, extent, axis);
-    for (final span in _segmentsOf(curve, keyed)) {
+    for (final span in _laneGraphSegmentsOf(curve, keyed)) {
       if (span.to + shift < window.startIndex ||
           span.from + shift >= window.endIndexExclusive) {
         continue;
       }
-      final eases = _easesToward(curve, span);
+      final eases = _laneGraphEasesToward(curve, span);
       if (eases.isEmpty) {
         continue;
       }
@@ -2611,7 +2611,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
       from: curve.at(span.from.toDouble()).single,
       to: curve.at(span.to.toDouble()).single,
     ),
-    LaneGraphMode.speed => (from: 0.0, to: _averageSpeed(curve, span)),
+    LaneGraphMode.speed => (from: 0.0, to: _laneGraphAverageSpeed(curve, span)),
   };
 
   /// Whether [line] takes the handle of its key at [frame] that bends
@@ -2629,55 +2629,6 @@ class TimelineLaneGraphPainter extends CustomPainter {
   ) =>
       _reaches(line, frame) &&
       _reaches(line, span.from + x * (span.to - span.from));
-
-  /// The segments [curve]'s handles bend, in order: from each of its
-  /// [keyed] frames to the next — where it walks a path, from each that
-  /// keeps its time to the next that does ([LaneCurve.way]), the roving
-  /// ones between passed at the pace those two set.
-  static Iterable<({int from, int to})> _segmentsOf(
-    LaneCurve curve,
-    List<int> keyed,
-  ) sync* {
-    final way = curve.way;
-    if (way == null) {
-      for (final (from, to) in neighbourPairs(keyed)) {
-        yield (from: from, to: to);
-      }
-      return;
-    }
-    for (int? from = keyed.first; from != null;) {
-      final to = way(from)?.to;
-      if (to != null) {
-        yield (from: from, to: to);
-      }
-      from = to;
-    }
-  }
-
-  /// How fast [curve] moves over [span] on average — as far as it goes,
-  /// along its way where it walks one, over the frames it takes: what a
-  /// side's speed is a multiple of ([EaseSide.speed]).
-  static double _averageSpeed(LaneCurve curve, ({int from, int to}) span) {
-    final length =
-        curve.way?.call(span.from)?.length ??
-        _laneGraphApart(
-          curve.at(span.from.toDouble()),
-          curve.at(span.to.toDouble()),
-        );
-    return length / (span.to - span.from);
-  }
-
-  /// The sides of [span]'s two keys that ease toward each other — the
-  /// first's leaving and the last's arriving, each where it is an ease.
-  static List<({EaseSide side, bool leaving})> _easesToward(
-    LaneCurve curve,
-    ({int from, int to}) span,
-  ) => [
-    if (curve.sides[span.from]?.outgoing case final EaseSide side)
-      (side: side, leaving: true),
-    if (curve.sides[span.to]?.incoming case final EaseSide side)
-      (side: side, leaving: false),
-  ];
 
   /// Where [line]'s numbers stand on a graph [extent] across, laid along
   /// [frames] and fitted to [ranges]: its [part]-th number at its own
@@ -2789,6 +2740,55 @@ class TimelineLaneGraphPainter extends CustomPainter {
       oldDelegate.transformBox != transformBox ||
       oldDelegate.pivot != pivot;
 }
+
+/// The segments [curve]'s handles bend, in order: from each of its
+/// [keyed] frames to the next — where it walks a path, from each that
+/// keeps its time to the next that does ([LaneCurve.way]), the roving
+/// ones between passed at the pace those two set.
+Iterable<({int from, int to})> _laneGraphSegmentsOf(
+  LaneCurve curve,
+  List<int> keyed,
+) sync* {
+  final way = curve.way;
+  if (way == null) {
+    for (final (from, to) in neighbourPairs(keyed)) {
+      yield (from: from, to: to);
+    }
+    return;
+  }
+  for (int? from = keyed.first; from != null;) {
+    final to = way(from)?.to;
+    if (to != null) {
+      yield (from: from, to: to);
+    }
+    from = to;
+  }
+}
+
+/// How fast [curve] moves over [span] on average — as far as it goes,
+/// along its way where it walks one, over the frames it takes: what a
+/// side's speed is a multiple of ([EaseSide.speed]).
+double _laneGraphAverageSpeed(LaneCurve curve, ({int from, int to}) span) {
+  final length =
+      curve.way?.call(span.from)?.length ??
+      _laneGraphApart(
+        curve.at(span.from.toDouble()),
+        curve.at(span.to.toDouble()),
+      );
+  return length / (span.to - span.from);
+}
+
+/// The sides of [span]'s two keys that ease toward each other — the
+/// first's leaving and the last's arriving, each where it is an ease.
+List<({EaseSide side, bool leaving})> _laneGraphEasesToward(
+  LaneCurve curve,
+  ({int from, int to}) span,
+) => [
+  if (curve.sides[span.from]?.outgoing case final EaseSide side)
+    (side: side, leaving: true),
+  if (curve.sides[span.to]?.incoming case final EaseSide side)
+    (side: side, leaving: false),
+];
 
 /// The keys a lane selection picks on a header graph's picture, in the
 /// order they are marked, and the BOX ROUND them (I-3 ⑤b, AE's transform
