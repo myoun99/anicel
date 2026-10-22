@@ -902,8 +902,10 @@ void main() {
       expect(rotations(s), {0: 45, 4: 0});
     });
 
-    testWidgets('⏸a line of two numbers is not stretched across yet: its '
-        'keys stay as they stand (graph-box-handles-scale-keys-Q1)', (
+    // 🗣️graph-box-handles-scale-keys-Q1 (유저 2026-10-22): 「둘 다 (AE
+    // 그대로)」.
+    testWidgets('of a line of two numbers, the top\'s handle stretches both: '
+        'each mark as far as the box, on its own number\'s range', (
       tester,
     ) async {
       final s = await _pump(
@@ -924,9 +926,15 @@ void main() {
       );
 
       final keys = _transformOf(s).position.keys;
+      final (first, last) = (keys[0]!.value, keys[8]!.value);
+      // x runs 100 → 200 and y 300 → 50: 0's y and 8's x stand at the
+      // box's top and go up, 0's x and 8's y at its bottom and stay.
+      expect((first.x, last.y), (100, 50));
+      expect((first.y > 300, last.x > 200), (true, true));
       expect(
-        [for (final frame in [0, 8]) keys[frame]?.value],
-        [CanvasPoint(x: 100, y: 300), CanvasPoint(x: 200, y: 50)],
+        (first.y - 300) / (last.x - 200),
+        closeTo(250 / 100, 0.1),
+        reason: 'the same rise on the screen, each on its own range',
       );
     });
   });

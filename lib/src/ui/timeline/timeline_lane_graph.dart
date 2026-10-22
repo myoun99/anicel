@@ -1160,9 +1160,10 @@ class _LaneGraphLift {
   /// with its key's numbers and the range its line is fitted to. A speed
   /// graph marks no key, so it boxes none to stretch.
   ///
-  /// ⏸A line of two numbers (a position, a Scale) waits on
-  /// graph-box-handles-scale-keys-Q1: its keys go along the frames alone
-  /// until it is answered.
+  /// 🗣️graph-box-handles-scale-keys-Q1 (유저 2026-10-22): 「둘 다 (AE
+  /// 그대로)」 — a line of two numbers (a position, a Scale) is stretched
+  /// mark by mark, each number on its own range, though a carry moves the
+  /// one number in hand (「한 번에 숫자 하나」).
   List<({_KeyLifted lifted, double across})> marksOf(
     List<LaneGraphKey> picked,
     Map<String, LaneGraphFit> fits,
@@ -1174,15 +1175,14 @@ class _LaneGraphLift {
               key.line.lane.curve,
               fits[laneGroupKey(key.line.layer.id, key.line.lane.laneId)],
             )
-            case (final curve?, final fit?)
-            when fit.ranges.length == 1)
+            case (final curve?, final fit?))
           (
             lifted: (
               laneId: key.line.lane.laneId,
               frame: key.frame,
               numbers: curve.at(key.frame.toDouble()),
-              part: 0,
-              range: fit.ranges.single,
+              part: key.part,
+              range: fit.ranges[key.part],
             ),
             across: partAcross(axis, key.at),
           ),
@@ -1199,18 +1199,25 @@ class _LaneGraphLift {
     }
     final axis = picture.frameAxis.axis;
     final extent = extentAcross(axis, size);
-    final inputs = <String, Map<int, String>>{};
+    final values = <String, Map<int, List<double>>>{};
     for (final (
           lifted: (:laneId, :frame, :numbers, :part, :range),
           :rise,
         )
         in raised) {
-      final value = [...numbers];
+      // A key's two marks a stretch raises each — a position's x and y —
+      // write ONE value between them.
+      final value = (values[laneId] ??= {})[frame] ??= [...numbers];
       value[part] += laneGraphValueRise(rise, range, extent, axis);
-      (inputs[laneId] ??= {})[frame] = value.join(', ');
     }
     return (
-      inputs: inputs,
+      inputs: {
+        for (final MapEntry(key: laneId, value: frames) in values.entries)
+          laneId: {
+            for (final MapEntry(key: frame, :value) in frames.entries)
+              frame: value.join(', '),
+          },
+      },
       scaleLinked: picture.edits?.valueLink?.isOn() ?? false,
     );
   }
