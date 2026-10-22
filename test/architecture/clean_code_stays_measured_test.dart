@@ -616,7 +616,7 @@ void main() {
   /// row, `alongStart` for a drop's line held past a rail row's section
   /// slot (F-423②). `sizedAlong` (five) is a turned `SizedBox`, and took
   /// its child's key as `stripAlong` does. 🔬`clean_code_diff` against
-  /// master (`c07d43411`, at 408) named those two added and nothing gone.
+  /// master (`41c4dfa72`, at 410) named those two added and nothing gone.
   /// ⛔Not split to fit: each parameter is one of the widget it turns.
   const wideSignatures = 412;
 
