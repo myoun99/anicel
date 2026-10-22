@@ -102,6 +102,7 @@ void main() {
     'editNameAction': (s) => s.editNameAction,
     'editNoteAction': (s) => s.editNoteAction,
     'renameLayerEmpty': (s) => s.renameLayerEmpty,
+    'renameCutField': (s) => s.renameCutField,
     'renameCutEmpty': (s) => s.renameCutEmpty,
     'renameGuideTitle': (s) => s.renameGuideTitle,
     'renameGuideField': (s) => s.renameGuideField,
