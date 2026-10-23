@@ -50,7 +50,6 @@ Widget _host(Widget child) => MaterialApp(
 
 void main() {
   tearDown(() {
-    StaticRaster.globallyEnabled.value = true;
     StaticRaster.debugCapturePaysOverride = null;
   });
 
@@ -488,29 +487,6 @@ void main() {
     parentRepaint.value += 1;
     await tester.pump();
     expect(render.captureCount, 0);
-  });
-
-  testWidgets('the global switch turns every surface into pass-through', (
-    tester,
-  ) async {
-    final counter = <int>[0];
-    await tester.pumpWidget(
-      _host(
-        StaticRaster(
-          debugLabel: 'test',
-          child: CustomPaint(painter: _CountingPainter(counter: counter)),
-        ),
-      ),
-    );
-    final render = tester.renderObject<RenderStaticRaster>(
-      find.byType(StaticRaster),
-    );
-    expect(render.captureCount, 1);
-
-    StaticRaster.globallyEnabled.value = false;
-    await tester.pump();
-    expect(render.captureCount, 1, reason: 'no further bakes');
-    expect(counter[0], greaterThan(1), reason: 'and it paints through');
   });
 
   testWidgets('zones re-bake independently, and nesting would not', (

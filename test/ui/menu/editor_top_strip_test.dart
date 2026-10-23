@@ -331,7 +331,6 @@ void main() {
       'menu-edit-frame-timing-overlay',
       'menu-edit-frame-stats',
       'menu-edit-show-repaints',
-      'menu-edit-bake-panels',
     ]) {
       expect(
         find.byKey(ValueKey<String>(id)),
@@ -346,10 +345,16 @@ void main() {
       'menu-edit-frame-timing-overlay',
       'menu-edit-frame-stats',
       'menu-edit-show-repaints',
-      'menu-edit-bake-panels',
     ]) {
       expect(find.byKey(ValueKey<String>(id)), findsOneWidget, reason: id);
     }
+    expect(
+      find.byKey(const ValueKey<String>('menu-edit-bake-panels')),
+      findsNothing,
+      reason:
+          '↩️the bakes have no off switch — off is only ever a loss '
+          '(유저 2026-10-23, F-448)',
+    );
   });
 
   testWidgets('Settings: Input Inspector toggles the diagnosis overlay', (

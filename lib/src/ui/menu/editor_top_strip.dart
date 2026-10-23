@@ -48,7 +48,6 @@ import '../dialogs/work_settings_window.dart';
 import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
 import '../sliced_value_listenable_builder.dart';
-import '../widgets/static_raster.dart';
 import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
@@ -745,25 +744,10 @@ class EditorTopStrip extends StatelessWidget {
                 !MeasurementMode.showRepaints.value;
           },
         ),
-        // The A/B. Turning the bakes off puts the app back the way it was
-        // before them, in the SAME build, so "what did this actually buy" is
-        // two readings a few seconds apart rather than an argument.
-        //
-        // 🚨 It existed as a `ValueNotifier` from the day the bakes shipped
-        // and was never wired to anything, so the one switch the whole
-        // measurement needs could not be reached without editing code. A
-        // debug affordance nobody can press is a debug affordance nobody has.
-        _item(
-          id: 'edit-bake-panels',
-          label: editorActionLabel(EditorActionIds.bakePanels),
-          shortcuts: const [EditorActionIds.bakePanels],
-          icon: Icons.layers_outlined,
-          checked: StaticRaster.globallyEnabled.value,
-          onPressed: () {
-            StaticRaster.globallyEnabled.value =
-                !StaticRaster.globallyEnabled.value;
-          },
-        ),
+        // ↩️「Bake Static Panels」, the bakes' A/B switch, stood here from
+        // 2026-08-09 until the user had it taken out: off is only ever a loss
+        // (유저 2026-10-23, F-448 「없애고 on인채로 두는게 맞지않을까」). Why
+        // there is no global switch any more: `StaticRaster.enabled`.
       ],
     ),
     const PanelFlyoutDivider(),

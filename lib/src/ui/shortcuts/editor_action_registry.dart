@@ -903,7 +903,6 @@ abstract final class EditorActionIds {
   static const frameTimingOverlay = 'edit-frame-timing-overlay';
   static const frameStats = 'edit-frame-stats';
   static const showRepaints = 'edit-show-repaints';
-  static const bakePanels = 'edit-bake-panels';
   static const toolRailOnRight = 'window-tool-rail-right';
   static const regionOnTop = 'window-region-on-top';
 
@@ -2169,13 +2168,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.showRepaints,
     label: 'Show Repaints',
-    shelf: ShortcutShelf.debug,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.bakePanels,
-    label: 'Bake Static Panels',
     shelf: ShortcutShelf.debug,
     defaultActivators: [],
     menuRow: true,

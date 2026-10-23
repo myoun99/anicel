@@ -173,9 +173,6 @@ enum StillStandDown {
   /// Not on this engine ([StillRaster.cachePays]).
   renderer,
 
-  /// Switched off by [StaticRaster.globallyEnabled].
-  disabled,
-
   /// Showing content whose pixels may not come from an image
   /// ([StillRaster.enabled]).
   optedOut,
@@ -286,14 +283,12 @@ class RenderStillRaster extends RenderProxyBox {
     super.attach(owner);
     StaticRaster.ensureFrameClock();
     StillRaster.census.add(this);
-    StaticRaster.globallyEnabled.addListener(_restart);
     MeasurementMode.showRepaints.addListener(_restart);
   }
 
   @override
   void detach() {
     StillRaster.census.remove(this);
-    StaticRaster.globallyEnabled.removeListener(_restart);
     MeasurementMode.showRepaints.removeListener(_restart);
     _layer?._drop();
     super.detach();
@@ -303,7 +298,6 @@ class RenderStillRaster extends RenderProxyBox {
   void dispose() {
     _clipLayer.layer = null;
     StillRaster.census.remove(this);
-    StaticRaster.globallyEnabled.removeListener(_restart);
     MeasurementMode.showRepaints.removeListener(_restart);
     super.dispose();
   }
@@ -334,9 +328,6 @@ class RenderStillRaster extends RenderProxyBox {
   StillStandDown _gate() {
     if (!StillRaster.cachePays) {
       return StillStandDown.renderer;
-    }
-    if (!StaticRaster.globallyEnabled.value) {
-      return StillStandDown.disabled;
     }
     if (!_enabled) {
       return StillStandDown.optedOut;

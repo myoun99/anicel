@@ -50,6 +50,14 @@ import '../../helpers/raster_parity.dart';
 /// cases below walk the device ratios Windows actually ships, sub-pixel
 /// offsets in eighths, and sizes that are not a whole number of device
 /// pixels.
+///
+/// Painted through is the Impeller path ([StaticRaster.capturePays] false):
+/// every surface a zone, painting its child clipped to its box — what most
+/// devices run, and the same paint as a caller's kill switch. ↩️It was the
+/// global A/B switch until the user had that taken out (2026-10-23, F-448).
+/// The renderer gate is read at paint and nothing announces a change of
+/// it, so each way MOUNTS AFRESH (the key): the harness keeps one tree, and
+/// its surfaces would otherwise show the first way's image the second time.
 Future<ByteData> _bytes(
   WidgetTester tester,
   Widget child, {
@@ -58,10 +66,14 @@ Future<ByteData> _bytes(
   required double width,
   required double height,
 }) {
-  StaticRaster.globallyEnabled.value = bake;
+  StaticRaster.debugCapturePaysOverride = bake;
   return surfaceBytes(
     tester,
-    StaticRaster(debugLabel: 'parity', child: child),
+    StaticRaster(
+      key: ValueKey<bool>(bake),
+      debugLabel: 'parity',
+      child: child,
+    ),
     left: left,
     width: width,
     height: height,
@@ -85,6 +97,11 @@ Future<void> _expectParity(
     width: width,
     height: height,
   );
+  expect(
+    StaticRaster.census.any((r) => r.captureCount > 0),
+    isTrue,
+    reason: '$what: the baked way baked nothing, so nothing is compared',
+  );
   final through = await _bytes(
     tester,
     child,
@@ -92,6 +109,13 @@ Future<void> _expectParity(
     left: left,
     width: width,
     height: height,
+  );
+  expect(
+    StaticRaster.census.every((r) => r.captureCount == 0),
+    isTrue,
+    reason:
+        '$what: the painted-through way baked — it would be compared '
+        'with a bake',
   );
   final ratio = tester.view.devicePixelRatio;
   final result = compareRasters(
@@ -120,7 +144,7 @@ Future<void> _expectParity(
 
 void main() {
   tearDown(() {
-    StaticRaster.globallyEnabled.value = true;
+    StaticRaster.debugCapturePaysOverride = null;
   });
 
   /// A child that paints far outside its own box.
