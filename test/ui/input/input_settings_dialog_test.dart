@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/input/control_press_claim.dart'
     show DragVerbClaim;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
@@ -29,8 +30,15 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SingleChildScrollView(
-            child: InputSettingsSection(session: session),
+          // In the content's own lane, as the window holds it (F-440): a
+          // bare scroll view lays the framework's bar OVER the content on a
+          // desktop, and over the ring at the row's end (F-439).
+          body: ContentScrollbar(
+            builder: (context, controller) => SingleChildScrollView(
+              controller: controller,
+              primary: false,
+              child: InputSettingsSection(session: session),
+            ),
           ),
         ),
       ),
