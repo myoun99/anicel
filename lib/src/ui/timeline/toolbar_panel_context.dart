@@ -149,6 +149,11 @@ abstract class ToolbarPanelContext {
   bool get canUnlink;
   void unlink();
 
+  /// 🗣️F-455 — 복제: whether this panel's press would duplicate anything,
+  /// and the press. One answer for both (T25's law).
+  bool get canDuplicate;
+  void duplicate();
+
   /// 🗣️I-18 — 자동 이름 지정: what this panel's press numbers, or null when
   /// there is nothing to number (the button dims). ONE answer for the gate,
   /// for the window's Apply — asked again when the number is given — and
@@ -178,6 +183,8 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       canPasteLinkedFrame ? pasteLinkedFrame : null;
 
   void Function()? get unlinkPress => canUnlink ? unlink : null;
+
+  void Function()? get duplicatePress => canDuplicate ? duplicate : null;
 
   /// Whether 자동 이름 지정 has anything to number here — the button's gate
   /// and the key's, read off the one resolver ([autoNameTargets]).
@@ -490,6 +497,18 @@ class TimelineToolbarPanelContext
 
   @override
   void unlink() => session.unlinkSelectionSubject();
+
+  /// 🗣️F-455 (유저 2026-10-23): 「공용알약에 복제 버튼 만들고 레이어랑
+  /// 컷버튼의 레이어복제/컷복제 삭제. 그리고 복제버튼, 물론 각 규칙
+  /// 따르고」 — the layer pill's 레이어 복제 came here with its rule: the
+  /// selected rows, else the row you stand on (유저 확정 2026-08-13:
+  /// 「복제는 현재 액티브인 대상」). R5q1: cuts are the storyboard's noun, so
+  /// this panel's press does not reach for them — as its delete does not.
+  @override
+  bool get canDuplicate => session.layerVerbs.canDuplicateActiveLayer;
+
+  @override
+  void duplicate() => session.layerVerbs.duplicateActiveLayer();
 
   @override
   AutoNameTargets? get autoNameTargets => session.blockNaming.timelineTargets;
@@ -1075,6 +1094,16 @@ class StoryboardToolbarPanelContext
     }
     _timelinesCells?.unlink();
   }
+
+  /// 🗣️F-455 — the cut pill's 컷 복제 came here, cuts being this panel's
+  /// noun (R5q1): the selected cuts, else the cut you stand on (유저 확정
+  /// 2026-08-13: 「복제는 현재 액티브인 대상」), as one block after them
+  /// (F-455-Q1: 「선택한 컷 전부」 — `CutVerbs.duplicateActiveCut`).
+  @override
+  bool get canDuplicate => session.activeCutOrNull != null;
+
+  @override
+  void duplicate() => session.cutVerbs.duplicateActiveCut();
 
   /// 자동 이름 지정 on this panel (I-18: 「대상은 선택된 블록들(컷이나
   /// 프레임)이 있으면 선택한 대상만」). The selected cuts first; a CELL band —

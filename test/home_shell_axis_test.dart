@@ -43,7 +43,7 @@ void main() {
     expect(find.text('New Drawing'), findsNothing);
 
     // Cut management rides the toolbar's cut group (R-toolbar round): a
-    // split new-cut button plus the Cut ▾ flyout with the command set.
+    // new-cut button plus the Cut ▾ flyout with the command set.
     expect(find.byTooltip('New cut'), findsOneWidget);
     final cutMenu = find.byKey(const ValueKey<String>('cut-menu-button'));
     await tester.ensureVisible(cutMenu);
@@ -51,14 +51,24 @@ void main() {
     await tester.tap(cutMenu);
     await tester.pumpAndSettle();
     for (final item in [
-      'rename-cut-button',
       'edit-cut-note-button',
       'resize-cut-canvas-button',
+      'add-cut-create-linked',
+      'convert-cut-to-linked-button',
+    ]) {
+      expect(find.byKey(ValueKey<String>(item)), findsOneWidget);
+    }
+    // 🗣️F-455 (유저 2026-10-23): 「컷 버튼의 컷 왼쪽/오른쪽으로 삭제 …
+    // 카메라AE키프레임 복사도 삭제 … 컷 이름 변경도 … 삭제 … 레이어랑
+    // 컷버튼의 레이어복제/컷복제 삭제」.
+    for (final gone in [
+      'rename-cut-button',
       'duplicate-cut-button',
       'move-cut-left-button',
       'move-cut-right-button',
+      'copy-cut-ae-camera-button',
     ]) {
-      expect(find.byKey(ValueKey<String>(item)), findsOneWidget);
+      expect(find.byKey(ValueKey<String>(gone)), findsNothing, reason: gone);
     }
     await tester.tapAt(const Offset(5, 400));
     await tester.pumpAndSettle();

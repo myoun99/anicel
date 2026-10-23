@@ -110,8 +110,15 @@ void main() {
   test('its front cut moved along the track', () {
     final s = session();
     addTearDown(s.dispose);
-    s.selectCut(a);
-    ridesWithA(s, s.cutVerbs.moveActiveCutRight);
+    ridesWithA(
+      s,
+      () => s.cutCommandCoordinator.commitCutMoveReorder(
+        trackId: const TrackId('t'),
+        order: const [z, CutId('b'), a],
+        beforeGaps: const {},
+        afterGaps: const {},
+      ),
+    );
   });
 
   test('a new cut made in front of it', () {
@@ -121,16 +128,13 @@ void main() {
     ridesWithA(s, s.cutVerbs.createCut);
   });
 
-  test('a duplicate lands at the track\'s end — nothing in front of the O.L '
-      'moves, so the O.L stays, and its undo too', () {
+  // F-455-Q1 (유저 2026-10-23): the copy lands right after its cut.
+  // ↩️It landed on the track's end, where nothing in front of the O.L moved.
+  test('a duplicate of the cut before it', () {
     final s = session();
     addTearDown(s.dispose);
     s.selectCut(z);
-    s.cutVerbs.duplicateActiveCut();
-    expect(s.activeTrack.cuts.length, 4);
-    expect(olStart(s), 42);
-    s.historyManager.undo();
-    expect(olStart(s), 42);
+    ridesWithA(s, s.cutVerbs.duplicateActiveCut);
   });
 
   test('a linked cut made in front of it', () {

@@ -34,8 +34,8 @@ void toggleAutoCreateFrameOnDraw(EditorSessionManager session) {
 
 /// The timeline bar's menus as they open, for ONE panel: the layer pill's
 /// two, the frame pill's, the shared pill's colour edit list and the
-/// effects' here, and with the cut pill's ([cutMenuEntries],
-/// [cutAddEntries]) every row of the bar ([rows]).
+/// effects' here, and with the cut pill's ([cutMenuEntries]) every row of
+/// the bar ([rows]).
 ///
 /// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
 /// 버튼같은거나 … 뭐든 모든 버튼」. ★A KEY AND ITS MENU ROW ARE ONE PRESS
@@ -58,12 +58,11 @@ class TimelineBarMenus {
   final ToolbarPanelContext panel;
 
   /// Every row of the bar's menus as they would open right now
-  /// ([flyoutRowsOf]) — the cut pill's two, then the layer pill's two, the
+  /// ([flyoutRowsOf]) — the cut pill's one, then the layer pill's two, the
   /// frame pill's, the shared pill's colour edit list and the effects'.
   /// [context] is where a row's window opens.
   List<PanelFlyoutItem> rows(BuildContext context) => flyoutRowsOf([
     ...cutMenuEntries(context, session),
-    ...cutAddEntries(session),
     ...layer(context),
     ...addLayer(),
     ...frame(),
@@ -209,7 +208,8 @@ class TimelineBarMenus {
 
   /// A track's fixture row takes no row verb from here
   /// ([LayerKind.isTrackFixture]) — selecting the transition row must not
-  /// light up duplicate.
+  /// light up rename (↩️it said duplicate, which F-455 moved to the shared
+  /// pill).
   ///
   /// A getter because ① moved rename OUT of the menu: the pill's button and
   /// the entries that stayed behind have to answer the same question, and
@@ -227,21 +227,16 @@ class TimelineBarMenus {
     // panel's noun — so the storyboard's menu greys them all out honestly
     // instead of editing a row that panel is not showing.
     final serves = panel.servesActiveLayerVerbs;
-    final editable = serves && canEditActiveLayer;
     return [
       // ⛔RENAME IS NOT HERE — ① moved it onto the pill itself (유저 확정:
       // 「레이어 알약 밖으로: 레이어 이름변경」). "밖으로" means out of the
       // MENU and onto that pill, which is where 컷 삭제 went for the same
       // sentence; it does not mean the shared pill, whose residents 확정 #11
       // fixes at four.
-      PanelFlyoutItem(
-        keyValue: 'duplicate-layer-button',
-        label: editorActionLabel(EditorActionIds.layerDuplicate),
-        shortcuts: const [EditorActionIds.layerDuplicate],
-        icon: Icons.copy_outlined,
-        enabled: editable,
-        onSelected: session.layerVerbs.duplicateActiveLayer,
-      ),
+      // ⛔DUPLICATE IS NOT HERE EITHER (F-455, 유저 2026-10-23: 「공용알약에
+      // 복제 버튼 만들고 레이어랑 컷버튼의 레이어복제/컷복제 삭제」). The
+      // shared pill's 복제 duplicates the selected rows, as its copy takes
+      // them.
       // ⛔COPY AND PASTE ARE NOT HERE, AND NEITHER IS 「링크해서 복제」
       // (I-77, 유저 2026-10-06: 「복사/붙여넣기버튼 레이어도 연결 … 그러고
       // 레이어버튼의 레이어복사/붙여넣기는 필요없으니 삭제」 · 「링크해서

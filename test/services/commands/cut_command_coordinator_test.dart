@@ -1511,7 +1511,8 @@ void main() {
     });
 
     test(
-      'reorderCut executes through history without changing activeCutId',
+      'a move drag\'s reorder executes through history without changing '
+      'activeCutId',
       () {
         final cutA = _cut(id: 'cut-1', name: 'Cut A');
         final cutB = _cut(id: 'cut-2', name: 'Cut B');
@@ -1525,10 +1526,11 @@ void main() {
           activeCutId: cutB.id,
         );
 
-        fixture.coordinator.reorderCut(
+        fixture.coordinator.commitCutMoveReorder(
           trackId: const TrackId('track-1'),
-          cutId: cutA.id,
-          newIndex: 2,
+          order: [cutB.id, cutC.id, cutA.id],
+          beforeGaps: const {},
+          afterGaps: const {},
         );
 
         expect(fixture.cutsFor(const TrackId('track-1')), [cutB, cutC, cutA]);

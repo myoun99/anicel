@@ -1152,6 +1152,13 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.laneVerbs.canNameLaneKeys,
       // The layer pill's promoted verb.
       session.layerVerbs.canDeleteActiveLayer,
+      // F-455: the shared pill's 복제, read off this panel's context.
+      _pill.canDuplicate,
+      // …and the cut pill's ＋ ([CutPlacement.canCreateCut]): a band over a
+      // cut leaves it nowhere to make one, and a band is no notify.
+      // ↩️Its band's 새 컷 row read this at open time and hid that the ＋
+      // itself stayed lit; F-455 took the row away.
+      session.cutPlacement.canCreateCut,
       // ⛔The two project-axis values LEFT this token with the dropdowns
       // that printed them: they are entries of the settings pill on the
       // 문턱 now, and a flyout's entries are built at open time.

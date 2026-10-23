@@ -62,3 +62,16 @@ import 'layer_id.dart';
 /// other row its own group.
 LayerId _attachGroupOf(Layer layer, List<Layer> stack) =>
     layer.attachedToLayerId ?? attachOrganizerBaseOf(layer, stack) ?? layer.id;
+
+/// Where a row put down above [row] goes in [stack] as it stands NOW: the
+/// seat right above it, and the top of the stack when [row] names none
+/// here. Read again for every row a block puts down — the one before it
+/// moved everything above.
+///
+/// ONE answer for every block of rows a verb lands over a row: a paste
+/// over the row you stand on, a linked paste, and a duplicate over the
+/// topmost of the rows it copies (F-455).
+int seatAboveRow(List<Layer> stack, LayerId? row) {
+  final index = stack.indexWhere((layer) => layer.id == row);
+  return index == -1 ? stack.length : index + 1;
+}

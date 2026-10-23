@@ -1268,6 +1268,11 @@ class _CursorGatedStoryboardToolbarState
       panel.canPasteIndependentFrame,
       panel.canPasteLinkedFrame,
       panel.canUnlink,
+      // F-455: 복제 lights on a cut and dims in a gap, as below.
+      panel.canDuplicate,
+      // …and the cut pill's ＋, which a band over a cut dims (the timeline
+      // bar's token says why it is here).
+      widget.session.cutPlacement.canCreateCut,
       // I-18: 자동 이름 지정 lights over a cut and dims in a gap — the
       // playhead moves it, and a playhead move is no notify.
       panel.canAutoName,

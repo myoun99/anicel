@@ -656,6 +656,8 @@ class TimelineActionToolbar extends StatelessWidget {
       session.pixelVerbs.canOpenColourEdit,
       // I-45: the link-independent button, from its own one answer.
       panelContext.canUnlink,
+      // F-455: 복제, likewise.
+      panelContext.canDuplicate,
       // I-18: 자동 이름 지정, likewise.
       panelContext.canAutoName,
     ),
@@ -771,6 +773,18 @@ class TimelineActionToolbar extends StatelessWidget {
           shortcuts: const [EditorActionIds.editUnlink],
           icon: Icons.link_off,
           onPressed: panelContext.unlinkPress,
+        ),
+        // 🗣️F-455 (유저 2026-10-23): 「공용알약에 복제 버튼 만들고 레이어랑
+        // 컷버튼의 레이어복제/컷복제 삭제」 — the layer pill's and the cut
+        // pill's duplicates, one button. The panel answers which noun
+        // ([ToolbarPanelContext.canDuplicate]): the rows on the timeline,
+        // the cut on the storyboard.
+        _iconButton(
+          key: const ValueKey<String>('shared-duplicate-button'),
+          tooltip: editorActionLabel(EditorActionIds.editDuplicate),
+          shortcuts: const [EditorActionIds.editDuplicate],
+          icon: Icons.control_point_duplicate,
+          onPressed: panelContext.duplicatePress,
         ),
         _iconButton(
           key: const ValueKey<String>('shared-delete-button'),
@@ -1102,8 +1116,14 @@ class TimelineActionToolbar extends StatelessWidget {
         // 컷 · 레이어 · 프레임 · FX — the four nouns, in the order the data
         // nests (유저 확정). Keyed on the language for the same reason as
         // the others: every name cell prints a word.
+        // …and on the ＋'s gate: a band over the cut that is there leaves
+        // nowhere to make one, and a bake keyed on the language alone kept
+        // the ＋ lit through it.
         _StaticCommandGroup(
-          rebuildKey: AppText.settings.value.programLanguage,
+          rebuildKey: (
+            AppText.settings.value.programLanguage,
+            session.cutPlacement.canCreateCut,
+          ),
           builder: (context) => CutCommandGroup(session: session),
         ),
         const SizedBox(width: 6),

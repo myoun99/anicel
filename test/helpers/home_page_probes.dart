@@ -2,6 +2,8 @@
 // list, the cut note dialog, the timeline cells and their labels. Split
 // out of widget_test.dart (2026-09-04) with that file, so the topics
 // can run across isolates.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +17,8 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/timeline/layer_name_commands.dart'
+    show renameActiveCutWithDialog;
 
 import '../ui/storyboard_cut_block_probe.dart';
 import '../ui/timeline/timeline_cell_probe.dart';
@@ -365,11 +369,23 @@ Future<String> currentCutNoteFromDialog(WidgetTester tester) async {
   return note;
 }
 
-Future<void> renameActiveCut(WidgetTester tester, String name) async {
-  await tapCutCommandButton(
-    tester,
-    const ValueKey<String>('rename-cut-button'),
+/// Opens the cut rename window through the one door every entrance takes —
+/// the storyboard's Edit on a cut, a cut block's double click
+/// ([renameActiveCutWithDialog]). ↩️It tapped the cut menu's 「컷 이름
+/// 변경」, which F-455 took away (유저 2026-10-23: 「공용알약꺼 쓰거나
+/// 더블클릭으로 되니 삭제」).
+Future<void> openRenameCutDialog(WidgetTester tester) async {
+  unawaited(
+    renameActiveCutWithDialog(
+      tester.element(find.byType(EditorWorkspace)),
+      _sessionOf(tester),
+    ),
   );
+  await tester.pumpAndSettle();
+}
+
+Future<void> renameActiveCut(WidgetTester tester, String name) async {
+  await openRenameCutDialog(tester);
   await tester.enterText(
     find.byKey(const ValueKey<String>('rename-cut-text-field')),
     name,

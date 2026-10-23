@@ -3,6 +3,7 @@ import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/new_row_placement.dart' show seatAboveRow;
 import '../../services/clipboard/layer_copy_payload.dart';
 import '../../services/commands/cut_command_coordinator.dart' show PastedLayer;
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
@@ -303,15 +304,10 @@ class LayerClipboard implements BringsMedia {
     );
   }
 
-  /// Where a pasted row goes in the cut as it stands NOW: the seat above
-  /// the row [standing] names, and the top of the stack when it names none
-  /// here. Read again for every row a paste puts down — the one before it
-  /// moved everything above.
-  int _seatAbove(LayerId? standing) {
-    final layers = _project.requireActiveCut.layers;
-    final index = layers.indexWhere((layer) => layer.id == standing);
-    return index == -1 ? layers.length : index + 1;
-  }
+  /// Where a pasted row goes in the cut as it stands NOW ([seatAboveRow]):
+  /// over the row [standing] names.
+  int _seatAbove(LayerId? standing) =>
+      seatAboveRow(_project.requireActiveCut.layers, standing);
 
   /// [payload] with its terms spelled as [respell] says ([Arrival]).
   static LayerCopyPayload _respelled(

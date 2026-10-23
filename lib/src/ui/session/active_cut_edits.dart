@@ -13,9 +13,10 @@ import 'session_roles.dart';
 /// ⛔ONE MOVE, WITH A SIGN. The two verbs used to be written out, guard
 /// and command and refresh each, so a step that stopped refreshing after
 /// the reorder would have done it in one direction only.
-/// (`CutVerbs._moveActiveCut`'s own argument, and the reason this object
-/// exists: eighteen hand-written envelopes are eighteen chances to lose
-/// the tail in one of them.)
+/// (the cut left/right verbs' own argument — gone since F-455 took their
+/// buttons away — and the reason this object exists: eighteen
+/// hand-written envelopes are eighteen chances to lose the tail in one of
+/// them.)
 ///
 /// 🚨THE CUT ID IS READ IN ONE PLACE HERE — [_standingCutId]. The
 /// row-scoped arms ride it too, so "which cut am I on" cannot come to
@@ -109,8 +110,8 @@ class ActiveCutEdits {
   /// are what it serves.)
   ///
   /// ⚠️The trailing step is the one that goes missing when an envelope is
-  /// copied: `CutVerbs._moveActiveCut` carries a comment recording exactly
-  /// that loss. It has one writer now.
+  /// copied: the cut left/right verbs (gone since F-455) carried a comment
+  /// recording exactly that loss. It has one writer now.
   void onActiveLayer({
     required bool when,
     required void Function(CutId cutId, LayerId layerId) command,

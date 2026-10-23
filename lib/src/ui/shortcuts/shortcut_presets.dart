@@ -602,8 +602,9 @@ final Map<String, ProgramRow> _clipStudioRows = {
     [],
   ),
   EditorActionIds.cutNew: const ProgramRow(['animationnewcut'], []),
-  // Layer > Duplicate layer · Rasterize.
-  EditorActionIds.layerDuplicate: const ProgramRow(['layercopy'], []),
+  // Layer > Duplicate layer · Rasterize. ↩️F-455: the duplicate is the
+  // shared pill's 복제 now, which duplicates the rows on the timeline.
+  EditorActionIds.editDuplicate: const ProgramRow(['layercopy'], []),
   EditorActionIds.layerRasterize: const ProgramRow(['layerrasterize'], []),
   // Transform > Mesh transformation · Flip horizontal · Flip vertical ·
   // Confirm transformation — the confirm here — · Cancel transformation.

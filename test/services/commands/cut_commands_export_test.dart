@@ -15,8 +15,6 @@ void main() {
         DeleteLayerCommand,
         UpdateExposureMemoCommand,
         CutCommandCoordinator,
-        CutPosition,
-        CutReorderPlanner,
       ],
       containsAll(<Type>[
         CreateCutCommand,
@@ -29,8 +27,6 @@ void main() {
         DeleteLayerCommand,
         UpdateExposureMemoCommand,
         CutCommandCoordinator,
-        CutPosition,
-        CutReorderPlanner,
       ]),
     );
   });

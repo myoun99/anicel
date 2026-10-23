@@ -153,9 +153,13 @@ void main() {
     test('🚨b moved off it brings b\'s in — c, arriving through it now, '
         'sends its end key out — and one undo puts both back', () {
       final session = open();
-      session.selectCut(b);
 
-      session.cutVerbs.moveActiveCutRight();
+      session.cutCommandCoordinator.commitCutMoveReorder(
+        trackId: const TrackId('t'),
+        order: const [a, c, b],
+        beforeGaps: const {},
+        afterGaps: const {},
+      );
 
       expect(
         spansOf(session),

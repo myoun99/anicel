@@ -61,7 +61,7 @@ import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_traces.dart';
 import 'brush/cel_text_commands.dart';
 import 'brush/canvas_view_commands.dart';
-import 'cut_command_group.dart' show landCanvasAdjust;
+import 'cut_command_group.dart' show landCanvasAdjust, newCutPress;
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
 import 'menu/editor_top_strip.dart';
@@ -1134,6 +1134,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // storyboard an S row), which is what that button's press is.
       case EditorActionIds.layerAdd:
         _workingPanel.addLayer();
+      // F-455: the cut pill's ＋ by key — its button's own press, which
+      // makes no cut where it has no place for one.
+      case EditorActionIds.cutNew:
+        newCutPress(_session)?.call();
       case EditorActionIds.frameToggleMark:
         final panel = _workingPanel;
         if (panel.canToggleMark) {
@@ -1255,6 +1259,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _workingPanel.pasteIndependentPress?.call();
       case EditorActionIds.editUnlink:
         _workingPanel.unlinkPress?.call();
+      case EditorActionIds.editDuplicate:
+        _workingPanel.duplicatePress?.call();
       case EditorActionIds.editDelete:
         // R9-rest: the thing in hand first — Delete takes a text held by
         // its box off its cel, and only with none in hand is it the

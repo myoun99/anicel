@@ -134,7 +134,7 @@ final second = PanelFlyoutItem(label: 'keyless too');
       'and the ones that are not', () {
     expect(
       rows.named,
-      contains("cut_command_group.dart | 'rename-cut-button'"),
+      contains("cut_command_group.dart | 'edit-cut-note-button'"),
     );
     expect(
       rows.named,

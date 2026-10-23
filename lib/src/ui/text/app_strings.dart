@@ -850,7 +850,6 @@ enum AppStrings {
   String get semSelectedTrack => _s('semSelectedTrack');
   String get sbVideoTrack => _s('sbVideoTrack');
   String get noticeFillRegionOpen => _s('noticeFillRegionOpen');
-  String get noticeCameraKeysCopied => _s('noticeCameraKeysCopied');
   String get tlKindAnimation => _s('tlKindAnimation');
   String get tlKindStoryboard => _s('tlKindStoryboard');
   String get tlKindImage => _s('tlKindImage');
@@ -986,7 +985,6 @@ enum AppStrings {
   /// 레이어 · 프레임은 아이콘 말고 텍스트), so all three need a short word.
   String get tlCut => _s('tlCut');
   String get cutCommands => _s('cutCommands');
-  String get cutAddCut => _s('cutAddCut');
   String get cutSettingsTitle => _s('cutSettingsTitle');
 
   // --- The media pool ---
@@ -2442,7 +2440,6 @@ enum AppStrings {
     'systemStatusHelp':
         'Which implementation each subsystem is running right now. Fallback paths keep the app working but usually run slower — the names are searchable if you want the details.',
     'cutCommands': 'Cut commands',
-    'cutAddCut': 'Add cut',
     'cutSettingsTitle': 'Cut settings',
     'mediaActions': 'Media actions',
     'mediaPoolEmpty': 'No media',
@@ -3128,7 +3125,6 @@ enum AppStrings {
     'sbVideoTrack': 'Video track',
     'noticeFillRegionOpen':
         'Region is not closed — nothing filled (Fill Beyond Canvas needs an enclosed area).',
-    'noticeCameraKeysCopied': 'Camera keyframes copied for After Effects.',
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
     'tlKindImage': 'Image',
@@ -3473,7 +3469,6 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': '兼用カットを作成',
     'shortcutAction.cut-convert-linked': '兼用カットに変換',
     'shortcutAction.cut-canvas-size': 'カンバスサイズ',
-    'shortcutAction.cut-copy-ae-camera': 'カメラのAEキーフレームをコピー',
     'menuAction.cut-delete': 'カットを削除',
     'menuAction.layer-add': '新規レイヤー',
     'menuAction.layer-link-duplicate': 'リンクして複製',
@@ -3839,6 +3834,7 @@ enum AppStrings {
     'shortcutAction.edit-paste-independent': '独立して貼り付け',
     'shortcutAction.edit-unlink': 'リンクから独立',
     'shortcutAction.edit-delete': '削除',
+    'shortcutAction.edit-duplicate': '複製',
     'shortcutAction.edit-replace-colour': '色変換',
     'shortcutAction.edit-clear-pixels': 'ピクセル消去',
     'shortcutAction.edit-binarize': '2値化',
@@ -3907,15 +3903,10 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-in': 'ズームイン',
     'shortcutAction.canvas-zoom-out': 'ズームアウト',
     'cutCommands': 'カット操作',
-    'cutAddCut': 'カットを追加',
     'shortcutAction.cut-new': '新規カット',
-    'shortcutAction.cut-duplicate': 'カットを複製',
-    'shortcutAction.cut-rename': 'カット名を変更',
     'shortcutAction.cut-edit-note': 'カットメモを編集',
     'shortcutAction.cut-settings': 'カット設定',
     'cutSettingsTitle': 'カット設定',
-    'shortcutAction.cut-move-left': 'カットを左へ',
-    'shortcutAction.cut-move-right': 'カットを右へ',
     'mediaActions': 'メディア操作',
     'mediaPoolEmpty': 'メディアがありません',
     'mediaRename': 'メディア名を変更',
@@ -4799,7 +4790,6 @@ enum AppStrings {
     'semSelectedTrack': '選択中のトラック',
     'sbVideoTrack': '映像トラック',
     'noticeFillRegionOpen': '領域が閉じていないため塗りつぶせません（キャンバス外まで塗るには囲まれた領域が必要です）。',
-    'noticeCameraKeysCopied': 'カメラのキーフレームを After Effects 用にコピーしました。',
     // 🗣️The row KIND's name is the user's (2026-10-02: 「애니메이션 레이어로
     // 이름바꾸자. 일본어도 アニメーション」). ⛔Not 動画 — that word is the
     // in-between PROCESS (`layerProcess.inbetween`), another axis.
@@ -4836,7 +4826,6 @@ enum AppStrings {
     'tlLayer': 'レイヤー',
     'tlFrame': 'フレーム',
     'tlKey': 'キー',
-    'shortcutAction.layer-duplicate': 'レイヤーを複製',
     'shortcutAction.frame-select-row-span': '行全体を選択',
     'linkWindowUnlink': 'リンクを解除',
     'linkWindowUnlinkLinkedCut': '兼用カットのレイヤーはカットごと解除します',
@@ -5148,7 +5137,6 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': '겸용컷 만들기',
     'shortcutAction.cut-convert-linked': '겸용컷으로 변환',
     'shortcutAction.cut-canvas-size': '캔버스 크기',
-    'shortcutAction.cut-copy-ae-camera': '카메라 AE 키프레임 복사',
     'menuAction.cut-delete': '컷 삭제',
     'menuAction.layer-add': '새 레이어',
     'menuAction.layer-link-duplicate': '링크해서 복제',
@@ -5512,6 +5500,7 @@ enum AppStrings {
     'shortcutAction.edit-paste-independent': '독립 붙여넣기',
     'shortcutAction.edit-unlink': '링크 독립',
     'shortcutAction.edit-delete': '삭제',
+    'shortcutAction.edit-duplicate': '복제',
     'shortcutAction.edit-replace-colour': '색 변환',
     'shortcutAction.edit-clear-pixels': '픽셀 비우기',
     'shortcutAction.edit-binarize': '2치화',
@@ -5582,15 +5571,10 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-in': '확대',
     'shortcutAction.canvas-zoom-out': '축소',
     'cutCommands': '컷 명령',
-    'cutAddCut': '컷 추가',
     'shortcutAction.cut-new': '새 컷',
-    'shortcutAction.cut-duplicate': '컷 복제',
-    'shortcutAction.cut-rename': '컷 이름 변경',
     'shortcutAction.cut-edit-note': '컷 메모 편집',
     'shortcutAction.cut-settings': '컷 설정',
     'cutSettingsTitle': '컷 설정',
-    'shortcutAction.cut-move-left': '컷 왼쪽으로',
-    'shortcutAction.cut-move-right': '컷 오른쪽으로',
     'mediaActions': '미디어 작업',
     'mediaPoolEmpty': '미디어가 없습니다',
     'mediaRename': '미디어 이름 변경',
@@ -6466,7 +6450,6 @@ enum AppStrings {
     'sbVideoTrack': '영상 트랙',
     'noticeFillRegionOpen':
         '영역이 닫혀 있지 않아 채우지 못했습니다 (캔버스 밖까지 채우려면 둘러싸인 영역이 필요합니다).',
-    'noticeCameraKeysCopied': '카메라 키프레임을 After Effects 용으로 복사했습니다.',
     // 🗣️The row KIND's name is the user's (2026-10-02: 「애니메이션 레이어로
     // 이름바꾸자」). ⛔Not 동화 — that word is the in-between PROCESS
     // (`layerProcess.inbetween`), another axis.
@@ -6503,7 +6486,6 @@ enum AppStrings {
     'tlLayer': '레이어',
     'tlFrame': '프레임',
     'tlKey': '키',
-    'shortcutAction.layer-duplicate': '레이어 복제',
     'shortcutAction.frame-select-row-span': '행 전체 선택',
     'linkWindowUnlink': '링크 해제',
     'linkWindowUnlinkLinkedCut': '겸용컷이라 레이어만 해제할 수 없습니다',
@@ -6831,7 +6813,6 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': 'Créer un plan lié',
     'shortcutAction.cut-convert-linked': 'Convertir en plan lié',
     'shortcutAction.cut-canvas-size': 'Taille du canevas',
-    'shortcutAction.cut-copy-ae-camera': 'Copier les clés AE de la caméra',
     'menuAction.cut-delete': 'Supprimer le plan',
     'menuAction.layer-add': 'Nouveau calque',
     'menuAction.layer-link-duplicate': 'Dupliquer en liant',
@@ -7224,6 +7205,7 @@ enum AppStrings {
     'shortcutAction.edit-paste-independent': 'Coller indépendant',
     'shortcutAction.edit-unlink': 'Rendre indépendant',
     'shortcutAction.edit-delete': 'Supprimer',
+    'shortcutAction.edit-duplicate': 'Dupliquer',
     'shortcutAction.edit-replace-colour': 'Remplacer la couleur',
     'shortcutAction.edit-clear-pixels': 'Effacer les pixels',
     'shortcutAction.edit-binarize': 'Binariser',
@@ -7292,15 +7274,10 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-in': 'Zoom avant',
     'shortcutAction.canvas-zoom-out': 'Zoom arrière',
     'cutCommands': 'Commandes de plan',
-    'cutAddCut': 'Ajouter un plan',
     'shortcutAction.cut-new': 'Nouveau plan',
-    'shortcutAction.cut-duplicate': 'Dupliquer le plan',
-    'shortcutAction.cut-rename': 'Renommer le plan',
     'shortcutAction.cut-edit-note': 'Modifier la note du plan',
     'shortcutAction.cut-settings': 'Réglages du plan',
     'cutSettingsTitle': 'Réglages du plan',
-    'shortcutAction.cut-move-left': 'Déplacer le plan à gauche',
-    'shortcutAction.cut-move-right': 'Déplacer le plan à droite',
     'mediaActions': 'Actions média',
     'mediaPoolEmpty': 'Aucun média',
     'mediaRename': 'Renommer le média',
@@ -8257,8 +8234,6 @@ enum AppStrings {
     'sbVideoTrack': 'Piste vidéo',
     'noticeFillRegionOpen':
         'La zone n\'est pas fermée — rien n\'a été rempli (le remplissage hors toile exige une zone close).',
-    'noticeCameraKeysCopied':
-        'Images clés de caméra copiées pour After Effects.',
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
     'tlKindImage': 'Image',
@@ -8294,7 +8269,6 @@ enum AppStrings {
     'tlLayer': 'Calque',
     'tlFrame': 'Image',
     'tlKey': 'Clé',
-    'shortcutAction.layer-duplicate': 'Dupliquer le calque',
     'shortcutAction.frame-select-row-span': 'Sélectionner toute la ligne',
     'linkWindowUnlink': 'Délier',
     'linkWindowUnlinkLinkedCut': "Les calques d'une coupe liée se délient avec la coupe",
@@ -8596,7 +8570,6 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': '创建链接镜头',
     'shortcutAction.cut-convert-linked': '转换为链接镜头',
     'shortcutAction.cut-canvas-size': '画布尺寸',
-    'shortcutAction.cut-copy-ae-camera': '复制摄影机 AE 关键帧',
     'menuAction.cut-delete': '删除镜头',
     'menuAction.layer-add': '新建图层',
     'menuAction.layer-link-duplicate': '链接复制图层',
@@ -8933,6 +8906,7 @@ enum AppStrings {
     'shortcutAction.edit-paste-independent': '粘贴独立',
     'shortcutAction.edit-unlink': '取消链接',
     'shortcutAction.edit-delete': '删除',
+    'shortcutAction.edit-duplicate': '创建副本',
     'shortcutAction.edit-replace-colour': '替换颜色',
     'shortcutAction.edit-clear-pixels': '清空像素',
     'shortcutAction.edit-binarize': '二值化',
@@ -9001,15 +8975,10 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-in': '放大',
     'shortcutAction.canvas-zoom-out': '缩小',
     'cutCommands': '镜头命令',
-    'cutAddCut': '添加镜头',
     'shortcutAction.cut-new': '新建镜头',
-    'shortcutAction.cut-duplicate': '复制镜头',
-    'shortcutAction.cut-rename': '重命名镜头',
     'shortcutAction.cut-edit-note': '编辑镜头备注',
     'shortcutAction.cut-settings': '镜头设置',
     'cutSettingsTitle': '镜头设置',
-    'shortcutAction.cut-move-left': '镜头左移',
-    'shortcutAction.cut-move-right': '镜头右移',
     'mediaActions': '媒体操作',
     'mediaPoolEmpty': '没有媒体',
     'mediaRename': '重命名媒体',
@@ -9825,7 +9794,6 @@ enum AppStrings {
     'semSelectedTrack': '选中的轨道',
     'sbVideoTrack': '视频轨道',
     'noticeFillRegionOpen': '区域未闭合，未进行填充（画布外填充需要一个封闭区域）。',
-    'noticeCameraKeysCopied': '已为 After Effects 复制摄像机关键帧。',
     'tlKindAnimation': '动画',
     'tlKindStoryboard': '分镜',
     'tlKindImage': '图像',
@@ -9863,7 +9831,6 @@ enum AppStrings {
     'tlLayer': '图层',
     'tlFrame': '帧',
     'tlKey': '关键帧',
-    'shortcutAction.layer-duplicate': '复制图层',
     'shortcutAction.frame-select-row-span': '选择整行',
     'linkWindowUnlink': '取消链接',
     'linkWindowUnlinkLinkedCut': '链接镜头的图层只能随镜头一起取消链接',

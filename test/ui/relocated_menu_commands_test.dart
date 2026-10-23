@@ -41,10 +41,10 @@ void main() {
   ) async {
     await pumpHome(tester);
 
-    // Making a linked cut belongs with the other ways of making a cut, so
-    // it sits under the New-cut split button rather than the Cut menu.
+    // F-455 (유저 2026-10-23): 「종류버튼의 겸용컷 만들기는 컷 버튼으로
+    // 옮김. 겸용컷 변환 위」. ↩️It sat under the New-cut split button, with
+    // the other ways of making a cut.
     await expectInFlyout(tester, 'add-cut-create-linked');
     await expectInFlyout(tester, 'convert-cut-to-linked-button');
-    await expectInFlyout(tester, 'copy-cut-ae-camera-button');
   });
 }

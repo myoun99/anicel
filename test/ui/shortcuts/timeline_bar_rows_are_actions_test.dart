@@ -22,7 +22,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart' show CelPixelVerb;
-import 'package:anicel/src/ui/cut_command_group.dart';
+import 'package:anicel/src/ui/dialogs/convert_to_linked_cut_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
@@ -35,6 +35,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 import 'package:anicel/src/ui/timeline/timeline_bar_menus.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/command_pill.dart' show StrapIconButton;
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/app_shortcuts.dart';
@@ -43,18 +44,11 @@ const k = LogicalKeyboardKey.keyK;
 
 /// The bar's menu rows, in the bar's order — 컷 · 레이어 · 프레임 · fx.
 final barRows = [
-  EditorActionIds.cutNew,
-  EditorActionIds.cutDuplicate,
-  EditorActionIds.cutCreateLinked,
-  EditorActionIds.cutRename,
   EditorActionIds.cutEditNote,
   EditorActionIds.cutSettings,
   EditorActionIds.cutCanvasSize,
+  EditorActionIds.cutCreateLinked,
   EditorActionIds.cutConvertLinked,
-  EditorActionIds.cutMoveLeft,
-  EditorActionIds.cutMoveRight,
-  EditorActionIds.cutCopyAeCamera,
-  EditorActionIds.layerDuplicate,
   EditorActionIds.layerDetach,
   EditorActionIds.layerRasterize,
   EditorActionIds.layerStoryboard,
@@ -265,13 +259,7 @@ void main() {
         'runPixelVerb(',
         'runPixelClipboardVerb(',
         'createCut',
-        'duplicateActiveCut',
         'createLinkedCutFromActiveCut',
-        'renameActiveCutWithDialog',
-        'moveActiveCutLeft',
-        'moveActiveCutRight',
-        'copyCameraAeKeyframes',
-        'duplicateActiveLayer',
         'detachActiveLayer',
         'rasterizeActiveRow',
         'toggleTargetLayerKind',
@@ -375,7 +363,7 @@ void main() {
 
     testWidgets('a row wears its action\'s name, and its key', (tester) async {
       await pumpApp(tester);
-      keys(tester).setActivators(EditorActionIds.cutRename, const [
+      keys(tester).setActivators(EditorActionIds.cutEditNote, const [
         SingleActivator(k, control: true),
       ]);
       await tester.pump();
@@ -383,9 +371,9 @@ void main() {
         find.byKey(const ValueKey<String>('cut-menu-button')).first,
       );
       await tester.pumpAndSettle();
-      final row = find.byKey(const ValueKey<String>('rename-cut-button'));
+      final row = find.byKey(const ValueKey<String>('edit-cut-note-button'));
       expect(
-        find.descendant(of: row, matching: find.text('Rename cut')),
+        find.descendant(of: row, matching: find.text('Edit cut note')),
         findsOneWidget,
       );
       expect(
@@ -394,41 +382,38 @@ void main() {
       );
     });
 
-    // 🗣️F-379 (유저 2026-10-17): 「컷 추가 팝오버버튼의 컷 복제는 컷 버튼에
-    // 중복존재하니 삭제」.
-    testWidgets("「컷 복제」 is the cut button's row alone — the add list "
-        'carries no second road to it', (tester) async {
+    // 🗣️F-455 (유저 2026-10-23): 「공용알약에 복제 버튼 만들고 레이어랑
+    // 컷버튼의 레이어복제/컷복제 삭제」. ↩️F-379 had left 「컷 복제」 the cut
+    // button's row alone.
+    testWidgets('⛔no row of the bar duplicates a cut or a layer — 복제 is '
+        'the shared pill\'s button', (tester) async {
       await pumpApp(tester);
-      final rows = timelineRows(tester)
-          .where((row) => row.shortcuts.contains(EditorActionIds.cutDuplicate))
-          .toList();
-      expect(rows.map((row) => row.keyValue), ['duplicate-cut-button']);
-      expect(rows.single.label, 'Duplicate cut');
+      final session = sessionOf(tester);
+      final duplicates = [
+        for (final row in timelineRows(tester))
+          if (row.onSelected == session.cutVerbs.duplicateActiveCut ||
+              row.onSelected == session.layerVerbs.duplicateActiveLayer)
+            row.keyValue,
+      ];
+      expect(duplicates, isEmpty);
+      expect(
+        find.byKey(const ValueKey<String>('shared-duplicate-button')),
+        findsWidgets,
+        reason: '⛔LIVENESS: the one door is there',
+      );
     });
   });
 
   group('a key', () {
-    testWidgets('opens the window its row opens', (tester) async {
-      await pumpApp(tester);
-      final field = find.byKey(const ValueKey<String>('rename-cut-text-field'));
-      expect(field, findsNothing);
-      await pressKeyOf(tester, EditorActionIds.cutRename);
-      expect(field, findsOneWidget);
-    });
-
-    testWidgets('makes what its row makes: a layer, and a cut', (tester) async {
+    testWidgets('makes what its row makes: a cut', (tester) async {
       await pumpApp(tester);
       expect(
-        rowOf(timelineRows(tester), EditorActionIds.layerDuplicate).enabled,
+        rowOf(timelineRows(tester), EditorActionIds.cutCreateLinked).enabled,
         isTrue,
-        reason: '⛔premise: a layer is in hand',
+        reason: '⛔premise: a cut is in hand',
       );
-      final layers = layersOf(tester);
-      await pressKeyOf(tester, EditorActionIds.layerDuplicate);
-      expect(layersOf(tester), layers + 1);
-
       final cuts = cutsOf(tester);
-      await pressKeyOf(tester, EditorActionIds.cutNew);
+      await pressKeyOf(tester, EditorActionIds.cutCreateLinked);
       expect(cutsOf(tester), cuts + 1);
     });
 
@@ -497,7 +482,15 @@ void main() {
       await pumpApp(tester);
       final session = sessionOf(tester);
       expect(session.workingPanel, WorkingPanel.timeline, reason: '⛔premise');
-      final layers = layersOf(tester);
+      List<LayerKind> kinds() => [
+        for (final layer in session.activeCutOrNull!.layers) layer.kind,
+      ];
+      final before = kinds();
+      expect(
+        rowOf(timelineRows(tester), EditorActionIds.layerStoryboard).enabled,
+        isTrue,
+        reason: '⛔premise: on the timeline the row would turn the layer',
+      );
 
       session.claimStoryboardRow();
       await tester.pumpAndSettle();
@@ -508,43 +501,41 @@ void main() {
             session: session,
             panel: StoryboardToolbarPanelContext(session),
           ).rows(contextOf(tester)),
-          EditorActionIds.layerDuplicate,
+          EditorActionIds.layerStoryboard,
         ).enabled,
         isFalse,
         reason: '⛔premise: the storyboard\'s layer menu shows the row dim',
       );
-      await pressKeyOf(tester, EditorActionIds.layerDuplicate);
-      expect(layersOf(tester), layers);
+      await pressKeyOf(tester, EditorActionIds.layerStoryboard);
+      expect(kinds(), before);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('⛔does nothing where its row is dim', (tester) async {
+    testWidgets('opens the window its row opens — and ⛔nothing where its row '
+        'is dim', (tester) async {
       await pumpApp(tester);
-      // Two cuts, standing on the first: it has nowhere to step left — and a
-      // key that pressed anyway would have a cut to move.
-      sessionOf(tester).cutVerbs.createCut();
-      await tester.pumpAndSettle();
-      final order = cutIdsOf(tester);
-      expect(order, hasLength(2), reason: '⛔premise');
-      sessionOf(tester).selectCut(order.first);
-      await tester.pumpAndSettle();
+      final window = find.byType(ConvertToLinkedCutDialog);
+      // One cut: nothing to borrow the pictures from.
+      expect(cutIdsOf(tester), hasLength(1), reason: '⛔premise');
       expect(
-        rowOf(timelineRows(tester), EditorActionIds.cutMoveLeft).enabled,
+        rowOf(timelineRows(tester), EditorActionIds.cutConvertLinked).enabled,
         isFalse,
-        reason: '⛔premise: the first cut has nowhere to step left',
-      );
-      expect(
-        rowOf(timelineRows(tester), EditorActionIds.cutMoveRight).enabled,
-        isTrue,
-        reason: '⛔premise: and the same key on the other row would move it',
+        reason: '⛔premise: the row is dim',
       );
 
-      await pressKeyOf(tester, EditorActionIds.cutMoveLeft);
-      expect(cutIdsOf(tester), order);
+      await pressKeyOf(tester, EditorActionIds.cutConvertLinked);
+      expect(window, findsNothing);
       expect(tester.takeException(), isNull);
 
-      await pressKeyOf(tester, EditorActionIds.cutMoveRight);
-      expect(cutIdsOf(tester), order.reversed.toList(), reason: '⛔LIVENESS');
+      sessionOf(tester).cutVerbs.createCut();
+      await tester.pumpAndSettle();
+      expect(
+        rowOf(timelineRows(tester), EditorActionIds.cutConvertLinked).enabled,
+        isTrue,
+        reason: '⛔premise: a second cut lights it',
+      );
+      await pressKeyOf(tester, EditorActionIds.cutConvertLinked);
+      expect(window, findsOneWidget, reason: '⛔LIVENESS');
     });
 
     testWidgets('flips the frame pill\'s switch, as its button does', (
@@ -623,18 +614,34 @@ void main() {
     });
   });
 
+  // 🗣️F-455 (유저 2026-10-23): 「컷 종류버튼의 새 컷은 +버튼이랑 겹치니
+  // 삭제」 — the ＋ wears no band; its key presses the ＋.
   group('the cut pill\'s ＋', () {
-    testWidgets('and its band\'s first row are one action, lit together and '
-        'dim together', (tester) async {
+    testWidgets('and its key are one press, lit together and dim together', (
+      tester,
+    ) async {
       await pumpApp(tester);
       final session = sessionOf(tester);
-      PanelFlyoutItem newCut() => cutAddEntries(
-        session,
-      ).whereType<PanelFlyoutItem>().firstWhere(
-        (row) => row.shortcuts.contains(EditorActionIds.cutNew),
-      );
+      bool lit() =>
+          tester
+              .widget<StrapIconButton>(
+                find
+                    .byWidgetPredicate(
+                      (widget) =>
+                          widget is StrapIconButton &&
+                          widget.buttonKey == 'new-cut-button',
+                    )
+                    .first,
+              )
+              .onPressed !=
+          null;
       expect(session.cutPlacement.canCreateCut, isTrue, reason: '⛔premise');
-      expect(newCut().enabled, isTrue);
+      expect(lit(), isTrue);
+      final made = cutsOf(tester);
+      await pressKeyOf(tester, EditorActionIds.cutNew);
+      expect(cutsOf(tester), made + 1, reason: '⛔LIVENESS: the key makes one');
+      session.undo();
+      await tester.pumpAndSettle();
 
       // A range over the cut that is there is nowhere to make one.
       final track = session.repository.requireProject().tracks.first;
@@ -646,11 +653,11 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(session.cutPlacement.canCreateCut, isFalse, reason: '⛔premise');
-      expect(newCut().enabled, isFalse);
+      expect(lit(), isFalse);
 
       final cuts = cutsOf(tester);
       await pressKeyOf(tester, EditorActionIds.cutNew);
-      expect(cutsOf(tester), cuts, reason: 'and the key is the row\'s');
+      expect(cutsOf(tester), cuts, reason: 'and the key is the ＋\'s');
     });
   });
 }

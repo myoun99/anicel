@@ -7,6 +7,7 @@ import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/home_page_probes.dart';
@@ -97,108 +98,6 @@ void main() {
     expect(await activeCutIdOf(tester), const CutId('default-cut-1'));
   });
 
-  testWidgets('move cut buttons reorder active cut left with undo and redo', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const AnicelApp());
-    final second = await createSecondCut(tester);
-
-    await switchToCut(tester, second);
-    await expectActiveCutName(tester, '2');
-    await expectCutOrder(tester, ['default-cut-1', second]);
-
-    await tapCutCommandButton(
-      tester,
-      const ValueKey<String>('move-cut-left-button'),
-    );
-
-    await expectCutOrder(tester, [second, 'default-cut-1']);
-    await expectActiveCutName(tester, '2');
-    expect(await activeCutIdOf(tester), CutId(second));
-
-    await tapUndoButton(tester);
-
-    await expectCutOrder(tester, ['default-cut-1', second]);
-    await expectActiveCutName(tester, '2');
-
-    await tapRedoButton(tester);
-
-    await expectCutOrder(tester, [second, 'default-cut-1']);
-    await expectActiveCutName(tester, '2');
-  });
-
-  testWidgets('move cut buttons reorder active cut right with undo and redo', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const AnicelApp());
-    final second = await createSecondCut(tester);
-    await switchToCut(tester, 'default-cut-1');
-
-    await expectActiveCutName(tester, '1');
-    await expectCutOrder(tester, ['default-cut-1', second]);
-
-    await tapCutCommandButton(
-      tester,
-      const ValueKey<String>('move-cut-right-button'),
-    );
-
-    await expectCutOrder(tester, [second, 'default-cut-1']);
-    await expectActiveCutName(tester, '1');
-    expect(await activeCutIdOf(tester), const CutId('default-cut-1'));
-
-    await tapUndoButton(tester);
-
-    await expectCutOrder(tester, ['default-cut-1', second]);
-    await expectActiveCutName(tester, '1');
-
-    await tapRedoButton(tester);
-
-    await expectCutOrder(tester, [second, 'default-cut-1']);
-    await expectActiveCutName(tester, '1');
-  });
-
-  testWidgets('move cut buttons are disabled at cut list edges', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const AnicelApp());
-    final second = await createSecondCut(tester);
-    await switchToCut(tester, 'default-cut-1');
-    // The move buttons live in the storyboard panel's toolbar.
-    await showStoryboardPanel(tester);
-
-    expect(
-      await isActionButtonEnabled(
-        tester,
-        const ValueKey<String>('move-cut-left-button'),
-      ),
-      isFalse,
-    );
-    expect(
-      await isActionButtonEnabled(
-        tester,
-        const ValueKey<String>('move-cut-right-button'),
-      ),
-      isTrue,
-    );
-
-    await switchToCut(tester, second);
-
-    expect(
-      await isActionButtonEnabled(
-        tester,
-        const ValueKey<String>('move-cut-left-button'),
-      ),
-      isTrue,
-    );
-    expect(
-      await isActionButtonEnabled(
-        tester,
-        const ValueKey<String>('move-cut-right-button'),
-      ),
-      isFalse,
-    );
-  });
-
   testWidgets('creates a new cut from the cut list command', (
     WidgetTester tester,
   ) async {
@@ -216,17 +115,20 @@ void main() {
     await expectCutsNamed(tester, 'Cut 2', 0);
   });
 
-  testWidgets('duplicates the active cut from the cut list command', (
-    WidgetTester tester,
-  ) async {
+  // What duplicating a cut DOES. Its entrance — the shared pill's 복제, on
+  // the storyboard (F-455 took the cut menu's 「컷 복제」 away) — is
+  // `the_duplicate_button_asks_the_panel_test`'s subject.
+  testWidgets('duplicates the active cut', (WidgetTester tester) async {
     await tester.pumpWidget(const AnicelApp());
 
     await expectCutOrder(tester, ['default-cut-1']);
 
-    await tapCutCommandButton(
-      tester,
-      const ValueKey<String>('duplicate-cut-button'),
-    );
+    tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session
+        .cutVerbs
+        .duplicateActiveCut();
+    await tester.pumpAndSettle();
 
     final copy = (await activeCutIdOf(tester)).value;
     await expectCutName(tester, 'default-cut-1', '1');

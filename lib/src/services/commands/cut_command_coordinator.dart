@@ -30,7 +30,6 @@ import '../../models/project_background.dart';
 import '../../models/timesheet_info.dart';
 import '../../models/timesheet_sheet_kind.dart';
 import '../../models/exposure_memo.dart';
-import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
@@ -251,13 +250,6 @@ class CutCommandCoordinator {
     CutId? cutId,
     TimesheetSheetKind? kind,
   }) => _cuts.setTimesheetFormat(info: info, cutId: cutId, kind: kind);
-  void reorderCut({
-    required TrackId trackId,
-    required CutId cutId,
-    required int newIndex,
-  }) => _cuts.reorderCut(trackId: trackId, cutId: cutId, newIndex: newIndex);
-  void setCutOrder({required TrackId trackId, required List<CutId> order}) =>
-      _cuts.setCutOrder(trackId: trackId, order: order);
   void commitCutMoveReorder({
     required TrackId trackId,
     required List<CutId> order,
@@ -276,10 +268,12 @@ class CutCommandCoordinator {
     required CutId sourceCutId,
     required TrackId targetTrackId,
     String? newName,
+    int? index,
   }) => _cuts.duplicateCut(
     sourceCutId: sourceCutId,
     targetTrackId: targetTrackId,
     newName: newName,
+    index: index,
   );
 
   // ── the camera commands: their own object ───────────────────────────
@@ -734,9 +728,12 @@ class CutCommandCoordinator {
     );
   }
 
+  /// [sourceLayerId] copied in [cutId], at [insertionIndex] — right above
+  /// its source when none is named.
   PastedLayer duplicateLayer({
     required CutId cutId,
     required LayerId sourceLayerId,
+    int? insertionIndex,
   }) {
     final cut = _requireCut(cutId);
     final sourceLayer = _requireLayer(cutId: cutId, layerId: sourceLayerId);
@@ -753,7 +750,7 @@ class CutCommandCoordinator {
     return pasteLayer(
       cutId: cutId,
       payload: copyLayerToPayload(sourceLayer),
-      insertionIndex: sourceIndex + 1,
+      insertionIndex: insertionIndex ?? sourceIndex + 1,
     );
   }
 

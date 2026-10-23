@@ -367,6 +367,66 @@ void main() {
       expect(s.layers.length, before, reason: 'one gesture, one undo');
     });
 
+    // 🗣️F-455 (유저 2026-10-23): 「레이어는 지금 여러개 복제시 각자 선택한
+    // 레이어의 위에 생기는데, 그게아니라 선택한 레이어들 포함해서 그 위에
+    // 생기도록. 사이사이에 생기지 않게」.
+    test('B: the copies land as ONE block over the topmost of the rows, in '
+        'the order the rows stand — none between them — standing on the top '
+        'copy', () {
+      final s = session();
+      s.layerStack
+        ..addLayerOfKind(LayerKind.animation)
+        ..addLayerOfKind(LayerKind.animation);
+      final drawings = [
+        for (final layer in s.layers)
+          if (layer.kind == LayerKind.animation) layer,
+      ];
+      expect(drawings.length, greaterThanOrEqualTo(3), reason: '⛔premise');
+      final lower = drawings.first;
+      final upper = drawings[2];
+      expect(lower.name, isNot(upper.name), reason: '⛔premise: told apart');
+      final before = [for (final layer in s.layers) layer.id];
+      expect(
+        before.indexOf(upper.id) - before.indexOf(lower.id),
+        greaterThan(1),
+        reason: '⛔premise: a row stands between the two',
+      );
+
+      // Picked top first: the block follows the stack, not the pick.
+      s.rowSelection.value = [
+        LayerRowAddress(upper.id),
+        LayerRowAddress(lower.id),
+      ];
+      s.layerVerbs.duplicateActiveLayer();
+
+      final after = s.layers;
+      final copies = [
+        for (final layer in after)
+          if (!before.contains(layer.id)) layer,
+      ];
+      expect(copies, hasLength(2));
+      final seat = after.indexWhere((layer) => layer.id == upper.id) + 1;
+      expect(
+        [for (final layer in after.sublist(seat, seat + 2)) layer.id],
+        [for (final copy in copies) copy.id],
+        reason: 'right over the topmost source, together',
+      );
+      expect(
+        [for (final copy in copies) copy.name],
+        [lower.name, upper.name],
+        reason: 'in the order the rows stand',
+      );
+      expect(
+        [
+          for (final layer in after)
+            if (before.contains(layer.id)) layer.id,
+        ],
+        before,
+        reason: 'nothing slipped in between the sources',
+      );
+      expect(s.activeLayerId, copies.last.id, reason: 'on the top copy');
+    });
+
     testWidgets('B: the rename DIALOG renames the whole selection', (
       tester,
     ) async {

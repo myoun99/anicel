@@ -227,10 +227,7 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const AnicelApp());
 
-    await tapCutCommandButton(
-      tester,
-      const ValueKey<String>('rename-cut-button'),
-    );
+    await openRenameCutDialog(tester);
 
     expect(
       find.byKey(const ValueKey<String>('rename-cut-dialog')),

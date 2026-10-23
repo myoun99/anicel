@@ -860,6 +860,11 @@ abstract final class EditorActionIds {
   /// 🗣️I-45 — 링크 독립, the shared pill's button beside the linked paste.
   static const editUnlink = 'edit-unlink';
 
+  /// 🗣️F-455 — 복제, the shared pill's button beside the delete (유저
+  /// 2026-10-23: 「공용알약에 복제 버튼 만들고 레이어랑 컷버튼의
+  /// 레이어복제/컷복제 삭제」).
+  static const editDuplicate = 'edit-duplicate';
+
   /// The colour edit list's five verbs, in its order — every one an action
   /// (유저 2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게」).
   static const editReplaceColour = 'edit-replace-colour';
@@ -926,21 +931,15 @@ abstract final class EditorActionIds {
   static const layerAdd = 'layer-add';
 
   /// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
-  /// 버튼같은거나」 — the timeline bar's menus: the cut pill's two (and its
+  /// 버튼같은거나」 — the timeline bar's menus: the cut pill's one (and its
   /// ＋), the layer pill's two, the frame pill's. Where the retired menu bar
   /// worded a row by an id (`menuAction.<id>`), the action keeps that id.
   static const cutNew = 'cut-new';
-  static const cutDuplicate = 'cut-duplicate';
   static const cutCreateLinked = 'cut-create-linked';
-  static const cutRename = 'cut-rename';
   static const cutEditNote = 'cut-edit-note';
   static const cutSettings = 'cut-settings';
   static const cutCanvasSize = 'cut-canvas-size';
   static const cutConvertLinked = 'cut-convert-linked';
-  static const cutMoveLeft = 'cut-move-left';
-  static const cutMoveRight = 'cut-move-right';
-  static const cutCopyAeCamera = 'cut-copy-ae-camera';
-  static const layerDuplicate = 'layer-duplicate';
   static const layerDetach = 'layer-detach';
   static const layerRasterize = 'layer-rasterize';
   static const layerStoryboard = 'layer-storyboard';
@@ -1236,6 +1235,15 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Delete',
     shelf: ShortcutShelf.sharedPill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.delete)],
+  ),
+  // 🗣️F-455 — a button, so a row a key can be put on (유저 2026-09-13:
+  // 「버튼이면 왠만해선 숏컷 지정 가능하게」). It ships unbound: nobody named a
+  // key.
+  const EditorActionDefinition(
+    id: EditorActionIds.editDuplicate,
+    label: 'Duplicate',
+    shelf: ShortcutShelf.sharedPill,
+    defaultActivators: [],
   ),
   // 🗣️I-18 (유저): 「타임라인 공용 알약에 새 버튼 신설 … 버튼은 자동 이름
   // 지정」 — a button, so a row a key can be put on (유저 2026-09-13:
@@ -1912,33 +1920,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 하자」. Every verb that makes a thing reads 「새 ㅁㅁ」 (New …), its pair
   // 「ㅁㅁ 삭제」. ↩️It read 'New cut', then 'Add cut' (the first half, before
   // the form was chosen).
+  // ↩️F-455 (유저 2026-10-23: 「컷 종류버튼의 새 컷은 +버튼이랑 겹치니
+  // 삭제」): 새 컷 is the ＋ itself now, not a row of its band — a key
+  // presses the ＋'s own press (`newCutPress`), as the layer pill's ＋'s does.
   const EditorActionDefinition(
     id: EditorActionIds.cutNew,
     label: 'New cut',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutDuplicate,
-    label: 'Duplicate cut',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutCreateLinked,
-    label: 'Create linked cut',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutRename,
-    label: 'Rename cut',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.cutEditNote,
@@ -1961,38 +1950,19 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     menuRow: true,
   ),
+  // F-455: 겸용컷 만들기 left the ＋'s band for the menu, above 겸용컷 변환
+  // (유저: 「종류버튼의 겸용컷 만들기는 컷 버튼으로 옮김. 겸용컷 변환 위」).
+  const EditorActionDefinition(
+    id: EditorActionIds.cutCreateLinked,
+    label: 'Create linked cut',
+    shelf: ShortcutShelf.cutPill,
+    defaultActivators: [],
+    menuRow: true,
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.cutConvertLinked,
     label: 'Convert to linked cut',
     shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutMoveLeft,
-    label: 'Move cut left',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutMoveRight,
-    label: 'Move cut right',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutCopyAeCamera,
-    label: 'Copy camera AE keyframes',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.layerDuplicate,
-    label: 'Duplicate layer',
-    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),
