@@ -4527,10 +4527,11 @@ class _CanvasViewportPanbar extends StatelessWidget {
   }
 }
 
-/// The stage's outer planes behind the artwork (R3b): the opaque backdrop
-/// with the RGBA pasteboard over it, and the checkerboard wherever one of
-/// them is ABSENT — laid as every cut seen through no camera lays them
-/// ([StagePlanesPainter], where the laws of where each plane lies live).
+/// The stage's outer planes behind the artwork (R3b): the backdrop with
+/// the pasteboard over it, both RGBA (F-114), and the checkerboard
+/// wherever one of them is ABSENT — laid as every cut seen through no
+/// camera lays them ([StagePlanesPainter], where the laws of where each
+/// plane lies live).
 ///
 /// 🪦It used to subscribe to an ALPHA-PREVIEW toggle in the settings menu,
 /// which replaced BOTH planes with the checkerboard. 유저 2026-09-16: 「설정의

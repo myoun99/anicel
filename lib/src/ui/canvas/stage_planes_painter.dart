@@ -18,7 +18,10 @@ typedef StagePlane = ({Color color, bool none});
 /// checkerboard in the screen's cells where the plane is absent
 /// ([paintAbsentPlane] — [screen] is the canvas's transform at the
 /// painter's box), otherwise its colour wherever that has any alpha — its
-/// edge cut by [antiAlias] either way.
+/// edge anti-aliased either way, so a plane turned off and on moves no
+/// edge. The paper is not one of these planes: its edge is the canvas's,
+/// cut by the display law, so its absence is laid by
+/// [StagePlanesPainter] with [paintAbsentPlane] itself.
 ///
 /// ONE way to lay a plane of the stage (F-114: 「페이스트보드도 백그라운드도
 /// 동일하게」): the editing canvas's planes ([StagePlanesPainter]), the
@@ -30,26 +33,20 @@ void paintStagePlane(
   Rect region,
   StagePlane plane, {
   required Float64List screen,
-  required bool antiAlias,
 }) {
   final (:color, :none) = plane;
   if (none) {
-    paintAbsentPlane(canvas, region, screen: screen, antiAlias: antiAlias);
+    paintAbsentPlane(canvas, region, screen: screen, antiAlias: true);
     return;
   }
   if (color.a <= 0) {
     return;
   }
-  canvas.drawRect(
-    region,
-    Paint()
-      ..color = color
-      ..isAntiAlias = antiAlias,
-  );
+  canvas.drawRect(region, Paint()..color = color);
 }
 
 /// The stage's planes behind a cut seen through no camera (R3b): the
-/// opaque BACKDROP over the box, the RGBA PASTEBOARD over the region it
+/// BACKDROP over the box, the PASTEBOARD over the region it
 /// occupies — a canvas-space rectangle, so it rides zoom, pan, rotation and
 /// both flips like everything else on the stage — and the checkerboard
 /// wherever a plane is ABSENT.
@@ -158,16 +155,24 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
     canvas.save();
     canvas.clipRect(box);
     if (backdrop case final backdrop?) {
-      paintStagePlane(canvas, box, backdrop, screen: screen, antiAlias: true);
+      paintStagePlane(canvas, box, backdrop, screen: screen);
     }
-    // 🚨The pasteboard and the paper are PLACES ON THE CANVAS, so they go to
-    // the screen the one way every canvas-space painter takes the view (P8,
-    // [applyViewportTransform]) — its pan-phase snap with it, and they land
-    // on the pixels the stack over them lands on
-    // (stage-planes-are-not-pan-snapped: measured 10-23 at a pan of 10.3,
-    // an absent paper's edge was a blended column at 100% and at 150%
-    // where the paper's own was crisp). ↩️Their corners were carried
-    // through the exact view by hand, off the snap.
+    _layOnTheCanvas(canvas, screen);
+    canvas.restore();
+  }
+
+  /// The planes that are PLACES ON THE CANVAS — the pasteboard, and the
+  /// paper where it is absent — laid through the view.
+  ///
+  /// 🚨They go to the screen the one way every canvas-space painter takes
+  /// the view (P8, [applyViewportTransform]) — its pan-phase snap with it,
+  /// and they land on the pixels the stack over them lands on
+  /// (stage-planes-are-not-pan-snapped: measured 10-23 at a pan of 10.3,
+  /// an absent paper's edge was a blended column at 100% and at 150%
+  /// where the paper's own was crisp). ↩️Their corners were carried
+  /// through the exact view by hand, off the snap.
+  void _layOnTheCanvas(Canvas canvas, Float64List screen) {
+    canvas.save();
     applyViewportTransform(
       canvas,
       viewport,
@@ -179,14 +184,12 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
         canvasSize.pasteboardAt(pasteboardReach).rect,
         pasteboard,
         screen: screen,
-        antiAlias: true,
       );
     }
     if (paperNone) {
-      paintStagePlane(
+      paintAbsentPlane(
         canvas,
         canvasSize.canvasRect,
-        (color: const Color(0x00000000), none: true),
         screen: screen,
         // Cut where the paper's own edge is cut (F-67-paper-edge), so
         // turning the paper off and on moves no edge.

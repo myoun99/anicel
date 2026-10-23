@@ -541,9 +541,9 @@ class _PanelBuild {
                 // where the pasteboard actually is, RGBA and
                 // project data (R28 #9 reversed) — thinning it
                 // reveals the floor, on screen exactly as in an
-                // export. The alpha-preview toggle swaps BOTH for
-                // the checkerboard: an alpha export excludes them,
-                // so the preview must too.
+                // export. An ABSENT plane is the checkerboard where
+                // it would be (F-114). ↩️An alpha-preview toggle
+                // swapped both for it, and went (F-146).
                 child: _StagePlanes(
                   backdropArgb: _state._stageBackdropArgb,
                   pasteboardArgb: _state._stagePasteboardArgb,

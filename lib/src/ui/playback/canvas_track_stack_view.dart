@@ -496,7 +496,7 @@ class _StageFloor extends CustomPainter with RepaintOnProps {
       }
       region = frameSize.canvasRect;
     }
-    paintStagePlane(canvas, region, backdrop, screen: screen, antiAlias: true);
+    paintStagePlane(canvas, region, backdrop, screen: screen);
     canvas.restore();
   }
 

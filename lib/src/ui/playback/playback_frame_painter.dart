@@ -254,7 +254,6 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
           frameRect!,
           (color: pasteboardColor!, none: pasteboardNone),
           screen: screen,
-          antiAlias: true,
         );
       }
       canvas.restore();

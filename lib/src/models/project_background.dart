@@ -6,9 +6,9 @@
 /// The color carries its own ALPHA (user 2026-07-29): a thinned paper
 /// reveals the pasteboard and the backdrop behind it, on screen and in
 /// print alike — the old display-only "transparent" flag collapsed into
-/// alpha 0, and the alpha checkerboard moved to the backdrop's
-/// alpha-preview toggle where it says what it means (what an alpha export
-/// leaves open).
+/// alpha 0. ↩️The alpha checkerboard moved to an alpha-preview toggle that
+/// swapped the backdrop for it, and the toggle went (F-146): an ABSENT
+/// plane is the checkerboard now (below).
 ///
 /// 🚨F-114 brings an ABSENCE back, and it is not alpha (유저 2026-09-15):
 /// 「없음버튼은 표시상? 없애서 체크무늬가 되도록 하는거고, 불투명도는 체크무늬는
