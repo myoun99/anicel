@@ -68,6 +68,11 @@ void main() {
     // Inside the isolate hop, which is where the stack's own droppers run.
     snapshot.drop();
     expect(await parking, isTrue);
+    expect(
+      ScratchFile.stillLettingGo,
+      1,
+      reason: 'the park gave it back off the UI thread, as a drop does',
+    );
 
     await ScratchFile.lettingGo;
     expect(
