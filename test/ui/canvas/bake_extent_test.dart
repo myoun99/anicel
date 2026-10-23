@@ -130,7 +130,7 @@ void main() {
     void paint({required bool intoTheBuffer}) {
       final recorder = ui.PictureRecorder();
       bake.ensureIntoTheBuffer(intoTheBuffer);
-      bake.draw(Canvas(recorder), 'd0:after', (_) {});
+      bake.draw(Canvas(recorder), 'd0:after', (_) {}, within: Rect.largest);
       recorder.endRecording().dispose();
     }
 
@@ -168,7 +168,7 @@ void main() {
     await rasterBytes(
       (canvas) {
         canvas.clipRect(const Rect.fromLTWH(4, 0, 4, 2));
-        bake.draw(canvas, 'd0:backdrop', paper);
+        bake.draw(canvas, 'd0:backdrop', paper, within: extent);
       },
       16,
       8,
@@ -177,7 +177,7 @@ void main() {
     final patched = await rasterBytes(
       (canvas) {
         canvas.clipRect(patch);
-        bake.draw(canvas, 'd0:backdrop', paper);
+        bake.draw(canvas, 'd0:backdrop', paper, within: extent);
       },
       16,
       8,

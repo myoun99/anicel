@@ -141,7 +141,16 @@ class StaticCompositeBake {
   /// [canvas]. It is recorded from an identity transform and replayed under
   /// whatever transform is current — which is equivalent because the paint
   /// body never reads the transform, only writes to it.
-  void draw(Canvas canvas, String id, void Function(Canvas canvas) record) {
+  ///
+  /// [within] is what reads the slot's rows: the view at the top, and under
+  /// a folder that folder's buffer, which a blur on it reads past the view
+  /// (`subtreeBufferBounds`).
+  void draw(
+    Canvas canvas,
+    String id,
+    void Function(Canvas canvas) record, {
+    required Rect within,
+  }) {
     final held = _slots[id];
     if (held != null) {
       canvas.drawPicture(held);
@@ -149,9 +158,7 @@ class StaticCompositeBake {
     }
     final recorder = ui.PictureRecorder();
     // Bounded, so a draw in it can ask what it lands on
-    // (`drawPosedLayerImage`, a picture in pieces) — by the EXTENT the slots
-    // are declared under ([ensureExtent]), the bound [drawRaster]'s rect
-    // always had, and unbounded where none was declared.
+    // (`drawPosedLayerImage`, a picture in pieces) — by what reads the rows.
     // ↩️It was bounded by the clip of the paint that happened to record it
     // (2026-10-21), and a slot is replayed by EVERY paint under its key and
     // extent — a patch's few pixels, a carry's band, the whole buffer. 🔬A
@@ -161,7 +168,17 @@ class StaticCompositeBake {
     // replay whose clip missed the band laid no paper at all: the next
     // stroke's patch came out black, and its undo the whole page
     // (oil-family-vertical-stroke-paints-a-black-box, 2026-10-22).
-    record(Canvas(recorder, _extent));
+    // ↩️Then by the EXTENT the slots are declared under ([ensureExtent]), the
+    // content in view, which a slot inside a blurred folder reads past: a
+    // picture in pieces in it laid only the pieces the extent saw, and the
+    // blur at the view's edge lost the rest (🔬a 64×48 test cel in pieces
+    // beside the pen's row, blur 8: 238 bytes off on the test engine, 134
+    // under `--enable-impeller`; card nested-folder-buffers-read-past-the-
+    // view, 2026-10-23). What reads a slot is not part of its key — a live
+    // draw grows the folder buffers above it — and need not be: what of the
+    // rows in it lies within it does not move while the extent does not
+    // (`_paintSplit`, layer_stack_paint_pass.dart).
+    record(Canvas(recorder, within));
     _recordCount += 1;
     final picture = recorder.endRecording();
     _slots[id] = picture;

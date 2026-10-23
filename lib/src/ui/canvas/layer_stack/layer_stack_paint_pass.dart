@@ -103,12 +103,14 @@ class _SurfaceSlot {
 
 /// Who paints a node's children under a walk — the plain walk, or the split
 /// walk that descends the chain enclosing the active layer and replays a
-/// recording for the rest.
+/// recording for the rest — [within] the node's own buffer, which is what
+/// reads them ([_LayerStackPaintPass._bufferBoundsFor]).
 typedef _ChildPainter =
     void Function(
       Canvas canvas,
       List<CompositeNode<_PaintRow>> children,
       double rasterScale,
+      Rect within,
     );
 
 /// ONE PAINT OF THE LAYER STACK — the walk that draws the composite tree
@@ -678,7 +680,11 @@ class _LayerStackPaintPass {
     // buffer below the page, and the paper went with it.
     var extent = _canvasRect;
     for (final node in _painter.nodes) {
-      final rect = _bufferBoundsFor(node, activeSurfaceExtent);
+      final rect = _bufferBoundsFor(
+        node,
+        activeSurfaceExtent,
+        _visibleCanvasRect,
+      );
       if (rect.isEmpty) {
         continue;
       }
@@ -703,9 +709,10 @@ class _LayerStackPaintPass {
         : extent.intersect(_visibleCanvasRect);
   }
 
-  /// The CANVAS-SPACE rect a buffer for [node] covers — what of it is on
-  /// screen ([subtreeBufferBounds], the one law the camera's walk keeps
-  /// too).
+  /// The CANVAS-SPACE rect a buffer for [node] covers — what of it lies
+  /// [within] what reads it: the view at the top, and under a folder that
+  /// folder's buffer, which a blur on it reads past the view
+  /// ([subtreeBufferBounds], the one law the camera's walk keeps too).
   ///
   /// 🚨THIS IS WHAT KEEPS THE COMPOSITE AT CANVAS RESOLUTION AT EVERY ZOOM.
   ///
@@ -735,14 +742,14 @@ class _LayerStackPaintPass {
   Rect _bufferBoundsFor(
     CompositeNode<_PaintRow> node,
     Rect Function() activeSurfaceExtent,
+    Rect within,
   ) => subtreeBufferBounds(
     node,
-    // ⚠️The view at every depth, where the law asks for the buffer of the
-    // folder that holds [node]: a blurred folder holding a buffered one
-    // misses the inner folder's ink past the screen's edge, so the blur
-    // there changes as the view moves (card
+    // ↩️The view at every depth until 2026-10-23: a blurred folder holding a
+    // buffered one missed the inner folder's ink past the screen's edge, so
+    // the blur there changed as the view moved (card
     // nested-folder-buffers-read-past-the-view).
-    within: _visibleCanvasRect,
+    within: within,
     extentOf: (row) => switch (row) {
       _PaintImage(:final extent) => extent,
       _PaintActiveSurface() => activeSurfaceExtent(),
@@ -762,6 +769,8 @@ class _LayerStackPaintPass {
     // The scale the CTM this walk draws under is at. A group that
     // rasterises ITSELF needs it, and a `Canvas` will not tell anyone.
     double rasterScale,
+    // What reads these nodes ([_bufferBoundsFor]).
+    Rect within,
     _ChildPainter paintChildren,
   ) {
     for (final node in list) {
@@ -787,12 +796,19 @@ class _LayerStackPaintPass {
         body: () {
           switch (node) {
             case final CompositeGroup<_PaintRow> group:
-              _paintGroupNode(canvas, group, rasterScale, paintChildren);
+              _paintGroupNode(
+                canvas,
+                group,
+                rasterScale,
+                within,
+                paintChildren,
+              );
             case final CompositeAdjustment<_PaintRow> adjustment:
               _paintAdjustmentNode(
                 canvas,
                 adjustment,
                 rasterScale,
+                within,
                 paintChildren,
               );
             case final CompositeBackdropBlend<_PaintRow> blend:
@@ -800,6 +816,7 @@ class _LayerStackPaintPass {
                 canvas,
                 blend,
                 rasterScale,
+                within,
                 paintChildren,
               );
             case CompositeLeaf(payload: _PaintPaper()):
@@ -827,6 +844,7 @@ class _LayerStackPaintPass {
     Canvas canvas,
     CompositeGroup<_PaintRow> node,
     double rasterScale,
+    Rect within,
     _ChildPainter paintChildren,
   ) {
     final CompositeGroup<_PaintRow>(:children, :opacity, :blendMode, :effects) =
@@ -851,16 +869,19 @@ class _LayerStackPaintPass {
     // ⚠️It is the CONTENT that must sit inside, before the effect
     // grows it. The spread the size hint adds below is deliberate
     // — artwork just outside the view has to reach the blur at the
-    // view's edge — so there the buffer lies past the composite by
+    // view's edge — so there the buffer lies past what reads it by
     // exactly that spread, off screen. ↩️This asserted the grown
     // rect, and a blurred folder whose ink crossed the view's edge
     // stopped every debug build at any zoom (board
-    // `a-blurred-folder-outgrows-the-composite`).
-    final contentRect = _bufferBoundsFor(node, _activeSurfaceExtent);
+    // `a-blurred-folder-outgrows-the-composite`). ↩️And it asserted
+    // the display buffer, which a folder inside a blurred one lies
+    // past by the outer one's spread (card
+    // nested-folder-buffers-read-past-the-view).
+    final contentRect = _bufferBoundsFor(node, _activeSurfaceExtent, within);
     assert(
-      _contentExtent.expandToInclude(contentRect) == _contentExtent,
-      'a group buffer must sit inside the composite it is part '
-      'of: $contentRect is not within $_contentExtent',
+      within.expandToInclude(contentRect) == within,
+      'a group buffer must sit inside the buffer that reads it: '
+      '$contentRect is not within $within',
     );
     final groupRect = effectBufferBounds(
       contentRect,
@@ -874,10 +895,13 @@ class _LayerStackPaintPass {
       canvas: canvas,
       // The size hint grows by the blur's spread, so artwork just
       // OUTSIDE the visible rect still bleeds in — without this the
-      // blur at the screen edge would change as you scroll.
+      // blur at the screen edge would change as you scroll. It is
+      // what reads the children, so a folder among them holds its
+      // artwork out there too.
       bounds: groupRect,
       rasterScale: rasterScale,
-      paintSubtree: (into, scale) => paintChildren(into, children, scale),
+      paintSubtree: (into, scale) =>
+          paintChildren(into, children, scale, groupRect),
       compose: (blit) => blit(groupPaint),
       steps: groupPlan.preSteps,
     );
@@ -888,6 +912,7 @@ class _LayerStackPaintPass {
     Canvas canvas,
     CompositeAdjustment<_PaintRow> node,
     double rasterScale,
+    Rect within,
     _ChildPainter paintChildren,
   ) {
     final CompositeAdjustment<_PaintRow>(:children, :effects, :mix) = node;
@@ -895,7 +920,7 @@ class _LayerStackPaintPass {
     // which is what lets a stroke drawn UNDER an adjustment read
     // through the grade while you draw it.
     final pass = resolveAdjustmentScopePass(
-      bounds: _bufferBoundsFor(node, _activeSurfaceExtent),
+      bounds: _bufferBoundsFor(node, _activeSurfaceExtent, within),
       effects: effects,
       mix: mix,
     );
@@ -909,7 +934,8 @@ class _LayerStackPaintPass {
       canvas: canvas,
       bounds: pass.bufferBounds,
       rasterScale: rasterScale,
-      paintSubtree: (into, scale) => paintChildren(into, children, scale),
+      paintSubtree: (into, scale) =>
+          paintChildren(into, children, scale, pass.bufferBounds),
       compose: composeAdjustmentScope(canvas, pass),
       steps: pass.preSteps,
     );
@@ -922,16 +948,20 @@ class _LayerStackPaintPass {
     Canvas canvas,
     CompositeBackdropBlend<_PaintRow> node,
     double rasterScale,
+    Rect within,
     _ChildPainter paintChildren,
   ) {
     final CompositeBackdropBlend<_PaintRow>(:backdrop, :source, :blendMode) =
         node;
+    final bounds = _bufferBoundsFor(node, _activeSurfaceExtent, within);
     drawBlendOverBackdrop(
       canvas: canvas,
-      bounds: _bufferBoundsFor(node, _activeSurfaceExtent),
+      bounds: bounds,
       rasterScale: rasterScale,
-      paintBackdrop: (into, scale) => paintChildren(into, backdrop, scale),
-      paintSource: (into, scale) => paintChildren(into, [source], scale),
+      paintBackdrop: (into, scale) =>
+          paintChildren(into, backdrop, scale, bounds),
+      paintSource: (into, scale) =>
+          paintChildren(into, [source], scale, bounds),
       sourceAsIs: _rowAsItIs(source),
       blendMode: blendMode,
       shownWithin: _shownWithin,
@@ -1215,7 +1245,8 @@ class _LayerStackPaintPass {
     Canvas canvas,
     List<CompositeNode<_PaintRow>> list,
     double rasterScale,
-  ) => _paintNodesWith(canvas, list, rasterScale, _paintNodes);
+    Rect within,
+  ) => _paintNodesWith(canvas, list, rasterScale, within, _paintNodes);
 
   /// [_paintNodes] into a recording the bake keeps — replayed by later
   /// paints under whatever clip each of them has, so no blend in it is read
@@ -1224,11 +1255,12 @@ class _LayerStackPaintPass {
     Canvas canvas,
     List<CompositeNode<_PaintRow>> list,
     double rasterScale,
+    Rect within,
   ) {
     final shown = _shownWithin;
     _shownWithin = null;
     try {
-      _paintNodes(canvas, list, rasterScale);
+      _paintNodes(canvas, list, rasterScale, within);
     } finally {
       _shownWithin = shown;
     }
@@ -1239,18 +1271,28 @@ class _LayerStackPaintPass {
     List<CompositeNode<_PaintRow>> list,
     int depth,
     double rasterScale,
+    Rect within,
   ) {
     final at = list.indexWhere(_LayerStackPainter._enclosesActiveSurface);
     // Inside the buffer a slot's texel copies are copies at [rasterScale]
     // only — and a sub-tree raster's scale is its own (a capped one is
     // smaller) — so the scale is part of what the slot IS. The walk copies
     // nothing, and names its slots as it always did.
+    //
+    // ⚠️What reads a slot's rows ([within]) bounds its recording but is not
+    // part of what it is, though a live draw past the ink grows it: a row in
+    // a slot lies inside every folder of the chain above it, and a folder's
+    // buffer cut to a row inside it is what reads the folder, grown by its
+    // spread, cut to the row — the folder's own extent, the one a live draw
+    // moves, drops out. So a slot holds while the bake's extent does (card
+    // nested-folder-buffers-read-past-the-view).
     final slot = _composingTheBuffer ? 'd$depth@$rasterScale' : 'd$depth';
     if (at < 0) {
       _painter.bake!.draw(
         canvas,
         '$slot:all',
-        (into) => _paintBaked(into, list, rasterScale),
+        (into) => _paintBaked(into, list, rasterScale, within),
+        within: within,
       );
       return;
     }
@@ -1258,17 +1300,24 @@ class _LayerStackPaintPass {
       _painter.bake!.draw(
         canvas,
         '$slot:before',
-        (into) => _paintBaked(into, list.sublist(0, at), rasterScale),
+        (into) => _paintBaked(into, list.sublist(0, at), rasterScale, within),
+        within: within,
       );
     }
-    _paintNodesWith(canvas, [list[at]], rasterScale, (into, children, scale) {
-      _paintSplit(into, children, depth + 1, scale);
+    _paintNodesWith(canvas, [list[at]], rasterScale, within, (
+      into,
+      children,
+      scale,
+      reader,
+    ) {
+      _paintSplit(into, children, depth + 1, scale, reader);
     });
     if (at < list.length - 1) {
       _painter.bake!.draw(
         canvas,
         '$slot:after',
-        (into) => _paintBaked(into, list.sublist(at + 1), rasterScale),
+        (into) => _paintBaked(into, list.sublist(at + 1), rasterScale, within),
+        within: within,
       );
     }
   }
@@ -1326,6 +1375,7 @@ class _LayerStackPaintPass {
   void _paintBackdropSplit(Canvas into, double rasterScale) {
     final plan = _backdropPlan();
     final at = plan.at;
+    final view = _visibleCanvasRect;
     // One body, two mechanisms: the record closure is identical either
     // way, so the fallback cannot drift from the raster — `drawRaster`
     // records the same ops shifted into the rect and blits them back to
@@ -1344,33 +1394,35 @@ class _LayerStackPaintPass {
           rasterScale: rasterScale,
         );
       } else {
-        _painter.bake!.draw(into, id, record);
+        _painter.bake!.draw(into, id, record, within: view);
       }
     }
 
     if (at < 0) {
       drawBackdrop(
         'd0:backdrop-all',
-        (c) => _paintBaked(c, _rootNodes, rasterScale),
+        (c) => _paintBaked(c, _rootNodes, rasterScale, view),
       );
       return;
     }
     drawBackdrop(
       'd0:backdrop',
-      (c) => _paintBaked(c, _rootNodes.sublist(0, at), rasterScale),
+      (c) => _paintBaked(c, _rootNodes.sublist(0, at), rasterScale, view),
     );
-    _paintNodesWith(into, [_rootNodes[at]], rasterScale, (
+    _paintNodesWith(into, [_rootNodes[at]], rasterScale, view, (
       c,
       children,
       scale,
+      reader,
     ) {
-      _paintSplit(c, children, 1, scale);
+      _paintSplit(c, children, 1, scale, reader);
     });
     if (at < _rootNodes.length - 1) {
       _painter.bake!.draw(
         into,
         'd0:after',
-        (c) => _paintBaked(c, _rootNodes.sublist(at + 1), rasterScale),
+        (c) => _paintBaked(c, _rootNodes.sublist(at + 1), rasterScale, view),
+        within: view,
       );
     }
   }
@@ -1420,14 +1472,14 @@ class _LayerStackPaintPass {
     if (_painter.bake == null ||
         _painter.activeSurfacePainter == null ||
         _painter.liftedRows.isNotEmpty) {
-      _paintNodes(into, _rootNodes, rasterScale);
+      _paintNodes(into, _rootNodes, rasterScale, _visibleCanvasRect);
       return;
     }
     if (intoTheBuffer) {
       _paintBackdropSplit(into, rasterScale);
       return;
     }
-    _paintSplit(into, _rootNodes, 0, rasterScale);
+    _paintSplit(into, _rootNodes, 0, rasterScale, _visibleCanvasRect);
   }
 
   /// Rasterises [_paintContent] over [bounds] at CANVAS resolution — at the
