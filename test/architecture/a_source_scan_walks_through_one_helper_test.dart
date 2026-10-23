@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨A SOURCE SCAN WALKS THROUGH ONE HELPER — `dartFilesUnder`
 /// (`test/helpers/dart_sources.dart`).
@@ -14,41 +15,30 @@ import '../helpers/dart_sources.dart';
 /// ⛔SO THIS SCANS SOURCE, like the ratchets it guards: a copy that agrees
 /// with the helper today passes every behaviour test there is.
 void main() {
-  test('no test walks a folder by hand, outside the ledger', () {
-    final hits = [
-      for (final file in dartFilesUnder('test'))
-        ..._handWalks(_testPath(file.path), file.readAsStringSync()),
-    ]..removeWhere((hit) => _walksThatAreNotSourceScans.containsKey(hit.$1));
-    expect(
-      [for (final hit in hits) '${hit.$1}:${hit.$2}'],
-      isEmpty,
-      reason:
+  test('no test walks a folder by hand, outside the ledger — and every '
+      'ledger entry still walks', () {
+    final walks = <String, List<int>>{};
+    for (final file in dartFilesUnder('test')) {
+      final path = _testPath(file.path);
+      for (final (_, line) in _handWalks(path, file.readAsStringSync())) {
+        (walks[path] ??= []).add(line);
+      }
+    }
+    expectSetMatchesLedger(
+      walks.keys,
+      _walksThatAreNotSourceScans.keys,
+      unledgered:
           'walk with `dartFilesUnder(dir)` — it filters to Dart files and '
           'FAILS on a missing folder, where a copy quietly counts nothing '
           '(`filesUnder(dir)` for a scan of scripts and workflows). '
           'A walk that is not a source scan goes in the ledger, with why',
+      paidOff: 'these no longer walk by hand — take them off the list',
+      hits: walks,
     );
   });
 
-  test('every ledger entry still walks, and says why', () {
-    for (final entry in _walksThatAreNotSourceScans.entries) {
-      expect(
-        entry.value.length,
-        greaterThan(20),
-        reason: '${entry.key} needs a reason, not a slot',
-      );
-      final walks = _handWalks(
-        entry.key,
-        dartFilesUnder('test')
-            .firstWhere((file) => _testPath(file.path) == entry.key)
-            .readAsStringSync(),
-      );
-      expect(
-        walks,
-        isNotEmpty,
-        reason: '${entry.key} no longer walks by hand — take it off the list',
-      );
-    }
+  test('every ledger entry says why', () {
+    expectEveryEntrySaysWhy(_walksThatAreNotSourceScans);
   });
 
   test('the scan sees a planted walk, and not one in a comment', () {
@@ -94,13 +84,8 @@ const _theHelper = 'test/helpers/dart_sources.dart';
 List<(String, int)> _handWalks(String path, String source) => [
   if (path != _theHelper)
     for (final (index, line) in source.split('\n').indexed)
-      if (_code(line).contains(_walk)) (path, index + 1),
+      if (codeOf(line).contains(_walk)) (path, index + 1),
 ];
-
-String _code(String line) {
-  final comment = line.indexOf('//');
-  return comment < 0 ? line : line.substring(0, comment);
-}
 
 String _testPath(String path) {
   final forward = path.replaceAll(r'\', '/');

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨A POINT IS TURNED IN ONE PLACE — [PlaneTurn], beside the one table its
 /// cosine and sine come from.
@@ -64,7 +65,7 @@ void main() {
   /// two crossed sums stand within three lines of each other — its
   /// comments aside, so a decision that quotes the old spelling is not one.
   List<int> turnsIn(String source) {
-    final code = source.replaceAll(RegExp(r'//[^\n]*'), '');
+    final code = codeOfLines(source);
     if (!namesACosine.hasMatch(code) || !namesASine.hasMatch(code)) {
       return const [];
     }
@@ -160,22 +161,22 @@ void main() {
     }
   });
 
-  test('no file outside the ledger turns a point by hand', () {
-    final offenders = <String>[
+  test('no file outside the ledger turns a point by hand, and the ledger '
+      'holds no file that has stopped', () {
+    final turns = <String, List<int>>{
       for (final file in dartFilesUnder('lib'))
-        if (libPath(file) != home && !stillByHand.contains(libPath(file)))
-          for (final line in turnsIn(file.readAsStringSync()))
-            '${libPath(file)}:$line',
-    ];
-    expect(offenders, isEmpty, reason: 'reach for PlaneTurn');
-  });
-
-  test('the ledger holds no file that has stopped', () {
-    final paid = <String>[
-      for (final path in stillByHand)
-        if (turnsIn(File(path).readAsStringSync()).isEmpty) path,
-    ];
-    expect(paid, isEmpty, reason: 'delete these lines from stillByHand');
+        if (libPath(file) != home)
+          if (turnsIn(file.readAsStringSync()) case final lines
+              when lines.isNotEmpty)
+            libPath(file): lines,
+    };
+    expectSetMatchesLedger(
+      turns.keys,
+      stillByHand,
+      unledgered: 'reach for PlaneTurn',
+      paidOff: 'delete these lines from stillByHand',
+      hits: turns,
+    );
     expect(stillByHand, hasLength(2));
   });
 }

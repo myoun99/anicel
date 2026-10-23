@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨★★★THE EYE IS ONE WIDGET.
 ///
@@ -34,32 +35,24 @@ void main() {
   };
 
   test('only the ledger names the eye glyph', () {
-    final hits = <String>[];
-    for (final file in dartFilesUnder('lib')) {
-      if (file.readAsStringSync().contains('Icons.visibility')) {
-        hits.add(libPath(file));
-      }
-    }
-    hits.sort();
-    expect(
-      hits,
-      allowed.keys.toList()..sort(),
-      reason:
+    expectSetMatchesLedger(
+      [
+        for (final file in dartFilesUnder('lib'))
+          if (file.readAsStringSync().contains('Icons.visibility'))
+            libPath(file),
+      ],
+      allowed.keys,
+      unledgered:
           'a file that draws the eye itself is a second eye. Use '
           '`LayerVisibilityToggleButton`, or add a line here saying why '
           'this one is not a toggle',
+      paidOff: 'these no longer name the eye glyph — take their lines out',
     );
   });
 
   test('the ledger is not empty of reasons', () {
     // ★A ledger whose entries say nothing is a list of exceptions, which is
     // the thing this file exists to prevent.
-    for (final entry in allowed.entries) {
-      expect(
-        entry.value.length,
-        greaterThan(20),
-        reason: '${entry.key} needs a reason, not a slot',
-      );
-    }
+    expectEveryEntrySaysWhy(allowed);
   });
 }

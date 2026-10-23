@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨WORK ASKED FOR BY KEY WHILE IT RUNS IS SHARED IN ONE PLACE — `InFlight`
 /// (`lib/src/core/in_flight.dart`).
@@ -16,38 +17,23 @@ import '../helpers/dart_sources.dart';
 /// values are futures — so that is what is scanned for.
 void main() {
   test('nothing under lib/ keeps a map of futures but the one law, outside '
-      'the ledger', () {
-    final hits = [
-      for (final file in dartFilesUnder('lib'))
-        ..._mapsOfFutures(libPath(file), file.readAsStringSync()),
-    ]..removeWhere(_notAnotherInFlight.containsKey);
-    expect(
-      hits,
-      isEmpty,
-      reason:
+      'the ledger — and every ledger entry still keeps its map', () {
+    expectSetMatchesLedger(
+      [
+        for (final file in dartFilesUnder('lib'))
+          ..._mapsOfFutures(libPath(file), file.readAsStringSync()),
+      ],
+      _notAnotherInFlight.keys,
+      unledgered:
           'work shared by key while it runs is an `InFlight` — `join` it. '
           'A map of futures that is something else goes in the ledger, with '
           'why',
+      paidOff: 'these are gone — take them off the list',
     );
   });
 
-  test('every ledger entry still keeps its map, and says why', () {
-    final hits = {
-      for (final file in dartFilesUnder('lib'))
-        ..._mapsOfFutures(libPath(file), file.readAsStringSync()),
-    };
-    for (final entry in _notAnotherInFlight.entries) {
-      expect(
-        hits,
-        contains(entry.key),
-        reason: '${entry.key} is gone — take it off the list',
-      );
-      expect(
-        entry.value.length,
-        greaterThan(20),
-        reason: '${entry.key} needs a reason, not a slot',
-      );
-    }
+  test('every ledger entry says why', () {
+    expectEveryEntrySaysWhy(_notAnotherInFlight);
   });
 
   test('the scan sees a planted map by its field, and not one in a '

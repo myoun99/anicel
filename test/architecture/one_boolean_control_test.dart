@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨★★★THE APP HAS ONE BOOLEAN — the ring, dotted when on
 /// (`lib/src/ui/widgets/boolean_dot.dart`).
@@ -36,70 +37,62 @@ void main() {
   });
 
   test('the ring is drawn in one file', () {
-    final drawers = {
-      for (final file in dartFilesUnder('lib'))
-        if (_hits(libPath(file), file.readAsStringSync(), _ringGlyph)
-            .isNotEmpty)
-          libPath(file),
-    };
-    expect(
-      drawers,
-      {'lib/src/ui/widgets/boolean_dot.dart'},
-      reason:
+    expectSetMatchesLedger(
+      [
+        for (final file in dartFilesUnder('lib'))
+          if (_hits(libPath(file), file.readAsStringSync(), _ringGlyph)
+              .isNotEmpty)
+            libPath(file),
+      ],
+      const ['lib/src/ui/widgets/boolean_dot.dart'],
+      unledgered:
           'a file that draws the ring itself is a second boolean — the '
           'guide row had one, and its colours had already drifted from the '
           'rule 유저 gave',
+      paidOff:
+          'the one boolean no longer draws the ring here — name the file it '
+          'moved to',
     );
   });
 
   test('a check mark is a verb, never a state', () {
-    final wearers = {
-      for (final file in dartFilesUnder('lib'))
-        if (_hits(libPath(file), file.readAsStringSync(), _checkGlyph)
-            .isNotEmpty)
-          libPath(file),
-    };
-    expect(
-      wearers,
-      _checkMarkVerbs.keys.toSet(),
-      reason:
+    expectSetMatchesLedger(
+      [
+        for (final file in dartFilesUnder('lib'))
+          if (_hits(libPath(file), file.readAsStringSync(), _checkGlyph)
+              .isNotEmpty)
+            libPath(file),
+      ],
+      _checkMarkVerbs.keys,
+      unledgered:
           'a check that says 「on」 is the mark 「선택 표시는 색상만」 names — '
           'use the ring. A button whose job is to APPLY may wear one; add a '
           'line to _checkMarkVerbs saying which',
+      paidOff: 'these no longer wear a check — take them off _checkMarkVerbs',
     );
-    for (final entry in _checkMarkVerbs.entries) {
-      expect(
-        entry.value.length,
-        greaterThan(20),
-        reason: '${entry.key} needs a reason, not a slot',
-      );
-    }
+    expectEveryEntrySaysWhy(_checkMarkVerbs);
   });
 
   test('a ring beside a label is the settings row', () {
-    final builders = {
-      for (final file in dartFilesUnder('lib'))
-        if (!_ringsMade.contains(libPath(file)) &&
-            _hits(libPath(file), file.readAsStringSync(), _ringButton)
-                .isNotEmpty)
-          libPath(file),
-    };
-    expect(
-      builders,
-      _ringsOfTheirOwn.keys.toSet(),
-      reason:
+    expectSetMatchesLedger(
+      [
+        for (final file in dartFilesUnder('lib'))
+          if (!_ringsMade.contains(libPath(file)) &&
+              _hits(libPath(file), file.readAsStringSync(), _ringButton)
+                  .isNotEmpty)
+            libPath(file),
+      ],
+      _ringsOfTheirOwn.keys,
+      unledgered:
           'a labelled boolean is ONE row — the ring on the right presses '
           'and the label is words: `SettingsSwitchRow`. A ring is a button '
           'of its own only where the row around it already means something '
           'else; add a line to _ringsOfTheirOwn saying what',
+      paidOff:
+          'these no longer build a ring button of their own — take them off '
+          '_ringsOfTheirOwn',
     );
-    for (final entry in _ringsOfTheirOwn.entries) {
-      expect(
-        entry.value.length,
-        greaterThan(20),
-        reason: '${entry.key} needs a reason, not a slot',
-      );
-    }
+    expectEveryEntrySaysWhy(_ringsOfTheirOwn);
   });
 
   test('the scan sees a planted control, and not the app\'s own names or a '
@@ -195,10 +188,5 @@ const _checkMarkVerbs = <String, String>{
 /// replaced.
 List<String> _hits(String path, String source, RegExp pattern) => [
   for (final (index, line) in source.split('\n').indexed)
-    if (pattern.hasMatch(_code(line))) '$path:${index + 1}  ${line.trim()}',
+    if (pattern.hasMatch(codeOf(line))) '$path:${index + 1}  ${line.trim()}',
 ];
-
-String _code(String line) {
-  final comment = line.indexOf('//');
-  return comment < 0 ? line : line.substring(0, comment);
-}

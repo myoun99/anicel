@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// A LAYER THAT ANSWERS SOME OF ITS PIXELS IS GATED BY ONE WIDGET:
 /// [HitGate] (`lib/src/ui/input/hit_gate.dart`).
@@ -28,43 +31,34 @@ void main() {
   };
   final proxyBox = RegExp(r'extends RenderProxyBox\b');
   final hitTest = RegExp(r'bool hitTest\(BoxHitTestResult');
+  bool rewritesAHitTest(String source) =>
+      proxyBox.hasMatch(source) && hitTest.hasMatch(source);
 
   test('nothing but the gate rewrites a proxy box\'s hit test, but for the '
-      'reasons the ledger names', () {
-    final hits = <String>[];
-    for (final file in dartFilesUnder('lib')) {
-      final path = libPath(file);
-      final source = file.readAsStringSync();
-      if (path == home || ledger.contains(path)) {
-        continue;
-      }
-      if (proxyBox.hasMatch(source) && hitTest.hasMatch(source)) {
-        hits.add(path);
-      }
-    }
-    expect(
-      hits,
-      isEmpty,
-      reason:
+      'reasons the ledger names — and every file it names still does', () {
+    expectSetMatchesLedger(
+      [
+        for (final file in dartFilesUnder('lib'))
+          if (libPath(file) != home &&
+              rewritesAHitTest(file.readAsStringSync()))
+            libPath(file),
+      ],
+      ledger,
+      unledgered:
           'a box hit only where a predicate says is `HitGate(admits: …)` — '
           'or a reason of its own, written in this test\'s ledger',
+      paidOff: 'these no longer rewrite one, or are gone — drop them here',
     );
   });
 
-  test('the scan sees what it guards: the gate and every ledgered file '
-      'still rewrite a proxy box\'s hit test', () {
-    final sources = {
-      for (final file in dartFilesUnder('lib'))
-        libPath(file): file.readAsStringSync(),
-    };
-    for (final path in {home, ...ledger}) {
-      final source = sources[path];
-      expect(source, isNotNull, reason: '$path is gone — drop it here');
-      expect(
-        proxyBox.hasMatch(source!) && hitTest.hasMatch(source),
-        isTrue,
-        reason: '$path no longer rewrites one — drop it here',
-      );
-    }
+  test('the scan sees what it guards: the gate still rewrites a proxy '
+      'box\'s hit test', () {
+    final gate = File(home);
+    expect(gate.existsSync(), isTrue, reason: '$home is gone — drop it here');
+    expect(
+      rewritesAHitTest(gate.readAsStringSync()),
+      isTrue,
+      reason: '$home no longer rewrites one — drop it here',
+    );
   });
 }

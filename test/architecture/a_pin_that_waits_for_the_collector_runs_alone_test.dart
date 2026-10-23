@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 import '../../tool/affected_tests.dart'
     show
@@ -312,10 +313,9 @@ void main() {
         entity.path.substring(root.length + 1).replaceAll(r'\', '/'),
       );
     }
-    tagged.sort();
-    expect(
+    expectSetMatchesLedger(
       tagged,
-      [
+      const [
         'test/native/native_upload_cache_test.dart',
         'test/services/brush_stroke_accumulation_guard_test.dart',
         'test/ui/canvas/a_parked_transform_lets_go_of_its_picture_test.dart',
@@ -324,12 +324,15 @@ void main() {
         // kept, and only the collector can say it did.
         'test/ui/timeline/a_berth_that_leaves_lets_go_of_its_row_test.dart',
       ],
-      reason:
+      unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '
           'accident and invisible afterwards. If this list grew on purpose, '
           'say so here; if it grew because a pin was flaky for some other '
           "reason, the tag is the wrong fix and the flake's cause is the "
           'work.',
+      paidOff:
+          'These no longer carry the tag (or are gone) and run in the crowd '
+          'again — take them off the list here.',
     );
   });
 }

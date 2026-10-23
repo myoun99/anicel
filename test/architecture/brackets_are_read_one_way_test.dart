@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨NO SCAN COUNTS BRACKETS BY HAND — where one closes is asked of the one
 /// reading, `tool/source_brackets.dart` (2026-10-18,
@@ -43,27 +44,19 @@ void main() {
   test('no source scan or tool counts brackets but through the one '
       'reading', () {
     final scanned = <String>[];
-    final offenders = <String>[];
+    final counts = <String, List<String>>{};
     for (final file in [...dartFilesUnder('test'), ...dartFilesUnder('tool')]) {
       final path = file.path.replaceAll(r'\', '/');
       scanned.add(path);
       if (path.endsWith(_seat) || path.endsWith(_itself)) {
         continue;
       }
-      final counts = <String>[];
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {
         if (!lines[i].trimLeft().startsWith('//') &&
             _handCount.hasMatch(lines[i])) {
-          counts.add('$path:${i + 1}: ${lines[i].trim()}');
+          (counts[path] ??= []).add('${i + 1}: ${lines[i].trim()}');
         }
-      }
-      final allowed = _ledger.entries
-          .where((entry) => path.endsWith(entry.key))
-          .map((entry) => entry.value.lines)
-          .firstOrNull;
-      if (counts.length != (allowed ?? 0)) {
-        offenders.addAll(counts.isEmpty ? ['$path: none now'] : counts);
       }
     }
     expect(
@@ -74,15 +67,22 @@ void main() {
       ]),
       reason: 'premise: the walk reaches both trees',
     );
-    expect(
-      offenders,
-      isEmpty,
-      reason:
+    // Exact paths, not suffixes: a ledgered file that was deleted is paid off.
+    expectCountsMatchLedger(
+      {
+        for (final MapEntry(key: path, value: lines) in counts.entries)
+          path: lines.length,
+      },
+      {for (final entry in _ledger.entries) entry.key: entry.value.lines},
+      grew:
           'where a bracket closes is `tool/source_brackets.dart`\'s to say — '
           'matchingClose, callArguments, namedArgument, bodyOf (and '
           'sourceBodyOf over it in a test). A count by hand reads a bracket '
-          'in a string or a comment as one. A line in the ledger that is '
-          'gone: take it out',
+          'in a string or a comment as one',
+      paidOff:
+          'A line in the ledger that is gone: take it out (and one that '
+          'reads fewer brackets: lower its count)',
+      hits: counts,
     );
   });
 }

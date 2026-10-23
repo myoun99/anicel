@@ -47,14 +47,12 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/import_graph.dart';
+import '../helpers/source_ledger.dart';
 
 typedef _Loop = ({Set<String> files, String why});
 
 /// The loops that may exist today, and why each one is still here.
 final _ledger = <_Loop>[];
-
-bool _same(Set<String> files, List<String> loop) =>
-    files.length == loop.length && files.containsAll(loop);
 
 void main() {
   test('every import loop among lib files is in the ledger, and no ledger '
@@ -64,30 +62,17 @@ void main() {
       for (final entry in graph.entries)
         entry.key: entry.value.where((f) => f.startsWith('lib/')).toSet(),
     };
-    final loops = importCycles(libOnly);
-
-    final unknown = loops
-        .where((loop) => !_ledger.any((entry) => _same(entry.files, loop)))
-        .toList();
-    expect(
-      unknown,
-      isEmpty,
-      reason:
-          'New import loop(s):\n'
-          '${unknown.map((loop) => '  ${loop.join(' <-> ')}').join('\n')}\n'
-          'Give the shared piece a leaf file, or add the loop to _ledger '
-          'with the reason it has to exist.',
-    );
-
-    final dead = _ledger
-        .where((entry) => !loops.any((loop) => _same(entry.files, loop)))
-        .toList();
-    expect(
-      dead,
-      isEmpty,
-      reason:
-          'Ledger entries that no longer loop (remove them):\n'
-          '${dead.map((e) => '  ${e.files.join(' <-> ')}').join('\n')}',
+    // A loop by its files in order, so a loop and its ledger entry read the
+    // same however either was written.
+    String named(Iterable<String> files) =>
+        (files.toList()..sort()).join(' <-> ');
+    expectSetMatchesLedger(
+      importCycles(libOnly).map(named),
+      _ledger.map((entry) => named(entry.files)),
+      unledgered:
+          'New import loop(s). Give the shared piece a leaf file, or add the '
+          'loop to _ledger with the reason it has to exist:',
+      paidOff: 'Ledger entries that no longer loop (remove them):',
     );
   });
 }

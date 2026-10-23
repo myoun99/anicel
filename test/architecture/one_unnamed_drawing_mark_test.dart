@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨★★ONE ANSWER TO 「DOES THIS DRAWING HAVE A NAME」, AND ONE MARK FOR NO.
 ///
@@ -55,11 +56,7 @@ void main() {
   Iterable<(int, String)> codeLines(File file) sync* {
     final lines = file.readAsLinesSync();
     for (var index = 0; index < lines.length; index += 1) {
-      final comment = lines[index].indexOf('//');
-      yield (
-        index + 1,
-        comment == -1 ? lines[index] : lines[index].substring(0, comment),
-      );
+      yield (index + 1, codeOf(lines[index]));
     }
   }
 
@@ -104,17 +101,17 @@ void main() {
 
   test('nobody else spells the mark, nobody spells the retired one, nobody '
       'asks whether a frame name is empty, and nobody else hands a drawing '
-      'the unnamed mark', () {
+      'the unnamed mark — and the ledger names only files that still spell '
+      'a ● of their own', () {
     final offenders = <String>[];
+    final spellers = <String, List<int>>{};
     var scanned = 0;
     for (final file in dartFilesUnder('lib')) {
       scanned += 1;
       final path = libPath(file);
       for (final (line, code) in codeLines(file)) {
-        if (path != home &&
-            !notTheMark.containsKey(path) &&
-            code.contains(mark)) {
-          offenders.add('$path:$line spells the mark');
+        if (path != home && code.contains(mark)) {
+          (spellers[path] ??= []).add(line);
         }
         if (code.contains(retired)) {
           offenders.add('$path:$line spells the retired hollow mark');
@@ -137,15 +134,16 @@ void main() {
           'ask drawingHeadOf / celNumberOrMark / inbetweenMark — 유저: '
           '「당장은 제거」 for ○',
     );
-  });
-
-  test('the ledger names only files that still spell a ● of their own', () {
-    for (final path in notTheMark.keys) {
-      expect(
-        File(path).readAsStringSync(),
-        contains(mark),
-        reason: '$path no longer spells ● — take its line out of the ledger',
-      );
-    }
+    // Asked of the code the scan reads, a comment cut off: a ● only a
+    // comment of a ledgered file still names is no ● of its own.
+    expectSetMatchesLedger(
+      spellers.keys,
+      notTheMark.keys,
+      unledgered:
+          'these spell the mark — ask drawingHeadOf / celNumberOrMark / '
+          'inbetweenMark',
+      paidOff: 'these no longer spell ● — take their lines out of the ledger',
+      hits: spellers,
+    );
   });
 }

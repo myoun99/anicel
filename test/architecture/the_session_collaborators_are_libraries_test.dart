@@ -31,6 +31,8 @@ import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/source_ledger.dart';
+
 const _host = 'lib/src/ui/editor_session_manager.dart';
 const _sessionDir = 'lib/src/ui/session';
 const _rolesFile = 'lib/src/ui/session/session_roles.dart';
@@ -216,12 +218,13 @@ void main() {
         partOf.add(name);
       }
     }
-    expect(
-      partOf.toSet(),
-      _stillParts.keys.toSet(),
-      reason:
+    expectSetMatchesLedger(
+      partOf,
+      _stillParts.keys,
+      unledgered:
           'a file under $_sessionDir is `part of` the session and is not on '
-          'the ledger (or a ledger entry is paid and should be deleted).',
+          'the ledger.',
+      paidOff: 'a ledger entry is paid and should be deleted.',
     );
   });
 
