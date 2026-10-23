@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -13,6 +13,33 @@ import 'viewport_canvas_transform.dart' show applyViewportTransform;
 /// One plane of the stage (R3b): its colour and whether it is there at all
 /// (F-114) — one value, so a colour never travels without its absence.
 typedef StagePlane = ({Color color, bool none});
+
+/// The ground a canvas panel's shell lays under its stage — the one surface
+/// with no panel behind it, so it states its own colour — and so what a
+/// translucent backdrop shows through it on screen ([backdropOnScreen]).
+Color stageGroundOf(BuildContext context) =>
+    Theme.of(context).colorScheme.surfaceContainerLowest;
+
+/// The [backdrop] as the screen shows it: over the panel's [ground], once.
+///
+/// 🗣️F-114 (유저 2026-09-15): 「불투명도는 체크무늬는 안되고 진짜 불투명도를
+/// 낮추는행위」 — a translucent backdrop is the backdrop thinner, and what
+/// lies behind it shows: the panel's ground, laid once. Whatever lays the
+/// backdrop again over planes the screen already has — the film over the
+/// editing canvas, the fade's wash over the unit — lays THIS, opaque, so
+/// nothing under it shows through twice. An ABSENT backdrop stays absent:
+/// its checkerboard covers what is under it already.
+///
+/// ↩️The film laid the backdrop's own colour over the editing canvas's
+/// planes and the wash took that colour at the fade's share: a translucent
+/// backdrop played darker than it stood, a frame with no cut showed the
+/// editing cut's pasteboard through it, and a fade thinned to a colour the
+/// film never showed (a-translucent-backdrop-lies-twice-on-the-film,
+/// measured 10-23).
+StagePlane backdropOnScreen(StagePlane backdrop, Color ground) =>
+    backdrop.none
+    ? backdrop
+    : (color: Color.alphaBlend(backdrop.color, ground), none: false);
 
 /// One [plane] over [region], in the space the canvas is in: the
 /// checkerboard in the screen's cells where the plane is absent

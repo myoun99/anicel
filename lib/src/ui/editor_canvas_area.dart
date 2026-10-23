@@ -40,7 +40,8 @@ import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/display_resample.dart' show displayScaleOf;
 import 'canvas/paper_background.dart' show paintAbsentPlane;
-import 'canvas/stage_planes_painter.dart' show StagePlane;
+import 'canvas/stage_planes_painter.dart'
+    show StagePlane, backdropOnScreen, stageGroundOf;
 import 'canvas/viewport_canvas_transform.dart';
 import '../services/composite_effect_paint.dart' show alphaOnly;
 import 'brush/main_canvas_brush_host.dart';
@@ -1880,6 +1881,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // pixel-equal to thinning the unit, without
       // re-compositing the editing stack.
       //
+      // The backdrop AS THE SCREEN SHOWS IT ([backdropOnScreen]): over the
+      // panel's ground, opaque — what the film's floor is under the thinned
+      // unit. ↩️The wash took the backdrop's own colour at the fade's share,
+      // its alpha dropped: a translucent backdrop thinned the cut to a
+      // colour the film never showed (a-translucent-backdrop-lies-twice-
+      // on-the-film, measured 10-23).
+      //
       // A run seen through the camera has the camera's frame for its unit
       // ([PlaybackFramePainter.veils]), and its O.L partner the camera too.
       // Seen through none the unit reaches as far as the pasteboard: its
@@ -1909,10 +1917,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     ? frame.canvasRect
                     : session.pasteboardOf(canvasSize).rect,
                 veils: veils,
-                backdrop: (
+                backdrop: backdropOnScreen((
                   color: Color(project.backdropArgb),
                   none: project.backdropNone,
-                ),
+                ), stageGroundOf(context)),
                 share: backdropShareUnder(cutFadeOpacity, [
                   for (final partner in partners) partner.opacity,
                 ]),
@@ -2067,7 +2075,9 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   /// wash — they are the unit's, and the wash thins the unit.
   final List<TransitionVeil> veils;
 
-  /// The stage's backdrop, its colour and whether it is there at all.
+  /// The stage's backdrop as the screen shows it ([backdropOnScreen]) —
+  /// opaque, or absent — so laid at [share] over the unit it is the unit
+  /// thinned over the film's floor.
   final StagePlane backdrop;
 
   /// How much of the frame the backdrop takes over the unit

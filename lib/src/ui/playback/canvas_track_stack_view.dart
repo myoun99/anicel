@@ -150,7 +150,9 @@ class CanvasTrackStackView extends StatelessWidget {
 
   /// The BACKDROP (R3b): the panel-wide floor this stack sits on — what
   /// an uncovered frame shows (the old void) and what a translucent cut
-  /// reveals. A fade lays its own screen instead (F-192).
+  /// reveals. A fade lays its own screen instead (F-192). The project's,
+  /// alpha and all: the floor lays it over the panel's ground
+  /// ([backdropOnScreen]).
   final int backdropArgb;
 
   /// The bottom covered track's stage apron (R3b): fills its camera frame
@@ -191,12 +193,20 @@ class CanvasTrackStackView extends StatelessWidget {
     // An ABSENT backdrop (F-114) is the checkerboard, as on the editing
     // canvas. Seen through the camera, the floor past its frame is the
     // letterbox ([_StageFloor]).
+    //
+    // As the SCREEN shows the backdrop ([backdropOnScreen]): the film lies
+    // over the editing canvas's own planes, so its floor is the backdrop
+    // over the panel's ground, once — opaque, where the editing canvas's
+    // planes would show through it twice.
     final Widget? floor = !paintsFloor
         ? null
         : CustomPaint(
             key: const ValueKey<String>('canvas-track-stack-floor'),
             painter: _StageFloor(
-              backdrop: (color: Color(backdropArgb), none: backdropNone),
+              backdrop: backdropOnScreen((
+                color: Color(backdropArgb),
+                none: backdropNone,
+              ), stageGroundOf(context)),
               camera: cameraViewEnabled
                   ? (frameSize: cameraFrameSize, viewport: viewport)
                   : null,

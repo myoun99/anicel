@@ -3470,13 +3470,14 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     return Stack(
       key: const ValueKey<String>('canvas-editor-panel-shell'),
       children: [
-        // Nothing is meant to show through — the canvas paints its own
-        // backdrop over the whole box — but the floor is the one surface
+        // Nothing shows through — the canvas lays its backdrop over the
+        // whole box as the screen shows it, over THIS ground
+        // ([backdropOnScreen], F-114) — but the floor is the one surface
         // with no panel behind it, so it states its own floor colour rather
-        // than borrowing whatever the route happens to be sitting on.
-        Positioned.fill(
-          child: ColoredBox(color: colorScheme.surfaceContainerLowest),
-        ),
+        // than borrowing whatever the route happens to be sitting on. One
+        // answer for it ([stageGroundOf]): the film and the fade's wash lay
+        // the backdrop over the same ground.
+        Positioned.fill(child: ColoredBox(color: stageGroundOf(context))),
         // ★THE CANVAS IS ITS OWN LAYER, and the shell's furniture is
         // another. This is where a cursor move's repaint stops.
         //
@@ -4531,7 +4532,8 @@ class _CanvasViewportPanbar extends StatelessWidget {
 /// the pasteboard over it, both RGBA (F-114), and the checkerboard
 /// wherever one of them is ABSENT — laid as every cut seen through no
 /// camera lays them ([StagePlanesPainter], where the laws of where each
-/// plane lies live).
+/// plane lies live). The backdrop goes down as the screen shows it, over
+/// the panel's ground ([backdropOnScreen]), as the film's floor does.
 ///
 /// 🪦It used to subscribe to an ALPHA-PREVIEW toggle in the settings menu,
 /// which replaced BOTH planes with the checkerboard. 유저 2026-09-16: 「설정의
@@ -4573,7 +4575,10 @@ class _StagePlanes extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomPaint(
       painter: StagePlanesPainter(
-        backdrop: (color: Color(backdropArgb), none: backdropNone),
+        backdrop: backdropOnScreen((
+          color: Color(backdropArgb),
+          none: backdropNone,
+        ), stageGroundOf(context)),
         pasteboard: hasPasteboard
             ? (color: Color(pasteboardArgb), none: pasteboardNone)
             : null,
