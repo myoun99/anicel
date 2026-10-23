@@ -119,7 +119,7 @@ void main() {
     );
   });
 
-  testWidgets('the bucket and the dropper are sprites with the spout and '
+  testWidgets('the bucket and the dropper are sprites with the drop and '
       'the tip as hot spots; the swatch is a sprite of its own', (
     tester,
   ) async {
@@ -127,7 +127,7 @@ void main() {
     await hover(tester, const Offset(40, 40));
     final bucket = find.byKey(const ValueKey<String>('fill-cursor-icon'));
     expect(toolCursorShownAt(tester, bucket), isNotNull);
-    expect(tester.widget<ToolCursorSprite>(bucket).look.hotspot, const Offset(3, 20));
+    expect(tester.widget<ToolCursorSprite>(bucket).look.hotspot, const Offset(4.5, 19));
 
     await pumpPanel(tester, tool: CanvasTool.eyedropper);
     await tester.pump();

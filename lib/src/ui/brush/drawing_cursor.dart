@@ -23,10 +23,10 @@ MouseCursor drawingSystemCursor(
   required double devicePixelRatio,
 }) => switch (cursor) {
   DrawingCursor.brush => SystemMouseCursors.none,
-  DrawingCursor.pen =>
-    _systemTakesPictures
-        ? PenMouseCursor(devicePixelRatio: devicePixelRatio)
-        : SystemMouseCursors.none,
+  DrawingCursor.pen => lookSystemCursor(
+    penCursorLook(),
+    devicePixelRatio: devicePixelRatio,
+  ),
   DrawingCursor.crosshair =>
     _systemShowsCursors ? SystemMouseCursors.precise : SystemMouseCursors.none,
 };
@@ -38,6 +38,26 @@ bool appDrawsDrawingCursor(DrawingCursor cursor) =>
     drawingSystemCursor(cursor, devicePixelRatio: 1) ==
     SystemMouseCursors.none;
 
+/// A cursor of one size as the system's — the pen (I-54), the fill's bucket
+/// and the eyedropper (F-441) — wherever the system takes a picture for its
+/// cursor, and [SystemMouseCursors.none], the app drawing [look], anywhere
+/// else.
+///
+/// 🗣️F-441 (유저 2026-10-23): 「채우기도구처럼 크기를 크게 키울 필요가 없는
+/// 고정크기 커서 도구는 기본적으로 os커서로서 변환해서 사용. 지금 앱 커서라
+/// 느린게 보임」.
+MouseCursor lookSystemCursor(
+  ToolCursorLook look, {
+  required double devicePixelRatio,
+}) => _systemTakesPictures
+    ? LookMouseCursor(look, devicePixelRatio: devicePixelRatio)
+    : SystemMouseCursors.none;
+
+/// Whether the app draws [look] itself: where the system is asked to show
+/// none ([lookSystemCursor]).
+bool appDrawsLook(ToolCursorLook look) =>
+    lookSystemCursor(look, devicePixelRatio: 1) == SystemMouseCursors.none;
+
 /// Whether the system shows the cursor a region asks for: everywhere but
 /// iPadOS, whose engine has no `flutter/mousecursor` handler at all.
 bool get _systemShowsCursors => defaultTargetPlatform != TargetPlatform.iOS;
@@ -46,16 +66,19 @@ bool get _systemShowsCursors => defaultTargetPlatform != TargetPlatform.iOS;
 /// takes one over `flutter/mousecursor` (`createCustomCursor/windows`).
 ///
 /// ⚠️macOS, Android and Linux take one only through the runner (I-54 ⓔ);
-/// until then the app draws the pen there.
+/// until then the app draws the looks there.
 bool get _systemTakesPictures =>
     defaultTargetPlatform == TargetPlatform.windows;
 
-/// The pen (I-54) as the system's cursor: [penCursorLook]'s pixels, handed
-/// to Windows once a size and named after that — so it moves at the
-/// system's speed, with nothing of the app's frame in its way.
+/// A [ToolCursorLook] as the system's cursor: its pixels, handed to Windows
+/// once a look and size and named after that — so it moves at the system's
+/// speed, with nothing of the app's frame in its way. Two are the same
+/// cursor when their looks are ([ToolCursorLook.key]).
 @immutable
-class PenMouseCursor extends MouseCursor {
-  const PenMouseCursor({required this.devicePixelRatio});
+class LookMouseCursor extends MouseCursor {
+  const LookMouseCursor(this.look, {required this.devicePixelRatio});
+
+  final ToolCursorLook look;
 
   /// The screen's pixels per logical pixel, which the picture is made at.
   final double devicePixelRatio;
@@ -63,30 +86,36 @@ class PenMouseCursor extends MouseCursor {
   @override
   @protected
   MouseCursorSession createSession(int device) =>
-      _PenCursorSession(this, device);
+      _LookCursorSession(this, device);
 
   @override
-  String get debugDescription => 'PenMouseCursor($devicePixelRatio)';
+  String get debugDescription =>
+      'LookMouseCursor(${look.key}, $devicePixelRatio)';
 
   @override
   bool operator ==(Object other) =>
-      other is PenMouseCursor && other.devicePixelRatio == devicePixelRatio;
+      other is LookMouseCursor &&
+      other.look.key == look.key &&
+      other.devicePixelRatio == devicePixelRatio;
 
   @override
-  int get hashCode => devicePixelRatio.hashCode;
+  int get hashCode => Object.hash(look.key, devicePixelRatio);
 }
 
-class _PenCursorSession extends MouseCursorSession {
-  _PenCursorSession(PenMouseCursor super.cursor, super.device);
+class _LookCursorSession extends MouseCursorSession {
+  _LookCursorSession(LookMouseCursor super.cursor, super.device);
 
   @override
-  PenMouseCursor get cursor => super.cursor as PenMouseCursor;
+  LookMouseCursor get cursor => super.cursor as LookMouseCursor;
 
   bool _disposed = false;
 
   @override
   Future<void> activate() async {
-    final name = await _penCursorNamed(cursor.devicePixelRatio);
+    final name = await _lookCursorNamed(
+      cursor.look,
+      cursor.devicePixelRatio,
+    );
     // A cursor that came after this one while its picture was being made
     // has the system now; this one must not take it back.
     if (_disposed || name == null) {
@@ -106,21 +135,23 @@ class _PenCursorSession extends MouseCursorSession {
   void dispose() => _disposed = true;
 }
 
-/// The name Windows knows each size of the pen by — made once a size, for
-/// the engine keeps every one it is handed for the life of the window.
-final Map<int, Future<String?>> _penCursorNames = <int, Future<String?>>{};
+/// The name Windows knows each look at each size by — made once, for the
+/// engine keeps every one it is handed for the life of the window.
+final Map<(Object, int), Future<String?>> _lookCursorNames = {};
 
-Future<String?> _penCursorNamed(double devicePixelRatio) {
-  final look = penCursorLook();
+Future<String?> _lookCursorNamed(
+  ToolCursorLook look,
+  double devicePixelRatio,
+) {
   final side = (look.extent.longestSide * devicePixelRatio).ceil();
-  return _penCursorNames[side] ??= _makePenCursor(
+  return _lookCursorNames[(look.key, side)] ??= _makeLookCursor(
     look,
     side: side,
     scale: devicePixelRatio,
   );
 }
 
-Future<String?> _makePenCursor(
+Future<String?> _makeLookCursor(
   ToolCursorLook look, {
   required int side,
   required double scale,
@@ -144,7 +175,7 @@ Future<String?> _makePenCursor(
     return await SystemChannels.mouseCursor.invokeMethod<String>(
       'createCustomCursor/windows',
       <String, Object>{
-        'name': 'anicel-pen-$side',
+        'name': 'anicel-${look.key}-$side',
         'buffer': bgraOf(rgba),
         'width': side,
         'height': side,

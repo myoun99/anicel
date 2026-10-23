@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/brush/brush_cursor_painter.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/drawing_cursor.dart';
+import 'package:anicel/src/ui/brush/tool_cursor_look.dart';
 import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
@@ -46,6 +47,7 @@ void main() {
     bool toolCursorsEnabled = true,
     bool Function()? onPressNeedsCel,
     VoidCallback? onAutoFrameSettled,
+    bool samples = false,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     await tester.pumpWidget(
@@ -66,6 +68,8 @@ void main() {
             toolCursorsEnabled: toolCursorsEnabled,
             onPressNeedsCel: onPressNeedsCel,
             onAutoFrameSettled: onAutoFrameSettled,
+            sampleColorAt: samples ? (_) => 0xFF123456 : null,
+            onEyedropperPick: samples ? (_) {} : null,
           ),
         ),
       ),
@@ -424,7 +428,7 @@ void main() {
     expect(drawn(tester, pen), isTrue);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
-  group('on Windows the pen is the system\'s cursor', () {
+  group('on Windows the cursors of one size are the system\'s', () {
     late List<MethodCall> calls;
 
     void listen(WidgetTester tester) {
@@ -460,7 +464,7 @@ void main() {
       choose(DrawingCursor.pen);
       await pumpPanel(tester);
       await hover(tester, const Offset(40, 40));
-      expect(shown(), const PenMouseCursor(devicePixelRatio: 3));
+      expect(shown(), LookMouseCursor(penCursorLook(), devicePixelRatio: 3));
       expect(drawn(tester, pen), isFalse);
       expect(drawn(tester, outline), isFalse);
 
@@ -507,7 +511,7 @@ void main() {
       choose(DrawingCursor.pen);
       await pumpPanel(tester);
       await hover(tester, const Offset(40, 40));
-      expect(shown(), const PenMouseCursor(devicePixelRatio: 2));
+      expect(shown(), LookMouseCursor(penCursorLook(), devicePixelRatio: 2));
 
       choose(DrawingCursor.crosshair);
       await tester.pump();
@@ -529,6 +533,58 @@ void main() {
         (named('activateSystemCursor').last.arguments
             as Map<Object?, Object?>)['kind'],
         'precise',
+      );
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+    // 🗣️F-441 (유저 2026-10-23): 「크기를 크게 키울 필요가 없는 고정크기
+    // 커서 도구는 기본적으로 os커서로서 변환해서 사용」.
+    testWidgets('🚨the fill\'s bucket and the eyedropper are the system\'s '
+        'cursor too, each its own picture — and the dropper\'s swatch stays '
+        'the app\'s, the colour under the aim', (tester) async {
+      listen(tester);
+      // One mouse throughout: [shown] reads the first device's cursor.
+      TestGesture? mouse;
+      for (final (tool, look, sprite) in [
+        (CanvasTool.fill, fillCursorLook(), 'fill-cursor-icon'),
+        (
+          CanvasTool.eyedropper,
+          eyedropperCursorLook(),
+          'eyedropper-cursor-icon',
+        ),
+      ]) {
+        await pumpPanel(tester, tool: tool, samples: true);
+        if (mouse == null) {
+          mouse = await hover(tester, const Offset(40, 40));
+        } else {
+          await mouse.moveTo(canvasGlobalOffset(tester, const Offset(44, 40)));
+          await tester.pump();
+        }
+        expect(
+          shown(),
+          LookMouseCursor(look, devicePixelRatio: 3),
+          reason: tool.name,
+        );
+        expect(drawn(tester, ValueKey<String>(sprite)), isFalse);
+        await settleAsync(
+          tester,
+          () => named('setCustomCursor/windows').any(
+            (call) =>
+                (call.arguments as Map<Object?, Object?>)['name'] ==
+                'anicel-${look.key}-66',
+          ),
+        );
+      }
+      expect(
+        drawn(tester, const ValueKey<String>('eyedropper-hover-swatch')),
+        isTrue,
+      );
+      expect(
+        named('createCustomCursor/windows').map(
+          (call) => (call.arguments as Map<Object?, Object?>)['hotX'],
+        ),
+        [13.5, 9.0],
+        reason: 'the drop\'s foot, the dropper\'s tip — in the screen\'s '
+            'pixels',
       );
     }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
   });

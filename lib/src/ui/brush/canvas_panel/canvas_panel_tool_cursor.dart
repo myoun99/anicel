@@ -67,7 +67,7 @@ class _CanvasPanelToolCursor {
   /// move cost a frame. ⛔Not the drawing tools by themselves: a cursor the
   /// system wears (I-54) moves without one.
   bool get drawsAtTheAim =>
-      fillCursorActive ||
+      fillCursorActive && appDrawsLook(fillCursorLook()) ||
       brushCursorActive &&
           appDrawsDrawingCursor(AppInput.settings.value.drawingCursor);
 
@@ -117,10 +117,20 @@ class _CanvasPanelToolCursor {
     required double devicePixelRatio,
   }) {
     // R26 #22 · #23: the eyedropper and the fill wear their OWN icons, not
-    // a crosshair — the system cursor hides and the icon rides the aim (유저,
-    // F-130: 「앱 커서만 최대한 가볍게」).
-    if (eyedropperCursorActive || fillCursorActive) {
-      return SystemMouseCursors.none;
+    // a crosshair — as the system's cursor where the system takes a picture
+    // (F-441), riding the aim as the app's anywhere else (유저, F-130:
+    // 「앱 커서만 최대한 가볍게」).
+    if (eyedropperCursorActive) {
+      return lookSystemCursor(
+        eyedropperCursorLook(),
+        devicePixelRatio: devicePixelRatio,
+      );
+    }
+    if (fillCursorActive) {
+      return lookSystemCursor(
+        fillCursorLook(),
+        devicePixelRatio: devicePixelRatio,
+      );
     }
     if (brushCursorActive) {
       return drawingSystemCursor(drawing, devicePixelRatio: devicePixelRatio);
@@ -313,17 +323,21 @@ class _CanvasPanelToolCursor {
           ),
         ),
         // R26 #22: the eyedropper ICON as the cursor. Its tip is the hot
-        // spot, so the glyph hangs up-left of the point being sampled.
-        tick(
-          ToolCursorSprite(
-            key: const ValueKey<String>('eyedropper-cursor-icon'),
-            position: aim,
-            look: eyedropperCursorLook(),
+        // spot, so the glyph hangs up-left of the point being sampled. The
+        // app draws it only where the system does not wear it (F-441); the
+        // swatch is the app's everywhere — it is the colour under the aim.
+        if (appDrawsLook(eyedropperCursorLook()))
+          tick(
+            ToolCursorSprite(
+              key: const ValueKey<String>('eyedropper-cursor-icon'),
+              position: aim,
+              look: eyedropperCursorLook(),
+            ),
           ),
-        ),
       ],
-      // R26 #23: the fill tool wears the bucket.
-      if (fillCursorActive)
+      // R26 #23: the fill tool wears the bucket — the app's only where the
+      // system does not (F-441).
+      if (fillCursorActive && appDrawsLook(fillCursorLook()))
         tick(
           ToolCursorSprite(
             key: const ValueKey<String>('fill-cursor-icon'),
