@@ -279,6 +279,12 @@ class TimelineGridTileStore {
           spanStartIndex,
           spanEndIndexExclusive,
           devicePixelRatio,
+          inkNow: () => _inkOf(
+            painter,
+            spanStartIndex: spanStartIndex,
+            spanEndIndexExclusive: spanEndIndexExclusive,
+            devicePixelRatio: devicePixelRatio,
+          ),
         )) {
       return entry.image;
     }
@@ -469,7 +475,7 @@ class TimelineGridTileStore {
       // suspends between its content reads and this landing (the glyph A8
       // bake, the ImmutableBuffer upload are real awaits), so a crossing
       // that bumps the revision inside that window would give pixels of
-      // revision N a stamp of N+1 — and `matches()` compares the NUMBER, so
+      // revision N a stamp of N+1 — and `showsNow` trusts the NUMBER, so
       // the poisoned tile was served as fresh forever (the LRU survives cut
       // trips and the 'projectId:cutId' string is reproduced exactly on
       // return; only the NEXT bump healed it).
@@ -482,6 +488,7 @@ class TimelineGridTileStore {
       blockFrameLines: request.painter.blockFrameLines,
       framesPerSecond: request.painter.framesPerSecond,
       image: rastered.image,
+      ink: rastered.ink,
     );
     _entries.keep(key, landed)?.image.dispose();
     revision.value += 1;
@@ -618,6 +625,12 @@ class TimelineGridTileStore {
           request.spanStartIndex,
           request.spanEndIndexExclusive,
           request.devicePixelRatio,
+          inkNow: () => _inkOf(
+            request.painter,
+            spanStartIndex: request.spanStartIndex,
+            spanEndIndexExclusive: request.spanEndIndexExclusive,
+            devicePixelRatio: request.devicePixelRatio,
+          ),
         )) {
       return;
     }
@@ -844,7 +857,7 @@ class TimelineGridTileStore {
     final sampledCelContentRevision = painter.celContentRevision;
     // ONE pass over the span's cells for the paper and the ink both — every
     // cell the two ask for is resolved once, as in a paint.
-    final (:substrate, :glyphs) = painter.readInOnePass(
+    final (:substrate, :ink) = painter.readInOnePass(
       () => (
         substrate: timelineGridEmitSubstrate(
           writer,
@@ -853,16 +866,20 @@ class TimelineGridTileStore {
           spanEndIndexExclusive: request.spanEndIndexExclusive,
           devicePixelRatio: dpr,
         ),
-        glyphs: _emitForeground(
-          writer,
-          painter: painter,
+        ink: _inkOf(
+          painter,
           spanStartIndex: request.spanStartIndex,
           spanEndIndexExclusive: request.spanEndIndexExclusive,
           devicePixelRatio: dpr,
         ),
       ),
     );
-    final atlas = await _bakeGlyphs(writer, glyphs, devicePixelRatio: dpr);
+    writer.append(ink.ops);
+    final atlas = await _bakeGlyphs(
+      writer,
+      ink.glyphs,
+      devicePixelRatio: dpr,
+    );
 
     final ops = writer.build();
     final pixels = Uint8List(tileWidth * tileHeight * 4);
@@ -886,8 +903,30 @@ class TimelineGridTileStore {
       image: image,
       celContentRevision: sampledCelContentRevision,
       substrate: substrate,
+      ink: ink,
     );
   }
+
+  /// The ink [painter]'s span [spanStartIndex, spanEndIndexExclusive) bakes
+  /// over its substrate: the ops of its marks and holds' lines, and the
+  /// words it sets — what a raster writes, and what a tile it holds is
+  /// asked against ([_TileEntry.showsNow]).
+  _TileInk _inkOf(
+    TimelineTileRasterSource painter, {
+    required int spanStartIndex,
+    required int spanEndIndexExclusive,
+    required double devicePixelRatio,
+  }) => painter.readInOnePass(() {
+    final writer = TimelineGridTileOpWriter();
+    final glyphs = _emitForeground(
+      writer,
+      painter: painter,
+      spanStartIndex: spanStartIndex,
+      spanEndIndexExclusive: spanEndIndexExclusive,
+      devicePixelRatio: devicePixelRatio,
+    );
+    return (ops: writer.build(), glyphs: glyphs);
+  });
 
   /// The op stream [_emitForeground] writes for a span — what a tile bakes
   /// over its substrate, readable without a native engine.
@@ -898,15 +937,14 @@ class TimelineGridTileStore {
     required int spanEndIndexExclusive,
     required double devicePixelRatio,
   }) async {
-    final writer = TimelineGridTileOpWriter();
-    final glyphs = _emitForeground(
-      writer,
-      painter: painter,
+    final ink = _inkOf(
+      painter,
       spanStartIndex: spanStartIndex,
       spanEndIndexExclusive: spanEndIndexExclusive,
       devicePixelRatio: devicePixelRatio,
     );
-    await _bakeGlyphs(writer, glyphs, devicePixelRatio: devicePixelRatio);
+    final writer = TimelineGridTileOpWriter()..append(ink.ops);
+    await _bakeGlyphs(writer, ink.glyphs, devicePixelRatio: devicePixelRatio);
     return writer.build();
   }
 
@@ -935,9 +973,11 @@ class TimelineGridTileStore {
 
     final glyphCells = <_TileGlyph>[];
     // F-96: a word may start before the span and grow into it, so the
-    // nearest earlier word is baked too — the tile's own edge cuts what lies
-    // outside it, the way it cuts a word that grows past the span's end.
-    final lead = painter.wordCellBefore(spanStartIndex);
+    // earlier word that does is baked too — the tile's own edge cuts what
+    // lies outside it, the way it cuts a word that grows past the span's end.
+    // 🗣️F-446: ↩️the nearest earlier word, whether it reached or not — so a
+    // tile showed the same pixels from two layers and baked them apart.
+    final lead = painter.wordGrowingInto(spanStartIndex);
     for (final frameIndex in [
       ?lead,
       ...painter.writingCellsIn(spanStartIndex, spanEndIndexExclusive),
@@ -1186,13 +1226,18 @@ typedef _TileGlyph = ({
 /// fit, and set as tight as its letter gaps gave way (F-234-Q1).
 typedef _GlyphBake = ({double dpr, WordFit fit, double tightening});
 
-/// What `_raster` hands the drain: the pixels, and the revision and the
-/// substrate they describe.
+/// What `_raster` hands the drain: the pixels, and the revision, the
+/// substrate and the ink they describe.
 typedef _Rastered = ({
   ui.Image image,
   int celContentRevision,
   TimelineRowSubstrate substrate,
+  _TileInk ink,
 });
+
+/// The ink a tile bakes over its substrate ([TimelineGridTileStore._inkOf]):
+/// the ops its marks and holds' lines write, and the words it sets.
+typedef _TileInk = ({Int32List ops, List<_TileGlyph> glyphs});
 
 class _TileEntry {
   _TileEntry({
@@ -1214,6 +1259,7 @@ class _TileEntry {
     required this.blockFrameLines,
     required this.framesPerSecond,
     required this.image,
+    required this.ink,
   });
 
   /// #29: the (project, cut) world this tile's resolvers answered from.
@@ -1223,9 +1269,9 @@ class _TileEntry {
   /// the one failure mode a cache is not allowed to have.
   final String substrateGeneration;
 
-  /// The layer the tile was baked from. A later instance serves too, where
-  /// it shows the same cells through this tile ([_showsSameCellsAs]).
-  final Layer layer;
+  /// The layer the tile shows: the one it was baked from, or a later one
+  /// that bakes this span the same ([showsNow]), which it takes on.
+  Layer layer;
 
   /// ㉘: what the row's coverage follows when it is not the layer — a
   /// camera row's keys live on `cut.camera`, so a tile baked before a key
@@ -1245,10 +1291,10 @@ class _TileEntry {
   /// content's own version — the value `_raster` SAMPLED alongside its
   /// content reads, never a live read at store time (a crossing landing
   /// mid-raster would stamp pre-crossing pixels as post-crossing and
-  /// `matches` would serve them fresh forever).
+  /// [showsNow] would serve them fresh forever).
   ///
   /// It moves only in [showsNow], to a newer revision whose substrate
-  /// [stillShows] finds this tile's own, read in one synchronous block.
+  /// it finds this tile's own, read in one synchronous block.
   int celContentRevision;
 
   /// The paper and lines `_raster` laid down — read in the same block as
@@ -1273,44 +1319,19 @@ class _TileEntry {
 
   final ui.Image image;
 
-  /// The `shouldRepaint` identity, tile edition: any changed look fact
-  /// re-rasters (glyphs live in the tiles too — T3 — so the glyph
-  /// sources join the key).
-  bool matches(
-    TimelineTileRasterSource painter,
-    int spanEndIndexExclusive,
-    double devicePixelRatio,
-  ) =>
-      celContentRevision == painter.celContentRevision &&
-      _sameLookBesideContent(painter, spanEndIndexExclusive, devicePixelRatio);
+  /// The ink `_raster` baked over [substrate] — read in the same pass.
+  final _TileInk ink;
 
-  /// Whether this tile shows [painter]'s span as the row is now — the look
-  /// it was rastered for, or one whose change it does not show
-  /// ([stillShows], whose revision it then takes). Asked alike by every
-  /// asker: a span shown, past the window or a page away.
-  bool showsNow(
-    TimelineTileRasterSource painter,
-    int spanStartIndex,
-    int spanEndIndexExclusive,
-    double devicePixelRatio,
-  ) {
-    if (matches(painter, spanEndIndexExclusive, devicePixelRatio)) {
-      return true;
-    }
-    if (stillShows(
-      painter,
-      spanStartIndex,
-      spanEndIndexExclusive,
-      devicePixelRatio,
-    )) {
-      celContentRevision = painter.celContentRevision;
-      return true;
-    }
-    return false;
-  }
-
-  /// Whether this tile still shows the row although the content revision
-  /// moved.
+  /// Whether this tile shows [painter]'s span as the row is now. Asked
+  /// alike by every asker: a span shown, past the window or a page away.
+  ///
+  /// The look it was rastered for shows itself. Where what it was baked
+  /// FROM moved — the cels' revision, or the layer within the tile's reach
+  /// ([_showsSameCellsAs]) — it still shows the row when the span would
+  /// bake the same now, and it takes the new revision and layer instead of
+  /// a raster. [inkNow] is the span's ink as it would bake now; it is asked
+  /// only when the layer moved, for the content answers reach the paper
+  /// alone — the ink asks the exposure, never the content.
   ///
   /// 🚨THE REVISION IS ONE NUMBER FOR THE WHOLE TIMELINE (F-166). It bumps
   /// when the pen goes down or up and on every committed stroke, so every
@@ -1319,28 +1340,49 @@ class _TileEntry {
   /// the thread most — while only the cel under the pen could have
   /// changed. The revision can say THAT something moved, not WHERE; the
   /// substrate can: it is every pixel the content answers reach
-  /// ([substrate]). Same look, same substrate ⇒ the same pixels, so the
-  /// tile takes the new revision instead of a raster.
-  bool stillShows(
+  /// ([substrate]). Same look, same substrate ⇒ the same pixels.
+  ///
+  /// 🚨F-446 (유저 2026-10-23: 「엔드라인 드래그로 조절하는게 레이어가
+  /// 많아질수록 렉이 심함」): an end-line step makes a new layer of every row
+  /// whose last run ends in a ghost — every row of a TVPaint cut — and the
+  /// agreement answers from where that ghost STARTS, so every span from
+  /// there on was baked again at every step: 🔬~54 tiles a step on S5_BA's
+  /// cut 352 (70 rows), the step's raster doubled and three more frames a
+  /// step for their landings. Asked what it would bake, only the span the
+  /// ghost's end moved through bakes anything new.
+  bool showsNow(
     TimelineTileRasterSource painter,
     int spanStartIndex,
     int spanEndIndexExclusive,
-    double devicePixelRatio,
-  ) =>
-      _sameLookBesideContent(
-        painter,
-        spanEndIndexExclusive,
-        devicePixelRatio,
-      ) &&
-      _sameSubstrate(
-        substrate,
-        painter.substrateIn(spanStartIndex, spanEndIndexExclusive),
-      );
+    double devicePixelRatio, {
+    required _TileInk Function() inkNow,
+  }) {
+    if (!_sameLook(painter, spanEndIndexExclusive, devicePixelRatio)) {
+      return false;
+    }
+    final sameCells = _showsSameCellsAs(painter.layer);
+    if (sameCells && celContentRevision == painter.celContentRevision) {
+      return true;
+    }
+    final now = painter.substrateIn(spanStartIndex, spanEndIndexExclusive);
+    if (!_sameSubstrate(substrate, now) ||
+        !sameCells && !_sameInk(ink, inkNow())) {
+      return false;
+    }
+    layer = painter.layer;
+    celContentRevision = painter.celContentRevision;
+    return true;
+  }
 
   static bool _sameSubstrate(TimelineRowSubstrate a, TimelineRowSubstrate b) =>
       listEquals(a.paper, b.paper) && listEquals(a.lines, b.lines);
 
-  bool _sameLookBesideContent(
+  static bool _sameInk(_TileInk a, _TileInk b) =>
+      listEquals(a.ops, b.ops) && listEquals(a.glyphs, b.glyphs);
+
+  /// Every fact of the look but the two a tile can outlive ([showsNow]):
+  /// the layer and the cels' revision.
+  bool _sameLook(
     TimelineTileRasterSource painter,
     int spanEndIndexExclusive,
     double devicePixelRatio,
@@ -1371,9 +1413,7 @@ class _TileEntry {
         blockFrameLines == painter.blockFrameLines &&
         framesPerSecond == painter.framesPerSecond &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&
-        this.devicePixelRatio == devicePixelRatio &&
-        // Last: the one fact that may walk two timelines.
-        _showsSameCellsAs(painter.layer);
+        this.devicePixelRatio == devicePixelRatio;
   }
 
   /// Whether [next] shows the cells this tile was baked from: the same

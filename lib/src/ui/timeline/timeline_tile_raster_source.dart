@@ -195,10 +195,12 @@ abstract interface class TimelineTileRasterSource {
   /// the cell's [foregroundInkFor].
   ({Offset center, Size size}) inbetweenMarkLayoutFor(int frameIndex);
 
-  /// The nearest cell before [frameIndex] that writes a WORD, or null — the
-  /// word that may grow into [frameIndex]'s cell from before it (F-96). A
-  /// tile lays it at its first cell, as the classic pass does at a window's.
-  int? wordCellBefore(int frameIndex);
+  /// The cell before [frameIndex] whose WORD grows into [frameIndex]'s cell,
+  /// or null (F-96). A tile lays it at its first cell, as the classic pass
+  /// does at a window's — and only where it reaches: a word laid where it
+  /// cannot show would make two tiles of the same pixels bake apart
+  /// (F-446).
+  int? wordGrowingInto(int frameIndex);
 
   /// The cells of [from, to) that write — a word or a mark — in order. The
   /// tile emitter bakes exactly these, as the classic pass inks exactly

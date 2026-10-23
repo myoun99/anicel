@@ -862,7 +862,7 @@ class TimelineRowCellsPainter extends CustomPainter
   /// fresh tile covers (T3: a tiled span already carries its ink).
   ///
   /// F-96: a word grows on past its cell, so each untiled stretch also lays
-  /// the word that grows into it from before ([wordCellBefore]), and paints
+  /// the word that grows into it from before ([wordGrowingInto]), and paints
   /// under a clip of its own extent — a word that also lives in a tile is
   /// never inked twice: the tile holds its part, this pass the rest.
   void _paintForegrounds(
@@ -896,7 +896,7 @@ class TimelineRowCellsPainter extends CustomPainter
         across: (from: 0, to: crossAxisExtent),
       ),
     );
-    final lead = wordCellBefore(from);
+    final lead = wordGrowingInto(from);
     if (lead != null) {
       _paintCellForeground(canvas, lead);
     }
@@ -1139,7 +1139,7 @@ class TimelineRowCellsPainter extends CustomPainter
   /// bakes the mark exactly here.
   ///
   /// It keeps to its cell, so the tile that holds the cell is the only one
-  /// that draws it — a word growing past its cell needed [wordCellBefore].
+  /// that draws it — a word growing past its cell needed [wordGrowingInto].
   @override
   InbetweenMarkPlace inbetweenMarkLayoutFor(int frameIndex) {
     final paper = paperRectFor(frameIndex);
@@ -1193,9 +1193,8 @@ class TimelineRowCellsPainter extends CustomPainter
 
   /// The nearest cell before [frameIndex] that writes a WORD, or null when
   /// a hold stands nearer or there is none — the word that may grow into
-  /// [frameIndex]'s cell from before it (F-96). PUBLIC: the
-  /// classic pass lays it at the start of what it paints, the tile emitter
-  /// at the start of a tile.
+  /// [frameIndex]'s cell from before it (F-96); [wordGrowingInto] asks
+  /// whether it does.
   ///
   /// A mark is no word: it keeps to its own cell and grows into no other.
   /// The word before it stops at it ([_wordRoomEnd]), so a word found past
@@ -1203,7 +1202,6 @@ class TimelineRowCellsPainter extends CustomPainter
   ///
   /// Walked back by stretch (I-22): a stretch whose first cell writes no
   /// word is passed in one step.
-  @override
   int? wordCellBefore(int frameIndex) {
     var index = frameIndex - 1;
     while (index >= frameStartIndex) {
@@ -1217,10 +1215,26 @@ class TimelineRowCellsPainter extends CustomPainter
     return null;
   }
 
+  /// [wordCellBefore], where its word is laid on into [frameIndex]'s cell:
+  /// a word keeps to its room ([_wordRoomEnd]) — its own cell while it fits
+  /// there, its block's rest past that. A room ending right at the cell
+  /// counts: a glyph's last soft pixel may lie on the edge.
+  @override
+  int? wordGrowingInto(int frameIndex) {
+    final cell = wordCellBefore(frameIndex);
+    if (cell == null) {
+      return null;
+    }
+    final model = cellModelAt(cell);
+    final word = _glyphPainter(model.glyph, glyphStyleFor(model)).size;
+    final roomEnd = _wordRoomEnd(cell, extentAlong(axis, word));
+    return roomEnd >= startAlong(axis, cellRectFor(frameIndex)) ? cell : null;
+  }
+
   /// The cell's sparse foreground ink (in-between marks, glyph text) — the
   /// classic pass; tile mode bakes the same content into the tiles (T3) and
   /// skips this for covered spans. Only a cell that writes is handed here
-  /// ([writingCellsIn], [wordCellBefore]) — never a hold's.
+  /// ([writingCellsIn], [wordGrowingInto]) — never a hold's.
   void _paintCellForeground(Canvas canvas, int frameIndex) {
     final model = cellModelAt(frameIndex);
     final mark = model.mark;
