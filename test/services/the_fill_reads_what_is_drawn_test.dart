@@ -44,15 +44,15 @@ void main() {
 
   const canvasSize = CanvasSize(width: 8, height: 8);
 
-  /// [white] pixels inked opaque white, on 4-pixel tiles anywhere in the
-  /// world — off the canvas too.
-  BitmapSurface whiteInk(Set<(int, int)> white) {
+  /// [inked] pixels opaque, grey [shade] (white by default), on 4-pixel
+  /// tiles anywhere in the world — off the canvas too.
+  BitmapSurface inkOf(Set<(int, int)> inked, {int shade = 255}) {
     final tiles = <TileCoord, Uint8List>{};
-    for (final (x, y) in white) {
+    for (final (x, y) in inked) {
       final coord = TileCoord.fromPixel(pixelX: x, pixelY: y, tileSize: 4);
       final buffer = tiles.putIfAbsent(coord, () => Uint8List(4 * 4 * 4));
       final index = ((y % 4) * 4 + (x % 4)) * 4;
-      buffer.fillRange(index, index + 4, 255);
+      buffer.setAll(index, [shade, shade, shade, 255]);
     }
     return BitmapSurface(
       canvasSize: canvasSize,
@@ -127,7 +127,7 @@ void main() {
 
       test('a fill on white ink takes the ink, not the canvas around it', () {
         final dabs = fill(
-          whiteInk(block(2, 2, 5, 5)),
+          inkOf(block(2, 2, 5, 5)),
           at: CanvasPoint(x: 3, y: 3),
         );
 
@@ -142,7 +142,7 @@ void main() {
       test('a fill beside white ink takes the empty canvas, and leaves the '
           'ink', () {
         final dabs = fill(
-          whiteInk(block(2, 2, 5, 5)),
+          inkOf(block(2, 2, 5, 5)),
           at: CanvasPoint(x: 0, y: 0),
         );
 
@@ -159,7 +159,7 @@ void main() {
           'pasteboard fills whole — its pasteboard part too', () {
         var refused = false;
         final dabs = fill(
-          whiteInk(block(-3, 2, 3, 5)),
+          inkOf(block(-3, 2, 3, 5)),
           at: CanvasPoint(x: 1, y: 3),
           pastTheCanvas: true,
           onOpenRegion: () => refused = true,
@@ -176,11 +176,26 @@ void main() {
 
       test('without it, the same shape fills inside the canvas only', () {
         final dabs = fill(
-          whiteInk(block(-3, 2, 3, 5)),
+          inkOf(block(-3, 2, 3, 5)),
           at: CanvasPoint(x: 1, y: 3),
         );
 
         expect(piecesBox(dabs), (left: 0, top: 2, width: 4, height: 4));
+      }, skip: skip);
+
+      test('black line art walls a fill: nothing drawn and black ink differ '
+          'by their coverage alone', () {
+        final outline = block(2, 2, 5, 5).difference(block(3, 3, 4, 4));
+        final dabs = fill(
+          inkOf(outline, shade: 0),
+          at: CanvasPoint(x: 3, y: 3),
+        );
+
+        expect(
+          piecesBox(dabs),
+          (left: 3, top: 3, width: 2, height: 2),
+          reason: '↩️an absent paper read as black: the fill ran through it',
+        );
       }, skip: skip);
     });
   }
