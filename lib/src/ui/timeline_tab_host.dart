@@ -1158,6 +1158,10 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // cut leaves it nowhere to make one, and a band is no notify.
       // ↩️Its band's 새 컷 row read this at open time and hid that the ＋
       // itself stayed lit; F-455 took the row away.
+      // ⛔MUTANT SURVIVES (F-455, 2026-10-23): dropping this reddens
+      // nothing — every band over a cut also moves a shared-pill gate
+      // above, so the bar is rebuilt anyway. It stays so the ＋ does not
+      // hang on that coincidence.
       session.cutPlacement.canCreateCut,
       // ⛔The two project-axis values LEFT this token with the dropdowns
       // that printed them: they are entries of the settings pill on the
