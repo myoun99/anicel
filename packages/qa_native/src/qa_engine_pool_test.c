@@ -98,6 +98,22 @@ static void pool_test_wait_for_company(int32_t item, void* context) {
   }
 }
 
+// Whether this machine should spread a call: it has the processors, and
+// nobody set the thread count. Asked of the machine rather than of the
+// pool, because a pool that never started has no workers to report.
+static int pool_test_should_spread(void) {
+  if (getenv("QA_ENGINE_THREADS") != NULL) {
+    return 0;
+  }
+#if defined(_WIN32)
+  SYSTEM_INFO info;
+  GetSystemInfo(&info);
+  return info.dwNumberOfProcessors >= 2;
+#else
+  return sysconf(_SC_NPROCESSORS_ONLN) >= 2;
+#endif
+}
+
 // Whether a call alone is spread across the workers: on one thread the
 // first of two items waits out its 2 s alone, and only the second finds
 // company. Results are the same either way — this is the pool's one job.
@@ -284,9 +300,9 @@ int main(void) {
   int failures = 0;
 
   // Alone first: what each caller must get when nobody else is running.
-  const int spreads = pool_test_spreads();
-  if (g_pool.worker_count > 0 && !spreads) {
-    printf("FAIL: a call alone ran on one thread with %d workers\n",
+  const int should_spread = pool_test_should_spread();
+  if (should_spread && !pool_test_spreads()) {
+    printf("FAIL: a call alone ran on one thread, with %d workers\n",
            g_pool.worker_count);
     failures += 1;
   }
@@ -341,7 +357,7 @@ int main(void) {
   }
 
   // Given back: the next caller has the pool and the arena to itself.
-  if (spreads && !pool_test_spreads()) {
+  if (should_spread && !pool_test_spreads()) {
     printf("FAIL: a call alone, after the callers, ran on one thread\n");
     failures += 1;
   }
