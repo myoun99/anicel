@@ -28,7 +28,7 @@ import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/drag_chip.dart';
 import '../widgets/drag_chip_overlay.dart';
 import 'axis_turn.dart'
-    show centerEndAlong, centerStartAlong, partAcross, sizeAlong, stripAcross;
+    show centerStartAlong, partAcross, sizeAlong, stripAcross;
 import 'layer_drop_policy.dart';
 import 'layer_label_controls.dart'
     show layerKindIcon, layerSectionLabelSlotWidth;
@@ -434,6 +434,10 @@ String _keyOf(LayerRowDragSubject subject) => switch (subject) {
 
 /// The caret's thickness and colour, shared by every rail that draws one.
 const double layerRowCaretThickness = 2;
+
+/// How far past the layer area's start a drop's word stands, on a line and on
+/// a row alike (F-436①).
+const double _dropWordInset = 6;
 
 /// One rail row, made draggable and able to show the caret on its own
 /// edges.
@@ -1090,32 +1094,49 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
           ),
           child: label == null
               ? null
-              : Align(
-                  alignment: centerEndAlong(widget.axis),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: DecoratedBox(
-                      decoration: ShapeDecoration(
-                        color: colorScheme.primary,
-                        shape: AppShapes.control(14),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 1,
-                        ),
-                        child: Text(
-                          label,
-                          style: TextStyle(
-                            fontSize: 10,
-                            height: 1.1,
-                            color: colorScheme.onPrimary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+              : Stack(
+                  clipBehavior: Clip.none,
+                  alignment: centerStartAlong(widget.axis),
+                  children: [_dropWord(colorScheme, label)],
                 ),
+        ),
+      ),
+    );
+  }
+
+  /// The word a drop says before the release — whose attach, out of the
+  /// folder — in ONE place for a line and for a row: [_dropWordInset] past
+  /// where the row's layer area starts, centred across. Placed, not laid
+  /// out, so it never votes on the size of what it stands on (F-31①).
+  ///
+  /// 🗣️F-436① (유저 2026-10-21): 「어태치 장착 텍스트가 블렌드쪽에 뜨는데,
+  /// 그게아니라 C에 어태치 라는 텍스트가 뜨는 위치처럼 왼쪽에 통일해서.
+  /// 가로선 텍스트 위치는 이 위치로 통일」. ↩️A row's word stood at its far
+  /// end, by the blend column, and the line's at its start — the same badge
+  /// written twice.
+  Widget _dropWord(ColorScheme colorScheme, String label) {
+    final horizontal = widget.axis == Axis.horizontal;
+    return Positioned(
+      left: horizontal ? _dropWordInset : null,
+      top: horizontal ? null : _dropWordInset,
+      child: DecoratedBox(
+        // The app's own corner, not a circular one: a badge is a small
+        // control, and `app_shapes_coverage_test` is what keeps that from
+        // being decided per widget.
+        decoration: ShapeDecoration(
+          color: colorScheme.primary,
+          shape: AppShapes.control(14),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              height: 1.1,
+              color: colorScheme.onPrimary,
+            ),
+          ),
         ),
       ),
     );
@@ -1126,7 +1147,6 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     required bool atStart,
     String? label,
   }) {
-    final horizontal = widget.axis == Axis.horizontal;
     final barSize = sizeAlong(
       widget.axis,
       along: double.infinity,
@@ -1162,33 +1182,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
               // own alignment still places the badge (centred across the
               // bar), it hangs off the line under `Clip.none`, and it can
               // no longer vote on where the line is.
-              Positioned(
-                left: horizontal ? 6 : null,
-                top: horizontal ? null : 6,
-                child: DecoratedBox(
-                  // The app's own corner, not a circular one: a badge is a
-                  // small control, and `app_shapes_coverage_test` is what
-                  // keeps that from being decided per widget.
-                  decoration: ShapeDecoration(
-                    color: colorScheme.primary,
-                    shape: AppShapes.control(14),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1,
-                    ),
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 10,
-                        height: 1.1,
-                        color: colorScheme.onPrimary,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              _dropWord(colorScheme, label),
             ],
           );
     return stripAcross(
