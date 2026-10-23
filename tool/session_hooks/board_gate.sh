@@ -120,6 +120,28 @@ REPO="myoun99/anicel"
 # complaints stayed invisible. The checker now exits 2 when it cannot run;
 # this is the half that has to notice.
 boardComplaint=""
+# --- 열린 PR: 빨간 것과, 검사기에 넘길 열린 번호 --------------------------
+# 🚨★★★ASKED HERE, BEFORE THE CHECKER, AND ONCE. The checker judges an ack
+# dead when a card holds its PR — but an ack also leaves an OPEN PR alone
+# (the red and ready lists below), and only GitHub knows which are open.
+# 🧪10-24: the day's bundle PR was red and a release card held it; this
+# file's red half asked for the ack and the checker called it dead, so the
+# turn was held whichever way a session went (타임라인/콘티 stepped in it).
+# ⇒ The numbers go to the checker in ANICEL_OPEN_PRS, set ONLY when gh
+# answered: unset means 「nobody asked」, and the checker then calls no ack
+# dead. The red list further down is read off this same answer — one call
+# where there were two, inside a 15s hook timeout.
+# ⚠️Every row carries a mark, 「red」 or 「ok」, never an empty field: a tab
+# is IFS whitespace, so `read` would fold an empty middle field into the
+# title.
+openRows=""
+if [ -x "$GH" ] && openRows=$("$GH" pr list --repo "$REPO" --state open --limit 100 \
+    --json number,title,statusCheckRollup \
+    --jq '.[] | "\(.number)\t\(if ([.statusCheckRollup[]? | (.conclusion // .state // "") | ascii_upcase | select(. == "FAILURE" or . == "TIMED_OUT" or . == "ACTION_REQUIRED" or . == "ERROR")] | length > 0) then "red" else "ok" end)\t\(.title)"' \
+    2>/dev/null); then
+  ANICEL_OPEN_PRS="$(printf '%s\n' "$openRows" | cut -f1 | tr '\n' ' ')"
+  export ANICEL_OPEN_PRS
+fi
 # A server is asked with the door's secret, which sits beside the flags.
 case "$PLACE" in
   http://*|https://*)
@@ -248,19 +270,17 @@ fi
 # and that is a habit, not a mechanism.
 #
 # ⚠️`mergeStateStatus` cannot tell red from still-running — both read
-# UNSTABLE — so the failing set comes from the check rollup instead.
+# UNSTABLE — so the failing set comes from the check rollup instead (the
+# open rows asked for at the top, marked 「red」 there).
 # 🧪Positive-controlled before it shipped: flipped to SUCCESS the same
 # selector matched all 20 recent PRs, so the traversal and the case fold
 # work, and a real failed job reports `failure`, which ascii_upcase lands on
-# FAILURE below. ⛔An empty result from a repo with no red PR proves nothing.
+# FAILURE above. ⛔An empty result from a repo with no red PR proves nothing.
 ready=$("$GH" pr list --repo "$REPO" --state open \
   --json number,title,mergeStateStatus \
   --jq '.[] | select(.mergeStateStatus=="CLEAN") | "\(.number)\t\(.title)"' \
   2>/dev/null) || exit 0
-red=$("$GH" pr list --repo "$REPO" --state open \
-  --json number,title,statusCheckRollup \
-  --jq '.[] | select([.statusCheckRollup[]? | (.conclusion // .state // "") | ascii_upcase | select(. == "FAILURE" or . == "TIMED_OUT" or . == "ACTION_REQUIRED" or . == "ERROR")] | length > 0) | "\(.number)\t\(.title)"' \
-  2>/dev/null)
+red=$(printf '%s\n' "$openRows" | awk -F'\t' '$2 == "red" { print $1 "\t" substr($0, length($1) + length($2) + 3) }')
 
 # The ack file exempts a number from BOTH lists: deciding to leave a PR alone
 # is one decision, whatever colour it is.

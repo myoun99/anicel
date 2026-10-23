@@ -41,7 +41,7 @@ void main() {
         .toIso8601String();
   }
 
-  String complaintsFor(List<String> lines) {
+  String complaintsFor(List<String> lines, {Set<int>? openPrs}) {
     final file = File('${dir.path}/board.jsonl')
       ..writeAsStringSync(lines.map((l) => '$l\n').join());
     // ⚠️The line rules start at a constant that is AFTER the bogus stamps in
@@ -57,6 +57,7 @@ void main() {
       since: base.toIso8601String(),
       linesSince: base.toIso8601String(),
       now: base.add(const Duration(hours: 2)),
+      openPrs: openPrs,
     );
   }
 
@@ -426,13 +427,76 @@ void main() {
   });
 
   group('죽은 ack', () {
+    String landed() =>
+        '{"kind":"item","id":"A","at":"실기 확인","pr":1234,"note":"고쳤다",'
+        '"ts":"${at('09:00')}"}';
+
     test('an ack for a landing that now HAS a card is a line to delete', () {
       File('${dir.path}/.gate-ack').writeAsStringSync('1234 카드 없이 지나감\n');
-      final out = complaintsFor([
-        '{"kind":"item","id":"A","at":"실기 확인","pr":1234,"note":"고쳤다",'
-            '"ts":"${at('09:00')}"}',
-      ]);
-      expect(out, contains('카드가 생긴 착지의 ack'));
+      final out = complaintsFor([landed()], openPrs: {99});
+      expect(out, contains('카드가 생긴 착지의 ack: 1234'));
+    });
+
+    // 🚨10-24: the day's bundle PR was red and a release card held it. The
+    // red-PR half of board_gate.sh asked for the ack and this check called
+    // it dead — the turn was held whichever way a session went.
+    test('🚨an ack for an OPEN PR a card holds still leaves it alone', () {
+      File('${dir.path}/.gate-ack').writeAsStringSync('1234 관제가 고치는 중\n');
+      expect(
+        complaintsFor([landed()], openPrs: {1234}),
+        isNot(contains('카드가 생긴 착지의 ack')),
+      );
+      expect(
+        complaintsFor([landed()], openPrs: {}),
+        contains('카드가 생긴 착지의 ack: 1234'),
+        reason: 'the same ack, once the PR is no longer open',
+      );
+    });
+
+    test('⛔nobody asked GitHub → no ack is called dead', () {
+      File('${dir.path}/.gate-ack').writeAsStringSync('1234 카드 없이 지나감\n');
+      expect(
+        complaintsFor([landed()]),
+        isNot(contains('카드가 생긴 착지의 ack')),
+      );
+    });
+
+    group('the open PRs, as the Stop hook hands them over', () {
+      test('unset is 「nobody asked」, empty is 「none open」', () {
+        expect(boardCheckOpenPrs(const {}).prs, isNull);
+        expect(boardCheckOpenPrs(const {kOpenPrsVariable: ' '}).prs, isEmpty);
+        expect(
+          boardCheckOpenPrs(const {kOpenPrsVariable: '1483 1490 '}).prs,
+          {1483, 1490},
+        );
+      });
+
+      test('⛔a value it cannot read is refused, never dropped', () {
+        final read = boardCheckOpenPrs(const {kOpenPrsVariable: '1483 #1490'});
+        expect(read.prs, isNull);
+        expect(read.refusal, contains('「#1490」'));
+      });
+
+      // Two languages, one name: a rename on either side would leave the
+      // checker reading a variable nobody sets — the 「nobody asked」 case,
+      // which is silent.
+      test('the gate hands them over under that name, only when gh answered',
+          () {
+        final gate =
+            File('tool/session_hooks/board_gate.sh').readAsStringSync();
+        expect(gate, contains('export $kOpenPrsVariable\n'));
+        expect(
+          gate,
+          contains(RegExp(r'if \[ -x "\$GH" \] && openRows=\$\("\$GH" pr list')),
+        );
+      });
+
+      test('the server hands over its own', () {
+        expect(
+          File('tool/board_server.dart').readAsStringSync(),
+          contains('boardCheckComplaints(records, openPrs: open)'),
+        );
+      });
     });
 
     test('⛔an ack silences every complaint about that card, not just one', () {

@@ -31,18 +31,22 @@ mkdir -p "$STAGE" "$TMP/gh"
 cp "$HERE/board_gate.sh" "$HERE/hook_says.sh" "$STAGE/"
 printf '#!/usr/bin/env bash\ntouch "$1/.board-up-was-called"\n' > "$STAGE/board_up.sh"
 # The stand-in for gh: each of the gate's three queries names a field no
-# other one asks for, and is answered from the file of that name.
+# other one asks for, and is answered from the file of that name. The open
+# rows are `<number>\t<red|ok>\t<title>`, as the gate's own query prints them.
 cat > "$TMP/gh/gh" <<'GH'
 #!/usr/bin/env bash
 dir="$(dirname "$0")"
 case "$*" in
   *mergeStateStatus*) cat "$dir/ready.tsv" 2>/dev/null ;;
-  *statusCheckRollup*) cat "$dir/red.tsv" 2>/dev/null ;;
+  *statusCheckRollup*) cat "$dir/open.tsv" 2>/dev/null ;;
   *mergedAt*) cat "$dir/merged.tsv" 2>/dev/null ;;
 esac
 exit 0
 GH
 chmod +x "$TMP/gh/gh" 2>/dev/null
+# The gate hands the checker the open PRs only when gh answered — a value left
+# over from whoever runs this would answer for it.
+unset ANICEL_OPEN_PRS
 
 pass=0; fail=0
 chk() {  # chk <what> <got> <want>
@@ -93,7 +97,7 @@ landed='{"kind":"meta","landedSince":"2026-01-01T00:00:00Z"}'
 done_card="{\"kind\":\"item\",\"id\":\"y-card\",\"at\":\"완료\",\"note\":\"done\",\"ts\":\"${old}2.000000\"}"
 
 # --- a clean board says nothing, with gh or without --------------------------
-: > "$TMP/gh/ready.tsv"; : > "$TMP/gh/red.tsv"; : > "$TMP/gh/merged.tsv"
+: > "$TMP/gh/ready.tsv"; : > "$TMP/gh/open.tsv"; : > "$TMP/gh/merged.tsv"
 clean="$(board clean "$done_card" "$landed")"
 chk "깨끗한 보드 · gh 없음 → 조용"            "$(gate "$clean" none)" ""
 chk "깨끗한 보드 · gh 있음(할 말 없음) → 조용"  "$(gate "$clean" stub)" ""
@@ -114,12 +118,14 @@ chk "결정 카드의 모양을 따옴표째 싣는다"         "$(printf '%s' "
 
 # --- the PR half: titles are whatever somebody typed -------------------------
 printf '41\tReady with "quotes" in it\n' > "$TMP/gh/ready.tsv"
-printf '42\tRed: a back\\slash and a\ttab\n' > "$TMP/gh/red.tsv"
+printf '41\tok\tReady with "quotes" in it\n42\tred\tRed: a back\\slash and a\ttab\n' > "$TMP/gh/open.tsv"
 printf '43\tLanded with no card\t2026-01-02T00:00:00Z\n' > "$TMP/gh/merged.tsv"
 out="$(gate "$dirty" stub)"
 chk "🚨불평 + PR 셋 → 읽히는 막음"              "$(readable "$out")" "yes"
 chk "🚨빨간 PR 의 줄이 나온다(전에는 여기서 죽었다)" "$(printf '%s' "$out" | grep -c 'CI가 빨간 PR이 열린 채로')" "1"
 chk "빨간 PR 의 제목이 이스케이프되어 실린다"     "$(printf '%s' "$out" | grep -c '#42 Red: a back\\\\slash and a\\ttab')" "1"
+chk "빨간 줄에 「red」 인 열린 PR 이 든다"         "$(printf '%s' "$out" | grep -c 'CI가 빨간 PR이 열린 채로 턴이 끝나려 합니다:.*#42 .*빨간 것은 기다림이')" "1"
+chk "「ok」 인 열린 PR 은 빨간 줄에 안 든다"       "$(printf '%s' "$out" | grep -c 'CI가 빨간 PR이 열린 채로 턴이 끝나려 합니다:.*#41 .*빨간 것은 기다림이')" "0"
 chk "머지 준비가 끝난 PR 의 줄과 제목"           "$(printf '%s' "$out" | grep -c '머지 준비가 끝난 PR이 열린 채로.*#41 Ready with \\"quotes\\" in it')" "1"
 chk "카드 없는 착지의 줄"                        "$(printf '%s' "$out" | grep -c '카드가 없는 PR:\\n#43 Landed with no card')" "1"
 chk "불평이 PR 줄들보다 먼저 온다"               "$(printf '%s' "$out" | grep -c "$(printf '%s\n' "$raw" | head -n 1).*카드가 없는 PR.*CI가 빨간.*머지 준비가")" "1"
@@ -128,7 +134,20 @@ chk "깨끗한 보드 + PR 셋 → 읽히는 막음"          "$(readable "$out"
 printf '41 leave it open: waiting for a person\n42\n' > "$clean/.gate-ack"
 printf '43 another session landed it\n' >> "$clean/.gate-ack"
 chk "셋 다 손대지 않기로 적으면 → 조용"          "$(gate "$clean" stub)" ""
-: > "$TMP/gh/ready.tsv"; : > "$TMP/gh/red.tsv"; : > "$TMP/gh/merged.tsv"
+: > "$TMP/gh/ready.tsv"; : > "$TMP/gh/open.tsv"; : > "$TMP/gh/merged.tsv"
+
+# --- 🚨an ack for an OPEN PR that a card holds is not dead (10-24) ------------
+# The day's bundle PR was red and a release card held it: the red half asked
+# for the ack, the checker called it dead, and the turn was held either way.
+carded="{\"kind\":\"item\",\"id\":\"z-card\",\"at\":\"완료\",\"pr\":44,\"note\":\"bundle\",\"ts\":\"${old}3.000000\"}"
+held="$(board held "$done_card" "$carded" "$landed")"
+printf '44\tred\tLandings of the day\n' > "$TMP/gh/open.tsv"
+chk "전제: ack 없이는 빨간 줄이 막는다"           "$(gate "$held" stub | grep -c 'CI가 빨간 PR이 열린 채로 턴이 끝나려 합니다:\\n#44 Landings of the day')" "1"
+printf '44 관제가 고치는 중\n' > "$held/.gate-ack"
+chk "🚨카드가 든 열린 PR 의 ack → 조용(죽었다고 안 한다)" "$(gate "$held" stub)" ""
+: > "$TMP/gh/open.tsv"
+chk "그 PR 이 닫히면 → 죽은 ack 를 댄다"          "$(gate "$held" stub | grep -c '카드가 생긴 착지의 ack: 44')" "1"
+chk "gh 없음 → 열렸는지 모르니 죽었다고 안 한다"   "$(gate "$held" none)" ""
 
 # --- a (card, PR) pair that left the records ---------------------------------
 gone="$(board gone "$done_card" "$landed")"
