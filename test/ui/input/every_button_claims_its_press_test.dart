@@ -174,7 +174,9 @@ void main() {
     // — import window 2 → gone.
     'lib/src/ui/widgets/app_window.dart': 1,
     'lib/src/ui/widgets/panel_flyout.dart': 1,
-    'lib/src/ui/workspace/workspace_brush_presets.dart': 1,
+    // ↓2026-10-23, brush-tip-delete-question-speaks-english: the tip's
+    // delete question became the app's own confirm, as the preset's —
+    // brush presets 1 → gone.
   };
 
   /// The control's OWN arguments — each whole, its comments out — of the
