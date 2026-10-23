@@ -30,6 +30,14 @@ void main() {
   Finder seLabel(Track track) =>
       find.byKey(ValueKey<String>('storyboard-se-label-${track.id.value}-1'));
 
+  /// [track]'s S1 label on its NAME — the row's own ground: a button in the
+  /// label is the button's. ↩️It pressed the label's middle, where F-443
+  /// seated the SE speaker among the name's buttons.
+  Finder seLabelName(Track track) => find.descendant(
+    of: seLabel(track),
+    matching: find.text(track.seLayers.first.name),
+  );
+
   Future<void> doubleClick(WidgetTester tester, Finder label) async {
     final at = tester.getCenter(label);
     await tester.tapAt(at, kind: PointerDeviceKind.stylus);
@@ -45,7 +53,7 @@ void main() {
     final track = await openStoryboard(tester);
     expect(seLabel(track), findsOneWidget, reason: 'fixture premise');
 
-    await doubleClick(tester, seLabel(track));
+    await doubleClick(tester, seLabelName(track));
     expect(find.byKey(dialog), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey<String>('rename-layer-text-field')),
@@ -74,7 +82,7 @@ void main() {
     final pressed = track.seLayers.first;
 
     final gesture = await tester.startGesture(
-      tester.getCenter(seLabel(track)),
+      tester.getCenter(seLabelName(track)),
       kind: PointerDeviceKind.stylus,
     );
     await tester.pump();
