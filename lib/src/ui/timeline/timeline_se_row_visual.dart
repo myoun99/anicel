@@ -19,7 +19,6 @@ import '../text/dialogue_fit_paint.dart' show dialogueNaturalExtent;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
-import 'layer_label_controls.dart' show layerMarkColor;
 import 'se_crossing_mark_painter.dart';
 import 'timeline_block_word.dart';
 import 'timeline_cell_style.dart';
@@ -91,7 +90,6 @@ List<Widget> timelineRowSeLabelOverlays({
             seName: seName,
             shownFrom: lead,
             framesFreeBefore: seFramesFreeBefore(blocks, index),
-            paper: layerMarkColor(layer.mark),
           ),
         ),
       ),
@@ -608,7 +606,6 @@ class SeSpanVisual extends StatelessWidget {
     this.seName,
     this.shownFrom = 0,
     this.framesFreeBefore = 0,
-    this.paper = timelineDrawingHeldColor,
   });
 
   final Axis axis;
@@ -629,10 +626,6 @@ class SeSpanVisual extends StatelessWidget {
   /// The frames free on the row before the block ([seFramesFreeBefore]):
   /// the room the name chip may stand in, outside it ([seNameChipPlace]).
   final int framesFreeBefore;
-
-  /// The block's own paper — its layer's mark (⑲). Outside the block the
-  /// chip has no paper under it, so it lays this one tinted as its own.
-  final Color paper;
 
   /// 🚨A ZOOM LAYS THE SPAN OUT AGAIN; IT DOES NOT BUILD IT AGAIN
   /// (zoom-step-lays-out-five-times-the-07-25-count, 10-12): how far the
@@ -656,7 +649,7 @@ class SeSpanVisual extends StatelessWidget {
     // opening past the head never shows it.
     final chipShown = seName.isNotEmpty && shownFrom <= 0;
     return CustomPaint(
-      painter: chipShown ? _SeNameGroundPainter(fit, paper: paper) : null,
+      painter: chipShown ? _SeNameGroundPainter(fit) : null,
       child: CustomMultiChildLayout(
         delegate: _SeSpanLayout(fit),
         children: [
@@ -677,7 +670,7 @@ class SeSpanVisual extends StatelessWidget {
           if (chipShown)
             LayoutId(
               id: _SeSpanSlot.chip,
-              child: _SeNameBox(axis: axis, name: seName),
+              child: _SeNameBox(axis: axis, name: seName, ink: fit.nameInk),
             ),
         ],
       ),
@@ -720,6 +713,26 @@ final class _SeSpanFit {
   double? _measuredAcross;
   double _dialogueExtent = 0;
 
+  /// Whether the box the span was last asked about put the chip just
+  /// before the block ([chipIn]) — what its name's ink is read off at paint
+  /// ([nameInk]). ⚠️Fresh at that paint by construction: a shown chip is
+  /// always under its ground's painter ([_SeNameGroundPainter]), which asks
+  /// [chipIn] of the very box and paints first — a `CustomPaint` paints its
+  /// painter under its child. So a span built again with what it had, and
+  /// not laid again, still writes its name in the ink of where it stands.
+  bool _outside = false;
+
+  /// The chip's name's ink where it stands ([chipIn]).
+  ///
+  /// 🗣️F-444 (유저 2026-10-23): 「지금 이름칸마저 블록으로 보여서, 어차피
+  /// 뒤에 배경 어두운색이니까, 배경 바탕색 삭제하고, 심플하게 하얀색 텍스트
+  /// 고정으로 텍스트만 두도록 … 만약 공간 부족해서 이름이 블록안으로 들어가는
+  /// 상황에선 지금이랑 변함없이」 — before the block, white over the row; on
+  /// its head, the block's ink over the tint, as it was. ⚠️The timesheet's
+  /// own writing stays as it is: 「타임시트랑 달라지지만 변경하고싶음」.
+  Color nameInk() =>
+      _outside ? timelineTextOnDarkGroundColor : timelineDrawingInkColor;
+
   ({double chip, bool outside}) chipIn(Size size) {
     final across = extentAcross(axis, size);
     if (_measuredAcross != across) {
@@ -732,11 +745,13 @@ final class _SeSpanFit {
       );
     }
     final along = extentAlong(axis, size);
-    return seNameChipPlace(
+    final place = seNameChipPlace(
       along,
       dialogueExtent: _dialogueExtent,
       roomBefore: frames <= 0 ? 0 : framesFreeBefore * along / frames,
     );
+    _outside = place.outside;
+    return place;
   }
 
   /// Whether [other] answers as this does for every box.
@@ -792,8 +807,8 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
 }
 
 /// The name chip's GROUND: over the block's head, the block's own paper
-/// tinted over the chip's stretch; just before the block, a paper of its
-/// own in the block's shape, the colour that tint gives the block's paper.
+/// tinted over the chip's stretch; just before the block, none — the row
+/// shows through, and the name is written white on it ([_SeSpanFit.nameInk]).
 ///
 /// 🗣️F-270 (유저 2026-10-03): 「se블록의 이름칸의 강조색으로 되어있는 바탕색,
 /// 바탕색 실루엣이 블록이랑 딱 맞춰서 꼭짓점이 동그랗게 되지않아서 바탕색
@@ -804,42 +819,32 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
 /// ([timelineBlockPaperShape]) — so a short block the chip takes whole is
 /// round at its far end too, with nobody having to think of that case.
 ///
-/// 🗣️F-358 (유저 2026-10-19): 「이름칸 색, 뒤가 밝은걸 기준으로 정한색이니까
-/// 그부분 잘 해결해주고」. The tint is a soft accent read OVER light paper;
-/// outside the block it would lie over the dark row instead. So it lays the
-/// colour it gives the paper, whole, on the block's corner — the chip reads
-/// the same on either side of the block's start.
+/// 🗣️F-444 (유저 2026-10-23): 「지금 이름칸마저 블록으로 보여서, 어차피 뒤에
+/// 배경 어두운색이니까, 배경 바탕색 삭제하고 … 뒤에는 투명해서 배경이 비치고,
+/// 하얀 텍스트만 위에 존재」. ↩️F-358 (10-19: 「이름칸 색, 뒤가 밝은걸 기준으로
+/// 정한색이니까 그부분 잘 해결해주고」) had laid, just before the block, a paper
+/// of its own in the block's shape, the colour the tint gives the block's
+/// paper — so the name read the same on either side of the block's start,
+/// and read as a block of its own.
 class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
-  const _SeNameGroundPainter(this.fit, {required this.paper});
+  const _SeNameGroundPainter(this.fit);
 
   /// Where the chip stands and how far it runs, for the box it is painted
   /// in.
   final _SeSpanFit fit;
 
-  /// The block's paper — what the tint is read over.
-  final Color paper;
-
   @override
   void paint(Canvas canvas, Size size) {
+    final place = fit.chipIn(size);
+    if (place.outside) {
+      return;
+    }
     final axis = fit.axis;
     final across = extentAcross(axis, size);
     final along = extentAlong(axis, size);
-    final place = fit.chipIn(size);
     // R6-②: soft accent tint (the full-strength accent read too loud);
     // dark ink writing carries the contrast — matches the sheet.
     final tint = AppColors.accent.withValues(alpha: 0.3);
-    if (place.outside) {
-      canvas.drawRRect(
-        timelineBlockPaperShape(
-          axis: axis,
-          along: place.chip,
-          rowExtent: across,
-          frameCellExtent: fit.frames <= 0 ? 0 : along / fit.frames,
-        ).shift(offsetAlong(axis, along: -place.chip, across: 0)),
-        Paint()..color = Color.alphaBlend(tint, paper),
-      );
-      return;
-    }
     canvas
       ..save()
       ..clipRRect(
@@ -870,7 +875,6 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
     fit.framesFreeBefore,
     fit.dialogue,
     fit.style,
-    paper,
     AppColors.accent,
   );
 }
@@ -879,10 +883,15 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
 /// the block are the layout's to say ([_SeSpanLayout], [seNameChipPlace]): its
 /// [seNameBoxExtent], narrowed with the words (F-224).
 class _SeNameBox extends StatelessWidget {
-  const _SeNameBox({required this.axis, required this.name});
+  const _SeNameBox({required this.axis, required this.name, required this.ink});
 
   final Axis axis;
   final String name;
+
+  /// The name's ink, asked at paint: where the chip stands is the layout's
+  /// to say, and a zoom lays it out again without building it
+  /// ([_SeSpanFit.nameInk]).
+  final BuiltWordInk ink;
 
   @override
   Widget build(BuildContext context) {
@@ -893,7 +902,8 @@ class _SeNameBox extends StatelessWidget {
     // band. Same tint on the printed sheet.
     //
     // The tint itself is the BLOCK's to lay ([_SeNameGroundPainter], F-270):
-    // this box is the chip's room and its name.
+    // this box is the chip's room and its name. Just before the block there
+    // is no tint, and the name is white on the row (F-444).
     return Semantics(
       label: 'SE name $name',
       // Own node even where an ancestor would merge labels (the dialog
@@ -945,8 +955,14 @@ class _SeNameBox extends StatelessWidget {
               lineHeight: 1.05,
               latinForm: VerticalLatinForm.upright,
               place: place,
+              ink: ink,
             )
-          : TimelineBlockText(text: name, style: style, place: place),
+          : TimelineBlockText(
+              text: name,
+              style: style,
+              place: place,
+              ink: ink,
+            ),
     );
   }
 }

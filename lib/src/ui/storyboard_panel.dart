@@ -4484,8 +4484,6 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
         dialogue: frame?.name ?? '',
         seName: frame?.seName,
         framesFreeBefore: framesFreeBefore,
-        // ⑲: the paper [_paperSpan] lays.
-        paper: layerMarkColor(layer.mark),
       ),
     );
   }
