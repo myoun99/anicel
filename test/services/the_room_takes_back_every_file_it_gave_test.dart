@@ -69,6 +69,7 @@ void main() {
     snapshot.drop();
     expect(await parking, isTrue);
 
+    await ScratchFile.lettingGo;
     expect(
       _volatilePaths().difference(before),
       isEmpty,
@@ -94,6 +95,29 @@ void main() {
     expect(await snapshot.park(), isTrue);
 
     expect(_volatilePaths().difference(before), hasLength(1));
+  });
+
+  // 🗣️Card a-pasteboard-undo-runs-on-the-ui-thread: an entry falls off the
+  // stack inside a commit, and a removal there is the stroke's time.
+  test('a dropped park hands its file off the UI thread, and the room has '
+      'it back', () async {
+    final snapshot = UndoSurfaceSnapshot(
+      key: key,
+      snapshot: surfaceOf(5),
+      sharedWith: null,
+    );
+    final before = _volatilePaths();
+    expect(await snapshot.park(), isTrue);
+    await ScratchFile.lettingGo;
+
+    snapshot.drop();
+    expect(
+      ScratchFile.stillLettingGo,
+      1,
+      reason: 'handed off, not removed inside the drop',
+    );
+    await ScratchFile.lettingGo;
+    expect(_volatilePaths().difference(before), isEmpty);
   });
 
   /// 🚨A REFUSED WRITE IS THE DISK-FULL CASE, and it is the one that has

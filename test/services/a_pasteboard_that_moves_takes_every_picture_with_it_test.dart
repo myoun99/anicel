@@ -582,6 +582,12 @@ void main() {
         await store.cutCelsAhead(PasteboardReach.none);
         expect((await parkedAhead()).difference(before), hasLength(1));
         expect(store.adoptPasteboardReach(PasteboardReach.quarter).keys, [cut]);
+        expect(
+          ScratchFile.stillLettingGo,
+          1,
+          reason: 'what was worked out for the other wall, let go off the '
+              'UI thread',
+        );
         expectCut(store.bakedSurfaceOrNull(cut));
         expect((await parkedAhead()).difference(before), isEmpty);
       });
@@ -652,7 +658,13 @@ void main() {
         final store = BrushFrameStore();
         parkCold(store, {cut: drawn(), clean: inkInside()});
         await store.cutCelsAhead(PasteboardReach.quarter);
+        await ScratchFile.lettingGo;
         store.adoptPasteboardReach(PasteboardReach.quarter);
+        expect(
+          ScratchFile.stillLettingGo,
+          1,
+          reason: "the cut's last park, let go off the UI thread",
+        );
         expect(
           (await roomFiles()).difference(before),
           hasLength(2),
@@ -920,6 +932,30 @@ void main() {
       expect(await command.parkPayload(), isTrue);
       command.undo();
       expectWhole(f.store.bakedSurfaceOrNull(cut), before);
+    });
+
+    test('a parked payload read back is let go off the UI thread', () async {
+      final f = fixture((store) => store.storeBakedSurface(cut, drawn()));
+      final command = SetProjectPasteboardCommand(
+        repository: f.repository,
+        brushFrameStore: f.store,
+        inUse: false,
+      )..execute();
+      final room = Directory(SessionScratch.volatileFolder());
+      final before = filesWrittenUnder(room).toSet();
+      expect(await command.parkPayload(), isTrue);
+      final parked = filesWrittenUnder(room).toSet().difference(before);
+      expect(parked, hasLength(1), reason: 'premise: the cut tiles parked');
+      await ScratchFile.lettingGo;
+
+      command.undo();
+      expect(
+        ScratchFile.stillLettingGo,
+        1,
+        reason: 'the payload, read back, let go off the UI thread',
+      );
+      await ScratchFile.lettingGo;
+      expect(filesWrittenUnder(room).toSet().intersection(parked), isEmpty);
     });
   });
 
