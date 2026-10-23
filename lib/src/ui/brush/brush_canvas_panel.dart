@@ -1253,6 +1253,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// question is about WHERE, not about who mounted it.
   late bool _onFloor;
 
+  /// How thick this panel's bars are — the panbars and any bar inside it,
+  /// which the panel tells through [AppScrollbarLaneScope].
+  ///
+  /// 🗣️F-440 (유저 2026-10-23): 「뒷 배경에 깔리는 패널만 두꺼운 스크롤바
+  /// 사용. 나중에 콘티용지패널을 뒤에 깔수있게 할거기 때문에 입구를
+  /// 그런식으로 설계」 — so the answer is the FLOOR's ([_onFloor]): whatever
+  /// panel lies there takes the thick bar, and the same panel docked takes
+  /// the lane its seat gives (the thin one, outside any scope). ⛔Not a
+  /// second scope at the workspace's floor: the floor would then be said
+  /// twice, and a floor stood up without one would draw the thin bar.
+  late double _lane;
+
   /// The MERGED-mode surface painter, kept ALIVE across rebuilds.
   ///
   /// 🐛It was rebuilt on every call, and `CanvasLayerStackView` gates the
@@ -1533,6 +1545,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.didChangeDependencies();
     _shellBars.readStageColors();
     _onFloor = CanvasFloorInsets.isFloor(context);
+    _lane = _onFloor
+        ? AppScrollbarLane.thick
+        : AppScrollbarLaneScope.of(context);
     _pillBand = _CanvasEditorPanelShell.pillBandIn(context);
     // ⛔Nothing here answers a RATIO change any more, deliberately. Holding
     // the percentage across one used to take a remembered scale, a re-zoom
@@ -2314,7 +2329,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   EdgeInsets get _framingInsets {
     final covered =
         widget.floorCover +
-        (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
+        (_onFloor
+            ? EdgeInsets.zero
+            : _CanvasEditorPanelShell.dockedLanesOf(_lane)) +
         EdgeInsets.only(
           top: _pillBand,
           bottom: _CanvasEditorPanelShell.transportCover(
@@ -3261,10 +3278,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 /// a paper panel differs from the drawing only in which buttons its pill
 /// carries.
 class _CanvasEditorPanelShell extends StatelessWidget {
-  /// The strip holds exactly one thing — the vertical panbar — so its
-  /// width IS that bar's hit lane.
-  static const double rightStripWidth = AppScrollbarLane.thin;
-
   /// 🗣️F-209 (유저 2026-09-28): 「도킹시 스크롤바는 어차피 창 최대크기로
   /// 되어있으니까 그냥 알약이아니라 패널로서 공간 차지해서? 두자. 뒤에 캔버스
   /// 안보이게 되도 되니까」 — and the two capsules that F-201 stretched along
@@ -3274,13 +3287,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// flush with its right and bottom edges and meeting at a corner square of
   /// neither's. The artwork runs on behind them, and framing keeps out from
   /// under them as it does from under a panel (`_framingInsets`). A lane in
-  /// a column of its own is the timeline rails' width.
-  static const double dockedLane = AppScrollbarLane.thin;
-
-  static const EdgeInsets dockedLanes = EdgeInsets.only(
-    right: dockedLane,
-    bottom: dockedLane,
-  );
+  /// a column of its own is [lane] wide.
+  static EdgeInsets dockedLanesOf(double lane) =>
+      EdgeInsets.only(right: lane, bottom: lane);
 
   /// 🗣️(유저 2026-09-30): 「판정을 알약까지 포함해서 판정. 타임시트 최대
   /// 스크롤기준이나 캔버스 재생시나 그런거」 — the pill is part of what hides
@@ -3344,6 +3353,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.horizontalStripBar,
     required this.cover,
     required this.onFloor,
+    required this.lane,
     this.transport,
     this.leftPill,
     this.documentName,
@@ -3359,8 +3369,12 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   final Widget rightStripBar;
 
   /// Whether this panel is the FLOOR under the others — the canvas or the
-  /// viewer — rather than a panel docked in a rail ([dockedLanes]).
+  /// viewer — rather than a panel docked in a rail ([dockedLanesOf]).
   final bool onFloor;
+
+  /// How thick its panbars are — the floor's capsule across, a docked
+  /// panel's lane: the seat's ([AppScrollbarLaneScope], F-440).
+  final double lane;
 
   /// The horizontal panbar: its own capsule on the floor's bottom edge, its
   /// own lane on a docked panel's.
@@ -3425,7 +3439,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// What a scrollbar capsule spans — only the floor has capsules — as a
   /// share of the edge it rides: clamped, because the point of a capsule is
   /// that it says where you are and lets you drag back, not that it maps
-  /// the whole pasteboard. A docked panel's bars are lanes ([dockedLanes]).
+  /// the whole pasteboard. A docked panel's bars are lanes ([dockedLanesOf]).
   static const double _capsuleTrackFraction = 0.34;
   static const double _capsuleTrackMin = 80;
 
@@ -3506,8 +3520,8 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           // panel it floats over what the lanes and the transport leave.
           left: 0,
           top: cover.top,
-          right: onFloor ? 0 : dockedLane,
-          bottom: cover.bottom + (onFloor ? 0 : dockedLane + _transportCover),
+          right: onFloor ? 0 : lane,
+          bottom: cover.bottom + (onFloor ? 0 : lane + _transportCover),
           child: _FloatingCanvasControls(
             children: [
               // THE PILL, at the TOP CENTRE (유저, R3 #6).
@@ -3597,10 +3611,11 @@ class _CanvasEditorPanelShell extends StatelessWidget {
               cover: cover,
               bottomCover: _transportCover,
               railBand: rightRailBand,
+              lane: lane,
             ),
             child: CanvasCapsule(
               keyValue: 'canvas-panbar-vertical',
-              width: rightStripWidth,
+              width: lane,
               child: rightStripBar,
             ),
           ),
@@ -3612,10 +3627,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         // bar stands on it.
         Positioned.fill(
           child: CustomSingleChildLayout(
-            delegate: _FloorHorizontalBarSeat(bottom: _floorBarBottom),
+            delegate: _FloorHorizontalBarSeat(
+              bottom: _floorBarBottom,
+              lane: lane,
+            ),
             child: CanvasCapsule(
               keyValue: 'canvas-panbar-horizontal',
-              height: AppScrollbarLane.thin,
+              height: lane,
               child: horizontalStripBar,
             ),
           ),
@@ -3663,9 +3681,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         onFloor: onFloor,
         top: cover.top + pillBandIn(context),
         nameBottom: onFloor
-            ? _floorBarBottom + AppScrollbarLane.thin + _capsuleMargin
-            : _transportCover + dockedLane + _capsuleMargin,
-        nameRight: (onFloor ? cover.right : dockedLane) + _capsuleMargin,
+            ? _floorBarBottom + lane + _capsuleMargin
+            : _transportCover + lane + _capsuleMargin,
+        nameRight: (onFloor ? cover.right : lane) + _capsuleMargin,
         railBand: leftRailBand,
         onPillLaidOut: onLeftPillLaidOut,
       ),
@@ -3699,14 +3717,14 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     ),
   );
 
-  /// A docked panel's panbars ([dockedLanes]): each bar in a lane of its
+  /// A docked panel's panbars ([dockedLanesOf]): each bar in a lane of its
   /// own, flush with its edge, and the corner between them left to neither.
   /// Each lane is ringed on its artwork side in the backdrop, for the
   /// capsule's reason ([CanvasCapsule]). The transport of a document that runs
   /// is a band under them, ruled off the same way.
   List<Widget> _dockedLanes(ColorScheme colorScheme) {
     const ring = BorderSide(color: AppColors.backdrop);
-    Widget lane(String keyValue, Border ringed, [Widget? bar]) => DecoratedBox(
+    Widget strip(String keyValue, Border ringed, [Widget? bar]) => DecoratedBox(
       key: ValueKey<String>(keyValue),
       decoration: BoxDecoration(color: colorScheme.surface, border: ringed),
       child: bar,
@@ -3715,9 +3733,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       Positioned(
         top: 0,
         right: 0,
-        bottom: dockedLane + _transportCover,
-        width: dockedLane,
-        child: lane(
+        bottom: lane + _transportCover,
+        width: lane,
+        child: strip(
           'canvas-panbar-vertical',
           const Border(left: ring),
           rightStripBar,
@@ -3725,10 +3743,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       ),
       Positioned(
         left: 0,
-        right: dockedLane,
+        right: lane,
         bottom: _transportCover,
-        height: dockedLane,
-        child: lane(
+        height: lane,
+        child: strip(
           'canvas-panbar-horizontal',
           const Border(top: ring),
           horizontalStripBar,
@@ -3737,9 +3755,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       Positioned(
         right: 0,
         bottom: _transportCover,
-        width: dockedLane,
-        height: dockedLane,
-        child: lane('canvas-panbar-corner', const Border()),
+        width: lane,
+        height: lane,
+        child: strip('canvas-panbar-corner', const Border()),
       ),
       if (transport case final transport?)
         Positioned(
@@ -3747,7 +3765,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           right: 0,
           bottom: 0,
           height: _transportCover,
-          child: lane(
+          child: strip(
             'canvas-transport',
             const Border(top: ring),
             Padding(
@@ -3915,10 +3933,14 @@ class _FloorVerticalBarSeat extends SingleChildLayoutDelegate {
     required this.cover,
     required this.bottomCover,
     required this.railBand,
+    required this.lane,
   });
 
   /// See [_CanvasEditorPanelShell.cover].
   final EdgeInsets cover;
+
+  /// See [_CanvasEditorPanelShell.lane].
+  final double lane;
 
   /// What the transport hides of the bottom edge, past [cover]
   /// ([_CanvasEditorPanelShell.transportCover]).
@@ -3935,7 +3957,7 @@ class _FloorVerticalBarSeat extends SingleChildLayoutDelegate {
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
       BoxConstraints.tightFor(
-        width: _CanvasEditorPanelShell.rightStripWidth,
+        width: lane,
         height: _CanvasEditorPanelShell._capsuleTrack(
           _visibleBottom(constraints.maxHeight) - cover.top,
         ),
@@ -3959,7 +3981,8 @@ class _FloorVerticalBarSeat extends SingleChildLayoutDelegate {
   bool shouldRelayout(_FloorVerticalBarSeat oldDelegate) =>
       oldDelegate.cover != cover ||
       oldDelegate.bottomCover != bottomCover ||
-      oldDelegate.railBand != railBand;
+      oldDelegate.railBand != railBand ||
+      oldDelegate.lane != lane;
 }
 
 /// Seats the floor's horizontal panbar on the bottom edge, [bottom] up it,
@@ -3980,17 +4003,20 @@ class _FloorVerticalBarSeat extends SingleChildLayoutDelegate {
 ///
 /// The capsule's corner follows the lane it stands in, its stated axis.
 class _FloorHorizontalBarSeat extends SingleChildLayoutDelegate {
-  const _FloorHorizontalBarSeat({required this.bottom});
+  const _FloorHorizontalBarSeat({required this.bottom, required this.lane});
 
   /// How far up the bottom edge the bar stands
   /// ([_CanvasEditorPanelShell._floorBarBottom]).
   final double bottom;
 
+  /// See [_CanvasEditorPanelShell.lane].
+  final double lane;
+
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
       BoxConstraints.tightFor(
         width: _CanvasEditorPanelShell._capsuleTrack(constraints.maxWidth),
-        height: AppScrollbarLane.thin,
+        height: lane,
       );
 
   @override
@@ -4001,7 +4027,7 @@ class _FloorHorizontalBarSeat extends SingleChildLayoutDelegate {
 
   @override
   bool shouldRelayout(_FloorHorizontalBarSeat oldDelegate) =>
-      oldDelegate.bottom != bottom;
+      oldDelegate.bottom != bottom || oldDelegate.lane != lane;
 }
 
 /// The floor's controls, laid on the drawing.
@@ -4482,7 +4508,7 @@ class _CanvasViewportPanbar extends StatelessWidget {
             : 'canvas-viewport-vertical-scrollbar',
       ),
       along: double.infinity,
-      across: AppScrollbarLane.thin,
+      across: AppScrollbarLaneScope.of(context),
       child: AppScrollbar(
         axis: axis,
         offset: metrics.scrollOffset,

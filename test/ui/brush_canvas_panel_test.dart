@@ -23,7 +23,7 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
-import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
@@ -327,6 +327,50 @@ void main() {
       findsNothing,
       reason: 'the floor\'s bars float — no lanes, no corner',
     );
+  });
+
+  testWidgets('🗣️F-440: the panel laid at the back has the thick bars, the '
+      'same panel docked the thin ones — 「뒷 배경에 깔리는 패널만 두꺼운 '
+      '스크롤바 사용」', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    Size sizeOf(String key) =>
+        tester.getSize(find.byKey(ValueKey<String>(key)));
+    Future<void> pumpWhen({required bool onFloor}) async {
+      await tester.pumpWidget(floorPillHarness(width: 900, onFloor: onFloor));
+      await tester.pumpAndSettle();
+    }
+
+    for (final (onFloor, lane) in const [
+      (true, AppScrollbarLane.thick),
+      (false, AppScrollbarLane.thin),
+    ]) {
+      await pumpWhen(onFloor: onFloor);
+      final where = onFloor ? 'on the floor' : 'docked';
+      expect(sizeOf('canvas-panbar-vertical').width, lane, reason: where);
+      expect(sizeOf('canvas-panbar-horizontal').height, lane, reason: where);
+      // The bar inside, not only the seat around it: the thumb fills it.
+      expect(
+        sizeOf('canvas-viewport-vertical-scrollbar').width,
+        lane,
+        reason: where,
+      );
+      expect(
+        sizeOf('canvas-viewport-horizontal-scrollbar').height,
+        lane,
+        reason: where,
+      );
+      // And any bar the panel holds hears the panel's lane.
+      expect(
+        AppScrollbarLaneScope.of(
+          tester.element(find.byKey(const ValueKey<String>(
+            'canvas-editor-panel-shell',
+          ))),
+        ),
+        lane,
+        reason: where,
+      );
+    }
   });
 
   testWidgets('🗣️F-209: a docked panel\'s lanes take their room, and every '

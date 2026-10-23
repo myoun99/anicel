@@ -96,8 +96,17 @@ class AppWindow extends StatelessWidget {
     this.maxWidth = 720,
     this.height,
     this.scrollBody = true,
-    this.bodyPadding = const EdgeInsets.fromLTRB(12, 14, 12, 12),
+    this.bodyPadding = defaultBodyPadding,
   });
+
+  /// The room around a body that does not say otherwise — and around the
+  /// content of one that scrolls in a lane of its own (Preferences).
+  static const EdgeInsets defaultBodyPadding = EdgeInsets.fromLTRB(
+    12,
+    14,
+    12,
+    12,
+  );
 
   final String title;
   final IconData? titleIcon;

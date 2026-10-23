@@ -42,7 +42,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final lane = laneOf(tester);
-    expect(lane.width, AppScrollbarLane.thin, reason: 'CLAUDE.md: 레인 16px');
+    expect(lane.width, AppScrollbarLane.thin, reason: 'CLAUDE.md: 얇은 8px');
     expect(lane.height, 300, reason: 'the whole height of the content');
     expect(
       tester.getRect(find.byType(ListView)).right,
@@ -51,8 +51,8 @@ void main() {
     );
   });
 
-  // F-409 (user): 「환경설정창은 다 두꺼운 스크롤바 사용」 — a window's scope
-  // reaches the reserved lane as it does the overlay one.
+  // F-440 (user): 「뒷 배경에 깔리는 패널만 두꺼운 스크롤바 사용」 — the
+  // floor's scope reaches the reserved lane as it does the overlay one.
   testWidgets('under a scope, the scope\'s lane', (tester) async {
     await tester.pumpWidget(
       AppScrollbarLaneScope(

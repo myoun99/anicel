@@ -113,22 +113,28 @@ class _PanelBuild {
         _state.widget.canvasSize.height.toDouble() +
         _CanvasViewportBottomBar.heightIn(context),
     child: SizedBox.expand(
-      child: _CanvasEditorPanelShell(
-        rightStripBar: _state._shellBars.memoizedRightStripBar(),
-        horizontalStripBar: _state._shellBars.memoizedHorizontalStripBar(),
-        bottomBar: _state._shellBars.memoizedBottomBar(),
-        transport: _state.widget.transport,
-        leftPill: _state.widget.leftPill,
-        onLeftPillLaidOut: _state._rememberLeftPillBeside,
-        documentName: _state.widget.documentName,
-        documentAbsent: _state.widget.documentAbsent,
-        // The capsules float INSIDE what the panels left over.
-        cover: _state.widget.floorCover,
-        onFloor: _state._onFloor,
-        leftRailBand: _state.widget.floorLeftRailBand,
-        rightRailBand: _state.widget.floorRightRailBand,
-        bottomOverlaySpan: _state.widget.floorBottomOverlaySpan,
-        child: LayoutBuilder(builder: _viewport),
+      // Every bar in the panel — its panbars, and any it holds — stands in
+      // the panel's lane ([_BrushCanvasPanelState._lane], F-440).
+      child: AppScrollbarLaneScope(
+        lane: _state._lane,
+        child: _CanvasEditorPanelShell(
+          rightStripBar: _state._shellBars.memoizedRightStripBar(),
+          horizontalStripBar: _state._shellBars.memoizedHorizontalStripBar(),
+          bottomBar: _state._shellBars.memoizedBottomBar(),
+          transport: _state.widget.transport,
+          leftPill: _state.widget.leftPill,
+          onLeftPillLaidOut: _state._rememberLeftPillBeside,
+          documentName: _state.widget.documentName,
+          documentAbsent: _state.widget.documentAbsent,
+          // The capsules float INSIDE what the panels left over.
+          cover: _state.widget.floorCover,
+          onFloor: _state._onFloor,
+          lane: _state._lane,
+          leftRailBand: _state.widget.floorLeftRailBand,
+          rightRailBand: _state.widget.floorRightRailBand,
+          bottomOverlaySpan: _state.widget.floorBottomOverlaySpan,
+          child: LayoutBuilder(builder: _viewport),
+        ),
       ),
     ),
   );

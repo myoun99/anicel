@@ -13,12 +13,15 @@ import 'tick_layer.dart';
 export 'app_scrollbar_lane.dart';
 
 /// The lane the bars under it are given where they are not given one —
-/// the bar laid over an overflowing scrollable, the content column's —
-/// [AppScrollbarLane.thin] outside any scope.
+/// the bar laid over an overflowing scrollable, the content column's, the
+/// canvas panel's panbars — [AppScrollbarLane.thin] outside any scope.
 ///
-/// F-409 (유저): 「환경설정창은 다 두꺼운 스크롤바 사용」 — every bar in a
-/// window, the ones nested in its sections too, so the window says it once
-/// rather than each scrollable inside it.
+/// The PANEL says it, once, for everything laid in it: F-440 (유저
+/// 2026-10-23) 「뒷 배경에 깔리는 패널만 두꺼운 스크롤바 사용. 나중에
+/// 콘티용지패널을 뒤에 깔수있게 할거기 때문에 입구를 그런식으로 설계」 — a
+/// panel that finds itself on the workspace's floor (`CanvasFloorInsets`)
+/// says thick, and the same panel docked passes on the lane its seat gives.
+/// ↩️The preferences window said thick here from F-409 (10-20) to F-440.
 class AppScrollbarLaneScope extends InheritedWidget {
   const AppScrollbarLaneScope({
     super.key,

@@ -40,8 +40,9 @@ import '../input/pan_slide.dart';
 /// Derived, never typed: adding a control slot moves this floor with it.
 const double layerRailMinimumWindowExtent = layerRailLeadingWidth + 14;
 
-/// How thick a rail's own scrollbar lane is: the thin bar, wide enough for the
-/// thumb's 32px minimum to be grabbed — see [AppScrollbarGeometry].
+/// How thick a rail's own scrollbar lane is: the thin bar — F-440 (유저
+/// 2026-10-23): 「레이어랑 프레임영역의 가로는 얇은 스크롤바」. Its thumb keeps
+/// the 32px minimum along it — see [AppScrollbarGeometry].
 const double layerRailScrollbarLaneExtent = AppScrollbarLane.thin;
 
 /// What the FRAME area keeps whatever the rail wants: two cells at the

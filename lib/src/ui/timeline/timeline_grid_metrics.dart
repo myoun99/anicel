@@ -147,13 +147,16 @@ const double timelineSectionLabelGutterWidth = 0;
 /// and the frame's below it.
 ///
 /// F-409 (유저): 「프레임영역의 세로 스크롤바. 지금보다 살짝 더 두꺼운 스크롤바
-/// 사용」 — the thick bar ([AppScrollbarLane.thick]).
+/// 사용」 — the thick bar ([AppScrollbarLane.thick]), and F-440 (유저
+/// 2026-10-23) keeps it so in either orientation: 「타임라인/콘티패널쪽은
+/// 세로 이동을 두꺼운거, 가로를 얇은것」.
 const double timelineVerticalScrollbarWidth = AppScrollbarLane.thick;
 
 /// The horizontal scrollbar rail closing the bottom of a grid. Both grids
 /// declared it privately (R10 R6 found the third copy while deriving the
 /// x-sheet's header against it); a number two surfaces subtract from the
-/// same viewport belongs to neither of them.
+/// same viewport belongs to neither of them. The thin bar — F-440: 「가로를
+/// 얇은것」.
 const double timelineBottomScrollbarRailHeight = AppScrollbarLane.thin;
 
 /// The paper-timesheet stride LADDER a frame axis thins its marks on (user

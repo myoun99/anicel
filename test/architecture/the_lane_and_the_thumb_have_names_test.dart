@@ -6,10 +6,10 @@ import '../helpers/dart_sources.dart';
 
 /// 🚨THE LANE AND THE THUMB ARE NUMBERS WITH NAMES.
 ///
-/// CLAUDE.md: 「레인 16px, **썸 최소 32px**」 — and the thumb minimum is
-/// load-bearing past the scrollbar itself: `editor_workspace` sizes the
-/// x-sheet's floor around it, and the timeline and storyboard panels reason
-/// from it. A layout computing against a number the scrollbar no longer
+/// CLAUDE.md: 「레인 두꺼운 16 · 얇은 8px, **썸 최소 32px**」 — and the thumb
+/// minimum is load-bearing past the scrollbar itself: `editor_workspace`
+/// sizes the x-sheet's floor around it, and the timeline and storyboard
+/// panels reason from it. A layout computing against a number the scrollbar no longer
 /// uses is a layout that is wrong and still compiles.
 ///
 /// The thumb minimum was written out three times before it had a name
@@ -19,20 +19,23 @@ import '../helpers/dart_sources.dart';
 /// the values themselves are pinned so a change has to be deliberate.
 void main() {
   test('the values are the ones CLAUDE.md names', () {
-    expect(AppScrollbarLane.thin, 16, reason: '레인 16px');
+    expect(AppScrollbarLane.thick, 16, reason: '두꺼운 16');
+    expect(AppScrollbarLane.thin, 8, reason: '얇은 8');
     expect(AppScrollbarThumb.minimum, 32, reason: '썸 최소 32px');
   });
 
-  test('the thick bar is thicker than the thin one — F-409: 「지금보다 살짝 '
-      '더 두꺼운」', () {
-    expect(AppScrollbarLane.thick, greaterThan(AppScrollbarLane.thin));
+  test('the thin bar is half the thick one — F-440: 「그 외를 지금의 1/2로 '
+      '해서 그것을 얇은 스크롤바로 명명」', () {
+    expect(AppScrollbarLane.thin, AppScrollbarLane.thick / 2);
   });
 
-  test('the frame area\'s vertical bar is the thick one (F-409)', () {
+  test('the frame area\'s vertical bar is the thick one (F-409, F-440: '
+      '「세로 이동을 두꺼운거」)', () {
     expect(timelineVerticalScrollbarWidth, AppScrollbarLane.thick);
   });
 
-  test('the frame area\'s bottom rail is the thin one (F-409)', () {
+  test('the frame area\'s bottom rail is the thin one (F-409, F-440: '
+      '「가로를 얇은것」)', () {
     expect(timelineBottomScrollbarRailHeight, AppScrollbarLane.thin);
   });
 
