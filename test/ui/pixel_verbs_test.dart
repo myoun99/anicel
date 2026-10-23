@@ -609,6 +609,31 @@ void main() {
       expect(cels(verbs.transformCellKeys()), cels(verbs.pixelVerbCellKeys()));
       expect(verbs.transformCellKeys(), hasLength(1));
     });
+
+    // 🚨F-458 (유저 2026-10-23): 「…보이고있는거니까」 — and the solo shows
+    // the folders above the row you stand on, whatever their own eyes.
+    testWidgets('standing in a folder the user switched off, the solo '
+        'showing it makes the row one an edit reaches', (tester) async {
+      final session = await pump(tester);
+      final (:a, b: _) = await rowsInAFolder(tester, session);
+      session.selectLayer(a.id);
+      session.layerSwitches.toggleLayerVisibility(folder);
+      await tester.pump();
+      expect(
+        session.pixelVerbs.pixelVerbSubject,
+        PixelVerbSubject.nothing,
+        reason: 'the premise: a row in a hidden folder is hidden',
+      );
+
+      session.visibilitySolo.toggleLayerVisibilitySolo();
+      await tester.pump();
+      expect(
+        session.requireActiveCut.layers.byId(folder)!.isVisible,
+        isTrue,
+        reason: 'the premise: the solo shows the folder above you',
+      );
+      expect(session.pixelVerbs.pixelVerbSubject, PixelVerbSubject.standing);
+    });
   });
 
   /// F-329 (유저 2026-10-10): 「변형중에도 라이브로 선택된 다른행의 프레임도
@@ -740,8 +765,13 @@ void main() {
       expect(landsOn(session), before);
     });
 
+    // 🚨F-458 (유저 2026-10-23): 「비지블 off인 레이어에서 활성레이어솔로인
+    // 상태라도 색변환이나 그런 보여야만 할수있는 조작관련 가능하게. 왜냐면
+    // 보이고있는거니까」.
     testWidgets('and standing on a row the user switched off, the solo '
-        'showing it does not make it one an edit reaches', (tester) async {
+        'showing it makes it one an edit reaches — it is on screen', (
+      tester,
+    ) async {
       final session = await pump(tester);
       final (:a, b: _) = await rowAndTwin(tester, session);
       session.layerSwitches.toggleLayerVisibility(a.id);
@@ -755,16 +785,20 @@ void main() {
         isTrue,
         reason: 'the premise: the solo shows the row you stand on',
       );
+      expect(session.pixelVerbs.pixelVerbSubject, PixelVerbSubject.standing);
+      expect(
+        session.pixelVerbs.canRunPixelClipboardVerb(PixelClipboardVerb.copy),
+        isTrue,
+        reason: 'and the cel you stand on, which 픽셀 복사 reads',
+      );
+
+      session.visibilitySolo.toggleLayerVisibilitySolo();
+      await tester.pump();
       expect(
         session.pixelVerbs.pixelVerbSubject,
         PixelVerbSubject.nothing,
-        reason: 'the eye is the one the file keeps (F-153) — the solo '
-            'changes nothing an edit reaches, either way',
-      );
-      expect(
-        session.pixelVerbs.canRunPixelClipboardVerb(PixelClipboardVerb.copy),
-        isFalse,
-        reason: 'nor the cel you stand on, which 픽셀 복사 reads',
+        reason: 'the eye is still the one the user left off: out of the '
+            'solo, nothing shows it',
       );
     });
   });
