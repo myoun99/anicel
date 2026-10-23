@@ -114,6 +114,7 @@ void main() {
       final brush = BrushSettings(tipsPerTurn: 3);
       expect(BrushSettings.fromJson(brush.toJson()).tipsPerTurn, 3);
       expect(BrushSettings.fromJson(brush.toJson()), brush);
+      expect(brush, isNot(BrushSettings()));
       expect(BrushSettings().toJson().containsKey('tipsPerTurn'), isFalse);
       expect(() => BrushSettings(tipsPerTurn: 0), throwsArgumentError);
     });

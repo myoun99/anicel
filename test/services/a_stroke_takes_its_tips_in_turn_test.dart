@@ -42,11 +42,13 @@ void main() {
     List<BrushTipMask>? tips,
     double scatter = 0,
     int scatterCount = 1,
+    int tipsPerTurn = 1,
     int seed = 3,
   }) => BrushStrokeDynamics(
     settings: BrushEditCanvasInputSettings(
       tips: tips ?? abc,
       tipOrder: order,
+      tipsPerTurn: tipsPerTurn,
       scatterRadiusRatio: scatter,
       scatterCount: scatterCount,
     ),
@@ -118,6 +120,23 @@ void main() {
 
     // Leans 0 · 0.1 · 0.38 · 0.5 · 0.8 · 1 → sixths 0 · 0 · 2 · 3 · 4 · 5.
     expect(tipsOf(laid), 'uuwxyzu');
+  });
+
+  test('🚨the lean picks the turn and each dab throws one of its tips — '
+      'the brush\'s own count, handed to the stroke (F-456-Q4)', () {
+    final six = [for (final id in 'uvwxyz'.split('')) tip(id)];
+    final stroke = strokeOf(BrushTipOrder.lean, tips: six, tipsPerTurn: 3);
+
+    final upright = tipsOf(stroke.apply(dabs(40), firstSequence: 0));
+    final flat = tipsOf(
+      stroke.apply([
+        for (var index = 0; index < 40; index += 1)
+          dab(index).copyWith(tiltAltitude: 0.0),
+      ], firstSequence: 40),
+    );
+
+    expect(upright.split('').toSet(), {'u', 'v', 'w'});
+    expect(flat.split('').toSet(), {'x', 'y', 'z'});
   });
 
   test('a brush whose tips take no turns passes its dabs through', () {
