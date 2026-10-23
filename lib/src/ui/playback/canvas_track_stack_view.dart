@@ -16,7 +16,7 @@ import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../canvas/paper_background.dart'
-    show AlphaCheckerboardPainter, paintAlphaCheckerboard;
+    show AlphaCheckerboardPainter, paintAbsentPlane;
 import '../canvas/stage_planes_painter.dart';
 import 'camera_shot.dart';
 import 'layer_frame_image_cache.dart';
@@ -323,6 +323,7 @@ class CanvasTrackStackView extends StatelessWidget {
             paperNone: background.none,
             canvasSize: cut.canvasSize,
             viewport: view,
+            devicePixelRatio: ratio,
           )
         : null;
     final unit = Stack(
@@ -487,6 +488,7 @@ class _CameraFloor extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final screen = canvas.getTransform();
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     canvas.drawRect(
@@ -501,7 +503,12 @@ class _CameraFloor extends CustomPainter with RepaintOnProps {
       );
     }
     if (backdropNone) {
-      paintAlphaCheckerboard(canvas, frameSize.canvasRect);
+      paintAbsentPlane(
+        canvas,
+        frameSize.canvasRect,
+        screen: screen,
+        antiAlias: true,
+      );
     } else {
       canvas.drawRect(frameSize.canvasRect, Paint()..color = backdrop);
     }

@@ -39,7 +39,10 @@ import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/display_resample.dart' show displayScaleOf;
+import 'canvas/paper_background.dart' show paintAbsentPlane;
+import 'canvas/stage_planes_painter.dart' show StagePlane;
 import 'canvas/viewport_canvas_transform.dart';
+import '../services/composite_effect_paint.dart' show alphaOnly;
 import 'brush/main_canvas_brush_host.dart';
 import 'brush/brush_canvas_panel.dart'
     show BrushCanvasPanel, CanvasEdgePill, CanvasFloats;
@@ -1867,6 +1870,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final standing = session.editingGlobalFrame;
     final partners = _olPartnersAt(session, standing);
     final frame = session.camera.cameraFrameSize;
+    final project = session.repository.requireProject();
     return Positioned.fill(
       // The cut fade on the EDITING canvas (R9-C →
       // R3b): the fade is transparency, and here the
@@ -1905,13 +1909,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     ? frame.canvasRect
                     : session.pasteboardOf(canvasSize).rect,
                 veils: veils,
-                color: Color(
-                  session.repository.requireProject().backdropArgb,
-                ).withValues(
-                  alpha: backdropShareUnder(cutFadeOpacity, [
-                    for (final partner in partners) partner.opacity,
-                  ]),
+                backdrop: (
+                  color: Color(project.backdropArgb),
+                  none: project.backdropNone,
                 ),
+                share: backdropShareUnder(cutFadeOpacity, [
+                  for (final partner in partners) partner.opacity,
+                ]),
                 devicePixelRatio: EffectiveDevicePixelRatio.of(context),
               ),
             ),
@@ -2032,16 +2036,24 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 }
 
-/// The editing canvas's cut-fade wash (R9-C): the fade target color over
-/// the cut's unit at (1 − fadeOpacity), under the panel viewport — what
+/// The editing canvas's cut-fade wash (R9-C): the backdrop over the cut's
+/// unit at its [share] of the frame, under the panel viewport — what
 /// playback's thinning of the unit shows, so an fx-on faded frame reads
 /// identically while editing.
+///
+/// 🚨An ABSENT backdrop washes the CHECKERBOARD (F-114,
+/// fade-wash-ignores-an-absent-backdrop, 2026-10-23): what the thinned unit
+/// reveals on the film is its floor, and an absent backdrop's floor is the
+/// checkerboard — in the screen's cells, so the wash's lie exactly on the
+/// floor's own. ↩️It washed the backdrop's kept colour, so standing on a
+/// fade showed a colour the film never did.
 class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   const _CutFadeWashPainter({
     required this.viewport,
     required this.unit,
     required this.veils,
-    required this.color,
+    required this.backdrop,
+    required this.share,
     required this.devicePixelRatio,
   });
 
@@ -2054,7 +2066,13 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   /// The screens one-sided transitions lay over the cut (F-192), under the
   /// wash — they are the unit's, and the wash thins the unit.
   final List<TransitionVeil> veils;
-  final Color color;
+
+  /// The stage's backdrop, its colour and whether it is there at all.
+  final StagePlane backdrop;
+
+  /// How much of the frame the backdrop takes over the unit
+  /// ([backdropShareUnder]).
+  final double share;
 
   /// The pan-phase snap's device grid — the wash covers the unit the
   /// snapped stack painted, not a sub-pixel beside it.
@@ -2062,6 +2080,7 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final screen = canvas.getTransform();
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     applyViewportTransform(
@@ -2070,12 +2089,22 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
       devicePixelRatio: devicePixelRatio,
     );
     paintTransitionVeils(canvas, unit, veils);
-    canvas.drawRect(unit, Paint()..color = color);
+    if (!backdrop.none) {
+      canvas.drawRect(
+        unit,
+        Paint()..color = backdrop.color.withValues(alpha: share),
+      );
+    } else if (share > 0) {
+      canvas.saveLayer(unit, Paint()..color = alphaOnly(share));
+      paintAbsentPlane(canvas, unit, screen: screen, antiAlias: true);
+      canvas.restore();
+    }
     canvas.restore();
   }
 
   @override
-  Object get props => (viewport, unit, ByList(veils), color, devicePixelRatio);
+  Object get props =>
+      (viewport, unit, ByList(veils), backdrop, share, devicePixelRatio);
 }
 
 /// The editing canvas's SE name tags (R5b): the same draw the frame

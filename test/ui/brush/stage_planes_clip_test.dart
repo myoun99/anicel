@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -12,8 +13,8 @@ import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 /// The stage planes must clip to their own box, and the reason is memory
 /// rather than appearance.
 ///
-/// 🚨 The quad is built in VIEWPORT coordinates, so it reaches as far as
-/// the pasteboard does — three canvas widths and heights today, 7020 x 4962
+/// 🚨 The pasteboard is laid through the view, so on the box it reaches as
+/// far as the pasteboard does — three canvas widths and heights today, 7020 x 4962
 /// units at the default cut size (five, 11700 x 8270, when the figures below
 /// were measured; the showing margin went at F-114). A `CustomPaint` clips
 /// nothing, so the
@@ -38,19 +39,56 @@ import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 /// after — which is exactly why it survived so long. The assertion has to
 /// be about what the painter RECORDS, so this drives it with a spy canvas
 /// and asks two things: that the clip is pushed before anything is drawn,
-/// and that the path it clips genuinely escapes the box. The second is
-/// the anti-vacuity half: if the quad already fitted, the clip would be
+/// and that a plane it draws genuinely reaches past the box. The second is
+/// the anti-vacuity half: if the planes already fitted, the clip would be
 /// decoration and this test would prove nothing.
+///
+/// ↩️The planes were a path of the view's corners until they took the
+/// view's transform (stage-planes-are-not-pan-snapped, 2026-10-23), so the
+/// spy follows the transform to see where each rect lands.
 class _SpyCanvas implements Canvas {
   final List<String> ops = <String>[];
   Rect? clip;
-  Rect? pathBounds;
+
+  /// Each rect drawn, in the space it was drawn in.
+  final List<Rect> rects = <Rect>[];
+
+  /// Each rect drawn, where it lands on the box.
+  final List<Rect> landed = <Rect>[];
+  final _saved = <Matrix4>[];
+  var _transform = Matrix4.identity();
 
   @override
-  void save() => ops.add('save');
+  void save() {
+    ops.add('save');
+    _saved.add(_transform.clone());
+  }
 
   @override
-  void restore() => ops.add('restore');
+  void restore() {
+    ops.add('restore');
+    _transform = _saved.removeLast();
+  }
+
+  @override
+  void translate(double dx, double dy) =>
+      _transform = _transform.multiplied(Matrix4.translationValues(dx, dy, 0));
+
+  @override
+  void scale(double sx, [double? sy]) => _transform = _transform.multiplied(
+    Matrix4.diagonal3Values(sx, sy ?? sx, 1),
+  );
+
+  @override
+  void rotate(double radians) =>
+      _transform = _transform.multiplied(Matrix4.rotationZ(radians));
+
+  @override
+  void transform(Float64List matrix4) =>
+      _transform = _transform.multiplied(Matrix4.fromFloat64List(matrix4));
+
+  @override
+  Float64List getTransform() => Float64List.fromList(_transform.storage);
 
   @override
   void clipRect(
@@ -63,12 +101,10 @@ class _SpyCanvas implements Canvas {
   }
 
   @override
-  void drawRect(Rect rect, Paint paint) => ops.add('drawRect');
-
-  @override
-  void drawPath(Path path, Paint paint) {
-    ops.add('drawPath');
-    pathBounds ??= path.getBounds();
+  void drawRect(Rect rect, Paint paint) {
+    ops.add('drawRect');
+    rects.add(rect);
+    landed.add(MatrixUtils.transformRect(_transform, rect));
   }
 
   @override
@@ -111,6 +147,7 @@ void main() {
     // nine thousand canvas units across.
     const box = Size(400, 300);
 
+    var laidOnTheCanvas = 0;
     for (final painter in painters) {
       final spy = _SpyCanvas();
       painter.paint(spy, box);
@@ -133,19 +170,35 @@ void main() {
         reason: 'the clip has to be pushed before anything is recorded',
       );
 
-      // The anti-vacuity half.
-      final bounds = spy.pathBounds;
-      if (bounds != null) {
+      // The anti-vacuity half, where a plane is laid on the canvas at all
+      // — a canvas-base panel lays the backdrop alone, the box itself.
+      final onTheCanvas = spy.landed.where(
+        (rect) => rect != Offset.zero & box,
+      );
+      if (onTheCanvas.isNotEmpty) {
+        laidOnTheCanvas += 1;
         expect(
-          bounds.width > box.width || bounds.height > box.height,
+          onTheCanvas.any(
+            (rect) =>
+                rect.left < 0 ||
+                rect.top < 0 ||
+                rect.right > box.width ||
+                rect.bottom > box.height,
+          ),
           isTrue,
           reason:
-              'the quad already fitted inside the box, so the clip above is '
-              'not what makes the bounds small and this test is not '
-              'measuring anything. Bounds: $bounds vs box: $box',
+              'every plane already fitted inside the box, so the clip above '
+              'is not what makes the bounds small and this test is not '
+              'measuring anything. Landed: $onTheCanvas vs box: $box',
         );
       }
     }
+    expect(
+      laidOnTheCanvas,
+      greaterThan(0),
+      reason: 'LIVENESS: some panel lays its pasteboard, or the anti-vacuity '
+          'half above measured nothing',
+    );
   });
 
   /// 🚨I-109: the pasteboard's plane stops where ink stops — at the wall
@@ -160,9 +213,10 @@ void main() {
         pasteboardReach: reach,
         canvasSize: canvasSize,
         viewport: CanvasViewport(),
+        devicePixelRatio: 1,
       ).paint(spy, const Size(2000, 1000));
       expect(
-        spy.pathBounds,
+        spy.rects.single,
         canvasSize.pasteboardAt(reach).rect,
         reason: '$reach',
       );

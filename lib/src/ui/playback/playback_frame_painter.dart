@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 
 import '../../models/camera_pose.dart';
@@ -155,14 +157,21 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   /// it holds its place in the frame (I-67-Q1).
   final List<ResolvedSeNameTag> seNameTags;
 
-  void _paintPaper(Canvas canvas, Rect rect, {required bool antiAlias}) {
+  void _paintPaper(
+    Canvas canvas,
+    Rect rect, {
+    required bool antiAlias,
+    required Float64List screen,
+  }) {
     if (!paintPaper) {
       return;
     }
     final background = paperBackground;
     if (background != null) {
       if (background.none && checkersAbsentPlanes) {
-        paintAlphaCheckerboard(canvas, rect);
+        // On screen only through the camera, where an absent paper's
+        // checkerboard has no edge of the canvas's to cut (see [paint]).
+        paintAbsentPlane(canvas, rect, screen: screen, antiAlias: true);
         return;
       }
       paintProjectPaper(canvas, rect, background, antiAlias: antiAlias);
@@ -182,6 +191,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       return;
     }
     final pose = cameraPose;
+    final screen = canvas.getTransform();
 
     canvas.save();
     // CustomPaint does not clip: a zoomed/panned frame must never escape the
@@ -240,7 +250,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       if (!pasteboardNone) {
         canvas.drawRect(frameRect!, Paint()..color = pasteboardColor!);
       } else if (checkersAbsentPlanes) {
-        paintAlphaCheckerboard(canvas, frameRect!);
+        paintAbsentPlane(canvas, frameRect!, screen: screen, antiAlias: true);
       }
       canvas.restore();
     }
@@ -256,11 +266,21 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
         resolvedViewport == null ||
         displayEdgeAntiAliased(resolvedViewport, devicePixelRatio);
     if (pose == null) {
-      _paintPaper(canvas, canvasRect, antiAlias: edgeAntiAlias);
+      _paintPaper(
+        canvas,
+        canvasRect,
+        antiAlias: edgeAntiAlias,
+        screen: screen,
+      );
     } else {
       canvas.save();
       applyCameraProjection(canvas, pose, cameraFrameSize!);
-      _paintPaper(canvas, canvasRect, antiAlias: edgeAntiAlias);
+      _paintPaper(
+        canvas,
+        canvasRect,
+        antiAlias: edgeAntiAlias,
+        screen: screen,
+      );
     }
     if (seNameTags.isNotEmpty) {
       // The tags belong to the cut's own contribution, so a stacked UPPER

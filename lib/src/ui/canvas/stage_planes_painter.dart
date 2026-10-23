@@ -1,12 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 
-import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../repaint_props.dart';
-import 'canvas_viewport_offset.dart';
-import 'paper_background.dart' show paintAlphaCheckerboard;
+import 'display_resample.dart' show displayEdgeAntiAliased;
+import 'paper_background.dart' show paintAbsentPlane;
+import 'viewport_canvas_transform.dart' show applyViewportTransform;
 
 /// One plane of the stage (R3b): its colour and whether it is there at all
 /// (F-114) — one value, so a colour never travels without its absence.
@@ -60,6 +62,7 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
     this.paperNone = false,
     required this.canvasSize,
     required this.viewport,
+    required this.devicePixelRatio,
   });
 
   /// Null where the stage lies on a floor laid once under it: the film's
@@ -76,11 +79,16 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
 
+  /// The view's DPR, for [applyViewportTransform]'s pan-phase snap: the
+  /// planes land on the device grid the stack over them snaps to.
+  final double devicePixelRatio;
+
   @override
   void paint(Canvas canvas, Size size) {
     final box = Offset.zero & size;
-    // 🚨 Clip to our own box, because the quad below is built in VIEWPORT
-    // coordinates and therefore reaches as far as the pasteboard does — up
+    final screen = canvas.getTransform();
+    // 🚨 Clip to our own box, because the pasteboard below, laid through
+    // the view, reaches as far as the pasteboard does — up
     // to three canvas widths and heights (its 3x size, I-109), 7020 x 4962
     // units at the default cut
     // size (it was five, 11700 x 8270, when the figures below were
@@ -100,7 +108,7 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
     //
     // Measured on the real app: the picture cache ran to ~1 GB on an
     // EMPTY project and tracked zoom² exactly, with a cliff where the
-    // allocation finally failed. One `drawPath`.
+    // allocation finally failed. One draw.
     //
     // Everything past this box is composited away anyway, so the app was
     // paying hundreds of megabytes to rasterize pixels it then threw out.
@@ -116,73 +124,70 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
     canvas.save();
     canvas.clipRect(box);
     if (backdrop case final backdrop?) {
-      _paintPlane(canvas, box, null, backdrop);
+      _paintPlane(canvas, box, backdrop, screen: screen, antiAlias: true);
     }
+    // 🚨The pasteboard and the paper are PLACES ON THE CANVAS, so they go to
+    // the screen the one way every canvas-space painter takes the view (P8,
+    // [applyViewportTransform]) — its pan-phase snap with it, and they land
+    // on the pixels the stack over them lands on
+    // (stage-planes-are-not-pan-snapped: measured 10-23 at a pan of 10.3,
+    // an absent paper's edge was a blended column at 100% and at 150%
+    // where the paper's own was crisp). ↩️Their corners were carried
+    // through the exact view by hand, off the snap.
+    applyViewportTransform(
+      canvas,
+      viewport,
+      devicePixelRatio: devicePixelRatio,
+    );
     if (pasteboard case final pasteboard?) {
       _paintPlane(
         canvas,
-        box,
-        _quad(canvasSize.pasteboardAt(pasteboardReach).rect),
+        canvasSize.pasteboardAt(pasteboardReach).rect,
         pasteboard,
+        screen: screen,
+        antiAlias: true,
       );
     }
     if (paperNone) {
       _paintPlane(
         canvas,
-        box,
-        _quad(canvasSize.canvasRect),
+        canvasSize.canvasRect,
         (color: const Color(0x00000000), none: true),
+        screen: screen,
+        // Cut where the paper's own edge is cut (F-67-paper-edge), so
+        // turning the paper off and on moves no edge.
+        antiAlias: displayEdgeAntiAliased(viewport, devicePixelRatio),
       );
     }
     canvas.restore();
   }
 
-  /// One plane over [region] — the whole [box] when null: the checkerboard
-  /// when the plane is absent, otherwise its colour wherever that has any
-  /// alpha. The plane rides as ONE value, its colour and whether it is there.
-  ///
-  /// ⚠️The box as a RECT, not a path: the backdrop is the box itself, and
-  /// the clip test asks the first recorded path whether it escapes the box
-  /// — the pasteboard's quad does, a box-shaped path cannot.
+  /// One plane over [region], in the space the canvas is in: the
+  /// checkerboard in the screen's cells when the plane is absent
+  /// ([paintAbsentPlane]), otherwise its colour wherever that has any alpha
+  /// — its edge cut by [antiAlias] either way. The plane rides as ONE
+  /// value, its colour and whether it is there.
   static void _paintPlane(
     Canvas canvas,
-    Rect box,
-    Path? region,
-    StagePlane plane,
-  ) {
+    Rect region,
+    StagePlane plane, {
+    required Float64List screen,
+    required bool antiAlias,
+  }) {
     final (:color, :none) = plane;
     if (none) {
-      canvas.save();
-      if (region != null) {
-        canvas.clipPath(region);
-      }
-      paintAlphaCheckerboard(canvas, box);
-      canvas.restore();
+      paintAbsentPlane(canvas, region, screen: screen, antiAlias: antiAlias);
       return;
     }
     if (color.a <= 0) {
       return;
     }
-    final paint = Paint()..color = color;
-    if (region == null) {
-      canvas.drawRect(box, paint);
-    } else {
-      canvas.drawPath(region, paint);
-    }
-  }
-
-  /// [rect]'s four corners through the view transform, as a PATH: under
-  /// rotation a plane is a quad, and a Rect would silently square it back up.
-  Path _quad(Rect rect) {
-    Offset at(double x, double y) =>
-        viewport.canvasToViewportOffset(CanvasPoint(x: x, y: y));
-
-    return Path()
-      ..moveTo(at(rect.left, rect.top).dx, at(rect.left, rect.top).dy)
-      ..lineTo(at(rect.right, rect.top).dx, at(rect.right, rect.top).dy)
-      ..lineTo(at(rect.right, rect.bottom).dx, at(rect.right, rect.bottom).dy)
-      ..lineTo(at(rect.left, rect.bottom).dx, at(rect.left, rect.bottom).dy)
-      ..close();
+    canvas.drawRect(
+      region,
+      Paint()
+        ..color = color
+        ..isAntiAlias = antiAlias,
+    );
   }
 
   @override
@@ -193,5 +198,7 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
     paperNone,
     canvasSize,
     viewport,
+    // The pan-phase snap reads it — a monitor move must repaint.
+    devicePixelRatio,
   );
 }

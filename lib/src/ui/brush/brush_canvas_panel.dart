@@ -91,6 +91,7 @@ import 'cut_piece_preview.dart';
 import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../canvas/stage_planes_painter.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
@@ -4579,6 +4580,7 @@ class _StagePlanes extends StatelessWidget {
         paperNone: paperNone,
         canvasSize: canvasSize,
         viewport: viewport,
+        devicePixelRatio: EffectiveDevicePixelRatio.of(context),
       ),
       child: child,
     );
