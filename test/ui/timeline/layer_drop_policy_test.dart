@@ -108,6 +108,52 @@ void main() {
         isNull,
       );
     });
+
+    // 🗣️F-372 ② (검증 2026-10-23): the track's rows stand between the cut's
+    // on screen and nowhere in its stack, so a line on either side of them
+    // named one seat — and the row is drawn on one side only.
+    test('beside another owner\'s rows a line names its seat only where the '
+        'seat\'s own rows are', () {
+      final cut = [
+        _row('a'),
+        _row('b'),
+        _row('d', kind: LayerKind.instruction),
+        _row('cam', kind: LayerKind.camera),
+      ];
+      final film = [
+        ...cut,
+        _row('tr', kind: LayerKind.transition),
+        _row('s1', kind: LayerKind.se),
+        _row('s2', kind: LayerKind.se),
+      ];
+      List<int?> seats(List<Layer> rows) => [
+        for (var slot = 0; slot <= rows.length; slot += 1)
+          modelInsertionForSlot(stack: cut, displayRows: rows, slot: slot),
+      ];
+
+      // cam · tr · d · s2 · s1 · b · a
+      expect(seats(horizontalLayerDisplayOrder(film)), [
+        4,
+        null, // over the transition row: a Direction row lands under it
+        3,
+        null, // over the SE rows: a drawing row lands under them
+        null,
+        2,
+        1,
+        0,
+      ]);
+      // a · b · s1 · s2 · d · tr · cam
+      expect(seats(xsheetLayerDisplayOrder(film)), [
+        0,
+        1,
+        2,
+        null,
+        null,
+        3,
+        null,
+        4,
+      ]);
+    });
   });
 
   group('where the run lands', () {
