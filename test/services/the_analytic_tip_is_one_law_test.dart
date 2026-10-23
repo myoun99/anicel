@@ -42,13 +42,13 @@ void main() {
       expect(tip.isRound, isTrue);
       expect(tip.isEllipse, isFalse);
       expect(
-        tip.turn.cos,
+        tip.tipCos,
         1.0,
         reason:
             'the rotation terms stay identity when nothing rotates — the '
             'pixel loop reads them either way',
       );
-      expect(tip.turn.sin, 0.0);
+      expect(tip.tipSin, 0.0);
       expect(tip.inverseRoundness, 1.0);
     });
 

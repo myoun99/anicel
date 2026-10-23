@@ -16,7 +16,8 @@ typedef BrushDabTipGeometry = ({
   bool isRound,
   BrushTipMask? tipMask,
   bool isEllipse,
-  PlaneTurn turn,
+  double tipCos,
+  double tipSin,
   double inverseRoundness,
 });
 
@@ -54,9 +55,10 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
   final isRound = tip.tipShape == BrushTipShape.round;
   final tipMask = tip.tipMask;
   final isEllipse = tipMask == null && isRound && tip.roundness < 1.0;
-  // A circle and a square do not turn; the others turn by the one table,
-  // exact at the quarter turns ([PlaneTurn]).
+  // A circle and a square do not turn; the others take their cosine and
+  // sine from the one table, exact at the quarter turns ([turnCos]).
   final turns = isEllipse || tipMask != null;
+  final degrees = turns ? tip.angleDegrees : 0.0;
   return (
     radius: radius,
     minorRadius: radius * tip.roundness,
@@ -64,7 +66,8 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
     isRound: isRound,
     tipMask: tipMask,
     isEllipse: isEllipse,
-    turn: PlaneTurn(turns ? tip.angleDegrees : 0),
+    tipCos: turnCos(degrees),
+    tipSin: turnSin(degrees),
     inverseRoundness: turns ? 1.0 / tip.roundness : 1.0,
   );
 }
@@ -131,11 +134,27 @@ double brushEdgeApplied(BrushEdgeLaw law, double coverage) {
 /// fourth time; it calls this now wherever it does not read an unrotated
 /// raster tip off its lattices (board
 /// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`).
+@pragma('vm:prefer-inline')
 double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
   final mask = tip.tipMask;
+  if (mask == null && !tip.isRound) {
+    // A square dab is the fill and stamp verbs' "cover exactly this rect",
+    // and the dab constructor refuses to build one that is squashed or
+    // rotated — so there is no rotated-rect case to test.
+    return 1.0;
+  }
+  // Into the tip's own space: turned by its angle ([turnedX]), pressed
+  // along its minor axis by its roundness. A circle's turn is the identity
+  // to the bit (cosine 1 and sine 0 from the table, roundness 1), so its
+  // distance is the plain one.
+  // 🔬A circle takes the turn too, and must: the debug JIT cannot inline a
+  // leaf that has never run, so a loop warmed on circles alone, with their
+  // own branch, kept [turnedX] a call — ellipse and raster tips then cost
+  // 30 → 66 and 79 → 104 ns a pixel (2026-10-23).
+  final tipU = turnedX(dx, dy, tip.tipCos, tip.tipSin);
+  final tipV = turnedY(dx, dy, tip.tipCos, tip.tipSin) * tip.inverseRoundness;
   if (mask != null) {
-    // A ROTATED raster tip: nothing outside the mask's square.
-    final (x: tipU, y: tipV) = _inTipSpace(tip, dx, dy);
+    // A raster tip: nothing outside the mask's square.
     if (tipU.abs() > tip.radius || tipV.abs() > tip.radius) {
       return 0.0;
     }
@@ -146,19 +165,7 @@ double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
       radius: tip.radius,
     );
   }
-  if (!tip.isRound) {
-    // A square dab is the fill and stamp verbs' "cover exactly this rect",
-    // and the dab constructor refuses to build one that is squashed or
-    // rotated — so there is no rotated-rect case to test.
-    return 1.0;
-  }
-  final double distance;
-  if (tip.isEllipse) {
-    final (x: tipU, y: tipV) = _inTipSpace(tip, dx, dy);
-    distance = math.sqrt(tipU * tipU + tipV * tipV);
-  } else {
-    distance = math.sqrt(dx * dx + dy * dy);
-  }
+  final distance = math.sqrt(tipU * tipU + tipV * tipV);
   if (distance > tip.radius) {
     return 0.0;
   }
@@ -167,16 +174,4 @@ double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
     return 1.0;
   }
   return (1.0 - ((distance - tip.hardRadius) / edgeSpan)).clamp(0.0, 1.0);
-}
-
-/// Where the offset ([dx], [dy]) from a dab's centre lands in its tip's own
-/// space: turned by the tip's angle ([PlaneTurn]), then pressed along the
-/// minor axis by its roundness.
-({double x, double y}) _inTipSpace(
-  BrushDabTipGeometry tip,
-  double dx,
-  double dy,
-) {
-  final (:x, :y) = tip.turn.apply(dx, dy);
-  return (x: x, y: y * tip.inverseRoundness);
 }

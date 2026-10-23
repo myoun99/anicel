@@ -58,8 +58,21 @@ final class PlaneTurn {
 
   /// The point ([x], [y]) turned.
   ({double x, double y}) apply(double x, double y) =>
-      (x: x * cos - y * sin, y: x * sin + y * cos);
+      (x: turnedX(x, y, cos, sin), y: turnedY(x, y, cos, sin));
 }
+
+/// The two coordinates of ([x], [y]) turned by the turn whose cosine and
+/// sine are [cos] and [sin] — THE formula, which [PlaneTurn.apply] runs.
+///
+/// Two plain leaves over a turn's two numbers, for a loop that turns a
+/// point per pixel and holds those numbers already (a brush tip's,
+/// `tipCoverageAt`) and wants no record back per pixel.
+@pragma('vm:prefer-inline')
+double turnedX(double x, double y, double cos, double sin) =>
+    x * cos - y * sin;
+@pragma('vm:prefer-inline')
+double turnedY(double x, double y, double cos, double sin) =>
+    x * sin + y * cos;
 
 /// 0/1/2/3 for an exact 0/90/180/270, null for anything in between.
 int? _exactQuarterTurn(double degrees) {

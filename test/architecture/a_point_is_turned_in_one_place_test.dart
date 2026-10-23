@@ -22,7 +22,7 @@ import '../helpers/source_ledger.dart';
 /// ↩️It was a RATCHET until 2026-10-23: the files that still turned a point
 /// by hand stood on a ledger that only shrank. The last two — a brush
 /// dab's pixel turned into tip space, in the coverage law and again in the
-/// tile kernel's loop — turn by [PlaneTurn] now (board
+/// tile kernel's loop — turn by the home's formula now (`turnedX`, board
 /// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`), so it is
 /// a ban.
 void main() {
