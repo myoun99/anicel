@@ -297,6 +297,14 @@ void main() {
     sound.stop();
   }, skip: skip);
 
+  test('a viewer going silent silences its own sound at once', () async {
+    final (device, sound) = await playing(fromSeconds: 1);
+    expect(device.isPlaying, isTrue, reason: 'fixture: the viewer sounds');
+
+    sound.stop();
+    expect(device.isPlaying, isFalse);
+  }, skip: skip);
+
   test('🚨a viewer going silent leaves another player\'s sound alone — it '
       'silences its own run only', () async {
     final (device, sound) = await playing(fromSeconds: 1);
