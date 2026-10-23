@@ -179,6 +179,39 @@ if(NOT ANDROID AND NOT IOS)
   add_test(NAME qa_audio_range COMMAND qa_audio_range_test)
 endif()
 
+# The transport against a move that lands mid-block
+# (a-seek-lost-to-the-block-in-flight). It includes the device's translation
+# unit with miniaudio's null backend alone, so no OS audio stack comes along
+# and the test is the same on every host.
+if(NOT ANDROID AND NOT IOS)
+  add_executable(qa_audio_transport_test
+    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_transport_test.c")
+  set_target_properties(qa_audio_transport_test PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+  )
+  if(APPLE)
+    target_link_libraries(qa_audio_transport_test
+      "-framework CoreFoundation" "-framework CoreAudio"
+      "-framework AudioToolbox")
+  elseif(UNIX)
+    find_package(Threads REQUIRED)
+    target_link_libraries(qa_audio_transport_test
+      Threads::Threads ${CMAKE_DL_LIBS} m)
+  elseif(WIN32)
+    target_link_libraries(qa_audio_transport_test ole32)
+  endif()
+  if(MSVC)
+    target_compile_options(qa_audio_transport_test
+      PRIVATE /utf-8 /wd4267 /wd4244 /wd4996)
+  else()
+    target_compile_options(qa_audio_transport_test
+      PRIVATE -Wno-unused-function)
+  endif()
+  enable_testing()
+  add_test(NAME qa_audio_transport COMMAND qa_audio_transport_test)
+endif()
+
 # The range byte stream, driven for real. ⚠️Unlike the law test above, this
 # one WANTS its platform: the object under test IS Media Foundation's
 # interface, so there is nothing portable to check and the MF libraries are
