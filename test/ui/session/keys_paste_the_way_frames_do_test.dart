@@ -269,6 +269,24 @@ void main() {
       expect((blurred(10), blurred(12)), (250, 0));
     });
 
+    test('typed into the value editor, a number is held as a pasted one is '
+        '— 78.5 on an opacity is 78.5%, 150% there 100%', () {
+      void type(int frame, String value) => s.laneVerbs.setLaneValueAt(
+        before.id,
+        'opacity',
+        frame,
+        value,
+        frameIsGlobal: false,
+        description: 'Type',
+        scaleLinked: false,
+      );
+      type(4, '78.5');
+      type(6, '150%');
+
+      expect(held('opacity', 4), closeTo(0.785, 1e-9));
+      expect(held('opacity', 6), 1.0);
+    });
+
     test('an opacity\'s 40% is a name tag\'s size of 40', () {
       key('opacity', {4: 0.4});
       standOn('opacity', at: 4);
