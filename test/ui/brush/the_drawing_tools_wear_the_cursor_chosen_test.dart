@@ -577,6 +577,17 @@ void main() {
           isTrue,
           reason: '${tool.name} is set by its own name',
         );
+        if (tool == CanvasTool.fill) {
+          // The system moves the bucket: a move costs the app no frame.
+          MeasurementMode.frameStats.value = true;
+          addTearDown(MeasurementMode.reset);
+          addTearDown(RepaintCause.reset);
+          await tester.pump();
+          RepaintCause.reset();
+          await mouse.moveTo(canvasGlobalOffset(tester, const Offset(60, 50)));
+          expect(tester.binding.hasScheduledFrame, isFalse);
+          expect(RepaintCause.debugMarkedCause, isNull);
+        }
       }
       expect(
         drawn(tester, const ValueKey<String>('eyedropper-hover-swatch')),
