@@ -235,7 +235,7 @@ void main() {
       read: (row) => row.transformEnabled,
       written: false,
     ),
-    // 🗣️I-89-Q22 (유저 2026-10-19): 「콘티행은 그런부분 글로벌이니까 아니면
+    // 🗣️I-89-Q22 (유저 2026-10-16): 「콘티행은 그런부분 글로벌이니까 아니면
     // 글로벌시키고 넣고 머리로 하나」. ↩️Each cut's own until then.
     'the sheet switch': (
       write: (session, row) =>
@@ -467,7 +467,7 @@ void main() {
     );
   });
 
-  /// 🗣️I-89-Q22 (유저 2026-10-19): 「어니언도 콘티행 기본적으로 버튼
+  /// 🗣️I-89-Q22 (유저 2026-10-16): 「어니언도 콘티행 기본적으로 버튼
   /// 글로벌이니까 넣음」 — the onion is session state, not the head's
   /// (F-162), and it is ONE for the track's conte rows all the same.
   group('the onion', () {

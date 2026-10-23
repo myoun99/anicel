@@ -29,7 +29,7 @@ export 'conte_key.dart';
 ///
 /// ↩️Whether a row prints on its cut's timesheet was each cut's own too,
 /// until the conte panel's head took the sheet switch: 🗣️I-89-Q22 (유저
-/// 2026-10-19): 「공통으로 안되는건 애초에 콘티패널에 버튼두지않음 … 콘티행은
+/// 2026-10-16): 「공통으로 안되는건 애초에 콘티패널에 버튼두지않음 … 콘티행은
 /// 그런부분 글로벌이니까 아니면 글로벌시키고 넣고 머리로 하나」 — the head
 /// wears it ([ConteHead.onTimesheet]).
 ///
@@ -236,7 +236,7 @@ final class ConteHead {
 
   /// Whether the row prints on its cut's timesheet — ONE for every cut of
   /// the track, as the conte panel's head draws it once (🗣️I-89-Q22, 유저
-  /// 2026-10-19: 「콘티행은 그런부분 글로벌이니까 아니면 글로벌시키고 넣고
+  /// 2026-10-16: 「콘티행은 그런부분 글로벌이니까 아니면 글로벌시키고 넣고
   /// 머리로 하나」). ↩️Each cut's own until then.
   final bool onTimesheet;
   final bool transformEnabled;

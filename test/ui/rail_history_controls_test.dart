@@ -80,7 +80,7 @@ void main() {
     },
   );
 
-  // 🗣️I-89-Q22 (유저 2026-10-19): 「어니언도 콘티행 기본적으로 버튼
+  // 🗣️I-89-Q22 (유저 2026-10-16): 「어니언도 콘티행 기본적으로 버튼
   // 글로벌이니까 넣음」 — a conte row's onion is the track's conte rows' one.
   testWidgets('on a conte row, the onion button shows the onion turned on '
       'through another cut\'s conte', (tester) async {

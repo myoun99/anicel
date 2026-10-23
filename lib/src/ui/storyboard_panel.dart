@@ -702,6 +702,7 @@ class StoryboardPanel extends StatefulWidget {
     this.visibilitySoloEnabled = false,
     this.opacityDragPreview,
     this.legendOpacityValue = 1.0,
+    this.legendOnionSkinOn = false,
   });
 
   /// Blocks are strictly frame-linear (Premiere-style): a large minimum
@@ -1268,7 +1269,7 @@ class StoryboardPanel extends StatefulWidget {
 
   /// The timeline rows' onion on this rail's rows — the SAME session verb
   /// the timeline wires. Only a conte row's kind ghosts, and its onion is
-  /// its head's, one for the track's cuts (🗣️I-89-Q22, 유저 2026-10-19:
+  /// its head's, one for the track's cuts (🗣️I-89-Q22, 유저 2026-10-16:
   /// 「어니언도 콘티행 기본적으로 버튼 글로벌이니까 넣음」).
   final ValueChanged<LayerId>? onToggleLayerOnionSkin;
 
@@ -1372,6 +1373,10 @@ class StoryboardPanel extends StatefulWidget {
   /// The legend master bar's RESTING value: the last value committed
   /// through the bar (UI-R6 #2) — not an average of the rows.
   final double legendOpacityValue;
+
+  /// Whether every row the legend's onion sweep acts on ghosts — its icon
+  /// in the accent, as the timeline's legend reads it (F-443).
+  final bool legendOnionSkinOn;
 
   /// R9 #21: the V row's TRACK column — the fx master over the track's fx
   /// work. Null keeps the column reserved and empty. (↩️The row's eye and
@@ -2561,6 +2566,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                 ? null
                 : _legendDisplayedLayerIds,
             displayedOpacity: widget.legendOpacityValue,
+            displayedOnionSkinOn: widget.legendOnionSkinOn,
             // ㉒: the lane column's header verb, same as the
             // timeline's.
             anyLanesExpanded: _railRows._anyLanesExpanded,

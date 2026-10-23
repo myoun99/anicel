@@ -79,7 +79,7 @@ class OnionSkin {
   /// conte, the rows at its place of the conte in every cut of the track
   /// ([conteHeadTargets]); any other row, itself alone.
   ///
-  /// 🗣️I-89-Q22 (유저 2026-10-19): 「어니언도 콘티행 기본적으로 버튼
+  /// 🗣️I-89-Q22 (유저 2026-10-16): 「어니언도 콘티행 기본적으로 버튼
   /// 글로벌이니까 넣음」 — the conte panel draws the row once for every cut,
   /// and its onion with it. ⛔Not a set written once per cut: a conte born
   /// into a cut afterwards wears the row's onion as it wears its head,

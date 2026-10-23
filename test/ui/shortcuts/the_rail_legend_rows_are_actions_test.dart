@@ -244,10 +244,11 @@ void main() {
       expect(soloed(), {LayerKind.animation}, reason: '⛔premise: it answers');
     });
 
-    testWidgets('on the storyboard its own header answers — the onion, a '
-        'column that rail does not have, answers nothing there', (
-      tester,
-    ) async {
+    // 🗣️F-443 (유저 2026-10-23): 「콘티패널에서도 어니언스킨버튼 둬도 된다고
+    // 생각. 이거는 자리차지하고 레전드행에도 버튼있는거 감수」. ↩️The conte
+    // rail carried no onion column, and this key answered nothing there.
+    testWidgets('on the storyboard its own header answers — the onion as '
+        'the timeline\'s, and the eye', (tester) async {
       await pumpApp(tester);
       final session = sessionOf(tester);
       expect(session.onionSkin.displayedLayersOnionSkinEnabled, isFalse);
@@ -255,9 +256,10 @@ void main() {
       await workIn(tester, WorkingPanel.storyboard);
       expect(session.workingPanel, WorkingPanel.storyboard);
       await pressKeyOf(tester, RailLegendActionIds.onionOnDisplayed);
+      expect(session.onionSkin.displayedLayersOnionSkinEnabled, isTrue);
+      await pressKeyOf(tester, RailLegendActionIds.onionOnDisplayed);
       expect(session.onionSkin.displayedLayersOnionSkinEnabled, isFalse);
 
-      // …while a column it has answers its key there.
       await pressKeyOf(tester, RailLegendActionIds.eyeHideAll);
       expect(
         [

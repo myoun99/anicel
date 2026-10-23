@@ -1121,6 +1121,9 @@ class _WorkspaceTabs {
               onToggleAttachGroup: SessionRowButtonPresses(
                 _state.widget.session,
               ).toggleGroupFold,
+              // And the legend's onion panel door, as the timeline's (F-443).
+              onRevealOnionSkinPanel: () =>
+                  _state._revealPanel(EditorWorkspace.onionSkinTabId),
               // And the lane twirls (I-73 ④ⓔ) — the camera row's head is the
               // timeline's camera row, and turns its lanes there too.
               expandedLaneLayerIds:

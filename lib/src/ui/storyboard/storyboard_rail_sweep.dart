@@ -136,7 +136,7 @@ class _StoryboardRailSweep {
   /// mounts the toggle by and the sweep paints by: every row its kind
   /// gives one, but the V row, whose subject is its TRACK, and the camera
   /// row, whose flag is a record of its cut's own (🗣️I-89-Q22, 유저
-  /// 2026-10-19: 「시트토글은 카메라는 로컬기록이니까 없음」). The conte rows
+  /// 2026-10-16: 「시트토글은 카메라는 로컬기록이니까 없음」). The conte rows
   /// take it: their flag is their head's, one for the track's cuts
   /// ([ConteHead.onTimesheet] — Q22: 「글로벌시키고 넣고 머리로 하나」).
   bool handsSheetToggle(LayerId rowId) =>

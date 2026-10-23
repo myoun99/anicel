@@ -904,10 +904,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               _session,
               rowFilter: widget.rowFilter,
               onSetRowFilter: widget.onSetRowFilter,
-              onToggleOnionSkinForDisplayed:
-                  _session.onionSkin.toggleOnionSkinForDisplayedLayers,
               onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
-              onSetBlendModeForDisplayed: _session.layerSwitches.setBlendModeForLayers,
             ),
             lanesForLayer: _lanesForLayer,
             unionLaneForLayer: _cameraUnionLane,

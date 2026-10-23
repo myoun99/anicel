@@ -400,10 +400,10 @@ class TimelineLegendMenus {
   );
 
   /// The onion column's flyout (UI-R17 #5) — only where the host wires the
-  /// sweep. The storyboard's does not: the sweep is the open cut's drawing
-  /// rows, which its rail does not show, and 「공통으로 안되는건 애초에
-  /// 콘티패널에 버튼두지않음」 (I-89-Q22) — its heading stands over its conte
-  /// rows' onions, as the x-sheet's does over its own.
+  /// sweep: the timeline's, and the conte panel's since F-443 (유저
+  /// 2026-10-23: 「이거는 자리차지하고 레전드행에도 버튼있는거 감수」) — the
+  /// same session sweep its other bulk rows already are. ↩️The conte panel's
+  /// heading stood over its conte rows' onions with no flyout (I-89-Q22).
   LegendFlyout? get onion {
     final legend = this.legend;
     final toggle = legend?.onToggleOnionSkinForDisplayed;

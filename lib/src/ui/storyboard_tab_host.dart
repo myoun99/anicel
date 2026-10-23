@@ -74,6 +74,7 @@ class StoryboardTabHost extends StatefulWidget {
     this.onToggleSection,
     this.collapsedAttachBaseIds = const {},
     this.onToggleAttachGroup,
+    this.onRevealOnionSkinPanel,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
@@ -98,6 +99,11 @@ class StoryboardTabHost extends StatefulWidget {
   /// the same verb ([TimelineTabHost.collapsedAttachBaseIds]): the conte
   /// row's twirl folds the attach rows riding it (I-73).
   final Set<LayerId> collapsedAttachBaseIds;
+
+  /// The workspace's onion-panel reveal, as the timeline's legend opens it
+  /// ([TimelineTabHost.onRevealOnionSkinPanel]). Null hides the legend
+  /// entry.
+  final VoidCallback? onRevealOnionSkinPanel;
   final ValueChanged<LayerId>? onToggleAttachGroup;
 
   /// The rows' twirled-down lanes, shared with the timeline — the same set
@@ -1077,12 +1083,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       _session,
                       rowFilter: widget.rowFilter,
                       onSetRowFilter: widget.onSetRowFilter,
-                      // The blend column came to this rail with the conte
-                      // row's head (I-73): its heading sweeps as the
-                      // timeline's does.
-                      onSetBlendModeForDisplayed:
-                          _session.layerSwitches.setBlendModeForLayers,
+                      // The onion column's door, with the conte rows' onion
+                      // (F-443, 유저 2026-10-23: 「이거는 자리차지하고
+                      // 레전드행에도 버튼있는거 감수」) — as the timeline's.
+                      onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
                     ),
+                    legendOnionSkinOn:
+                        _session.onionSkin.displayedLayersOnionSkinEnabled,
                     // Master-bar drags (UI-R6 #2): S-row sliders follow the
                     // preview channel live; the bar rests on the last committed
                     // value instead of an average.
