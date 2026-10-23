@@ -596,6 +596,30 @@ void main() {
         expect(positionOf(tester, sheet.inner).pixels, 0);
       });
 
+      testWidgets('⛔Shift turns a mouse\'s wheel alone — a trackpad\'s '
+          'notch goes the way it goes, as the scroll views read it', (
+        tester,
+      ) async {
+        final rail = await pumpNarrowed(tester);
+        final windowGoesDown = !shiftAlongTheWindow(tester);
+
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        final pad = TestPointer(1, PointerDeviceKind.trackpad);
+        await tester.sendEventToBinding(
+          pad.hover(tester.getCenter(sheet.aLayerName)),
+        );
+        await tester.sendEventToBinding(pad.scroll(const Offset(0, 120)));
+        await tester.pumpAndSettle();
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+        expect(
+          [rail.offset.value > 0, positionOf(tester, sheet.outer).pixels > 0],
+          [windowGoesDown, !windowGoesDown],
+          reason: 'a notch down: the window where it slides down, else the '
+              'layers',
+        );
+      });
+
       testWidgets('⛔where its window has nowhere to go, a notch along it '
           'moves nothing — not out to the scroller around the sheet', (
         tester,
