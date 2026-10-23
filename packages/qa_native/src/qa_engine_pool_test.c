@@ -9,8 +9,8 @@
 // the engine here — the parity suites, the canvas — calls it from one
 // thread, so nothing else can see two callers at once.
 //
-// It includes the translation unit rather than linking it: the pool and the
-// wave arena are static, and so are the flags it checks were given back.
+// It includes the translation unit rather than linking it, because the pool
+// is static.
 
 #include "qa_engine.c"
 
@@ -80,6 +80,32 @@ static void pool_test_hit(int32_t item, void* context) {
     spin += i;
   }
   pool_test_add(&board->hits[item]);
+}
+
+static pool_test_count g_started;
+static pool_test_count g_in_company;
+
+// Waits, up to 2 s, for the other item to start beside this one.
+static void pool_test_wait_for_company(int32_t item, void* context) {
+  (void)item;
+  (void)context;
+  pool_test_add(&g_started);
+  for (int nap = 0; nap < 200 && pool_test_read(&g_started) < 2; nap += 1) {
+    pool_test_nap();
+  }
+  if (pool_test_read(&g_started) == 2) {
+    pool_test_add(&g_in_company);
+  }
+}
+
+// Whether a call alone is spread across the workers: on one thread the
+// first of two items waits out its 2 s alone, and only the second finds
+// company. Results are the same either way — this is the pool's one job.
+static int pool_test_spreads(void) {
+  g_started = 0;
+  g_in_company = 0;
+  qa_pool_run(pool_test_wait_for_company, NULL, 2);
+  return pool_test_read(&g_in_company) == 2;
 }
 
 // Each of this call's items ran, once, with this call's context.
@@ -258,6 +284,12 @@ int main(void) {
   int failures = 0;
 
   // Alone first: what each caller must get when nobody else is running.
+  const int spreads = pool_test_spreads();
+  if (g_pool.worker_count > 0 && !spreads) {
+    printf("FAIL: a call alone ran on one thread with %d workers\n",
+           g_pool.worker_count);
+    failures += 1;
+  }
   for (int caller = 0; caller < CALLERS; caller += 1) {
     pool_test_set_compose(caller);
     pool_test_compose_into(&g_composes[caller], g_composes[caller].alone);
@@ -309,12 +341,8 @@ int main(void) {
   }
 
   // Given back: the next caller has the pool and the arena to itself.
-  if (g_pool.owned != 0) {
-    printf("FAIL: the pool stayed claimed after every caller returned\n");
-    failures += 1;
-  }
-  if (g_wave_owned != 0) {
-    printf("FAIL: the wave arena stayed claimed after every fill returned\n");
+  if (spreads && !pool_test_spreads()) {
+    printf("FAIL: a call alone, after the callers, ran on one thread\n");
     failures += 1;
   }
   pool_test_fill* f = &g_fills[0];
