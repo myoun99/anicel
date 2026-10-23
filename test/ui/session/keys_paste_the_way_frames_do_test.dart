@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/key_clipboard.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagSizeLaneId;
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
@@ -265,6 +267,20 @@ void main() {
 
       expect((held('opacity', 10), held('opacity', 12)), (1.0, 0.0));
       expect((blurred(10), blurred(12)), (250, 0));
+    });
+
+    test('an opacity\'s 40% is a name tag\'s size of 40', () {
+      key('opacity', {4: 0.4});
+      standOn('opacity', at: 4);
+      pill.copyFrame();
+
+      final se = s.activeTrack.seLayers.first;
+      s.selectFrameIndex(9);
+      s.standOnRow(LaneRowAddress(se.id, seNameTagSizeLaneId));
+      pill.pasteIndependentFrame();
+
+      final size = s.activeTrack.seLayers.first.seNameTag?.track?.fontSize;
+      expect(size?.keys[9]?.value, closeTo(40, 1e-9));
     });
 
     test('a blur\'s number goes on an opacity as the % it shows', () {
