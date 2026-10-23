@@ -694,20 +694,24 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// — a different x on every row, and a moving x on a rename. The NAME
   /// takes the space now and the twirl trails it at the region's far edge,
   /// which is the one place it can be that does not depend on what the row
-  /// is called. The SLOT is always there: a row that folds nothing reserves
-  /// the extent rather than letting the name run into it, so the icons on
-  /// the rows that do fold all sit on one line (one axis over: a column that
-  /// folds nothing used to drop it, which pulled every cell below up by
-  /// 20px).
+  /// is called.
   ///
   /// I-89 Q1 (유저 2026-10-12): a row's own buttons take their room out of
-  /// the name, right-aligned before the fold slot — 「추가로 공간
-  /// 만드는게아니라 이름공간을 줄여서 오른쪽정렬로」 — the link among them,
-  /// beside the reference when a row has both (「참조/링크가 동시에
-  /// 될수있는거 말되니까 그런식으로 중복되는 상황은 중복되도록」). The order
-  /// was left to me (「버튼별 순서는 알아서 맡김」): the graph last, so it
-  /// ends the name as a header's does. ↩️The link trailed the name's
-  /// letters, wherever a name happened to end.
+  /// the name, right-aligned — 「추가로 공간 만드는게아니라 이름공간을 줄여서
+  /// 오른쪽정렬로」 — the link among them, beside the reference when a row
+  /// has both (「참조/링크가 동시에 될수있는거 말되니까 그런식으로 중복되는
+  /// 상황은 중복되도록」). The order was left to me (「버튼별 순서는 알아서
+  /// 맡김」): the graph last, so it ends the name as a header's does.
+  /// ↩️The link trailed the name's letters, wherever a name happened to end.
+  ///
+  /// 🗣️F-454 (유저 2026-10-23): 「어태치 접기/펼치기버튼도 사실상 있는것만
+  /// 있는 버튼이면서 레전드에도 존재하지않는 버튼이기때문에, 어태치
+  /// 접기/펼치기 버튼도 포함해서 위치정하도록. 즉 어태치있으면 접기버튼이
+  /// 지금처럼 가장 오른쪽에 오고, 참조버튼 그 왼쪽에 오고. 카메라 레이어는
+  /// … 그 자리에 그래프버튼,그왼쪽에 경로버튼」 — the twirl is the last of
+  /// the row's own buttons, there only on a row that folds. ↩️Its slot was
+  /// reserved on every row (F-29), so a row's own buttons stood a twirl
+  /// short of the name's end on the rows that fold nothing.
   Widget _nameArea(BuildContext context, ColorScheme colorScheme) => Expanded(
     child: Named(
       '$keyPrefix-layer-name-${layer.id}',
@@ -727,11 +731,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
           ?_soundButton(colorScheme),
           ?_cameraPathButton(),
           ?_graphToggle(context),
-          alongBox(
-            axis,
-            layerLaneToggleSlotWidth,
-            child: _foldTwirl(context),
-          ),
+          ?_foldTwirl(context),
         ],
       ),
     ),
@@ -813,9 +813,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   }
 
   /// The reference button (유저 2026-09-11) at the name area's far end,
-  /// right before the fold slot (「레이어 이름 영역의 오른쪽정렬. 최종적으로
-  /// 폴더 접기 펼치기가 오른쪽정렬로 마지막에 있을텐데, 그거 왼쪽」) — so it
-  /// stands at one x on every reference row, whatever the row is called.
+  /// right before the fold where the row folds (「레이어 이름 영역의
+  /// 오른쪽정렬. 최종적으로 폴더 접기 펼치기가 오른쪽정렬로 마지막에 있을텐데,
+  /// 그거 왼쪽」; F-454) — so it stands at one x on every reference row,
+  /// whatever the row is called.
   ///
   /// The FILE glyph, icon only (미디어 배치 라운드 3~5 — 「아이콘만(이름은
   /// 툴팁)」), and the press opens the row's reference popover instead of
@@ -1117,19 +1118,26 @@ TimelineGroupFold timelineGroupFoldFor({
   required ValueChanged<LayerId>? onToggleLayerCollapsed,
   required ValueChanged<LayerId>? onToggleAttachGroup,
 }) {
+  final has = timelineRowFolds(row, layers);
   if (row.isFolder) {
     return (
-      has: true,
+      has: has,
       expanded: !row.layer.collapsed,
       onToggle: onToggleLayerCollapsed,
     );
   }
   return (
-    has: attachedLayersOf(row.layer.id, layers).isNotEmpty,
+    has: has,
     expanded: !collapsedAttachBaseIds.contains(row.layer.id),
     onToggle: onToggleAttachGroup,
   );
 }
+
+/// Whether [row] of [layers] folds rows of its own — a folder its members,
+/// an attach base the attach rows riding it: a twirl ends its name
+/// ([timelineGroupFoldFor]), which a sweep lays past the graph's button.
+bool timelineRowFolds(TimelineDisplayRow row, List<Layer> layers) =>
+    row.isFolder || attachedLayersOf(row.layer.id, layers).isNotEmpty;
 
 /// What a button at the end of a name looks like
 /// ([TimelineLayerControlsRow]): its glyph, and whether it warns — the

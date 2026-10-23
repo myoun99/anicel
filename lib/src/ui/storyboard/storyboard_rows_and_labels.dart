@@ -915,8 +915,7 @@ class _StoryboardRowsAndLabels {
         head.row,
         head.cut.layers,
       ),
-      // The base's twirl folds the attach rows riding it (UI-R20 #9).
-      hasGroupFold: seat == 0 && conteSeatsOf(track.cuts).length > 1,
+      hasGroupFold: _conteHeadFolds(track, seat),
       groupFoldExpanded: !widget.collapsedAttachBaseIds.contains(
         head.row.id,
       ),
@@ -1172,3 +1171,9 @@ final class _KeptRailRows {
 /// ([storyboardVideoRowName]), and what its chip shows once the row is
 /// picked up (I-39).
 const IconData _vRowGlyph = Icons.movie_outlined;
+
+/// Whether [track]'s conte row at [seat] folds rows of its own: the base's
+/// twirl folds the attach rows riding it (UI-R20 #9) — what its label ends
+/// its name with, and a sweep lays past the graph's button (F-454).
+bool _conteHeadFolds(Track track, int seat) =>
+    seat == 0 && conteSeatsOf(track.cuts).length > 1;

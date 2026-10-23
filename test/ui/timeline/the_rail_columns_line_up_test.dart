@@ -135,8 +135,8 @@ void main() {
   // 자리 고정으로 차지하는거 비효율적이니 동일하게 위에서 말한 규칙적용해서
   // 위치옮김」 — the rule being a row's own button taking its room out of
   // the name, as the link and the reference do.
-  testWidgets('🚨the speaker is one of the sound\'s name\'s buttons, before '
-      'the fold slot — and no row keeps a column for it', (tester) async {
+  testWidgets('🚨the speaker is one of the sound\'s name\'s buttons, at its '
+      'end — and no row keeps a column for it', (tester) async {
     await pumpRail(tester);
     final speaker = part(tester, 'mute', sound);
     final name = part(tester, 'name', sound);
@@ -144,8 +144,9 @@ void main() {
     expect(speaker.left, greaterThan(name.left));
     expect(
       speaker.right,
-      closeTo(name.right - layerLaneToggleSlotWidth, 0.01),
-      reason: 'right before the fold slot, as the reference stands',
+      closeTo(name.right, 0.01),
+      reason: 'the row folds nothing, so the speaker ends its name, as the '
+          'reference does (F-454). ↩️It stood a fold slot short',
     );
     for (final layer in [picture, sound]) {
       expect(

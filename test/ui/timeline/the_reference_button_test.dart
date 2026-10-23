@@ -1,7 +1,7 @@
 // THE REFERENCE ROW'S FILE BUTTON (유저 2026-09-11, 미디어 배치 라운드 3~5):
-// icon only, at the name area's far end right before the fold slot, only on
-// a row that points at a file, pressed on the DOWN inside a rail column like
-// every rail button.
+// icon only, at the name area's far end (right before the fold where the row
+// folds, F-454), only on a row that points at a file, pressed on the DOWN
+// inside a rail column like every rail button.
 //
 // 🚨F-409 (유저 2026-10-19): 「카메라랑 참조레이어의 참조버튼. 얘네만 다른
 // 버튼 사용하는거 눈에띄는게 얘네만 누르면 버튼 실루엣이 강조색됨. 같은버튼
@@ -16,7 +16,6 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
@@ -43,6 +42,7 @@ void main() {
     PressFire fireOn = PressFire.upInside,
     bool isSourceShort = false,
     List<String> linkPartners = const [],
+    bool folds = false,
   }) => MaterialApp(
     home: Material(
       child: PressFireScope(
@@ -59,6 +59,8 @@ void main() {
           onOpenLayerReference: onOpen,
           isReferenceSourceShort: isSourceShort,
           linkPartners: linkPartners,
+          hasGroupFold: folds,
+          onToggleGroupFold: folds ? (_) {} : null,
         ),
       ),
     ),
@@ -94,17 +96,41 @@ void main() {
     expect(button('ref'), findsNothing, reason: 'no host, no button');
   });
 
-  testWidgets('it stands at the name area\'s far end, right before the fold '
-      'slot (「폴더 접기 펼치기 … 그거 왼쪽」)', (tester) async {
+  testWidgets('it stands at the name area\'s far end — right before the '
+      'fold on a row that folds (「폴더 접기 펼치기 … 그거 왼쪽」)', (
+    tester,
+  ) async {
+    Rect area() => tester.getRect(find.named('timeline-layer-name-ref'));
+
     await tester.pumpWidget(
       row(layerNamed('ref', file: 'bg.png'), onOpen: (_, _) async {}),
     );
-    final area = tester.getRect(
-      find.named('timeline-layer-name-ref'),
+    // 🗣️F-454 (유저 2026-10-23): the fold is a button only some rows have
+    // — 「어태치 접기/펼치기 버튼도 포함해서 위치정하도록」.
+    expect(
+      tester.getRect(button('ref')).right,
+      closeTo(area().right, 0.01),
+      reason: 'a row that folds nothing keeps no slot for a twirl. ↩️It '
+          'stood a fold slot short (F-29)',
+    );
+
+    await tester.pumpWidget(
+      row(
+        layerNamed('ref', file: 'bg.png'),
+        onOpen: (_, _) async {},
+        folds: true,
+      ),
+    );
+    final twirl = tester.getRect(find.named('timeline-attach-twirl-ref'));
+    expect(
+      twirl.right,
+      closeTo(area().right, 0.01),
+      reason: '「어태치있으면 접기버튼이 지금처럼 가장 오른쪽에 오고」',
     );
     expect(
       tester.getRect(button('ref')).right,
-      closeTo(area.right - layerLaneToggleSlotWidth, 0.01),
+      closeTo(twirl.left, 0.01),
+      reason: '「참조버튼 그 왼쪽에 오고」',
     );
   });
 
@@ -119,10 +145,7 @@ void main() {
     );
 
     await tester.pumpWidget(row(layerNamed('a'), linkPartners: const ['b']));
-    expect(
-      badge('a').right,
-      closeTo(area('a').right - layerLaneToggleSlotWidth, 0.01),
-    );
+    expect(badge('a').right, closeTo(area('a').right, 0.01));
 
     await tester.pumpWidget(
       row(
@@ -133,8 +156,8 @@ void main() {
     );
     expect(
       tester.getRect(button('ref')).right,
-      closeTo(area('ref').right - layerLaneToggleSlotWidth, 0.01),
-      reason: 'the reference keeps its place by the fold slot',
+      closeTo(area('ref').right, 0.01),
+      reason: 'the reference keeps its place at the name\'s end',
     );
     expect(
       badge('ref').right,

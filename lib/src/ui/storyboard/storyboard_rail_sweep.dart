@@ -129,7 +129,24 @@ class _StoryboardRailSweep {
         timesheet: (row) => handsSheetToggle(row.layer.id),
         groupSwitch: _handsGroupSwitch,
       ),
+      folds: _folds,
     );
+  }
+
+  /// Whether [row] folds rows of its own, as its label is told: a conte
+  /// row by its seat ([_conteHeadFolds]); no other row of this rail folds.
+  bool _folds(TimelineDisplayRow row) {
+    final rowId = row.layer.id;
+    return switch ((
+      trackIdOfConteRow(rowId),
+      conteRowSeatOf(LayerRowAddress(rowId)),
+    )) {
+      (final trackId?, final seat?) => switch (_rows._trackNamed(trackId)) {
+        final track? => _conteHeadFolds(track, seat),
+        null => false,
+      },
+      _ => false,
+    };
   }
 
   /// Whether [rowId]'s row is handed the sheet toggle — what its label
