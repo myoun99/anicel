@@ -12,7 +12,6 @@ import 'package:anicel/src/ui/timeline/axis_turn.dart'
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineHoldLineInset, timelineJoiningLineWidth;
-import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart';
@@ -30,9 +29,9 @@ import 'timeline_frame_geometry_probe.dart';
 /// 빈공간에 그리는것임」: the FREE cells beside a run whose edge property is
 /// hold, never a block's own.
 ///
-/// The row draws its cells two ways — the classic pass and the baked tile —
-/// and both are pinned here to the one line the painter answers
-/// ([TimelineTileRasterSource.holdLinesIn]).
+/// A hold is a ghost's ink, so no tile bakes it: the row strokes it over its
+/// tiles (F-446), the one line the painter answers
+/// ([TimelineRowCellsPainter.holdLinesIn]).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -230,13 +229,14 @@ void main() {
   });
 
   group('a stretch of the row gets its part of the line', () {
-    test('stopping inside the hold: to its own edges, square — and through '
-        'the cell past it, the sliver a tile\'s last pixel holds (F-208)', () {
+    // ↩️It reached through the cell past the stretch, for the sliver a
+    // tile's last pixel held (F-208). No tile holds a hold now (F-446).
+    test('stopping inside the hold: to its own edges, square', () {
       final painter = painterFor(held);
       final part = theOne(painter.holdLinesIn(7, 9));
       expect((part.startsHere, part.endsHere), (false, false));
       expect(part.box.left, painter.cellRectFor(7).left);
-      expect(part.box.right, painter.cellRectFor(9).right);
+      expect(part.box.right, painter.cellRectFor(8).right);
     });
 
     test('holding the hold\'s start: that end is the hold\'s own', () {
@@ -244,7 +244,7 @@ void main() {
       final part = theOne(painter.holdLinesIn(0, 7));
       expect((part.startsHere, part.endsHere), (true, false));
       expect(part.box.left, wholeLineOver(painter, 5, 11).left);
-      expect(part.box.right, painter.cellRectFor(7).right);
+      expect(part.box.right, painter.cellRectFor(6).right);
     });
 
     test('holding the hold\'s end: that end is the hold\'s own', () {
@@ -319,122 +319,42 @@ void main() {
     }
   });
 
-  group('the tile bakes that line as one capsule', () {
-    /// The hold-line capsules a tile of [from, to) bakes: every rounded
-    /// rect as thick as a hold's line (a mark's disc is as wide as tall).
-    Future<List<({Rect box, int corners, int rgba, int radius})>> capsules(
+  // ↩️The tile baked that line as one capsule — round at the hold's own
+  // ends, square where it ran out of the span. A hold is a ghost's ink, and
+  // a ghost is what the cut's length draws: an end-line step moved it, and
+  // the tile it ended in baked again, on every row (F-446).
+  group('no tile bakes that line — the row strokes it over them', () {
+    Future<List<int>> opsOf(
       TimelineRowCellsPainter painter,
       int from,
       int to, {
       required double dpr,
-    }) async {
-      final ops = await TimelineGridTileStore.instance.debugForegroundOps(
-        painter: painter,
-        spanStartIndex: from,
-        spanEndIndexExclusive: to,
-        devicePixelRatio: dpr,
-      );
-      final thickness = timelineGridQ8(timelineJoiningLineWidth * dpr);
-      final found = <({Rect box, int corners, int rgba, int radius})>[];
-      for (var at = 0; at < ops.length;) {
-        switch (ops[at]) {
-          case TimelineGridTileOp.rrectFill:
-            final across = painter.axis == Axis.horizontal
-                ? ops[at + 4]
-                : ops[at + 3];
-            if (across == thickness) {
-              found.add((
-                box: Rect.fromLTWH(
-                  ops[at + 1] / 256,
-                  ops[at + 2] / 256,
-                  ops[at + 3] / 256,
-                  ops[at + 4] / 256,
-                ),
-                corners: ops[at + 6],
-                rgba: ops[at + 7],
-                radius: ops[at + 5],
-              ));
-            }
-            at += 8;
-          case TimelineGridTileOp.glyph:
-            at += 8;
-          default:
-            at += 6;
-        }
+    }) => TimelineGridTileStore.instance.debugForegroundOps(
+      painter: painter,
+      spanStartIndex: from,
+      spanEndIndexExclusive: to,
+      devicePixelRatio: dpr,
+    );
+
+    for (final axis in Axis.values) {
+      for (final dpr in [1.0, 1.5]) {
+        test('a span inside the hold bakes no ink ($axis, dpr $dpr)', () async {
+          final painter = painterFor(held, axis: axis);
+          expect(
+            await opsOf(painter, 0, 4, dpr: dpr),
+            isNotEmpty,
+            reason: '⛔CONTROL: the X before the block is baked',
+          );
+          for (final (from, to) in [(4, 8), (8, cut)]) {
+            expect(
+              await opsOf(painter, from, to, dpr: dpr),
+              isEmpty,
+              reason: '[$from, $to) holds only the block\'s tail and the hold',
+            );
+          }
+        });
       }
-      return found;
     }
-
-    /// [box], row-local, as the tile of the span starting at [spanStart]
-    /// holds it: from the span's first cell, in physical pixels — as the op
-    /// stream's fixed point keeps it.
-    Rect inTile(
-      TimelineRowCellsPainter painter,
-      Rect box,
-      int spanStart,
-      double dpr,
-    ) {
-      final first = painter.cellRectFor(spanStart);
-      final axis = painter.axis;
-      final local = box.shift(
-        offsetAlong(axis, along: -startAlong(axis, first), across: 0),
-      );
-      double q8(double pixels) => timelineGridQ8(pixels * dpr) / 256;
-      return Rect.fromLTWH(
-        q8(local.left),
-        q8(local.top),
-        q8(local.width),
-        q8(local.height),
-      );
-    }
-
-    const start =
-        TimelineGridTileOp.cornerTopLeft | TimelineGridTileOp.cornerBottomLeft;
-    const end =
-        TimelineGridTileOp.cornerTopRight |
-        TimelineGridTileOp.cornerBottomRight;
-    const top =
-        TimelineGridTileOp.cornerTopLeft | TimelineGridTileOp.cornerTopRight;
-    const bottom =
-        TimelineGridTileOp.cornerBottomLeft |
-        TimelineGridTileOp.cornerBottomRight;
-
-    for (final dpr in [1.0, 1.5]) {
-      test('the whole hold in one tile: both ends round (dpr $dpr)', () async {
-        final painter = painterFor(held);
-        final baked = theOne(await capsules(painter, 0, cut, dpr: dpr));
-        final line = theOne(painter.holdLinesIn(0, cut));
-        expect(baked.box, inTile(painter, line.box, 0, dpr));
-        expect(baked.corners, start | end);
-        expect(baked.radius, timelineGridQ8(half * dpr));
-        // The op stream's words are signed.
-        expect(baked.rgba, timelineGridPackRgba(line.ink).toSigned(32));
-      });
-
-      test('a tile the hold runs out of: square where it leaves, and from '
-          'the tile\'s own first cell (dpr $dpr)', () async {
-        final painter = painterFor(held);
-        final baked = theOne(await capsules(painter, 4, 8, dpr: dpr));
-        final part = theOne(painter.holdLinesIn(4, 8));
-        expect(baked.box, inTile(painter, part.box, 4, dpr));
-        expect(baked.corners, start, reason: 'its start is in this tile');
-        final next = theOne(await capsules(painter, 8, cut, dpr: dpr));
-        expect(next.corners, end, reason: 'its end is in the next');
-        expect(next.box.left, 0, reason: 'the line comes in at the edge');
-      });
-    }
-
-    test('down the sheet the ends are the top and the bottom', () async {
-      final painter = painterFor(held, axis: Axis.vertical);
-      final whole = theOne(await capsules(painter, 0, cut, dpr: 1));
-      expect(whole.corners, top | bottom);
-      expect(
-        whole.box,
-        inTile(painter, theOne(painter.holdLinesIn(0, cut)).box, 0, 1),
-      );
-      expect(theOne(await capsules(painter, 4, 8, dpr: 1)).corners, top);
-      expect(theOne(await capsules(painter, 8, cut, dpr: 1)).corners, bottom);
-    });
   });
 }
 

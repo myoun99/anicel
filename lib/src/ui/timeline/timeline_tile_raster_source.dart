@@ -60,19 +60,8 @@ typedef TimelineRowSubstrate = ({
 
 /// The hold ghost's glyph — the probe VALUE tests read from
 /// [TimelineTileRasterSource.cellModelAt]. It is never written as text: a
-/// hold is drawn as its line ([TimelineTileRasterSource.holdLinesIn]).
+/// hold is drawn as its line, which the row lays over its tiles (F-446).
 const String timelineHoldGlyph = 'ㅡ';
-
-/// One hold's line over a stretch of a row, row-local: the [box] it fills —
-/// as long as the line, as thick as it — and whether each end of it is the
-/// hold's OWN end — rounded, and stood in from the cell's edge — or only
-/// where the stretch asked for stops, the line running on past it.
-typedef TimelineHoldLine = ({
-  Rect box,
-  bool startsHere,
-  bool endsHere,
-  Color ink,
-});
 
 /// WHAT A SUBSTRATE TILE IS RASTERED FROM — the row's geometry, its look
 /// identity, and the ink answers the emitter must reproduce exactly.
@@ -195,22 +184,25 @@ abstract interface class TimelineTileRasterSource {
   /// the cell's [foregroundInkFor].
   ({Offset center, Size size}) inbetweenMarkLayoutFor(int frameIndex);
 
-  /// The cell before [frameIndex] whose WORD grows into [frameIndex]'s cell,
-  /// or null (F-96). A tile lays it at its first cell, as the classic pass
-  /// does at a window's — and only where it reaches: a word laid where it
-  /// cannot show would make two tiles of the same pixels bake apart
-  /// (F-446).
-  int? wordGrowingInto(int frameIndex);
+  /// The cell before [frameIndex] whose WORD grows into [frameIndex]'s cell
+  /// and is a tile's to bake ([bakedWritingCellsIn]), or null (F-96). A tile
+  /// lays it at its first cell, as the classic pass does at a window's — and
+  /// only where it reaches: a word laid where it cannot show would make two
+  /// tiles of the same pixels bake apart (F-446).
+  int? bakedWordGrowingInto(int frameIndex);
 
-  /// The cells of [from, to) that write — a word or a mark — in order. The
-  /// tile emitter bakes exactly these, as the classic pass inks exactly
-  /// these. A hold writes in no cell: it is [holdLinesIn].
-  Iterable<int> writingCellsIn(int from, int to);
-
-  /// The holds' lines over [from, to), in order — ONE line a hold, however
-  /// many cells it runs through. The tile emitter bakes exactly these, as
-  /// the classic pass draws exactly these.
-  Iterable<TimelineHoldLine> holdLinesIn(int from, int to);
+  /// The cells of [from, to) that write — a word or a mark — and that a tile
+  /// bakes, in order: every one but a GHOST's ink, which the row lays over
+  /// its tiles. The tile emitter bakes exactly these, as the classic pass
+  /// inks exactly these. A hold writes in no cell: its line is a ghost's.
+  ///
+  /// 🗣️F-446 (유저 2026-10-23: 「엔드라인 드래그로 조절하는게 레이어가
+  /// 많아질수록 렉이 심함」): a ghost is what the cut's length draws — the
+  /// last run's ghost fills to the drawn end — so a tile that baked one
+  /// baked again at every step of the end line, on every row a TVPaint cut
+  /// has. The length stays out of the tiles, as the out-of-cut wash and the
+  /// X (2026-08-02) already keep it out.
+  Iterable<int> bakedWritingCellsIn(int from, int to);
 }
 
 /// #29: THE spelling of [TimelineTileRasterSource.substrateGeneration] — the

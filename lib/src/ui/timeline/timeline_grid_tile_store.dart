@@ -35,8 +35,8 @@ import '../../core/lru.dart';
 /// canvas calls per cell.
 ///
 /// ⚠️ The ink is IN the tile. The emitter writes the substrate and then
-/// the foreground — the holds' lines and in-between marks inline, glyph
-/// text through the A8 atlas (T3) — into one op stream, and `_paint` skips
+/// the foreground — the in-between marks inline, glyph text through the A8
+/// atlas (T3), a ghost's aside (F-446) — into one op stream, and `_paint` skips
 /// its Dart foreground pass for any span a tile covers. This doc used to say
 /// the opposite ("foreground ink stays the painter's Dart pass on top"),
 /// which was true of the tile's first shape and has misled at least one
@@ -882,9 +882,9 @@ class TimelineGridTileStore {
   }
 
   /// The ink [painter]'s span [spanStartIndex, spanEndIndexExclusive) bakes
-  /// over its substrate: the ops of its marks and holds' lines, and the
-  /// words it sets — what a raster writes, and what a tile it holds is
-  /// asked against ([_TileEntry.showsNow]).
+  /// over its substrate: the ops of its marks, and the words it sets — what
+  /// a raster writes, and what a tile it holds is asked against
+  /// ([_TileEntry.showsNow]).
   _TileInk _inkOf(
     TimelineTileRasterSource painter, {
     required int spanStartIndex,
@@ -934,7 +934,7 @@ class TimelineGridTileStore {
     return writer.build();
   }
 
-  /// Emits the span's FOREGROUND ink (T3) — the holds' lines and
+  /// Emits the span's FOREGROUND ink (T3), a ghost's aside (F-446) — the
   /// in-between marks inline — and answers the words it writes, for
   /// [_bakeGlyphs] to set through the A8 atlas: geometry and ink probed from
   /// the painter (the substrate's fidelity rule).
@@ -963,10 +963,10 @@ class TimelineGridTileStore {
     // lies outside it, the way it cuts a word that grows past the span's end.
     // 🗣️F-446: ↩️the nearest earlier word, whether it reached or not — so a
     // tile showed the same pixels from two layers and baked them apart.
-    final lead = painter.wordGrowingInto(spanStartIndex);
+    final lead = painter.bakedWordGrowingInto(spanStartIndex);
     for (final frameIndex in [
       ?lead,
-      ...painter.writingCellsIn(spanStartIndex, spanEndIndexExclusive),
+      ...painter.bakedWritingCellsIn(spanStartIndex, spanEndIndexExclusive),
     ]) {
       final model = painter.cellModelAt(frameIndex);
       final mark = model.mark;
@@ -1007,35 +1007,8 @@ class TimelineGridTileStore {
         origin: layout.origin + toLocal,
       ));
     }
-    // The holds' lines: the box the classic pass strokes, as a capsule —
-    // the rrect SDF rounds the ends that are a hold's own and leaves square
-    // the ones where the line only runs out of the span.
-    const everyCorner =
-        TimelineGridTileOp.cornerTopLeft |
-        TimelineGridTileOp.cornerTopRight |
-        TimelineGridTileOp.cornerBottomLeft |
-        TimelineGridTileOp.cornerBottomRight;
-    final startCap =
-        TimelineGridTileOp.cornerTopLeft |
-        (axis == Axis.horizontal
-            ? TimelineGridTileOp.cornerBottomLeft
-            : TimelineGridTileOp.cornerTopRight);
-    final endCap = everyCorner & ~startCap;
-    for (final line in painter.holdLinesIn(
-      spanStartIndex,
-      spanEndIndexExclusive,
-    )) {
-      final box = line.box.shift(toLocal);
-      writer.rrectFill(
-        box.left * dpr,
-        box.top * dpr,
-        box.width * dpr,
-        box.height * dpr,
-        box.shortestSide / 2 * dpr,
-        (line.startsHere ? startCap : 0) | (line.endsHere ? endCap : 0),
-        timelineGridPackRgba(line.ink),
-      );
-    }
+    // ↩️The holds' lines were baked here as capsules. A hold is a ghost's,
+    // and a ghost is the row's to lay over its tiles (F-446).
     return glyphCells;
   }
 
@@ -1222,7 +1195,7 @@ typedef _Rastered = ({
 });
 
 /// The ink a tile bakes over its substrate ([TimelineGridTileStore._inkOf]):
-/// the ops its marks and holds' lines write, and the words it sets.
+/// the ops its marks write, and the words it sets.
 typedef _TileInk = ({Int32List ops, List<_TileGlyph> glyphs});
 
 class _TileEntry {
@@ -1335,7 +1308,10 @@ class _TileEntry {
   /// there on was baked again at every step: 🔬~54 tiles a step on S5_BA's
   /// cut 352 (70 rows), the step's raster doubled and three more frames a
   /// step for their landings. Asked what it would bake, only the span the
-  /// ghost's end moved through bakes anything new.
+  /// ghost's end moved through baked anything new (🔬705 tiles in the 40
+  /// steps that had baked 2,169) — and since a ghost's ink is the row's to
+  /// lay over its tiles ([TimelineTileRasterSource.bakedWritingCellsIn]),
+  /// none does.
   bool showsNow(
     _TileRequest asked, {
     required _TileInk Function() inkNow,
@@ -1464,8 +1440,8 @@ class _TileAtlas {
 /// across it — asked of the painter itself
 /// ([TimelineTileRasterSource.substrateIn]), so the tile look can never
 /// drift from the classic paint's. Coordinates are tile-local physical
-/// pixels (row coords minus the span origin, times DPR). Foreground ink
-/// (glyphs, hold lines) stays the painter's Dart pass.
+/// pixels (row coords minus the span origin, times DPR). The foreground
+/// (words, marks) is written after it ([TimelineGridTileStore._inkOf]).
 Int32List timelineGridSubstrateOps({
   required TimelineTileRasterSource painter,
   required int spanStartIndex,

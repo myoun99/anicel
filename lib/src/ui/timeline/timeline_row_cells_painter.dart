@@ -59,6 +59,17 @@ import 'timeline_tile_raster_source.dart';
 
 const String _holdGlyph = timelineHoldGlyph;
 
+/// One hold's line over a stretch of a row, row-local: the [box] it fills —
+/// as long as the line, as thick as it — and whether each end of it is the
+/// hold's OWN end — rounded, and stood in from the cell's edge — or only
+/// where the stretch asked for stops, the line running on past it.
+typedef TimelineHoldLine = ({
+  Rect box,
+  bool startsHere,
+  bool endsHere,
+  Color ink,
+});
+
 /// Glyph TextPainters come from the shared timeline cache (UI-R16):
 /// frame numbers and markers repeat heavily across rows and repaints.
 TextPainter _glyphPainter(
@@ -721,6 +732,7 @@ class TimelineRowCellsPainter extends CustomPainter
       tiledSpans.addAll(_paintTiledSubstrate(canvas, window, store));
     }
     _paintForegrounds(canvas, window, tiledSpans);
+    _paintGhostInk(canvas, window);
 
     // No line is drawn here: the 6f/24f beats went to ONE grid-wide
     // overlay (UI-R13 #7) so they span every row, and with I-44 every
@@ -858,13 +870,14 @@ class TimelineRowCellsPainter extends CustomPainter
     return [...grid.shown, ...grid.ahead];
   }
 
-  /// The Dart glyph/dash pass over every cell in [window] whose span no
-  /// fresh tile covers (T3: a tiled span already carries its ink).
+  /// The Dart glyph pass over every cell in [window] whose span no fresh
+  /// tile covers (T3: a tiled span already carries its ink) — what a tile
+  /// would bake there; a ghost's ink is [_paintGhostInk]'s.
   ///
   /// F-96: a word grows on past its cell, so each untiled stretch also lays
-  /// the word that grows into it from before ([wordGrowingInto]), and paints
-  /// under a clip of its own extent — a word that also lives in a tile is
-  /// never inked twice: the tile holds its part, this pass the rest.
+  /// the word that grows into it from before ([bakedWordGrowingInto]), and
+  /// paints under a clip of its own extent — a word that also lives in a
+  /// tile is never inked twice: the tile holds its part, this pass the rest.
   void _paintForegrounds(
     Canvas canvas,
     ({int startIndex, int endIndexExclusive}) window,
@@ -896,17 +909,43 @@ class TimelineRowCellsPainter extends CustomPainter
         across: (from: 0, to: crossAxisExtent),
       ),
     );
-    final lead = wordGrowingInto(from);
+    final lead = bakedWordGrowingInto(from);
     if (lead != null) {
       _paintCellForeground(canvas, lead);
     }
-    for (final frameIndex in writingCellsIn(from, to)) {
+    for (final frameIndex in bakedWritingCellsIn(from, to)) {
+      _paintCellForeground(canvas, frameIndex);
+    }
+    canvas.restore();
+  }
+
+  /// A ghost's ink over [window], laid over the tiles at every paint and
+  /// never baked into one: the words and marks of its cells, the X that
+  /// closes it ([_writesGhostInk]) and a hold's line. A tile bakes the rest
+  /// ([bakedWritingCellsIn]), so each cell inks once, by one of the two.
+  ///
+  /// 🗣️F-446: a ghost is what the cut's length draws (the last run's fills
+  /// to the drawn end), so an end-line step moved it in every row, and the
+  /// tile it ended in baked again at every step. Over the whole window it
+  /// is one stroke a hold and one word a cell, with no tile edge to cut.
+  void _paintGhostInk(
+    Canvas canvas,
+    ({int startIndex, int endIndexExclusive}) window,
+  ) {
+    final (startIndex: from, endIndexExclusive: to) = window;
+    if (to <= from) {
+      return;
+    }
+    final lead = _wordGrowingInto(from);
+    if (lead != null && _writesGhostInk(lead)) {
+      _paintCellForeground(canvas, lead);
+    }
+    for (final frameIndex in ghostInkCellsIn(from, to)) {
       _paintCellForeground(canvas, frameIndex);
     }
     for (final line in holdLinesIn(from, to)) {
       _paintHoldLine(canvas, line);
     }
-    canvas.restore();
   }
 
   /// Whether [model] is a hold ghost's cell — one that writes nothing of
@@ -915,12 +954,12 @@ class TimelineRowCellsPainter extends CustomPainter
       model.ghost && model.glyph == _holdGlyph;
 
   /// The cells of [from, to) that WRITE — a word or a mark — in order; every
-  /// other cell inks nothing. The classic pass inks these and the tile
-  /// emitter bakes these, so the two cannot disagree on which.
+  /// other cell inks nothing. A tile bakes them and the classic pass inks
+  /// them ([bakedWritingCellsIn]) but for a ghost's, which the row lays over
+  /// both ([ghostInkCellsIn]).
   ///
   /// By stretch (I-22): a stretch whose first cell writes nothing is passed
   /// in one step — a hold's among them, whose line is [holdLinesIn]'s.
-  @override
   Iterable<int> writingCellsIn(int from, int to) sync* {
     for (final (:start, :end) in _stretchesIn(from, to)) {
       final model = cellModelAt(start);
@@ -932,6 +971,23 @@ class TimelineRowCellsPainter extends CustomPainter
       }
     }
   }
+
+  @override
+  Iterable<int> bakedWritingCellsIn(int from, int to) =>
+      writingCellsIn(from, to).where((cell) => !_writesGhostInk(cell));
+
+  /// The cells of [from, to) that write a ghost's ink ([_writesGhostInk]),
+  /// in order — what the row lays over its tiles ([_paintGhostInk]).
+  Iterable<int> ghostInkCellsIn(int from, int to) =>
+      writingCellsIn(from, to).where(_writesGhostInk);
+
+  /// Whether the cell at [frameIndex] writes a GHOST's ink: a word or a mark
+  /// of a ghost's own cells, or the X of the empty cell that closes one —
+  /// which stands where the ghost ends, so it follows the cut's length too.
+  bool _writesGhostInk(int frameIndex) =>
+      cellModelAt(frameIndex).ghost ||
+      _stateAt(frameIndex) == TimelineCellExposureState.uncovered &&
+          timelineIndexIsGhost(layer, frameIndex - 1);
 
   /// The holds' lines over [from, to) — one a hold ghost that reaches it.
   ///
@@ -949,7 +1005,6 @@ class TimelineRowCellsPainter extends CustomPainter
   ///
   /// A hold ghost is one entry of the timeline, so the walk is the
   /// timeline's — an entry at a time, never a cell at a time (I-22).
-  @override
   Iterable<TimelineHoldLine> holdLinesIn(int from, int to) sync* {
     final timeline = layer.timeline;
     for (
@@ -974,9 +1029,10 @@ class TimelineRowCellsPainter extends CustomPainter
   /// its own ends stand [timelineHoldLineInset] in from the cells' edges,
   /// and where the stretch stops short of one the line runs to the edge.
   ///
-  /// 🗣️F-208's sliver, as the paper has it ([substrateIn]): a tile ending at
-  /// [to] is as many pixels as its length rounds UP to, so a line that runs
-  /// on past [to] reaches through the cell there too.
+  /// ↩️It reached through the cell at [to] for F-208's sliver, as the paper
+  /// does ([substrateIn]) — the last pixel of the tile it was baked in. A
+  /// hold is laid over the row's window now (F-446), whose edges stand in
+  /// the overscan, where no pixel shows.
   ///
   /// Null while there is no room for it between its ends — the cell a hold
   /// of one frame gets at a far zoom.
@@ -987,9 +1043,7 @@ class TimelineRowCellsPainter extends CustomPainter
     required int to,
   }) {
     final first = math.max(start, from);
-    final past = end > to && to < frameEndIndexExclusive
-        ? to + 1
-        : math.min(end, to);
+    final past = math.min(end, to);
     final head = cellRectFor(first);
     final tail = cellRectFor(past - 1);
     final startsHere = first == start;
@@ -1139,7 +1193,8 @@ class TimelineRowCellsPainter extends CustomPainter
   /// bakes the mark exactly here.
   ///
   /// It keeps to its cell, so the tile that holds the cell is the only one
-  /// that draws it — a word growing past its cell needed [wordGrowingInto].
+  /// that draws it — a word growing past its cell needed
+  /// [bakedWordGrowingInto].
   @override
   InbetweenMarkPlace inbetweenMarkLayoutFor(int frameIndex) {
     final paper = paperRectFor(frameIndex);
@@ -1193,7 +1248,7 @@ class TimelineRowCellsPainter extends CustomPainter
 
   /// The nearest cell before [frameIndex] that writes a WORD, or null when
   /// a hold stands nearer or there is none — the word that may grow into
-  /// [frameIndex]'s cell from before it (F-96); [wordGrowingInto] asks
+  /// [frameIndex]'s cell from before it (F-96); [_wordGrowingInto] asks
   /// whether it does.
   ///
   /// A mark is no word: it keeps to its own cell and grows into no other.
@@ -1219,8 +1274,7 @@ class TimelineRowCellsPainter extends CustomPainter
   /// a word keeps to its room ([_wordRoomEnd]) — its own cell while it fits
   /// there, its block's rest past that. A room ending right at the cell
   /// counts: a glyph's last soft pixel may lie on the edge.
-  @override
-  int? wordGrowingInto(int frameIndex) {
+  int? _wordGrowingInto(int frameIndex) {
     final cell = wordCellBefore(frameIndex);
     if (cell == null) {
       return null;
@@ -1231,10 +1285,18 @@ class TimelineRowCellsPainter extends CustomPainter
     return roomEnd >= startAlong(axis, cellRectFor(frameIndex)) ? cell : null;
   }
 
+  /// [_wordGrowingInto] but a ghost's, which the row lays whole over its
+  /// tiles ([_paintGhostInk]).
+  @override
+  int? bakedWordGrowingInto(int frameIndex) {
+    final cell = _wordGrowingInto(frameIndex);
+    return cell == null || _writesGhostInk(cell) ? null : cell;
+  }
+
   /// The cell's sparse foreground ink (in-between marks, glyph text) — the
   /// classic pass; tile mode bakes the same content into the tiles (T3) and
   /// skips this for covered spans. Only a cell that writes is handed here
-  /// ([writingCellsIn], [wordGrowingInto]) — never a hold's.
+  /// ([writingCellsIn], [_wordGrowingInto]) — never a hold's.
   void _paintCellForeground(Canvas canvas, int frameIndex) {
     final model = cellModelAt(frameIndex);
     final mark = model.mark;

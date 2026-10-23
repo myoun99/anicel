@@ -580,8 +580,8 @@ void main() {
 
     // 🗣️F-446 (유저 2026-10-23): 「타임라인패널에서 엔드라인 드래그로
     // 조절하는게 레이어가 많아질수록 렉이 심함」.
-    test("an end-line step grows each row's last ghost by a cell, and only "
-        'the spans its end moved through bake again', () async {
+    test("an end-line step grows each row's last ghost by a cell, and no "
+        'span bakes again', () async {
       if (dllPath == null) {
         markTestSkipped('qa_engine.dll not built');
         return;
@@ -619,19 +619,20 @@ void main() {
       expect(warm.values, everyElement(isNotNull));
       final baked = landings;
 
-      final moved = await movedBetween(before, after);
+      // ↩️(12, 16) and (16, 20) baked again: the hold's line ran on out of
+      // the one into the other, and the X that closes it moved a cell. Both
+      // are the ghost's ink, which the row lays over its tiles now.
       expect(
-        moved,
-        const [(12, 16), (16, 20)],
-        reason: "premise: the hold's line runs on out of (12, 16) into "
-            '(16, 20), and ends there',
+        await movedBetween(before, after),
+        isEmpty,
+        reason: "premise: nothing a tile bakes follows the ghost's end",
       );
       final stepped = paint(after);
-      for (final span in spans.where((span) => !moved.contains(span))) {
+      for (final span in spans) {
         expect(identical(stepped[span], warm[span]), isTrue, reason: '$span');
       }
       await waitIdle();
-      expect(landings - baked, moved.length);
+      expect(landings, baked);
     });
   });
 }
