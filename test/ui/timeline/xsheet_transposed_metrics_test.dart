@@ -293,34 +293,44 @@ void main() {
         XSheetTimelineGrid.defaultMetrics.verticalScrollbarWidth,
       );
       expect(railBar.left, closeTo(frameBar.left, 0.01));
-      // F-409 (user, 2026-10-19): 「세로 스크롤바를 프레임 영역. 즉 제일
-      // 오른쪽으로 이동. 초+코마 버튼 위치도 그에맞춰서 이동」 — the column at
-      // the sheet's far right, and the corner over it at the end of the
-      // top strip.
+      // F-459-Q1 (user, 2026-10-23): 「x시트의 왼쪽 끝을 원함. 룰러랑 칸
+      // 사이가 아님」 — the column at the sheet's far left, the corner over
+      // it at the start of the top strip, then the frame numbers, then the
+      // cells. ↩️F-409 had them at the far right; before that the column
+      // stood between the frame numbers and the cells.
       final sheet = tester.getRect(find.byType(XSheetTimelineGrid));
-      expect(frameBar.right, closeTo(sheet.right, 0.01));
+      final numbers = XSheetTimelineGrid.defaultMetrics.layerControlsWidth;
+      expect(frameBar.left, closeTo(sheetLeft(tester), 0.01));
       final corner = tester.getRect(
         find.byKey(const ValueKey<String>('xsheet-time-display-toggle-button')),
       );
       expect(
         [corner.left, corner.right, corner.top, corner.bottom],
         [
-          closeTo(railBar.left, 0.01),
-          closeTo(sheet.right, 0.01),
+          closeTo(sheetLeft(tester), 0.01),
+          closeTo(railBar.right, 0.01),
           closeTo(sheetTop, 0.01),
           closeTo(railBar.top, 0.01),
         ],
       );
-      expect(layerAxisBar.right, closeTo(corner.left, 0.01));
+      expect(layerAxisBar.left, closeTo(corner.right + numbers, 0.01));
+      expect(layerAxisBar.right, closeTo(sheet.right, 0.01));
+      expect(
+        tester
+            .getRect(
+              find.byKey(
+                const ValueKey<String>('xsheet-layer-horizontal-viewport'),
+              ),
+            )
+            .left,
+        closeTo(frameBar.right + numbers, 0.01),
+        reason: 'the frame numbers, then the cells, past the column',
+      );
       // The splitter starts after the frame-number rail: that column is
       // the FRAME axis's and the splitter has nothing to say about it.
       expect(
         splitter.left,
-        closeTo(
-          sheetLeft(tester) +
-              XSheetTimelineGrid.defaultMetrics.layerControlsWidth,
-          0.01,
-        ),
+        closeTo(frameBar.right + numbers, 0.01),
       );
     });
 

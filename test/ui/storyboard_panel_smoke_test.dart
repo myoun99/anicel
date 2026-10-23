@@ -247,6 +247,19 @@ void main() {
         reason: 'the layer-axis bar stands right past the splitter',
       );
       expect(
+        tester
+            .getRect(
+              find.byKey(
+                const ValueKey<String>(
+                  'storyboard-timeline-horizontal-viewport',
+                ),
+              ),
+            )
+            .left,
+        bar.right,
+        reason: 'the strips start past the bar',
+      );
+      expect(
         find.byKey(const ValueKey<String>('storyboard-rail-scrollbar')),
         findsOneWidget,
       );

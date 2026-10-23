@@ -1178,12 +1178,21 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                 Column(
                   children: [
                     // The LAYER axis runs across the sheet, so its scrollbar is
-                    // the strip along the top — and the corner at its end, over
-                    // the frame axis's bar (F-409), holds the seconds toggle.
+                    // the strip along the top — and the corner at its start, over
+                    // the frame axis's bar (F-459-Q1), holds the seconds toggle.
                     SizedBox(
                       height: layerAxisScrollbarExtent,
                       child: Row(
                         children: [
+                          TimelineSecondsToggleCorner(
+                            key: const ValueKey<String>(
+                              'xsheet-time-display-toggle-button',
+                            ),
+                            width: _metrics.verticalScrollbarWidth,
+                            height: layerAxisScrollbarExtent,
+                            showSeconds: widget.hooks.showSeconds,
+                            onChanged: widget.hooks.onShowSecondsChanged,
+                          ),
                           SizedBox(width: _metrics.layerControlsWidth),
                           Expanded(
                             child: LayoutBuilder(
@@ -1205,15 +1214,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                                   ),
                             ),
                           ),
-                          TimelineSecondsToggleCorner(
-                            key: const ValueKey<String>(
-                              'xsheet-time-display-toggle-button',
-                            ),
-                            width: _metrics.verticalScrollbarWidth,
-                            height: layerAxisScrollbarExtent,
-                            showSeconds: widget.hooks.showSeconds,
-                            onChanged: widget.hooks.onShowSecondsChanged,
-                          ),
                         ],
                       ),
                     ),
@@ -1221,6 +1221,36 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          // ONE column, split by the splitter: the RAIL's
+                          // own bar above it, the FRAME axis's below. The
+                          // column was already here at 14px carrying only the
+                          // frame bar — widening it and halving it was the
+                          // whole change (the user saw this before I did).
+                          // It stands at the sheet's far left — F-459-Q1
+                          // (유저 2026-10-23): 「x시트의 왼쪽 끝을 원함. 룰러랑
+                          // 칸 사이가 아님」. ↩️F-409 had stood it at the far
+                          // right; before that it stood between the
+                          // frame-number rail and the cells.
+                          SizedBox(
+                            width: _metrics.verticalScrollbarWidth,
+                            child: Column(
+                              children: [
+                                LayerRailScrollbar(
+                                  axis: Axis.vertical,
+                                  rail: _railExtent,
+                                  naturalExtent: naturalHeaderBlockExtent,
+                                  availableExtent: availableHeaderExtent,
+                                  laneExtent:
+                                      _metrics.verticalScrollbarWidth,
+                                  keyPrefix: 'xsheet',
+                                ),
+                                SizedBox(height: splitterSlotExtent),
+                                Expanded(
+                                  child: _buildVerticalScrollbar(geometry),
+                                ),
+                              ],
+                            ),
+                          ),
                           SizedBox(
                             width: _metrics.layerControlsWidth,
                             child: Column(
@@ -1284,47 +1314,20 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                                     ),
                                   ),
                           ),
-                          // ONE column, split by the splitter: the RAIL's
-                          // own bar above it, the FRAME axis's below. The
-                          // column was already here at 14px carrying only the
-                          // frame bar — widening it and halving it was the
-                          // whole change (the user saw this before I did).
-                          // It stands at the frame area's far right (F-409:
-                          // 「세로 스크롤바를 프레임 영역. 즉 제일 오른쪽으로」);
-                          // ↩️it stood between the frame-number rail and the
-                          // cells.
-                          SizedBox(
-                            width: _metrics.verticalScrollbarWidth,
-                            child: Column(
-                              children: [
-                                LayerRailScrollbar(
-                                  axis: Axis.vertical,
-                                  rail: _railExtent,
-                                  naturalExtent: naturalHeaderBlockExtent,
-                                  availableExtent: availableHeaderExtent,
-                                  laneExtent:
-                                      _metrics.verticalScrollbarWidth,
-                                  keyPrefix: 'xsheet',
-                                ),
-                                SizedBox(height: splitterSlotExtent),
-                                Expanded(
-                                  child: _buildVerticalScrollbar(geometry),
-                                ),
-                              ],
-                            ),
-                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
                 // The grip floats over the 5px slot all three columns
-                // reserve, so one grab spans the legend, the scrollbar
-                // column and the headers. It starts after the frame-number
-                // rail: that column is the FRAME axis's and the splitter
-                // has nothing to say about it.
+                // reserve, over the headers. It starts after the
+                // frame-number rail: that column is the FRAME axis's and
+                // the splitter has nothing to say about it — and the bar
+                // column stands before it since F-459-Q1.
                 Positioned(
-                  left: _metrics.layerControlsWidth,
+                  left:
+                      _metrics.verticalScrollbarWidth +
+                      _metrics.layerControlsWidth,
                   right: 0,
                   top: layerAxisScrollbarExtent + headerBlockHeight,
                   height: splitterSlotExtent,
