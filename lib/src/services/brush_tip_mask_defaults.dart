@@ -119,27 +119,40 @@ final BrushTipMask graphiteToothTextureMask = _generateGraphiteToothMask();
 /// purpose.
 final BrushTipMask colorClumpBrushTipMask = _generateColorClumpMask();
 
-/// 🚨THE LEAD, UPRIGHT TO FLAT (유저 F-451, 2026-10-23: 「세웠을땐 사각형이
-/// 아니라 진짜 연필처럼 적어도 6각형이라던가 둥글다던가」, while 「눕혀서
-/// 쓸땐 실루엣이 직각으로 떨어져졌으면 하는건 좋은데」). Six footprints of
-/// one lead: the disc its point leaves upright, squarer step by step to the
-/// block its side lays flat. A pencil takes them by the pen's lean
-/// (`BrushTipOrder.lean`) — one footprint cannot be both, and squashing one
-/// only stretches it.
+/// 🚨THE LEAD, UPRIGHT TO FLAT, THREE WORN FACES A STEP (유저 F-451,
+/// 2026-10-23: 「세웠을땐 사각형이 아니라 진짜 연필처럼 적어도 6각형이라던가
+/// 둥글다던가」, while 「눕혀서 쓸땐 실루엣이 직각으로 떨어져졌으면 하는건
+/// 좋은데」; F-456-Q4: 「기울기가 단계를 고르고, 그 단계 안에서 여러 장 중
+/// 무작위」 — 「클튜 연필브러쉬가 팁을 한장이나 세장만 쓰고있으니 … 참고해서
+/// 하면됨」). Six steps of one lead, from the facet its point wears upright —
+/// a five-, six- or seven-sided face, worn round at the corners — squarer
+/// step by step to the block its side lays flat, each step three faces
+/// whose edges sit and chip differently ([pencilLeadFacesPerStep]). A
+/// pencil's lean picks the step (`BrushTipOrder.lean`) and every dab throws
+/// one of its faces (`BrushShape.tipsPerTurn`), so the line's edge breaks
+/// somewhere new each dab and a stroke laid again fills what the first
+/// missed.
+///
+/// ↩️F-451 gave each step one smooth footprint: every dab of a stroke laid
+/// the same rim and only the paper broke the line — always in the same
+/// place (F-456: 「결여가 너무 일정함(같은부분 다시 그려도 결여된 픽셀이
+/// 안채워짐)」). A new look is a new id: `builtin-pencil-lead-*` are gone.
 ///
 /// 🚨EACH IS HOW HARD THE LEAD PRESSES, not where it inks: whole in the
-/// middle, easing to nothing at the rim. Under the paper's height
-/// (`BrushTextureMode.height`) that is what lets the paper break the edge —
-/// where the lead barely touches, only the tooth's peaks take graphite, so
-/// the line loses a pixel here and there instead of keeping a stamped
-/// outline (「중간중간 아예 형태가 선이 일부분? 1px이나 그정도 없다던가」).
+/// middle, easing to nothing at the rim, so the paper's tooth takes the
+/// lightest touches first and the line's edge thins into grain.
 ///
 /// 256 texels, like [pencilSideBrushTipMask]: the edge is the point, and at
 /// 64 a laid dab of a few dozen pixels would blur it.
 final List<BrushTipMask> pencilLeadBrushTipMasks = List.unmodifiable([
   for (var step = 0; step < _leadSquareness.length; step += 1)
-    _generatePencilLeadMask(step),
+    for (var face = 0; face < pencilLeadFacesPerStep; face += 1)
+      _generatePencilLeadMask(step, face),
 ]);
+
+/// How many faces each step of [pencilLeadBrushTipMasks] holds — what a
+/// pencil wears as its `tipsPerTurn`.
+const int pencilLeadFacesPerStep = 3;
 
 const int _maskSize = 64;
 
@@ -596,36 +609,46 @@ BrushTipMask _generatePencilSideMask() {
   });
 }
 
-/// How far from the disc towards the block each lead lies
-/// ([pencilLeadBrushTipMasks]), along the superellipses [_superReach] draws:
-/// 0 the disc, 1 the fourth power, 2 the eighth, 3 the sixteenth, and
-/// between two of them their reaches mixed. A pen held as one writes leans
-/// about 0.4 and a Wacom pen reports little past 0.65 (`_leanRows`), so the
-/// first three stay near round and the block arrives where the lean runs
-/// out.
+/// How far from the facet towards the block each step of
+/// [pencilLeadBrushTipMasks] lies: 0 the facet [_leadFacet] cuts, 1 the
+/// fourth-power superellipse [_superReach] draws, 2 the eighth, 3 the
+/// sixteenth, and between two of them their reaches mixed. A pen held as
+/// one writes leans about 0.4 and a Wacom pen reports little past 0.65
+/// (`_leanRows`), so the first three stay near the facet and the block
+/// arrives where the lean runs out.
 const _leadSquareness = [0.0, 0.3, 0.75, 1.6, 2.4, 3.0];
 
 /// How much of a lead's reach presses whole before it eases to the rim
-/// ([pencilLeadBrushTipMasks]): the band left is where the paper's height
-/// breaks the silhouette.
+/// ([pencilLeadBrushTipMasks]): the band left is where the paper's tooth
+/// thins the edge.
 const _leadWhole = 0.9;
 
-/// One lead ([pencilLeadBrushTipMasks]): its reach on the superellipse
-/// [_leadSquareness] names, whole out to [_leadWhole] of it, then easing as
-/// `(1 - s²)²` to the rim.
-BrushTipMask _generatePencilLeadMask(int step) {
+/// How far a face's chipped rim moves in and out of its reach
+/// ([pencilLeadBrushTipMasks]).
+const _leadChipping = 0.12;
+
+/// One face of a lead ([pencilLeadBrushTipMasks]): its reach between the
+/// facet [_leadFacet] cuts and the superellipses, as far along as
+/// [_leadSquareness] names, its rim chipped by a noise of its own; whole
+/// out to [_leadWhole] of it, then easing as `(1 - s²)²` to the rim.
+BrushTipMask _generatePencilLeadMask(int step, int face) {
   const size = 256;
   const centre = size / 2.0;
   const radius = size / 2.0 - 1.0;
   final along = _leadSquareness[step];
   final lower = math.min(along.floor(), 2);
   final mix = along - lower;
-  return _textureMask('builtin-pencil-lead-$step', size: size, (x, y, index) {
+  final seed = 0x1EAD + step * 97 + face * 31;
+  final facet = _leadFacet(face, seed);
+  final chips = _seamlessValueNoise(24, seed, size: size);
+  final id = 'builtin-pencil-face-$step-$face';
+  return _textureMask(id, size: size, (x, y, index) {
     final u = (x + 0.5 - centre) / radius;
     final v = (y + 0.5 - centre) / radius;
+    final from = lower == 0 ? facet(u, v) : _superReach(u, v, lower);
     final reach =
-        _superReach(u, v, lower) * (1.0 - mix) +
-        _superReach(u, v, lower + 1) * mix;
+        (from * (1.0 - mix) + _superReach(u, v, lower + 1) * mix) *
+        (1.0 + (chips[index] - 0.5) * _leadChipping);
     if (reach >= 1.0) {
       return 0.0;
     }
@@ -637,6 +660,78 @@ BrushTipMask _generatePencilLeadMask(int step) {
     return 255.0 * ease * ease;
   });
 }
+
+/// The facet a lead's point wears upright ([pencilLeadBrushTipMasks]): five,
+/// six or seven edges by [face] — the user's 「6각형 5각형」 — each turned a
+/// little off the regular face and set back a little, its corners worn
+/// round by summing the edges' sixteenth powers. 1 on its rim.
+double Function(double u, double v) _leadFacet(int face, int seed) {
+  final draws = _Draws(seed);
+  final edges = [
+    for (final (across, down) in _facetNormals[face])
+      _turnedEdge(
+        across,
+        down,
+        turn: (draws.next() - 0.5) * 0.5,
+        back: 0.82 + draws.next() * 0.18,
+      ),
+  ];
+  return (u, v) {
+    var sum = 0.0;
+    for (final (across, down, back) in edges) {
+      final reach = (across * u + down * v) / back;
+      if (reach > 0.0) {
+        final square = reach * reach;
+        final fourth = square * square;
+        final eighth = fourth * fourth;
+        sum += eighth * eighth;
+      }
+    }
+    return math.sqrt(math.sqrt(math.sqrt(math.sqrt(sum))));
+  };
+}
+
+/// An edge of [_leadFacet]: its outward normal ([across], [down]) turned by
+/// the sine [turn], and how far out it stands, [back].
+(double, double, double) _turnedEdge(
+  double across,
+  double down, {
+  required double turn,
+  required double back,
+}) {
+  final keep = math.sqrt(1.0 - turn * turn);
+  return (across * keep - down * turn, across * turn + down * keep, back);
+}
+
+/// The outward normals of the regular faces of five, six and seven sides
+/// ([_leadFacet]) — written out, not turned by `cos`: the bytes are pinned
+/// by their sum, and only `sqrt` rounds alike on every platform.
+const _facetNormals = <List<(double, double)>>[
+  [
+    (1.0, 0.0),
+    (0.30901699437494745, 0.9510565162951535),
+    (-0.8090169943749473, 0.5877852522924732),
+    (-0.8090169943749475, -0.587785252292473),
+    (0.30901699437494723, -0.9510565162951536),
+  ],
+  [
+    (1.0, 0.0),
+    (0.5, 0.8660254037844386),
+    (-0.5, 0.8660254037844387),
+    (-1.0, 0.0),
+    (-0.5, -0.8660254037844385),
+    (0.5, -0.8660254037844386),
+  ],
+  [
+    (1.0, 0.0),
+    (0.6234898018587336, 0.7818314824680298),
+    (-0.22252093395631434, 0.9749279121818236),
+    (-0.900968867902419, 0.43388373911755823),
+    (-0.9009688679024191, -0.433883739117558),
+    (-0.2225209339563146, -0.9749279121818236),
+    (0.6234898018587334, -0.7818314824680299),
+  ],
+];
 
 /// Where ([u], [v]) lies on the superellipse of power `2^(order + 1)` — 1
 /// on its rim: [order] 0 the circle, 1 the fourth power, 2 the eighth, 3 the

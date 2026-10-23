@@ -109,6 +109,15 @@ void main() {
       expect(BrushSettings().toJson().containsKey('textureMode'), isFalse);
     });
 
+    test('the tips a turn holds survive the round trip, one writes nothing, '
+        'and none is refused (F-456-Q4)', () {
+      final brush = BrushSettings(tipsPerTurn: 3);
+      expect(BrushSettings.fromJson(brush.toJson()).tipsPerTurn, 3);
+      expect(BrushSettings.fromJson(brush.toJson()), brush);
+      expect(BrushSettings().toJson().containsKey('tipsPerTurn'), isFalse);
+      expect(() => BrushSettings(tipsPerTurn: 0), throwsArgumentError);
+    });
+
     test('🚨pressure on a target with no legacy key survives the round trip '
         '— the pencil pressing into the tooth (F-451)', () {
       final curve = BrushPressureCurve.linearFrom(0.5);

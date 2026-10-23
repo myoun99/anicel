@@ -332,6 +332,7 @@ class BrushToolState {
     double angleDegrees = defaultAngleDegrees,
     List<BrushTipMask> tips = const [],
     BrushTipOrder tipOrder = BrushTipOrder.repeat,
+    int tipsPerTurn = 1,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
@@ -379,6 +380,7 @@ class BrushToolState {
       angleDegrees: angleDegrees,
       tips: tips,
       tipOrder: tipOrder,
+      tipsPerTurn: tipsPerTurn,
       rotationMode: rotationMode,
       angleJitter: angleJitter,
       scatterRadiusRatio: scatterRadiusRatio,
@@ -489,6 +491,7 @@ class BrushToolState {
     double? angleDegrees,
     List<BrushTipMask>? tips,
     BrushTipOrder? tipOrder,
+    int? tipsPerTurn,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -543,6 +546,7 @@ class BrushToolState {
         angleDegrees: angleDegrees ?? defaultAngleDegrees,
         tips: tips ?? const [],
         tipOrder: tipOrder ?? BrushTipOrder.repeat,
+        tipsPerTurn: tipsPerTurn ?? 1,
         rotationMode: rotationMode ?? BrushTipRotationMode.fixed,
         angleJitter: angleJitter ?? 0.0,
         scatterRadiusRatio: scatterRadiusRatio ?? 0.0,
@@ -697,6 +701,9 @@ class BrushToolState {
 
   /// Which tip each dab takes — see `BrushTipOrder`.
   BrushTipOrder get tipOrder => shape.tipOrder;
+
+  /// How many tips each turn holds — see `BrushShape.tipsPerTurn`.
+  int get tipsPerTurn => shape.tipsPerTurn;
 
   /// The first of [tips], or `null` for the round tip.
   BrushTipMask? get tipMask => shape.tipMask;
@@ -1164,6 +1171,7 @@ class BrushToolState {
     double? angleDegrees,
     List<BrushTipMask>? tips,
     BrushTipOrder? tipOrder,
+    int? tipsPerTurn,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -1224,6 +1232,7 @@ class BrushToolState {
           angleDegrees: angleDegrees,
           tips: tips,
           tipOrder: tipOrder,
+          tipsPerTurn: tipsPerTurn,
           rotationMode: rotationMode,
           angleJitter: angleJitter,
           scatterRadiusRatio: scatterRadiusRatio,

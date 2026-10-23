@@ -199,11 +199,13 @@ void main() {
       }
     });
 
-    test('🚨every graphite pencil wears the lead upright to flat, and its '
-        'paper cuts by height — deeper the harder it presses (F-451)', () {
+    test('🚨every graphite pencil wears the lead upright to flat, three '
+        'faces a step thrown per dab, on a tooth that multiplies — paler the '
+        'lighter it presses (F-451, F-456)', () {
       // 유저: 「팁 사각형인채로 질감만 얼버무려서 연필느낌내는건 너무
-      // 구현도가 낮음」 · 「진짜 연필처럼 중간중간 아예 형태가 선이 일부분?
-      // 1px이나 그정도 없다던가」.
+      // 구현도가 낮음」 (F-451) · 「결여가 너무 일정함(같은부분 다시 그려도
+      // 결여된 픽셀이 안채워짐)」 · Q4 「기울기가 단계를 고르고, 그 단계
+      // 안에서 여러 장 중 무작위」 (F-456).
       for (final id in [
         'builtin-hard-pencil',
         'builtin-pencil',
@@ -215,18 +217,21 @@ void main() {
         final settings = byId(id).settings;
         expect(settings.tips, pencilLeadBrushTipMasks, reason: id);
         expect(settings.tipOrder, BrushTipOrder.lean, reason: id);
+        expect(settings.tipsPerTurn, pencilLeadFacesPerStep, reason: id);
         expect(
           settings.textureMaskSource?.id,
           'builtin-graphite-tooth',
           reason: id,
         );
-        expect(settings.textureMode, BrushTextureMode.height, reason: id);
-        final reach = settings.shape.curves[(
+        // ⛔Not the height's cut: it left the same valleys bare however
+        // often a line was laid again.
+        expect(settings.textureMode, BrushTextureMode.multiply, reason: id);
+        final tooth = settings.shape.curves[(
           BrushPressureTarget.textureDensity,
           BrushInputSource.pressure,
         )]!;
-        expect(reach.evaluate(1.0), 1.0, reason: '$id pressed whole');
-        expect(reach.evaluate(0.0), lessThan(0.6), reason: '$id touched');
+        expect(tooth.evaluate(0.0), 1.0, reason: '$id touched: all paper');
+        expect(tooth.evaluate(1.0), lessThan(0.8), reason: '$id pressed');
       }
     });
 

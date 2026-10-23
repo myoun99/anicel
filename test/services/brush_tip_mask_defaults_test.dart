@@ -31,12 +31,12 @@ void main() {
   ];
 
   test('every bundled mask is 64 a side with an alpha per cell — but the '
-      'ten that need 256', () {
+      'twenty-two that need 256', () {
     // Board F-218: a 64-texel tile scaled up to read as paper repeats every
     // couple of centimetres of a stroke (see `coldPressTextureMask`). F-433:
     // the lead's side is a hard edge at any dab size, the graphite tooth a
-    // speck of a pixel or two, and the flecks a few texels long. F-451: the
-    // lead's six footprints, whose edge is where the paper breaks it.
+    // speck of a pixel or two, and the flecks a few texels long. F-451 and
+    // F-456: the lead's faces, whose edge is where a line breaks.
     final wide = {
       'builtin-cold-press',
       'builtin-pencil-side',
@@ -87,13 +87,25 @@ void main() {
       'builtin-graphite-tooth': 9601082,
       // Measured 2026-10-23 as it first shipped (F-449).
       'builtin-color-clumps': 807546,
-      // Measured 2026-10-23 as they first shipped (F-451).
-      'builtin-pencil-lead-0': 11749572,
-      'builtin-pencil-lead-1': 12303160,
-      'builtin-pencil-lead-2': 13258856,
-      'builtin-pencil-lead-3': 14313164,
-      'builtin-pencil-lead-4': 14729444,
-      'builtin-pencil-lead-5': 14872924,
+      // Measured 2026-10-23 as they first shipped (F-456-Q4).
+      'builtin-pencil-face-0-0': 10835814,
+      'builtin-pencil-face-0-1': 9796625,
+      'builtin-pencil-face-0-2': 10745281,
+      'builtin-pencil-face-1-0': 11771210,
+      'builtin-pencil-face-1-1': 11138062,
+      'builtin-pencil-face-1-2': 10986858,
+      'builtin-pencil-face-2-0': 12854163,
+      'builtin-pencil-face-2-1': 12785370,
+      'builtin-pencil-face-2-2': 12709616,
+      'builtin-pencil-face-3-0': 14480840,
+      'builtin-pencil-face-3-1': 14378912,
+      'builtin-pencil-face-3-2': 14290519,
+      'builtin-pencil-face-4-0': 14767135,
+      'builtin-pencil-face-4-1': 14746240,
+      'builtin-pencil-face-4-2': 14745586,
+      'builtin-pencil-face-5-0': 14873228,
+      'builtin-pencil-face-5-1': 14743196,
+      'builtin-pencil-face-5-2': 14982888,
     };
 
     expect(

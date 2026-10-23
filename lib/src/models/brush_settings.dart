@@ -32,6 +32,7 @@ class BrushSettings {
     double angleDegrees = 0.0,
     List<BrushTipMask> tips = const [],
     BrushTipOrder tipOrder = BrushTipOrder.repeat,
+    int tipsPerTurn = 1,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
@@ -76,6 +77,7 @@ class BrushSettings {
          angleDegrees: angleDegrees,
          tips: tips,
          tipOrder: tipOrder,
+         tipsPerTurn: tipsPerTurn,
          rotationMode: rotationMode,
          angleJitter: angleJitter,
          scatterRadiusRatio: scatterRadiusRatio,
@@ -142,6 +144,7 @@ class BrushSettings {
   /// See [BrushShape.tips] — and [tipMask], the first of them.
   List<BrushTipMask> get tips => shape.tips;
   BrushTipOrder get tipOrder => shape.tipOrder;
+  int get tipsPerTurn => shape.tipsPerTurn;
   BrushTipMask? get tipMask => shape.tipMask;
   BrushTipRotationMode get rotationMode => shape.rotationMode;
   double get angleJitter => shape.angleJitter;
@@ -221,6 +224,7 @@ class BrushSettings {
     double? angleDegrees,
     List<BrushTipMask>? tips,
     BrushTipOrder? tipOrder,
+    int? tipsPerTurn,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -272,6 +276,7 @@ class BrushSettings {
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tips: tips ?? this.tips,
       tipOrder: tipOrder ?? this.tipOrder,
+      tipsPerTurn: tipsPerTurn ?? this.tipsPerTurn,
       rotationMode: rotationMode ?? this.rotationMode,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
@@ -330,9 +335,10 @@ class BrushSettings {
     // would eat the library of their own brushes.
     if (withMasks && tips.length > 1)
       'moreTipMasks': [for (final tip in tips.skip(1)) tip.toJson()],
-    // 繰り返し is the default, so it writes nothing — presets saved before
-    // the setting existed round-trip byte-identically.
+    // 繰り返し and one tip a turn are the defaults, so they write nothing —
+    // presets saved before the settings existed round-trip byte-identically.
     if (tipOrder != BrushTipOrder.repeat) 'tipOrder': tipOrder.name,
+    if (tipsPerTurn != 1) 'tipsPerTurn': tipsPerTurn,
     'rotationMode': rotationMode.toJson(),
     'angleJitter': angleJitter,
     // 通常 is the default, so it writes nothing — presets saved before every
@@ -416,6 +422,7 @@ class BrushSettings {
       tipOrder:
           BrushTipOrder.values.asNameMap()[json['tipOrder']] ??
           BrushTipOrder.repeat,
+      tipsPerTurn: json['tipsPerTurn'] as int? ?? 1,
       rotationMode: BrushTipRotationMode.fromJson(json['rotationMode']),
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
       // The legacy `lockedBlendMode` key reads straight in: a preset that
@@ -523,6 +530,13 @@ void _validateShape(BrushShape shape) {
       shape.scatterCount,
       'scatterCount',
       'BrushSettings.scatterCount must be at least 1.',
+    );
+  }
+  if (shape.tipsPerTurn < 1) {
+    throw ArgumentError.value(
+      shape.tipsPerTurn,
+      'tipsPerTurn',
+      'BrushSettings.tipsPerTurn must be at least 1.',
     );
   }
 }

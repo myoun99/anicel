@@ -22,6 +22,12 @@ enum BrushTextureMode {
   /// leaves misses a pixel here and there at its edge, and a multiplied
   /// texture never can.
   ///
+  /// ↩️No built-in pencil wears it since F-456 (유저 2026-10-23: 「결여가
+  /// 너무 일정함(같은부분 다시 그려도 결여된 픽셀이 안채워짐)」): a valley
+  /// deeper than the reach takes nothing at all, so the same pixels stay
+  /// bare however often a line is laid again. Their edges break by the
+  /// faces they throw per dab instead (`BrushShape.tipsPerTurn`).
+  ///
   /// ⚠️THE DENSITY READS DIFFERENTLY HERE, as Photoshop's depth does under
   /// its Height mode: not how much of the paper shows, but how far the dab
   /// presses into it — at 0 it reaches nothing.

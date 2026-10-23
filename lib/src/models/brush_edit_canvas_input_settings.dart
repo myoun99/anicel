@@ -29,6 +29,7 @@ class BrushEditCanvasInputSettings {
     double angleDegrees = 0.0,
     List<BrushTipMask> tips = const [],
     BrushTipOrder tipOrder = BrushTipOrder.repeat,
+    int tipsPerTurn = 1,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
@@ -109,6 +110,7 @@ class BrushEditCanvasInputSettings {
         angleDegrees: angleDegrees,
         tips: tips,
         tipOrder: tipOrder,
+        tipsPerTurn: tipsPerTurn,
         rotationMode: rotationMode,
         angleJitter: angleJitter,
         scatterRadiusRatio: scatterRadiusRatio,
@@ -199,6 +201,7 @@ class BrushEditCanvasInputSettings {
   /// See [BrushShape.tips] — and [tipMask], the first of them.
   List<BrushTipMask> get tips => shape.tips;
   BrushTipOrder get tipOrder => shape.tipOrder;
+  int get tipsPerTurn => shape.tipsPerTurn;
   BrushTipMask? get tipMask => shape.tipMask;
   BrushTipRotationMode get rotationMode => shape.rotationMode;
   double get angleJitter => shape.angleJitter;
@@ -255,6 +258,7 @@ class BrushEditCanvasInputSettings {
     double? angleDegrees,
     List<BrushTipMask>? tips,
     BrushTipOrder? tipOrder,
+    int? tipsPerTurn,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -301,6 +305,7 @@ class BrushEditCanvasInputSettings {
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tips: tips ?? this.tips,
       tipOrder: tipOrder ?? this.tipOrder,
+      tipsPerTurn: tipsPerTurn ?? this.tipsPerTurn,
       rotationMode: rotationMode ?? this.rotationMode,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,

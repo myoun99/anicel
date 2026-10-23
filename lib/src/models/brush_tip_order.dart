@@ -25,8 +25,8 @@ enum BrushTipOrder {
   /// ランダムに一巡 — every tip once, in a shuffled order, then nothing.
   shuffledLap,
 
-  /// ペンの傾き — the pen's lean picks the tip: held upright the first,
-  /// laid flat the last, the list cut evenly between. A pen that reports no
+  /// ペンの傾き — the pen's lean picks the turn: held upright the first,
+  /// laid flat the last, the turns cut evenly between. A pen that reports no
   /// lean is upright.
   ///
   /// ⚠️NOT ONE OF CLIP STUDIO'S SIX — its tips only take turns. Choosing an

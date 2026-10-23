@@ -28,11 +28,12 @@ enum BrushPressureTarget {
   roundness,
   spacing,
 
-  /// テクスチャ濃度 — Clip Studio gives it the same 影響元 as size. Under
-  /// the paper's height (`BrushTextureMode.height`) it is how deep the dab
-  /// reaches into the paper, so a light pressure finds only the peaks and a
-  /// heavy one the valleys too — a pencil's grain filling as it darkens
-  /// (F-451).
+  /// テクスチャ濃度 — Clip Studio gives it the same 影響元 as size. Under a
+  /// multiplied paper it is how much of the paper shows, so a row that
+  /// falls with pressure leaves a light touch grained and fills the valleys
+  /// as the press grows — a pencil's grain filling as it darkens (F-456).
+  /// Under the paper's height (`BrushTextureMode.height`) it is how deep the
+  /// dab reaches into the paper instead.
   textureDensity;
 
   /// Whether a curve on this setting may go PAST its base — 傾き's 最大値.

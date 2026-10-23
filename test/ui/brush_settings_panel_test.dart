@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/panels/editor_panel_dock.dart';
 import 'package:anicel/src/ui/panels/editor_panel_frame.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import 'package:anicel/src/ui/widgets/tip_direction_popup.dart';
 
@@ -516,6 +517,38 @@ void main() {
         find.byKey(const ValueKey<String>('brush-tool-tip-order-pingPong')),
         findsNothing,
       );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the tips a turn holds are set by their row and reach the '
+        'shape — and the row is DEAD below two tips (F-456-Q4)', (
+      tester,
+    ) async {
+      // 「없다가 생기는 UI 금지」: one tip has nothing to throw between, so
+      // the row is here and dead, not absent.
+      final row = find.byKey(
+        const ValueKey<String>('brush-tool-tips-per-turn-slider'),
+      );
+      final bare = await _pumpPanel(tester);
+      expect(bare().tips, isEmpty, reason: 'fixture premise');
+      expect(row, findsOneWidget, reason: 'the row must keep its place');
+      expect(tester.widget<FieldSlider>(row).onChanged, isNull);
+
+      BrushTipMask tip(String id) => BrushTipMask(
+        id: id,
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 200, 255]),
+      );
+      final read = await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.copyWith(
+          tips: [tip('a'), tip('b'), tip('c'), tip('d')],
+        ),
+      );
+      expect(read().tipsPerTurn, 1);
+      tester.widget<FieldSlider>(row).onChanged!(2.0);
+      await tester.pumpAndSettle();
+      expect(read().tipsPerTurn, 2);
       expect(tester.takeException(), isNull);
     });
 

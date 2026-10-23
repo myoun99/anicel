@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 import 'package:flutter/material.dart';
 
@@ -317,6 +319,22 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
     ),
     // How the dabs take the tips above (F-176-Q3).
     _TipOrderRow(state: state, onChanged: onChanged),
+    // How many of those tips each turn holds, one thrown per dab
+    // (F-456-Q4). ⛔ALWAYS HERE, DEAD below two tips: one tip has nothing
+    // to throw between.
+    _PanelSlider(
+      label: AppText.strings.brTipsPerTurn,
+      value: state.tipsPerTurn
+          .clamp(1, math.max(2, state.tips.length))
+          .toDouble(),
+      min: 1,
+      max: math.max(2, state.tips.length).toDouble(),
+      divisions: math.max(1, state.tips.length - 1),
+      keyValue: 'brush-tool-tips-per-turn-slider',
+      onChanged: state.tips.length < 2
+          ? null
+          : (value) => onChanged(state.copyWith(tipsPerTurn: value.round())),
+    ),
     _PanelSlider(
       label: AppText.strings.brHardness,
       unit: '%',

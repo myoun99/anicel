@@ -31,6 +31,7 @@ class BrushStrokeDynamics {
        _tipTurns = BrushTipTurns.of(
          settings.tips,
          settings.tipOrder,
+         tipsPerTurn: settings.tipsPerTurn,
          random: tipRandom ?? math.Random(),
        );
 
