@@ -9,8 +9,8 @@ import 'raster_picture.dart';
 /// Paints the project PAPER (R10-⑥ / R3b): the paper color, alpha
 /// included — a thinned paper lets the pasteboard and the backdrop behind
 /// it show through, which is the four-plane stage's whole point. The
-/// checkerboard belongs to an ABSENT plane ([paintAlphaCheckerboard]); the
-/// paper itself never checkers.
+/// checkerboard belongs to an ABSENT plane ([paintAbsentPlane]); the paper
+/// itself never checkers.
 ///
 /// A paper that is NONE (F-114, 유저 2026-09-15: 「없음버튼 누르면 없는상태.
 /// 즉 해당 용지부분이 체크무늬되도록」) paints nothing here, on every route
@@ -38,19 +38,6 @@ void paintProjectPaper(
       ..color = color
       ..isAntiAlias = antiAlias,
   );
-}
-
-/// The alpha checkerboard as a painter: fills whatever it is given with it.
-class AlphaCheckerboardPainter extends CustomPainter {
-  const AlphaCheckerboardPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    paintAlphaCheckerboard(canvas, Offset.zero & size);
-  }
-
-  @override
-  bool shouldRepaint(covariant AlphaCheckerboardPainter oldDelegate) => false;
 }
 
 /// The alpha checkerboard — what an ABSENT plane shows (F-114: 「해당 용지

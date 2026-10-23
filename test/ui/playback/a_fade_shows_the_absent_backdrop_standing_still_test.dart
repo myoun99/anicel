@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
     show InstructionEvent;
-import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart' show PasteboardBounds;
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -106,7 +105,7 @@ void main() {
     final stack = tester.widget<CanvasLayerStackView>(found);
     final origin =
         tester.getTopLeft(found) - tester.getTopLeft(find.byKey(screen));
-    final CanvasViewport view = stack.viewport;
+    final view = stack.viewport;
     final page = stack.canvasSize.canvasRect;
     return Rect.fromLTWH(
       origin.dx + view.panX + page.left * view.zoom,

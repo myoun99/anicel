@@ -13,6 +13,7 @@ import '../../services/composite_effect_paint.dart' show alphaOnly;
 import '../canvas/display_resample.dart';
 import '../../services/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
+import '../canvas/stage_planes_painter.dart' show paintStagePlane;
 import '../canvas/viewport_canvas_transform.dart';
 import '../text/se_name_tag_paint.dart';
 import '../repaint_props.dart';
@@ -247,10 +248,14 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
         (Path()..addRect(canvasSize.pasteboardAt(pasteboardReach).rect))
             .transform(cameraProjectionMatrix(pose, cameraFrameSize!).storage),
       );
-      if (!pasteboardNone) {
-        canvas.drawRect(frameRect!, Paint()..color = pasteboardColor!);
-      } else if (checkersAbsentPlanes) {
-        paintAbsentPlane(canvas, frameRect!, screen: screen, antiAlias: true);
+      if (!pasteboardNone || checkersAbsentPlanes) {
+        paintStagePlane(
+          canvas,
+          frameRect!,
+          (color: pasteboardColor!, none: pasteboardNone),
+          screen: screen,
+          antiAlias: true,
+        );
       }
       canvas.restore();
     }

@@ -15,8 +15,6 @@ import '../../services/camera_projection_matrix.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/canvas_layer_stack_view.dart';
-import '../canvas/paper_background.dart'
-    show AlphaCheckerboardPainter, paintAbsentPlane;
 import '../canvas/stage_planes_painter.dart';
 import 'camera_shot.dart';
 import 'layer_frame_image_cache.dart';
@@ -192,30 +190,19 @@ class CanvasTrackStackView extends StatelessWidget {
     // shows the stage's floor, exactly what an opaque export bakes there.
     // An ABSENT backdrop (F-114) is the checkerboard, as on the editing
     // canvas. Seen through the camera, the floor past its frame is the
-    // letterbox ([_CameraFloor]).
+    // letterbox ([_StageFloor]).
     final Widget? floor = !paintsFloor
         ? null
-        : cameraViewEnabled
-        ? CustomPaint(
+        : CustomPaint(
             key: const ValueKey<String>('canvas-track-stack-floor'),
-            painter: _CameraFloor(
-              viewport: viewport,
-              frameSize: cameraFrameSize,
-              backdrop: Color(backdropArgb),
-              backdropNone: backdropNone,
+            painter: _StageFloor(
+              backdrop: (color: Color(backdropArgb), none: backdropNone),
+              camera: cameraViewEnabled
+                  ? (frameSize: cameraFrameSize, viewport: viewport)
+                  : null,
               devicePixelRatio: ratio,
             ),
             child: const SizedBox.expand(),
-          )
-        : backdropNone
-        ? const CustomPaint(
-            key: ValueKey<String>('canvas-track-stack-floor'),
-            painter: AlphaCheckerboardPainter(),
-            child: SizedBox.expand(),
-          )
-        : ColoredBox(
-            key: const ValueKey<String>('canvas-track-stack-floor'),
-            color: Color(backdropArgb),
           );
     if (positions.isEmpty) {
       return SizedBox.expand(
@@ -286,7 +273,7 @@ class CanvasTrackStackView extends StatelessWidget {
       // white through it.
       paintPaper: under && isStage && background.none,
       // The letterbox is the FLOOR's, laid once under every track
-      // ([_CameraFloor]). ↩️Each stage contribution laid its own over
+      // ([_StageFloor]). ↩️Each stage contribution laid its own over
       // the whole screen, opaque, under its fade — so in an O.L the
       // arriving cut covered the leaving one and the dissolve went
       // through the letterbox (measured 10-10: two white papers met at
@@ -460,27 +447,29 @@ class _WholeFilmFramesState extends State<_WholeFilmFrames> {
   Widget build(BuildContext context) => widget.builder(context, _shown);
 }
 
-/// The stage's floor seen through the camera (R3b): the letterbox past the
-/// camera's frame, and in the frame the backdrop every track's unit lies
-/// on — what a fade or a dissolve reveals. An ABSENT backdrop (F-114) is
-/// the checkerboard there, as the apron's is.
+/// The stage's floor (R3b): the backdrop every track's unit lies on — what
+/// an uncovered frame shows and a fade or a dissolve reveals — over the
+/// box, or seen through the camera in the camera's frame with the
+/// letterbox past it. An ABSENT backdrop (F-114) is the checkerboard there,
+/// as the apron's is: one plane, laid the one way ([paintStagePlane]).
 ///
 /// ONE floor under every track: the letterbox is laid once, so no unit can
 /// cover the one under it with it (see the frames' `paintLetterbox`).
-class _CameraFloor extends CustomPainter with RepaintOnProps {
-  const _CameraFloor({
-    required this.viewport,
-    required this.frameSize,
+/// ↩️Seen through no camera the floor was a widget of its own — a colour,
+/// or a checkerboard painter — spelling the plane's switch once more.
+class _StageFloor extends CustomPainter with RepaintOnProps {
+  const _StageFloor({
     required this.backdrop,
-    required this.backdropNone,
+    required this.camera,
     required this.devicePixelRatio,
   });
 
-  /// The panel's pan/zoom; identity when null.
-  final CanvasViewport? viewport;
-  final CanvasSize frameSize;
-  final Color backdrop;
-  final bool backdropNone;
+  final StagePlane backdrop;
+
+  /// Where the floor is seen through the camera: the camera's frame, laid
+  /// through the panel's pan/zoom (identity when null). Null lays the
+  /// floor over the whole box, which no view moves.
+  final ({CanvasSize frameSize, CanvasViewport? viewport})? camera;
 
   /// The pan-phase snap's device grid — the frame lands where the frames
   /// over it clip to.
@@ -488,34 +477,29 @@ class _CameraFloor extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final box = Offset.zero & size;
     final screen = canvas.getTransform();
     canvas.save();
-    canvas.clipRect(Offset.zero & size);
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = PlaybackFramePainter.letterboxColor,
-    );
-    if (viewport case final viewport?) {
-      applyViewportTransform(
-        canvas,
-        viewport,
-        devicePixelRatio: devicePixelRatio,
+    canvas.clipRect(box);
+    var region = box;
+    if (camera case (:final frameSize, :final viewport)?) {
+      canvas.drawRect(
+        box,
+        Paint()..color = PlaybackFramePainter.letterboxColor,
       );
+      if (viewport != null) {
+        applyViewportTransform(
+          canvas,
+          viewport,
+          devicePixelRatio: devicePixelRatio,
+        );
+      }
+      region = frameSize.canvasRect;
     }
-    if (backdropNone) {
-      paintAbsentPlane(
-        canvas,
-        frameSize.canvasRect,
-        screen: screen,
-        antiAlias: true,
-      );
-    } else {
-      canvas.drawRect(frameSize.canvasRect, Paint()..color = backdrop);
-    }
+    paintStagePlane(canvas, region, backdrop, screen: screen, antiAlias: true);
     canvas.restore();
   }
 
   @override
-  Object get props =>
-      (viewport, frameSize, backdrop, backdropNone, devicePixelRatio);
+  Object get props => (backdrop, camera, devicePixelRatio);
 }

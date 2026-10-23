@@ -14,6 +14,40 @@ import 'viewport_canvas_transform.dart' show applyViewportTransform;
 /// (F-114) — one value, so a colour never travels without its absence.
 typedef StagePlane = ({Color color, bool none});
 
+/// One [plane] over [region], in the space the canvas is in: the
+/// checkerboard in the screen's cells where the plane is absent
+/// ([paintAbsentPlane] — [screen] is the canvas's transform at the
+/// painter's box), otherwise its colour wherever that has any alpha — its
+/// edge cut by [antiAlias] either way.
+///
+/// ONE way to lay a plane of the stage (F-114: 「페이스트보드도 백그라운드도
+/// 동일하게」): the editing canvas's planes ([StagePlanesPainter]), the
+/// film's floor with a camera or without, and the apron the camera sees.
+/// ↩️Each spelled the switch of its own (fade-wash-ignores-an-absent-
+/// backdrop's 「다섯 곳」, 2026-10-23).
+void paintStagePlane(
+  Canvas canvas,
+  Rect region,
+  StagePlane plane, {
+  required Float64List screen,
+  required bool antiAlias,
+}) {
+  final (:color, :none) = plane;
+  if (none) {
+    paintAbsentPlane(canvas, region, screen: screen, antiAlias: antiAlias);
+    return;
+  }
+  if (color.a <= 0) {
+    return;
+  }
+  canvas.drawRect(
+    region,
+    Paint()
+      ..color = color
+      ..isAntiAlias = antiAlias,
+  );
+}
+
 /// The stage's planes behind a cut seen through no camera (R3b): the
 /// opaque BACKDROP over the box, the RGBA PASTEBOARD over the region it
 /// occupies — a canvas-space rectangle, so it rides zoom, pan, rotation and
@@ -51,7 +85,7 @@ typedef StagePlane = ({Color color, bool none});
 /// 🚨F-114 (유저 2026-09-15: 「없음버튼 누르면 없는상태. 즉 해당 용지부분이
 /// 체크무늬되도록. 페이스트보드도 백그라운드도 동일하게」): an ABSENT plane is
 /// the checkerboard over exactly the region that plane would fill — one rule
-/// for the three ([_paintPlane]). A paper that is there stays the layer
+/// for the three ([paintStagePlane]). A paper that is there stays the layer
 /// stack's to paint, alpha and all; an absent one paints nothing in the stack,
 /// so its checkerboard is laid here, under the artwork.
 class StagePlanesPainter extends CustomPainter with RepaintOnProps {
@@ -124,7 +158,7 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
     canvas.save();
     canvas.clipRect(box);
     if (backdrop case final backdrop?) {
-      _paintPlane(canvas, box, backdrop, screen: screen, antiAlias: true);
+      paintStagePlane(canvas, box, backdrop, screen: screen, antiAlias: true);
     }
     // 🚨The pasteboard and the paper are PLACES ON THE CANVAS, so they go to
     // the screen the one way every canvas-space painter takes the view (P8,
@@ -140,7 +174,7 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
       devicePixelRatio: devicePixelRatio,
     );
     if (pasteboard case final pasteboard?) {
-      _paintPlane(
+      paintStagePlane(
         canvas,
         canvasSize.pasteboardAt(pasteboardReach).rect,
         pasteboard,
@@ -149,7 +183,7 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
       );
     }
     if (paperNone) {
-      _paintPlane(
+      paintStagePlane(
         canvas,
         canvasSize.canvasRect,
         (color: const Color(0x00000000), none: true),
@@ -160,34 +194,6 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
       );
     }
     canvas.restore();
-  }
-
-  /// One plane over [region], in the space the canvas is in: the
-  /// checkerboard in the screen's cells when the plane is absent
-  /// ([paintAbsentPlane]), otherwise its colour wherever that has any alpha
-  /// — its edge cut by [antiAlias] either way. The plane rides as ONE
-  /// value, its colour and whether it is there.
-  static void _paintPlane(
-    Canvas canvas,
-    Rect region,
-    StagePlane plane, {
-    required Float64List screen,
-    required bool antiAlias,
-  }) {
-    final (:color, :none) = plane;
-    if (none) {
-      paintAbsentPlane(canvas, region, screen: screen, antiAlias: antiAlias);
-      return;
-    }
-    if (color.a <= 0) {
-      return;
-    }
-    canvas.drawRect(
-      region,
-      Paint()
-        ..color = color
-        ..isAntiAlias = antiAlias,
-    );
   }
 
   @override

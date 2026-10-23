@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../tool/source_brackets.dart';
 import '../helpers/dart_sources.dart';
 
 /// 🚨ONE transparency checker in the app.
@@ -7,9 +9,11 @@ import '../helpers/dart_sources.dart';
 /// 2026-09-09: 「투명이라는 의미의 체크무늬 … 이미있으면 있던거 쓰고」, and
 /// 2026-09-11 for the import preview: 「출력창의 미리보기에서 쓰는 … 격자무늬
 /// 그대로 공용화해서 재사용하도록」). It lives in
-/// `ui/canvas/paper_background.dart` (`paintAlphaCheckerboard`,
-/// `AlphaCheckerboardPainter`); the window previews draw it as their page's
-/// ground (`ViewportPageGround.checker`). ↩️`ui/widgets/checkered_picture.dart`
+/// `ui/canvas/paper_background.dart` (`paintAlphaCheckerboard`, and
+/// `paintAbsentPlane` for an absent plane on screen); the window previews
+/// draw it as their page's ground (`ViewportPageGround.checker`).
+/// ↩️`AlphaCheckerboardPainter` went when the film's floor took the stage's
+/// one plane (2026-10-23). ↩️`ui/widgets/checkered_picture.dart`
 /// went with the import preview's 16:9 well (F-282 ④, 2026-10-09).
 ///
 /// The cut-piece preview drew a second one — its own cell loop in the panel's
@@ -48,8 +52,43 @@ void main() {
       offenders,
       isEmpty,
       reason:
-          'draw open alpha with paintAlphaCheckerboard or '
-          'AlphaCheckerboardPainter — the one checker the app has',
+          'draw open alpha with paintAlphaCheckerboard — an absent plane '
+          'on screen with paintAbsentPlane — the one checker the app has',
+    );
+  });
+
+  /// 🚨AN ABSENT PLANE ON SCREEN LAYS ITS CELLS IN ONE GRID, the screen's
+  /// (`paintAbsentPlane`, camera-checkerboard-rides-the-canvas, 2026-10-23).
+  ///
+  /// The checker's cells sit in whatever space the canvas is in, so a
+  /// painter that lays it under the view or a camera lays a pattern of its
+  /// own: through the camera the film's floor showed four-pixel cells at
+  /// 50% against the editing canvas's eight, and pressing play changed the
+  /// pattern. ⛔A behaviour test holds the planes there are and says nothing
+  /// of the next one, so the callers are read off the source: past
+  /// `paintAbsentPlane`, only the window previews' page ground lays the
+  /// checker itself — a document's open alpha, in its pages' cells.
+  test('an absent plane on screen takes the checker through one door', () {
+    const shared = 'lib/src/ui/canvas/paper_background.dart';
+    final callers = <String, String>{
+      for (final file in dartFilesUnder('lib/src'))
+        if (withoutComments(file.readAsStringSync())
+            case final code when code.contains('paintAlphaCheckerboard('))
+          libPath(file): code,
+    };
+    expect(
+      callers.keys.toSet(),
+      {shared, 'lib/src/ui/canvas/viewport_pages_painter.dart'},
+      reason:
+          'lay an absent plane on screen with paintAbsentPlane, in the '
+          'screen\'s cells — the checker laid under the view or a camera '
+          'is a grid of its own',
+    );
+    expect(
+      'paintAlphaCheckerboard('.allMatches(callers[shared]!).length,
+      2,
+      reason: '$shared declares the checker and lays it once, inside '
+          'paintAbsentPlane',
     );
   });
 

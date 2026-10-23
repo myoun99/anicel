@@ -88,7 +88,7 @@ void main() {
                     Frame(id: const FrameId('f'), duration: 1, strokes: const []),
                   ],
                   timeline: {
-                    0: TimelineExposure.drawing(const FrameId('f'), length: 1),
+                    0: const TimelineExposure.drawing(FrameId('f'), length: 1),
                   },
                 ),
               ],
