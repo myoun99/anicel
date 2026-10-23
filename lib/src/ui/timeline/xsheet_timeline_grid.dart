@@ -73,7 +73,6 @@ import 'timeline_grid_hooks.dart';
 import 'timeline_grid_legend_rail.dart';
 import 'rail_eyes.dart';
 import 'timeline_swipe_columns.dart';
-import '../input/wheel_law.dart';
 import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
 
@@ -670,144 +669,123 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
           width: columnsContentWidth,
           child: Column(
             children: [
-              // 🚨★★★**THE WHEEL SCROLLS THE LAYERS ON BOTH SHEETS** —
-              // 유저 2026-09-18 (F-159): 「x시트에서 **레이어 영역의 휠을
-              // 통한 스크롤이 작동안함**. **타임라인이랑 법 통일**해서
-              // 적용」.
-              //
-              // ⛔THE AXIS IS THE WHOLE DIFFERENCE. Layers run DOWN the
-              // timeline and ACROSS the sheet, so this viewport scrolls
-              // horizontally — and a wheel arrives as a VERTICAL delta,
-              // which a horizontal `Scrollable` ignores. The timeline's
-              // layer viewport is vertical and gets it for free.
-              //
-              // ⚠️ON THE HEADER BLOCK ([LayerRailWindow]), not the whole
-              // viewport: 「레이어 영역」 is what 유저 named, and the sheet
-              // below it keeps its own notch for the FRAME axis. 🧪Both
-              // wrong places were measured — the viewport stole the
-              // sheet's wheel, and `handleWheelUnlessScrolling` does not
-              // help (it asks `Scrollable.maybeOf`, which searches ABOVE
-              // the widget rather than under the pointer).
-              Listener(
-                key: const ValueKey<String>('xsheet-layer-header-wheel'),
-                onPointerSignal: (event) =>
-                    handleWheelExclusively(event, (wheel) {
-                      final position = _layerScrollController.position;
-                      _layerScrollController.jumpTo(
-                        (position.pixels + wheel.scrollDelta.dy).clamp(
-                          position.minScrollExtent,
-                          position.maxScrollExtent,
-                        ),
-                      );
-                    }),
-                child: LayerRailWindow(
-                  axis: Axis.vertical,
-                  rail: _railExtent,
-                  naturalExtent: naturalHeaderBlockExtent,
-                  availableExtent: availableHeaderExtent,
-                  child: Column(
-                    children: [
-                      // The paper sheet's group headings: one
-                      // bracket cell per section run, wrapping
-                      // its columns.
-                      Row(
-                        // Named so a probe can
-                        // measure where the band
-                        // sits against the headers
-                        // it caps (F-32).
-                        key: const ValueKey<String>('xsheet-section-band-row'),
-                        children: [
-                          for (final run in sectionRuns)
-                            _XSheetSectionBandCell(
-                              run: run,
-                              height: XSheetTimelineGrid._sectionBandHeight,
-                              extent: timelineSectionRunExtent(
-                                run,
-                                geometry.columnEdges,
-                              ),
-                            ),
-                        ],
-                      ),
-                      // 🆕F-26 (유저 2026-08-24):
-                      // 「선택범위ui도 예전모습 그대로
-                      // **하나하나 실루엣 선택**되고
-                      // 있음」 — the sheet ringed each
-                      // selected column on its own
-                      // while the rail drew ONE band
-                      // per contiguous run. Same
-                      // widget, turned on its side.
-                      Stack(
-                        children: [
-                          // 🚨The rail's bulk-drag, TURNED ON ITS SIDE. Same
-                          // widget, same columns; the x-sheet is the rail
-                          // transposed, so the sweep runs ACROSS the layer
-                          // columns instead of down the rows.
-                          RailColumnSwipe<TimelineDisplayRow>(
-                            axis: Axis.horizontal,
-                            columns: _columns.swipeColumns(),
-                            rowsIn: (from, to) => _columns.columnsIn(
-                              from,
-                              to,
-                              entries,
+              // The header's wheel is its window's, as its pan is: a notch
+              // pushes the window down the headers, and with Shift the
+              // layers across, as a notch over the cells does (F-447-Q1,
+              // [PanSlideRegion]).
+              // ↩️F-159 (유저 2026-09-18: 「x시트에서 레이어 영역의 휠을
+              // 통한 스크롤이 작동안함. 타임라인이랑 법 통일」) took every
+              // notch here for the layers. F-447 (유저 10-23: 「x시트의
+              // 레이어영역의 휠조작이 작동안함 … 프레임 영역이랑 법
+              // 통일」) asked again, and its Q1 chose the area's own law —
+              // the pan's.
+              LayerRailWindow(
+                axis: Axis.vertical,
+                rail: _railExtent,
+                naturalExtent: naturalHeaderBlockExtent,
+                availableExtent: availableHeaderExtent,
+                child: Column(
+                  children: [
+                    // The paper sheet's group headings: one
+                    // bracket cell per section run, wrapping
+                    // its columns.
+                    Row(
+                      // Named so a probe can
+                      // measure where the band
+                      // sits against the headers
+                      // it caps (F-32).
+                      key: const ValueKey<String>('xsheet-section-band-row'),
+                      children: [
+                        for (final run in sectionRuns)
+                          _XSheetSectionBandCell(
+                            run: run,
+                            height: XSheetTimelineGrid._sectionBandHeight,
+                            extent: timelineSectionRunExtent(
+                              run,
                               geometry.columnEdges,
                             ),
-                            // The rail's eyes, turned on their side with it
-                            // — a folder's flip dims its members' eyes here
-                            // as it does there (F-185).
-                            child: RailEyes.forLayers(
-                              [
-                                for (final entry in entries)
-                                  if (!entry.isLane) entry.layer,
-                              ],
-                              stack: widget.layers,
-                              child: _rowBerths.counting(
-                                Row(
-                                  children: _headers.headers(
-                                    entries,
-                                    geometry.columnEdges,
-                                  ),
+                          ),
+                      ],
+                    ),
+                    // 🆕F-26 (유저 2026-08-24):
+                    // 「선택범위ui도 예전모습 그대로
+                    // **하나하나 실루엣 선택**되고
+                    // 있음」 — the sheet ringed each
+                    // selected column on its own
+                    // while the rail drew ONE band
+                    // per contiguous run. Same
+                    // widget, turned on its side.
+                    Stack(
+                      children: [
+                        // 🚨The rail's bulk-drag, TURNED ON ITS SIDE. Same
+                        // widget, same columns; the x-sheet is the rail
+                        // transposed, so the sweep runs ACROSS the layer
+                        // columns instead of down the rows.
+                        RailColumnSwipe<TimelineDisplayRow>(
+                          axis: Axis.horizontal,
+                          columns: _columns.swipeColumns(),
+                          rowsIn: (from, to) => _columns.columnsIn(
+                            from,
+                            to,
+                            entries,
+                            geometry.columnEdges,
+                          ),
+                          // The rail's eyes, turned on their side with it
+                          // — a folder's flip dims its members' eyes here
+                          // as it does there (F-185).
+                          child: RailEyes.forLayers(
+                            [
+                              for (final entry in entries)
+                                if (!entry.isLane) entry.layer,
+                            ],
+                            stack: widget.layers,
+                            child: _rowBerths.counting(
+                              Row(
+                                children: _headers.headers(
+                                  entries,
+                                  geometry.columnEdges,
                                 ),
                               ),
                             ),
                           ),
+                        ),
+                        Positioned.fill(
+                          child: TimelineRowSelectionBands(
+                            axis: Axis.vertical,
+                            selectedFlags: [
+                              for (final entry in entries)
+                                widget.hooks.selectedRows.contains(
+                                  entry.address,
+                                ),
+                            ],
+                            edges: geometry.columnEdges,
+                            crossExtent: _headers.naturalHeaderExtent,
+                          ),
+                        ),
+                        // The sheet's header strip is the rail turned on its
+                        // side, so it is the same place entrance, along x.
+                        if (widget.hooks.onDropMediaAssetBetweenLayers
+                            case final onDrop?)
                           Positioned.fill(
-                            child: TimelineRowSelectionBands(
-                              axis: Axis.vertical,
-                              selectedFlags: [
-                                for (final entry in entries)
-                                  widget.hooks.selectedRows.contains(
-                                    entry.address,
-                                  ),
-                              ],
-                              edges: geometry.columnEdges,
-                              crossExtent: _headers.naturalHeaderExtent,
+                            child: LayerPlacementEntrance(
+                              key: const ValueKey<String>(
+                                'xsheet-layer-placement-entrance',
+                              ),
+                              rowAxis: Axis.horizontal,
+                              rows: () =>
+                                  (rows: _dragRows, edges: _dragEdges),
+                              onHover:
+                                  widget.hooks.rowDragHooks?.onPlacementHover,
+                              onLeave:
+                                  widget.hooks.rowDragHooks?.onPlacementLeave,
+                              accepts:
+                                  widget.hooks.rowDragHooks?.acceptsPlacement,
+                              onDrop: onDrop,
                             ),
                           ),
-                          // The sheet's header strip is the rail turned on its
-                          // side, so it is the same place entrance, along x.
-                          if (widget.hooks.onDropMediaAssetBetweenLayers
-                              case final onDrop?)
-                            Positioned.fill(
-                              child: LayerPlacementEntrance(
-                                key: const ValueKey<String>(
-                                  'xsheet-layer-placement-entrance',
-                                ),
-                                rowAxis: Axis.horizontal,
-                                rows: () =>
-                                    (rows: _dragRows, edges: _dragEdges),
-                                onHover:
-                                    widget.hooks.rowDragHooks?.onPlacementHover,
-                                onLeave:
-                                    widget.hooks.rowDragHooks?.onPlacementLeave,
-                                accepts:
-                                    widget.hooks.rowDragHooks?.acceptsPlacement,
-                                onDrop: onDrop,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               // Reserves the gap the splitter

@@ -1,7 +1,10 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'hit_path.dart';
+import 'wheel_law.dart';
 
 /// 🚨★★A PAN MOVES WHAT IT STARTED ON — over a sheet's layer area, the
 /// layer area: its layers, and its own window along the rail. The frames
@@ -50,6 +53,16 @@ bool panMoves(ScrollPosition position, PanSlide? slide) =>
 
 /// Where a press lands on [slide]: everywhere in its box, over whatever it
 /// holds — it takes nothing from the hit test.
+///
+/// 🚨A WHEEL OVER IT MOVES IT TOO, the same way: the notch a scroller along
+/// the slide's axis would take there ([wheelDeltaAlong]) slides it as its
+/// scrollbar pushes it, and every other notch is the sheet's scrollers', as
+/// a pan leaves them the other axis ([panMoves]). Where it has nowhere to
+/// slide the notch is still its own, and does nothing — as a pan there.
+/// 🗣️F-447-Q1 (유저 2026-10-23): 「그 영역 자신을 — 팬(F-351)과 같은 법」:
+/// over the x-sheet's header the wheel pushes the header's window and,
+/// Shift held, the layers; over a timeline's rail it scrolls the rows and,
+/// Shift held, pushes the rail's window.
 class PanSlideRegion extends SingleChildRenderObjectWidget {
   const PanSlideRegion({super.key, required this.slide, super.child});
 
@@ -57,22 +70,49 @@ class PanSlideRegion extends SingleChildRenderObjectWidget {
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      RenderPanSlideRegion(slide);
+      RenderPanSlideRegion(slide, flipKeys: _flipKeysAt(context));
 
   @override
   void updateRenderObject(
     BuildContext context,
     RenderPanSlideRegion renderObject,
   ) {
-    renderObject.slide = slide;
+    renderObject
+      ..slide = slide
+      ..flipKeys = _flipKeysAt(context);
   }
+
+  /// The keys that turn a notch the other way here — the scrollers'.
+  static Set<LogicalKeyboardKey> _flipKeysAt(BuildContext context) =>
+      ScrollConfiguration.of(context).pointerAxisModifiers;
 }
 
 /// [PanSlideRegion]'s box: on every hit test that lands in it, and nothing
-/// more.
+/// more — and the notches along its slide's axis.
 class RenderPanSlideRegion extends RenderProxyBoxWithHitTestBehavior {
-  RenderPanSlideRegion(this.slide)
+  RenderPanSlideRegion(this.slide, {required this.flipKeys})
     : super(behavior: HitTestBehavior.translucent);
 
   PanSlide slide;
+
+  /// [PanSlideRegion._flipKeysAt].
+  Set<LogicalKeyboardKey> flipKeys;
+
+  @override
+  void handleEvent(PointerEvent event, HitTestEntry entry) {
+    if (event is! PointerScrollEvent) {
+      return;
+    }
+    final axis = slide.axis;
+    final push = wheelDeltaAlong(axis, event, flipKeys: flipKeys);
+    if (push == 0) {
+      return;
+    }
+    handleWheelExclusively(
+      event,
+      (_) => slide.slideWithHand(
+        axis == Axis.horizontal ? Offset(-push, 0) : Offset(0, -push),
+      ),
+    );
+  }
 }
