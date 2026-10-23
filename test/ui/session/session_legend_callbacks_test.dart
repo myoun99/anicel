@@ -113,8 +113,11 @@ void main() {
     legend.onSetBlendModeForDisplayed!({
       const LayerId('b'),
     }, LayerBlendMode.multiply);
-    expect([
-      for (final layer in s.layers) layer.blendMode,
-    ], [LayerBlendMode.normal, LayerBlendMode.multiply]);
+    LayerBlendMode blendOf(String id) =>
+        s.layers.singleWhere((layer) => layer.id == LayerId(id)).blendMode;
+    expect([blendOf('a'), blendOf('b')], [
+      LayerBlendMode.normal,
+      LayerBlendMode.multiply,
+    ]);
   });
 }
