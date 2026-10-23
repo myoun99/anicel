@@ -65,7 +65,7 @@ class ViewerSound {
     QaAudioDevice? Function()? resolveDevice,
     this.resolveOutputDeviceName,
     int Function(int sampleRate)? resolveUserOffsetSamples,
-  }) : _resolveDevice = resolveDevice ?? audioOutputUnlessTesting,
+  }) : _resolveDevice = resolveDevice ?? audioDeviceUnlessTesting,
        resolveUserOffsetSamples = resolveUserOffsetSamples ?? ((_) => 0);
 
   /// [session]'s sound — every surface that plays a file's sound in it:

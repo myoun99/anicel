@@ -11,16 +11,16 @@
 // acyclic: `Standing` and `RangeSelections` reach IN here for the warmer,
 // and if the rig reached back out for `selectCut` neither could be built.
 
-import 'dart:io';
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 
+import '../../services/flutter_test_run.dart';
 import '../../models/cut.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../native/qa_audio_device.dart'
-    show QaAudioDevice, audioOutputUnlessTesting;
+    show QaAudioDevice, audioDeviceUnlessTesting;
 import '../audio/audio_conform_store.dart';
 import '../playback/audio_device_transport.dart';
 import '../playback/audio_scrubber.dart';
@@ -170,7 +170,7 @@ class PlaybackRig implements PlaybackRun {
         // line only picks which one, and no suite that names the rig arms
         // the quiet-window poll. A test that noticed would have to assert
         // on a timer, which is the shape those unit tests already are.
-        idleDelay: Platform.environment['FLUTTER_TEST'] == 'true'
+        idleDelay: underFlutterTest
             ? Duration.zero
             : const Duration(milliseconds: 1200),
         // A movie kept as a reference decodes before its frame composes.
@@ -284,14 +284,14 @@ class PlaybackRig implements PlaybackRun {
         frameRateDenominator: _settings.projectFrameRate.denominator,
       );
 
-  /// The output [audioDeviceTransport] plays on: [audioOutputUnlessTesting],
+  /// The output [audioDeviceTransport] plays on: [audioDeviceUnlessTesting],
   /// or what a test hands in — a device IT opened on the null backend, so
   /// the bench can hear a run the session plays (the transport's own tests
   /// hand theirs in the same way). ⛔Never the hardware: the transport plays
   /// on an open device as it stands and opens only a closed one — ahead of
   /// a run or at it — or reopens one open for another output setting, which
   /// a test that hands one in leaves alone.
-  QaAudioDevice? Function() debugTransportOutput = audioOutputUnlessTesting;
+  QaAudioDevice? Function() debugTransportOutput = audioDeviceUnlessTesting;
 
   /// The native device transport (audio program wiring): when it carries a
   /// run, playback rides the audio master clock — the picture follows the
@@ -324,7 +324,7 @@ class PlaybackRig implements PlaybackRun {
   List<({String name, bool isDefault})> audioDevicesOf({
     required bool capture,
   }) =>
-      audioOutputUnlessTesting()?.devicesOf(capture: capture) ?? const [];
+      audioDeviceUnlessTesting()?.devicesOf(capture: capture) ?? const [];
 
   /// Scrubbing the playhead plays each crossed frame's slice of the mix
   /// (2D): one `play(frame, frame+1)` per crossed frame on the same
@@ -336,7 +336,7 @@ class PlaybackRig implements PlaybackRun {
     resolveProject: () => _project.repository.currentProject,
     conformStore: _audioConformStore,
     // Widget tests must never open a real OS audio device.
-    resolveDevice: audioOutputUnlessTesting,
+    resolveDevice: audioDeviceUnlessTesting,
     resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveOutputDeviceName: () =>

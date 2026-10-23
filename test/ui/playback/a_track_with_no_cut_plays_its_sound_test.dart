@@ -168,7 +168,7 @@ void main() {
   });
 
   // The session's scrubber is never handed an audio device under
-  // `flutter test` (`audioOutputUnlessTesting`), so what the ruler's scrub
+  // `flutter test` (`audioDeviceUnlessTesting`), so what the ruler's scrub
   // can be seen to do here is LOOK for the sound: its mix asks the conform
   // store how long the file under the frame is, and a file nobody asked
   // about yet is conformed on that first ask. The scrubber itself sounding

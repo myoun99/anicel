@@ -24,7 +24,11 @@ import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../native/qa_audio_native.dart' show QaAudioNative;
 import '../../native/qa_audio_device.dart'
-    show QaAudioDevice, audioDeviceIndexByName, openAudioOutput;
+    show
+        QaAudioDevice,
+        audioDeviceIndexByName,
+        audioDeviceUnlessTesting,
+        openAudioOutput;
 import '../../services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import '../playback/audio_input_monitor.dart';
@@ -389,7 +393,7 @@ class EditorVoiceRecording {
   ///
   /// The device is the one a run plays on ([AudioDeviceTransport.output]) —
   /// under a widget test, the one a test hands in or none
-  /// (`audioOutputUnlessTesting`). ↩️It spelled out a gate of its own.
+  /// (`audioDeviceUnlessTesting`). ↩️It spelled out a gate of its own.
   QaAudioDevice? _openDeviceForCue() {
     final device = audioDeviceTransport.output;
     if (device == null ||
@@ -480,9 +484,7 @@ class EditorVoiceRecording {
   /// (capture is single-open) and resumes when the take finishes.
   AudioInputMonitor attachInputMeter() {
     final monitor = _inputMonitor ??= AudioInputMonitor(
-      device: Platform.environment['FLUTTER_TEST'] == 'true'
-          ? null
-          : QaAudioDevice.instance,
+      device: audioDeviceUnlessTesting(),
     );
     _resumeInputMeter();
     return monitor;
@@ -505,9 +507,7 @@ class EditorVoiceRecording {
     if (monitor == null || monitor.isRunning || isVoiceRecording.value) {
       return;
     }
-    final device = Platform.environment['FLUTTER_TEST'] == 'true'
-        ? null
-        : QaAudioDevice.instance;
+    final device = audioDeviceUnlessTesting();
     monitor.start(
       sampleRate: audioConformStore.projectSampleRate,
       deviceIndex: device == null
@@ -897,9 +897,7 @@ class EditorVoiceRecording {
   /// 48 kHz records CLEAN — RNNoise has no other rate, and a silently
   /// resampled pass would be a different promise.
   ({AudioRecorder recorder, int rate, bool denoise})? _openVoiceRecorder() {
-    final device = Platform.environment['FLUTTER_TEST'] == 'true'
-        ? null
-        : QaAudioDevice.instance;
+    final device = audioDeviceUnlessTesting();
     final recorder =
         debugVoiceRecorderFactory?.call() ?? AudioRecorder(device: device);
     final wantDenoise = audioSyncSettings.value.denoiseVoice;

@@ -1,9 +1,9 @@
 import 'dart:async' show unawaited;
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../services/flutter_test_run.dart';
 import '../services/font_library_service.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
@@ -83,7 +83,7 @@ import '../services/command.dart' show WorkAhead;
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
-import '../native/qa_audio_device.dart' show audioOutputUnlessTesting;
+import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'session/cache_budgets.dart';
@@ -1679,11 +1679,11 @@ class EditorSessionManager extends ChangeNotifier
               // under fake async outlives the test (the prerender scheduler's
               // FLUTTER_TEST branch, same reason). Missing fixture paths
               // short-circuit before any decode, so this stays cheap.
-              runner: Platform.environment['FLUTTER_TEST'] == 'true'
+              runner: underFlutterTest
                   ? (request) => Future.value(runConformHere(request))
                   : null,
               placeForPlayback: (floats) =>
-                  audioOutputUnlessTesting()?.newSamples(floats),
+                  audioDeviceUnlessTesting()?.newSamples(floats),
             ))
         // The store answers when a conform lands or is let go, which is
         // exactly when the pool's size column stops being true.

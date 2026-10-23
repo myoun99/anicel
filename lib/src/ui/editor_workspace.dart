@@ -2,7 +2,7 @@ import 'widgets/app_tooltip.dart';
 import 'widgets/app_icon_button.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show File, Platform;
+import 'dart:io' show File;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -10,6 +10,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
+import '../services/flutter_test_run.dart';
 import '../core/set_toggle.dart';
 import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
@@ -1197,7 +1198,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     unawaited(_brushPresets.libraryLanded);
     _layoutPersistence._layoutStore =
         widget.layoutStore ??
-        (Platform.environment['FLUTTER_TEST'] == 'true'
+        (underFlutterTest
             ? null
             : WorkspaceLayoutStore());
     unawaited(_layoutPersistence.restoreLayout());

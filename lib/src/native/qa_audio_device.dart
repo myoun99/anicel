@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:ffi';
-import 'dart:io' show Platform;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import '../services/flutter_test_run.dart';
 import '../services/audio/audio_mixer_reference.dart';
 import 'qa_audio_native.dart';
 import 'qa_engine_abi.dart';
@@ -692,10 +692,13 @@ int audioDeviceIndexByName(
 /// gets null under test; the injectable `resolveDevice` seams stay, and
 /// they exist so a test can hand in a FAKE, never so one can reach the
 /// real thing.
-QaAudioDevice? audioOutputUnlessTesting() =>
-    Platform.environment['FLUTTER_TEST'] == 'true'
-    ? null
-    : QaAudioDevice.instance;
+///
+/// ↩️It was `audioOutputUnlessTesting` until the microphone came through
+/// it too (2026-10-23, board `capture-spells-out-its-own-test-gate`): the
+/// input meter and the recorder take the same device and spelled the same
+/// check out three times. One device, both directions, one question.
+QaAudioDevice? audioDeviceUnlessTesting() =>
+    underFlutterTest ? null : QaAudioDevice.instance;
 
 /// Opens the closed [device] on the output named [preferredName], falling
 /// back to the system default — true when the device is open afterwards,

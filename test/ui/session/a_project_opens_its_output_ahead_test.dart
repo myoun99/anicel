@@ -19,7 +19,7 @@ import '../../helpers/native_engine_path.dart';
 /// the session: a project opened in a tab ([OpenProjects]), its output
 /// opened ahead — and the cues that ring that output.
 ///
-/// The bench never hears what a session plays (`audioOutputUnlessTesting`),
+/// The bench never hears what a session plays (`audioDeviceUnlessTesting`),
 /// so this hands the rig's transport a device it has opened once on
 /// miniaudio's null backend (`PlaybackRig.debugTransportOutput`) — and every
 /// open after that is on the null backend too.

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -10,6 +9,7 @@ import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
+import '../services/flutter_test_run.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../models/working_panel.dart';
@@ -112,7 +112,7 @@ import 'widgets/panel_flyout.dart' show pressFlyoutRow;
 /// An app-side store, or null under `flutter test`: FLUTTER_TEST keeps
 /// widget tests off the developer's saved files (UI-R10 #7 / UI-R22 #5).
 T? _unlessTesting<T>(T Function() make) =>
-    Platform.environment.containsKey('FLUTTER_TEST') ? null : make();
+    underFlutterTest ? null : make();
 
 class HomePage extends StatefulWidget {
   const HomePage({

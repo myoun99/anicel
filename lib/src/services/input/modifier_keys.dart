@@ -1,8 +1,8 @@
-import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
+import '../flutter_test_run.dart';
 import '../../native/windows_key_state.dart';
 
 /// WHETHER A MODIFIER KEY IS HELD — asked here, and answered the same
@@ -68,15 +68,12 @@ abstract final class ModifierKeys {
   @visibleForTesting
   static bool Function(int virtualKey)? debugWindowsKeyDown;
 
-  static final bool _underTest =
-      Platform.environment['FLUTTER_TEST'] == 'true';
-
   static bool _windowsHolds(int virtualKey) {
     final standIn = debugWindowsKeyDown;
     if (standIn != null) {
       return standIn(virtualKey);
     }
-    return !_underTest && windowsKeyIsDown(virtualKey);
+    return !underFlutterTest && windowsKeyIsDown(virtualKey);
   }
 }
 

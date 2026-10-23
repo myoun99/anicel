@@ -118,5 +118,5 @@ const _builtOnlyOutsideTests = <String, String>{
       'main(), WindowPlace and WindowFullScreen.restore — a test names its '
       'file',
   'workspace_colors.json': 'HomePage, _unlessTesting',
-  'workspace_layout.json': 'EditorWorkspace, its own FLUTTER_TEST check',
+  'workspace_layout.json': 'EditorWorkspace, under `underFlutterTest`',
 };
