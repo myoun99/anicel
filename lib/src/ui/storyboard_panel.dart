@@ -247,9 +247,9 @@ import 'timeline/timeline_section_policy.dart'
 import 'timeline/timeline_se_row_visual.dart'
     show
         SePaperSpan,
-        SeSpanVisual,
-        seFramesFreeBefore,
-        seRowAudioStrips,
+        seNameBoxExtent,
+        timelineRowAudioOverlays,
+        timelineRowSeLabelOverlays,
         timelineRowSoundWarningOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
@@ -4112,40 +4112,69 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     ByList([for (final row in seRowsInDisplayOrder) row.layer.id]),
   );
 
+  /// 🚨THE BLOCKS' PIECES ARE BUILT FOR THE PANEL'S WINDOW
+  /// (frame-panels-build-in-one-frame, 2026-10-24): the row spans the whole
+  /// film, and it built a paper, a waveform, the words, two grips and the
+  /// drop places of EVERY sound of the track — 🔬on the AMMI OP the S rows
+  /// were a fifth of reopening the storyboard. Its pieces are now the
+  /// window's, re-made when the window crosses a bucket — as the projection
+  /// keys' are, and as the painters beside them draw.
   @override
   Widget buildKept(BuildContext context) {
-    final spans = <Widget>[];
     final layer = this.layer;
-    if (layer != null) {
-      final blocks = drawingBlocks(layer.timeline);
-      spans.addAll(_contentSpans(context, layer, blocks));
-      spans.addAll(_interactionLayers(context, layer, blocks));
-      spans.add(_warningLayer(context, layer));
-    }
-
     return SizedBox(
       key: ValueKey<String>('storyboard-se-row-$trackIndex-${slot + 1}'),
       width: width,
       height: height,
-      child: Stack(children: spans),
+      child: layer == null
+          ? const Stack()
+          : _windowed(layer, drawingBlocks(layer.timeline)),
     );
   }
+
+  Widget _windowed(Layer layer, List<TimelineDrawingBlock> blocks) =>
+      ValueListenableBuilder<int>(
+        valueListenable: windowBucket,
+        builder: (context, _, _) {
+          final window = _window();
+          return Stack(
+            children: [
+              ..._contentSpans(context, layer, blocks, window),
+              ..._interactionLayers(context, layer, blocks, window),
+              _warningLayer(context, layer, window),
+            ],
+          );
+        },
+      );
+
+  /// The frames the panel's window can reach while its offset stays in the
+  /// bucket ([visibleFrameWindowFor]).
+  ({int startIndex, int endIndexExclusive}) _window() => visibleFrameWindowFor(
+    bucket: windowBucket,
+    viewportMainExtent: viewportWidth,
+    cellExtent: timelineScale.pixelsPerFrame,
+    frameStartIndex: 0,
+    frameEndIndexExclusive: _rowFrames.frameEndIndexExclusive,
+  );
 
   /// The blocks' warning lines — a take that clipped (REC1-D), a sound that
   /// cannot be played — on the ROW, where the timeline's SE row mounts
   /// them. ↩️The clipped takes rode the twirled-down Audio lane here, so
   /// one showed only while its row was open (F-101).
-  Positioned _warningLayer(BuildContext context, Layer layer) {
-    final frames = _rowFrames;
+  Positioned _warningLayer(
+    BuildContext context,
+    Layer layer,
+    ({int startIndex, int endIndexExclusive}) window,
+  ) {
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
-        geometry: frames,
+        geometry: _rowFrames,
         crossAxisExtent: height,
         axis: Axis.horizontal,
         children: timelineRowSoundWarningOverlays(
           layer: layer,
-          frameStartIndex: 0,
-          frameEndIndexExclusive: frames.frameEndIndexExclusive,
+          frameStartIndex: window.startIndex,
+          frameEndIndexExclusive: window.endIndexExclusive,
           crossAxisExtent: height,
           axis: Axis.horizontal,
           warnings: (
@@ -4161,69 +4190,101 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
 
   /// What the row shows: each block's paper, the waveform where a clip's
   /// peaks are known, each block's length, and the dialogue / SE name over
-  /// each block.
+  /// each block — those of [window].
+  ///
+  /// The waveforms and the writing are the timeline SE row's own overlays
+  /// ([timelineRowAudioOverlays], [timelineRowSeLabelOverlays]) on the span
+  /// layer the row's grips and warnings ride. ↩️The row placed them itself
+  /// (one `Positioned` a span off the scale) and wrote its words with a
+  /// loop of its own beside the timeline's.
   List<Widget> _contentSpans(
     BuildContext context,
     Layer layer,
     List<TimelineDrawingBlock> blocks,
+    ({int startIndex, int endIndexExclusive}) window,
   ) {
-    final spans = <Widget>[];
-    // Paper blocks first — the storyboard SE row has no cells
-    // underneath, so each block paints its own paper span (SePaperSpan)
-    // at its TRUE global extent; waveforms go above the paper, the
-    // writing on top.
     final sounds = seAudioSpans(layer);
-    for (final block in blocks) {
-      spans.add(_paperSpan(block, layer, sounds));
-    }
-    // Waveforms above the paper (painted UNDER the SE writing): the
-    // timeline SE row's own strips — each carrying block windows its
-    // sound, clamped to the block and the file length, its gain and fades
-    // drawn on it — at their true global extent (cut ends no longer clip:
-    // the block may cross them).
     final audioPeaksFor = this.audioPeaksFor;
-    if (audioPeaksFor != null) {
-      for (final strip in seRowAudioStrips(
-        layer,
-        ink: (
-          axis: Axis.horizontal,
-          frameRate: projectFrameRate,
-          audioPeaksFor: audioPeaksFor,
-          // Ink on the paper spans, like the timeline SE rows.
-          color: timelineDrawingInkColor.withValues(alpha: 0.22),
-        ),
-      )) {
-        spans.add(
-          _frameSpan(
-            startFrame: strip.startFrame,
-            endExclusive: strip.endFrameExclusive,
-            key: ValueKey<String>('storyboard-audio-clip-${strip.keyName}'),
-            child: strip.strip,
+    return [
+      // Paper blocks first — the storyboard SE row has no cells
+      // underneath, so each block paints its own paper span (SePaperSpan)
+      // at its TRUE global extent; waveforms go above the paper (cut ends
+      // no longer clip: the block may cross them), the writing on top.
+      _contentLayer([
+        for (final block in blocks)
+          if (_inWindow(block, window)) _paperSpan(block, layer, sounds),
+        if (audioPeaksFor != null)
+          ...timelineRowAudioOverlays(
+            layer: layer,
+            frameStartIndex: window.startIndex,
+            frameEndIndexExclusive: window.endIndexExclusive,
+            axis: Axis.horizontal,
+            frameRate: projectFrameRate,
+            audioPeaksFor: audioPeaksFor,
+            // Ink on the paper spans, like the timeline SE rows.
+            color: timelineDrawingInkColor.withValues(alpha: 0.22),
+            keyPrefix: 'storyboard',
           ),
-        );
-      }
-    }
-    spans.add(_runLabels(context, layer));
-    // The sheet's writing on the paper blocks — each name standing in the
-    // frames free before its block ([seFramesFreeBefore]).
-    for (final (index, block) in blocks.indexed) {
-      spans.add(
-        _dialogueSpan(
-          block,
-          layer,
-          framesFreeBefore: seFramesFreeBefore(blocks, index),
+      ]),
+      _runLabels(context, layer),
+      // The sheet's writing on the paper blocks — each name standing in the
+      // frames free before its block ([seFramesFreeBefore]), so the window
+      // reaches a chip's length further: a block just past it can stand
+      // its name inside.
+      _contentLayer(
+        timelineRowSeLabelOverlays(
+          layer: layer,
+          frameStartIndex: window.startIndex,
+          frameEndIndexExclusive:
+              window.endIndexExclusive + _framesUnder(seNameBoxExtent),
+          axis: Axis.horizontal,
+          keyPrefix: 'storyboard',
         ),
-      );
-    }
-    return spans;
+      ),
+    ];
   }
 
+  /// A layer of what the row shows, which no pointer lands on.
+  ///
+  /// ⛔THREE SPANS ON THIS ROW placed themselves: the dialogue, the paper
+  /// and the waveform. Each worked the left edge and the width out of the
+  /// same scale, and each wrapped its child in the same ignored pointer —
+  /// three chances for one of them to place a strip a frame off the others
+  /// on the row it shares. ↩️A helper of the row's then placed all three;
+  /// now the span layer does, the one its grips and warnings land by.
+  Positioned _contentLayer(List<Widget> spans) => Positioned.fill(
+    child: IgnorePointer(
+      child: TimelineFixedFrameSpanLayer(
+        geometry: _rowFrames,
+        crossAxisExtent: height,
+        axis: Axis.horizontal,
+        children: spans,
+      ),
+    ),
+  );
+
+  /// How many of the row's frames [extent] pixels run over, whole.
+  int _framesUnder(double extent) => timelineScale.pixelsPerFrame <= 0
+      ? 0
+      : (extent / timelineScale.pixelsPerFrame).ceil();
+
+  static bool _inWindow(
+    TimelineDrawingBlock block,
+    ({int startIndex, int endIndexExclusive}) window,
+  ) => frameRangesOverlap(
+    block.startIndex,
+    block.endIndexExclusive,
+    window.startIndex,
+    window.endIndexExclusive,
+  );
+
   /// What the row answers to: the selection wash, the press layer, the
-  /// range gesture, and the comma grips on each block's edges.
+  /// range gesture, and the comma grips on the edges of [window]'s blocks.
   List<Widget> _interactionLayers(
     BuildContext context,
     Layer layer,
     List<TimelineDrawingBlock> blocks,
+    ({int startIndex, int endIndexExclusive}) window,
   ) {
     final spans = <Widget>[];
     // NO `~` continuation marks here (UI-R7 #6): the storyboard shows
@@ -4273,10 +4334,12 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
       // One handle for the row's grips: the round end of each mark reads
       // the cell off it ([BlockEdgeGrip.geometry]).
       final gripGeometry = TimelineFrameGeometryHandle(_rowFrames);
-      var ordinal = 0;
-      for (final block in blocks) {
-        final blockOrdinal = ordinal;
-        ordinal += 1;
+      // Each grip names its block by its place on the WHOLE row, as the
+      // session counts it.
+      for (final (blockOrdinal, block) in blocks.indexed) {
+        if (!_inWindow(block, window)) {
+          continue;
+        }
         for (final edge in TimelineBlockEdge.values) {
           grips.add(
             _edgeGrip(
@@ -4300,7 +4363,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     // like every drop place — it takes no pointer until a drag is in flight.
     final drop = onDropMediaAsset;
     if (drop != null) {
-      final cells = _cellDropLayer(context, layer, blocks, drop);
+      final cells = _cellDropLayer(context, layer, blocks, window, drop);
       if (cells != null) {
         spans.add(cells);
       }
@@ -4335,11 +4398,12 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
   /// (「SE 행의 빈 칸 → 새 블록」) on the track axis this row draws. Over the
   /// gaps only, as the timeline's are, so a block is never the place to
   /// start another; the gaps are [emptyGapsBetween]'s, the one free-span
-  /// answer.
+  /// answer. Those of [window], as the row's other pieces.
   Positioned? _cellDropLayer(
     BuildContext context,
     Layer layer,
     List<TimelineDrawingBlock> blocks,
+    ({int startIndex, int endIndexExclusive}) window,
     StoryboardMediaDrop drop,
   ) {
     final frames = _rowFrames;
@@ -4352,8 +4416,17 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
         ? 0
         : math.min(blocks.last.endIndexExclusive, end);
     final gaps = [
-      ...emptyGapsBetween(layer, 0, walked),
-      if (walked < end) (startIndex: walked, length: end - walked),
+      for (final gap in [
+        ...emptyGapsBetween(layer, 0, walked),
+        if (walked < end) (startIndex: walked, length: end - walked),
+      ])
+        if (frameRangesOverlap(
+          gap.startIndex,
+          gap.startIndex + gap.length,
+          window.startIndex,
+          window.endIndexExclusive,
+        ))
+          gap,
     ];
     if (gaps.isEmpty) {
       return null;
@@ -4485,53 +4558,10 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     );
   }
 
-  /// A full-height strip over the frames `[startFrame, endExclusive)`.
-  ///
-  /// ⛔THREE SPANS ON THIS ROW placed themselves: the dialogue, the paper
-  /// and the waveform. Each worked the left edge and the width out of the
-  /// same scale, and each wrapped its child in the same ignored pointer —
-  /// three chances for one of them to place a strip a frame off the others
-  /// on the row it shares.
-  Positioned _frameSpan({
-    required int startFrame,
-    required int endExclusive,
-    required Key key,
-    required Widget child,
-  }) => Positioned(
-    left: timelineScale.leftForFrame(startFrame),
-    top: 0,
-    bottom: 0,
-    width: timelineScale.spanWidth(startFrame, endExclusive),
-    child: IgnorePointer(key: key, child: child),
-  );
-
-  /// The words of [block]'s panel and its SE name, over the block.
-  Positioned _dialogueSpan(
-    TimelineDrawingBlock block,
-    Layer layer, {
-    required int framesFreeBefore,
-  }) {
-    final frame = layer.frameById(block.frameId);
-    return _frameSpan(
-      startFrame: block.startIndex,
-      endExclusive: block.endIndexExclusive,
-      key: ValueKey<String>(
-        'storyboard-se-span-${layer.id}-${block.startIndex}',
-      ),
-      child: SeSpanVisual(
-        axis: Axis.horizontal,
-        frames: block.length,
-        dialogue: frame?.name ?? '',
-        seName: frame?.seName,
-        framesFreeBefore: framesFreeBefore,
-      ),
-    );
-  }
-
   /// [block]'s paper: its layer's colour label (⑲) — red where a sound it
   /// carries cannot be played, as the timeline's block is
   /// (`LayerStack.soundCannotPlayAt`) and a cel that cannot be read.
-  Positioned _paperSpan(
+  TimelineFrameSpan _paperSpan(
     TimelineDrawingBlock block,
     Layer layer,
     List<SeAudioSpan> sounds,
@@ -4540,13 +4570,15 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     final silent =
         cannotPlay != null &&
         soundCannotPlayIn(sounds, block.startIndex, cannotPlay) != null;
-    return _frameSpan(
-      startFrame: block.startIndex,
-      endExclusive: block.endIndexExclusive,
-      key: ValueKey<String>(
-        'storyboard-se-paper-${layer.id}-${block.startIndex}',
+    return TimelineFrameSpan(
+      placement: TimelineFrameSpanPlacement(
+        startIndex: block.startIndex,
+        endIndexExclusive: block.endIndexExclusive,
       ),
       child: SePaperSpan(
+        key: ValueKey<String>(
+          'storyboard-se-paper-${layer.id}-${block.startIndex}',
+        ),
         axis: Axis.horizontal,
         frameCellExtent: timelineScale.pixelsPerFrame,
         startFrame: block.startIndex,

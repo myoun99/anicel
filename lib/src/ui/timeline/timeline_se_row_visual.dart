@@ -235,8 +235,8 @@ typedef SeRowSoundInk = ({
 });
 
 /// An SE row's waveform strips with the frames each covers and the name it
-/// is keyed by — what [timelineRowAudioOverlays] places on a cut's cells,
-/// and the storyboard's S row on the track's axis. One reading of a sound
+/// is keyed by — what [timelineRowAudioOverlays] places on a cut's cells
+/// and on the storyboard's S row, the track's axis. One reading of a sound
 /// for both: where it starts, how much of it is heard, and its gain and
 /// fades drawn on it. Only the sounds over [window] when one is given —
 /// the whole row when none is.

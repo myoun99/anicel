@@ -189,7 +189,7 @@ void main() {
         .widget<StoryboardPanel>(find.byType(StoryboardPanel))
         .pixelsPerFrame;
     Finder span(int start) => find.byKey(
-      ValueKey<String>('storyboard-se-span-se-row-1-$start'),
+      ValueKey<String>('storyboard-se-label-se-row-1-$start'),
     );
     Rect chipOf(String name) =>
         tester.getRect(find.bySemanticsLabel('SE name $name'));
@@ -255,13 +255,13 @@ void main() {
     expect(rowFinder, findsOneWidget);
 
     final spanOne = find.byKey(
-      const ValueKey<String>('storyboard-se-span-se-row-1-1'),
+      const ValueKey<String>('storyboard-se-label-se-row-1-1'),
     );
     final spanCross = find.byKey(
-      const ValueKey<String>('storyboard-se-span-se-row-1-6'),
+      const ValueKey<String>('storyboard-se-label-se-row-1-6'),
     );
     final spanTwo = find.byKey(
-      const ValueKey<String>('storyboard-se-span-se-row-1-10'),
+      const ValueKey<String>('storyboard-se-label-se-row-1-10'),
     );
     expect(spanOne, findsOneWidget);
     expect(spanCross, findsOneWidget);
@@ -342,7 +342,7 @@ void main() {
     expect(endGrip, findsOneWidget);
 
     final span = find.byKey(
-      const ValueKey<String>('storyboard-se-span-se-row-1-10'),
+      const ValueKey<String>('storyboard-se-label-se-row-1-10'),
     );
     final widthBefore = tester.getSize(span).width;
 
