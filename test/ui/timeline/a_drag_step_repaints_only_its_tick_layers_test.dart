@@ -310,13 +310,11 @@ void main() {
   for (final MapEntry(key: drag, value: verbs) in storyboardDrags.entries) {
     testWidgets('a $drag step in the storyboard repaints its tick layers '
         'and the canvas and nothing around them',
-        // 🚨⚠️F-446 ③b (10-24) — OPEN: read honestly ([tickLayersAndCanvas]
-        // no longer lets a panel's host repaint), every storyboard drag step
-        // repaints the storyboard's body — its scroll area's layer, both
-        // viewports and the track strips. These passed while the host stood
-        // for a tick layer, so they guarded nothing; they read it again when
-        // the storyboard's steps are ticks.
-        skip: true, (tester) async {
+        // 🚨F-446 (10-24): these passed while a panel's host stood for a
+        // tick layer, so they guarded nothing — read honestly, every step
+        // repainted the storyboard's body, until a track's strip stood on a
+        // tick layer of its own.
+        (tester) async {
       final strayNames = await straysAtEveryStep(
         tester,
         ['timeline-mode-storyboard-button'],

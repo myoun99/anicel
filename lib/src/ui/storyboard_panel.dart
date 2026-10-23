@@ -2353,9 +2353,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     // reconciled). I-44: the lanes' ground
                                     // and every row seam are the sheet's
                                     // too, off the rail's own row table.
+                                    // 🚨F-446 (10-24): on a tick layer — a
+                                    // cut move's step moves the dashes of
+                                    // the cuts' starts, and rebuilt in the
+                                    // scroll area's layout scope it laid
+                                    // the area out and repainted it whole.
                                     Positioned.fill(
                                       child: IgnorePointer(
-                                        child: RepaintBoundary(
+                                        child: TickLayer(
                                           child: Builder(
                                             builder: (context) =>
                                                 _gridSheet(context, frame),
@@ -2442,63 +2447,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     // preview, so nothing else
                                     // rebuilds per step.
                                     if (frame.totalFrames > 0)
-                                      ValueListenableBuilder<
-                                        TimelineDragPreview?
-                                      >(
-                                        valueListenable:
-                                            widget.dragPreview ??
-                                            _noDragPreview,
-                                        builder: (context, preview, _) {
-                                          final live =
-                                              timelineCutEndPreviewFrameCount(
-                                                preview: preview,
-                                                cutId: null,
-                                                playbackFrameCount:
-                                                    frame.totalFrames,
-                                                movieEndUnder: _movieEndUnder,
-                                              );
-                                          return Positioned(
-                                            key: const ValueKey<String>(
-                                              'storyboard-cut-end-line',
-                                            ),
-                                            left: frame.scale.leftForFrame(
-                                              live,
-                                            ),
-                                            top: 0,
-                                            bottom: 0,
-                                            width: 2,
-                                            child:
-                                                const IgnorePointer(
-                                                  child: ColoredBox(
-                                                    color: AppColors
-                                                        .danger,
-                                                  ),
-                                                ),
-                                          );
-                                        },
-                                      ),
-                                    if (frame.totalFrames > 0 &&
-                                        widget.movieEnd != null)
-                                      _StoryboardEndLineHandle(
-                                        dragPreview:
-                                            widget.dragPreview,
-                                        committedTotalFrames:
-                                            frame.totalFrames,
-                                        movieEndUnder: _movieEndUnder,
-                                        scale: frame.scale,
-                                        // Grabbed from the EMPTY side of
-                                        // the line, never straddling it:
-                                        // everything left of the movie's
-                                        // end belongs to the content, and
-                                        // the last cut's trailing edge
-                                        // grip is right there. Centring
-                                        // the handle put a full-height
-                                        // opaque box over that grip and
-                                        // made it unreachable.
-                                        pixelsPerFrame:
-                                            frame.scale.pixelsPerFrame,
-                                        movieEnd: widget.movieEnd!,
-                                      ),
+                                      _movieEndMarks(frame),
                                   ],
                                 ),
                               ),
@@ -2516,6 +2465,52 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       ),
     );
   }
+
+  /// The movie-end line through the strips and its grip, following the
+  /// drag (F-18) — on a tick layer filling the strips ([TickOverlay]), as
+  /// the timeline's cut end rides its grid, ruler and sheet (F-244).
+  /// 🚨F-446 (10-24): bare in the strips' stack, each step's line moved
+  /// that stack's child and laid the scroll content and both viewports out
+  /// again, repainting the storyboard's body around them.
+  Widget _movieEndMarks(_StoryboardBodyFrame frame) => TickOverlay(
+    children: [
+      ValueListenableBuilder<TimelineDragPreview?>(
+        valueListenable: widget.dragPreview ?? _noDragPreview,
+        builder: (context, preview, _) {
+          final live = timelineCutEndPreviewFrameCount(
+            preview: preview,
+            cutId: null,
+            playbackFrameCount: frame.totalFrames,
+            movieEndUnder: _movieEndUnder,
+          );
+          return Positioned(
+            key: const ValueKey<String>('storyboard-cut-end-line'),
+            left: frame.scale.leftForFrame(live),
+            top: 0,
+            bottom: 0,
+            width: 2,
+            child: const IgnorePointer(
+              child: ColoredBox(color: AppColors.danger),
+            ),
+          );
+        },
+      ),
+      if (widget.movieEnd != null)
+        _StoryboardEndLineHandle(
+          dragPreview: widget.dragPreview,
+          committedTotalFrames: frame.totalFrames,
+          movieEndUnder: _movieEndUnder,
+          scale: frame.scale,
+          // Grabbed from the EMPTY side of the line, never straddling it:
+          // everything left of the movie's end belongs to the content, and
+          // the last cut's trailing edge grip is right there. Centring the
+          // handle put a full-height opaque box over that grip and made it
+          // unreachable.
+          pixelsPerFrame: frame.scale.pixelsPerFrame,
+          movieEnd: widget.movieEnd!,
+        ),
+    ],
+  );
 
   Widget _pinnedRulerRow(_StoryboardBodyFrame frame) {
     final bandHeight = StoryboardPanel._rulerHeightIn(context);

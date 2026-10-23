@@ -1181,12 +1181,67 @@ class _StoryboardRailRows {
     TimelineScale scale,
     List<Widget> trackGlobalRows,
   ) {
+    // As tall as the rail draws the group ([_trackGroupExtent]), so the
+    // strip's tick layer ([_trackStrip]) is handed its size from above —
+    // the one way a tick layer keeps its layout in.
+    return SizedBox(
+      width: width,
+      height: _trackGroupExtent(track),
+      child: Stack(
+        children: [
+          _trackStrip(track, index, entries, width, scale, trackGlobalRows),
+          Positioned.fill(
+            child: IgnorePointer(child: _trackRangeBand(track, scale)),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(child: _trackLaneRangeBand(track, scale)),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: _projectionLaneBand(track, scale, entries),
+            ),
+          ),
+          // 🚨On its OWN layer (I-22 ③): the standing cell follows the
+          // playhead, and the strips around it are one RepaintBoundary
+          // precisely so a playhead move re-rasterizes none of them
+          // (R12-⑥). Mounted bare inside it, every move repainted every
+          // strip — at ten minutes every edge grip of the film and the plate
+          // grounds under them, on every playback frame. The timeline's
+          // cursor layer rides its own the same way — and a layout of its
+          // own besides ([TickLayer]).
+          Positioned.fill(
+            child: IgnorePointer(
+              child: TickLayer(
+                child: _state._standing.trackStandingCell(track, scale),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// [track]'s strip rows, rebuilt only where the preview moves its cuts
+  /// ([_TrackStrip]) — filling its group on a TICK LAYER of their own: a
+  /// drag step is a tick (F-244).
+  ///
+  /// 🚨F-446 (10-24): rebuilt bare in the body's layout scope, a step's
+  /// strip laid out the track's column, the scroll content and both
+  /// viewports, and repainted the storyboard's body around them — on a
+  /// panel comma, a cut's trim or move, and the SE row's comma, whose gate
+  /// stands in the column too.
+  Widget _trackStrip(
+    Track track,
+    int index,
+    List<StoryboardTimelineLayoutEntry> entries,
+    double width,
+    TimelineScale scale,
+    List<Widget> trackGlobalRows,
+  ) {
     final dragPreview = _state.widget.dragPreview ?? _noDragPreview;
-    return Stack(
-      children: [
-        // Rebuilt only where the preview moves this track's cuts
-        // ([_TrackStrip]).
-        SlicedListenableBuilder<_TrackStrip>(
+    return Positioned.fill(
+      child: TickLayer(
+        child: SlicedListenableBuilder<_TrackStrip>(
           listenable: dragPreview,
           slice: () => _previewedStripFor(index, dragPreview.value, entries),
           builder: (context, strip) => Column(
@@ -1201,33 +1256,7 @@ class _StoryboardRailRows {
             ),
           ),
         ),
-        Positioned.fill(
-          child: IgnorePointer(child: _trackRangeBand(track, scale)),
-        ),
-        Positioned.fill(
-          child: IgnorePointer(child: _trackLaneRangeBand(track, scale)),
-        ),
-        Positioned.fill(
-          child: IgnorePointer(
-            child: _projectionLaneBand(track, scale, entries),
-          ),
-        ),
-        // 🚨On its OWN layer (I-22 ③): the standing cell follows the
-        // playhead, and the strips around it are one RepaintBoundary
-        // precisely so a playhead move re-rasterizes none of them (R12-⑥).
-        // Mounted bare inside it, every move repainted every strip — at ten
-        // minutes every edge grip of the film and the plate grounds under
-        // them, on every playback frame. The timeline's cursor layer rides
-        // its own the same way — and a layout of its own besides
-        // ([TickLayer]).
-        Positioned.fill(
-          child: IgnorePointer(
-            child: TickLayer(
-              child: _state._standing.trackStandingCell(track, scale),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
