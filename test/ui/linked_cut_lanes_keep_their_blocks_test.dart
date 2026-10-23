@@ -220,26 +220,6 @@ void main() {
     expectRefused(pair, when: 'row move');
   });
 
-  test('and the grip drag of that block asks the same bank', () {
-    final pair = celInBothCuts(secondRow: true);
-    final otherRow2 = otherRowOf(pair);
-
-    expect(
-      session.drawingBlockMove.beginDrawingBlockMoveDrag(
-        layerId: pair.row2,
-        blockStartIndex: 0,
-      ),
-      isTrue,
-    );
-    session.drawingBlockMove.updateDrawingBlockMoveDrag(
-      frameDelta: 0,
-      targetLayerId: otherRow2,
-    );
-    session.drawingBlockMove.endDrawingBlockMoveDrag();
-
-    expectRefused(pair, when: 'grip drag');
-  });
-
   // F-384: a block a move lands on goes back to the row the move left — but
   // not one whose cel the other cut's lane still shows: sending it across
   // would carry that cel off, so the move is refused, as a moved cel's is.
@@ -281,24 +261,6 @@ void main() {
       expectNothingMoved(at, when: 'row move');
     });
 
-    test('a grip drag is refused', () {
-      final at = landing();
-
-      expect(
-        session.drawingBlockMove.beginDrawingBlockMoveDrag(
-          layerId: at.other,
-          blockStartIndex: 0,
-        ),
-        isTrue,
-      );
-      session.drawingBlockMove.updateDrawingBlockMoveDrag(
-        frameDelta: 0,
-        targetLayerId: at.pair.row2,
-      );
-      session.drawingBlockMove.endDrawingBlockMoveDrag();
-
-      expectNothingMoved(at, when: 'grip drag');
-    });
   });
 
   test('a MULTI-ROW move asks every carried row\'s bank', () {
@@ -396,20 +358,6 @@ void main() {
     }
 
     final carries = <String, void Function(LayerId from, LayerId onto)>{
-      'the grip drag': (from, onto) {
-        expect(
-          session.drawingBlockMove.beginDrawingBlockMoveDrag(
-            layerId: from,
-            blockStartIndex: 2,
-          ),
-          isTrue,
-        );
-        session.drawingBlockMove.updateDrawingBlockMoveDrag(
-          frameDelta: 0,
-          targetLayerId: onto,
-        );
-        session.drawingBlockMove.endDrawingBlockMoveDrag();
-      },
       'the band move': (from, onto) {
         session.updateFrameRangeSelectionDrag(
           layerId: from,

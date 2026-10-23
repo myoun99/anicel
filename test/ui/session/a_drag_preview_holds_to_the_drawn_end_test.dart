@@ -83,14 +83,13 @@ void main() {
   test('a block moved mid-drag shows its row\'s hold through the のりしろ', () {
     final s = session();
     addTearDown(s.dispose);
-    expect(
-      s.drawingBlockMove.beginDrawingBlockMoveDrag(
-        layerId: row,
-        blockStartIndex: 0,
-      ),
-      isTrue,
+    s.updateFrameRangeSelectionDrag(
+      layerId: row,
+      anchorIndex: 0,
+      headIndex: 0,
     );
-    s.drawingBlockMove.updateDrawingBlockMoveDrag(frameDelta: 2);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
     final preview = s.dragPreview.value;
     expect(preview, isA<BlockMoveDragPreview>());
     final shown = (preview! as BlockMoveDragPreview).previewLayers[row]!;
@@ -99,7 +98,7 @@ void main() {
       60,
       reason: '48 + 12 — the end the release will write',
     );
-    s.drawingBlockMove.endDrawingBlockMoveDrag();
+    s.rangeMove.endFrameRangeMoveDrag();
     expect(
       authoredTimelineExtent(s.layerById(row)!.timeline),
       60,

@@ -8,6 +8,7 @@ import '../input/control_press_claim.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
+import '../sliced_value_listenable_builder.dart';
 import '../session/storyboard_cursor.dart' show CommaTargetKind;
 import '../widgets/app_icon_button.dart';
 import 'timeline_shift_buttons.dart';
@@ -594,7 +595,15 @@ class TimelineActionToolbar extends StatelessWidget {
   /// not listened to is a button that lights one notify late. (Found first
   /// by the deselect button's test, a live cell band leaving it dark, while
   /// that button was here; it left this pill on 08-26.)
-  Widget _sharedPill() => ListenableBuilder(
+  /// 🚨And it hears them through its KEY — the gates it shows — not bare
+  /// (2026-10-24, card the-whole-block-drag-has-no-door). A block moves as
+  /// the selection it is (UI-R8), so every step of a move, and every pointer
+  /// move of a sweep, moves the band heard here. Built again on each, with
+  /// the same key, the pill still dirtied the panel's layout scope: the
+  /// panel's whole host was laid out and painted again at every step of the
+  /// drag (F-244: a drag step is a tick). Its bar answers seeks the same way
+  /// (R13-2's token).
+  Widget _sharedPill() => SlicedListenableBuilder<Object>(
     listenable: Listenable.merge([
       session.rowSelection,
       session.standing.currentRowListenable,
@@ -631,36 +640,40 @@ class TimelineActionToolbar extends StatelessWidget {
       // above, and the two pastes open behind it.
       session.appClipboard.pixels,
     ]),
-    builder: (context, _) => _sharedPillBody(),
+    slice: _sharedPillKey,
+    builder: (context, key) => _sharedPillBody(key),
   );
 
-  Widget _sharedPillBody() => _StaticCommandGroup(
-    rebuildKey: (
-      panelContext.deleteSubject,
-      AppText.settings.value.programLanguage,
-      // ㉕: the three that joined the delete read their own gates.
-      // T3 made it four — 잘라내기 asks the same question copy does.
-      // B8: every gate is the PANEL's now — the timeline context answers
-      // with the session getters this key used to name, the storyboard's
-      // with its standing row, host answer included (the side channel this
-      // key used to carry as its last entry).
-      panelContext.canCutRun,
-      panelContext.canCopyFrame,
-      panelContext.canPasteLinkedFrame,
-      panelContext.canPasteIndependentFrame,
-      // T25: and the fifth resident reads its own subject, for the same
-      // reason the delete reads `deleteSubject` — the button's enablement
-      // and what the press DOES have to come from one answer.
-      onEditInstance != null && panelContext.canEditInstance,
-      // The 색 편집 head reads the gate its rows open behind.
-      session.pixelVerbs.canOpenColourEdit,
-      // I-45: the link-independent button, from its own one answer.
-      panelContext.canUnlink,
-      // F-455: 복제, likewise.
-      panelContext.canDuplicate,
-      // I-18: 자동 이름 지정, likewise.
-      panelContext.canAutoName,
-    ),
+  /// Every gate the shared pill shows — what it is built again for.
+  Object _sharedPillKey() => (
+    panelContext.deleteSubject,
+    AppText.settings.value.programLanguage,
+    // ㉕: the three that joined the delete read their own gates.
+    // T3 made it four — 잘라내기 asks the same question copy does.
+    // B8: every gate is the PANEL's now — the timeline context answers
+    // with the session getters this key used to name, the storyboard's
+    // with its standing row, host answer included (the side channel this
+    // key used to carry as its last entry).
+    panelContext.canCutRun,
+    panelContext.canCopyFrame,
+    panelContext.canPasteLinkedFrame,
+    panelContext.canPasteIndependentFrame,
+    // T25: and the fifth resident reads its own subject, for the same
+    // reason the delete reads `deleteSubject` — the button's enablement
+    // and what the press DOES have to come from one answer.
+    onEditInstance != null && panelContext.canEditInstance,
+    // The 색 편집 head reads the gate its rows open behind.
+    session.pixelVerbs.canOpenColourEdit,
+    // I-45: the link-independent button, from its own one answer.
+    panelContext.canUnlink,
+    // F-455: 복제, likewise.
+    panelContext.canDuplicate,
+    // I-18: 자동 이름 지정, likewise.
+    panelContext.canAutoName,
+  );
+
+  Widget _sharedPillBody(Object key) => _StaticCommandGroup(
+    rebuildKey: key,
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
       children: [

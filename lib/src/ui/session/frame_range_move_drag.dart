@@ -12,7 +12,7 @@ import '../../models/timeline_repeat.dart';
 import 'active_cut_controllers.dart';
 import 'camera.dart';
 import 'drags/frame_range_move_drag.dart';
-import 'drawing_block_move_drag.dart';
+import 'block_move_commands.dart';
 import 'folders_and_attachments.dart';
 import 'independent_clip_mint.dart' show celsHeldUnderTheirNames;
 import 'range_selections.dart';
@@ -44,7 +44,7 @@ class FrameRangeMoveDragVerbs {
     required RetimeLaw retime,
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required RowSpans rowSpans,
-    required DrawingBlockMoveDragVerbs blockMove,
+    required BlockMoveCommands blockMove,
     required Camera camera,
     required FoldersAndAttachments folders,
     required RangeSelections rangeSelections,

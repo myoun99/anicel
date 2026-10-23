@@ -39,8 +39,8 @@ import '../../timeline/timeline_drag_preview.dart';
 ///
 /// ⚠️It mints NO ids. The cells a drop would author do not exist, so the
 /// preview carries placeholder [FrameId]s that never reach the repository —
-/// the commit reads its own plan, never this channel ([DrawingBlockMoveDrag]
-/// says the same about its own preview). Minting here would burn an id per
+/// the commit reads its own plan, never this channel (`EditorDragSession`
+/// states that law for every drag). Minting here would burn an id per
 /// pointer step on a drag that may never land.
 class MediaPlacementDrag {
   MediaPlacementDrag({

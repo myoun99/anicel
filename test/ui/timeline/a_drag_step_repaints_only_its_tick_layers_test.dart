@@ -150,17 +150,20 @@ void main() {
           cancel: (session) => session.edgeDrag.cancelExposureEdgeDrag(),
         ),
         // The LAST block, whose way right is clear: a landing that collides
-        // clears the preview, and a step with no preview is no step.
+        // holds the last preview, and a step with no new preview is no step.
+        // A block moves as the selection it is (UI-R8).
         'block move': (
-          begin: (session) => session.drawingBlockMove
-              .beginDrawingBlockMoveDrag(
-                layerId: const LayerId('a'),
-                blockStartIndex: 42,
-              ),
-          update: (session, step) => session.drawingBlockMove
-              .updateDrawingBlockMoveDrag(frameDelta: step),
-          cancel: (session) =>
-              session.drawingBlockMove.cancelDrawingBlockMoveDrag(),
+          begin: (session) {
+            session.updateFrameRangeSelectionDrag(
+              layerId: const LayerId('a'),
+              anchorIndex: 42,
+              headIndex: 42,
+            );
+            return session.rangeMove.beginFrameRangeMoveDrag();
+          },
+          update: (session, step) =>
+              session.rangeMove.updateFrameRangeMoveDrag(frameDelta: step),
+          cancel: (session) => session.rangeMove.cancelFrameRangeMoveDrag(),
         ),
         'cut end trim': (
           begin: (session) => session.edgeDrag.beginCutEdgeDrag(

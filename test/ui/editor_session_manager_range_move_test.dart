@@ -13,6 +13,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/block_move_commands.dart';
 import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/lane_range_move_drag.dart';
@@ -49,7 +50,7 @@ void main() {
           controllers: s.activeCutControllers,
           retime: s,
           dragPreview: s.dragPreview,
-          blockMove: s.drawingBlockMove,
+          blockMove: blockMoveCommandsOf(s),
           camera: s.camera,
           transitions: s.transitions,
           trackSe: s.trackSe,
@@ -1933,6 +1934,63 @@ void main() {
     rangeMove(s).endFrameRangeMoveDrag();
     expect(s.layers.firstWhere((l) => l.id == aId).timeline[0], isNotNull);
   });
+  // 🗣️F-384-Q1 (유저 2026-10-21): 「덮인 블록이 떠난 자리로 — 자리 바꾸기」.
+  // ↩️The block in the way was pushed along behind the landing (R12-②). And
+  // ↩️this pin drove the whole-block drag until that drag went (2026-10-24):
+  // the range move is the door a block moves by.
+  test('🚨a block moved onto an occupied landing sends the block in the way '
+      'back to the row the move left, on its own frame — its cel re-keyed '
+      'with it', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame();
+    final aId = s.activeLayer!.id;
+    s.layerStack.addLayer();
+    final bId = s.activeLayer!.id;
+    s.selectFrameIndex(6);
+    s.createDrawingAtCurrentFrame();
+    s.selectLayer(aId);
+    s.selectFrameIndex(0);
+    Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
+    final aCel = layer(aId).timeline[0]!.frameId!;
+    final bCel = layer(bId).timeline[6]!.frameId!;
+    final cut = s.requireActiveCut;
+    final bCelOnB = s.brushFrameKeyForCut(cut, bId, bCel);
+    final bCelOnA = s.brushFrameKeyForCut(cut, aId, bCel);
+    s.renderCaches.brushFrameStore.getOrCreateFrame(bCelOnB);
+
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+    );
+    expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
+    // Layer B's block sits at frame 6 — the landing is on it.
+    rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 6, targetLayerId: bId);
+    final preview = s.dragPreview.value! as BlockMoveDragPreview;
+    Map<int, FrameId?> cels(LayerId row) => {
+      for (final MapEntry(:key, :value)
+          in preview.previewLayers[row]!.timeline.entries)
+        key: value.frameId,
+    };
+    expect(cels(bId), {6: aCel}, reason: 'the moved block alone on B');
+    expect(cels(aId), {6: bCel});
+
+    rangeMove(s).endFrameRangeMoveDrag();
+    expect(layer(bId).timeline.keys, [6]);
+    expect(layer(bId).timeline[6]!.frameId, aCel);
+    expect(layer(aId).timeline.keys, [6]);
+    expect(layer(aId).timeline[6]!.frameId, bCel);
+    expect(layer(aId).frames.map((f) => f.id), [bCel]);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(bCelOnB), isNull);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(bCelOnA), isNotNull);
+
+    // ONE undo puts both rows back, and the cel's brush frame with them.
+    s.undo();
+    expect(layer(aId).timeline.keys, [0]);
+    expect(layer(bId).timeline[6]!.frameId, bCel);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(bCelOnB), isNotNull);
+  });
 }
 
 /// [spans] laid on the direction row [row] of [s]'s active cut — each span a
@@ -1952,3 +2010,12 @@ void _laySpans(
     instructions: spans,
   ),
 );
+
+/// What a block move lands by, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file: a collaborator that holds a law gets
+/// a test that names it. ↩️The whole-block drag's test named this one until
+/// that drag went (2026-10-24); the range move is what lands by it now.
+BlockMoveCommands blockMoveCommandsOf(EditorSessionManager session) =>
+    session.blockMoveCommands;

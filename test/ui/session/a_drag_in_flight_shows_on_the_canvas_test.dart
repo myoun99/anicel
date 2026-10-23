@@ -522,14 +522,13 @@ void main() {
       paint(session, a, cel);
       paint(session, b, celAt(session, b, 3));
 
-      expect(
-        session.drawingBlockMove.beginDrawingBlockMoveDrag(
-          layerId: a,
-          blockStartIndex: 0,
-        ),
-        isTrue,
+      session.updateFrameRangeSelectionDrag(
+        layerId: a,
+        anchorIndex: 0,
+        headIndex: 0,
       );
-      session.drawingBlockMove.updateDrawingBlockMoveDrag(
+      expect(session.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
         frameDelta: 0,
         targetLayerId: b,
       );
@@ -543,36 +542,12 @@ void main() {
         reason: 'a cel of B\'s own, beside the carried one, is under B',
       );
 
-      session.drawingBlockMove.endDrawingBlockMoveDrag();
+      session.rangeMove.endFrameRangeMoveDrag();
       expect(
         drawn(session, liveRowOf(session)!.frameKey!),
         isTrue,
         reason: 'the release keeps it: the brush holds it on B now',
       );
-    });
-
-    test('a frame range dragged onto another row', () {
-      final (session, a, b) = twoRows();
-      session.selectFrameIndex(0);
-      final cel = celAt(session, a, 0);
-      paint(session, a, cel);
-
-      session.updateFrameRangeSelectionDrag(
-        layerId: a,
-        anchorIndex: 0,
-        headIndex: 0,
-      );
-      expect(session.rangeMove.beginFrameRangeMoveDrag(), isTrue);
-      session.rangeMove.updateFrameRangeMoveDrag(
-        frameDelta: 0,
-        targetLayerId: b,
-      );
-
-      expect(pictureOf(session, cel), [true]);
-      expect(blockDrawn(session, b, 0), isTrue);
-
-      session.rangeMove.endFrameRangeMoveDrag();
-      expect(drawn(session, liveRowOf(session)!.frameKey!), isTrue);
     });
 
     test('several rows carried down a row together — each cel in the '
@@ -665,14 +640,13 @@ void main() {
       session.onionSkin.toggleLayerOnionSkin(b);
       session.selectFrameIndex(1);
 
-      expect(
-        session.drawingBlockMove.beginDrawingBlockMoveDrag(
-          layerId: a,
-          blockStartIndex: 0,
-        ),
-        isTrue,
+      session.updateFrameRangeSelectionDrag(
+        layerId: a,
+        anchorIndex: 0,
+        headIndex: 0,
       );
-      session.drawingBlockMove.updateDrawingBlockMoveDrag(
+      expect(session.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
         frameDelta: 0,
         targetLayerId: b,
       );
@@ -684,7 +658,7 @@ void main() {
         ],
         [true],
       );
-      session.drawingBlockMove.cancelDrawingBlockMoveDrag();
+      session.rangeMove.cancelFrameRangeMoveDrag();
     });
   });
 }

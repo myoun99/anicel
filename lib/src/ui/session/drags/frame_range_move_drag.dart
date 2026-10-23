@@ -37,7 +37,7 @@ import '../../timeline/transform_lane_policy.dart'
     show transformLaneDisplayOrder;
 import '../active_cut_controllers.dart';
 import '../camera.dart';
-import '../drawing_block_move_drag.dart';
+import '../block_move_commands.dart';
 import '../folder_bands.dart' show folderBandsFollowing;
 import '../folders_and_attachments.dart';
 import '../range_selections.dart';
@@ -442,7 +442,7 @@ typedef FrameRangeMoveRoles = ({
   ActiveCutControllers controllers,
   RetimeLaw retime,
   ValueNotifier<TimelineDragPreview?> dragPreview,
-  DrawingBlockMoveDragVerbs blockMove,
+  BlockMoveCommands blockMove,
   Camera camera,
   Transitions transitions,
   TrackSeDisplay trackSe,
@@ -796,7 +796,7 @@ class FrameRangeMoveDrag {
   final ActiveCutControllers _controllers;
   final RetimeLaw _retime;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
-  final DrawingBlockMoveDragVerbs _blockMove;
+  final BlockMoveCommands _blockMove;
   final Camera _camera;
   final Transitions _transitions;
 
@@ -2290,7 +2290,6 @@ class FrameRangeMoveDrag {
       _blockMove.singleRowMoveCommand(
         plan,
         source: singleRow.layer,
-        description: 'Move frame range',
       ),
     );
     // The selection stays on the moved frames where they landed.
@@ -2491,7 +2490,7 @@ class FrameRangeMoveDrag {
 
   /// A direction→direction drop lands as the block move it is: both rows
   /// and the brush re-key of every carried cel in ONE undo step
-  /// ([DrawingBlockMoveDragVerbs.singleRowMoveCommand]).
+  /// ([BlockMoveCommands.singleRowMoveCommand]).
   void _commitDirectionRowMove(
     ({DrawingBlockMovePlan plan, Layer source}) change,
     TimelineFrameRangeSelection? landedSelection,
@@ -2500,7 +2499,6 @@ class FrameRangeMoveDrag {
       _blockMove.singleRowMoveCommand(
         change.plan,
         source: change.source,
-        description: 'Move frame range',
       ),
     );
     _liveSpan = landedSelection;

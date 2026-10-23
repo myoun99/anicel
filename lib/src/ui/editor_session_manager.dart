@@ -159,7 +159,7 @@ import 'session/panel_view_memory.dart';
 import 'session/timeline_zoom_memory.dart';
 import 'session/range_selections.dart';
 import 'session/se_entries.dart';
-import 'session/drawing_block_move_drag.dart';
+import 'session/block_move_commands.dart';
 import 'session/run_frames_add_drag.dart';
 import 'session/opacity_verbs.dart';
 import 'session/active_cut_edits.dart';
@@ -2672,14 +2672,14 @@ class EditorSessionManager extends ChangeNotifier
     dragPreview: dragPreview,
   );
 
-  // --- Whole-block move drags (R10-④b) --------------------------------------
+  // --- Which rows a block move takes part on --------------------------------
   //
-  // Grabbing a drawing block's BODY moves the block whole: along the frame
-  // axis (slide) and across drawing layers (the cel travels, its brush
-  // drawings re-keyed to the new layer). Landing requires empty space —
-  // a block move never retimes other blocks. Same channel discipline as
-  // the edge drags: repo untouched until release, one undo per drag. The
-  // drag in flight is held by [drawingBlockMove], which starts and closes it.
+  // A block moves by being selected and dragged as a range — along the frame
+  // axis and across drawing layers, its cels travelling with it — through the
+  // frame-range move ([rangeMove]), the one door since UI-R8 (#517).
+  // ↩️Grabbing a drawing block's BODY was a drag of its own (R10-④b) until
+  // then, and it went for good with the tests that alone still drove it
+  // (2026-10-24).
 
   /// Whether [layerId] can take part in a block move (source or target):
   /// a plain drawing-section layer. Track-SE rows live on the global axis
@@ -2980,11 +2980,15 @@ class EditorSessionManager extends ChangeNotifier
       ? trackSeGlobalLayerById(layerId)
       : layerById(layerId);
 
-  // ── the drawing block move drag: its own object ─────────────────────
+  // ── what a block move lands by: its own object ──────────────────────
   //
-  // A collaborator (session/drawing_block_move_drag.dart). Callers name it: a forwarder here
-  // would be a second name for the same verb (round 8, G4).
-  late final DrawingBlockMoveDragVerbs drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, pixelEditing: pixelEditing, retime: this, dragPreview: dragPreview);
+  // A collaborator (session/block_move_commands.dart), handed to the range
+  // move, which lands every block move.
+  late final BlockMoveCommands blockMoveCommands = BlockMoveCommands(
+    project: this,
+    renderCaches: renderCaches,
+    pixelEditing: pixelEditing,
+  );
 
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
 
@@ -3005,7 +3009,7 @@ class EditorSessionManager extends ChangeNotifier
     folders: folders,
     rangeSelections: rangeSelections,
     rowSpans: rowSpans,
-    blockMove: drawingBlockMove,
+    blockMove: blockMoveCommands,
     transitions: transitions,
     trackSe: trackSe,
     retime: this,

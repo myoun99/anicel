@@ -85,7 +85,7 @@ const _mayNameTheSession = <String, String>{
 /// `OpacityVerbs`, whose only reads of the role were these, no longer takes
 /// it at all. 43 → 39 (2026-09-25, the fourth and fifth families): the
 /// block drag in flight moved into `DrawingBlockMoveDragVerbs`, which starts
-/// and closes it; the selection-interaction flag became what it always stood
+/// and closes it (↩️that drag went whole, 2026-10-24); the selection-interaction flag became what it always stood
 /// for — `RangeSelections`' own count of holds, which nothing had listened
 /// to; and the SE solo set moved into `VisibilitySolo`, whose toggle is its
 /// one writer — `VisibilitySolo`, whose only read of the role this was, no

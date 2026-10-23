@@ -124,15 +124,17 @@ void main() {
       session.selectLayer(from);
       expect(session.currentRow, LayerRowAddress(from), reason: 'premise');
 
-      session.drawingBlockMove.beginDrawingBlockMoveDrag(
+      session.updateFrameRangeSelectionDrag(
         layerId: from,
-        blockStartIndex: 0,
+        anchorIndex: 0,
+        headIndex: 0,
       );
-      session.drawingBlockMove.updateDrawingBlockMoveDrag(
+      expect(session.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
         frameDelta: 1,
         targetLayerId: onto,
       );
-      session.drawingBlockMove.endDrawingBlockMoveDrag();
+      session.rangeMove.endFrameRangeMoveDrag();
 
       expect(session.activeLayerId, onto, reason: 'premise: R12-④');
       expect(session.currentRow, LayerRowAddress(onto));
