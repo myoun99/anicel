@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior, kDoubleTapTimeout;
 
+import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
 import '../timeline/axis_turn.dart' show acrossBox, partAlong;
 import '../timeline/timeline_edge_auto_pan.dart' show edgeAutoPanApply;
@@ -351,10 +352,25 @@ class DockSplitterEdges extends InheritedWidget {
 
   final EdgeInsets edges;
 
-  /// Nothing outside any panel a splitter lies on.
-  static EdgeInsets of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<DockSplitterEdges>()?.edges ??
-      EdgeInsets.zero;
+  /// Nothing outside any panel a splitter lies on. Each side is a whole
+  /// number of device pixels ([DeviceGrid.position]): the content's origin
+  /// moves by it, and a rail-docked canvas is framed past it — 5 × 1.125 is
+  /// 5.625.
+  static EdgeInsets of(BuildContext context) {
+    final edges = context
+        .dependOnInheritedWidgetOfExactType<DockSplitterEdges>()
+        ?.edges;
+    if (edges == null) {
+      return EdgeInsets.zero;
+    }
+    final grid = DeviceGrid.of(context);
+    return EdgeInsets.fromLTRB(
+      grid.position(edges.left),
+      grid.position(edges.top),
+      grid.position(edges.right),
+      grid.position(edges.bottom),
+    );
+  }
 
   @override
   bool updateShouldNotify(DockSplitterEdges oldWidget) =>
