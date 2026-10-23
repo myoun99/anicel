@@ -23,6 +23,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
+import 'package:anicel/src/ui/audio/sound_cannot_play.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
@@ -212,12 +213,12 @@ void main() {
     );
   });
 
-  // The waveforms are the window's too — the overlay that draws them takes
-  // the window (an_se_row_draws_the_sounds_over_its_window_test); this is
-  // the row handing it over.
-  testWidgets('and only the window\'s sounds draw their waveforms', (
-    tester,
-  ) async {
+  // The waveforms and the warning lines are the window's too — the overlays
+  // that draw them take the window
+  // (an_se_row_draws_the_sounds_over_its_window_test); this is the row
+  // handing it over.
+  testWidgets('and only the window\'s sounds draw their waveforms and their '
+      'warnings', (tester) async {
     final peaks = AudioPeaks(
       bucketsPerSecond: 80,
       peaks: Float32List.fromList(List.filled(80, 0.5)),
@@ -237,6 +238,7 @@ void main() {
             pixelsPerFrame: 2,
             projectFrameRate: ProjectFrameRate.fps24,
             audioPeaksFor: (path) => path == 'voice.wav' ? peaks : null,
+            soundCannotPlay: (_) => SoundCannotPlay.missing,
           ),
         ),
       ),
@@ -249,5 +251,8 @@ void main() {
       findsNothing,
       reason: 'a sound far past the view draws no waveform',
     );
+    const warning = 'storyboard-se-row-1-block-warning-se-row-1';
+    expect(_key('$warning-b2'), findsOneWidget);
+    expect(_key('$warning-b3000'), findsNothing, reason: 'nor its warning');
   });
 }
