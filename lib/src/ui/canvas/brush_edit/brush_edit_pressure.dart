@@ -144,10 +144,7 @@ class _BrushEditPressure {
     }
     final range = event.pressureMax - event.pressureMin;
     final measures =
-        (event.kind == PointerDeviceKind.stylus ||
-            event.kind == PointerDeviceKind.invertedStylus) &&
-        range.isFinite &&
-        range > 0.0;
+        PenSidecars.isPenKind(event.kind) && range.isFinite && range > 0.0;
     if (!measures) {
       return (pressure: 1.0, read: sidecar == null);
     }

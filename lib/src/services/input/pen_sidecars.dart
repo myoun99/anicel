@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
     show
+        DeviceGestureSettings,
         PointerDeviceKind,
+        computeHitSlop,
         kPrimaryButton,
         kPrimaryStylusButton,
         kSecondaryStylusButton;
@@ -110,6 +112,20 @@ abstract final class PenSidecars {
       kind == PointerDeviceKind.mouse && penTouching()
       ? PointerDeviceKind.stylus
       : kind;
+
+  /// How far a press of [kind] may wobble and stay a press — Flutter's
+  /// slop for the pen law's kind ([kindOf]). I-124: four recognisers each
+  /// wrote this out.
+  static double hitSlopOf(
+    PointerDeviceKind kind,
+    DeviceGestureSettings? settings,
+  ) => computeHitSlop(kindOf(kind), settings);
+
+  /// Whether [kind] is either end of a pen — of whichever kind the caller
+  /// holds. I-124: three places spelled the two ends out.
+  static bool isPenKind(PointerDeviceKind kind) =>
+      kind == PointerDeviceKind.stylus ||
+      kind == PointerDeviceKind.invertedStylus;
 
   /// How the pen leans as the freshest driver-side stream says — null when
   /// none speaks for this moment or the one that does reports no lean (a

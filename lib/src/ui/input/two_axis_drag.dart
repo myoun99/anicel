@@ -229,10 +229,7 @@ class _SheetDrag extends PanGestureRecognizer {
     PointerDeviceKind pointerDeviceKind,
     double? deviceTouchSlop,
   ) {
-    final slop = computeHitSlop(
-      PenSidecars.kindOf(pointerDeviceKind),
-      gestureSettings,
-    );
+    final slop = PenSidecars.hitSlopOf(pointerDeviceKind, gestureSettings);
     // The sheet keeps a pull wherever on it the pull lands while any of it
     // can move — one on the layer area included, when only the frames can
     // (F-202: 「안에서 동작하는 스크롤이나 드래그는 절대 밖으로 안새게」).

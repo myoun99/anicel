@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/input/pen_sidecars.dart';
@@ -82,12 +81,8 @@ class _StylusGlideStopState extends State<StylusGlideStop> {
 
   /// The pen law's kind ([PenSidecars.kindOf]): a pen the OS calls a
   /// mouse lands as the pen while its driver says it is down.
-  bool _isStylus(PointerEvent event) => switch (PenSidecars.kindOf(
-    event.kind,
-  )) {
-    PointerDeviceKind.stylus || PointerDeviceKind.invertedStylus => true,
-    _ => false,
-  };
+  bool _isStylus(PointerEvent event) =>
+      PenSidecars.isPenKind(PenSidecars.kindOf(event.kind));
 
   void _stopGlides(PointerEvent event) {
     if (!_isStylus(event)) {

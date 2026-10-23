@@ -93,8 +93,7 @@ PenLean? _carriedLean(PointerEvent event) {
     }
     return PenSidecars.freshLean();
   }
-  if (event.kind != PointerDeviceKind.stylus &&
-      event.kind != PointerDeviceKind.invertedStylus) {
+  if (!PenSidecars.isPenKind(event.kind)) {
     return null;
   }
   final tilt = event.tilt;
