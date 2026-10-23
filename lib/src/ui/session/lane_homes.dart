@@ -60,6 +60,32 @@ class LaneHome<T> {
     }
   }
 
+  /// [keys] of a lane whose numbers show by [shown], as lane [laneId] here
+  /// takes them: each number held as this lane holds a number given it
+  /// ([LaneLens.numberHeld]) — a key of no number, or where either lane is
+  /// of none, as it came.
+  Map<int, PropertyKey<Object?>> numbersTaken(
+    String laneId,
+    Map<int, PropertyKey<Object?>> keys,
+    double? Function(double held) shown,
+  ) {
+    PropertyKey<Object?> taken(PropertyKey<Object?> key) {
+      if (key is! PropertyKey<double>) {
+        return key;
+      }
+      final number = shown(key.value);
+      final held = number == null
+          ? null
+          : lensOf(laneId)?.numberHeld(this.keys, number);
+      return held == null ? key : key.copyWith(value: held);
+    }
+
+    return {
+      for (final MapEntry(key: frame, value: key) in keys.entries)
+        frame: taken(key),
+    };
+  }
+
   /// [edit] on every lane here, in turn — null where none changed.
   T? edited(PropertyLaneEdit edit) => editedEach((_) => edit);
 
@@ -167,6 +193,17 @@ bool rowLaneHomesKeyedWhere(
     homes.reference.keyedWhere(covers) ||
     homes.effects.keyedWhere(covers) ||
     homes.nameTag.keyedWhere(covers);
+
+/// The number [held] on lane [laneId] shows as ([LaneLens.numberShown]) —
+/// asked of the home whose table names the lane: every row's homes read
+/// the same tables, and their lane ids never meet ([rowLaneHomes]). Null
+/// for a lane of no numbers.
+double? rowLaneNumberShown(RowLaneHomes homes, String laneId, double held) =>
+    [homes.own, homes.reference, homes.effects, homes.nameTag]
+        .map((home) => home.lensOf(laneId))
+        .nonNulls
+        .firstOrNull
+        ?.numberShown(held);
 
 /// What [verb] leaves [subject]'s row at, home by home — each home it
 /// answers null for left alone.

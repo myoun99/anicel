@@ -1494,7 +1494,7 @@ class LaneVerbs {
     }
     final pasted = _keysSplicedInto(
       scope,
-      _keysPairedWith(copy.lanes, _pasteTargetsOf(scope.homes)),
+      _keysPairedWith(copy.lanes, _pasteTargetsOf(scope.homes), scope.homes),
       (
         start: lane.startIndex,
         liftCount: _selectedLaneSpan == null ? 0 : lane.lengthFrames,
@@ -1633,10 +1633,18 @@ class LaneVerbs {
   /// among them; where none is, ONE copied lane goes on every target (「모든
   /// 행에 같은 것을」) and several pair with them in order, as a frame copy's
   /// rows pair with a band's. A lane of another kind of data takes nothing
-  /// ([_sameKind]).
+  /// ([_sameKind]); one of the same kind takes each number as the copied
+  /// lane shows it ([LaneHome.numbersTaken] — [homes] read the lanes'
+  /// tables, [rowLaneNumberShown]).
+  /// 🗣️key-paste-across-lanes-keeps-the-raw-value-Q1 (유저 2026-10-22):
+  /// 「회전 · 불투명도 · 이펙트의 숫자끼리는 숫자 그대로」 — ↩️the number
+  /// HELD went across, so an opacity of 78.5% put on a rotation made 0.79°,
+  /// and a rotation of 19.5° held 19.5 on an opacity, past its 0–1 (shown
+  /// 100% — 서피스 실기, 10-23).
   static Map<_PastedLane, Map<int, PropertyKey<Object?>>> _keysPairedWith(
     List<LaneKeys> copied,
     List<_PastedLane> targets,
+    RowLaneHomes homes,
   ) {
     final byId = {for (final lane in copied) lane.laneId: lane.keys};
     if (targets.any((target) => byId.containsKey(target.laneId))) {
@@ -1650,7 +1658,11 @@ class LaneVerbs {
       for (final (index, target) in targets.indexed)
         if (pairedAt(index) case final lane?
             when _sameKind(lane.laneId, target.laneId))
-          target: lane.keys,
+          target: target.home.numbersTaken(
+            target.laneId,
+            lane.keys,
+            (held) => rowLaneNumberShown(homes, lane.laneId, held),
+          ),
     };
   }
 
@@ -2471,7 +2483,7 @@ typedef _LaneRangeKey = ({
 /// What a verb over a span settles first ([LaneVerbs._laneVerbScope]).
 /// A lane a paste of keys can land on: the home it lives in, by identity,
 /// and its id there ([LaneVerbs._keysPairedWith]).
-typedef _PastedLane = ({Object home, String laneId});
+typedef _PastedLane = ({LaneHome<Object?> home, String laneId});
 
 /// What holds a name on a lane of each home ([LaneVerbs._nameHoldersOf]),
 /// asked with the lane, the name and the frames left out.

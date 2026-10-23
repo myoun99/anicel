@@ -23,6 +23,7 @@ import '../theme/lane_curve_palette.dart';
 import '../text/readout_text.dart';
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
+import 'transform_lane_editing.dart' show opacityLaneNumbers;
 
 /// The AE-style 'Transform' GROUP HEADER row leading the transform lanes —
 /// the twirl-down's structural spine: Transform first, Effects stack below
@@ -250,9 +251,10 @@ List<PropertyLaneRow> transformPropertyLanes(
         track.opacity,
         _reading(
           opacityAt,
-          (opacity) => [opacity * 100],
+          (opacity) => [opacityLaneNumbers.shown(opacity)],
           parts: const [LaneCurvePalette.opacity],
-          printed: (opacity) => '${columnValueText(opacity * 100)}%',
+          printed: (opacity) =>
+              '${columnValueText(opacityLaneNumbers.shown(opacity))}%',
         ),
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('opacity', label, delta),

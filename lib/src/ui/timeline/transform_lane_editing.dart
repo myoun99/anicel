@@ -193,7 +193,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
       return track.copyWith(
         opacity: track.opacity.withKey(
           frameIndex,
-          (percent / 100).clamp(0.0, 1.0).toDouble(),
+          opacityLaneNumbers.held(percent),
         ),
       );
   }
@@ -387,13 +387,29 @@ PropertyLaneLens<TransformTrack, Object?>? transformLaneLens(String laneId) =>
       'rotation' => PropertyLaneLens<TransformTrack, double>(
         get: (track) => track.rotation,
         set: (track, lane) => track.copyWith(rotation: lane),
+        numbers: numbersAsHeld,
       ),
       'opacity' => PropertyLaneLens<TransformTrack, double>(
         get: (track) => track.opacity,
         set: (track, lane) => track.copyWith(opacity: lane),
+        numbers: opacityLaneNumbers,
       ),
       _ => null,
     };
+
+/// How the Opacity lane reads its numbers: held 0–1, shown ·100 % (AE's
+/// display units), a number given it clamped to 0–100 % — the one reading
+/// its value column, its graph, its value editor and a key pasted from
+/// another lane go by.
+const LaneNumbers opacityLaneNumbers = (
+  shown: _percentOf,
+  held: _fractionOf,
+);
+
+double _percentOf(double opacity) => opacity * 100;
+
+double _fractionOf(double percent) =>
+    (percent / 100).clamp(0.0, 1.0).toDouble();
 
 /// Shifts every ranged key of EVERY [laneIds] lane by [frameDelta] —
 /// the MULTI-LANE range move (R26 #3): rigid group, one delta,

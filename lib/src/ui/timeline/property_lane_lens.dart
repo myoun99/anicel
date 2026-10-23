@@ -41,15 +41,41 @@ abstract interface class LaneLens<Track> {
   /// keys a span covers (their names and types), whichever family the
   /// lane is of (F-374).
   Map<int, PropertyKey<Object?>> keysOf(Track track);
+
+  /// The number [held] — a value of this lane — shows as in its value
+  /// column; null for a lane of no numbers.
+  double? numberShown(double held);
+
+  /// What this lane of [track] holds for the number [shown] — what its
+  /// value editor makes of it typed, clamped where the lane's range ends;
+  /// null for a lane of no numbers.
+  double? numberHeld(Track track, double shown);
 }
+
+/// How a lane of numbers reads them: the number its value column shows for
+/// one it holds, and the one it holds for a number it is given — as its
+/// value editor takes it typed ([LaneLens.numberHeld]).
+typedef LaneNumbers = ({
+  double Function(double held) shown,
+  double Function(double shown) held,
+});
+
+/// A lane whose numbers show as they are held, any number taken — a
+/// rotation's degrees, a letter's size.
+const LaneNumbers numbersAsHeld = (shown: _asIs, held: _asIs);
+
+double _asIs(double number) => number;
 
 /// A lane that is ONE [PropertyTrack] field of its track: read by [get],
 /// written back by [set].
 class PropertyLaneLens<Track, T> implements LaneLens<Track> {
-  const PropertyLaneLens({required this.get, required this.set});
+  const PropertyLaneLens({required this.get, required this.set, this.numbers});
 
   final PropertyTrack<T> Function(Track track) get;
   final Track Function(Track track, PropertyTrack<T> lane) set;
+
+  /// How the lane reads its numbers — null for a lane of none.
+  final LaneNumbers? numbers;
 
   @override
   Track? update(Track track, PropertyLaneEdit edit) {
@@ -106,4 +132,10 @@ class PropertyLaneLens<Track, T> implements LaneLens<Track> {
 
   @override
   Map<int, PropertyKey<Object?>> keysOf(Track track) => get(track).keys;
+
+  @override
+  double? numberShown(double held) => numbers?.shown(held);
+
+  @override
+  double? numberHeld(Track track, double shown) => numbers?.held(shown);
 }

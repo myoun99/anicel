@@ -205,19 +205,51 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
   /// A parameter lane's keys — none on a header, which keeps none of its
   /// own (its keys are its members').
   @override
-  Map<int, PropertyKey<Object?>> keysOf(List<LayerEffect> effects) {
-    final address = parseEffectLaneId(laneId);
-    final parameterId = address?.parameterId;
-    if (address == null || parameterId == null) {
-      return const {};
-    }
-    for (final effect in effects) {
-      if (effect.id == address.effectId) {
-        return effect.parameterOf(parameterId).track.keys;
-      }
-    }
-    return const {};
+  Map<int, PropertyKey<Object?>> keysOf(List<LayerEffect> effects) =>
+      _readParameter(
+        effects,
+        laneId,
+        (effect, parameterId) => effect.parameterOf(parameterId).track.keys,
+      ) ??
+      const {};
+
+  /// A parameter shows the number it holds ([formatEffectLaneValue]); a
+  /// header holds none.
+  @override
+  double? numberShown(double held) =>
+      parseEffectLaneId(laneId)?.parameterId == null ? null : held;
+
+  /// A number given a parameter is held clamped to its range, as its value
+  /// editor takes it typed ([parseEffectLaneValue]).
+  @override
+  double? numberHeld(List<LayerEffect> effects, double shown) =>
+      _readParameter(
+        effects,
+        laneId,
+        (effect, parameterId) =>
+            effectParameterSpecOf(effect.kind, parameterId)?.clamp(shown),
+      );
+}
+
+/// What [read] answers of the effect a parameter lane addresses, given the
+/// parameter's id — null when the lane is not a parameter lane or its
+/// effect is not in the chain: the read twin of [_editParameter].
+R? _readParameter<R>(
+  List<LayerEffect> effects,
+  String laneId,
+  R? Function(LayerEffect effect, String parameterId) read,
+) {
+  final address = parseEffectLaneId(laneId);
+  final parameterId = address?.parameterId;
+  if (address == null || parameterId == null) {
+    return null;
   }
+  for (final effect in effects) {
+    if (effect.id == address.effectId) {
+      return read(effect, parameterId);
+    }
+  }
+  return null;
 }
 
 /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.

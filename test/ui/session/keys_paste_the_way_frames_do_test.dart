@@ -178,7 +178,7 @@ void main() {
     }
     expect(transformLaneDisplayOrder, hasLength(5), reason: '⛔전제');
 
-    key('rotation', {20: 0.5});
+    key('rotation', {20: 50});
     standOn('rotation', at: 20);
     pill.copyFrame();
     standOn('position', at: 30);
@@ -189,7 +189,104 @@ void main() {
     );
     standOn('opacity', at: 30);
     pill.pasteIndependentFrame();
-    expect(now().transformTrack.opacity.keys[30]?.value, 0.5);
+    expect(
+      now().transformTrack.opacity.keys[30]?.value,
+      0.5,
+      reason: '50° shows 50, and 50 on an opacity is 50%',
+    );
+  });
+
+  // 🗣️key-paste-across-lanes-keeps-the-raw-value-Q1 (유저 2026-10-22): 「회전
+  // · 불투명도 · 이펙트의 숫자끼리는 숫자 그대로」 — the number SHOWN. ↩️서피스
+  // 실기 (10-23): an opacity's 78.5% went on a rotation as 0.79°, and a
+  // rotation's 19.5° on an opacity as 19.5 held, past its 0–1.
+  group('a number goes on another lane as its lane shows it', () {
+    double? held(String laneId, int frame) => switch (laneId) {
+      'rotation' => now().transformTrack.rotation.keys[frame]?.value,
+      _ => now().transformTrack.opacity.keys[frame]?.value,
+    };
+
+    test('an opacity\'s 78.5% is a rotation\'s 78.5°', () {
+      key('opacity', {4: 0.785});
+      standOn('opacity', at: 4);
+      pill.copyFrame();
+
+      standOn('rotation', at: 9);
+      pill.pasteIndependentFrame();
+
+      expect(held('rotation', 9), closeTo(78.5, 1e-9));
+    });
+
+    test('a rotation\'s 19.5° is an opacity\'s 19.5%', () {
+      key('rotation', {4: 19.5});
+      standOn('rotation', at: 4);
+      pill.copyFrame();
+
+      standOn('opacity', at: 9);
+      pill.pasteIndependentFrame();
+
+      expect(held('opacity', 9), closeTo(0.195, 1e-9));
+    });
+
+    test('the linked paste carries the number the same way, its name kept',
+        () {
+      key('opacity', {4: 0.785}, name: 'A');
+      standOn('opacity', at: 4);
+      pill.copyFrame();
+
+      standOn('rotation', at: 9);
+      expect(pill.canPasteLinkedFrame, isTrue, reason: '⛔전제');
+      pill.pasteLinkedFrame();
+
+      final pasted = now().transformTrack.rotation.keys[9];
+      expect(pasted?.value, closeTo(78.5, 1e-9));
+      expect(pasted?.name, 'A');
+    });
+
+    test('a number past where the lane ends is held as its value editor '
+        'takes it typed — an opacity at 100%, a blur at 0', () {
+      s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+      final blur = now().effects.single.id;
+      double? blurred(int frame) => now()
+          .effects
+          .single
+          .parameters['blurX']!
+          .track
+          .keys[frame]
+          ?.value;
+      key('rotation', {4: 250, 6: -30});
+      select('rotation', 4, 7);
+      pill.copyFrame();
+
+      select('opacity', 10, 13);
+      pill.pasteIndependentFrame();
+      select(effectLaneId(blur, 'blurX'), 10, 13);
+      pill.pasteIndependentFrame();
+
+      expect((held('opacity', 10), held('opacity', 12)), (1.0, 0.0));
+      expect((blurred(10), blurred(12)), (250, 0));
+    });
+
+    test('a blur\'s number goes on an opacity as the % it shows', () {
+      s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+      final blur = now().effects.single.id;
+      s.laneVerbs.setLaneValueAt(
+        before.id,
+        effectLaneId(blur, 'blurX'),
+        4,
+        '40',
+        frameIsGlobal: false,
+        description: 'Type',
+        scaleLinked: false,
+      );
+      standOn(effectLaneId(blur, 'blurX'), at: 4);
+      pill.copyFrame();
+
+      standOn('opacity', at: 9);
+      pill.pasteIndependentFrame();
+
+      expect(held('opacity', 9), closeTo(0.4, 1e-9));
+    });
   });
 
   // 🗣️key-paste-across-lanes-keeps-the-raw-value-Q1 (유저 2026-10-22): 「AE
@@ -340,7 +437,7 @@ void main() {
 
     test('a name only the keys a selection replaces held is free — the key '
         'brings its own value, asking nothing', () {
-      key('rotation', {7: 0.8}, name: 'A');
+      key('rotation', {7: 80}, name: 'A');
       key('opacity', {12: 0.3}, name: 'A');
       standOn('rotation', at: 7);
       pill.copyFrame();
@@ -350,7 +447,11 @@ void main() {
 
       final keys = now().transformTrack.opacity.keys;
       expect(keys.keys, [11]);
-      expect((keys[11]?.name, keys[11]?.value), ('A', 0.8));
+      expect(
+        (keys[11]?.name, keys[11]?.value),
+        ('A', 0.8),
+        reason: '80° shows 80, and 80 on an opacity is 80%',
+      );
     });
   });
 
