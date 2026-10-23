@@ -1011,6 +1011,12 @@ QA_EXPORT int64_t qa_audio_device_position(void) {
 //
 // The position before the arm: a callback that reads the new arm reads
 // the new position with it.
+//
+// 🧪MUTATION: the arm ahead of the position here, or play()'s position
+// ahead of its fields, passes qa_audio_transport_test. Both orders matter
+// only between two loads at a callback's entry, where that test's mixer —
+// the one place it can make a move — cannot stand. This order and this
+// comment are what hold them.
 QA_EXPORT void qa_audio_device_seek(int64_t sample) {
   // A seek starts no run: where it lands is heard, and so is all after it.
   qa_transport_store_64(&g_audio.audible_from, INT64_MIN);
