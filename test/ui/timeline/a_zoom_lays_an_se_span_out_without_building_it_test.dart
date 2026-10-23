@@ -224,10 +224,13 @@ void main() {
     addTearDown(() => debugOnRebuildDirtyWidget = null);
 
     Future<void> expectOut() async {
-      expect(tester.getRect(chip).right, closeTo(40, 1e-6), reason: '⛔전제');
-      final pixels = await pixelsOver(tester, tester.getRect(chip));
+      final out = tester.getRect(chip);
+      expect(out.right, closeTo(40, 1e-6), reason: '⛔전제');
+      final pixels = await pixelsOver(tester, out);
       expect(pixels.where(white), isNotEmpty, reason: 'its name, in white');
       expect(pixels.where(tinted), isEmpty, reason: 'on no ground');
+      final head = await pixelsOver(tester, out.shift(Offset(out.width, 0)));
+      expect(head.where(tinted), isEmpty, reason: 'nor a tint left behind');
     }
 
     await expectOut();
@@ -280,6 +283,42 @@ void main() {
     final pixels = await pixelsOver(tester, chip);
     expect(pixels.where(white), isNotEmpty);
     expect(pixels.where(tinted), isEmpty);
+  });
+
+  testWidgets('on the X-sheet\'s column too: white just above its block, on '
+      'no ground', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          backgroundColor: rowGround,
+          body: RepaintBoundary(
+            key: shot,
+            child: const Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: EdgeInsets.only(top: 40),
+                child: SizedBox(
+                  width: row,
+                  height: 100,
+                  child: SeSpanVisual(
+                    axis: Axis.vertical,
+                    frames: 10,
+                    dialogue: 'あい',
+                    seName: 'ドア',
+                    framesFreeBefore: 2,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final chip = tester.getRect(find.bySemanticsLabel('SE name ドア'));
+    expect(chip.bottom, closeTo(40, 1e-6), reason: '⛔전제: out');
+    final pixels = await pixelsOver(tester, chip);
+    expect(pixels.where(white), isNotEmpty, reason: 'its name, in white');
+    expect(pixels.where(tinted), isEmpty, reason: 'on no ground');
   });
 
   testWidgets('the block before it moved away: the room is asked again, and '
