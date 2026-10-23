@@ -221,7 +221,7 @@ Future<String?> _lookCursorNamed(
     scale: devicePixelRatio,
   ).then((name) {
     if (name == null) {
-      _lookCursorNames.remove(key);
+      _lookCursorNames.removeWhere((made, _) => made == key);
     }
     return name;
   });

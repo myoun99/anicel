@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/brush/brush_cursor_painter.dart';
 import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/drawing_cursor.dart';
+import 'package:anicel/src/ui/brush/tool_cursor_look.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
@@ -2897,8 +2899,11 @@ void main() {
       await mouse.addPointer(location: Offset.zero);
       addTearDown(mouse.removePointer);
       for (final (tool, system) in [
-        // The bucket is the app's, so the system's steps aside.
-        (CanvasTool.fill, SystemMouseCursors.none),
+        // The bucket is the system's for this mouse (F-441).
+        (
+          CanvasTool.fill,
+          LookMouseCursor(fillCursorLook(), devicePixelRatio: 3),
+        ),
         (CanvasTool.select, MouseCursor.defer),
         (CanvasTool.move, MouseCursor.defer),
       ]) {
