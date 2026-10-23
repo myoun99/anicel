@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart'
+    show Builder, MaterialApp, Scaffold, Text, TextButton, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
     show attachedMirrorCelId;
 import 'package:anicel/src/models/canvas_point.dart';
@@ -11,11 +14,15 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/services/diagnostics/memory_black_box.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/menu/project_open_door.dart';
+import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/clip_import_door.dart';
 
 import '../../helpers/opened_session.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 import '../../services/import/clip_test_builder.dart';
 
 /// A CLIP STUDIO file opens AS A PROJECT (card `csp-clip-import-analysis`)
@@ -417,6 +424,63 @@ void main() {
       8 * 8,
       reason: 'the second cut shows the same cel — one bank, linked',
     );
+  });
+
+  testWidgets('🚨the open window\'s Cancel stops the bake after the picture in '
+      'hand, and no tab opens — card clip-import-hangs-on-three-samples: it '
+      'went grey and the window stood until the import ended', (tester) async {
+    final path = writeClip();
+    MemoryBlackBox.reset();
+    final projects = OpenProjects(
+      first: createDefaultProject(),
+      openSession: (project) => EditorSessionManager(initialProject: project),
+      letGo: (session) => session.dispose(),
+    );
+    addTearDown(projects.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => ProjectOpenDoor(projects).open(context, (
+                path: path,
+                folderBookmark: null,
+                placed: false,
+              )),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    final told = watchTheBar(tester);
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    // A local file has no wait to stop, so the first to hear it is the bake.
+    await tester.tap(find.byKey(const ValueKey<String>('app-progress-cancel')));
+    await pumpPastTheWaitWindow(tester);
+
+    expect(told, [0.25], reason: 'one picture of four, then the stop');
+    expect(
+      projects.sessions,
+      hasLength(1),
+      reason: 'the session the bake filled was in no tab, and was dropped',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('clip-import-warnings-notice')),
+      findsNothing,
+      reason: 'a stop says nothing',
+    );
+    expect(
+      MemoryBlackBox.unfinishedEntry(),
+      isNull,
+      reason: 'a stop is not a kill',
+    );
+
+    for (final session in projects.sessions) {
+      session.playbackRig.prerenderScheduler.cancel();
+    }
   });
 
   test('a picture lands where it stands on the canvas', () async {

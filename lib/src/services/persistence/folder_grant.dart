@@ -247,13 +247,21 @@ FolderGrant handedPath(String path) => FolderGrant.granted(
 /// - **iOS, macOS, Android** each need a grant the app has to hold onto —
 ///   a security scope on Apple, a real path resolved out of a SAF tree on
 ///   Android — so they route through the `qa_storage` channel.
-/// The user stopped waiting for a file to arrive.
+/// The user stopped waiting — for a file to arrive, or for an open to make
+/// a project of it (a .anicel read, a .clip or .tvpp baked).
 ///
 /// Its own type because it is not a failure: nothing was applied, nothing
 /// is broken, and the door that raised the wait should close quietly
 /// rather than say something went wrong.
 class MaterializeCancelled implements Exception {
   const MaterializeCancelled();
+
+  /// Stops the work here once [isCancelled] says the wait was stopped.
+  static void throwIf(bool Function()? isCancelled) {
+    if (isCancelled?.call() ?? false) {
+      throw const MaterializeCancelled();
+    }
+  }
 
   @override
   String toString() => 'MaterializeCancelled';
@@ -996,9 +1004,7 @@ abstract final class FolderPicker {
     Future<bool> tick({Future<void>? sooner, bool Function()? settled}) async {
       var slept = Duration.zero;
       while (true) {
-        if (isCancelled?.call() ?? false) {
-          throw const MaterializeCancelled();
-        }
+        MaterializeCancelled.throwIf(isCancelled);
         if (within != null && clock.elapsed() >= within) {
           return false;
         }

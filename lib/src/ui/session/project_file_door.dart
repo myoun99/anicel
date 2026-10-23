@@ -1288,9 +1288,7 @@ Future<ProjectFileRead> readProjectFile(
   // is handed back to the OS — past this line the project is resolved and
   // a session is born for it. The same answer the materializer gives for
   // the same press.
-  if (isCancelled?.call() ?? false) {
-    throw const MaterializeCancelled();
-  }
+  MaterializeCancelled.throwIf(isCancelled);
   // BEFORE the session is born: a bookmark tracks the file rather than the
   // path, so resolving one is how a referenced movie that was renamed or
   // moved is found again — and the project has to be told, or the pool

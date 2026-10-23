@@ -101,7 +101,11 @@ final _conversions = <String, _Conversion>{
       return (
         project: read.project,
         bake: (EditorSessionManager session, _Progress onProgress) =>
-            session.tvppDoor.bake(read, onProgress: onProgress),
+            session.tvppDoor.bake(
+              read,
+              onProgress: onProgress,
+              isCancelled: wait.isCancelled,
+            ),
       );
     },
     notOne: () => AppText.strings.imNotTvpp,
@@ -120,7 +124,11 @@ final _conversions = <String, _Conversion>{
       return (
         project: read.project,
         bake: (EditorSessionManager session, _Progress onProgress) =>
-            session.clipDoor.bake(read, onProgress: onProgress),
+            session.clipDoor.bake(
+              read,
+              onProgress: onProgress,
+              isCancelled: wait.isCancelled,
+            ),
       );
     },
     notOne: () => AppText.strings.imNotClip,

@@ -1,20 +1,27 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/services/diagnostics/memory_black_box.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart'
     show FolderPicker;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/menu/project_open_door.dart';
+import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/tvpp_import_door.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:flutter/material.dart'
+    show Builder, MaterialApp, Scaffold, Text, TextButton, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../models/import/tvpp_test_builder.dart';
 import 'package:anicel/src/ui/text/model_vocabulary.dart';
 import '../../helpers/opened_session.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// An open through the REAL mint, which is where the ids come from.
 ///
@@ -226,6 +233,64 @@ void main() {
       );
     },
   );
+
+  testWidgets('🚨the open window\'s Cancel stops the bake after the cel in '
+      'hand, and no tab opens — as the .clip door does (card '
+      'clip-import-hangs-on-three-samples)', (tester) async {
+    final path = writeTvpp();
+    MemoryBlackBox.reset();
+    final projects = OpenProjects(
+      first: createDefaultProject(),
+      openSession: (project) => EditorSessionManager(initialProject: project),
+      letGo: (session) => session.dispose(),
+    );
+    addTearDown(projects.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => ProjectOpenDoor(projects).open(context, (
+                path: path,
+                folderBookmark: null,
+                placed: false,
+              )),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    final told = watchTheBar(tester);
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    // A local file has no wait to stop, so the first to hear it is the bake.
+    await tester.tap(find.byKey(const ValueKey<String>('app-progress-cancel')));
+    await pumpPastTheWaitWindow(tester);
+
+    expect(told, hasLength(1), reason: 'one cel, then the stop');
+    expect(told.single, lessThan(1), reason: 'of more than one');
+    expect(
+      projects.sessions,
+      hasLength(1),
+      reason: 'the session the bake filled was in no tab, and was dropped',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('tvpp-import-warnings-notice')),
+      findsNothing,
+      reason: 'a stop says nothing',
+    );
+    expect(
+      MemoryBlackBox.unfinishedEntry(),
+      isNull,
+      reason: 'a stop is not a kill',
+    );
+
+    for (final session in projects.sessions) {
+      session.playbackRig.prerenderScheduler.cancel();
+    }
+  });
 
   test('F-124: the warnings an import raises speak the program language', () async {
     // 🚨THE THREE THAT WERE KOREAN. The planner's muted-track warning and
