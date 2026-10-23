@@ -170,14 +170,10 @@ void main() {
       final bar = tester.getRect(
         find.descendant(of: settings, matching: find.byType(ContentScrollbar)),
       );
-      expect(
-        bar.right,
-        lessThanOrEqualTo(
-          tester
-              .getRect(find.byKey(ValueKey<String>('dock-resize-$settingsId')))
-              .left,
-        ),
+      final grip = find.byKey(
+        ValueKey<String>('dock-resize-$toolSettingsGroupId'),
       );
+      expect(bar.right, lessThanOrEqualTo(tester.getRect(grip).left));
 
       final colours = await openRailGroup(
         tester,
