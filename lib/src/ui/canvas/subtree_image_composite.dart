@@ -420,61 +420,9 @@ void drawBlendOverBackdrop({
 }
 
 /// [backdrop], rasterised on [plan]'s grid, and the row [source] makes,
-/// composed by the shader drawn on [canvas] ([_composeOnTheCanvas]) — the
-/// route where the frame cannot be read ([_readsInTheFrame]). It disposes
-/// [backdrop].
-///
-/// ⚠️A plan the cap clamped ([SubtreeRasterPlan.magnifies]) is composed in a
-/// raster of its own and blitted, as every plan was: that blit filters the
-/// composite, and filtering two pictures before they are composed is not the
-/// same bytes as filtering what they composed.
-void _composeInARaster({
-  required Canvas canvas,
-  required SubtreeRasterPlan plan,
-  required ui.Image backdrop,
-  required _BlendSource Function() source,
-  required LayerBlendMode blendMode,
-}) {
-  _BlendSource? row;
-  ui.Image? composed;
-  try {
-    row = source();
-    if (!plan.magnifies) {
-      _composeOnTheCanvas(
-        canvas: canvas,
-        plan: plan,
-        backdrop: backdrop,
-        source: row,
-        blendMode: blendMode,
-      );
-      return;
-    }
-    composed = _composedOverBackdrop(
-      backdrop: backdrop,
-      source: row,
-      blendMode: blendMode,
-      plan: plan,
-    );
-    _blitSubtreeRaster(
-      canvas: canvas,
-      image: composed,
-      plan: plan,
-      paint: Paint(),
-    );
-  } finally {
-    // ⚠️Safe here, as in [_finishSubtreeRaster]: the draw put the images into
-    // this frame's display list, which holds its own claim from then on.
-    composed?.dispose();
-    if (row != null && row.owned) {
-      row.image.dispose();
-    }
-    backdrop.dispose();
-  }
-}
-
-/// [source] composed over [backdrop] through [blendMode] by the shader drawn
-/// straight onto [canvas] on [plan]'s grid — no raster of the composite, and
-/// no blit of one.
+/// composed by [LayerBlendShader] drawn straight onto [canvas] on that grid
+/// — the route where the frame cannot be read ([_readsInTheFrame]). It
+/// disposes [backdrop].
 ///
 /// 🗣️a-blurred-folder-cut-by-the-view-moves-on-vulkan-Q6 (유저 2026-10-23
 /// 「이 카드에서 이어서 래스터 경로를 줄인다」): where the frame cannot be
@@ -486,39 +434,79 @@ void _composeInARaster({
 /// local unit — it reads the coordinates it read at the raster's identity,
 /// and with its samplers nearest, as the 1:1 blit was, every device pixel
 /// composes the two texels that blit would have shown it.
-void _composeOnTheCanvas({
+///
+/// ⚠️A plan the cap clamped ([SubtreeRasterPlan.magnifies]) is still composed
+/// in a raster and blitted: that blit filters the composite, and filtering
+/// two pictures before they are composed is not the same bytes as filtering
+/// what they composed.
+void _composeInARaster({
   required Canvas canvas,
   required SubtreeRasterPlan plan,
   required ui.Image backdrop,
-  required _BlendSource source,
+  required _BlendSource Function() source,
   required LayerBlendMode blendMode,
 }) {
-  final width = plan.pixelWidth.toDouble();
-  final height = plan.pixelHeight.toDouble();
-  final shader = LayerBlendShader.shaderFor(
-    backdrop: backdrop,
-    source: source.image,
-    mode: blendMode,
-    width: width,
-    height: height,
-    sourceRect: source.at,
-  );
-  assert(() {
-    debugLastSubtreeRaster = plan;
-    return true;
-  }());
+  _BlendSource? row;
+  ui.FragmentShader? shader;
+  ui.Image? composed;
   try {
-    canvas
-      ..save()
-      ..translate(plan.destination.left, plan.destination.top)
-      ..scale(1 / plan.scale)
-      ..drawRect(Rect.fromLTWH(0, 0, width, height), Paint()..shader = shader)
-      ..restore();
+    row = source();
+    shader = LayerBlendShader.shaderFor(
+      backdrop: backdrop,
+      source: row.image,
+      mode: blendMode,
+      width: plan.pixelWidth.toDouble(),
+      height: plan.pixelHeight.toDouble(),
+      sourceRect: row.at,
+    );
+    if (!plan.magnifies) {
+      assert(() {
+        debugLastSubtreeRaster = plan;
+        return true;
+      }());
+      canvas
+        ..save()
+        ..translate(plan.destination.left, plan.destination.top)
+        ..scale(1 / plan.scale);
+      _shadeTheGrid(canvas, plan, shader);
+      canvas.restore();
+      return;
+    }
+    final recorder = ui.PictureRecorder();
+    _shadeTheGrid(Canvas(recorder), plan, shader);
+    composed = rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
+    _blitSubtreeRaster(
+      canvas: canvas,
+      image: composed,
+      plan: plan,
+      paint: Paint(),
+    );
   } finally {
-    // ⚠️Safe once the draw is recorded, as [_composeInTheFrame]'s is.
-    shader.dispose();
+    // ⚠️Safe here, as in [_finishSubtreeRaster]: the draw put the shader and
+    // the images into this frame's display list, which holds its own claim
+    // from then on.
+    composed?.dispose();
+    shader?.dispose();
+    if (row != null && row.owned) {
+      row.image.dispose();
+    }
+    backdrop.dispose();
   }
 }
+
+/// [shader] over the whole of [plan]'s grid, in [into]'s space taken as that
+/// grid — a raster pixel a unit — where the shader's own coordinates are the
+/// images' ([LayerBlendShader]: `FlutterFragCoord()` over its size).
+void _shadeTheGrid(Canvas into, SubtreeRasterPlan plan, ui.Shader shader) =>
+    into.drawRect(
+      Rect.fromLTWH(
+        0,
+        0,
+        plan.pixelWidth.toDouble(),
+        plan.pixelHeight.toDouble(),
+      ),
+      Paint()..shader = shader,
+    );
 
 /// The row a blend composes, as the shader is handed it: an image, where it
 /// lies on the draw in the draw's own 0..1, and whether the draw made it
@@ -681,38 +669,6 @@ void _composeInTheFrame({
     if (source.owned) {
       source.image.dispose();
     }
-  }
-}
-
-/// [source] composed over [backdrop] through [blendMode], as one raster of
-/// [plan]'s size — a step AT THE IDENTITY, as a colour key's is
-/// ([applyEffectSteps]): the shader reads `FlutterFragCoord()`, so it draws
-/// 1:1 into a rect at the origin, where its coordinates are the images'.
-ui.Image _composedOverBackdrop({
-  required ui.Image backdrop,
-  required _BlendSource source,
-  required LayerBlendMode blendMode,
-  required SubtreeRasterPlan plan,
-}) {
-  final width = plan.pixelWidth.toDouble();
-  final height = plan.pixelHeight.toDouble();
-  final shader = LayerBlendShader.shaderFor(
-    backdrop: backdrop,
-    source: source.image,
-    mode: blendMode,
-    width: width,
-    height: height,
-    sourceRect: source.at,
-  );
-  try {
-    final recorder = ui.PictureRecorder();
-    Canvas(recorder).drawRect(
-      Rect.fromLTWH(0, 0, width, height),
-      Paint()..shader = shader,
-    );
-    return rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
-  } finally {
-    shader.dispose();
   }
 }
 
