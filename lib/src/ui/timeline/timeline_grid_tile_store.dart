@@ -1369,6 +1369,10 @@ class _TileEntry {
         !sameCells && !_sameInk(ink, inkNow())) {
       return false;
     }
+    // ⛔MUTANT SURVIVES (F-446, 2026-10-23): keeping the old layer reddens
+    // nothing — the next ask then measures from it and bakes the same. It
+    // is taken so the next ask parts from the newest layer, where a drag's
+    // next step parts least.
     layer = painter.layer;
     celContentRevision = painter.celContentRevision;
     return true;
