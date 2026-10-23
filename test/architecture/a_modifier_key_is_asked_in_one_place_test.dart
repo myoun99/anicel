@@ -18,7 +18,7 @@ import '../helpers/dart_sources.dart';
 ///
 /// What may still name the record: a key handler joining or leaving it, and
 /// the lines in [_mirrors], which say what Flutter's own shortcut managers
-/// do — those read the record, so the mirror must.
+/// and scroll views do — those read the record, so the mirror must.
 void main() {
   test('nothing in lib reads the keyboard\'s record but ModifierKeys', () {
     final hits = [
@@ -100,8 +100,9 @@ final _record = RegExp(
   r'(?:is\w+Pressed|logicalKeysPressed|physicalKeysPressed)\b',
 );
 
-/// The lines that say what Flutter's own shortcut managers do — they read
-/// the record, so these must — keyed by file and line, with why.
+/// The lines that say what Flutter's own shortcut managers and scroll views
+/// do — they read the record, so these must — keyed by file and line, with
+/// why.
 const _mirrors = <(String, String), String>{
   (
     'lib/src/ui/shortcuts/editor_shortcut_bindings.dart',
@@ -113,4 +114,11 @@ const _mirrors = <(String, String), String>{
     'final keyboard = HardwareKeyboard.instance;',
   ): 'whether a focused field\'s own shortcut table takes the key — a '
       'table run by a manager that reads the record',
+  (
+    'lib/src/ui/input/wheel_law.dart',
+    'HardwareKeyboard.instance.logicalKeysPressed.any(flipKeys.contains);',
+  ): 'whether Shift turns a mouse notch the other way — the sheet\'s own '
+      'scroll views beside the slide ask the record (`Scrollable.'
+      '_pointerSignalEventDelta`), and a slide that read it more loosely '
+      'would take a notch they leave the frames (F-447)',
 };

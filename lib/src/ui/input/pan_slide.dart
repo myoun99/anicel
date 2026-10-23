@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../timeline/axis_turn.dart' show offsetAlong;
 import 'hit_path.dart';
 import 'wheel_law.dart';
 
@@ -111,7 +112,7 @@ class RenderPanSlideRegion extends RenderProxyBoxWithHitTestBehavior {
     handleWheelExclusively(
       event,
       (_) => slide.slideWithHand(
-        axis == Axis.horizontal ? Offset(-push, 0) : Offset(0, -push),
+        offsetAlong(axis, along: -push, across: 0),
       ),
     );
   }
