@@ -47,7 +47,8 @@ void main() {
   /// the recording shown whole in that image, or within [shownWithin], or,
   /// [shownNowhere], somewhere it may be cut again. The row's image is the
   /// whole, [side] texels a side, or lies at [rowAt], [rasterScale] texels a
-  /// canvas pixel; it is handed over as it is where [handedAsIs].
+  /// canvas pixel; it is handed over as it is where [handedAsIs]. [cap] is
+  /// the longest side a raster may take.
   Future<Uint8List> landed({
     required Rect clip,
     required double rasterScale,
@@ -57,6 +58,7 @@ void main() {
     bool shownNowhere = false,
     Rect? rowAt,
     bool handedAsIs = false,
+    int cap = maxSubtreeRasterSide,
   }) async {
     final at = rowAt ?? whole;
     final below = await imageOf(11);
@@ -78,6 +80,7 @@ void main() {
       canvas: canvas,
       bounds: whole,
       rasterScale: rasterScale,
+      maxPixelSide: cap,
       paintBackdrop: (into, _) => into.drawImage(below, Offset.zero, Paint()),
       paintSource: (into, _) => into.drawImageRect(
         row,
@@ -134,6 +137,31 @@ void main() {
         reason: 'at ×$scale the part samples on the whole\'s grid',
       );
     }
+  });
+
+  test('where the frame is not read, the composite is drawn on the canvas, '
+      'not rasterised to be blitted', () async {
+    debugBlendsComposedInARaster = 0;
+    await landed(clip: whole, rasterScale: 1.5, shownNowhere: true);
+    expect(debugLastSubtreeRaster!.magnifies, isFalse, reason: 'premise');
+    expect(
+      debugBlendsComposedInARaster,
+      0,
+      reason: 'a third raster a step, only to land 1:1 (Q6, 10-23)',
+    );
+
+    await landed(
+      clip: whole,
+      rasterScale: 1,
+      shownNowhere: true,
+      cap: side ~/ 2,
+    );
+    expect(debugLastSubtreeRaster!.magnifies, isTrue, reason: 'premise');
+    expect(
+      debugBlendsComposedInARaster,
+      1,
+      reason: 'the capped blit filters, and must filter what was composed',
+    );
   });
 
   // ⚠️IMPELLER ONLY: Skia has no shader filter, so on the default runner

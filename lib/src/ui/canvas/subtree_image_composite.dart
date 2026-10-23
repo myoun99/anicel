@@ -472,6 +472,10 @@ void _composeInARaster({
       canvas.restore();
       return;
     }
+    assert(() {
+      debugBlendsComposedInARaster += 1;
+      return true;
+    }());
     final recorder = ui.PictureRecorder();
     _shadeTheGrid(Canvas(recorder), plan, shader);
     composed = rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
@@ -493,6 +497,14 @@ void _composeInARaster({
     backdrop.dispose();
   }
 }
+
+/// How many blends were composed in a raster of their own and blitted
+/// ([_composeInARaster]'s magnified plans) since a test zeroed it — the
+/// third raster, invisible in the bytes.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+int debugBlendsComposedInARaster = 0;
 
 /// [shader] over the whole of [plan]'s grid, in [into]'s space taken as that
 /// grid — a raster pixel a unit — where the shader's own coordinates are the
