@@ -1179,29 +1179,30 @@ void main() {
       );
     });
 
-    /// 🚨★★★**THE SPLIT IS LOAD-BEARING, AND A MUTANT PROVED IT WAS NOT
-    /// PINNED.** F-139 made `_ridersOf` answer null ("this run cannot ride")
-    /// apart from empty ("nothing inside to ride"). Merging them back broke
-    /// no test — and it should: a SELECTION of two plain rows carries more
-    /// than the held row, so the "empty" arm would mount only the row under
-    /// the finger and silently leave the other one behind.
-    ///
-    /// ⚠️A base carrying its own attaches takes the same branch but is
-    /// refused a step earlier (`carriesAttaches`), which is why the mutant
-    /// looked harmless: the redundant guard hid the case that is not.
-    test('⛔a SELECTION dropped on a base is refused, not half-mounted', () {
+    /// 🗣️F-436② (유저 2026-10-21): 「여러 레이어 드래그로 한 레이어에
+    /// 어태치장착 가능. 지금은 한 레이어만 드래그해야 장착가능. 그래서
+    /// 여러번 드래그해야함」. ↩️This pinned a refusal (2026-09-18), chosen
+    /// over mounting the held row alone and leaving the rest behind — the
+    /// half-mount stays wrong: EVERY row of the selection rides.
+    test('🚨a SELECTION dropped on a base mounts every row of it — not the '
+        'held row alone, and not refused', () {
       final stack = [_row('base'), _row('p'), _row('q')];
+      final plan = resolveLayerDropOnRow(
+        stack: stack,
+        movingId: const LayerId('p'),
+        targetId: const LayerId('base'),
+        alsoMoving: {const LayerId('p'), const LayerId('q')},
+      );
+      expect(plan, isNotNull, reason: '㊵: a selection travels together');
       expect(
-        resolveLayerDropOnRow(
-          stack: stack,
-          movingId: const LayerId('p'),
-          targetId: const LayerId('base'),
-          alsoMoving: {const LayerId('p'), const LayerId('q')},
-        ),
-        isNull,
-        reason:
-            '㊵ says a selection travels TOGETHER — mounting the held row '
-            'alone would be the drop quietly doing something else',
+        {for (final mount in plan!.attach.mounts) mount.layerId.value},
+        {'p', 'q'},
+        reason: 'mounting the held row alone would be the drop quietly '
+            'doing something else',
+      );
+      expect(
+        {for (final mount in plan.attach.mounts) mount.baseId.value},
+        {'base'},
       );
       // The same drag with no selection is the ordinary one-rider case.
       expect(
@@ -1209,9 +1210,8 @@ void main() {
           stack: stack,
           movingId: const LayerId('p'),
           targetId: const LayerId('base'),
-        ),
-        isNotNull,
-        reason: '⛔fixture premise: nothing else about this drop refuses it',
+        )?.attach.mounts.single.layerId,
+        const LayerId('p'),
       );
     });
 
@@ -1455,25 +1455,32 @@ void main() {
 
     test('⛔the mount rules still apply', () {
       // A base that carries its own cannot ride (the relation would chain);
-      // a storyboard row rides nothing; a selection travels together or not
-      // at all.
+      // a storyboard row rides nothing; a selection travels together — and
+      // joins together (F-436②).
       expect(on('B1', 'b2d2'), isNull);
       final withBoard = [...facing(), _row('S', kind: LayerKind.storyboard)];
       expect(on('S', 'b2d2', stack: withBoard), isNull);
       final withTwo = [...facing(), _row('p2')];
       expect(
+        attachOf(
+          resolveLayerDropOnRow(
+            stack: withTwo,
+            movingId: const LayerId('p'),
+            targetId: const LayerId('b1u2'),
+            alsoMoving: {const LayerId('p'), const LayerId('p2')},
+          ),
+        ),
+        'p>B1:above p2>B1:above',
+      );
+      // ...and one rider that cannot ride refuses the whole selection.
+      expect(
         resolveLayerDropOnRow(
-          stack: withTwo,
+          stack: withBoard,
           movingId: const LayerId('p'),
           targetId: const LayerId('b1u2'),
-          alsoMoving: {const LayerId('p'), const LayerId('p2')},
+          alsoMoving: {const LayerId('p'), const LayerId('S')},
         ),
         isNull,
-      );
-      expect(
-        on('p', 'b1u2', stack: withTwo),
-        isNotNull,
-        reason: '⛔전제: alone, the same row joins',
       );
     });
 

@@ -799,23 +799,25 @@ List<({LayerId layerId, AttachedPlacement placement})> _sideChanges(
 /// drawing required it, and plain folders already nest. The walk reads
 /// the subtree's leaves now, so a carried folder is just structure and
 /// its leaves are the riders.
-/// 🚨★★★**NULL AND EMPTY ARE DIFFERENT ANSWERS, AND THAT IS F-139.** Null is
-/// 「this run cannot ride at all」 — a plain row that brings a group with it,
-/// which would make the relation chain. Empty is 「there is nothing INSIDE
-/// to ride」, which only a folder can say and which is not a refusal.
+/// 🚨★★★**EMPTY IS NOT A REFUSAL, AND THAT IS F-139.** Empty is 「there is
+/// nothing INSIDE to ride」, which only a folder can say. 「This run cannot
+/// ride at all」 — a run that brings a group of its own, which would make
+/// the relation chain — is [_mountsOn]'s `carriesAttaches`, a question of
+/// its own. They were one answer (`const <Layer>[]` for both) and the
+/// caller read it as a refusal, so an empty folder could not be attached.
+/// 유저 2026-09-18: 「폴더에 내용물이 있으면 … 드래그드롭으로 어태치
+/// 장착되는데 **아무것도 없으면 안되. 규칙 다른거 두지않도록**」.
 ///
-/// They were one answer (`const <Layer>[]` for both) and the caller read it
-/// as a refusal, so an empty folder could not be attached. 유저 2026-09-18:
-/// 「폴더에 내용물이 있으면 … 드래그드롭으로 어태치 장착되는데 **아무것도
-/// 없으면 안되. 규칙 다른거 두지않도록**」. One value answering two
-/// questions is the shape this repo forbids by name.
-List<Layer>? _ridersOf(_Lift lift) {
-  final moving = lift.moving;
-  if (!moving.kind.groupsLayers) {
-    return lift.carried.length == 1 ? [moving] : null;
-  }
-  return lift.carried.where((layer) => !layer.kind.groupsLayers).toList();
-}
+/// ★EVERY carried row rides, whoever holds the run — a plain row, a
+/// folder, a selection of them (F-436②, 유저 2026-10-21: 「여러 레이어
+/// 드래그로 한 레이어에 어태치장착 가능. 지금은 한 레이어만 드래그해야
+/// 장착가능」). ↩️A plain row rode only when it travelled alone, so a
+/// selection was refused outright — the selection's size deciding the law
+/// (CLAUDE.md 절대명령 2), which nobody asked for: the arm predates the
+/// selection carry (㊵) and meant 「a base that brings its riders」, which
+/// `carriesAttaches` already refuses.
+List<Layer> _ridersOf(_Lift lift) =>
+    lift.carried.where((layer) => !layer.kind.groupsLayers).toList();
 
 /// The mounts onto [target], or null when the slice cannot join that group
 /// — letting it land there anyway would split a group that is unsplittable
@@ -833,7 +835,7 @@ List<_Mount>? _mountsOn(_Lift lift, _Target target) {
   final carriesAttaches = lift.stack.any(
     (other) => lift.carriedIds.contains(other.attachedToLayerId),
   );
-  if (riders == null || carriesAttaches) {
+  if (carriesAttaches) {
     return null;
   }
   if (riders.isEmpty) {
