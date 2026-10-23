@@ -655,7 +655,24 @@ void main() {
   /// named that one added and nothing gone. ⛔Not kept inside
   /// `drawBlendOverBackdrop` to save the count: there its body ran past
   /// sixty lines, and the two roads read better side by side, each named.
-  const wideSignatures = 416;
+  /// ⚠️416 → 420 on 2026-10-23, five named as the rule above asks (card
+  /// nested-folder-buffers-read-past-the-view — a buffered row inside a
+  /// blurred folder holds its ink past the view, as the camera's does).
+  /// The editing stack's walk carries what reads the nodes, beside the
+  /// scale it already carried, and each node hands its own buffer down:
+  /// `_paintNodesWith` (five) — the canvas, the nodes, the scale, what
+  /// reads them, and the walk that paints a node's children;
+  /// `_paintGroupNode`, `_paintAdjustmentNode` and
+  /// `_paintBackdropBlendNode` (five each) — the canvas, the node, the
+  /// scale, what reads it and that walk; `_paintSplit` (five) — the canvas,
+  /// the nodes, the depth its slots are named by, the scale and what reads
+  /// them. 🔬`clean_code_diff` against master (`f8e059c22`, at 415) named
+  /// those five added and nothing gone. ⛔Not bundled to fit: the camera's
+  /// walk carries the same scale and reader side by side
+  /// (`renderThroughCamera`'s `paintNodes`), and a buffer hands its
+  /// children a scale of its own (`drawSubtreeAsImage`'s `paintSubtree`),
+  /// so a value of the two would be built at every hand-down first.
+  const wideSignatures = 420;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -940,7 +957,17 @@ void main() {
   /// (`44668f9da`, at 411 — one under the ceiling) named those three added
   /// and nothing gone. ⛔Not split to fit: each is one switch over the node
   /// kinds, and a case taken out would be read beside the rest anyway.
-  const longBodies = 414;
+  ///
+  /// ⚠️414 → 415 on 2026-10-23, named as the rule above asks (card
+  /// nested-folder-buffers-read-past-the-view). The editing stack's
+  /// `LayerStackPaintPass._paintNodesWith` (65) crossed the line handing
+  /// what reads the nodes to each buffered kind's case — a group, an
+  /// adjustment, a row composed over its backdrop — whose calls no longer
+  /// fit a line. 🔬`clean_code_diff` against master (`f8e059c22`, at 414)
+  /// named that one added and nothing gone. ⛔Not split to fit: it is the
+  /// walk's one switch over the node kinds, the shape the camera's walk
+  /// keeps too.
+  const longBodies = 415;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
