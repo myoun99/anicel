@@ -303,10 +303,11 @@ class BrushFrameStore {
         blob,
         (from: standsBehind, to: ahead.reach),
         // ⛔Never the name the cel is parked under: these bytes are not the
-        // cel's until the move takes them ([ScratchCelFiles.newPath]).
+        // cel's until the move takes them ([ScratchCelFiles.newPath]) — and
+        // the room can tell what was worked out ahead from what was not.
         parkAt: ScratchCelFiles.newPath(
           _scratchNamespace,
-          anicelCelEntryName(key),
+          '${anicelCelEntryName(key)}-ahead',
         ),
       );
       ahead.answers[ref] = cut == null

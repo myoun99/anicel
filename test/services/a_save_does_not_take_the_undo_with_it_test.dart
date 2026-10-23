@@ -14,6 +14,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
+import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/undo_surface_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -108,6 +109,7 @@ void main() {
     );
 
     // The premise: the save really did delete in the staged room.
+    await ScratchFile.lettingGo;
     expect(store.isCelFileBacked(key), isTrue);
     expect(store.isCelCold(key), isFalse);
     expect(

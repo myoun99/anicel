@@ -13,6 +13,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/undo_surface_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -198,6 +199,7 @@ void main() {
 
       expect(snapshot.surfaceOver(() => null), isNotNull);
 
+      await ScratchFile.lettingGo;
       expect(File(mine.single).existsSync(), isFalse);
       expect(snapshot.isParked, isFalse);
       expect(snapshot.residentBytes, BitmapTile.bytesFor(size));
@@ -213,6 +215,7 @@ void main() {
       await snapshot.park();
       final mine = _volatilePaths().difference(before);
       UndoSurfaceSnapshot.dropAll([snapshot]);
+      await ScratchFile.lettingGo;
       expect(mine.every((path) => !File(path).existsSync()), isTrue);
       expect(snapshot.surfaceOver(() => null), isNull);
     });

@@ -20,6 +20,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/cache_invalidation_executor.dart';
 import 'package:anicel/src/services/commands/swap_layer_reference_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_repository.dart';
@@ -159,6 +160,7 @@ void main() {
       expect(shown(), 0x11, reason: 'a parked swap still undoes');
 
       swap.dropPayload();
+      await ScratchFile.lettingGo;
       expect(filesInRoom(), before);
     });
 

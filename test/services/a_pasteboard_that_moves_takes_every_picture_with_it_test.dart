@@ -413,9 +413,11 @@ void main() {
         ).toSet();
       }
 
-      /// What the rounds worked out ahead have parked in the room: every
-      /// file it gained, where the cels are kept in a file and none parks.
-      Future<Set<String>> parkedAhead() => roomFiles();
+      /// What the rounds worked out ahead have parked in the room.
+      Future<Set<String>> parkedAhead() async => {
+        for (final path in await roomFiles())
+          if (path.contains('-ahead')) path,
+      };
 
       void expectSamePicture(BitmapSurface? actual, BitmapSurface expected) {
         expect(actual!.tiles.keys.toSet(), expected.tiles.keys.toSet());
