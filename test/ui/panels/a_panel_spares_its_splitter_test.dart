@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
+import '../../helpers/rail_group_button.dart';
+
 /// 🗣️F-452 (유저 2026-10-23): 「브러시 도구 라이브러리의 스크롤바는 스플리터
 /// 자리를 따로 두고 스크롤바 둬서 서로 안겹치는데, 다른 라이브러리나
 /// 도구설정패널도 동일하게 … 스플리터가 생길때는 자리 안겹치게 공간 주도록.
@@ -140,7 +142,7 @@ void main() {
     Future<Finder> openRailGroup(WidgetTester tester, String id) async {
       final grip = find.byKey(ValueKey<String>('dock-resize-$id'));
       if (grip.evaluate().isEmpty) {
-        await tester.tap(find.byKey(ValueKey<String>('rail-group-$id')));
+        await tester.tap(railGroupButton(id));
         await tester.pumpAndSettle();
       }
       return find.ancestor(of: grip, matching: find.byType(Stack)).first;
@@ -154,8 +156,7 @@ void main() {
         'the tool settings\' bar is no longer under the band', (tester) async {
       await pumpHome(tester);
 
-      final settingsId = EditorWorkspace.railGroupId(right: false, slot: 2);
-      final settings = await openRailGroup(tester, settingsId);
+      final settings = await openRailGroup(tester, toolSettingsGroupId);
       final group = tester.getRect(settings);
       expect(
         contentOf(tester, settings),
