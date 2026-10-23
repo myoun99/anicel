@@ -79,6 +79,51 @@ void main() {
     expect(cells('100%'), ['100', '%']);
   });
 
+  testWidgets('the column keeps a bar\'s insets clear at its ends — it asks '
+      'for them, and sets its first cell after one', (tester) async {
+    const style = TextStyle(fontSize: 10);
+    late Size bare;
+    late Size inset;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 20,
+            height: 100,
+            child: Builder(
+              builder: (context) {
+                bare = const VerticalWritingText(
+                  text: '1',
+                  style: style,
+                ).naturalSizeIn(context);
+                inset = const VerticalWritingText(
+                  text: '1',
+                  style: style,
+                  endInset: 8,
+                ).naturalSizeIn(context);
+                return const VerticalWritingText(
+                  text: '1',
+                  style: style,
+                  endInset: 8,
+                  mainAlignment: 0,
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(inset.height, bare.height + 16);
+    // The one cell's centre: an inset down, then half a cell of 10 × 1.15.
+    expect(
+      tester.renderObject(
+        find.descendant(of: writing(), matching: find.byType(CustomPaint)),
+      ),
+      paints..translate(x: 10, y: 8 + 10 * verticalWritingLineHeight / 2),
+    );
+  });
+
   testWidgets('the column\'s ink follows the ground under it: the track\'s '
       'above the fill, the fill\'s on it — each stretch set clipped to its '
       'own', (tester) async {
