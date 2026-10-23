@@ -143,7 +143,10 @@ void main() {
   // each tile as a decoded IMAGE; the pixel fallback is the first-frame
   // stand-in. A comparison that only ever took the fallback would leave the
   // path that actually runs untested — a mutation that dropped the layer
-  // from the tile paint survived exactly that gap.
+  // from the tile paint survived exactly that gap. ↩️Since 2026-09-17 there
+  // is no pixel fallback: a tile with no picture is pictured inside the
+  // paint ([BitmapTileImageCache.pictureFor]), so both are the one road and
+  // [decodeAll] only puts the pictures there first.
   final cache = BitmapTileImageCache();
 
   void decodeAll(BitmapSurface surface) {
@@ -334,7 +337,9 @@ void main() {
     // minted a fresh tile per paint left the singleton empty, and every
     // comparison silently drew the tile from the per-pixel fallback on one
     // reading and from its picture on the next — which the probe now says
-    // out loud.
+    // out loud. ↩️That fallback is gone since 2026-09-17 (a tile with no
+    // picture is pictured inside the paint); one object still means one
+    // picture for every paint.
     var sharedTile = BitmapTile.blank(size: 16);
     sharedTile = writeRgbaColorToBitmapTile(
       tile: sharedTile,
@@ -582,7 +587,10 @@ void main() {
       // picture on the next. ↩️It was asked inside `runAsync` and waited for
       // while the upload landed on the engine, which a widget test's fake
       // clock never completes; since 2026-09-17 the picture is made inside
-      // the call ([BitmapTileImageCache.pictureFor]).
+      // the call ([BitmapTileImageCache.pictureFor]) — and with it went the
+      // per-pixel draw and its budget: a slot with no picture makes one
+      // inside the paint. Read 10-23: nothing in `lib/` draws a tile per
+      // pixel.
       BitmapTileImageCache.instance.pictureFor(sharedTile);
       expect(
         BitmapTileImageCache.instance.imageFor(sharedTile),

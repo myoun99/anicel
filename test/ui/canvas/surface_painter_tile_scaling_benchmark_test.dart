@@ -57,9 +57,10 @@ void main() {
 
   double paintMicros(BitmapSurface surface) {
     // The view is panned FAR off every tile (they all sit on row y=0),
-    // so nothing is visible: the pixel fallback never fires and what is
-    // left is the pure per-tile walk — the map iteration + Expando
-    // lookups that happen whether or not a tile is on screen.
+    // so nothing is visible: no tile is drawn, and what is left is the
+    // pure per-tile walk — the map iteration + Expando lookups that happen
+    // whether or not a tile is on screen. ↩️「the pixel fallback never
+    // fires」 until 2026-09-17, when that fallback went.
     final viewport = CanvasViewport(zoom: 4.0, panY: -100000);
     final cache = BitmapTileImageCache();
     const rounds = 200;

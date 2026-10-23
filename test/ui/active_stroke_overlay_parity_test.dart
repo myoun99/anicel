@@ -481,7 +481,11 @@ void main() {
         // a not-yet-decoded tile here can show a PREVIOUS test's artwork
         // at the same coordinate (the per-pixel fallback is skipped when
         // a stale image exists). A fresh scope forces the deterministic
-        // per-pixel path.
+        // per-pixel path. ↩️Both fallbacks are gone since 2026-09-17: a
+        // tile with no picture is pictured inside the paint. A lineage is
+        // what the level pyramid and the picture budget count a paint by
+        // now ([BitmapSurfacePainter.lineage]); a fresh one shares nothing
+        // with another test's.
         lineage: Object(),
       ).paint(
         Canvas(recorder),

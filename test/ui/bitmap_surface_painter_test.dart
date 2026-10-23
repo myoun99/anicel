@@ -225,7 +225,9 @@ void main() {
     }
 
     /// Every tile decoded up front: this has to exercise the drawImage
-    /// route, not the per-pixel fallback.
+    /// route, not the per-pixel fallback. ↩️Since 2026-09-17 there is only
+    /// that route — a tile with no picture is pictured inside the paint —
+    /// so this puts the pictures there first.
     Future<BitmapTileImageCache> decodedCache(BitmapSurface surface) async {
       final cache = BitmapTileImageCache();
       for (final entry in surface.tiles.entries) {

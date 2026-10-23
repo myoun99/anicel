@@ -57,7 +57,8 @@ void main() {
     });
 
     test(
-      'decoded image path paints identical pixels to fallback path',
+      'a tile pictured before the paint paints the pixels of one pictured '
+      'inside it',
       () async {
         final tile = _gradientTile(coord: TileCoord(x: 0, y: 0));
         final surface = BitmapSurface(
@@ -66,8 +67,9 @@ void main() {
           tiles: {TileCoord(x: 0, y: 0): tile},
         );
 
-        // Fallback path: a fresh cache has no decoded image on first paint.
-        final fallbackPixels = await _paintPixels(
+        // A fresh cache holds no picture: the paint makes it, inside the
+        // call. ↩️Until 2026-09-17 this was the per-pixel fallback.
+        final coldPixels = await _paintPixels(
           BitmapSurfacePainter(
             surface: surface,
             showTransparentBackground: false,
@@ -77,10 +79,10 @@ void main() {
           height: 4,
         );
 
-        // Image path: decode first, then paint through the same cache.
+        // Pictured first, then painted through the same cache.
         final cache = BitmapTileImageCache();
         cache.pictureFor(tile);
-        final imagePixels = await _paintPixels(
+        final warmPixels = await _paintPixels(
           BitmapSurfacePainter(
             surface: surface,
             showTransparentBackground: false,
@@ -90,7 +92,7 @@ void main() {
           height: 4,
         );
 
-        expect(imagePixels, fallbackPixels);
+        expect(warmPixels, coldPixels);
       },
     );
   });
