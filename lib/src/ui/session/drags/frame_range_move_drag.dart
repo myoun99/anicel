@@ -570,25 +570,7 @@ class FrameRangeMoveDrag {
     if (span == null || !rangeSelections.rangeSelectionEligible(span.layerId)) {
       return null;
     }
-    final cast = _castKeySources(
-      span,
-      project: roles.project,
-      transitions: roles.transitions,
-    );
-    // F-311: a folder row of the span brings the rows it holds, riding
-    // beside the direction rows as the blocks they are.
-    final keys = (
-      camera: cast.camera,
-      blockRiders: [
-        ...cast.blockRiders,
-        ...rowsHeldByFolderRowsOf(
-          span,
-          project: roles.project,
-          rangeSelections: rangeSelections,
-        ),
-      ],
-      transitionRiders: cast.transitionRiders,
-    );
+    final keys = _keySourcesOf(span, roles, rangeSelections);
     final singleRowId = _singleRowOf(span, keys, roles.project);
     final multiSource = singleRowId == null;
     final subjects = singleRowId == null
@@ -629,6 +611,33 @@ class FrameRangeMoveDrag {
           : null,
       transitionRiders: keys.transitionRiders,
       attachTrade: attachTrade,
+    );
+  }
+
+  /// [span]'s key sources ([_castKeySources]) — and F-311: a folder row of
+  /// the span brings the rows it holds, riding beside the direction rows as
+  /// the blocks they are.
+  static KeySources _keySourcesOf(
+    TimelineFrameRangeSelection span,
+    FrameRangeMoveRoles roles,
+    RangeSelections rangeSelections,
+  ) {
+    final cast = _castKeySources(
+      span,
+      project: roles.project,
+      transitions: roles.transitions,
+    );
+    return (
+      camera: cast.camera,
+      blockRiders: [
+        ...cast.blockRiders,
+        ...rowsHeldByFolderRowsOf(
+          span,
+          project: roles.project,
+          rangeSelections: rangeSelections,
+        ),
+      ],
+      transitionRiders: cast.transitionRiders,
     );
   }
 
@@ -1734,21 +1743,7 @@ class FrameRangeMoveDrag {
   /// the session's `dragPreview` (repository untouched), the selection
   /// outline riding the previewed landing.
   void update({required int frameDelta, LayerId? targetLayerId}) {
-    // F-330: on the same frames, a hop among the rows of the span's attach
-    // group trades their pictures — counted on the rows themselves, where a
-    // mirror is one.
-    final trade = frameDelta == 0 ? _picturesTradedTo(targetLayerId) : null;
-    if (trade != null) {
-      _publishPictureTrade(trade.moves, trade.hop, landedOn: targetLayerId!);
-      return;
-    }
-    if (_refuseUntraded != null) {
-      // Mirrors alone move no block: a step that trades nothing HOLDS the
-      // last trade (UI-R23 #10), and back on the row grabbed is the origin.
-      if (frameDelta == 0 &&
-          (targetLayerId == null || targetLayerId == _grabbedRow)) {
-        _resetPreviewToOrigin();
-      }
+    if (_stepIsTheTrades(frameDelta, targetLayerId)) {
       return;
     }
     // 🚨F-276: the row pointed at is read as its SEAT — over a mirror, the
@@ -1794,6 +1789,28 @@ class FrameRangeMoveDrag {
       return;
     }
     _publishSingleRowMove(plan, source, singleRow.groupStart);
+  }
+
+  /// Whether this step belongs to the picture trade (F-330): on the same
+  /// frames, a hop among the rows of the span's attach group trades their
+  /// pictures — counted on the rows themselves, where a mirror is one. With
+  /// mirrors alone, every step is the trade's: one that trades nothing
+  /// HOLDS the last trade (UI-R23 #10), and back on the row grabbed is the
+  /// origin — mirrors move no block.
+  bool _stepIsTheTrades(int frameDelta, LayerId? targetLayerId) {
+    final trade = frameDelta == 0 ? _picturesTradedTo(targetLayerId) : null;
+    if (trade != null) {
+      _publishPictureTrade(trade.moves, trade.hop, landedOn: targetLayerId!);
+      return true;
+    }
+    if (_refuseUntraded == null) {
+      return false;
+    }
+    if (frameDelta == 0 &&
+        (targetLayerId == null || targetLayerId == _grabbedRow)) {
+      _resetPreviewToOrigin();
+    }
+    return true;
   }
 
   /// The pictures a step on the same frames trades with the hand on
@@ -2231,16 +2248,7 @@ class FrameRangeMoveDrag {
     final landedSelection = _liveSpan;
     final shown = _dragPreview.value;
     _dropPreviewChannels();
-    // F-330: a trade lands the very pictures its step showed moving — asked
-    // of the preview, which a later step of another kind replaced.
-    if (shown case BlockMoveDragPreview(:final picturesMoved)
-        when picturesMoved.isNotEmpty) {
-      _commitPictureTrade(picturesMoved, landedSelection);
-      return;
-    }
-    if (_refuseUntraded case final refuse?) {
-      refuse();
-      _liveSpan = _selectionBefore;
+    if (_releaseIsTheTrades(shown, landedSelection)) {
       return;
     }
     // ROW-CHANGE commits (P3b-4): the planned pair replaces both rows in
@@ -2294,6 +2302,27 @@ class FrameRangeMoveDrag {
     _changes.notifyChanged();
   }
 
+  /// Whether the release belongs to the picture trade (F-330), landed or
+  /// refused here: a trade lands the very pictures its step showed moving —
+  /// asked of [shown], the preview, which a later step of another kind
+  /// replaced — and mirrors alone that traded nothing refuse.
+  bool _releaseIsTheTrades(
+    TimelineDragPreview? shown,
+    TimelineFrameRangeSelection? landedSelection,
+  ) {
+    if (shown case BlockMoveDragPreview(:final picturesMoved)
+        when picturesMoved.isNotEmpty) {
+      _commitPictureTrade(picturesMoved, landedSelection);
+      return true;
+    }
+    if (_refuseUntraded case final refuse?) {
+      refuse();
+      _liveSpan = _selectionBefore;
+      return true;
+    }
+    return false;
+  }
+
   /// Lands a trade of [moves] as ONE undo step — the pictures change cels,
   /// and no row, cel or name does (F-330) — and stands on the row the hand
   /// carried the selection's anchor to.
@@ -2305,14 +2334,7 @@ class FrameRangeMoveDrag {
     final land = cut == null
         ? null
         : _blockMove.pictureMoveCommand(cut, moves);
-    if (!_commitRangeMoveCommands([?land], landedSelection)) {
-      return;
-    }
-    if (landedSelection != null) {
-      _controllers.layerController.selectLayer(landedSelection.layerId);
-    }
-    _changes.warmActiveCut();
-    _changes.notifyChanged();
+    _landStandingOnTheAnchor([?land], landedSelection);
   }
 
   void _commitMultiSourceMove(
@@ -2404,6 +2426,16 @@ class FrameRangeMoveDrag {
     if (cut != null && (multiRowPlan?.rekeys.isNotEmpty ?? false)) {
       commands.add(_blockMove.celRekeyCommand(cut, multiRowPlan!.rekeys));
     }
+    _landStandingOnTheAnchor(commands, landedSelection);
+  }
+
+  /// Lands [commands] as ONE undo step ([_commitRangeMoveCommands]) and
+  /// stands on the row the selection's anchor landed on — the rows a move
+  /// of several rows, or a trade of their pictures, carried it to.
+  void _landStandingOnTheAnchor(
+    List<Command> commands,
+    TimelineFrameRangeSelection? landedSelection,
+  ) {
     if (!_commitRangeMoveCommands(commands, landedSelection)) {
       return;
     }
