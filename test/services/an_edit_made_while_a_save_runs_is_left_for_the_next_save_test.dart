@@ -171,6 +171,19 @@ void main() {
     expect(store.bakedSurfaceOrNull(to)?.canvasSize, canvas);
   });
 
+  test('a cel an undo moved back while the save ran, onto the frame the '
+      'save wrote as empty, is left for the next save to write there', () {
+    final store = BrushFrameStore();
+    final there = key('there');
+    final back = key('back');
+    store.storeBakedSurface(back, ink());
+    saveAround(store, () {});
+    store.rekeyFrames([(back, there)]);
+    saveAround(store, () => store.rekeyFrames([(there, back)]));
+    expect(store.dirtyCelKeysSinceSave, contains(back));
+    expect(store.bakedSurfaceOrNull(back)?.canvasSize, canvas);
+  });
+
   test('a cel the save wrote as erased, brought back by an undo while it '
       'ran, is left unsaved', () {
     final store = BrushFrameStore();
