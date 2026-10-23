@@ -139,6 +139,10 @@ class SubtreeRasterPlan {
   /// from a magnification without being told twice.
   final double rasterScale;
 
+  /// Whether the cap clamped the scale, so the raster lands larger than its
+  /// pixels — the one placement that is not 1:1, and the one a blit filters.
+  bool get magnifies => scale != rasterScale;
+
   /// A canvas recording into [recorder] in the sub-tree's own space, so
   /// whatever paints into it does not know it is being rasterised — and
   /// bounded by the pixels it rasters, so a draw into it can ask what it
@@ -253,9 +257,9 @@ void _blitSubtreeRaster({
   // `none` because the blit is 1:1 by construction. It stops being 1:1 only
   // when the cap clamped the scale, and that is a magnification — the one
   // case that wants a filter.
-  paint.filterQuality = plan.scale == plan.rasterScale
-      ? FilterQuality.none
-      : FilterQuality.low;
+  paint.filterQuality = plan.magnifies
+      ? FilterQuality.low
+      : FilterQuality.none;
   assert(() {
     debugLastSubtreeRaster = plan;
     return true;
@@ -333,12 +337,11 @@ void drawSubtreeAsImage({
 /// [LayerBlendMode.needsItsBackdrop]). So both pictures are rasterised on
 /// ONE grid — [paintBackdrop] (everything below the row in its scope) and
 /// [paintSource] (the row itself, painting normal) — composed by
-/// [LayerBlendShader] at the identity, and the result blitted the way a
-/// group's raster is: it IS the backdrop and the row, composed, so it lands
-/// plain.
+/// [LayerBlendShader] drawn on that grid, where a group's raster would be
+/// blitted: it IS the backdrop and the row, composed, so it lands plain.
 ///
-/// The arithmetic is [drawSubtreeAsImage]'s — the same plan, the same blit
-/// — so a blend at any depth sits on the grid a folder's buffer would.
+/// The arithmetic is [drawSubtreeAsImage]'s — the same plan — so a blend at
+/// any depth sits on the grid a folder's buffer would.
 ///
 /// ★Where the engine can, the backdrop is not rasterised at all but read in
 /// the frame ([_composeInTheFrame]) — the same shader over the same two
@@ -416,10 +419,15 @@ void drawBlendOverBackdrop({
   );
 }
 
-/// [backdrop], rasterised on [plan]'s grid, and the row [source] makes
-/// composed in a raster of [plan]'s size ([_composedOverBackdrop]) and
-/// blitted the way a group's raster is — the route where the frame cannot
-/// be read ([_readsInTheFrame]). It disposes [backdrop].
+/// [backdrop], rasterised on [plan]'s grid, and the row [source] makes,
+/// composed by the shader drawn on [canvas] ([_composeOnTheCanvas]) — the
+/// route where the frame cannot be read ([_readsInTheFrame]). It disposes
+/// [backdrop].
+///
+/// ⚠️A plan the cap clamped ([SubtreeRasterPlan.magnifies]) is composed in a
+/// raster of its own and blitted, as every plan was: that blit filters the
+/// composite, and filtering two pictures before they are composed is not the
+/// same bytes as filtering what they composed.
 void _composeInARaster({
   required Canvas canvas,
   required SubtreeRasterPlan plan,
@@ -431,6 +439,16 @@ void _composeInARaster({
   ui.Image? composed;
   try {
     row = source();
+    if (!plan.magnifies) {
+      _composeOnTheCanvas(
+        canvas: canvas,
+        plan: plan,
+        backdrop: backdrop,
+        source: row,
+        blendMode: blendMode,
+      );
+      return;
+    }
     composed = _composedOverBackdrop(
       backdrop: backdrop,
       source: row,
@@ -444,13 +462,61 @@ void _composeInARaster({
       paint: Paint(),
     );
   } finally {
-    // ⚠️Safe here, as in [_finishSubtreeRaster]: the blit put the image into
+    // ⚠️Safe here, as in [_finishSubtreeRaster]: the draw put the images into
     // this frame's display list, which holds its own claim from then on.
     composed?.dispose();
     if (row != null && row.owned) {
       row.image.dispose();
     }
     backdrop.dispose();
+  }
+}
+
+/// [source] composed over [backdrop] through [blendMode] by the shader drawn
+/// straight onto [canvas] on [plan]'s grid — no raster of the composite, and
+/// no blit of one.
+///
+/// 🗣️a-blurred-folder-cut-by-the-view-moves-on-vulkan-Q6 (유저 2026-10-23
+/// 「이 카드에서 이어서 래스터 경로를 줄인다」): where the frame cannot be
+/// read — Skia, a canvas seen flipped — every step rasterised the composite,
+/// a third raster, only to blit it. ↩️🔬The shader reads `FlutterFragCoord()`
+/// in the LOCAL space it is drawn in, on both renderers (10-23: under a
+/// translate, a scale, a flip, a picture replayed elsewhere and a saveLayer,
+/// Skia and Impeller alike). So drawn under [plan]'s grid — a raster pixel a
+/// local unit — it reads the coordinates it read at the raster's identity,
+/// and with its samplers nearest, as the 1:1 blit was, every device pixel
+/// composes the two texels that blit would have shown it.
+void _composeOnTheCanvas({
+  required Canvas canvas,
+  required SubtreeRasterPlan plan,
+  required ui.Image backdrop,
+  required _BlendSource source,
+  required LayerBlendMode blendMode,
+}) {
+  final width = plan.pixelWidth.toDouble();
+  final height = plan.pixelHeight.toDouble();
+  final shader = LayerBlendShader.shaderFor(
+    backdrop: backdrop,
+    source: source.image,
+    mode: blendMode,
+    width: width,
+    height: height,
+    sourceRect: source.at,
+  );
+  assert(() {
+    debugLastSubtreeRaster = plan;
+    return true;
+  }());
+  try {
+    canvas
+      ..save()
+      ..translate(plan.destination.left, plan.destination.top)
+      ..scale(1 / plan.scale)
+      ..drawRect(Rect.fromLTWH(0, 0, width, height), Paint()..shader = shader)
+      ..restore();
+  } finally {
+    // ⚠️Safe once the draw is recorded, as [_composeInTheFrame]'s is.
+    shader.dispose();
   }
 }
 
@@ -472,9 +538,7 @@ bool debugSourceAsIs = true;
 Rect? _laidAsItIs(SubtreeRasterPlan plan, ImagePiece? sourceAsIs) {
   // A grid the cap shrank is not the one the row's draw would have laid it
   // on (`texelScale` is the scale the walk asked for), so it is drawn.
-  if (sourceAsIs == null ||
-      !debugSourceAsIs ||
-      plan.scale != plan.rasterScale) {
+  if (sourceAsIs == null || !debugSourceAsIs || plan.magnifies) {
     return null;
   }
   final (:image, :worldRect) = sourceAsIs;
