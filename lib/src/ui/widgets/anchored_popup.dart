@@ -164,14 +164,21 @@ Future<T?> showAnchoredPopup<T>(
   return showGeneralDialog<T>(
     context: anchorContext,
     barrierLabel: label,
-    barrierDismissible: false,
+    // ↩️`false` from R27 #5 (2026-07-22) to F-450 (2026-10-23), and Escape
+    // went with it: Flutter hands a route's Escape to this flag
+    // (`_DismissModalAction`), and R27 #5 meant only the barrier's TAP. That
+    // tap cannot come — the field below takes every press first — so the
+    // flag now says only the window's other ways out, Escape and a screen
+    // reader's dismiss, as every other window has them (`showDialogVerb`).
+    // 유저 2026-10-23 (F-450), the pressure window up: 「키보드도 안먹힘」.
+    barrierDismissible: true,
     barrierColor: Colors.transparent,
     // Flyout rule (R4 #2): the popup appears in one frame.
     transitionDuration: Duration.zero,
     pageBuilder: (context, _, _) {
       return Stack(
         children: [
-          // Dismissal is on pointer DOWN outside, NOT `barrierDismissible`
+          // Dismissal is on pointer DOWN outside, NOT the barrier's tap
           // (R27 #5): Flutter's modal barrier closes on a completed TAP, so
           // a drag started outside — a slider grab, a canvas stroke — left
           // the popup hanging. "드래그든 뭐든 다른곳 조작하면 사라지도록".

@@ -3,6 +3,7 @@ import 'dart:ui' show ImageByteFormat;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
@@ -369,6 +370,27 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('pressure-curve-popup')),
       findsNothing,
+    );
+  });
+
+  testWidgets('F-450: Escape closes it, as it closes every other window — '
+      'R27 #5 took the barrier\'s tap and Escape went with it', (
+    tester,
+  ) async {
+    await pumpButton(
+      tester,
+      curve: BrushPressureCurve.identity(),
+      onChanged: (_) {},
+    );
+    await openPopup(tester);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('pressure-curve-popup')),
+      findsNothing,
+      reason: '유저 2026-10-23 (F-450), the window up: 「키보드도 안먹힘」',
     );
   });
 
