@@ -412,6 +412,42 @@ static void qa_backend_close(void) {
   memset(&g_dec, 0, sizeof(g_dec));
 }
 
+/// Asks the reader's conversion for its pictures at the rate the FILE
+/// stores — the native type's — and leaves the choice to it where the file
+/// names none.
+///
+/// 🚨★★★**LEFT TO CHOOSE, THE CONVERSION TAKES THE DECODER'S RATE, AND A
+/// DECODER MAY WORK ITS OWN OUT.** Media Foundation's MPEG-4 Part 2 decoder
+/// describes a stream stored at 23.976 as 10000000/417188 — 23.97 — while it
+/// hands the pictures over on the file's own times; the conversion then
+/// stamps every picture on the decoder's clock, and this backend reads its
+/// rate off the conversion. 검증 2026-10-23
+/// (movie-23976-mpeg4-part2-asks-no-speed): such a movie asked a 24 project
+/// nothing on import — 23.97 is no pulldown partner — and the same clock
+/// counted a 12-frame movie 11 and put a jump two thousand frames in on the
+/// picture after the one asked for.
+///
+/// ⚠️A rate of 0/0 names none: asked for, it comes back 0/0 from the
+/// conversion as well (measured 2026-10-23), and the open would then guess
+/// 24 for a movie the decoder could have timed. No file the MPEG-4 source
+/// reads says 0/0 — a clock of zero-length samples comes back 12 fps — so
+/// nothing here can make one.
+static void qa_win_ask_for_the_stored_rate(IMFMediaType* wanted) {
+  IMFMediaType* stored = NULL;
+  if (FAILED(IMFSourceReader_GetNativeMediaType(
+          g_dec.reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0,
+          &stored))) {
+    return;
+  }
+  UINT64 packed_rate = 0;
+  if (SUCCEEDED(IMFMediaType_GetUINT64(stored, &MF_MT_FRAME_RATE,
+                                       &packed_rate)) &&
+      (packed_rate >> 32) != 0 && (packed_rate & 0xFFFFFFFFULL) != 0) {
+    IMFMediaType_SetUINT64(wanted, &MF_MT_FRAME_RATE, packed_rate);
+  }
+  IMFMediaType_Release(stored);
+}
+
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
                                int64_t length,
@@ -482,6 +518,7 @@ static int32_t qa_backend_open(const char* path,
   }
   IMFMediaType_SetGUID(wanted, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
   IMFMediaType_SetGUID(wanted, &MF_MT_SUBTYPE, &MFVideoFormat_RGB32);
+  qa_win_ask_for_the_stored_rate(wanted);
   hr = IMFSourceReader_SetCurrentMediaType(
       g_dec.reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, wanted);
   IMFMediaType_Release(wanted);
