@@ -228,22 +228,15 @@ void main() {
   }
 
   /// Whether a pen put down [offset] from the canvas's middle
-  /// ([visibleCanvasPoint]) is the canvas's: the deepest thing hit there is
-  /// the drawing view's own. The floor is full-bleed under the controls
-  /// lying on it, and a press that starts on one is that control's.
+  /// ([visibleCanvasPoint]) reaches the drawing view. The floor is
+  /// full-bleed under the controls lying on it, and a control hit there
+  /// takes the press: the view is not in its route at all.
   bool landsOnTheCanvas(WidgetTester tester, Offset offset) {
     final canvas = tester.renderObject(mainCanvasView());
-    final route = tester.hitTestOnBinding(
-      visibleCanvasPoint(tester, offset: offset),
-    );
-    final deepest = route.path.first.target;
-    for (var up = deepest is RenderObject ? deepest : null; up != null;) {
-      if (identical(up, canvas)) {
-        return true;
-      }
-      up = up.parent;
-    }
-    return false;
+    return tester
+        .hitTestOnBinding(visibleCanvasPoint(tester, offset: offset))
+        .path
+        .any((entry) => entry.target == canvas);
   }
 
   Future<void> seekTo(WidgetTester tester, int index) async {
