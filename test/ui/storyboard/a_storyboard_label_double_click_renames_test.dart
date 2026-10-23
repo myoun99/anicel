@@ -6,6 +6,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
+import '../../helpers/rail_label_name.dart';
 import '../../helpers/storyboard_host.dart';
 
 /// storyboard-label-double-click (I-48's last family): the storyboard's
@@ -27,15 +28,12 @@ void main() {
     return session.repository.requireProject().tracks.first;
   }
 
-  Finder seLabel(Track track) =>
-      find.byKey(ValueKey<String>('storyboard-se-label-${track.id.value}-1'));
-
-  /// [track]'s S1 label on its NAME — the row's own ground: a button in the
-  /// label is the button's. ↩️It pressed the label's middle, where F-443
-  /// seated the SE speaker among the name's buttons.
-  Finder seLabelName(Track track) => find.descendant(
-    of: seLabel(track),
-    matching: find.text(track.seLayers.first.name),
+  /// S1's label, pressed on its name ([railLabelName]). ↩️It pressed the
+  /// label's middle, where F-443 seated the SE speaker among the name's
+  /// buttons.
+  Finder seLabel(Track track) => railLabelName(
+    find.byKey(ValueKey<String>('storyboard-se-label-${track.id.value}-1')),
+    track.seLayers.first.name,
   );
 
   Future<void> doubleClick(WidgetTester tester, Finder label) async {
@@ -53,7 +51,7 @@ void main() {
     final track = await openStoryboard(tester);
     expect(seLabel(track), findsOneWidget, reason: 'fixture premise');
 
-    await doubleClick(tester, seLabelName(track));
+    await doubleClick(tester, seLabel(track));
     expect(find.byKey(dialog), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey<String>('rename-layer-text-field')),
@@ -82,7 +80,7 @@ void main() {
     final pressed = track.seLayers.first;
 
     final gesture = await tester.startGesture(
-      tester.getCenter(seLabelName(track)),
+      tester.getCenter(seLabel(track)),
       kind: PointerDeviceKind.stylus,
     );
     await tester.pump();

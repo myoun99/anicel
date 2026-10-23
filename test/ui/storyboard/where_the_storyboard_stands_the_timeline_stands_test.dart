@@ -23,6 +23,7 @@ import '../../helpers/conte_track_fixture.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/home_page_probes.dart';
 import '../storyboard_conte_row_probe.dart';
+import '../../helpers/rail_label_name.dart';
 
 /// 🗣️F-187 (유저 2026-09-26) — WHERE THE STORYBOARD STANDS, THE TIMELINE
 /// STANDS:
@@ -103,15 +104,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Presses the label [key] on its [name] — the row's own ground: a button
-  /// in the label is the button's (the SE speaker stands among the name's).
+  /// Presses the label [key] on its [name] ([railLabelName]).
   Future<void> tapNameOf(WidgetTester tester, String key, String name) async {
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(ValueKey<String>(key)),
-        matching: find.text(name),
-      ),
-    );
+    await tester.tap(railLabelName(find.byKey(ValueKey<String>(key)), name));
     await tester.pumpAndSettle();
   }
 

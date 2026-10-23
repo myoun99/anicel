@@ -7,6 +7,8 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
+import '../helpers/rail_label_name.dart';
+
 /// Selecting a rail row LANDS the editing focus on it (user 2026-07-29,
 /// superseding #741's "row picks never move the focus"): the label lands
 /// where the playhead already stands — the same landing its own cell press
@@ -56,8 +58,7 @@ void main() {
     return total + 2;
   }
 
-  /// Presses S1's label on its NAME — the row's own ground: a button in the
-  /// label is the button's (the SE speaker stands among the name's).
+  /// Presses S1's label on its NAME ([railLabelName]).
   Future<void> tapS1Label(
     WidgetTester tester,
     EditorSessionManager manager,
@@ -71,11 +72,9 @@ void main() {
         .seLayers
         .singleWhere((layer) => layer.id == seId);
     await tester.tap(
-      find.descendant(
-        of: find.byKey(
-          ValueKey<String>('storyboard-se-label-${trackId.value}-1'),
-        ),
-        matching: find.text(se.name),
+      railLabelName(
+        find.byKey(ValueKey<String>('storyboard-se-label-${trackId.value}-1')),
+        se.name,
       ),
     );
     await tester.pumpAndSettle();

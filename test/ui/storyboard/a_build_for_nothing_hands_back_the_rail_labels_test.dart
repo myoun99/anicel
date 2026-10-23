@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/rail_label_name.dart';
 
 /// 🚨I-57 (10-14): A STORYBOARD BUILT AGAIN FOR NOTHING — OR ACROSS A CUT —
 /// HANDS BACK EVERY ROW OF ITS RAIL AS IT WAS, its label and the drag
@@ -399,10 +400,7 @@ void main() {
     await tester.pump();
 
     expectRowsAsThey(tester, before, builtAgain: {'se', 'se wrapper'});
-    expect(
-      find.descendant(of: seLabel, matching: find.text('Rain')),
-      findsOneWidget,
-    );
+    expect(railLabelName(seLabel, 'Rain'), findsOneWidget);
   });
 
   testWidgets('🚨an S row added over S1 builds S1\'s wrapper again, its caret '
