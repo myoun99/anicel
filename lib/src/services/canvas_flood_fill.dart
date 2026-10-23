@@ -20,8 +20,7 @@ import '../models/pasteboard_bounds.dart';
 import '../models/tiles_covering.dart';
 import '../native/qa_native_engine.dart';
 import '../core/dev_profile.dart';
-import '../core/rgb_tolerance.dart';
-import 'canvas_color_sampler.dart';
+import '../core/seed_tolerance.dart';
 import 'canvas_read_source.dart';
 import 'canvas_selection_region.dart';
 import 'cel_text_laying.dart';
@@ -146,12 +145,23 @@ class FloodFillRegion {
   final Uint8List mask;
 }
 
-/// The fill's sampling target ("fill what you see"): the visible picture
-/// as a straight-RGB raster, composited LAZILY tile by tile as the flood
-/// visits pixels — a fill only pays for the region it actually floods,
-/// never the whole canvas (R11-③: the eager full-canvas compose froze the
-/// tap for seconds on big canvases). It lies in the space the SEED is in,
-/// and a posed layer is read through its pose — see the constructor.
+/// The fill's sampling target: the picture as DRAWN — the layers it reads
+/// composed over nothing, premultiplied RGBA, the coverage in the fourth
+/// byte — composited LAZILY tile by tile as the flood visits pixels — a
+/// fill only pays for the region it actually floods, never the whole
+/// canvas (R11-③: the eager full-canvas compose froze the tap for seconds
+/// on big canvases). It lies in the space the SEED is in, and a posed
+/// layer is read through its pose — see the constructor.
+///
+/// 🚨NO PAPER UNDER IT (board F-416, [pixelWithinTolerance] has the
+/// user's words): the paper is not drawn, so a fill neither stops at it
+/// nor runs through it into what is drawn its colour. ↩️It was 「fill what
+/// you see」 — the layers over the project's paper (R10-C, 07-12; an
+/// absent paper read as black since 09-15) — and ink of the paper's
+/// colour was the paper: a fill on white ink on a white paper took the
+/// whole canvas, and with the fill past the canvas on, a white shape
+/// running onto the pasteboard flooded to the wall and was refused as
+/// open.
 class LazyCanvasRasterRgb {
   /// With the native engine loaded the raster lives in native memory
   /// (R18 A-2b): the compose loops write through typed-data views
@@ -161,7 +171,6 @@ class LazyCanvasRasterRgb {
     required Cut cut,
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
-    int paperColor = canvasPaperColor,
     bool extendBeyondCanvas = false,
     PasteboardReach pasteboardReach = PasteboardReach.whole,
     CanvasReadSource source = CanvasReadSource.display,
@@ -190,7 +199,6 @@ class LazyCanvasRasterRgb {
       surfaceResolver: surfaceResolver,
       read: layersReadBy(source, cut, activeLayerId),
       space: space,
-      paperColor: paperColor,
       handles: handles,
       originX: -marginX,
       originY: -marginY,
@@ -205,7 +213,6 @@ class LazyCanvasRasterRgb {
     required LayerFrameSurfaceResolver surfaceResolver,
     required Set<LayerId>? read,
     required LayerPlacement? space,
-    required int paperColor,
     required QaFloodNativeHandles? handles,
     required this.originX,
     required this.originY,
@@ -215,9 +222,6 @@ class LazyCanvasRasterRgb {
        width = rasterWidth,
        height = rasterHeight,
        rgb = handles?.rgbView ?? Uint8List(rasterWidth * rasterHeight * 4),
-       _paperR = argbRed(paperColor),
-       _paperG = argbGreen(paperColor),
-       _paperB = argbBlue(paperColor),
        _tilesX = (rasterWidth + _tileSize - 1) ~/ _tileSize,
        _composed =
            handles?.composedView ??
@@ -268,14 +272,12 @@ class LazyCanvasRasterRgb {
   final int originX;
   final int originY;
 
-  /// `width*height*4` RGBX bytes (X always 0 — R22-D SIMD contract);
-  /// only composed tiles hold real pixels — read through
+  /// `width*height*4` bytes, premultiplied RGBA (four bytes a pixel —
+  /// R22-D's SIMD contract); only composed tiles hold real pixels — read
+  /// through
   /// [ensureComposedAt].
   final Uint8List rgb;
 
-  final int _paperR;
-  final int _paperG;
-  final int _paperB;
   final int _tilesX;
   final Uint8List _composed;
   final List<_ReadLayer> _layers = [];
@@ -286,7 +288,7 @@ class LazyCanvasRasterRgb {
   /// ⛔THE ROUTES MUST AGREE ON WHICH TILE A PIXEL IS IN. The per-pixel
   /// path and the batch path each wrote this arithmetic out; a route that
   /// computed a different tile would mark one composed and compose
-  /// another, and the flood would then read paper where a layer is.
+  /// another, and the flood would then read nothing where a layer is.
   ({int tileIndex, int left, int top}) _tileOf(int index) {
     final tileX = (index % width) ~/ _tileSize;
     final tileY = (index ~/ width) ~/ _tileSize;
@@ -307,7 +309,7 @@ class LazyCanvasRasterRgb {
   }
 
   /// R25-③: composes every still-uncomposed tile that [pixelIndices]
-  /// touch through ONE pooled native call — within a tile the paper +
+  /// touch through ONE pooled native call — within a tile the clear +
   /// layer order is preserved (bytes identical to [ensureComposedAt]);
   /// tiles fan out across the worker pool. Engine-less falls back to
   /// the per-tile path.
@@ -396,9 +398,6 @@ class LazyCanvasRasterRgb {
     }
     native.fillComposeBatch(
       rasterWidth: width,
-      paperR: _paperR,
-      paperG: _paperG,
-      paperB: _paperB,
       tiles: tiles,
       blends: blends,
     );
@@ -411,21 +410,18 @@ class LazyCanvasRasterRgb {
     final right = math.min(left + _tileSize, width);
     final bottom = math.min(top + _tileSize, height);
 
-    // R18 A-2c: with a native-backed raster the paper fill and the layer
+    // R18 A-2c: with a native-backed raster the clear and the layer
     // blends run in the C kernels — byte-identical to the Dart loops
     // below (parity-pinned); Dart stays the reference and the fallback.
     final native = QaNativeEngine.instance;
     final handles = nativeHandles;
     if (native != null && handles != null) {
-      native.fillPaperRect(
+      native.fillClearRect(
         handles: handles,
         left: left,
         top: top,
         rightExclusive: right,
         bottomExclusive: bottom,
-        paperR: _paperR,
-        paperG: _paperG,
-        paperB: _paperB,
       );
       for (final under in _layerTilesUnder(
         left: left,
@@ -452,16 +448,8 @@ class LazyCanvasRasterRgb {
     }
 
     for (var y = top; y < bottom; y += 1) {
-      // RGBX (R22-D): X writes 0 so the raster matches the native
-      // kernels byte for byte.
-      var target = (y * width + left) * 4;
-      for (var x = left; x < right; x += 1) {
-        rgb[target] = _paperR;
-        rgb[target + 1] = _paperG;
-        rgb[target + 2] = _paperB;
-        rgb[target + 3] = 0;
-        target += 4;
-      }
+      final rowStart = (y * width + left) * 4;
+      rgb.fillRange(rowStart, rowStart + (right - left) * 4, 0);
     }
     for (final under in _layerTilesUnder(
       left: left,
@@ -499,6 +487,8 @@ class LazyCanvasRasterRgb {
                     rgb[target + 2] * inverse +
                     127) ~/
                 255;
+            rgb[target + 3] =
+                (255 * effective + rgb[target + 3] * inverse + 127) ~/ 255;
           }
           source += 4;
           target += 4;
@@ -679,8 +669,8 @@ typedef _LayerTileUnder = ({
   int clipBottomExclusive,
 });
 
-/// Scanline flood fill over an RGB raster from the seed, within
-/// [FloodFillOptions.tolerance] of the SEED color; null when the seed is
+/// Scanline flood fill over the fill raster from the seed, within
+/// [FloodFillOptions.tolerance] of the SEED pixel; null when the seed is
 /// out of bounds. Includes expand + anti-alias post passes.
 ///
 /// R14-② performance contract: [ensureComposed] fires per COMPOSE-TILE
@@ -706,9 +696,7 @@ FloodFillRegion? floodFillRegion({
   }
   ensureComposed?.call(seedY * width + seedX);
   final seedIndex = (seedY * width + seedX) * 4;
-  final seedR = rgb[seedIndex];
-  final seedG = rgb[seedIndex + 1];
-  final seedB = rgb[seedIndex + 2];
+  final seed = seedAt(rgb, seedIndex);
   final tolerance = options.tolerance;
 
   // R20-C1 close-gap fill: barriers thickened by the gap radius (chamfer
@@ -731,9 +719,7 @@ FloodFillRegion? floodFillRegion({
         handles: nativeHandles,
         seedX: seedX,
         seedY: seedY,
-        seedR: seedR,
-        seedG: seedG,
-        seedB: seedB,
+        seed: seed,
         tolerance: tolerance,
         gapClosePx: options.gapClosePx,
       );
@@ -777,9 +763,7 @@ FloodFillRegion? floodFillRegion({
       height: height,
       seedX: seedX,
       seedY: seedY,
-      seedR: seedR,
-      seedG: seedG,
-      seedB: seedB,
+      seed: seed,
       options: options,
     );
   }
@@ -795,9 +779,7 @@ FloodFillRegion? floodFillRegion({
       handles: nativeHandles,
       seedX: seedX,
       seedY: seedY,
-      seedR: seedR,
-      seedG: seedG,
-      seedB: seedB,
+      seed: seed,
       tolerance: tolerance,
       ensureComposed: ensureComposed,
       ensureComposedBatch: ensureComposedBatch,
@@ -841,7 +823,7 @@ FloodFillRegion? floodFillRegion({
     // which starts from its own clean heap state.
   }
 
-  // Pure byte compare (rgbWithinTolerance) — the caller guarantees the
+  // Pure byte compare (pixelWithinTolerance) — the caller guarantees the
   // pixel's compose tile via the crossing checks below (one ensure per
   // 256px boundary).
   final filled = Uint8List(width * height);
@@ -864,12 +846,10 @@ FloodFillRegion? floodFillRegion({
       if ((left & 0xFF) == 0) {
         ensureComposed?.call(rowStart + left - 1);
       }
-      if (!rgbWithinTolerance(
+      if (!pixelWithinTolerance(
         rgb,
         (rowStart + left - 1) * 4,
-        seedR,
-        seedG,
-        seedB,
+        seed,
         tolerance,
       )) {
         break;
@@ -882,12 +862,10 @@ FloodFillRegion? floodFillRegion({
       if (((right + 1) & 0xFF) == 0) {
         ensureComposed?.call(rowStart + right + 1);
       }
-      if (!rgbWithinTolerance(
+      if (!pixelWithinTolerance(
         rgb,
         (rowStart + right + 1) * 4,
-        seedR,
-        seedG,
-        seedB,
+        seed,
         tolerance,
       )) {
         break;
@@ -918,12 +896,10 @@ FloodFillRegion? floodFillRegion({
         }
         final neighborIndex = neighborRow + x;
         if (filled[neighborIndex] == 0 &&
-            rgbWithinTolerance(
+            pixelWithinTolerance(
               rgb,
               neighborIndex * 4,
-              seedR,
-              seedG,
-              seedB,
+              seed,
               tolerance,
             )) {
           if (!runOpen) {
@@ -1061,7 +1037,7 @@ FloodFillRegion _cropAndFinishFloodRegion({
 /// reproduces this EXACTLY (integer chamfer math throughout; parity is
 /// pinned):
 ///
-/// 1. fillable = per-pixel tolerance test against the seed color;
+/// 1. fillable = per-pixel tolerance test against the seed;
 /// 2. chamfer 3-4 distance transform to the nearest barrier;
 /// 3. erode: only pixels farther than `3 × gap` chamfer units fill —
 ///    a leak through a gap narrower than ~2×gap can't survive. If the
@@ -1078,9 +1054,7 @@ FloodFillRegion? _gapCloseFloodRegion({
   required int height,
   required int seedX,
   required int seedY,
-  required int seedR,
-  required int seedG,
-  required int seedB,
+  required int seed,
   required FloodFillOptions options,
 }) {
   const infinity = 60000;
@@ -1089,7 +1063,7 @@ FloodFillRegion? _gapCloseFloodRegion({
 
   final fillable = Uint8List(pixelCount);
   for (var index = 0, base = 0; index < pixelCount; index += 1, base += 4) {
-    if (rgbWithinTolerance(rgb, base, seedR, seedG, seedB, tolerance)) {
+    if (pixelWithinTolerance(rgb, base, seed, tolerance)) {
       fillable[index] = 1;
     }
   }
@@ -1438,7 +1412,6 @@ List<BrushDab> buildFillDabs({
   required int color,
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
-  int paperColor = canvasPaperColor,
   LayerId? activeLayerId,
   LayerPlacement? space,
   SymmetryShape? symmetry,
@@ -1456,7 +1429,6 @@ List<BrushDab> buildFillDabs({
       cut: cut,
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
-      paperColor: paperColor,
       extendBeyondCanvas: extended,
       pasteboardReach: pasteboardReach,
       source: options.source,

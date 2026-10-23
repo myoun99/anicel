@@ -30,9 +30,10 @@ class ProjectBackground {
 
   /// What the paper actually puts into a picture: its colour, or nothing at
   /// all while it is absent. ONE answer for everything that reads the paper
-  /// as pixels — the painter, the eyedropper's paper fallback, the fill's
-  /// paper — so an absent paper cannot be skipped by one of them and sampled
-  /// as white by another. [argb] stays the kept colour a swatch shows.
+  /// as pixels — the painter, the eyedropper's paper fallback — so an
+  /// absent paper cannot be skipped by one of them and sampled as white by
+  /// another. [argb] stays the kept colour a swatch shows. (The fill reads
+  /// no paper at all — board F-416, `pixelWithinTolerance`.)
   int get paintedArgb => none ? 0x00000000 : argb;
 
   /// The default paper — R28 #9: PURE white.

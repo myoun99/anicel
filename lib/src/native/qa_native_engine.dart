@@ -5,7 +5,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 
-import '../core/rgb_tolerance.dart';
+import '../core/seed_tolerance.dart';
 import 'qa_engine_abi.dart';
 import 'native_scratch.dart';
 import 'native_upload_cache.dart';
@@ -60,7 +60,7 @@ final class QaTileBlocksAt {
 class QaNativeEngine {
   QaNativeEngine._(
     this._premultiplyRgba,
-    this._fillPaperRect,
+    this._fillClearRect,
     this._fillComposeTile,
     this._fillFinishMask,
     this._dabBlendBatch,
@@ -109,9 +109,6 @@ class QaNativeEngine {
 
   void fillComposeBatch({
     required int rasterWidth,
-    required int paperR,
-    required int paperG,
-    required int paperB,
     required List<
       ({
         int left,
@@ -172,9 +169,6 @@ class QaNativeEngine {
     _fillComposeBatch(
       _floodRgb.pointer,
       rasterWidth,
-      paperR,
-      paperG,
-      paperB,
       _composeItems.pointer,
       tiles.length,
       _composeBlends.pointer,
@@ -418,9 +412,7 @@ class QaNativeEngine {
     int height,
     int seedX,
     int seedY,
-    int seedR,
-    int seedG,
-    int seedB,
+    int seed,
     int tolerance,
     int gapPx,
     Pointer<Uint8> fillable,
@@ -450,9 +442,7 @@ class QaNativeEngine {
     required QaFloodNativeHandles handles,
     required int seedX,
     required int seedY,
-    required int seedR,
-    required int seedG,
-    required int seedB,
+    required int seed,
     required int tolerance,
     required int gapClosePx,
   }) {
@@ -475,9 +465,7 @@ class QaNativeEngine {
       height,
       seedX,
       seedY,
-      seedR,
-      seedG,
-      seedB,
+      seed,
       tolerance,
       gapClosePx,
       _gapFillable.pointer,
@@ -516,9 +504,7 @@ class QaNativeEngine {
     int height,
     int composeTileShift,
     int tilesX,
-    int seedR,
-    int seedG,
-    int seedB,
+    int seed,
     int tolerance,
     Pointer<Int32> stack,
     Pointer<Int32> stackSize,
@@ -531,9 +517,6 @@ class QaNativeEngine {
   final void Function(
     Pointer<Uint8> rgb,
     int rasterWidth,
-    int paperR,
-    int paperG,
-    int paperB,
     Pointer<QaComposeTileItemStruct> items,
     int itemCount,
     Pointer<QaComposeBlendStruct> blends,
@@ -547,11 +530,8 @@ class QaNativeEngine {
     int top,
     int rightExclusive,
     int bottomExclusive,
-    int paperR,
-    int paperG,
-    int paperB,
   )
-  _fillPaperRect;
+  _fillClearRect;
 
   final void Function(
     Pointer<Uint8> rgb,
@@ -930,31 +910,11 @@ class QaNativeEngine {
             Void Function(Pointer<Uint8>, Int32),
             void Function(Pointer<Uint8>, int)
           >('qa_premultiply_rgba');
-      final fillPaperRect = library
+      final fillClearRect = library
           .lookupFunction<
-            Void Function(
-              Pointer<Uint8>,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-              Int32,
-            ),
-            void Function(
-              Pointer<Uint8>,
-              int,
-              int,
-              int,
-              int,
-              int,
-              int,
-              int,
-              int,
-            )
-          >('qa_fill_paper_rect');
+            Void Function(Pointer<Uint8>, Int32, Int32, Int32, Int32, Int32),
+            void Function(Pointer<Uint8>, int, int, int, int, int)
+          >('qa_fill_clear_rect');
       final fillComposeTile = library
           .lookupFunction<
             Void Function(
@@ -1218,9 +1178,7 @@ class QaNativeEngine {
               Int32,
               Int32,
               Int32,
-              Int32,
-              Int32,
-              Int32,
+              Uint32,
               Int32,
               Int32,
               Pointer<Uint8>,
@@ -1232,8 +1190,6 @@ class QaNativeEngine {
             ),
             int Function(
               Pointer<Uint8>,
-              int,
-              int,
               int,
               int,
               int,
@@ -1259,9 +1215,7 @@ class QaNativeEngine {
               Int32,
               Int32,
               Int32,
-              Int32,
-              Int32,
-              Int32,
+              Uint32,
               Int32,
               Pointer<Int32>,
               Pointer<Int32>,
@@ -1273,8 +1227,6 @@ class QaNativeEngine {
               Pointer<Uint8>,
               Pointer<Uint8>,
               Pointer<Uint8>,
-              int,
-              int,
               int,
               int,
               int,
@@ -1309,18 +1261,12 @@ class QaNativeEngine {
             Void Function(
               Pointer<Uint8>,
               Int32,
-              Int32,
-              Int32,
-              Int32,
               Pointer<QaComposeTileItemStruct>,
               Int32,
               Pointer<QaComposeBlendStruct>,
             ),
             void Function(
               Pointer<Uint8>,
-              int,
-              int,
-              int,
               int,
               Pointer<QaComposeTileItemStruct>,
               int,
@@ -1408,7 +1354,7 @@ class QaNativeEngine {
           >('qa_cel_pixel_pass_tile');
       return QaNativeEngine._(
         premultiplyRgba,
-        fillPaperRect,
+        fillClearRect,
         fillComposeTile,
         fillFinishMask,
         dabBlendBatch,
@@ -1584,28 +1530,22 @@ class QaNativeEngine {
     _floodComposed.release();
   }
 
-  /// Fills a rect of the native fill raster with the paper color
-  /// (A-2c) — identical to the Dart paper loop.
-  void fillPaperRect({
+  /// Clears a rect of the native fill raster to nothing drawn (A-2c) —
+  /// identical to the Dart clear.
+  void fillClearRect({
     required QaFloodNativeHandles handles,
     required int left,
     required int top,
     required int rightExclusive,
     required int bottomExclusive,
-    required int paperR,
-    required int paperG,
-    required int paperB,
   }) {
-    _fillPaperRect(
+    _fillClearRect(
       _floodRgb.pointer,
       handles.width,
       left,
       top,
       rightExclusive,
       bottomExclusive,
-      paperR,
-      paperG,
-      paperB,
     );
   }
 
@@ -1655,9 +1595,7 @@ class QaNativeEngine {
     required QaFloodNativeHandles handles,
     required int seedX,
     required int seedY,
-    required int seedR,
-    required int seedG,
-    required int seedB,
+    required int seed,
     required int tolerance,
     required void Function(int index) ensureComposed,
     void Function(Int32List pixelIndices)? ensureComposedBatch,
@@ -1714,9 +1652,7 @@ class QaNativeEngine {
         height,
         handles.composeTileShift,
         handles.tilesX,
-        seedR,
-        seedG,
-        seedB,
+        seed,
         tolerance,
         _floodStack.pointer,
         _floodStackSize,
@@ -1758,12 +1694,10 @@ class QaNativeEngine {
               'floodFillRun: ensureComposed left tile $tile uncomposed',
             );
           }
-          if (rgbWithinTolerance(
+          if (pixelWithinTolerance(
             rgbView,
             index * 4,
-            seedR,
-            seedG,
-            seedB,
+            seed,
             tolerance,
           )) {
             filledView[index] = 255;

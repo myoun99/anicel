@@ -39,32 +39,23 @@ void main() {
       height: height,
       composeTileSize: 256,
     );
-    engine.fillPaperRect(
+    engine.fillClearRect(
       handles: handles,
       left: 0,
       top: 0,
       rightExclusive: width,
       bottomExclusive: height,
-      paperR: 250,
-      paperG: 250,
-      paperB: 250,
     );
-    // A border ring so the flood has real walls.
+    // A border ring of black ink so the flood has real walls.
     final rgb = handles.rgbView;
     for (var x = 0; x < width; x += 1) {
       for (final y in [0, height - 1]) {
-        final base = (y * width + x) * 4;
-        rgb[base] = 0;
-        rgb[base + 1] = 0;
-        rgb[base + 2] = 0;
+        rgb[(y * width + x) * 4 + 3] = 255;
       }
     }
     for (var y = 0; y < height; y += 1) {
       for (final x in [0, width - 1]) {
-        final base = (y * width + x) * 4;
-        rgb[base] = 0;
-        rgb[base + 1] = 0;
-        rgb[base + 2] = 0;
+        rgb[(y * width + x) * 4 + 3] = 255;
       }
     }
     handles.composedView.fillRange(0, handles.composedView.length, 1);
@@ -76,9 +67,7 @@ void main() {
         handles: handles,
         seedX: width ~/ 2,
         seedY: height ~/ 2,
-        seedR: 250,
-        seedG: 250,
-        seedB: 250,
+        seed: 0,
         tolerance: 32,
         ensureComposed: (_) {},
       )!;
@@ -135,25 +124,17 @@ void main() {
       height: height,
       composeTileSize: 256,
     );
-    engine.fillPaperRect(
+    engine.fillClearRect(
       handles: handles,
       left: 0,
       top: 0,
       rightExclusive: width,
       bottomExclusive: height,
-      paperR: 250,
-      paperG: 250,
-      paperB: 250,
     );
     // A border ring WITH GAPS: forces the real gap-close pipeline
     // (erode -> flood -> regrow), not the degenerate path.
     final rgb = handles.rgbView;
-    void ink(int x, int y) {
-      final base = (y * width + x) * 4;
-      rgb[base] = 0;
-      rgb[base + 1] = 0;
-      rgb[base + 2] = 0;
-    }
+    void ink(int x, int y) => rgb[(y * width + x) * 4 + 3] = 255;
 
     for (var x = 0; x < width; x += 1) {
       if (x % 977 < 3) {

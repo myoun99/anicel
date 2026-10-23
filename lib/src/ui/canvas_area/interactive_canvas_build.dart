@@ -540,7 +540,6 @@ class _InteractiveCanvasBuild {
         // writes the fill's field, not the brush's.
         opacity: _state.widget.brushToolState.value.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
-        paperColor: session.projectSettings.projectBackground.paintedArgb,
         // The 「현재」 of the fill's reference source (I-36) — the same
         // layer the eyedropper's reads, above.
         activeLayerId: session.activeLayer?.id,

@@ -141,7 +141,6 @@ typedef struct {
   uint8_t layer[LAYER_TILE * LAYER_TILE * 4];
   qa_compose_tile_item items[COMPOSE_ITEMS];
   qa_compose_blend blends[COMPOSE_ITEMS * 2];
-  int32_t paper_r, paper_g, paper_b;
   uint8_t alone[RASTER_W * RASTER_H * 4];
   uint8_t raster[RASTER_W * RASTER_H * 4];
 } pool_test_compose;
@@ -163,17 +162,15 @@ static uint32_t pool_test_next_byte(uint32_t* state) {
   return *state >> 24;
 }
 
-// A layer tile of noise, two blends of it on every compose tile, and a
-// paper of the caller's own: no two callers compose the same raster.
+// A layer tile of the caller's own noise, two blends of it on every
+// compose tile, the second as opaque as the caller's own: no two callers
+// compose the same raster.
 static void pool_test_set_compose(int caller) {
   pool_test_compose* c = &g_composes[caller];
   uint32_t state = 7u + (uint32_t)caller;
   for (int32_t i = 0; i < LAYER_TILE * LAYER_TILE * 4; i += 1) {
     c->layer[i] = (uint8_t)pool_test_next_byte(&state);
   }
-  c->paper_r = 10 * caller;
-  c->paper_g = 200 - caller;
-  c->paper_b = 50;
   int32_t item = 0;
   for (int32_t top = 0; top < RASTER_H; top += COMPOSE_TILE) {
     for (int32_t left = 0; left < RASTER_W; left += COMPOSE_TILE) {
@@ -194,31 +191,25 @@ static void pool_test_set_compose(int caller) {
 
 static void pool_test_compose_into(pool_test_compose* c, uint8_t* raster) {
   memset(raster, 0x5A, RASTER_W * RASTER_H * 4);
-  qa_fill_compose_batch(raster, RASTER_W, c->paper_r, c->paper_g, c->paper_b,
-                        c->items, COMPOSE_ITEMS, c->blends);
+  qa_fill_compose_batch(raster, RASTER_W, c->items, COMPOSE_ITEMS, c->blends);
 }
 
-// White paper with a wall of the caller's own — a vertical line with one
-// gap, at a place no other caller's is — so the fills differ, and each
-// crosses tiles through the gap.
+// Nothing drawn but a black wall of the caller's own — a vertical line
+// with one gap, at a place no other caller's is — so the fills differ,
+// and each crosses tiles through the gap.
 static void pool_test_set_fill(int caller) {
   pool_test_fill* f = &g_fills[caller];
-  memset(f->rgb, 255, sizeof(f->rgb));
-  for (int32_t i = 0; i < FILL_W * FILL_H; i += 1) {
-    f->rgb[i * 4 + 3] = 0;
-  }
+  memset(f->rgb, 0, sizeof(f->rgb));
   const int32_t wall_x = 90 + 60 * caller;
   const int32_t gap_top = 20 + 40 * caller;
   for (int32_t y = 0; y < FILL_H; y += 1) {
     if (y >= gap_top && y < gap_top + 10) {
       continue;
     }
-    uint8_t* px = &f->rgb[(y * FILL_W + wall_x) * 4];
-    px[0] = px[1] = px[2] = 0;
+    f->rgb[(y * FILL_W + wall_x) * 4 + 3] = 255;
   }
   for (int32_t x = wall_x; x < FILL_W; x += 1) {
-    uint8_t* px = &f->rgb[((gap_top + 30) * FILL_W + x) * 4];
-    px[0] = px[1] = px[2] = 0;
+    f->rgb[((gap_top + 30) * FILL_W + x) * 4 + 3] = 255;
   }
   memset(f->composed, 1, sizeof(f->composed));
 }
@@ -239,7 +230,7 @@ static int32_t pool_test_fill_once(pool_test_fill* f, uint8_t* filled,
   bounds[0] = bounds[1] = 1;
   bounds[2] = bounds[3] = 1;
   return qa_flood_fill_wave(f->rgb, filled, f->composed, FILL_W, FILL_H,
-                            FILL_SHIFT, FILL_TILES_X, 255, 255, 255, 0, stack,
+                            FILL_SHIFT, FILL_TILES_X, 0u, 0, stack,
                             &stack_size, candidates, FILL_CANDIDATES, bounds);
 }
 

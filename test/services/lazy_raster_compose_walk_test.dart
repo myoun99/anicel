@@ -85,9 +85,10 @@ void main() {
     );
   }
 
-  List<int> rgbAt(LazyCanvasRasterRgb raster, int rasterX, int rasterY) {
+  /// The raster's four bytes at a pixel: premultiplied colour, coverage.
+  List<int> pixelAt(LazyCanvasRasterRgb raster, int rasterX, int rasterY) {
     final base = (rasterY * raster.width + rasterX) * 4;
-    return raster.rgb.sublist(base, base + 3);
+    return raster.rgb.sublist(base, base + 4);
   }
 
   group('an 8×8 canvas with two layers, extended one canvas each way', () {
@@ -121,15 +122,15 @@ void main() {
       expect((raster.originX, raster.originY), (-8, -8));
       expect((raster.width, raster.height), (24, 24));
       // World (-1, -1) is the pasteboard tile (-1, -1): red at half
-      // opacity over paper → (255, 127, 127) by the integer source-over.
-      expect(rgbAt(raster, 7, 7), [255, 127, 127]);
+      // opacity over nothing → (128, 0, 0, 128) by the integer source-over.
+      expect(pixelAt(raster, 7, 7), [128, 0, 0, 128]);
       // World (-2, -1): the layer above is opaque blue.
-      expect(rgbAt(raster, 6, 7), [0, 0, 255]);
+      expect(pixelAt(raster, 6, 7), [0, 0, 255, 255]);
       // World (1, 2): green at alpha 128 × opacity 0.5.
-      expect(rgbAt(raster, 9, 10), [191, 255, 191]);
-      // Nowhere a tile exists: paper.
-      expect(rgbAt(raster, 0, 0), [255, 255, 255]);
-      expect(rgbAt(raster, 23, 23), [255, 255, 255]);
+      expect(pixelAt(raster, 9, 10), [0, 64, 0, 64]);
+      // Nowhere a tile exists: nothing — no paper (board F-416).
+      expect(pixelAt(raster, 0, 0), [0, 0, 0, 0]);
+      expect(pixelAt(raster, 23, 23), [0, 0, 0, 0]);
     }
 
     test('🚨the Dart compose reads tile -1 under a negative origin, not '
@@ -240,22 +241,29 @@ void main() {
       expect((raster.originX, raster.originY), (-300, -300));
       // Either side of the wall at raster 512 (world 212), same tile.
       for (final (worldX, worldY) in [(211, 5), (212, 5), (255, 255), (0, 0)]) {
-        expect(rgbAt(raster, worldX + 300, worldY + 300), [
+        expect(pixelAt(raster, worldX + 300, worldY + 300), [
           shade(worldX, worldY),
           255 - shade(worldX, worldY),
           worldX & 1,
+          255,
         ], reason: 'world ($worldX, $worldY)');
       }
       // The pasteboard tile (-1, -1), raster 44..300.
-      expect(rgbAt(raster, 44, 44), [
+      expect(pixelAt(raster, 44, 44), [
         shade(-256, -256),
         255 - shade(-256, -256),
         0,
+        255,
       ]);
-      expect(rgbAt(raster, 299, 299), [shade(-1, -1), 255 - shade(-1, -1), 1]);
-      // No tile at world (256, 0): paper.
-      expect(rgbAt(raster, 556, 300), [255, 255, 255]);
-      expect(rgbAt(raster, 43, 44), [255, 255, 255]);
+      expect(pixelAt(raster, 299, 299), [
+        shade(-1, -1),
+        255 - shade(-1, -1),
+        1,
+        255,
+      ]);
+      // No tile at world (256, 0): nothing.
+      expect(pixelAt(raster, 556, 300), [0, 0, 0, 0]);
+      expect(pixelAt(raster, 43, 44), [0, 0, 0, 0]);
     }
 
     test('the Dart compose clips the tile at the wall and keeps its bytes', () {

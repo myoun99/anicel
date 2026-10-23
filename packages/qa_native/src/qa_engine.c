@@ -1459,14 +1459,15 @@ QA_EXPORT void qa_widen_bytes(
 }
 
 // ---------------------------------------------------------------------------
-// Flood fill, frontier-stepped (R18 A-2b; RGBX + SSE2 R22-D).
+// Flood fill's tolerance tests (R18 A-2b; 4-byte pixels + SSE2 R22-D) -
+// the wave flood below and the close-gap fill share them.
 //
-// R22-D: the fill raster is RGBX - 4 bytes per pixel, X always 0 (the
-// paper fill writes whole words and the compose never touches byte 3).
-// One pixel is one 32-bit word and four pixels fill an SSE2 register,
-// so the span loops below test 4 px per step; scalar tails keep every
-// DECISION byte-identical to the Dart reference (which stays scalar
-// RGBX - the parity suite pins identical filled sets).
+// R22-D: the fill raster is 4 bytes per pixel - premultiplied RGB and
+// the coverage (F-416: it was RGBX over the paper, X always 0). One pixel
+// is one 32-bit word and four pixels fill an SSE2 register, so the span
+// loops below test 4 px per step; scalar tails keep every DECISION
+// byte-identical to the Dart reference (which stays scalar - the parity
+// suite pins identical filled sets).
 
 #if defined(QA_SSE2)
 #define QA_FLOOD_SSE2 1
@@ -1476,7 +1477,7 @@ static inline qa_vec4 qa_vec4_splat(uint32_t word) {
 }
 #elif defined(QA_NEON)
 // R28 NEON port: the ARM mirror of the SSE2 compare - same saturating
-// abs-diff (vabd), same X-lane mask, same <= tol semantics, so the
+// abs-diff (vabd) over all four lanes, same <= tol semantics, so the
 // decisions stay byte-identical (the permanent Dart oracle pins them
 // on-device). aarch64 only (vaddvq); 32-bit ARM keeps the scalar path.
 #define QA_FLOOD_NEON 1
@@ -1490,41 +1491,46 @@ static inline qa_vec4 qa_vec4_splat(uint32_t word) {
 #define QA_FLOOD_SIMD 1
 #endif
 
-// One-pixel tolerance test against the seed color (RGBX layout).
+// One-pixel tolerance test against the seed (RGBA layout: the seed is
+// packed as the raster holds a pixel, red in the low byte). Coverage is a
+// lane like the colours - a drawn pixel and the empty canvas differ by it
+// however alike their colour (F-416).
 static inline int qa_tol_ok1(
     const uint8_t* px,
-    int32_t seed_r,
-    int32_t seed_g,
-    int32_t seed_b,
+    uint32_t seed,
     int32_t tolerance) {
-  const int32_t dr = (int32_t)px[0] - seed_r;
-  const int32_t dg = (int32_t)px[1] - seed_g;
-  const int32_t db = (int32_t)px[2] - seed_b;
-  return dr <= tolerance && -dr <= tolerance && dg <= tolerance &&
-         -dg <= tolerance && db <= tolerance && -db <= tolerance;
+  for (int32_t lane = 0; lane < 4; lane += 1) {
+    const int32_t d =
+        (int32_t)px[lane] - (int32_t)((seed >> (8 * lane)) & 0xFFu);
+    if (d > tolerance || -d > tolerance) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+// [tolerance] in each of a pixel's four lanes - the SIMD compare's bound.
+static inline uint32_t qa_tol_lanes(int32_t tolerance) {
+  return (uint32_t)tolerance * 0x01010101u;
 }
 
 #if defined(QA_FLOOD_SSE2)
-// Bit i (0..3) set = pixel i of the 16-byte RGBX block is within
-// tolerance of the seed on R, G and B. The X lane is MASKED OUT of the
-// abs-diff, so the test matches the scalar compare under ANY X bytes -
-// no hidden "X must be 0" contract. The per-byte |p-seed| <= tol via
+// Bit i (0..3) set = pixel i of the 16-byte RGBA block is within
+// tolerance of the seed on every lane. The per-byte |p-seed| <= tol via
 // saturating unsigned abs-diff is exact for the integer compare above.
-static inline int qa_tol_ok4(const uint8_t* rgbx, qa_vec4 seed4, qa_vec4 tol4) {
-  const __m128i p = _mm_loadu_si128((const __m128i*)rgbx);
-  const __m128i d = _mm_and_si128(
-      _mm_or_si128(_mm_subs_epu8(p, seed4), _mm_subs_epu8(seed4, p)),
-      _mm_set1_epi32(0x00FFFFFF));
+static inline int qa_tol_ok4(const uint8_t* rgba, qa_vec4 seed4, qa_vec4 tol4) {
+  const __m128i p = _mm_loadu_si128((const __m128i*)rgba);
+  const __m128i d =
+      _mm_or_si128(_mm_subs_epu8(p, seed4), _mm_subs_epu8(seed4, p));
   const __m128i ok8 =
       _mm_cmpeq_epi8(_mm_subs_epu8(d, tol4), _mm_setzero_si128());
   const __m128i ok32 = _mm_cmpeq_epi32(ok8, _mm_set1_epi32(-1));
   return _mm_movemask_ps(_mm_castsi128_ps(ok32));
 }
 #elif defined(QA_FLOOD_NEON)
-static inline int qa_tol_ok4(const uint8_t* rgbx, qa_vec4 seed4, qa_vec4 tol4) {
-  const uint8x16_t p = vld1q_u8(rgbx);
-  const uint8x16_t xmask = vreinterpretq_u8_u32(vdupq_n_u32(0x00FFFFFFu));
-  const uint8x16_t d = vandq_u8(vabdq_u8(p, seed4), xmask);
+static inline int qa_tol_ok4(const uint8_t* rgba, qa_vec4 seed4, qa_vec4 tol4) {
+  const uint8x16_t p = vld1q_u8(rgba);
+  const uint8x16_t d = vabdq_u8(p, seed4);
   const uint8x16_t ok8 = vcleq_u8(d, tol4);
   const uint32x4_t ok32 =
       vceqq_u32(vreinterpretq_u32_u8(ok8), vdupq_n_u32(0xFFFFFFFFu));
@@ -1533,308 +1539,32 @@ static inline int qa_tol_ok4(const uint8_t* rgbx, qa_vec4 seed4, qa_vec4 tol4) {
 }
 #endif
 
-// EXACT port of the Dart scanline flood (floodFillRegion): expand each
-// popped run left/right, seed the rows above/below once per contiguous
-// matching run. The Dart original composes raster tiles LAZILY through a
-// callback; C cannot call back into Dart, so composition is stepped
-// instead: pixels that fall in a not-yet-composed 2^shift tile are
-// reported as CANDIDATES and treated as run boundaries. The Dart driver
-// composes those tiles, re-tests the candidates (filled[] dedupes), and
-// re-enters with them as fresh seeds. A scanline flood fills the whole
-// connected tolerance-region from any seed inside it, so the final
-// filled set is identical to the single-pass reference - the parity
-// suite pins it.
-//
-// Guards keep every early return BETWEEN runs (never mid-run): before a
-// pop, the call returns if the candidate buffer could not absorb a
-// whole worst-case run (~4*width) or the stack could not absorb its
-// pushes (~width). The driver then composes / grows and re-enters with
-// the stack state intact (it lives in caller-owned native memory).
-//
-// Returns the number of candidate pixel indices written.
-QA_EXPORT int32_t qa_flood_fill_step(
-    const uint8_t* rgb,
-    uint8_t* filled,
-    const uint8_t* composed,
-    int32_t width,
-    int32_t height,
-    int32_t compose_tile_shift,
-    int32_t tiles_x,
-    int32_t seed_r,
-    int32_t seed_g,
-    int32_t seed_b,
-    int32_t tolerance,
-    int32_t* stack,
-    int32_t* stack_size,
-    int32_t stack_capacity,
-    int32_t* candidates,
-    int32_t candidates_capacity,
-    int32_t* bounds) {
-  int32_t candidate_count = 0;
-  const int32_t candidate_margin = 4 * width + 16;
-  const int32_t stack_margin = width + 4;
-  int32_t min_x = bounds[0];
-  int32_t max_x = bounds[1];
-  int32_t min_y = bounds[2];
-  int32_t max_y = bounds[3];
-#ifdef QA_FLOOD_SIMD
-  const qa_vec4 seed4 = qa_vec4_splat(
-      (uint32_t)seed_r | ((uint32_t)seed_g << 8) |
-      ((uint32_t)seed_b << 16));
-  const qa_vec4 tol4 = qa_vec4_splat(
-      (uint32_t)tolerance | ((uint32_t)tolerance << 8) |
-      ((uint32_t)tolerance << 16));
-#endif
-
-  while (*stack_size > 0) {
-    if (candidate_count + candidate_margin > candidates_capacity ||
-        *stack_size + stack_margin > stack_capacity) {
-      break;
-    }
-    *stack_size -= 1;
-    const int32_t index = stack[*stack_size];
-    const int32_t y = index / width;
-    const int32_t row_start = y * width;
-    const int32_t tile_row = (y >> compose_tile_shift) * tiles_x;
-
-    // Expand the scanline run left and right; an uncomposed tile is a
-    // candidate + run boundary (the driver re-seeds it after compose).
-    // Scans run per compose-tile SEGMENT (composed[] is constant inside
-    // one), 4 px per SSE2 step with a scalar tail owning every edge
-    // decision - identical stop points to the plain loop.
-    int32_t left = index - row_start;
-    for (;;) {
-      if (left <= 0 || filled[row_start + left - 1] != 0) {
-        break;
-      }
-      const int32_t px = left - 1;
-      if (composed[tile_row + (px >> compose_tile_shift)] == 0) {
-        candidates[candidate_count] = row_start + px;
-        candidate_count += 1;
-        break;
-      }
-      const int32_t seg_start = (px >> compose_tile_shift)
-                                << compose_tile_shift;
-      int32_t x = px;
-      int32_t stop = 0;
-#ifdef QA_FLOOD_SIMD
-      while (x - 3 >= seg_start) {
-        uint32_t f4;
-        memcpy(&f4, filled + row_start + x - 3, 4);
-        if (f4 != 0) {
-          break;
-        }
-        if (qa_tol_ok4(
-                rgb + ((ptrdiff_t)(row_start + x - 3) << 2), seed4, tol4) !=
-            0xF) {
-          break;
-        }
-        memset(filled + row_start + x - 3, 255, 4);
-        x -= 4;
-      }
-#endif
-      while (x >= seg_start) {
-        const int32_t p = row_start + x;
-        if (filled[p] != 0 ||
-            !qa_tol_ok1(
-                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
-                tolerance)) {
-          stop = 1;
-          break;
-        }
-        filled[p] = 255;
-        x -= 1;
-      }
-      left = x + 1;
-      if (stop) {
-        break;
-      }
-    }
-    int32_t right = index - row_start;
-    for (;;) {
-      if (right >= width - 1 || filled[row_start + right + 1] != 0) {
-        break;
-      }
-      const int32_t px = right + 1;
-      if (composed[tile_row + (px >> compose_tile_shift)] == 0) {
-        candidates[candidate_count] = row_start + px;
-        candidate_count += 1;
-        break;
-      }
-      int32_t seg_end =
-          ((((px >> compose_tile_shift) + 1) << compose_tile_shift)) - 1;
-      if (seg_end > width - 1) {
-        seg_end = width - 1;
-      }
-      int32_t x = px;
-      int32_t stop = 0;
-#ifdef QA_FLOOD_SIMD
-      while (x + 3 <= seg_end) {
-        uint32_t f4;
-        memcpy(&f4, filled + row_start + x, 4);
-        if (f4 != 0) {
-          break;
-        }
-        if (qa_tol_ok4(rgb + ((ptrdiff_t)(row_start + x) << 2), seed4, tol4) !=
-            0xF) {
-          break;
-        }
-        memset(filled + row_start + x, 255, 4);
-        x += 4;
-      }
-#endif
-      while (x <= seg_end) {
-        const int32_t p = row_start + x;
-        if (filled[p] != 0 ||
-            !qa_tol_ok1(
-                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
-                tolerance)) {
-          stop = 1;
-          break;
-        }
-        filled[p] = 255;
-        x += 1;
-      }
-      right = x - 1;
-      if (stop) {
-        break;
-      }
-    }
-    if (left < min_x) min_x = left;
-    if (right > max_x) max_x = right;
-    if (y < min_y) min_y = y;
-    if (y > max_y) max_y = y;
-
-    // Seed the rows above and below across the run - ONE seed per
-    // contiguous matching run; uncomposed pixels are candidates and
-    // close the current run exactly like a non-match. The composed
-    // check hoists per segment; the SSE2 block computes a 4-px match
-    // mask (unfilled AND within tolerance) and a scalar walk over the
-    // bits runs the run_open state machine - decision-identical to the
-    // plain loop.
-    for (int32_t direction = 0; direction < 2; direction += 1) {
-      const int32_t neighbor_y = direction == 0 ? y - 1 : y + 1;
-      if (neighbor_y < 0 || neighbor_y >= height) {
-        continue;
-      }
-      const int32_t neighbor_row = neighbor_y * width;
-      const int32_t neighbor_tile_row =
-          (neighbor_y >> compose_tile_shift) * tiles_x;
-      int32_t run_open = 0;
-      int32_t x = left;
-      while (x <= right) {
-        if (composed[neighbor_tile_row + (x >> compose_tile_shift)] == 0) {
-          candidates[candidate_count] = neighbor_row + x;
-          candidate_count += 1;
-          run_open = 0;
-          x += 1;
-          continue;
-        }
-        int32_t seg_end =
-            ((((x >> compose_tile_shift) + 1) << compose_tile_shift)) - 1;
-        if (seg_end > right) {
-          seg_end = right;
-        }
-#ifdef QA_FLOOD_SIMD
-        while (x + 3 <= seg_end) {
-          const int32_t p0 = neighbor_row + x;
-          uint32_t f4;
-          memcpy(&f4, filled + p0, 4);
-          int32_t match =
-              qa_tol_ok4(rgb + ((ptrdiff_t)p0 << 2), seed4, tol4);
-          // Clear match bits for already-filled pixels (they close a
-          // run exactly like a non-match in the reference loop).
-          if (f4 != 0) {
-            if (f4 & 0xFFu) match &= ~1;
-            if (f4 & 0xFF00u) match &= ~2;
-            if (f4 & 0xFF0000u) match &= ~4;
-            if (f4 & 0xFF000000u) match &= ~8;
-          }
-          if (match == 0) {
-            run_open = 0;
-            x += 4;
-            continue;
-          }
-          for (int32_t i = 0; i < 4; i += 1) {
-            if (match & (1 << i)) {
-              if (!run_open) {
-                const int32_t p = p0 + i;
-                filled[p] = 255;
-                stack[*stack_size] = p;
-                *stack_size += 1;
-                run_open = 1;
-              }
-            } else {
-              run_open = 0;
-            }
-          }
-          x += 4;
-        }
-#endif
-        while (x <= seg_end) {
-          const int32_t p = neighbor_row + x;
-          if (filled[p] == 0 &&
-              qa_tol_ok1(
-                  rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
-                  tolerance)) {
-            if (!run_open) {
-              filled[p] = 255;
-              stack[*stack_size] = p;
-              *stack_size += 1;
-              run_open = 1;
-            }
-          } else {
-            run_open = 0;
-          }
-          x += 1;
-        }
-      }
-    }
-  }
-
-  bounds[0] = min_x;
-  bounds[1] = max_x;
-  bounds[2] = min_y;
-  bounds[3] = max_y;
-  return candidate_count;
-}
-
 // ---------------------------------------------------------------------------
 // Fill raster compose (R18 A-2c): LazyCanvasRasterRgb's per-tile compose
-// ported verbatim - the clean-run lab showed the lazy compose (paper
-// fill + integer source-over of layer tiles onto the RGB raster) is
-// most of what remains inside the fill.flood probe now that the flood
-// itself is native.
+// ported verbatim - the clean-run lab showed the lazy compose (clearing
+// + integer source-over of layer tiles onto the raster) is most of what
+// remains inside the fill.flood probe now that the flood itself is
+// native.
 
-// Fills a raster rect with the paper color (RGBX, 4 bytes per pixel;
-// X writes 0 for determinism - the SIMD tolerance compare masks the X
-// lane out, so nothing depends on it).
-QA_EXPORT void qa_fill_paper_rect(
+// Clears a raster rect to nothing drawn: every lane 0 (the raster is
+// premultiplied RGBA - no paper under it, F-416).
+QA_EXPORT void qa_fill_clear_rect(
     uint8_t* rgb,
     int32_t raster_width,
     int32_t left,
     int32_t top,
     int32_t right_exclusive,
-    int32_t bottom_exclusive,
-    int32_t paper_r,
-    int32_t paper_g,
-    int32_t paper_b) {
-  const uint32_t paper = (uint32_t)paper_r | ((uint32_t)paper_g << 8) |
-                         ((uint32_t)paper_b << 16);
+    int32_t bottom_exclusive) {
   for (int32_t y = top; y < bottom_exclusive; y += 1) {
-    uint32_t* dst =
-        (uint32_t*)(rgb + (((ptrdiff_t)y * raster_width + left) << 2));
-    for (int32_t x = left; x < right_exclusive; x += 1) {
-      *dst = paper;
-      dst += 1;
-    }
+    memset(
+        rgb + (((ptrdiff_t)y * raster_width + left) << 2), 0,
+        (size_t)(right_exclusive - left) << 2);
   }
 }
 
-// Integer source-over of one RGBA surface-tile clip onto the RGBX
-// raster (byte-rounded, exactly the Dart loop: effective =
-// (a*o+127)/255 etc.). The X byte stays untouched (0 from the paper
-// fill).
+// Integer source-over of one RGBA surface-tile clip onto the
+// premultiplied raster (byte-rounded, exactly the Dart loop: effective =
+// (a*o+127)/255 etc.); the fourth lane gathers the coverage the same way.
 QA_EXPORT void qa_fill_compose_tile(
     uint8_t* rgb,
     int32_t raster_width,
@@ -1860,6 +1590,7 @@ QA_EXPORT void qa_fill_compose_tile(
         dst[0] = (uint8_t)((src[0] * effective + dst[0] * inverse + 127) / 255);
         dst[1] = (uint8_t)((src[1] * effective + dst[1] * inverse + 127) / 255);
         dst[2] = (uint8_t)((src[2] * effective + dst[2] * inverse + 127) / 255);
+        dst[3] = (uint8_t)((255 * effective + dst[3] * inverse + 127) / 255);
       }
       src += 4;
       dst += 4;
@@ -2027,10 +1758,10 @@ QA_EXPORT void qa_fill_finish_mask(
 
 // ---------------------------------------------------------------------------
 // Batched fill compose (R25-3): the lazy raster used to compose each
-// 256px tile through per-tile serial FFI calls (paper rect + one call
-// per intersecting layer tile). One batch call now fans compose TILES
-// across the worker pool; within one tile the paper fill and the layer
-// blends run sequentially in order (source-over order IS the bytes),
+// 256px tile through per-tile serial FFI calls (a clear + one call per
+// intersecting layer tile). One batch call now fans compose TILES across
+// the worker pool; within one tile the clear and the layer blends run
+// sequentially in order (source-over order IS the bytes),
 // and tiles are disjoint - so the result is byte-identical to the
 // serial path while the wall time divides by cores.
 
@@ -2053,7 +1784,7 @@ QA_EXPORT int32_t qa_compose_blend_sizeof(void) {
   return (int32_t)sizeof(qa_compose_blend);
 }
 
-// One compose TILE of a batch: paper-fill its rect, then run its slice
+// One compose TILE of a batch: clear its rect, then run its slice
 // of the shared blend array in order. Mirrors QaComposeTileItemStruct.
 typedef struct {
   int32_t tile_left;
@@ -2075,7 +1806,6 @@ QA_EXPORT int32_t qa_compose_tile_item_sizeof(void) {
 typedef struct {
   uint8_t* rgb;
   int32_t raster_width;
-  int32_t paper_r, paper_g, paper_b;
   const qa_compose_tile_item* items;
   const qa_compose_blend* blends;
 } qa_compose_job;
@@ -2083,10 +1813,9 @@ typedef struct {
 static void qa_compose_batch_item(int32_t item_index, void* context) {
   const qa_compose_job* job = (const qa_compose_job*)context;
   const qa_compose_tile_item* item = &job->items[item_index];
-  qa_fill_paper_rect(
+  qa_fill_clear_rect(
       job->rgb, job->raster_width, item->tile_left, item->tile_top,
-      item->tile_right_exclusive, item->tile_bottom_exclusive, job->paper_r,
-      job->paper_g, job->paper_b);
+      item->tile_right_exclusive, item->tile_bottom_exclusive);
   for (int32_t i = 0; i < item->blend_count; i += 1) {
     const qa_compose_blend* blend = &job->blends[item->first_blend + i];
     qa_fill_compose_tile(
@@ -2100,14 +1829,10 @@ static void qa_compose_batch_item(int32_t item_index, void* context) {
 QA_EXPORT void qa_fill_compose_batch(
     uint8_t* rgb,
     int32_t raster_width,
-    int32_t paper_r,
-    int32_t paper_g,
-    int32_t paper_b,
     const qa_compose_tile_item* items,
     int32_t item_count,
     const qa_compose_blend* blends) {
-  qa_compose_job job = {rgb, raster_width, paper_r, paper_g, paper_b,
-                        items, blends};
+  qa_compose_job job = {rgb, raster_width, items, blends};
   qa_pool_run(qa_compose_batch_item, &job, item_count);
 }
 
@@ -2179,9 +1904,7 @@ QA_EXPORT int32_t qa_fill_gap_close_run(
     int32_t height,
     int32_t seed_x,
     int32_t seed_y,
-    int32_t seed_r,
-    int32_t seed_g,
-    int32_t seed_b,
+    uint32_t seed,
     int32_t tolerance,
     int32_t gap_px,
     uint8_t* fillable,
@@ -2193,14 +1916,10 @@ QA_EXPORT int32_t qa_fill_gap_close_run(
   const int64_t count = (int64_t)width * height;
   int64_t i = 0;
 #ifdef QA_FLOOD_SIMD
-  // Full-canvas tolerance mask, 4 px per step (RGBX) - at 8K this pass
+  // Full-canvas tolerance mask, 4 px per step (RGBA) - at 8K this pass
   // alone walks 132MB.
-  const qa_vec4 seed4 = qa_vec4_splat(
-      (uint32_t)seed_r | ((uint32_t)seed_g << 8) |
-      ((uint32_t)seed_b << 16));
-  const qa_vec4 tol4 = qa_vec4_splat(
-      (uint32_t)tolerance | ((uint32_t)tolerance << 8) |
-      ((uint32_t)tolerance << 16));
+  const qa_vec4 seed4 = qa_vec4_splat(seed);
+  const qa_vec4 tol4 = qa_vec4_splat(qa_tol_lanes(tolerance));
   for (; i + 4 <= count; i += 4) {
     const int32_t ok = qa_tol_ok4(rgb + (i << 2), seed4, tol4);
     fillable[i] = (uint8_t)(ok & 1);
@@ -2211,7 +1930,7 @@ QA_EXPORT int32_t qa_fill_gap_close_run(
 #endif
   for (; i < count; i += 1) {
     fillable[i] = qa_tol_ok1(
-                      rgb + (i << 2), seed_r, seed_g, seed_b, tolerance)
+                      rgb + (i << 2), seed, tolerance)
                       ? 1
                       : 0;
   }
@@ -3603,9 +3322,10 @@ QA_EXPORT void qa_alpha_bounds_tiles(
 // ---------------------------------------------------------------------------
 // Parallel flood fill (R22-E3): wave-parallel connected growth.
 //
-// The sequential stepper (qa_flood_fill_step) grows the region pixel by
-// pixel; at 64MP it is the app's dominant fill term. This engine keeps
-// the SAME lazy-compose protocol with the Dart driver (uncomposed
+// A sequential stepper grows the region pixel by pixel; at 64MP it was
+// the app's dominant fill term (↩️`qa_flood_fill_step`, R18 A-2b — unbound
+// since this engine replaced it, deleted with F-416). This engine keeps
+// the lazy-compose protocol with the Dart driver (uncomposed
 // pixels come back as candidates) but grows the region one compose-tile
 // WAVE at a time: every tile with pending seeds floods LOCALLY (scan-
 // line + the SSE2 tolerance spans, no composed checks inside a tile) in
@@ -3669,7 +3389,8 @@ static struct {
   uint8_t* filled;
   int32_t width;
   int32_t height;
-  int32_t seed_r, seed_g, seed_b, tolerance;
+  uint32_t seed;
+  int32_t tolerance;
 } g_wave_job;
 
 // Worker-local scanline stack, lazily allocated per thread and kept.
@@ -3770,17 +3491,11 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
   const uint8_t* rgb = g_wave_job.rgb;
   uint8_t* filled = g_wave_job.filled;
   const int32_t width = g_wave_job.width;
-  const int32_t seed_r = g_wave_job.seed_r;
-  const int32_t seed_g = g_wave_job.seed_g;
-  const int32_t seed_b = g_wave_job.seed_b;
+  const uint32_t seed = g_wave_job.seed;
   const int32_t tolerance = g_wave_job.tolerance;
 #ifdef QA_FLOOD_SIMD
-  const qa_vec4 seed4 = qa_vec4_splat(
-      (uint32_t)seed_r | ((uint32_t)seed_g << 8) |
-      ((uint32_t)seed_b << 16));
-  const qa_vec4 tol4 = qa_vec4_splat(
-      (uint32_t)tolerance | ((uint32_t)tolerance << 8) |
-      ((uint32_t)tolerance << 16));
+  const qa_vec4 seed4 = qa_vec4_splat(seed);
+  const qa_vec4 tol4 = qa_vec4_splat(qa_tol_lanes(tolerance));
 #endif
 
   if (g_wave_local_stack == NULL) {
@@ -3800,7 +3515,7 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
     const int32_t p = pending[i];
     if (filled[p] == 0) {
       if (!qa_tol_ok1(
-              rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b, tolerance)) {
+              rgb + ((ptrdiff_t)p << 2), seed, tolerance)) {
         continue;
       }
       const int32_t x = p % width;
@@ -3853,7 +3568,7 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
         const int32_t p = row_start + x;
         if (filled[p] != 0 ||
             !qa_tol_ok1(
-                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                rgb + ((ptrdiff_t)p << 2), seed,
                 tolerance)) {
           break;
         }
@@ -3887,7 +3602,7 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
         const int32_t p = row_start + x;
         if (filled[p] != 0 ||
             !qa_tol_ok1(
-                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                rgb + ((ptrdiff_t)p << 2), seed,
                 tolerance)) {
           break;
         }
@@ -3914,7 +3629,7 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
         const int32_t p = neighbor_row + x;
         if (filled[p] == 0 &&
             qa_tol_ok1(
-                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                rgb + ((ptrdiff_t)p << 2), seed,
                 tolerance)) {
           if (!run_open) {
             qa_wave_fill_px(t, tile_id, x, neighbor_y);
@@ -3948,9 +3663,7 @@ static int32_t qa_flood_fill_wave_owned(
     int32_t height,
     int32_t compose_tile_shift,
     int32_t tiles_x,
-    int32_t seed_r,
-    int32_t seed_g,
-    int32_t seed_b,
+    uint32_t seed,
     int32_t tolerance,
     int32_t* stack,
     int32_t* stack_size,
@@ -4056,9 +3769,7 @@ static int32_t qa_flood_fill_wave_owned(
   g_wave_job.filled = filled;
   g_wave_job.width = width;
   g_wave_job.height = height;
-  g_wave_job.seed_r = seed_r;
-  g_wave_job.seed_g = seed_g;
-  g_wave_job.seed_b = seed_b;
+  g_wave_job.seed = seed;
   g_wave_job.tolerance = tolerance;
 
   while (queue_count > 0) {
@@ -4147,9 +3858,7 @@ QA_EXPORT int32_t qa_flood_fill_wave(
     int32_t height,
     int32_t compose_tile_shift,
     int32_t tiles_x,
-    int32_t seed_r,
-    int32_t seed_g,
-    int32_t seed_b,
+    uint32_t seed,
     int32_t tolerance,
     int32_t* stack,
     int32_t* stack_size,
@@ -4161,7 +3870,7 @@ QA_EXPORT int32_t qa_flood_fill_wave(
   }
   const int32_t candidate_count = qa_flood_fill_wave_owned(
       rgb, filled, composed, width, height, compose_tile_shift, tiles_x,
-      seed_r, seed_g, seed_b, tolerance, stack, stack_size, candidates,
+      seed, tolerance, stack, stack_size, candidates,
       candidates_capacity, bounds);
   qa_release(&g_wave_owned);
   return candidate_count;
@@ -6526,4 +6235,8 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // 0 and the rest the incoming byte, forward only. Sizeof moves.
 // v53: QA_DAB_FLAG_TEXTURE_HEIGHT - the paper's height cuts a dab's
 // coverage (F-451). An older engine would multiply it.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 53; }
+// v54: the fill raster is premultiplied RGBA over nothing - no paper -
+// and every flood takes its seed as one packed RGBA pixel, the coverage
+// a lane like the colours (F-416). qa_fill_paper_rect becomes
+// qa_fill_clear_rect; qa_fill_compose_batch loses the paper.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 54; }
