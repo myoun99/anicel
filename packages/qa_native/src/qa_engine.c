@@ -2068,29 +2068,32 @@ QA_EXPORT int32_t qa_compose_tile_item_sizeof(void) {
   return (int32_t)sizeof(qa_compose_tile_item);
 }
 
-static struct {
+// One call's job, on its caller's stack. ↩️It was a static, and two
+// callers at once — two isolates, each on a thread of its own — would
+// each have run the other's tiles (card clip-import-hangs-on-three-samples,
+// 2026-10-23).
+typedef struct {
   uint8_t* rgb;
   int32_t raster_width;
   int32_t paper_r, paper_g, paper_b;
   const qa_compose_tile_item* items;
   const qa_compose_blend* blends;
-} g_compose_job;
+} qa_compose_job;
 
 static void qa_compose_batch_item(int32_t item_index, void* context) {
-  (void)context;
-  const qa_compose_tile_item* item = &g_compose_job.items[item_index];
+  const qa_compose_job* job = (const qa_compose_job*)context;
+  const qa_compose_tile_item* item = &job->items[item_index];
   qa_fill_paper_rect(
-      g_compose_job.rgb, g_compose_job.raster_width, item->tile_left,
-      item->tile_top, item->tile_right_exclusive, item->tile_bottom_exclusive,
-      g_compose_job.paper_r, g_compose_job.paper_g, g_compose_job.paper_b);
+      job->rgb, job->raster_width, item->tile_left, item->tile_top,
+      item->tile_right_exclusive, item->tile_bottom_exclusive, job->paper_r,
+      job->paper_g, job->paper_b);
   for (int32_t i = 0; i < item->blend_count; i += 1) {
-    const qa_compose_blend* blend =
-        &g_compose_job.blends[item->first_blend + i];
+    const qa_compose_blend* blend = &job->blends[item->first_blend + i];
     qa_fill_compose_tile(
-        g_compose_job.rgb, g_compose_job.raster_width, blend->tile_pixels,
-        blend->tile_size, blend->base_x, blend->base_y, blend->clip_left,
-        blend->clip_top, blend->clip_right_exclusive,
-        blend->clip_bottom_exclusive, blend->opacity_int);
+        job->rgb, job->raster_width, blend->tile_pixels, blend->tile_size,
+        blend->base_x, blend->base_y, blend->clip_left, blend->clip_top,
+        blend->clip_right_exclusive, blend->clip_bottom_exclusive,
+        blend->opacity_int);
   }
 }
 
@@ -2103,14 +2106,9 @@ QA_EXPORT void qa_fill_compose_batch(
     const qa_compose_tile_item* items,
     int32_t item_count,
     const qa_compose_blend* blends) {
-  g_compose_job.rgb = rgb;
-  g_compose_job.raster_width = raster_width;
-  g_compose_job.paper_r = paper_r;
-  g_compose_job.paper_g = paper_g;
-  g_compose_job.paper_b = paper_b;
-  g_compose_job.items = items;
-  g_compose_job.blends = blends;
-  qa_pool_run(qa_compose_batch_item, NULL, item_count);
+  qa_compose_job job = {rgb, raster_width, paper_r, paper_g, paper_b,
+                        items, blends};
+  qa_pool_run(qa_compose_batch_item, &job, item_count);
 }
 
 // ---------------------------------------------------------------------------
@@ -2352,6 +2350,19 @@ QA_EXPORT int32_t qa_stamp_blend_tile(
 // pthread mirror below (R22-E2) - same dynamic atomic distribution,
 // same byte-identical contract. QA_ENGINE_THREADS caps the TOTAL
 // thread count including the caller (0 or 1 disables the pool).
+//
+// 🚨ONE CALLER OWNS THE POOL AT A TIME; ANY OTHER RUNS ITS OWN ITEMS ON
+// ITS OWN THREAD (qa_pool_run). The pool is one for the process and so
+// are its job slot and its wake-ups, while every isolate that loads the
+// engine calls it from a thread of its own. Two at once overwrote each
+// other's job, and with auto-reset wake-ups a worker woken once for two
+// jobs left one caller waiting on a signal nobody would send: a .clip
+// whose vector layers were drawn on several workers never finished
+// opening (card clip-import-hangs-on-three-samples, 2026-10-23 — three
+// samples, every time, and none with QA_ENGINE_THREADS=1).
+// ⛔Not a wait for the pool: a caller held behind another's job — the UI
+// thread behind an import's — is the stall the pool is here to shorten,
+// and the items come out byte-identical on any number of threads.
 
 // One tile's span of a batch job. Field order/types MUST match the Dart
 // QaTileSpanStruct exactly; the loader cross-checks qa_tile_span_sizeof.
@@ -2399,6 +2410,18 @@ QA_EXPORT int32_t qa_tile_span_sizeof(void) {
 #include <process.h>
 #include <stdlib.h>
 
+// A flag one thread holds at a time: qa_claim answers whether this one now
+// does — until it calls qa_release.
+typedef volatile LONG qa_claim_flag;
+
+static int qa_claim(qa_claim_flag* flag) {
+  return InterlockedCompareExchange(flag, 1, 0) == 0;
+}
+
+static void qa_release(qa_claim_flag* flag) {
+  InterlockedExchange(flag, 0);
+}
+
 static struct {
   int initialized;
   int worker_count;
@@ -2409,6 +2432,7 @@ static struct {
   void* job_context;
   volatile LONG next_item;
   int32_t item_count;
+  qa_claim_flag owned;
 } g_pool;
 
 static void qa_pool_run_items(void) {
@@ -2463,19 +2487,12 @@ static void qa_pool_init_once(void) {
   }
 }
 
-// Runs job_fn(0..item_count-1, context) across the pool + the caller;
-// returns only when every item completed.
-static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
-  if (item_count <= 0) {
-    return;
-  }
-  qa_pool_init_once();
-  if (g_pool.worker_count == 0 || item_count == 1) {
-    for (int32_t i = 0; i < item_count; i += 1) {
-      job_fn(i, context);
-    }
-    return;
-  }
+// Runs job_fn(0..item_count-1, context) across the workers + the caller,
+// which owns the pool; returns only when every item completed.
+static void qa_pool_spread(
+    qa_job_fn job_fn,
+    void* context,
+    int32_t item_count) {
   g_pool.job_fn = job_fn;
   g_pool.job_context = context;
   g_pool.item_count = item_count;
@@ -2505,6 +2522,20 @@ static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
 #include <stdlib.h>
 #include <unistd.h>
 
+// A flag one thread holds at a time: qa_claim answers whether this one now
+// does — until it calls qa_release.
+typedef int32_t qa_claim_flag;
+
+static int qa_claim(qa_claim_flag* flag) {
+  qa_claim_flag unclaimed = 0;
+  return __atomic_compare_exchange_n(
+      flag, &unclaimed, 1, 0, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
+}
+
+static void qa_release(qa_claim_flag* flag) {
+  __atomic_store_n(flag, 0, __ATOMIC_RELEASE);
+}
+
 static struct {
   int initialized;
   int worker_count;
@@ -2518,6 +2549,7 @@ static struct {
   void* job_context;
   volatile int32_t next_item;
   int32_t item_count;
+  qa_claim_flag owned;
 } g_pool;
 
 static void qa_pool_run_items(void) {
@@ -2575,19 +2607,12 @@ static void qa_pool_init_once(void) {
   }
 }
 
-// Runs job_fn(0..item_count-1, context) across the pool + the caller;
-// returns only when every item completed.
-static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
-  if (item_count <= 0) {
-    return;
-  }
-  qa_pool_init_once();
-  if (g_pool.worker_count == 0 || item_count == 1) {
-    for (int32_t i = 0; i < item_count; i += 1) {
-      job_fn(i, context);
-    }
-    return;
-  }
+// Runs job_fn(0..item_count-1, context) across the workers + the caller,
+// which owns the pool; returns only when every item completed.
+static void qa_pool_spread(
+    qa_job_fn job_fn,
+    void* context,
+    int32_t item_count) {
   g_pool.job_fn = job_fn;
   g_pool.job_context = context;
   g_pool.item_count = item_count;
@@ -2610,6 +2635,34 @@ static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
 }
 
 #endif
+
+// Runs job_fn(0..item_count-1, context) on the calling thread alone.
+static void qa_run_here(qa_job_fn job_fn, void* context, int32_t item_count) {
+  for (int32_t i = 0; i < item_count; i += 1) {
+    job_fn(i, context);
+  }
+}
+
+// Runs job_fn(0..item_count-1, context) across the pool + the caller — or
+// on the caller's thread alone while another caller owns the pool (the
+// head of the pool says why); returns only when every item completed.
+static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
+  if (item_count <= 0) {
+    return;
+  }
+  if (item_count == 1 || !qa_claim(&g_pool.owned)) {
+    qa_run_here(job_fn, context, item_count);
+    return;
+  }
+  // Started by its first owner, so never by two threads at once.
+  qa_pool_init_once();
+  if (g_pool.worker_count == 0) {
+    qa_run_here(job_fn, context, item_count);
+  } else {
+    qa_pool_spread(job_fn, context, item_count);
+  }
+  qa_release(&g_pool.owned);
+}
 
 // --- Batched generic dab blend -------------------------------------------
 //
@@ -3886,14 +3939,8 @@ static void qa_wave_flood_wave_item(int32_t item_index, void* context) {
   qa_wave_flood_tile(g_wave.wave_list[item_index], NULL);
 }
 
-// One full lazy-protocol round: floods EVERYTHING reachable through
-// currently-composed tiles (wave-parallel), returns crossings into
-// uncomposed tiles as candidates (same contract as the sequential
-// stepper: the driver composes them, re-seeds the matches, re-enters).
-// stack in: the driver's seeds; out: always fully consumed (0).
-// Returns the candidate count, or -1 on any allocation/bound failure -
-// the caller redoes the fill on the sequential path from clean state.
-QA_EXPORT int32_t qa_flood_fill_wave(
+// qa_flood_fill_wave's round, run by the caller that holds the arena.
+static int32_t qa_flood_fill_wave_owned(
     const uint8_t* rgb,
     uint8_t* filled,
     const uint8_t* composed,
@@ -4076,6 +4123,47 @@ QA_EXPORT int32_t qa_flood_fill_wave(
   bounds[1] = max_x;
   bounds[2] = min_y;
   bounds[3] = max_y;
+  return candidate_count;
+}
+
+// The arena (g_wave, g_wave_job) is one for the process, like the pool:
+// one fill at a time holds it, and another finds the round failed (card
+// clip-import-hangs-on-three-samples, 2026-10-23).
+static qa_claim_flag g_wave_owned;
+
+// One full lazy-protocol round: floods EVERYTHING reachable through
+// currently-composed tiles (wave-parallel), returns crossings into
+// uncomposed tiles as candidates (same contract as the sequential
+// stepper: the driver composes them, re-seeds the matches, re-enters).
+// stack in: the driver's seeds; out: always fully consumed (0).
+// Returns the candidate count, or -1 on any allocation/bound failure or
+// while another fill holds the arena - the caller redoes the fill on the
+// sequential path from clean state.
+QA_EXPORT int32_t qa_flood_fill_wave(
+    const uint8_t* rgb,
+    uint8_t* filled,
+    const uint8_t* composed,
+    int32_t width,
+    int32_t height,
+    int32_t compose_tile_shift,
+    int32_t tiles_x,
+    int32_t seed_r,
+    int32_t seed_g,
+    int32_t seed_b,
+    int32_t tolerance,
+    int32_t* stack,
+    int32_t* stack_size,
+    int32_t* candidates,
+    int32_t candidates_capacity,
+    int32_t* bounds) {
+  if (!qa_claim(&g_wave_owned)) {
+    return -1;
+  }
+  const int32_t candidate_count = qa_flood_fill_wave_owned(
+      rgb, filled, composed, width, height, compose_tile_shift, tiles_x,
+      seed_r, seed_g, seed_b, tolerance, stack, stack_size, candidates,
+      candidates_capacity, bounds);
+  qa_release(&g_wave_owned);
   return candidate_count;
 }
 

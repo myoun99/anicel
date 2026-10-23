@@ -1648,7 +1648,8 @@ class QaNativeEngine {
   /// pending. Returns the filled mask as a view over engine memory
   /// (valid until the next fill) plus the bounds — result set identical
   /// to the Dart reference by construction (parity-pinned). Null on an
-  /// internal wave failure (allocation/bound belt): the caller redoes
+  /// internal wave failure (allocation/bound belt), or while another
+  /// isolate's fill holds the engine's one wave arena: the caller redoes
   /// the fill on the Dart path from clean state.
   ({Uint8List filled, int minX, int maxX, int minY, int maxY})? floodFillRun({
     required QaFloodNativeHandles handles,
@@ -1725,7 +1726,8 @@ class QaNativeEngine {
       );
       if (candidateCount < 0) {
         // Wave arena failure (belt; the bounds make it unreachable in
-        // practice) — the caller redoes the fill on the Dart path.
+        // practice) or the arena held by another isolate's fill — the
+        // caller redoes the fill on the Dart path.
         return null;
       }
       if (candidateCount > 0) {
