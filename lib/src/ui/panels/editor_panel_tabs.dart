@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
+import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
 import '../widgets/drag_chip.dart';
 import '../widgets/grip_band.dart';
 import '../widgets/kept_tail_row.dart';
@@ -33,6 +34,7 @@ class EditorPanelTab {
     this.cachesContent = false,
     this.staticRaster = true,
     this.stillRaster = true,
+    this.sparesSplitters = true,
     this.sillTrailing,
     this.collapsedExtent = 0,
     this.contentIdentity,
@@ -108,6 +110,15 @@ class EditorPanelTab {
   /// 「결과 절대 바뀌면 안되는건 캔버스뿐임」.
   final bool stillRaster;
 
+  /// Whether the content stands off the edges its group's splitters lie on
+  /// ([DockSplitterEdges]), so a scrollbar on such an edge is not under the
+  /// band. Defaults to ON.
+  ///
+  /// 🗣️F-452 (유저 2026-10-23): 「타임라인/콘티패널은 예외. 겹치는게
+  /// 세로스크롤바인데 여긴 애초에 큰 스크롤바 써서 신경안쓰이고 공간 안주는게
+  /// 세련되보임」.
+  final bool sparesSplitters;
+
   /// What THIS tab puts on the group's 문턱, right-aligned, ahead of the
   /// group's own [EditorPanelTabs.trailing].
   ///
@@ -151,6 +162,7 @@ class EditorPanelTab {
       cachesContent: cachesContent,
       staticRaster: staticRaster,
       stillRaster: stillRaster,
+      sparesSplitters: sparesSplitters,
       sillTrailing: sill == null
           ? null
           : (context) => KeyedSubtree(key: key, child: sill(context)),
@@ -448,9 +460,17 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                         // dependency marks its dependents dirty directly —
                         // so a fold reaches the panel without dropping the
                         // cache.
-                        child: PanelCollapsedScope(
-                          collapsed: widget.collapsed,
-                          child: content,
+                        child: Padding(
+                          // Mounted whether it pads or not: a panel moved
+                          // between rails changes how far it stands off,
+                          // never what it sits in (F-103's one tree shape).
+                          padding: active.sparesSplitters
+                              ? DockSplitterEdges.of(context)
+                              : EdgeInsets.zero,
+                          child: PanelCollapsedScope(
+                            collapsed: widget.collapsed,
+                            child: content,
+                          ),
                         ),
                       ),
                     if (widget.flash != null) _flashOverlay(tabs),

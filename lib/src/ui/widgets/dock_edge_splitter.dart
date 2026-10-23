@@ -323,6 +323,44 @@ class TravelDebt {
   void clear() => _owed = 0;
 }
 
+/// The edges of a panel its splitters lie along, each as deep as the band
+/// reaches — the room a panel's content leaves them.
+///
+/// 🗣️F-452 (유저 2026-10-23): 「브러시 도구 라이브러리의 스크롤바는 스플리터
+/// 자리를 따로 두고 스크롤바 둬서 서로 안겹치는데, 다른 라이브러리나
+/// 도구설정패널도 동일하게 … 스플리터가 생길때는 자리 안겹치게 공간 주도록.
+/// 패널들 기본 그런식이지만, 타임라인/콘티패널은 예외」.
+///
+/// Whoever lays a panel's grips says, from the same place, which edges they
+/// are on; the tab group keeps its content off them unless the tab opts
+/// out (`EditorPanelTab.sparesSplitters`).
+class DockSplitterEdges extends InheritedWidget {
+  DockSplitterEdges({
+    super.key,
+    bool left = false,
+    bool top = false,
+    bool right = false,
+    bool bottom = false,
+    required super.child,
+  }) : edges = EdgeInsets.only(
+         left: left ? DockEdgeSplitter.thickness : 0,
+         top: top ? DockEdgeSplitter.thickness : 0,
+         right: right ? DockEdgeSplitter.thickness : 0,
+         bottom: bottom ? DockEdgeSplitter.thickness : 0,
+       );
+
+  final EdgeInsets edges;
+
+  /// Nothing outside any panel a splitter lies on.
+  static EdgeInsets of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<DockSplitterEdges>()?.edges ??
+      EdgeInsets.zero;
+
+  @override
+  bool updateShouldNotify(DockSplitterEdges oldWidget) =>
+      edges != oldWidget.edges;
+}
+
 /// A panel's CORNER, where its two grips meet: one drag moves both edges.
 ///
 /// 🗣️I-60 (유저 2026-10-02): 「패널의 꼭짓점 끌어서 x값y값 동시 조절하는기능

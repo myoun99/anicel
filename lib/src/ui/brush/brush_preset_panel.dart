@@ -24,6 +24,7 @@ import '../widgets/app_scrollbar_lane.dart';
 import '../widgets/app_window.dart';
 import '../widgets/axis_bar_gesture.dart' show OwningMultiDragGestureRecognizer;
 import '../widgets/content_scrollbar.dart';
+import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import 'brush_group_icon_glyph.dart';
@@ -1179,7 +1180,11 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   ) {
     return EditorPanelFrame(
       title: AppText.strings.brBrushesTitle,
-      bodyPadding: const EdgeInsets.all(5),
+      // 5 off each edge of the panel — and where a splitter lies along one,
+      // the room the tab group already leaves it is that 5 (F-452: this
+      // library was the one whose bar already cleared the band, so it
+      // looks as it did). The header stands between the body and the top.
+      bodyPadding: _offTheEdges(DockSplitterEdges.of(context)),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1776,3 +1781,15 @@ class _BrushPresetRow extends StatelessWidget {
     );
   }
 }
+
+/// How far the library's body stands off the panel's edges.
+const double _libraryMargin = 5;
+
+/// The body's padding: [_libraryMargin] from the panel's sides and bottom,
+/// less what [spared] already keeps clear there.
+EdgeInsets _offTheEdges(EdgeInsets spared) => EdgeInsets.fromLTRB(
+  (_libraryMargin - spared.left).clamp(0, _libraryMargin),
+  _libraryMargin,
+  (_libraryMargin - spared.right).clamp(0, _libraryMargin),
+  (_libraryMargin - spared.bottom).clamp(0, _libraryMargin),
+);

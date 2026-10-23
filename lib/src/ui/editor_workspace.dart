@@ -2758,7 +2758,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       height: frame.hasBottomDock ? frame.bottomHeight : null,
       child: _docks.buildBottomDock(
         availableExtent: frame.constraints.maxHeight,
-        content: bottomContent,
+        content: bottomContent == null
+            ? null
+            : _bottomDockSplitterEdges(frame.onTop, bottomContent),
         inset: frame.bottomInset > 0,
         onTop: frame.onTop,
         // Every grip the region has, laid on its own
@@ -2767,6 +2769,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       ),
     );
   }
+
+  /// [content] told the edges [_bottomDockGrips] lays its grips on
+  /// (F-452): both sides, and the artwork-facing edge while unfolded.
+  Widget _bottomDockSplitterEdges(bool onTop, Widget content) =>
+      DockSplitterEdges(
+        left: true,
+        right: true,
+        top: !_bottomDockCollapsed && !onTop,
+        bottom: !_bottomDockCollapsed && onTop,
+        child: content,
+      );
 
   List<Widget> _bottomDockGrips(_WorkspaceFrame frame) {
     // The widest an inset may be: the region keeps at least

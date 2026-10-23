@@ -922,6 +922,8 @@ class _WorkspaceTabs {
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
           cachesContent: true,
+          // F-452: its bars are thick — the splitter may lie over them.
+          sparesSplitters: false,
           // 유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로. Only the
           // ACTIVE tab's sill controls are mounted, so the timeline's
           // active-cut transport and the storyboard's all-cuts one share
@@ -1063,6 +1065,8 @@ class _WorkspaceTabs {
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
           cachesContent: true,
+          // F-452: as the timeline's.
+          sparesSplitters: false,
           // The same sill controls the timeline mounts — a different
           // playlist and a different "to start", and nothing else.
           collapsedExtent: TimelineCommandBar.heightIn(_state.context),
