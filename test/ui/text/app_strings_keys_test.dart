@@ -251,6 +251,7 @@ void main() {
     'inputRightClick': (s) => s.inputRightClick,
     'inputWheelClick': (s) => s.inputWheelClick,
     'inputCanvasTouchHeading': (s) => s.inputCanvasTouchHeading,
+    'inputIgnoreTouch': (s) => s.inputIgnoreTouch,
     'inputDragOneFinger': (s) => s.inputDragOneFinger,
     'inputDragTwoFingers': (s) => s.inputDragTwoFingers,
     'inputDragThreeFingers': (s) => s.inputDragThreeFingers,
