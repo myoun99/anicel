@@ -97,18 +97,6 @@ TimelineDrawingBlock? nextDrawingBlockAfter(
   return TimelineDrawingBlock(startIndex: key, entry: timeline[key]!);
 }
 
-/// The last drawing block starting strictly before [frameIndex].
-TimelineDrawingBlock? previousDrawingBlockBefore(
-  SplayTreeMap<int, TimelineExposure> timeline,
-  int frameIndex,
-) {
-  final key = timeline.lastKeyBefore(frameIndex);
-  if (key == null) {
-    return null;
-  }
-  return TimelineDrawingBlock(startIndex: key, entry: timeline[key]!);
-}
-
 /// Where the UNIT covering [frameIndex] starts — its drawing block's start,
 /// or, on an empty cell, that cell.
 ///
