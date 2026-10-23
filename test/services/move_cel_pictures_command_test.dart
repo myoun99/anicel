@@ -16,7 +16,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/commands/swap_cel_pictures_command.dart';
+import 'package:anicel/src/services/commands/move_cel_pictures_command.dart';
 
 /// F-330 · I-98: a swap trades two cels' PICTURES and leaves the cels.
 void main() {
@@ -77,9 +77,9 @@ void main() {
     seed(target, b, 20);
     seed(target, c, 30);
     seed(target, d, 40);
-    final command = SwapCelPicturesCommand(
+    final command = MoveCelPicturesCommand(
       coordinator: target,
-      pairs: [(a, b), (c, d)],
+      moves: [(a, b), (b, a), (c, d), (d, c)],
     );
 
     command.execute();
@@ -104,21 +104,42 @@ void main() {
     final target = coordinator();
     seed(target, a, 10);
 
-    SwapCelPicturesCommand(coordinator: target, pairs: [(a, b)]).execute();
+    MoveCelPicturesCommand(
+      coordinator: target,
+      moves: [(a, b), (b, a)],
+    ).execute();
 
     expect(redOf(target, a), 0);
     expect(redOf(target, b), 10);
   });
 
-  test('a cel named twice is swapped once — the second pair would trade it '
-      'back', () {
+  test('a turn of three: each picture goes on, the last comes round — and '
+      'undo turns them back', () {
+    final target = coordinator();
+    seed(target, a, 10);
+    seed(target, b, 20);
+    seed(target, c, 30);
+    final command = MoveCelPicturesCommand(
+      coordinator: target,
+      moves: [(a, b), (b, c), (c, a)],
+    );
+
+    command.execute();
+    expect([for (final cel in [a, b, c]) redOf(target, cel)], [30, 10, 20]);
+
+    command.undo();
+    expect([for (final cel in [a, b, c]) redOf(target, cel)], [10, 20, 30]);
+  });
+
+  test('a cel named twice gives its picture once — the second move would '
+      'give it again', () {
     final target = coordinator();
     seed(target, a, 10);
     seed(target, b, 20);
 
-    SwapCelPicturesCommand(
+    MoveCelPicturesCommand(
       coordinator: target,
-      pairs: [(a, b), (b, a), (a, a)],
+      moves: [(a, b), (b, a), (b, a), (a, a)],
     ).execute();
 
     expect(redOf(target, a), 20);
