@@ -2,6 +2,7 @@
 // place — the context's text scaler and direction, in the style asked for —
 // so a layout sized to its words (the import window's table and its column
 // popup, the media pool's width floor) is sized to what it will show.
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -16,6 +17,7 @@ void main() {
     WidgetTester tester, {
     required double scale,
     List<String> words = const [],
+    TextStyle measuredIn = style,
   }) async {
     late TextMeasure measure;
     await tester.pumpWidget(
@@ -28,7 +30,7 @@ void main() {
               for (final word in words) Text(word, style: style),
               Builder(
                 builder: (context) {
-                  measure = TextMeasure(context, style);
+                  measure = TextMeasure(context, measuredIn);
                   return const SizedBox.shrink();
                 },
               ),
@@ -64,6 +66,61 @@ void main() {
       measure.size('abcd').width,
     );
     expect(measure.widest(const []), 0);
+  });
+
+  testWidgets('🚨two measures taken in the same place lay a line out once '
+      'between them — a build makes a new measure each time it asks', (
+    tester,
+  ) async {
+    // card frame-panels-build-in-one-frame (2026-10-24): the colour bar's
+    // probes were laid out again on every rebuild of the workspace.
+    final first = await measureBeside(tester, scale: 1);
+    final again = await measureBeside(tester, scale: 1);
+    expect(identical(first, again), isFalse, reason: '⛔전제: two measures');
+    expect(
+      identical(first.size('#000000'), again.size('#000000')),
+      isTrue,
+      reason: '🚨the second measure laid the line out again',
+    );
+  });
+
+  testWidgets('a measure taken elsewhere lays the line out for itself — '
+      'another scale, another style, or a font registered since', (
+    tester,
+  ) async {
+    const line = '#000000';
+    final here = (await measureBeside(tester, scale: 1)).size(line);
+    expect(
+      (await measureBeside(tester, scale: 2)).size(line),
+      isNot(here),
+      reason: '🚨a line at ×2 answered with its size at ×1',
+    );
+    expect(
+      (await measureBeside(
+        tester,
+        scale: 1,
+        measuredIn: const TextStyle(fontSize: 24),
+      )).size(line),
+      isNot(here),
+      reason: '🚨a line in a larger style answered with its size in 12',
+    );
+
+    // A face registered while the app runs (a canvas letter face) tells
+    // the binding the fonts changed — and can set a line differently.
+    await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      SystemChannels.system.name,
+      SystemChannels.system.codec.encodeMessage(<String, Object?>{
+        'type': 'fontsChange',
+      }),
+      (_) {},
+    );
+    final later = (await measureBeside(tester, scale: 1)).size(line);
+    expect(later, here, reason: '⛔전제: no face changed what it sets');
+    expect(
+      identical(later, here),
+      isFalse,
+      reason: '🚨a size laid out before the fonts changed outlived them',
+    );
   });
 
   test('a number with every digit in turn: the ten, in order, in its shape — '

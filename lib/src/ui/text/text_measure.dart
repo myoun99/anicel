@@ -2,6 +2,17 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
+import '../../core/bounded_memo.dart';
+
+/// Where a [TextMeasure] lays a line out: everything but the line that
+/// decides its size.
+typedef _Ground = ({
+  TextStyle? style,
+  TextScaler scaler,
+  TextDirection direction,
+  int fonts,
+});
+
 /// The digits a decimal number is written in — [everyDigitIn]'s.
 const String decimalDigits = '0123456789';
 
@@ -30,8 +41,20 @@ List<String> everyDigitIn(
 /// fixed part (the name and the extension stand apart, and only the name is
 /// cut short) — the rule of three.
 ///
-/// Remembers each text it has laid out, so a table that asks for the same
-/// word on every row lays it out once.
+/// Remembers each text laid out where it measures, so a table that asks for
+/// the same word on every row lays it out once.
+///
+/// 🚨LAID OUT ONCE WHEREVER IT IS ASKED (card frame-panels-build-in-one-frame,
+/// 2026-10-24). A measure remembered only its own words, and a build makes a
+/// new one each time it asks — so every rebuild laid the same lines out
+/// again: the colour status bar's 29 probes each time a colour tab was
+/// described (`ColorPickerPanel.minContentWidthIn` — three tabs, on every
+/// rebuild of the workspace). 🔬Profile, a copy of AMMI OP: `size` was
+/// 12–17% of the frames that bring a frame panel forward again (its tab
+/// shown, the bottom region unfolded). What a line measures is decided by
+/// the line, the style, the text scaler, the direction and the fonts there
+/// are — so measures that agree on the last four share their sizes
+/// ([_grounds]), and a font registered since is another key ([_fontsNow]).
 class TextMeasure {
   TextMeasure(BuildContext context, this.style)
     : _scaler = MediaQuery.textScalerOf(context),
@@ -55,10 +78,34 @@ class TextMeasure {
   final TextStyle? style;
   final TextScaler _scaler;
   final TextDirection _direction;
-  final Map<String, Size> _measured = {};
+
+  /// The sizes laid out where this measure lays text out, shared with every
+  /// measure taken there.
+  late final BoundedMemo<String, Size> _measured = _grounds.resolve(
+    (style: style, scaler: _scaler, direction: _direction, fonts: _fontsNow),
+    () => BoundedMemo(_linesPerGround),
+  );
+
+  static final BoundedMemo<_Ground, BoundedMemo<String, Size>> _grounds =
+      BoundedMemo(64);
+  static const int _linesPerGround = 1024;
+
+  /// How many times the fonts have changed since the first measure — a face
+  /// registered while the app runs (a canvas letter face) can set a line
+  /// differently.
+  static int get _fontsNow {
+    if (!_hearingFonts) {
+      _hearingFonts = true;
+      PaintingBinding.instance.systemFonts.addListener(() => _fonts += 1);
+    }
+    return _fonts;
+  }
+
+  static int _fonts = 0;
+  static bool _hearingFonts = false;
 
   /// The size [text] takes on one line.
-  Size size(String text) => _measured.putIfAbsent(text, () {
+  Size size(String text) => _measured.resolve(text, () {
     final painter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: _direction,
