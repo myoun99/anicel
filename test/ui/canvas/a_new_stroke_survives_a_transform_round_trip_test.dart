@@ -227,6 +227,25 @@ void main() {
     await pumpFrames(tester);
   }
 
+  /// Whether a pen put down [offset] from the canvas's middle
+  /// ([visibleCanvasPoint]) is the canvas's: the deepest thing hit there is
+  /// the drawing view's own. The floor is full-bleed under the controls
+  /// lying on it, and a press that starts on one is that control's.
+  bool landsOnTheCanvas(WidgetTester tester, Offset offset) {
+    final canvas = tester.renderObject(mainCanvasView());
+    final route = tester.hitTestOnBinding(
+      visibleCanvasPoint(tester, offset: offset),
+    );
+    final deepest = route.path.first.target;
+    for (var up = deepest is RenderObject ? deepest : null; up != null;) {
+      if (identical(up, canvas)) {
+        return true;
+      }
+      up = up.parent;
+    }
+    return false;
+  }
+
   Future<void> seekTo(WidgetTester tester, int index) async {
     tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
@@ -318,7 +337,18 @@ void main() {
     // the BRUSH: Ctrl+T left the move tool in hand.
     await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
     await pumpFrames(tester);
-    await strokeAt(tester, const Offset(-70, -50));
+    // ↩️It started 70 left of the middle, 0.7px off the brush size pill's
+    // edge, and the pill grew over it when its number stood up (I-125,
+    // `7adae440a`): a share of the canvas, as the hole's test takes one.
+    final canvas = visibleCanvasRect(tester);
+    final fresh = Offset(-canvas.width * 0.3, -canvas.height * 0.25);
+    expect(
+      landsOnTheCanvas(tester, fresh),
+      isTrue,
+      reason: '⛔CONTROL: the new stroke starts on the canvas, clear of the '
+          'controls lying on it',
+    );
+    await strokeAt(tester, fresh);
 
     expect(
       inkOn(tester, frameA),
