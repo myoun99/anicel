@@ -228,6 +228,16 @@ class FolderGrant {
   }
 }
 
+/// A path handed over with nothing granted for it — a drop on the window,
+/// the file the viewer is showing, a file the OS opened the app with: a
+/// folder or a file, as the disk says.
+FolderGrant handedPath(String path) => FolderGrant.granted(
+  path: path,
+  kind: FileSystemEntity.isDirectorySync(path)
+      ? GrantKind.folder
+      : GrantKind.file,
+);
+
 /// The one place that asks for a writable directory.
 ///
 /// Two platforms answer differently and the difference is not cosmetic:
@@ -1281,7 +1291,7 @@ abstract final class FolderPicker {
           // not successful.
           return const [FolderGrant.unavailable()];
         }
-        final grants = [for (final item in items) ?_itemGrant(item, kind)];
+        final grants = [for (final item in items) ?itemGrant(item, kind)];
         return grants.isEmpty ? const [FolderGrant.unavailable()] : grants;
       case 'cancelled':
         return const [FolderGrant.cancelled()];
@@ -1297,7 +1307,10 @@ abstract final class FolderPicker {
   /// no caller can take its URI for a path. Null for an item that names
   /// neither: it is dropped rather than becoming a grant every caller would
   /// have to guard.
-  static FolderGrant? _itemGrant(Object? item, GrantKind kind) {
+  ///
+  /// What another app hands Android is said in these items too, one per
+  /// file (`HandedFiles`): a share is a pick made for the app.
+  static FolderGrant? itemGrant(Object? item, GrantKind kind) {
     if (item is! Map) {
       return null;
     }

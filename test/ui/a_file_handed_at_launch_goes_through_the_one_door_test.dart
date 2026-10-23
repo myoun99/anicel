@@ -19,6 +19,7 @@ import 'package:anicel/src/services/persistence/app_language_settings_store.dart
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
+import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
@@ -82,6 +83,35 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: home));
     await tester.pump();
   }
+
+  /// The platform saying [handed] on [HandedFiles.channel]. The reply is
+  /// null only when nothing hears the channel.
+  Future<ByteData?> platformSays(
+    WidgetTester tester,
+    List<Object?> handed, [
+    String method = HandedFiles.openMethod,
+  ]) {
+    final reply = Completer<ByteData?>();
+    unawaited(
+      tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        HandedFiles.channel.name,
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall(method, handed),
+        ),
+        reply.complete,
+      ),
+    );
+    return reply.future;
+  }
+
+  final notice = find.byKey(const ValueKey<String>('unsupported-file-notice'));
+
+  /// The files the notice on screen names.
+  List<String> named(WidgetTester tester) => tester
+      .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
+      .details
+      .single
+      .lines;
 
   testWidgets('🎯a project handed at launch opens in a tab of its own', (
     tester,
@@ -152,39 +182,68 @@ void main() {
   testWidgets('what a second Anicel hands the running window goes through '
       'the same door, and nothing once the window has gone', (tester) async {
     final path = nothingOpens();
-    // The reply is null only when nothing hears the channel.
-    Future<ByteData?> runnerSays([String method = HandedFiles.openMethod]) {
-      final reply = Completer<ByteData?>();
-      unawaited(
-        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
-          HandedFiles.channel.name,
-          const StandardMethodCodec().encodeMethodCall(
-            MethodCall(method, [path]),
-          ),
-          reply.complete,
-        ),
-      );
-      return reply.future;
-    }
-
-    final notice = find.byKey(
-      const ValueKey<String>('unsupported-file-notice'),
-    );
 
     await pumpApp(tester, HomePage(initialProject: createDefaultProject()));
     await tester.pumpAndSettle();
     expect(notice, findsNothing, reason: 'CONTROL: nothing said yet');
-    await runnerSays('somethingElse');
+    await platformSays(tester, [path], 'somethingElse');
     await tester.pumpAndSettle();
     expect(notice, findsNothing, reason: 'only what it says to open opens');
-    expect(await runnerSays(), isNotNull, reason: 'the window hears');
+    expect(
+      await platformSays(tester, [path]),
+      isNotNull,
+      reason: 'the window hears',
+    );
     await tester.pumpAndSettle();
     expect(notice, findsOneWidget);
+    expect(named(tester), [path]);
 
     await tester.pumpWidget(const SizedBox());
-    expect(await runnerSays(), isNull, reason: 'nothing hears once it is gone');
+    expect(
+      await platformSays(tester, [path]),
+      isNull,
+      reason: 'nothing hears once it is gone',
+    );
     await tester.pumpAndSettle();
     expect(notice, findsNothing);
+  });
+
+  // open-door-android-share (F-282-Q5, 유저 2026-10-09: 「최대한
+  // 통일하고싶음」): Android says what another app shares with Anicel or
+  // opens it with on the same channel, each file as its picker says one —
+  // a path, or a document with no path behind it (PICK-7).
+  testWidgets('what another app hands Android goes through the same door — '
+      'a document by the name its provider gives, a path by its path', (
+    tester,
+  ) async {
+    final path = nothingOpens();
+    Future<void> closeTheNotice() async {
+      await tester.tap(find.byKey(const ValueKey<String>('app-notice-close')));
+      await tester.pumpAndSettle();
+    }
+
+    await pumpApp(tester, HomePage(initialProject: createDefaultProject()));
+    await tester.pumpAndSettle();
+
+    await platformSays(tester, [
+      {'uri': 'content://drive/doc/9', 'name': 'notes.xyz', 'size': 13},
+    ]);
+    await tester.pumpAndSettle();
+    expect(notice, findsOneWidget);
+    expect(
+      named(tester),
+      ['notes.xyz'],
+      reason: 'judged and named by its own name — its URI says nothing',
+    );
+    await closeTheNotice();
+
+    await platformSays(tester, [
+      {'path': path, 'bookmark': null},
+    ]);
+    await tester.pumpAndSettle();
+    expect(notice, findsOneWidget, reason: 'a FILE: no folder is handed');
+    expect(named(tester), [path]);
+    await closeTheNotice();
   });
 
   testWidgets('nothing handed, nothing opened and nothing said', (

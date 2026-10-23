@@ -22,6 +22,7 @@ import '../services/font_library_service.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
+import '../services/persistence/folder_grant.dart' show handedPath;
 import '../services/persistence/save_failure.dart' show SaveFailure;
 import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_camera_path_settings_store.dart';
@@ -545,12 +546,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final handed = widget.handedAtLaunch;
     if (handed.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _workspaceDoor.openPaths(handed),
+        (_) => _workspaceDoor.openHanded([
+          for (final path in handed) handedPath(path),
+        ]),
       );
     }
-    // And what a second Anicel hands the running one, while this window is
-    // here ([HandedFiles]).
-    HandedFiles.listen(_workspaceDoor.openPaths);
+    // And what the platform hands the running app, while this window is
+    // here — a second Anicel's files, another app's share ([HandedFiles]).
+    HandedFiles.listen(_workspaceDoor.openHanded);
     // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with

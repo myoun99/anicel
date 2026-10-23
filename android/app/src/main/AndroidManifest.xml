@@ -24,10 +24,20 @@
         android:name="${applicationName}"
         android:requestLegacyExternalStorage="true"
         android:icon="@mipmap/ic_launcher">
+        <!-- singleTask, not singleTop (open-door-android-share): a file
+             handed while Anicel runs opens in the running one, as on
+             Windows (open-door-windows-open-with-Q1, 유저 2026-10-22:
+             「떠 있는 창의 새 탭으로」). An app that shares a file starts
+             the app it shares with inside ITS OWN task, so under singleTop
+             a second Anicel, a second engine in this process, would stand
+             up there.
+             ⚠️singleTask also closes what stands above Anicel in its task -
+             a system picker or settings screen it opened - when Anicel is
+             opened again from its icon (from Recents, it stays). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
@@ -45,6 +55,31 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- open-door-android-share: what another app opens Anicel
+                 with (VIEW) or shares with it (SEND, SEND_MULTIPLE) goes
+                 through the one door a drop goes through - MainActivity
+                 says it to Dart as a pick says it. EVERY type: the door's
+                 one judgement (openedAs) says what Anicel opens and names
+                 what it does not, as for a file the Explorer opens Anicel
+                 with. A type with no scheme takes content: and file: alike. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="*/*"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <action android:name="android.intent.action.SEND_MULTIPLE"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="*/*"/>
+            </intent-filter>
+            <!-- A VIEW's data is the file it opens, not a route in the app:
+                 Flutter reads it as one when this is absent (deep linking
+                 is on unless switched off -
+                 FlutterActivityLaunchConfigs.deepLinkEnabled). -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false" />
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

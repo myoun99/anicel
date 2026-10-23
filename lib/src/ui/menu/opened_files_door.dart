@@ -73,15 +73,6 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
   );
 }
 
-/// A path handed over with nothing granted for it — a drop on the window,
-/// the file the viewer is showing: a folder or a file, as the disk says.
-FolderGrant handedPath(String path) => FolderGrant.granted(
-  path: path,
-  kind: FileSystemEntity.isDirectorySync(path)
-      ? GrantKind.folder
-      : GrantKind.file,
-);
-
 /// 「파일 열기」's pick: every kind some door takes, several at once — a
 /// file nothing takes is named by the pick itself, and a document with no
 /// filesystem path is taken as one (PICK-7).
