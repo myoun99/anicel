@@ -105,7 +105,13 @@ Future<SutImportResult> _decode(
   if (tables.contains('MaterialFile')) {
     for (final row in database.select('SELECT * FROM MaterialFile')) {
       final data = row['FileData'];
-      final catalogPath = row['CatalogPath'] ?? row['OriginalPath'];
+      // An EMPTY catalog path falls back too, not only a missing one: the
+      // user's 색연필 (F-456) stores '' there and names its tip by the
+      // original path — read as absent, its tip came in as a plain circle.
+      final catalog = row['CatalogPath'];
+      final catalogPath = catalog is String && catalog.isNotEmpty
+          ? catalog
+          : row['OriginalPath'];
       if (data is Uint8List &&
           catalogPath is String &&
           catalogPath.isNotEmpty) {
@@ -279,9 +285,8 @@ BrushSettings _settingsFromVariant(
   // curve's own minimum. Opacity and flow effectors import as their own
   // channels (they used to be OR-merged into one opacity bool).
   // ⛔EVERY enabled source, not just pressure. A Clip Studio brush can drive
-  // one setting from several inputs at once, and each has its own curve block
-  // in the effector's tail; reading only the first one imported a tilt brush
-  // as a plain one.
+  // one setting from several inputs at once, each with its own curve;
+  // reading only the first one imported a tilt brush as a plain one.
   // ★Thickness IS roundness here and Interval IS spacing, so their effectors
   // land on those settings' rows (F-176-Q2) — ランダム included, which is what
   // stops a textured stamp brush looking stamped and breaks up the even beat
@@ -672,21 +677,19 @@ double _textureDensityOf(Map<String, Object?> variant) {
 /// real files show 0x13 on a brush whose rotation follows pressure and 0xC3
 /// on the one brush carrying a non-default random scale.
 ///
-/// Bit 0x10 selects pen pressure, 0x20 velocity, **0x40 pen TILT** and 0x80
-/// random. ⛔They are no longer "read and dropped": every one of the three
-/// curve sources gets its own curve and its own minimum (see
-/// [_effectorCurves]), and random drives the jitters. ⛔Nor is 速度's curve
-/// "stored but not yet applied" any more: the dab HAS a clock — the pen
-/// door normalizes px/s against `AppInputSettings
-/// .speedReferencePixelsPerSecond` and `BrushDab.speed` carries the ratio,
-/// which `brushInputValue` reads like any other source.
+/// Bit 0x10 selects pen pressure, 0x20 pen tilt, 0x40 speed and 0x80
+/// random — [BrushInputSource.effectorFlagBit] holds the table and how it
+/// was settled. ⛔They are no longer "read and dropped": every source gets
+/// its own curve and its own minimum (see [_effectorCurves]), and random
+/// drives the jitters. ⛔Nor is 速度's curve "stored but not yet applied"
+/// any more: the dab HAS a clock — the pen door normalizes px/s against
+/// `AppInputSettings.speedReferencePixelsPerSecond` and `BrushDab.speed`
+/// carries the ratio, which `brushInputValue` reads like any other source.
 ///
-/// ↩️0x40 was guessed here as "most likely stroke direction", on the evidence
-/// that it only ever appeared on the rotation effector. 🚨THE GUESS WAS
-/// WRONG, and a brush settled it (`물붓.sut`, 2026-09-08): every one of its
-/// four inputs is ticked and its SIZE effector reads 0xF0, so the fourth bit
-/// belongs to 傾き. ⛔Stroke direction is therefore still unmapped — do not
-/// reach for 0x40 when it comes up.
+/// ↩️0x40 was first guessed here as "most likely stroke direction", on the
+/// evidence that it only ever appeared on the rotation effector, then read
+/// as 傾き off `물붓.sut` (2026-09-08), and is 速度 (F-456). ⛔Stroke
+/// direction is still unmapped — do not reach for a bit when it comes up.
 int? _effectorFlags(Object? effector) {
   if (effector is int) {
     return effector;
@@ -721,12 +724,6 @@ double _randomScaleRatio(
 
 /// Every input source's curve on one effector, keyed by source.
 ///
-/// 🚨**THE BLOCKS RUN IN ASCENDING FLAG-BIT ORDER** — 筆圧 0x10, 速度 0x20,
-/// 傾き 0x40, ランダム 0x80 — so a source's block index is its rank among the
-/// ENABLED sources below it, and randomness (the highest bit) can never shift
-/// the others. ⚠️That is NOT the order the four minimums sit in; those run in
-/// panel order. See [BrushInputSource.effectorMinimumIndex].
-///
 /// ⛔Everything but pressure used to be dropped on the floor here, which is
 /// what made a tilt-driven Clip Studio brush import as a plain one.
 Map<BrushInputSource, BrushPressureCurve> _effectorCurves(Object? effector) {
@@ -734,43 +731,34 @@ Map<BrushInputSource, BrushPressureCurve> _effectorCurves(Object? effector) {
   if (flags == null) {
     return const {};
   }
-  final curves = <BrushInputSource, BrushPressureCurve>{};
-  var block = 0;
-  for (final source in _sourcesInBlockOrder) {
-    if (flags & source.effectorFlagBit == 0) {
-      continue;
-    }
-    final curve = _effectorSourceCurve(effector, source, block);
-    if (curve != null) {
-      curves[source] = curve;
-    }
-    block += 1;
-  }
-  // ランダム is the highest bit, so whatever block it may own comes last and
-  // shifts nothing above. Clip Studio's panel gives it no graph — a tick and
-  // a 最小値 — and that is all it is read as (F-176-Q2).
-  if (flags & BrushInputSource.random.effectorFlagBit != 0) {
-    curves[BrushInputSource.random] = BrushPressureCurve.linearFrom(
-      _effectorMinimumRatio(
-        effector,
-        BrushInputSource.random.effectorMinimumIndex,
-      ),
-    );
-  }
-  return curves;
+  return {
+    for (final source in BrushInputSource.values)
+      if (flags & source.effectorFlagBit != 0)
+        source: _effectorSourceCurve(effector, source),
+  };
 }
 
-/// The sources in the order their curve blocks are written.
-const _sourcesInBlockOrder = <BrushInputSource>[
-  BrushInputSource.pressure,
-  BrushInputSource.speed,
-  BrushInputSource.tilt,
-];
+/// Which of the effector's two graph blocks is [source]'s, or null when
+/// it has none and runs straight from its 最小値 (to its 最大値).
+///
+/// 🚨**TWO GRAPHS, 筆圧設定 AND 傾き設定, IN FIXED PLACES, ticked or not**
+/// (📏F-456, 2026-10-23 — the user's screenshot of Clip Studio's
+/// 影響元設定 window, and their five pencils): `int[8]` and `int[9]` are
+/// the two blocks' byte lengths, the blocks follow the header in that
+/// order, and a length of 0 is a graph the file left out. 鉛筆's 不透明度
+/// ticks 筆圧 alone and still carries both. 速度 and ランダム have a
+/// 最小値 and no graph — ランダム's is all it is read as (F-176-Q2).
+/// ↩️A source's block was its rank among the TICKED sources, so a brush
+/// that ticked 傾き alone read 筆圧's graph as its own.
+int? _graphBlockOf(BrushInputSource source) => switch (source) {
+  BrushInputSource.pressure => 0,
+  BrushInputSource.tilt => 1,
+  BrushInputSource.speed || BrushInputSource.random => null,
+};
 
-BrushPressureCurve? _effectorSourceCurve(
+BrushPressureCurve _effectorSourceCurve(
   Object? effector,
   BrushInputSource source,
-  int blockIndex,
 ) {
   final minimum = _effectorMinimumRatio(
     effector,
@@ -785,26 +773,41 @@ BrushPressureCurve? _effectorSourceCurve(
   // ↩️The floor used to be folded into the points (divided by the ceiling
   // first — 「THE FLOOR IS DIVIDED BY THE CEILING」), from before a curve
   // could hold one apart; the popup now shows it as its own slider.
-  final stored = effector is Uint8List
-      ? _effectorCurvePoints(effector, blockIndex)
+  final block = _graphBlockOf(source);
+  final stored = effector is Uint8List && block != null
+      ? _effectorGraphPoints(effector, block)
       : null;
   if (stored == null || stored.isEmpty) {
     return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
-  final points = <BrushCurvePoint>[const BrushCurvePoint(0.0, 0.0)];
-  for (final point in stored) {
+  // 傾き設定 runs 水平 → 垂直 left to right (the window's own axis labels),
+  // and a 傾き input is how far the pen LEANS ([brushInputValue]), so its
+  // graph comes in mirrored.
+  final ordered = source == BrushInputSource.tilt
+      ? [
+          for (final point in stored.reversed)
+            BrushCurvePoint(1.0 - point.x, point.y),
+        ]
+      : stored;
+  final points = <BrushCurvePoint>[];
+  for (final point in ordered) {
     // The engine wants strictly increasing x inside the unit square; Clip
     // Studio pads unused slots by repeating the last point.
-    if (point.x <= points.last.x || point.x > 1.0) {
+    if (point.x < 0.0 ||
+        point.x > 1.0 ||
+        (points.isNotEmpty && point.x <= points.last.x)) {
       continue;
     }
     points.add(BrushCurvePoint(point.x, point.y.clamp(0.0, 1.0).toDouble()));
   }
-  if (points.last.x < 1.0) {
-    points.add(const BrushCurvePoint(1.0, 1.0));
-  }
-  if (points.length < 2) {
+  if (points.isEmpty) {
     return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
+  }
+  if (points.first.x > 0.0) {
+    points.insert(0, BrushCurvePoint(0.0, points.first.y));
+  }
+  if (points.last.x < 1.0) {
+    points.add(BrushCurvePoint(1.0, points.last.y));
   }
   try {
     return BrushPressureCurve(points, minimum: minimum, maximum: maximum);
@@ -833,54 +836,45 @@ double _effectorTiltMaximum(Object? blob) {
   return (percent / 100.0).clamp(1.0, 10.0).toDouble();
 }
 
-/// The [blockIndex]-th curve block's stored points, origin excluded.
-List<BrushCurvePoint>? _effectorCurvePoints(Uint8List blob, int blockIndex) {
-  var seen = 0;
-  final data = ByteData.sublistView(blob);
-  final intCount = blob.length ~/ 4;
-  for (var i = 0; i + 7 <= intCount; i += 1) {
-    if (data.getInt32(i * 4) != 12 || data.getInt32((i + 2) * 4) != 16) {
-      continue;
-    }
-    var padded = true;
-    for (var k = 3; k < 7; k += 1) {
-      padded &= data.getInt32((i + k) * 4) == 0;
-    }
-    if (!padded) {
-      continue;
-    }
-    final count = data.getInt32((i + 1) * 4);
-    if (count < 2 || count > 64) {
-      // ⛔NOT `return null`. That was safe while only the FIRST block was
-      // ever read; now a nonsense count in an early source's block would
-      // abandon the scan and cost every LATER source its curve. A header
-      // whose count makes no sense is not a block, so it does not count as
-      // one either — `seen` stays put.
-      continue;
-    }
-    // Blocks are written one per enabled source, so walk past the ones that
-    // belong to sources ahead of this one in flag-bit order.
-    if (seen != blockIndex) {
-      seen += 1;
-      continue;
-    }
-    final start = (i + 7) * 4;
-    final points = <BrushCurvePoint>[];
-    for (var k = 0; k < count - 1; k += 1) {
-      final offset = start + k * 16;
-      if (offset + 16 > blob.length) {
-        break;
-      }
-      final x = data.getFloat64(offset);
-      final y = data.getFloat64(offset + 8);
-      if (!x.isFinite || !y.isFinite || x < 0.0 || y < 0.0) {
-        break;
-      }
-      points.add(BrushCurvePoint(x, y.clamp(0.0, 1.0).toDouble()));
-    }
-    return points;
+/// The points of graph [block] (0 = 筆圧設定, 1 = 傾き設定 — see
+/// [_graphBlockOf]) as stored, every one of them, or null when the file
+/// left that graph out or it does not read.
+///
+/// A block is `12 · count · 16` and then `count` (x, y) float64 pairs,
+/// big-endian. ↩️Its FIRST point is stored like the rest: it was taken
+/// for padding that had to be (0, 0), so a graph that starts anywhere
+/// else — every falling one — was not seen as a graph at all (F-456).
+List<BrushCurvePoint>? _effectorGraphPoints(Uint8List blob, int block) {
+  if (blob.length < 44) {
+    return null;
   }
-  return null;
+  final data = ByteData.sublistView(blob);
+  var start = data.getInt32(0);
+  for (var before = 0; before < block; before += 1) {
+    start += data.getInt32(32 + before * 4);
+  }
+  final length = data.getInt32(32 + block * 4);
+  if (length < 12 || start < 44 || start + length > blob.length) {
+    return null;
+  }
+  final count = data.getInt32(start + 4);
+  if (data.getInt32(start) != 12 ||
+      data.getInt32(start + 8) != 16 ||
+      count < 2 ||
+      12 + count * 16 > length) {
+    return null;
+  }
+  final points = <BrushCurvePoint>[];
+  for (var k = 0; k < count; k += 1) {
+    final offset = start + 12 + k * 16;
+    final x = data.getFloat64(offset);
+    final y = data.getFloat64(offset + 8);
+    if (!x.isFinite || !y.isFinite) {
+      return null;
+    }
+    points.add(BrushCurvePoint(x, y));
+  }
+  return points;
 }
 
 /// One source's 최소치 percentage — the floor that source's curve lifts to.
