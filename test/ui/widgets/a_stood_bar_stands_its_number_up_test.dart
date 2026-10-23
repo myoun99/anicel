@@ -13,7 +13,9 @@ import '../../helpers/raster_parity.dart';
 
 /// 🗣️I-125 (유저 2026-10-23): 「브러시 사이즈가 숫자가 옆으로 누워있어서
 /// 읽기 힘든게 큰 단점」 — Q1 answered 「B 縦中横(두세 자리를 한 칸에)」,
-/// 「시안대로 px는 필요없어보임. %는 괜찮은데」.
+/// 「시안대로 px는 필요없어보임. %는 괜찮은데」; then F-460: 「가로표기
+/// 세로쓰기 … 숫자가 90도로 안기울었으면」, 「불투명도는 % 없앰」, and Q1
+/// 「a 한 글자씩 한 칸」.
 void main() {
   Future<void> pumpStood(
     WidgetTester tester, {
@@ -68,7 +70,8 @@ void main() {
     expect(find.text('10.0'), findsOneWidget, reason: 'the x-sheet\'s way');
   });
 
-  test('「두세 자리를 한 칸에」: 10.0 is 10 / . / 0, and 100% is 100 / %', () {
+  test('「한 글자씩 한 칸」: 10.0 is 1 / 0 / . / 0 and 100 is 1 / 0 / 0, as '
+      '2000.0 always was', () {
     List<String> cells(String number) => [
       for (final cell in verticalTextCells(
         number,
@@ -77,8 +80,9 @@ void main() {
       ))
         cell.text,
     ];
-    expect(cells('10.0'), ['10', '.', '0']);
-    expect(cells('100%'), ['100', '%']);
+    expect(cells('10.0'), ['1', '0', '.', '0']);
+    expect(cells('100'), ['1', '0', '0']);
+    expect(cells('2000.0'), ['2', '0', '0', '0', '.', '0']);
   });
 
   testWidgets('the column keeps a bar\'s insets clear at its ends — it asks '
@@ -189,7 +193,8 @@ void main() {
   });
 
   testWidgets('the brush pill stands both its numbers up — the size without '
-      'its px, the opacity with its % — and the strip still lays them down', (
+      'its px, the opacity without its % — and the strip still lays them '
+      'down, units and all', (
     tester,
   ) async {
     final brushTool = ValueNotifier(BrushToolState.defaults);
@@ -216,10 +221,11 @@ void main() {
     ];
     expect(words, hasLength(2));
     expect(words.first, matches(RegExp(r'^\d+\.\d$')), reason: 'no px');
-    expect(words.last, matches(RegExp(r'^\d+%$')));
+    expect(words.last, matches(RegExp(r'^\d+$')), reason: 'no %');
 
     await pumpBars(BrushValuesLayout.strip);
     expect(writing(), findsNothing);
     expect(find.textContaining(' px'), findsOneWidget);
+    expect(find.textContaining('%'), findsOneWidget);
   });
 }

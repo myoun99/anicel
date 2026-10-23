@@ -163,7 +163,8 @@ class BrushValueBars extends StatelessWidget {
     height: thickness,
     axis: layout.axis,
     nameInside: !layout.stood,
-    // …and 「%는 괜찮은데」: `100` in one cell, `%` in the next.
+    // …and its number alone, no % (F-460, 유저 2026-10-23: 「불투명도는 %
+    // 없앰」 — ↩️I-125-Q1 had kept it, 「%는 괜찮은데」).
     upright: layout.stood,
     onChanged: onChanged,
   );

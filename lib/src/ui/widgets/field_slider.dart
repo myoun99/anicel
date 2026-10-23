@@ -190,14 +190,16 @@ class FieldSlider extends StatefulWidget {
        // 🚨THE MICRO OPACITY BAR WRITES THE NUMBER ALONE (유저 2026-09-10:
        // 「타임라인 레이어영역에 있는 슬라이더 미니버전. **미니버전은 텍스트에
        // % 표기 삭제. 그냥 안보이게**」) — the layer rows, the storyboard's SE
-       // rows, the x-sheet's stood-up rail and the legend's master bar.
+       // rows, the x-sheet's stood-up rail and the legend's master bar. And
+       // so does a bar whose name is not written in it ([nameInside]): the
+       // brush pill's (F-460, 유저 2026-10-23: 「불투명도는 % 없앰」).
        //
        // ⛔Here and not in [FieldSlider._textFor]: `label == null` is
        // ALSO how a bar whose label sits BESIDE it is built (the stage
        // dialog's alpha, the export bitrate, the autosave minutes), and
        // those would have lost ` Mb` and their minutes with it. A bar that
        // says OPACITY in the column it lives in is what the user pointed at.
-       unit = label == null ? '' : '%',
+       unit = label == null || !nameInside ? '' : '%',
        // A hundred divisions of a 0..1 model IS a whole per cent on screen,
        // and saying the scale here is what lets the digit rule see that.
        displayScale = 100,
@@ -284,19 +286,21 @@ class FieldSlider extends StatefulWidget {
   /// its hands, and its [label] still names it to a screen reader.
   final bool nameInside;
 
-  /// Whether a stood bar writes its number STANDING UP — down the bar, a
-  /// short run of digits set across in one cell (縦中横) — rather than as
-  /// the row turned on its side.
+  /// Whether a stood bar writes its number STANDING UP — down the bar, one
+  /// glyph to a cell ([uprightDigits]) — rather than as the row turned on
+  /// its side.
   ///
-  /// 🗣️I-125-Q1 (유저 2026-10-23): the brush pill's bars, 「B 縦中横(두세
-  /// 자리를 한 칸에)」 — 「숫자가 옆으로 누워있어서 읽기 힘든게 큰 단점」. The
-  /// x-sheet's stood rail still lies (유저 2026-09-10: 「세로쓰기 세로표기」);
-  /// whether it stands too is I-125-Q2.
+  /// 🗣️I-125-Q1 (유저 2026-10-23): the brush pill's bars — 「숫자가 옆으로
+  /// 누워있어서 읽기 힘든게 큰 단점」. The x-sheet's stood rail still lies
+  /// (유저 2026-09-10: 「세로쓰기 세로표기」; I-125-Q2 a, the pill alone).
   final bool upright;
 
-  /// How many digits a standing number sets in one cell — 「두세 자리를 한
-  /// 칸에」 (I-125-Q1): `100` is one cell and `%` the next.
-  static const int uprightDigits = 3;
+  /// How many digits a standing number sets in one cell: one — 「한 글자씩
+  /// 한 칸」 (F-460-Q1, 유저 2026-10-23: 「2/0/0/0/./0 이렇게 위에서
+  /// 한글자씩 한칸 차지하는거랑 동일」). ↩️Three, 「B 縦中横(두세 자리를 한
+  /// 칸에)」 (I-125-Q1): `10.0` was 10 / . / 0 while `2000.0`, a run too
+  /// long to set across, already stood a digit to a cell.
+  static const int uprightDigits = 1;
 
   /// A settings row's bar — and the number box beside it, which wears this
   /// bar's face without the fill ([DragValueLabel.box]).
@@ -938,7 +942,7 @@ class _FieldSliderState extends State<FieldSlider> {
     // cells — a horizontal number inside a vertical column, which is
     // exactly the 가로쓰기 the user is asking away from.
     // ↩️The table is back where a bar asks for it ([FieldSlider.upright]):
-    // the brush pill's, by I-125-Q1 (유저 2026-10-23, 「B 縦中横」).
+    // the brush pill's, by I-125-Q1 — a glyph to a cell since F-460-Q1.
     //
     // ⚠️A `RotatedBox` HERE and never around the bar: the writing has no
     // gesture, while a turned recognizer would never see an on-screen
