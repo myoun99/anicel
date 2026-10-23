@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../../helpers/raster_parity.dart';
+
 /// 🗣️I-125 (유저 2026-10-23): 「브러시 사이즈가 숫자가 옆으로 누워있어서
 /// 읽기 힘든게 큰 단점」 — Q1 answered 「B 縦中横(두세 자리를 한 칸에)」,
 /// 「시안대로 px는 필요없어보임. %는 괜찮은데」.
@@ -145,6 +147,45 @@ void main() {
           rect: Rect.fromLTRB(0, box.height / 2, box.width, box.height),
         ),
     );
+  });
+
+  testWidgets('each stretch is set in its own ink — the column read off the '
+      'screen: the track\'s colour above the fill\'s edge, the fill\'s on it, '
+      'and the style\'s own nowhere', (tester) async {
+    const above = Color(0xFFFF0000);
+    const on = Color(0xFF0000FF);
+    final bytes = await surfaceBytes(
+      tester,
+      const VerticalWritingText(
+        text: '0000000000',
+        style: TextStyle(fontSize: 10, color: Color(0xFF00FF00)),
+        inks: [(end: 0.5, ink: above), (end: 1.0, ink: on)],
+      ),
+      left: 20,
+      width: 20,
+      height: 100,
+      settle: () async {},
+    );
+    final ratio = tester.view.devicePixelRatio;
+    final stride = (parityCaptureWidth * ratio).round();
+    Set<String> inksBetween(double top, double bottom) => {
+      for (var y = (top * ratio).ceil(); y < (bottom * ratio).floor(); y++)
+        for (var x = (20 * ratio).ceil(); x < (40 * ratio).floor(); x++)
+          if (bytes.getUint8((y * stride + x) * 4 + 3) == 255)
+            switch ((
+              bytes.getUint8((y * stride + x) * 4),
+              bytes.getUint8((y * stride + x) * 4 + 1),
+              bytes.getUint8((y * stride + x) * 4 + 2),
+            )) {
+              (255, 0, 0) => 'above',
+              (0, 0, 255) => 'on',
+              (0, 255, 0) => 'the style\'s',
+              _ => 'blended',
+            },
+    }..remove('blended');
+    // The box stands at y 20..120 in the capture; its middle is the edge.
+    expect(inksBetween(20, 69), {'above'});
+    expect(inksBetween(71, 120), {'on'});
   });
 
   testWidgets('the brush pill stands both its numbers up — the size without '
