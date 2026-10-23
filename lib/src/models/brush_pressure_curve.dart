@@ -200,23 +200,21 @@ class BrushPressureCurve {
       final to = points[1];
       return from.y + (to.y - from.y) * (x - from.x) / (to.x - from.x);
     }
-    var startX = points[0].x;
-    var startY = points[0].y;
+    var start = points[0];
     for (var j = 1; ; j += 1) {
       final pull = points[j];
       final next = points[j + 1];
       if (j + 1 == last) {
-        return x >= next.x
-            ? next.y
-            : _bezierYAt(x, startX, startY, pull, next.x, next.y);
+        return x >= next.x ? next.y : _bezierYAt(x, start, pull, next);
       }
-      final endX = (pull.x + next.x) / 2;
-      final endY = (pull.y + next.y) / 2;
-      if (x <= endX) {
-        return _bezierYAt(x, startX, startY, pull, endX, endY);
+      final end = BrushCurvePoint(
+        (pull.x + next.x) / 2,
+        (pull.y + next.y) / 2,
+      );
+      if (x <= end.x) {
+        return _bezierYAt(x, start, pull, end);
       }
-      startX = endX;
-      startY = endY;
+      start = end;
     }
   }
 
@@ -320,23 +318,21 @@ class BrushPressureCurve {
       '${maximum == 1.0 ? '' : ', max: $maximum'})';
 }
 
-/// The height of the quadratic Bezier from ([x0], [y0]) over [pull] to
-/// ([x2], [y2]) where it stands over [x]. Its x rises with its parameter t
-/// — the three x's do — so one t answers: the root of `a t² + b t = x - x0`,
-/// in the form that stays exact where `a` vanishes.
+/// The height of the quadratic Bezier from [start] over [pull] to [end]
+/// where it stands over [x]. Its x rises with its parameter t — the three
+/// x's do — so one t answers: the root of `a t² + b t = x - start.x`, in
+/// the form that stays exact where `a` vanishes.
 double _bezierYAt(
   double x,
-  double x0,
-  double y0,
+  BrushCurvePoint start,
   BrushCurvePoint pull,
-  double x2,
-  double y2,
+  BrushCurvePoint end,
 ) {
-  final a = x0 - 2 * pull.x + x2;
-  final b = 2 * (pull.x - x0);
-  final d = x - x0;
+  final a = start.x - 2 * pull.x + end.x;
+  final b = 2 * (pull.x - start.x);
+  final d = x - start.x;
   final root = math.sqrt(math.max(0.0, b * b + 4 * a * d));
   final t = (2 * d / (b + root)).clamp(0.0, 1.0);
   final u = 1 - t;
-  return u * u * y0 + 2 * u * t * pull.y + t * t * y2;
+  return u * u * start.y + 2 * u * t * pull.y + t * t * end.y;
 }
