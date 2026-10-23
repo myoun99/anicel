@@ -270,22 +270,17 @@ class TimelineGridTileStore {
       painter.layer.id,
       painter.axis,
     );
-    final key = _TileRequest.keyOf(row, spanStartIndex);
+    final asked = _TileRequest(
+      row: row,
+      painter: painter,
+      spanStartIndex: spanStartIndex,
+      spanEndIndexExclusive: spanEndIndexExclusive,
+      devicePixelRatio: devicePixelRatio,
+    );
+    final key = asked.key;
     _askedBy[row] = (painter: painter, ratio: devicePixelRatio);
     final entry = _touched(key);
-    if (entry != null &&
-        entry.showsNow(
-          painter,
-          spanStartIndex,
-          spanEndIndexExclusive,
-          devicePixelRatio,
-          inkNow: () => _inkOf(
-            painter,
-            spanStartIndex: spanStartIndex,
-            spanEndIndexExclusive: spanEndIndexExclusive,
-            devicePixelRatio: devicePixelRatio,
-          ),
-        )) {
+    if (entry != null && _shows(entry, asked)) {
       return entry.image;
     }
     // Cold or stale: schedule ONE raster per key (the newest look wins —
@@ -307,16 +302,7 @@ class TimelineGridTileStore {
     if (!_inFlight.contains(key)) {
       _warming.remove(key);
       _ahead.remove(key);
-      _enqueue(
-        key,
-        _TileRequest(
-          row: row,
-          painter: painter,
-          spanStartIndex: spanStartIndex,
-          spanEndIndexExclusive: spanEndIndexExclusive,
-          devicePixelRatio: devicePixelRatio,
-        ),
-      );
+      _enqueue(key, asked);
     } else if (_warmInFlight.contains(key)) {
       _askedWhileWarm.add(key);
     }
@@ -619,19 +605,7 @@ class TimelineGridTileStore {
       return;
     }
     final entry = _touched(key);
-    if (entry != null &&
-        entry.showsNow(
-          request.painter,
-          request.spanStartIndex,
-          request.spanEndIndexExclusive,
-          request.devicePixelRatio,
-          inkNow: () => _inkOf(
-            request.painter,
-            spanStartIndex: request.spanStartIndex,
-            spanEndIndexExclusive: request.spanEndIndexExclusive,
-            devicePixelRatio: request.devicePixelRatio,
-          ),
-        )) {
+    if (entry != null && _shows(entry, request)) {
       return;
     }
     _warming.remove(key);
@@ -927,6 +901,18 @@ class TimelineGridTileStore {
     );
     return (ops: writer.build(), glyphs: glyphs);
   });
+
+  /// Whether [entry] shows what [asked] would bake now — its ink read only
+  /// when the answer turns on it.
+  bool _shows(_TileEntry entry, _TileRequest asked) => entry.showsNow(
+    asked,
+    inkNow: () => _inkOf(
+      asked.painter,
+      spanStartIndex: asked.spanStartIndex,
+      spanEndIndexExclusive: asked.spanEndIndexExclusive,
+      devicePixelRatio: asked.devicePixelRatio,
+    ),
+  );
 
   /// The op stream [_emitForeground] writes for a span — what a tile bakes
   /// over its substrate, readable without a native engine.
@@ -1322,7 +1308,7 @@ class _TileEntry {
   /// The ink `_raster` baked over [substrate] — read in the same pass.
   final _TileInk ink;
 
-  /// Whether this tile shows [painter]'s span as the row is now. Asked
+  /// Whether this tile shows [asked]'s span as the row is now. Asked
   /// alike by every asker: a span shown, past the window or a page away.
   ///
   /// The look it was rastered for shows itself. Where what it was baked
@@ -1351,20 +1337,19 @@ class _TileEntry {
   /// step for their landings. Asked what it would bake, only the span the
   /// ghost's end moved through bakes anything new.
   bool showsNow(
-    TimelineTileRasterSource painter,
-    int spanStartIndex,
-    int spanEndIndexExclusive,
-    double devicePixelRatio, {
+    _TileRequest asked, {
     required _TileInk Function() inkNow,
   }) {
-    if (!_sameLook(painter, spanEndIndexExclusive, devicePixelRatio)) {
+    final painter = asked.painter;
+    final end = asked.spanEndIndexExclusive;
+    if (!_sameLook(painter, end, asked.devicePixelRatio)) {
       return false;
     }
     final sameCells = _showsSameCellsAs(painter.layer);
     if (sameCells && celContentRevision == painter.celContentRevision) {
       return true;
     }
-    final now = painter.substrateIn(spanStartIndex, spanEndIndexExclusive);
+    final now = painter.substrateIn(asked.spanStartIndex, end);
     if (!_sameSubstrate(substrate, now) ||
         !sameCells && !_sameInk(ink, inkNow())) {
       return false;
