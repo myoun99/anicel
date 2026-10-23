@@ -79,20 +79,20 @@ void main() {
     VolatileScratchFiles.ceilingBytes = 0;
   });
 
-  test('with no ceiling the room takes what it is given', () {
-    final path = VolatileScratchFiles.write(Uint8List(64 * 1024));
+  test('with no ceiling the room takes what it is given', () async {
+    final path = await VolatileScratchFiles.write(Uint8List(64 * 1024));
     if (path != null) written.add(path);
     expect(path, isNotNull);
   });
 
-  test('🚨a write that would cross the ceiling is REFUSED', () {
+  test('🚨a write that would cross the ceiling is REFUSED', () async {
     VolatileScratchFiles.ceilingBytes = 100 * 1024;
 
-    final first = VolatileScratchFiles.write(Uint8List(60 * 1024));
+    final first = await VolatileScratchFiles.write(Uint8List(60 * 1024));
     if (first != null) written.add(first);
     expect(first, isNotNull, reason: 'it fits');
 
-    final second = VolatileScratchFiles.write(Uint8List(60 * 1024));
+    final second = await VolatileScratchFiles.write(Uint8List(60 * 1024));
     expect(
       second,
       isNull,
@@ -101,20 +101,20 @@ void main() {
     );
   });
 
-  test('and space freed by a removed payload is space again', () {
+  test('and space freed by a removed payload is space again', () async {
     VolatileScratchFiles.ceilingBytes = 100 * 1024;
 
-    final first = VolatileScratchFiles.write(Uint8List(60 * 1024))!;
+    final first = (await VolatileScratchFiles.write(Uint8List(60 * 1024)))!;
     expect(
-      VolatileScratchFiles.write(Uint8List(60 * 1024)),
+      await VolatileScratchFiles.write(Uint8List(60 * 1024)),
       isNull,
       reason: 'setup: the room is full',
     );
 
     // What `dropPayloadsOf` does when an entry falls off the deep end.
-    ScratchFile.remove(first);
+    ScratchFile.letGo(first);
 
-    final third = VolatileScratchFiles.write(Uint8List(60 * 1024));
+    final third = await VolatileScratchFiles.write(Uint8List(60 * 1024));
     if (third != null) written.add(third);
     expect(
       third,

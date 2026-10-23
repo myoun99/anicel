@@ -25,6 +25,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/commands/set_project_pasteboard_command.dart';
+import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -403,15 +404,18 @@ void main() {
     // compressed again on the UI thread. It is worked out ahead now, on the
     // machine's workers, while the wait window is up.
     group('worked out ahead (F-432)', () {
-      /// Every file in the run's room, by its path inside it.
-      Set<String> roomFiles() =>
-          filesWrittenUnder(Directory(SessionScratch.stagedFolder())).toSet();
+      /// Every file in the run's room, by its path inside it — once what was
+      /// let go is gone ([ScratchFile.letGo]).
+      Future<Set<String>> roomFiles() async {
+        await ScratchFile.lettingGo;
+        return filesWrittenUnder(
+          Directory(SessionScratch.stagedFolder()),
+        ).toSet();
+      }
 
-      /// What the rounds worked out ahead have parked in the room.
-      Set<String> parkedAhead() => {
-        for (final path in roomFiles())
-          if (path.contains('-ahead')) path,
-      };
+      /// What the rounds worked out ahead have parked in the room: every
+      /// file it gained, where the cels are kept in a file and none parks.
+      Future<Set<String>> parkedAhead() => roomFiles();
 
       void expectSamePicture(BitmapSurface? actual, BitmapSurface expected) {
         expect(actual!.tiles.keys.toSet(), expected.tiles.keys.toSet());
@@ -574,12 +578,12 @@ void main() {
       ) async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
-        final before = parkedAhead();
+        final before = await parkedAhead();
         await store.cutCelsAhead(PasteboardReach.none);
-        expect(parkedAhead().difference(before), hasLength(1));
+        expect((await parkedAhead()).difference(before), hasLength(1));
         expect(store.adoptPasteboardReach(PasteboardReach.quarter).keys, [cut]);
         expectCut(store.bakedSurfaceOrNull(cut));
-        expect(parkedAhead().difference(before), isEmpty);
+        expect((await parkedAhead()).difference(before), isEmpty);
       });
 
       test('hot, worked out for another wall: not taken', () async {
@@ -594,11 +598,11 @@ void main() {
       test('worked out again, the last round goes', () async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
-        final before = parkedAhead();
+        final before = await parkedAhead();
         await store.cutCelsAhead(PasteboardReach.none);
-        final first = parkedAhead().difference(before);
+        final first = (await parkedAhead()).difference(before);
         await store.cutCelsAhead(PasteboardReach.quarter);
-        final second = parkedAhead().difference(before);
+        final second = (await parkedAhead()).difference(before);
         expect(second, hasLength(1));
         expect(second.intersection(first), isEmpty);
       });
@@ -606,10 +610,10 @@ void main() {
       test('a store laid in anew lets what was worked out go', () async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
-        final before = parkedAhead();
+        final before = await parkedAhead();
         await store.cutCelsAhead(PasteboardReach.none);
         parkCold(store, const {});
-        expect(parkedAhead().difference(before), isEmpty);
+        expect((await parkedAhead()).difference(before), isEmpty);
       });
 
       test('a wall that does not shrink works nothing out', () async {
@@ -626,31 +630,31 @@ void main() {
       test('a move that goes nowhere lets what was worked out go', () async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
-        final before = parkedAhead();
+        final before = await parkedAhead();
         await store.cutCelsAhead(PasteboardReach.quarter);
         expect(store.adoptPasteboardReach(PasteboardReach.whole), isEmpty);
-        expect(parkedAhead().difference(before), isEmpty);
+        expect((await parkedAhead()).difference(before), isEmpty);
       });
 
       test('answers landing after their round was let go leave nothing', (
       ) async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
-        final before = parkedAhead();
+        final before = await parkedAhead();
         final working = store.cutCelsAhead(PasteboardReach.none);
         parkCold(store, const {});
         await working;
-        expect(parkedAhead().difference(before), isEmpty);
+        expect((await parkedAhead()).difference(before), isEmpty);
       });
 
       test('parked cold, the bytes a cut replaces leave the room', () async {
-        final before = roomFiles();
+        final before = await roomFiles();
         final store = BrushFrameStore();
         parkCold(store, {cut: drawn(), clean: inkInside()});
         await store.cutCelsAhead(PasteboardReach.quarter);
         store.adoptPasteboardReach(PasteboardReach.quarter);
         expect(
-          roomFiles().difference(before),
+          (await roomFiles()).difference(before),
           hasLength(2),
           reason: "the clean cel's, and the cut parked ahead — the cut's "
               'last bytes went when it was kept anew',
@@ -873,6 +877,36 @@ void main() {
 
       shrink.undo();
       expectWhole(f.store.bakedSurfaceOrNull(cut), before);
+    });
+
+    // 🗣️Card a-pasteboard-undo-runs-on-the-ui-thread: 🔬S5_BA (2026-10-23):
+    // the first undo of the pasteboard turned off removed the parked bytes
+    // of the 99 cels it laid back, a file at a time on the UI thread —
+    // 30–61 ms of its 33–67.
+    test('🚨its undo hands what it lays back\'s parked bytes off the UI '
+        'thread, and leaves none of them in the room', () async {
+      final before = drawn();
+      final f = fixture((store) => keepInAFile(store, {cut: before}));
+      final command = SetProjectPasteboardCommand(
+        repository: f.repository,
+        brushFrameStore: f.store,
+        inUse: false,
+      );
+      await command.workAhead(undo: false)!.run((_) {});
+      command.execute();
+      expect(f.store.isCelCold(cut), isTrue, reason: 'premise: cut, parked');
+      final parked = f.store.bakedSnapshotForSave().cold[cut]!.filePath;
+      await ScratchFile.lettingGo;
+
+      command.undo();
+      expect(
+        ScratchFile.stillLettingGo,
+        1,
+        reason: 'handed off by the undo, not removed inside it',
+      );
+      expectWhole(f.store.bakedSurfaceOrNull(cut), before);
+      await ScratchFile.lettingGo;
+      expect(File(parked).existsSync(), isFalse);
     });
 
     test('a parked payload still lays every pixel back', () async {

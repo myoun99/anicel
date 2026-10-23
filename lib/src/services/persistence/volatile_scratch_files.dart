@@ -27,7 +27,7 @@ import 'session_scratch.dart';
 ///
 /// 🚨★★★**WRITING IS THE ONLY ROOM-AWARE VERB, AND THAT IS DELIBERATE.**
 /// Reading and removing take a PATH, and a path already says which room
-/// it came from — so [ScratchFile.read] and [ScratchFile.remove] serve
+/// it came from — so [ScratchFile.read] and [ScratchFile.letGo] serve
 /// both tenants and this class does not wrap them. Wrapping would have
 /// put a second name on each verb per room, which is exactly the shape
 /// that lets one of them quietly start meaning "and the other room too".
@@ -95,12 +95,16 @@ class VolatileScratchFiles {
   /// reason to refuse, alongside a disk that will not take the write.
   ///
   /// ⚠️The room MEASURES itself rather than counting: files leave through
-  /// [ScratchFile.remove], which takes a path and does not report to any
+  /// [ScratchFile.letGo], which takes a path and does not report to any
   /// room (see the class note above on why that stays true). A counter
   /// here would drift the first time an entry fell off the stack. Reading
   /// the directory costs one `listSync` of at most a couple of hundred
   /// entries, and only on a park — which happens when the byte budget is
   /// already exceeded, not per stroke.
+  ///
+  /// ⚠️Measured once what was let go is gone ([ScratchFile.lettingGo]): a
+  /// file on its way out still lies in the folder, and a room that weighed
+  /// it would refuse a park it has room for — and a refusal sheds entries.
   ///
   /// ⚠️The name only has to be unique within one run's room, and the room
   /// is already unique per run ([SessionScratch]) — so a counter is
@@ -114,7 +118,8 @@ class VolatileScratchFiles {
   /// worker that called this would number from zero inside its own copy
   /// and overwrite this one's files. Undo spilling runs on the isolate
   /// that owns the history stack; anything else must be handed the PATH.
-  static String? write(Uint8List bytes) {
+  static Future<String?> write(Uint8List bytes) async {
+    await ScratchFile.lettingGo;
     final folder = SessionScratch.volatileFolder();
     if (!_roomHasSpaceFor(bytes.length, folder)) {
       return null;

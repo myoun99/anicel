@@ -365,7 +365,7 @@ class UndoSurfaceSnapshot {
     // later park would take its own early return and never write.
     _letGo = false;
     if (path != null) {
-      ScratchFile.remove(path);
+      ScratchFile.letGo(path);
     }
     return _surface;
   }
@@ -588,7 +588,7 @@ class UndoSurfaceSnapshot {
       codec: compressed.codec,
       body: compressed.bytes,
     );
-    final path = VolatileScratchFiles.write(blob.bytes);
+    final path = await VolatileScratchFiles.write(blob.bytes);
     if (path == null) {
       return false;
     }
@@ -601,7 +601,7 @@ class UndoSurfaceSnapshot {
       // [ParkableCommand.dropPayload] exists to prevent. The window is
       // wide open in practice: the stack sheds and trims from `_push`,
       // synchronously, while this await is parked on the event loop.
-      ScratchFile.remove(path);
+      ScratchFile.letGo(path);
       _releaseTiles();
       return true;
     }
@@ -674,7 +674,7 @@ class UndoSurfaceSnapshot {
       return;
     }
     _parkedPath = null;
-    ScratchFile.remove(path);
+    ScratchFile.letGo(path);
   }
 
   /// Whether the entry holding this has left the stack. Never unset: an

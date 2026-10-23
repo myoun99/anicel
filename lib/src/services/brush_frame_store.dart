@@ -255,10 +255,6 @@ class BrushFrameStore {
           if (!_wallPasses(key, ref, reach)) (key: key, ref: ref, read: read),
     ];
     final hotCels = {..._bakedSurfaces};
-    // ⛔Never the name a cel is parked under: these bytes are not the
-    // cel's until the move takes them, and the round keeps one round's
-    // from another's — a cel the last move cut is parked under the last's.
-    final round = ++_cutAheadRounds;
     var done = 0;
     void counted() {
       done += 1;
@@ -270,7 +266,7 @@ class BrushFrameStore {
         _cutHotAhead(key, surface, ahead).whenComplete(counted),
       for (final job in jobs)
         celThawTurns
-            .run(() => _cutKeptAhead(job, ahead, round))
+            .run(() => _cutKeptAhead(job, ahead))
             .whenComplete(counted),
     ]);
   }
@@ -292,9 +288,9 @@ class BrushFrameStore {
   }
 
   /// A KEPT cel's bytes, read as [job] says, cut behind [ahead]'s wall on a
-  /// worker and parked for [round], held in [ahead] by the ref they were
-  /// read off.
-  Future<void> _cutKeptAhead(_KeptRead job, _CutAhead ahead, int round) async {
+  /// worker and parked under a name of their own, held in [ahead] by the
+  /// ref they were read off.
+  Future<void> _cutKeptAhead(_KeptRead job, _CutAhead ahead) async {
     final (:key, :ref, :read) = job;
     try {
       final blob = read(ref);
@@ -306,9 +302,11 @@ class BrushFrameStore {
         key,
         blob,
         (from: standsBehind, to: ahead.reach),
-        parkAt: ScratchCelFiles.pathFor(
+        // ⛔Never the name the cel is parked under: these bytes are not the
+        // cel's until the move takes them ([ScratchCelFiles.newPath]).
+        parkAt: ScratchCelFiles.newPath(
           _scratchNamespace,
-          '${anicelCelEntryName(key)}-ahead$round',
+          anicelCelEntryName(key),
         ),
       );
       ahead.answers[ref] = cut == null
@@ -323,7 +321,7 @@ class BrushFrameStore {
     } on Object {
       // The move reads it again, as it always did. A throw after the park
       // leaves its bytes to the room's own ending, as a removal that fails
-      // does (`ScratchFile.remove`).
+      // does ([ScratchFile.letGo]).
     }
   }
 
@@ -336,14 +334,12 @@ class BrushFrameStore {
   BitmapSurface? cutAheadOf(BrushFrameKey key) =>
       _cutAhead?.hot[_canonicalize(key)]?.made;
 
-  int _cutAheadRounds = 0;
-
   /// Lets go of [ahead] — what was worked out ahead and not taken — and of
   /// the bytes it parked in the room.
   static void _dropCutAhead(_CutAhead? ahead) {
     for (final rewrite in ahead?.answers.values ?? const <Never>[]) {
       if (rewrite != null) {
-        ScratchFile.remove(rewrite.kept.filePath);
+        ScratchFile.letGo(rewrite.kept.filePath);
       }
     }
     ahead?.answers.clear();
@@ -1020,15 +1016,14 @@ class BrushFrameStore {
     return true;
   }
 
-  /// [ref] — bytes already in the room — made [key]'s cold bytes, and the
-  /// file it was kept in before let go.
+  /// [ref] — bytes already in the room, under a name of their own
+  /// ([ScratchCelFiles.newPath]) — made [key]'s cold bytes, and the file it
+  /// was kept in before let go.
   void _keepCold(BrushFrameKey key, AnicelCelFileRef ref) {
     final previous = _coldCels[key];
     if (previous != null) {
       _coldBytes -= previous.length;
-      if (previous.filePath != ref.filePath) {
-        ScratchFile.remove(previous.filePath);
-      }
+      ScratchFile.letGo(previous.filePath);
     }
     _coldCels[key] = ref;
     _coldBytes += ref.length;
@@ -1052,7 +1047,7 @@ class BrushFrameStore {
       return;
     }
     _coldBytes -= gone.length;
-    ScratchFile.remove(gone.filePath);
+    ScratchFile.letGo(gone.filePath);
   }
 
   /// The blob [ref] names, read back out of the scratch room.

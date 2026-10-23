@@ -1,5 +1,8 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 /// Writing and reading one file in the app container's per-run room —
 /// the mechanism, with no opinion about WHICH room or what the bytes mean.
@@ -123,4 +126,39 @@ class ScratchFile {
       // takes it.
     }
   }
+
+  /// Removes [path] off this thread, and returns at once — silent as
+  /// [remove] is. For a file written ONCE, under a name no later write
+  /// wears: a park a store or the undo stack named for itself
+  /// (`ScratchCelFiles.write`, `VolatileScratchFiles.write`).
+  ///
+  /// 🗣️Card a-pasteboard-undo-runs-on-the-ui-thread: 🔬S5_BA (2026-10-23,
+  /// `flutter test`): the first undo of a pasteboard turned off laid back
+  /// 99 cels and removed each one's parked bytes with [remove] — 30–61 ms
+  /// of its 33–67 on the UI thread, a file at a time.
+  ///
+  /// ⛔Never a name a later write can wear again — [remove] is for those
+  /// (a conform's, an archive's, a write's own `.part`): this removal runs
+  /// whenever the machine gets to it, and one that landed after the next
+  /// write of that name would take the new bytes with it.
+  static void letGo(String path) {
+    final removal = File(path).delete().then<void>(
+      (_) {},
+      // Gone already, or held by a sync client; the room's own ending
+      // takes what is left.
+      onError: (Object _) {},
+    );
+    _lettingGo.add(removal);
+    unawaited(removal.whenComplete(() => _lettingGo.remove(removal)));
+  }
+
+  /// Completes once every file [letGo] was handed so far is gone — what a
+  /// look at the room waits for.
+  static Future<void> get lettingGo => Future.wait([..._lettingGo]);
+
+  /// How many files [letGo] has handed off that are not gone yet.
+  @visibleForTesting
+  static int get stillLettingGo => _lettingGo.length;
+
+  static final Set<Future<void>> _lettingGo = {};
 }
