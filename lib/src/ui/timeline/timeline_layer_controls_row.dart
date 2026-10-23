@@ -511,11 +511,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
       '-row-${layer.id}';
 
   /// The section band hugs the row's LEFT edge (UI-R6 #5); the 8px
-  /// breathing room moves between the band and the lane chevron. No padding
-  /// on a column: a 28px column has none to give, and the shared slot
-  /// skeleton already carries the row's gaps.
-  EdgeInsets get _padding =>
-      _horizontal ? const EdgeInsets.only(right: 8) : EdgeInsets.zero;
+  /// breathing room moves between the band and the lane chevron, and the
+  /// row's end keeps the rail's ([layerRailEndPadding]). No padding on a
+  /// column: a 28px column has none to give, and the shared slot skeleton
+  /// already carries the row's gaps.
+  EdgeInsets get _padding => _horizontal
+      ? const EdgeInsets.only(right: layerRailEndPadding)
+      : EdgeInsets.zero;
 
   /// `stretch` down a column: a reserved (childless) slot keeps its extent
   /// either way, but a POPULATED one would take its intrinsic width under
@@ -722,6 +724,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
           ),
           ?_linkBadge(colorScheme),
           ?_referenceButton(),
+          ?_soundButton(colorScheme),
           ?_cameraPathButton(),
           ?_graphToggle(context),
           alongBox(
@@ -754,8 +757,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   );
 
   /// The box every button at the end of the name stands in — the link
-  /// badge, a reference row's file, the camera's path — the header graph's
-  /// ([LaneGraphToggle]), so the four are one button.
+  /// badge, a reference row's file, an SE row's speaker, the camera's path
+  /// — the header graph's ([LaneGraphToggle]), so the five are one button.
   ///
   /// 🚨F-409 (유저 2026-10-19): 「카메라랑 참조레이어의 참조버튼. 얘네만 다른
   /// 버튼 사용하는거 눈에띄는게 얘네만 누르면 버튼 실루엣이 강조색됨.
@@ -841,6 +844,32 @@ class TimelineLayerControlsRow extends StatelessWidget {
     );
   }
 
+  /// An SE row's SPEAKER among the name's buttons (F-443, 유저 2026-10-23:
+  /// 「se레이어의 사운드버튼도 se레이어만 쓰는데 자리 고정으로 차지하는거
+  /// 비효율적이니 동일하게 위에서 말한 규칙적용해서 위치옮김」) — the room a
+  /// row's own button takes comes out of its name. ↩️It stood in a column
+  /// of its own after the eye, reserved and empty on every other row.
+  ///
+  /// A DOOR, not a toggle (R10 R3): it opens the SE mixer (mute, solo,
+  /// fader, pan) under itself, and SHOWS mute and solo, because a door has
+  /// to say what is behind it — solo in the accent, as a selection reads.
+  Widget? _soundButton(ColorScheme colorScheme) {
+    final onOpenMixer = onOpenLayerMixer;
+    if (layer.kind != LayerKind.se || onOpenMixer == null) return null;
+    return _nameButton(
+      slug: 'mute',
+      tooltip: AppText.strings.layerAudioTitle,
+      look: _NameButtonLook(
+        RailIconGlyph(
+          layer.muted ? Icons.volume_off : Icons.volume_up,
+          color: isLayerSoloed ? colorScheme.primary : null,
+        ),
+      ),
+      onPressed: (context) =>
+          onOpenMixer(context, layerIdNow(context, layer.id)),
+    );
+  }
+
   /// The camera row's path button (I-89 ④, 유저 2026-10-12: 「카메라
   /// 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서. 카메라는
   /// 지금 비지블이랑 불투명도가 어차피 글로벌이라서 이 경로도 글로벌 취급」):
@@ -914,7 +943,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     fx: _fxSwitch(context),
     onion: _onionToggle(context, colorScheme),
     visibility: _visibilityToggle(),
-    mute: _muteButton(),
     opacity: _opacitySlot(),
     blend: _blendChip(context),
   );
@@ -1019,29 +1047,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
       ),
     ),
   );
-
-  /// SE rows carry the mute speaker beside the eye (sounds silence,
-  /// waveforms keep displaying) — the mixer's door. Tight box: the M3
-  /// IconButton otherwise inflates its layout box to the 48px minimum tap
-  /// target, overflowing the rail row.
-  Widget? _muteButton() {
-    final onOpenMixer = onOpenLayerMixer;
-    if (layer.kind != LayerKind.se || onOpenMixer == null) return null;
-    final slot = sizeAlong(axis, along: layerMuteSlotWidth, across: 26);
-    return acrossBox(
-      axis,
-      26,
-      child: LayerMuteToggleButton(
-        name: '$keyPrefix-layer-mute-${layer.id}',
-        muted: layer.muted,
-        soloed: isLayerSoloed,
-        width: slot.width,
-        height: slot.height,
-        onOpenMixer: (anchorContext) =>
-            onOpenMixer(anchorContext, layerIdNow(anchorContext, layer.id)),
-      ),
-    );
-  }
 
   /// The camera row's slider drives the camera-view DIM opacity (unified
   /// layer controls); every row shrinks alike so the control columns stay

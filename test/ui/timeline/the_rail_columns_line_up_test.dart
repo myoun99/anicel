@@ -131,6 +131,37 @@ void main() {
     );
   });
 
+  // 🗣️F-443 (유저 2026-10-23): 「se레이어의 사운드버튼도 se레이어만 쓰는데
+  // 자리 고정으로 차지하는거 비효율적이니 동일하게 위에서 말한 규칙적용해서
+  // 위치옮김」 — the rule being a row's own button taking its room out of
+  // the name, as the link and the reference do.
+  testWidgets('🚨the speaker is one of the sound\'s name\'s buttons, before '
+      'the fold slot — and no row keeps a column for it', (tester) async {
+    await pumpRail(tester);
+    final speaker = part(tester, 'mute', sound);
+    final name = part(tester, 'name', sound);
+    expect(speaker.top, greaterThanOrEqualTo(name.top - 4));
+    expect(speaker.left, greaterThan(name.left));
+    expect(
+      speaker.right,
+      closeTo(name.right - layerLaneToggleSlotWidth, 0.01),
+      reason: 'right before the fold slot, as the reference stands',
+    );
+    for (final layer in [picture, sound]) {
+      expect(
+        part(tester, 'opacity', layer).left -
+            part(tester, 'visibility', layer).right,
+        closeTo(layerControlChipGap / 2, 0.01),
+        reason: '${layer.name}: the bar right after the eye',
+      );
+    }
+    expect(
+      part(tester, 'name', picture).right,
+      closeTo(name.right, 0.01),
+      reason: 'the name\'s room is one extent on every row',
+    );
+  });
+
   testWidgets('the opacity bar and the blend chip stand a chip gap apart, '
       'and the bar half of one off the column before it', (tester) async {
     await pumpRail(tester);
@@ -138,16 +169,26 @@ void main() {
     final bar = part(tester, 'opacity', picture);
     final blend = part(tester, 'blend', picture);
     expect(blend.left - bar.right, closeTo(layerControlChipGap, 0.01));
-    // The mute column is reserved and empty on a picture's row.
-    expect(
-      bar.left - eye.right,
-      closeTo(layerMuteSlotWidth + layerControlChipGap / 2, 0.01),
-    );
+    expect(bar.left - eye.right, closeTo(layerControlChipGap / 2, 0.01));
     expect(
       legend(tester, 'opacity').left,
       closeTo(bar.left, 0.01),
       reason: 'the master bar stands where the rows\' bars do',
     );
+  });
+
+  // 🗣️F-443 (유저 2026-10-23): 「합성모드버튼의 오른쪽에 쓸데없는 패딩이 너무
+  // 큰데, 다른 패딩이랑 규칙 통일해서 적용. 예를들어 불투명도랑 블렌드모드
+  // 사이의 공간정도만」.
+  testWidgets('🚨the blend chip stands off the row\'s end as far as it '
+      'stands off the bar, and the legend\'s over it', (tester) async {
+    await pumpRail(tester);
+    final row = part(tester, 'row', picture);
+    final bar = part(tester, 'opacity', picture);
+    final blend = part(tester, 'blend', picture);
+    // Inside the row's 1px border.
+    expect(row.right - 1 - blend.right, closeTo(blend.left - bar.right, 0.01));
+    expect(legend(tester, 'blend').right, closeTo(blend.right, 0.01));
   });
 
   for (final scale in [1.0, 1.5, 2.0]) {

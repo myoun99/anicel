@@ -40,8 +40,6 @@ LayerLegendCallbacks everyVerb() => LayerLegendCallbacks(
   onSheetAllOff: () {},
   onClearMarkFilter: () {},
   onClearAllFillReferences: () {},
-  onMuteAllSe: () {},
-  onUnmuteAllSe: () {},
   onBypassAllFx: () {},
   onEnableAllFx: () {},
   onToggleMarkFilter: (_) {},
@@ -331,8 +329,8 @@ void main() {
 
   // Found reading the header for this round (10-09): the lane toggle's and
   // the SE mute's tooltips, and the onion row, were English in every
-  // language.
-  testWidgets('the header\'s two direct buttons and its onion row speak the '
+  // language. (The SE mute left the header with F-443.)
+  testWidgets('the header\'s direct button and its onion row speak the '
       'program language', (tester) async {
     addTearDown(() => AppText.settings.value = const AppLanguageSettings());
     AppText.settings.value = const AppLanguageSettings(
@@ -367,7 +365,6 @@ void main() {
         )
         .message;
     expect(tooltipOver('legend-lanes-toggle'), '모든 레이어 펼치기');
-    expect(tooltipOver('legend-mute'), 'SE 모두 음소거');
     expect(
       [
         for (final row in tester

@@ -39,6 +39,7 @@ import 'layer_rail_columns.dart'
     show
         LayerFoldTwirl,
         LayerRailOptionalColumns,
+        layerRailEndPadding,
         layerRailTrailingCells,
         noOptionalRailColumns;
 import 'key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
@@ -746,7 +747,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   }
 
   EdgeInsets get _headerPadding => widget.axis == Axis.horizontal
-      ? const EdgeInsets.only(right: 8)
+      ? const EdgeInsets.only(right: layerRailEndPadding)
       : const EdgeInsets.symmetric(horizontal: 2, vertical: 4);
 
   /// The TWIRL is the chevron's, not the whole header's (R10 #19's rail

@@ -47,7 +47,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
     this.kinds = const {},
     this.visibilitySoloEnabled = false,
     this.anyLanesExpanded = false,
-    this.allSeMuted = false,
     this.displayedLayerIds,
     this.displayedOpacity = 1.0,
     this.displayedOnionSkinOn = false,
@@ -121,10 +120,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
   /// toggle folds/unfolds ALL layers based on this (R3 feedback #5).
   final bool anyLanesExpanded;
 
-  /// Whether every SE row is muted — the mute legend cell is a direct
-  /// all-SE toggle (R3 feedback #10), colored by this state.
-  final bool allSeMuted;
-
   /// Grid-provided lane sweeps (the grid owns lane expansion knowledge).
   final VoidCallback? onCollapseAllLanes;
   final VoidCallback? onExpandAllLanes;
@@ -161,7 +156,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
     BySet(kinds),
     visibilitySoloEnabled,
     anyLanesExpanded,
-    allSeMuted,
     displayedLayerIds != null,
     displayedOpacity,
     displayedOnionSkinOn,
@@ -378,35 +372,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
     );
   }
 
-  Widget _buildMute(LayerLegendCallbacks? legend, Color restColor) {
-    // One handler for the toggle, named once — the press claim and the tap
-    // fire the same thing, and saying so twice was two more forks.
-    final toggle = legend == null
-        ? null
-        : (allSeMuted ? legend.onUnmuteAllSe : legend.onMuteAllSe);
-    return AppTooltip(
-      // ↩️Written in English here, in every language, until I-40's round on
-      // the legend found it (10-09).
-      message: allSeMuted
-          ? AppText.strings.tlUnmuteAllSe
-          : AppText.strings.tlMuteAllSe,
-      child: ControlPressClaim(
-        onPressed: toggle,
-        child: InkWell(
-          key: const ValueKey<String>('legend-mute'),
-          onTap: silentPress(toggle),
-          child: Center(
-            child: _legendIcon(
-              allSeMuted ? Icons.volume_off : Icons.volume_up_outlined,
-              restColor: restColor,
-              engaged: allSeMuted,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   /// The opacity column's heading — the master bar's resting text, and the
   /// heading where there is no bar.
   ///
@@ -513,10 +478,10 @@ class TimelineLayerControlsHeader extends KeptPiece {
             child: Padding(
               // The rail's trailing breathing room. Stood up there is none
               // to give: the sheet's header block is sized to exactly this
-              // list of slots, so 8px of padding is 8px of overflow.
+              // list of slots, so any padding is that much overflow.
               padding: isVertical
                   ? EdgeInsets.zero
-                  : const EdgeInsets.only(right: 8),
+                  : const EdgeInsets.only(right: layerRailEndPadding),
               child: Flex(
                 direction: axis,
                 children: [
@@ -591,10 +556,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
                     // on that surface with no heading over it.
                     onion: _buildOnion(menus, optional.onion, restColor),
                     visibility: _buildVisibility(menus, restColor),
-                    // The mute cell is a DIRECT all-SE toggle (R3 feedback
-                    // #10): one tap mutes/unmutes every SE row, colored by
-                    // the muted state — no flyout.
-                    mute: _buildMute(legend, restColor),
                     // MASTER opacity bar (R4 #6): drags every DISPLAYED
                     // row's opacity (filter-passing — solo a color/kind
                     // first to scope it). Gray at rest on the LAST

@@ -552,7 +552,7 @@ void main() {
         'storyboard-lane-toggle-${seRow.id}',
       ])
         (name, find.named(name)),
-      for (final key in const ['legend-lanes-toggle', 'legend-mute'])
+      for (final key in const ['legend-lanes-toggle'])
         (key, find.byKey(ValueKey<String>(key))),
     ]) {
       expect(finder, findsOneWidget, reason: '$id is not on the storyboard');

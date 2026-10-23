@@ -141,18 +141,6 @@ class LayerSwitchVerbs {
     _changes.notifyChanged();
   }
 
-  /// Mutes/unmutes every SE layer of the active cut.
-  void setAllSeLayersMuted(bool muted) {
-    _controllers.layerController.setLayersMuted(
-      layerIds: [
-        for (final layer in _project.layers)
-          if (layer.kind == LayerKind.se && layer.muted != muted) layer.id,
-      ],
-      muted: muted,
-    );
-    _changes.notifyChanged();
-  }
-
   /// The row as the project holds it THIS instant — the one lookup the
   /// live reads below share (cut-owned rows and track fixtures alike).
   Layer _rowAnywhere(LayerId layerId) =>

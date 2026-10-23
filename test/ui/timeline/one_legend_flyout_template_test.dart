@@ -26,8 +26,6 @@ void main() {
     onSheetAllOff: () {},
     onClearMarkFilter: () {},
     onClearAllFillReferences: () {},
-    onMuteAllSe: () {},
-    onUnmuteAllSe: () {},
     onBypassAllFx: () {},
     onEnableAllFx: () {},
     onToggleMarkFilter: (_) {},

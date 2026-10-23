@@ -26,7 +26,7 @@ import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show FxToggleButton, LayerMuteToggleButton, LayerVisibilityToggleButton;
+    show FxToggleButton, LayerVisibilityToggleButton;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
@@ -35,6 +35,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_twirls.dart';
@@ -515,14 +516,14 @@ void main() {
   testWidgets('🚨a solo the session answers is what the S row\'s speaker '
       'shows — no part of its layer', (tester) async {
     final session = await pumpPanel(tester, film());
-    bool soloed() => tester
-        .widget<LayerMuteToggleButton>(
-          find.descendant(
-            of: seLabel,
-            matching: find.byType(LayerMuteToggleButton),
-          ),
-        )
-        .soloed;
+    final speaker = find.ancestor(
+      of: find.named('storyboard-layer-mute-t1-s1'),
+      matching: find.byType(RailGlyphButton),
+    );
+    bool soloed() =>
+        (tester.widget<RailGlyphButton>(speaker).glyph as RailIconGlyph)
+            .color ==
+        Theme.of(tester.element(speaker)).colorScheme.primary;
     expect(soloed(), isFalse, reason: 'premise');
 
     session.visibilitySolo.toggleLayerSolo(const LayerId('t1-s1'));

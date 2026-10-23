@@ -1833,8 +1833,6 @@ enum AppStrings {
   String get tlOnionOnDisplayedToggle => _s('tlOnionOnDisplayedToggle');
   String get tlCollapseAllLayers => _s('tlCollapseAllLayers');
   String get tlExpandAllLayers => _s('tlExpandAllLayers');
-  String get tlMuteAllSe => _s('tlMuteAllSe');
-  String get tlUnmuteAllSe => _s('tlUnmuteAllSe');
 
   // The rail row's controls (rail-subject-tooltips): one whole sentence per
   // control, state and row. ⛔Never a noun slotted into a template — French
@@ -3003,8 +3001,6 @@ enum AppStrings {
     'tlOnionOnDisplayedToggle': 'Onion skin on displayed layers (on/off)',
     'tlCollapseAllLayers': 'Collapse all layers',
     'tlExpandAllLayers': 'Expand all layers',
-    'tlMuteAllSe': 'Mute all SE',
-    'tlUnmuteAllSe': 'Unmute all SE',
     'railLayerBlendMode': 'Layer blend mode',
     'railFolderBlendMode': 'Folder blend mode',
     'railHideLayer': 'Hide layer',
@@ -4608,8 +4604,6 @@ enum AppStrings {
     'tlOnionOnDisplayedToggle': '表示中のレイヤーのオニオンスキン(オン/オフ)',
     'tlCollapseAllLayers': 'すべてのレイヤーを折りたたむ',
     'tlExpandAllLayers': 'すべてのレイヤーを展開',
-    'tlMuteAllSe': 'SEをすべてミュート',
-    'tlUnmuteAllSe': 'SEのミュートをすべて解除',
     'railLayerBlendMode': 'レイヤーの合成モード',
     'railFolderBlendMode': 'フォルダーの合成モード',
     'railHideLayer': 'レイヤーを隠す',
@@ -6240,8 +6234,6 @@ enum AppStrings {
     'tlOnionOnDisplayedToggle': '표시 중인 레이어의 어니언 스킨 켜기/끄기',
     'tlCollapseAllLayers': '모든 레이어 접기',
     'tlExpandAllLayers': '모든 레이어 펼치기',
-    'tlMuteAllSe': 'SE 모두 음소거',
-    'tlUnmuteAllSe': 'SE 모두 음소거 해제',
     'railLayerBlendMode': '레이어 블렌드 모드',
     'railFolderBlendMode': '폴더 블렌드 모드',
     'railHideLayer': '레이어 숨기기',
@@ -8008,8 +8000,6 @@ enum AppStrings {
     'tlOnionOnDisplayedToggle': "Pelure d'oignon des calques affichés (activer/désactiver)",
     'tlCollapseAllLayers': 'Replier tous les calques',
     'tlExpandAllLayers': 'Déplier tous les calques',
-    'tlMuteAllSe': 'Couper tous les SE',
-    'tlUnmuteAllSe': 'Rétablir tous les SE',
     'railLayerBlendMode': 'Mode de fusion du calque',
     'railFolderBlendMode': 'Mode de fusion du dossier',
     'railHideLayer': 'Masquer le calque',
@@ -9566,8 +9556,6 @@ enum AppStrings {
     'tlOnionOnDisplayedToggle': '显示图层的洋葱皮(开/关)',
     'tlCollapseAllLayers': '折叠所有图层',
     'tlExpandAllLayers': '展开所有图层',
-    'tlMuteAllSe': '静音全部 SE',
-    'tlUnmuteAllSe': '取消全部 SE 静音',
     'railLayerBlendMode': '图层混合模式',
     'railFolderBlendMode': '文件夹混合模式',
     'railHideLayer': '隐藏图层',

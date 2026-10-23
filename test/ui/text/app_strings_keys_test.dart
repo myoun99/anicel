@@ -919,8 +919,6 @@ void main() {
     'tlOnionOnDisplayedToggle': (s) => s.tlOnionOnDisplayedToggle,
     'tlCollapseAllLayers': (s) => s.tlCollapseAllLayers,
     'tlExpandAllLayers': (s) => s.tlExpandAllLayers,
-    'tlMuteAllSe': (s) => s.tlMuteAllSe,
-    'tlUnmuteAllSe': (s) => s.tlUnmuteAllSe,
     'tlShowXSheet': (s) => s.tlShowXSheet,
     'tlShowTimeline': (s) => s.tlShowTimeline,
     'cameraViewOn': (s) => s.cameraViewOn,

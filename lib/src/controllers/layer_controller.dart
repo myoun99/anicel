@@ -275,15 +275,6 @@ class LayerController {
     );
   }
 
-  /// Mutes/unmutes MANY layers as ONE undo step — the legend's SE action.
-  void setLayersMuted({required List<LayerId> layerIds, required bool muted}) =>
-      _executeDisplayBatch(
-        layerIds: layerIds,
-        debugLabel: 'Set layer mute',
-        apply: (layer) =>
-            layer.muted == muted ? layer : layer.copyWith(muted: muted),
-      );
-
   /// Sets the composite blend on MANY layers as ONE undo step — each one's
   /// link group with it ([setLayerBlendMode]).
   void setLayersBlendMode({

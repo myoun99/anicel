@@ -1855,20 +1855,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       if (layer.mark != LayerMark.none) layer.mark,
   };
 
-  bool _legendAllSeMuted() {
-    var sawSe = false;
-    for (final layer in _legendLayers()) {
-      if (layer.kind != LayerKind.se) {
-        continue;
-      }
-      sawSe = true;
-      if (!layer.muted) {
-        return false;
-      }
-    }
-    return sawSe;
-  }
-
   Set<LayerId> _legendDisplayedLayerIds() => {
     for (final layer in _legendLayers())
       if (layer.kind.hasPictureOpacity) layer.id,
@@ -2553,7 +2539,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             marksInUse: _legendMarksInUse,
             kinds: StoryboardPanel.railKinds,
             visibilitySoloEnabled: widget.visibilitySoloEnabled,
-            allSeMuted: _legendAllSeMuted(),
             displayedLayerIds: widget.legend == null
                 ? null
                 : _legendDisplayedLayerIds,
@@ -3027,7 +3012,7 @@ class _StoryboardLabelShell extends StatelessWidget {
         key: rowKey,
         width: StoryboardPanel.railWidthIn(context),
         height: height,
-        padding: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.only(right: layerRailEndPadding),
         decoration: chromeless
             ? null
             : BoxDecoration(

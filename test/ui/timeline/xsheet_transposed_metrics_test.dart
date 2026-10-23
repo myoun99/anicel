@@ -459,7 +459,6 @@ void main() {
         'legend-fill-ref',
         'legend-fx',
         'legend-eye',
-        'legend-mute',
       ]) {
         expect(
           find.byKey(ValueKey<String>(key)),
@@ -666,18 +665,18 @@ void main() {
       expect(
         layerRailTrailingWidth(
           columns: layerRailColumnWidthsAtOne,
-          from: LayerRailTrailingSlot.mute,
+          from: LayerRailTrailingSlot.visibility,
           optionalColumns: noOptionalRailColumns,
         ),
-        layerMuteSlotWidth + layerOpacitySlotWidth,
+        layerVisibilitySlotWidth + layerOpacitySlotWidth,
       );
       expect(
         layerRailTrailingWidth(
           columns: layerRailColumnWidthsAtOne,
-          from: LayerRailTrailingSlot.mute,
+          from: LayerRailTrailingSlot.visibility,
           optionalColumns: (onion: false, blend: true),
         ),
-        layerMuteSlotWidth + layerOpacitySlotWidth + layerBlendSlotWidth,
+        layerVisibilitySlotWidth + layerOpacitySlotWidth + layerBlendSlotWidth,
       );
       // R10 R6: the eye-swipe band read the tail by hand and forgot BLEND
       // entirely, so the band sat 58px off the eye whenever blend showed.
@@ -685,12 +684,12 @@ void main() {
       expect(
         layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
-              from: LayerRailTrailingSlot.mute,
+              from: LayerRailTrailingSlot.visibility,
               optionalColumns: (onion: false, blend: true),
             ) -
             layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
-              from: LayerRailTrailingSlot.mute,
+              from: LayerRailTrailingSlot.visibility,
               optionalColumns: noOptionalRailColumns,
             ),
         layerBlendSlotWidth,

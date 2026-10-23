@@ -381,20 +381,6 @@ void main() {
     expect(s.layers.every((layer) => s.effectsAndFx.isLayerFxEnabled(layer.id)), isTrue);
   });
 
-  test('SE mute sweep touches only SE layers', () {
-    final s = session();
-    switches(s).setAllSeLayersMuted(true);
-    for (final layer in s.layers) {
-      if (layer.kind == LayerKind.se) {
-        expect(layer.muted, isTrue);
-      } else {
-        expect(layer.muted, isFalse);
-      }
-    }
-    switches(s).setAllSeLayersMuted(false);
-    expect(s.layers.every((layer) => !layer.muted), isTrue);
-  });
-
   test('resetAllLayersOpacity restores 1.0 for non-camera layers', () {
     final s = session();
     final target = s.layers

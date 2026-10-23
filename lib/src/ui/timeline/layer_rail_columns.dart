@@ -38,6 +38,15 @@ import 'row_control_surface.dart';
 /// The gap between the reserved section band and the first control slot.
 const double layerRailSectionGap = 8;
 
+/// What a rail row keeps past its last column, along the rail — the room
+/// after the blend chip (F-443, 유저 2026-10-23: 「합성모드버튼의 오른쪽에
+/// 쓸데없는 패딩이 너무 큰데, 다른 패딩이랑 규칙 통일해서 적용. 예를들어
+/// 불투명도랑 블렌드모드 사이의 공간정도만 패딩주면 될듯. 통일감우선」): half
+/// a chip gap, which with the chip's own half ([_plateIn]) is the gap the
+/// bar and the chip stand apart by. ↩️8, written into every surface that
+/// ends a rail row.
+const double layerRailEndPadding = layerControlChipGap / 2;
+
 /// The TYPE BUTTON's slot (UI-R24 #7) — the row's KIND icon, on every row
 /// kind including attach rows (R10 R3 moved their placement arrow to the
 /// sheet slot). A fixed column of its own, so attach rows align with every
@@ -424,7 +433,6 @@ List<Widget> layerRailTrailingCells({
   Widget? fx,
   Widget? onion,
   Widget? visibility,
-  Widget? mute,
   Widget? opacity,
   Widget? blend,
   Widget? trailingRegion,
@@ -433,7 +441,7 @@ List<Widget> layerRailTrailingCells({
     layerRailSlot(axis, layerFillReferenceSlotWidth, fillReference),
     layerRailSlot(axis, layerFxSlotWidth, fx),
     // R5 #7: everything AFTER fx as ONE region instead of its columns — a
-    // group header has no eye, no mute and no blend, so the space is free
+    // group header has no eye and no blend, so the space is free
     // and a preview wants it whole. The EXTENT is identical either way (it
     // comes from [layerRailTrailingWidth]), which is what keeps the fx
     // column pinned however this branches.
@@ -451,7 +459,6 @@ List<Widget> layerRailTrailingCells({
       if (optionalColumns.onion)
         layerRailSlot(axis, layerOnionSlotWidth, onion),
       layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
-      layerRailSlot(axis, layerMuteSlotWidth, mute),
       layerRailSlot(axis, columns.opacity, _plateIn(axis, opacity)),
       if (optionalColumns.blend)
         layerRailSlot(axis, columns.blend, _plateIn(axis, blend)),
@@ -483,7 +490,6 @@ enum LayerRailTrailingSlot {
   fx,
   onion,
   visibility,
-  mute,
   opacity,
   blend,
 }
@@ -532,7 +538,6 @@ double _trailingSlotWidth(
   LayerRailTrailingSlot.fx => layerFxSlotWidth,
   LayerRailTrailingSlot.onion => layerOnionSlotWidth,
   LayerRailTrailingSlot.visibility => layerVisibilitySlotWidth,
-  LayerRailTrailingSlot.mute => layerMuteSlotWidth,
   LayerRailTrailingSlot.opacity => columns.opacity,
   LayerRailTrailingSlot.blend => columns.blend,
 };

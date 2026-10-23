@@ -34,8 +34,6 @@ LayerLegendCallbacks sessionLegendCallbacks(
     rowFilter.copyWith(markColors: const <LayerMark>{}),
   ),
   onClearAllFillReferences: session.layerSwitches.clearAllFillReferences,
-  onMuteAllSe: () => session.layerSwitches.setAllSeLayersMuted(true),
-  onUnmuteAllSe: () => session.layerSwitches.setAllSeLayersMuted(false),
   onBypassAllFx: () => session.effectsAndFx.setAllLayersFxBypassed(true),
   onEnableAllFx: () => session.effectsAndFx.setAllLayersFxBypassed(false),
   onToggleMarkFilter: (mark) =>

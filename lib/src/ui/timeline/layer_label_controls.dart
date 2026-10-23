@@ -269,12 +269,6 @@ const double layerFillReferenceSlotWidth = 22;
 const double layerFxSlotWidth = 22;
 const double layerVisibilitySlotWidth = 22;
 
-/// 18 → 22 (F-409, 유저 2026-10-19): 「버튼별로 미묘하게 패딩 다른거같은데 다
-/// 같도록 통일. 특히 … 비지블버튼이랑 음소거랑 불투명도랑 그 공간만 이상하게
-/// 좁다」 — the speaker stood in a box 4 narrower than every other button on
-/// the rail, its glyph a pixel from its edge where theirs stand two or three.
-const double layerMuteSlotWidth = 22;
-
 // 64 → 42 (UI-R18 #4): the opacity bar reads fine at two-thirds width
 // across all three panels' rails.
 // 42 → 51 (text-scale-rail-opac, 유저 2026-09-25: 「칸을 가장 넓은 글자에
@@ -786,63 +780,6 @@ class LayerVisibilityToggleButton extends StatelessWidget {
         ),
         onPressed: onToggle,
       ),
-    );
-  }
-}
-
-/// The ONE mute speaker (SE rows).
-///
-/// Also written inline three times, also drifted — 14px glyph in the
-/// storyboard, 16px in the two timeline rails, and the storyboard's copy
-/// had silently lost the SOLO accent the other two carry.
-///
-/// R10 R3: the speaker is a DOOR, not a toggle. Pressing it opens the SE
-/// mixer (mute, solo, fader, pan) anchored under the button; the two
-/// timeline rails used to hang a context menu off it for the other three
-/// and the storyboard rail had no way to reach them at all. It still
-/// SHOWS mute and solo, because a door has to say what is behind it.
-class LayerMuteToggleButton extends StatelessWidget {
-  const LayerMuteToggleButton({
-    super.key,
-    required this.name,
-    required this.muted,
-    required this.onOpenMixer,
-    this.soloed = false,
-    this.width = layerMuteSlotWidth,
-    this.height = 26,
-  });
-
-  /// What a finder calls the speaker ('timeline-layer-mute-a') — its
-  /// [RailGlyphButton.name].
-  final String name;
-
-  final bool muted;
-
-  /// Opens the mixer. It takes THIS button's context so the popup anchors
-  /// to the speaker rather than to whatever row mounted it.
-  final ValueChanged<BuildContext> onOpenMixer;
-
-  /// Soloed rows tint accent (selection style: color only, no checkmarks).
-  final bool soloed;
-
-  final double width;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    return RailGlyphButton(
-      name: name,
-      // One meaning on all three rails, so the label is the control's, not
-      // the host's. It also carries the button's semantics name — the
-      // hardcoded English 'Mute layer'/'Unmute layer' went out with the
-      // toggle, and a door needs to say where it goes.
-      tooltip: AppText.strings.layerAudioTitle,
-      size: AppIconButtonBox(width: width, height: height, iconSize: 16),
-      glyph: RailIconGlyph(
-        muted ? Icons.volume_off : Icons.volume_up,
-        color: soloed ? Theme.of(context).colorScheme.primary : null,
-      ),
-      onPressed: () => onOpenMixer(context),
     );
   }
 }

@@ -40,11 +40,16 @@ void main() {
         'legend-fill-ref',
         'legend-fx',
         'legend-eye',
-        'legend-mute',
         'legend-opacity',
       ]) {
         expect(find.byKey(ValueKey<String>(cell)), findsOneWidget);
       }
+      // 🗣️F-443 (유저 2026-10-23): 「레전드의 se버튼은 필요없으니 잔재 싹
+      // 삭제」 — the speaker is an SE row's own button now.
+      expect(
+        find.byKey(const ValueKey<String>('legend-mute')),
+        findsNothing,
+      );
     });
 
     testWidgets('LAYER is a plain heading now (R4 #3): no flyout, no add '
