@@ -168,13 +168,13 @@ void main() {
     );
   });
 
-  testWidgets('🚨storyboard: folded, the rows it hands the walk are read '
-      'again on every build — lanes twirled open folded are walked into', (
+  testWidgets('🚨storyboard: folded, the rows it hands the walk are the '
+      'rows as they stand — lanes twirled open folded are walked into', (
     tester,
   ) async {
-    // ⛔The table the rows are read from was dropped by the body's layout
-    // alone, so with no body built it stood as the last open layout left
-    // it, and a row the walk should reach was not there.
+    // ⛔What the panel stays for while it builds no body: the folded row and
+    // the walk read its rows, and a body that is not laid must not leave
+    // them where the last open layout did.
     await pumpApp(tester);
     await bringForward(tester, 'timeline-mode-storyboard-button');
     await tester.tap(fold);

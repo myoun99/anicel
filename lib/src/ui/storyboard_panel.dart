@@ -1900,12 +1900,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   Widget build(BuildContext context) {
     // ★FOLDED, NO BODY (유저 2026-10-14: 「열려있을때만 지어지는게
     // 맞는구조」 · 「이건 모든 패널 공통적인 사항이야」). The State stays for
-    // the rows it hands the folded row and the walk ([_bindSheet]), and the
-    // table they are read from goes with this build as with a laid one
-    // ([_StoryboardRailRows.forgetLaneSeating]). Opened, the body is built
-    // where the kept axes stand ([TwoAxisScrollController.bornAt]).
+    // the rows it hands the folded row and the walk ([_bindSheet]), read off
+    // the project as it stands. Opened, the body is built where the kept
+    // axes stand ([TwoAxisScrollController.bornAt]).
     if (PanelCollapsedScope.of(context)) {
-      _railRows.forgetLaneSeating();
       return const SizedBox.shrink();
     }
     // The splitter's value is read at the TOP here and nowhere deeper:
