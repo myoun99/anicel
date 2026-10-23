@@ -104,7 +104,8 @@ void main() {
           EditorActionIds.fileExport,
         ],
       );
-      expect(menuActions, hasLength(31));
+      // ↩️31 with the bake switch, gone 2026-10-23 (F-448).
+      expect(menuActions, hasLength(30));
       expect(
         editorActionDefinitions.last.shelf,
         ShortcutShelf.panels,
