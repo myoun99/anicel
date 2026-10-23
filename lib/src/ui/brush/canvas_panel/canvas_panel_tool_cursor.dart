@@ -63,13 +63,39 @@ class _CanvasPanelToolCursor {
       _state._brush.tool == CanvasTool.eyedropper &&
       _state.widget.onEyedropperPick != null;
 
-  /// Whether a cursor the APP draws rides the aim — what makes a pointer
-  /// move cost a frame. ⛔Not the drawing tools by themselves: a cursor the
-  /// system wears (I-54) moves without one.
-  bool get drawsAtTheAim =>
-      fillCursorActive && appDrawsLook(fillCursorLook()) ||
+  /// Whether a cursor the APP draws rides the aim of a pointer of [kind] —
+  /// what makes its move cost a frame. ⛔Not the drawing tools by
+  /// themselves: a cursor the system wears (I-54) moves without one.
+  bool drawsAtTheAim(PointerDeviceKind kind) =>
+      fillCursorActive && appDrawsLook(fillCursorLook(), kind) ||
       brushCursorActive &&
-          appDrawsDrawingCursor(AppInput.settings.value.drawingCursor);
+          appDrawsDrawingCursor(AppInput.settings.value.drawingCursor, kind);
+
+  /// The aim where the app draws each cursor: nowhere while the pointer
+  /// aiming is shown the system's own ([appDrawsLook]) — so a pen hovering
+  /// an Android tablet is drawn the cursor its mouse is shown by the system.
+  /// The swatch, the tip's outline and the stamp are the app's for every
+  /// pointer.
+  late final ValueListenable<Offset?> _aimed = _AimTheAppDraws(
+    _state._toolCursorHover,
+    (_) => true,
+  );
+  late final ValueListenable<Offset?> _eyedropperAim = _AimTheAppDraws(
+    _state._toolCursorHover,
+    (kind) => appDrawsLook(eyedropperCursorLook(), kind),
+  );
+  late final ValueListenable<Offset?> _fillAim = _AimTheAppDraws(
+    _state._toolCursorHover,
+    (kind) => appDrawsLook(fillCursorLook(), kind),
+  );
+  late final ValueListenable<Offset?> _penAim = _AimTheAppDraws(
+    _state._toolCursorHover,
+    (kind) => appDrawsDrawingCursor(DrawingCursor.pen, kind),
+  );
+  late final ValueListenable<Offset?> _crosshairAim = _AimTheAppDraws(
+    _state._toolCursorHover,
+    (kind) => appDrawsDrawingCursor(DrawingCursor.crosshair, kind),
+  );
 
   /// The ONE region the canvas says its system cursor in, around the tool's
   /// layers at the tool's entrance ([_PanelBuild._toolEntrance]): the tool's
@@ -178,19 +204,18 @@ class _CanvasPanelToolCursor {
   ///
   /// Costs nothing while the inspector is hidden: [InputInspector.note]
   /// returns on the visibility check before touching anything.
-  void setToolCursorHover(Offset? position, String source) {
-    if (InputInspector.visible.value &&
-        _state._toolCursorHover.value != position) {
-      final where = position == null
+  void setToolCursorHover(_Aim? aim, String source) {
+    if (InputInspector.visible.value && _state._toolCursorHover.value != aim) {
+      final where = aim == null
           ? 'null'
-          : '(${position.dx.round()},${position.dy.round()})';
+          : '(${aim.at.dx.round()},${aim.at.dy.round()})';
       InputInspector.note(
         'aim $source -> $where'
         ' held=${_state._tap.aimIsHeld} touch=${CanvasTouchContacts.appWideCount}/${CanvasTouchContacts.count}'
         ' draws=${AppInput.touchDraws}',
       );
     }
-    _state._toolCursorHover.value = position;
+    _state._toolCursorHover.value = aim;
   }
 
   /// 🐛유저, R3 #8: 선택툴 누르고 필이나 지우개나 다른툴누르면 커서가 사라짐.
@@ -307,7 +332,7 @@ class _CanvasPanelToolCursor {
   /// is not the paint it was taken of ([StillRaster]): the head's lines
   /// came out darker one way and lighter the other.
   List<Widget> toolCursorLayers() {
-    final aim = _state._toolCursorHover;
+    final aim = _aimed;
     Widget tick(Widget cursor) =>
         Positioned.fill(child: TickLayer.heard(child: cursor));
     return [
@@ -324,24 +349,24 @@ class _CanvasPanelToolCursor {
         ),
         // R26 #22: the eyedropper ICON as the cursor. Its tip is the hot
         // spot, so the glyph hangs up-left of the point being sampled. The
-        // app draws it only where the system does not wear it (F-441); the
-        // swatch is the app's everywhere — it is the colour under the aim.
-        if (appDrawsLook(eyedropperCursorLook()))
-          tick(
-            ToolCursorSprite(
-              key: const ValueKey<String>('eyedropper-cursor-icon'),
-              position: aim,
-              look: eyedropperCursorLook(),
-            ),
+        // app draws it only for a pointer the system does not show it
+        // (F-441); the swatch is the app's for every pointer — it is the
+        // colour under the aim.
+        tick(
+          ToolCursorSprite(
+            key: const ValueKey<String>('eyedropper-cursor-icon'),
+            position: _eyedropperAim,
+            look: eyedropperCursorLook(),
           ),
+        ),
       ],
-      // R26 #23: the fill tool wears the bucket — the app's only where the
-      // system does not (F-441).
-      if (fillCursorActive && appDrawsLook(fillCursorLook()))
+      // R26 #23: the fill tool wears the bucket — the app's only for a
+      // pointer the system does not show it (F-441).
+      if (fillCursorActive)
         tick(
           ToolCursorSprite(
             key: const ValueKey<String>('fill-cursor-icon'),
-            position: aim,
+            position: _fillAim,
             look: fillCursorLook(),
           ),
         ),
@@ -393,7 +418,7 @@ class _CanvasPanelToolCursor {
       // The painting tools wear the cursor the user chose (I-54): an outline
       // of the tip that follows the pointer, so a stroke can be aimed before
       // it starts — or a pen or a crosshair of one size, which the app draws
-      // only where the system cannot wear it.
+      // only for a pointer the system cannot show it.
       if (brushCursorActive) tick(_drawingCursor(aim)),
     ];
   }
@@ -403,17 +428,15 @@ class _CanvasPanelToolCursor {
         valueListenable: AppInput.settings,
         slice: (settings) => settings.drawingCursor,
         builder: (context, settings) => switch (settings.drawingCursor) {
-          final cursor when !appDrawsDrawingCursor(cursor) =>
-            const SizedBox.shrink(),
           DrawingCursor.brush => _brushCursor(aim),
           DrawingCursor.pen => ToolCursorSprite(
             key: const ValueKey<String>('pen-cursor-overlay'),
-            position: aim,
+            position: _penAim,
             look: penCursorLook(),
           ),
           DrawingCursor.crosshair => ToolCursorSprite(
             key: const ValueKey<String>('crosshair-cursor-overlay'),
-            position: aim,
+            position: _crosshairAim,
             look: crosshairCursorLook(),
           ),
         },
@@ -438,4 +461,31 @@ class _CanvasPanelToolCursor {
       ),
     );
   }
+}
+
+/// The ONE aim the census writes: where the pointer aiming the tool is, and
+/// what kind of pointer it is — which says whether the system shows it a
+/// cursor of its own ([systemShowsCursorFor]). One value, so the kind can
+/// never be another pointer's.
+typedef _Aim = ({Offset at, PointerDeviceKind kind});
+
+/// The aim where the app draws a cursor: nowhere while the pointer aiming is
+/// one the system shows that cursor ([_draws] false for its kind).
+class _AimTheAppDraws implements ValueListenable<Offset?> {
+  _AimTheAppDraws(this._aim, this._draws);
+
+  final ValueListenable<_Aim?> _aim;
+  final bool Function(PointerDeviceKind kind) _draws;
+
+  @override
+  Offset? get value {
+    final aim = _aim.value;
+    return aim == null || !_draws(aim.kind) ? null : aim.at;
+  }
+
+  @override
+  void addListener(VoidCallback listener) => _aim.addListener(listener);
+
+  @override
+  void removeListener(VoidCallback listener) => _aim.removeListener(listener);
 }

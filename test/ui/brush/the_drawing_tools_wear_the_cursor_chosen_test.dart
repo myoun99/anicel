@@ -277,10 +277,11 @@ void main() {
     addTearDown(mouse.removePointer);
     for (final (tool, own, sprite) in [
       (CanvasTool.brush, SystemMouseCursors.none, outline),
+      // The bucket the system wears for this mouse (F-441).
       (
         CanvasTool.fill,
-        SystemMouseCursors.none,
-        const ValueKey<String>('fill-cursor-icon'),
+        LookMouseCursor(fillCursorLook(), devicePixelRatio: 3),
+        null,
       ),
       // The caret's own cursor, which the system wears.
       (CanvasTool.text, SystemMouseCursors.text, null),
@@ -415,18 +416,240 @@ void main() {
     }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
   });
 
-  // ⚠️I-54 ⓔ: macOS, Android and Linux take a picture for their cursor only
-  // through the runner, which is not built yet — until then the app draws
-  // the pen there, as it does on iPadOS.
-  testWidgets('where the system takes no picture, the app draws the pen', (
-    tester,
-  ) async {
+  test('🚨the system shows a cursor to every pointer that hovers a desktop, '
+      'to a mouse alone on Android, and to none on iPadOS', () {
+    const hovers = [
+      PointerDeviceKind.mouse,
+      PointerDeviceKind.stylus,
+      PointerDeviceKind.invertedStylus,
+      PointerDeviceKind.trackpad,
+    ];
+    final table = {
+      for (final platform in TargetPlatform.values)
+        platform: () {
+          debugDefaultTargetPlatformOverride = platform;
+          try {
+            return [
+              for (final kind in [...hovers, PointerDeviceKind.touch])
+                if (systemShowsCursorFor(kind)) kind,
+            ];
+          } finally {
+            debugDefaultTargetPlatformOverride = null;
+          }
+        }(),
+    };
+    for (final desktop in [
+      TargetPlatform.windows,
+      TargetPlatform.macOS,
+      TargetPlatform.linux,
+    ]) {
+      expect(table[desktop], hovers, reason: '$desktop — a finger shows none');
+    }
+    expect(
+      table[TargetPlatform.android],
+      [PointerDeviceKind.mouse, PointerDeviceKind.trackpad],
+      reason: 'the view\'s pointer icon is a mouse\'s — a hovering pen is '
+          'shown none of it',
+    );
+    expect(table[TargetPlatform.iOS], isEmpty);
+  });
+
+  /// A pen hovering the canvas at [local].
+  Future<TestGesture> hoverPen(WidgetTester tester, Offset local) async {
+    final stylus = await tester.createGesture(kind: PointerDeviceKind.stylus);
+    await stylus.addPointer(location: Offset.zero);
+    addTearDown(stylus.removePointer);
+    await stylus.moveTo(canvasGlobalOffset(tester, local));
+    await tester.pump();
+    return stylus;
+  }
+
+  /// Answers the runners' cursor channel as a runner does: a picture is
+  /// named as it was handed over.
+  List<MethodCall> answerTheRunner(WidgetTester tester) {
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      runnerCursorChannel,
+      (call) async {
+        calls.add(call);
+        return call.method == runnerMakeCursor
+            ? (call.arguments as Map<Object?, Object?>)['name']
+            : null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        runnerCursorChannel,
+        null,
+      ),
+    );
+    return calls;
+  }
+
+  group('🚨on Android a mouse is shown the system\'s cursor, and a pen '
+      'hovering — which the system shows none of it — is drawn the '
+      'app\'s', () {
+    for (final (cursor, sprite, system) in [
+      (
+        DrawingCursor.pen,
+        pen,
+        LookMouseCursor(penCursorLook(), devicePixelRatio: 3) as MouseCursor,
+      ),
+      (DrawingCursor.crosshair, crosshair, SystemMouseCursors.precise),
+    ]) {
+      testWidgets('the ${cursor.name}', (tester) async {
+        answerTheRunner(tester);
+        choose(cursor);
+        await pumpPanel(tester);
+        await hover(tester, const Offset(40, 40));
+        expect(shown(), system);
+        expect(drawn(tester, sprite), isFalse, reason: 'the mouse\'s');
+
+        await hoverPen(tester, const Offset(60, 50));
+        expect(
+          drawn(tester, sprite),
+          isTrue,
+          reason: '↩️the system was asked for every pointer, and a pen had '
+              'no cursor at all',
+        );
+        expect(drawn(tester, outline), isFalse);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+    }
+
+    testWidgets('the fill\'s bucket and the eyedropper', (tester) async {
+      answerTheRunner(tester);
+      for (final (tool, sprite) in [
+        (CanvasTool.fill, 'fill-cursor-icon'),
+        (CanvasTool.eyedropper, 'eyedropper-cursor-icon'),
+      ]) {
+        await pumpPanel(tester, tool: tool, samples: true);
+        final pen = await hoverPen(tester, const Offset(40, 40));
+        expect(
+          drawn(tester, ValueKey<String>(sprite)),
+          isTrue,
+          reason: tool.name,
+        );
+        await pen.removePointer();
+      }
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+    testWidgets('and a pen\'s move costs the app its frame, a mouse\'s none', (
+      tester,
+    ) async {
+      answerTheRunner(tester);
+      choose(DrawingCursor.pen);
+      await pumpPanel(tester);
+      final mouse = await hover(tester, const Offset(40, 40));
+      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(60, 50)));
+      expect(tester.binding.hasScheduledFrame, isFalse);
+
+      final stylus = await hoverPen(tester, const Offset(40, 40));
+      await stylus.moveTo(canvasGlobalOffset(tester, const Offset(70, 60)));
+      expect(tester.binding.hasScheduledFrame, isTrue);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+  });
+
+  testWidgets('a pen hovering a desktop is shown the system\'s cursor — the '
+      'app draws none of its own', (tester) async {
+    answerTheRunner(tester);
+    choose(DrawingCursor.pen);
+    await pumpPanel(tester);
+    await hoverPen(tester, const Offset(40, 40));
+    expect(drawn(tester, pen), isFalse);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
+
+  // I-54 ⓔ: the engines of macOS and Linux take no picture for a cursor, so
+  // their runners do — over one channel, with the two calls Windows's
+  // engine takes.
+  testWidgets('🚨on macOS and Linux the pen\'s pixels go to the runner once '
+      'a size, as `toByteData` hands them, with the screen\'s scale — and '
+      'are worn by name', (tester) async {
+    // A size of its own, so no test before has made its picture.
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final calls = answerTheRunner(tester);
     choose(DrawingCursor.pen);
     await pumpPanel(tester);
     await hover(tester, const Offset(40, 40));
-    expect(shown(), SystemMouseCursors.none);
-    expect(drawn(tester, pen), isTrue);
-  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+    expect(shown(), LookMouseCursor(penCursorLook(), devicePixelRatio: 2));
+    expect(drawn(tester, pen), isFalse);
+
+    await settleAsync(
+      tester,
+      () => calls.any((call) => call.method == runnerWearCursor),
+    );
+    final made = calls.singleWhere((call) => call.method == runnerMakeCursor);
+    final arguments = made.arguments as Map<Object?, Object?>;
+    expect(arguments['width'], 44);
+    expect(arguments['height'], 44);
+    expect(arguments['hotX'], 6.0);
+    expect(arguments['hotY'], 38.0);
+    expect(arguments['scale'], 2.0);
+    expect((arguments['buffer']! as Uint8List).length, 44 * 44 * 4);
+    expect(
+      (calls.singleWhere((call) => call.method == runnerWearCursor).arguments
+          as Map<Object?, Object?>)['name'],
+      arguments['name'],
+    );
+  },
+    variant: const TargetPlatformVariant({
+      TargetPlatform.macOS,
+      TargetPlatform.linux,
+    }),
+  );
+
+  // Every look is black and white, whose pixels read the same in either
+  // order — so the order is pinned with a red one.
+  testWidgets('🚨a picture goes to each system in the order it reads '
+      'pixels — red first to the runners, blue first to Windows', (
+    tester,
+  ) async {
+    final windows = defaultTargetPlatform == TargetPlatform.windows;
+    final channel = windows ? SystemChannels.mouseCursor : runnerCursorChannel;
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      (call) async {
+        calls.add(call);
+        return (call.arguments as Map<Object?, Object?>)['name'];
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    const red = ToolCursorLook(
+      key: 'red',
+      painter: _Solid(Color(0xFFFF0000)),
+      extent: Size(2, 2),
+      hotspot: Offset.zero,
+    );
+    await tester.pumpWidget(
+      const MouseRegion(
+        cursor: LookMouseCursor(red, devicePixelRatio: 1),
+        child: SizedBox.expand(),
+      ),
+    );
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: const Offset(10, 10));
+    addTearDown(mouse.removePointer);
+    await tester.pump();
+    await settleAsync(tester, () => calls.length > 1);
+    final made = calls.first.arguments as Map<Object?, Object?>;
+    expect(
+      (made['buffer']! as Uint8List).sublist(0, 4),
+      windows ? [0, 0, 255, 255] : [255, 0, 0, 255],
+    );
+  },
+    variant: const TargetPlatformVariant({
+      TargetPlatform.windows,
+      TargetPlatform.macOS,
+      TargetPlatform.android,
+      TargetPlatform.linux,
+    }),
+  );
 
   group('on Windows the cursors of one size are the system\'s', () {
     late List<MethodCall> calls;
@@ -610,4 +833,18 @@ void main() {
     );
     expect(bgraOf(rgba), [3, 2, 1, 4, 7, 6, 5, 8]);
   });
+}
+
+/// One colour over the whole box.
+class _Solid extends CustomPainter {
+  const _Solid(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      canvas.drawRect(Offset.zero & size, Paint()..color = color);
+
+  @override
+  bool shouldRepaint(_Solid oldDelegate) => oldDelegate.color != color;
 }

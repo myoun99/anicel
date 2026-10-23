@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
 
 import '../../models/app_input_settings.dart';
@@ -31,12 +32,14 @@ MouseCursor drawingSystemCursor(
     _systemShowsCursors ? SystemMouseCursors.precise : SystemMouseCursors.none,
 };
 
-/// Whether the app draws [cursor] itself: exactly where the system is asked
-/// to show none ([drawingSystemCursor]) — one answer, so the two can never
-/// both show or both be missing.
-bool appDrawsDrawingCursor(DrawingCursor cursor) =>
+/// Whether the app draws [cursor] itself for the pointer aiming, a [kind]:
+/// exactly where the system is asked to show none ([drawingSystemCursor]),
+/// or shows that pointer none at all ([systemShowsCursorFor]) — one answer,
+/// so the two can never both show or both be missing.
+bool appDrawsDrawingCursor(DrawingCursor cursor, PointerDeviceKind kind) =>
+    !systemShowsCursorFor(kind) ||
     drawingSystemCursor(cursor, devicePixelRatio: 1) ==
-    SystemMouseCursors.none;
+        SystemMouseCursors.none;
 
 /// A cursor of one size as the system's — the pen (I-54), the fill's bucket
 /// and the eyedropper (F-441) — wherever the system takes a picture for its
@@ -53,27 +56,83 @@ MouseCursor lookSystemCursor(
     ? LookMouseCursor(look, devicePixelRatio: devicePixelRatio)
     : SystemMouseCursors.none;
 
-/// Whether the app draws [look] itself: where the system is asked to show
-/// none ([lookSystemCursor]).
-bool appDrawsLook(ToolCursorLook look) =>
+/// Whether the app draws [look] itself for the pointer aiming, a [kind]:
+/// where the system is asked to show none ([lookSystemCursor]), or shows
+/// that pointer none at all ([systemShowsCursorFor]).
+bool appDrawsLook(ToolCursorLook look, PointerDeviceKind kind) =>
+    !systemShowsCursorFor(kind) ||
     lookSystemCursor(look, devicePixelRatio: 1) == SystemMouseCursors.none;
 
-/// Whether the system shows the cursor a region asks for: everywhere but
-/// iPadOS, whose engine has no `flutter/mousecursor` handler at all.
-bool get _systemShowsCursors => defaultTargetPlatform != TargetPlatform.iOS;
-
-/// Whether the system takes a picture for its cursor: Windows, whose engine
-/// takes one over `flutter/mousecursor` (`createCustomCursor/windows`).
+/// Whether the system shows a pointer of [kind] the cursor a region asks
+/// for. The desktops show every pointer that hovers — a mouse, a pen, a
+/// pad — and a finger none. iPadOS shows none: its engine has no
+/// `flutter/mousecursor` handler at all.
 ///
-/// ⚠️macOS, Android and Linux take one only through the runner (I-54 ⓔ);
-/// until then the app draws the looks there.
-bool get _systemTakesPictures =>
-    defaultTargetPlatform == TargetPlatform.windows;
+/// 🚨Android shows a MOUSE alone. The cursor a region asks for lands as the
+/// view's pointer icon — the engine's handler and the runner's both set it
+/// (`View.setPointerIcon`) — and that icon is a mouse's: a pen hovering is
+/// shown what the view resolves for a pen (`View.onResolvePointerIcon`),
+/// which Flutter's view leaves to the system (AOSP: 「A pointer icon set
+/// using View#setPointerIcon will now only apply to mouse pointers」).
+/// ↩️The cursor was asked of the system by platform alone, so on Android
+/// the crosshair was the system's for every pointer — and a hovering
+/// S Pen, which the system shows none of it, had no cursor at all.
+bool systemShowsCursorFor(PointerDeviceKind kind) =>
+    switch (defaultTargetPlatform) {
+      TargetPlatform.iOS => false,
+      TargetPlatform.android =>
+        kind == PointerDeviceKind.mouse || kind == PointerDeviceKind.trackpad,
+      _ => kind != PointerDeviceKind.touch,
+    };
 
-/// A [ToolCursorLook] as the system's cursor: its pixels, handed to Windows
-/// once a look and size and named after that — so it moves at the system's
-/// speed, with nothing of the app's frame in its way. Two are the same
-/// cursor when their looks are ([ToolCursorLook.key]).
+/// Whether the system shows any pointer a cursor — a region that asks for
+/// one where none is shown asks for nothing.
+bool get _systemShowsCursors => systemShowsCursorFor(PointerDeviceKind.mouse);
+
+/// Where the system takes a picture for its cursor, and how it is handed
+/// one: Windows over its engine's own `flutter/mousecursor`
+/// (`createCustomCursor/windows`), in the order Windows reads pixels; macOS,
+/// Android and Linux over their runner's [runnerCursorChannel], with the
+/// same two calls — make once a look and size, wear by name — in the order
+/// `toByteData` hands them over (I-54 ⓔ). iPadOS takes none.
+typedef _PictureDoor = ({
+  MethodChannel channel,
+  String make,
+  String wear,
+  Uint8List Function(ByteData rgba) pixels,
+});
+
+_PictureDoor? get _pictureDoor => switch (defaultTargetPlatform) {
+  TargetPlatform.windows => (
+    channel: SystemChannels.mouseCursor,
+    make: 'createCustomCursor/windows',
+    wear: 'setCustomCursor/windows',
+    pixels: bgraOf,
+  ),
+  TargetPlatform.macOS || TargetPlatform.android || TargetPlatform.linux => (
+    channel: runnerCursorChannel,
+    make: runnerMakeCursor,
+    wear: runnerWearCursor,
+    pixels: _rgbaOf,
+  ),
+  TargetPlatform.iOS || TargetPlatform.fuchsia => null,
+};
+
+bool get _systemTakesPictures => _pictureDoor != null;
+
+/// The runners' cursor channel (macOS · Android · Linux), whose engines take
+/// no picture for a cursor: [runnerMakeCursor] hands one over —
+/// `name`, `buffer` (premultiplied RGBA), `width`, `height`, `hotX`, `hotY`
+/// (all in the screen's pixels) and `scale` (the screen's pixels a logical
+/// one) — and answers its name; [runnerWearCursor] wears the one `name`d.
+const runnerCursorChannel = MethodChannel('anicel/cursor');
+const runnerMakeCursor = 'createCustomCursor';
+const runnerWearCursor = 'setCustomCursor';
+
+/// A [ToolCursorLook] as the system's cursor: its pixels, handed to the
+/// system once a look and size and named after that — so it moves at the
+/// system's speed, with nothing of the app's frame in its way. Two are the
+/// same cursor when their looks are ([ToolCursorLook.key]).
 @immutable
 class LookMouseCursor extends MouseCursor {
   const LookMouseCursor(this.look, {required this.devicePixelRatio});
@@ -112,7 +171,12 @@ class _LookCursorSession extends MouseCursorSession {
 
   @override
   Future<void> activate() async {
+    final door = _pictureDoor;
+    if (door == null) {
+      return;
+    }
     final name = await _lookCursorNamed(
+      door,
       cursor.look,
       cursor.devicePixelRatio,
     );
@@ -122,12 +186,14 @@ class _LookCursorSession extends MouseCursorSession {
       return;
     }
     try {
-      await SystemChannels.mouseCursor.invokeMethod<void>(
-        'setCustomCursor/windows',
+      await door.channel.invokeMethod<void>(
+        door.wear,
         <String, Object>{'name': name},
       );
     } on PlatformException {
       // The system keeps the cursor it has.
+    } on MissingPluginException {
+      // A runner that hears no cursor channel: the same.
     }
   }
 
@@ -135,23 +201,34 @@ class _LookCursorSession extends MouseCursorSession {
   void dispose() => _disposed = true;
 }
 
-/// The name Windows knows each look at each size by — made once, for the
-/// engine keeps every one it is handed for the life of the window.
-final Map<(Object, int), Future<String?>> _lookCursorNames = {};
+/// The name the system knows each look at each size by — made once,
+/// for the system keeps every one it is handed for the life of the window.
+/// A picture the system refused is not kept: the next wearing asks again.
+final Map<(TargetPlatform, Object, int), Future<String?>> _lookCursorNames =
+    {};
 
 Future<String?> _lookCursorNamed(
+  _PictureDoor door,
   ToolCursorLook look,
   double devicePixelRatio,
 ) {
   final side = (look.extent.longestSide * devicePixelRatio).ceil();
-  return _lookCursorNames[(look.key, side)] ??= _makeLookCursor(
+  final key = (defaultTargetPlatform, look.key, side);
+  return _lookCursorNames[key] ??= _makeLookCursor(
+    door,
     look,
     side: side,
     scale: devicePixelRatio,
-  );
+  ).then((name) {
+    if (name == null) {
+      _lookCursorNames.remove(key);
+    }
+    return name;
+  });
 }
 
 Future<String?> _makeLookCursor(
+  _PictureDoor door,
   ToolCursorLook look, {
   required int side,
   required double scale,
@@ -172,18 +249,21 @@ Future<String?> _makeLookCursor(
     return null;
   }
   try {
-    return await SystemChannels.mouseCursor.invokeMethod<String>(
-      'createCustomCursor/windows',
+    return await door.channel.invokeMethod<String>(
+      door.make,
       <String, Object>{
         'name': 'anicel-${look.key}-$side',
-        'buffer': bgraOf(rgba),
+        'buffer': door.pixels(rgba),
         'width': side,
         'height': side,
         'hotX': look.hotspot.dx * scale,
         'hotY': look.hotspot.dy * scale,
+        'scale': scale,
       },
     );
   } on PlatformException {
+    return null;
+  } on MissingPluginException {
     return null;
   }
 }
@@ -202,3 +282,7 @@ Uint8List bgraOf(ByteData rgba) {
   }
   return bytes;
 }
+
+/// [rgba] as the runners read it — as it is.
+Uint8List _rgbaOf(ByteData rgba) =>
+    rgba.buffer.asUint8List(rgba.offsetInBytes, rgba.lengthInBytes);

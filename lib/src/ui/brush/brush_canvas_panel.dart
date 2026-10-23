@@ -1177,7 +1177,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// the position AND the colour sampled under it on every pointer event.
   /// F-130 retired it: the swatch reads this aim and samples in its own
   /// `paint`, once per frame (`eyedropper_swatch_painter.dart`).
-  final ValueNotifier<Offset?> _toolCursorHover = ValueNotifier<Offset?>(null);
+  final ValueNotifier<_Aim?> _toolCursorHover = ValueNotifier<_Aim?>(null);
 
   /// How the pen at the aim is held — its lean and its twist — for the brush
   /// outline, which shows the tip that pose lays down (F-176-Q7, 유저
@@ -1842,13 +1842,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // gates, so the value simply being there is what arms them — the seed
     // was doing by hand what the mount already does.
     _toolCursor.setToolCursorHover(
-      event.localPosition,
+      (at: event.localPosition, kind: kind),
       'census:${kind.name}',
     );
     // How the pen at the aim is held, off the same event — what the brush
     // outline turns and stretches by (F-176-Q7).
     _penPose.value = penPoseOf(event);
-    if (_toolCursor.drawsAtTheAim ||
+    if (_toolCursor.drawsAtTheAim(kind) ||
         // The stamp's piece preview reads the same census — one writer,
         // every cursor a reader.
         canvasToolStamps(_brush.tool)) {

@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/brush/brush_cursor_geometry.dart';
 import 'package:anicel/src/ui/brush/brush_cursor_painter.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/drawing_cursor.dart';
+import 'package:anicel/src/ui/brush/tool_cursor_look.dart';
 import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
@@ -114,12 +116,19 @@ void main() {
     return brush;
   }
 
-  for (final (tool, cursorKey) in const <(CanvasTool, String)>[
-    (CanvasTool.brush, 'brush-cursor-overlay'),
-    (CanvasTool.eraser, 'brush-cursor-overlay'),
-    (CanvasTool.fill, 'fill-cursor-icon'),
-    (CanvasTool.eyedropper, 'eyedropper-cursor-icon'),
-  ]) {
+  // The bucket and the dropper are the app's for a pen hovering — a mouse
+  // is shown the system's (`appDrawsLook`).
+  for (final (tool, cursorKey, kind)
+      in const <(CanvasTool, String, PointerDeviceKind)>[
+        (CanvasTool.brush, 'brush-cursor-overlay', PointerDeviceKind.mouse),
+        (CanvasTool.eraser, 'brush-cursor-overlay', PointerDeviceKind.mouse),
+        (CanvasTool.fill, 'fill-cursor-icon', PointerDeviceKind.stylus),
+        (
+          CanvasTool.eyedropper,
+          'eyedropper-cursor-icon',
+          PointerDeviceKind.stylus,
+        ),
+      ]) {
     testWidgets('moving the ${tool.name} cursor does not re-record the '
         'artwork', (tester) async {
       final canvasPaints = <int>[0];
@@ -132,7 +141,7 @@ void main() {
       );
 
       // ARM — the cursor only exists once the census has seen the pointer.
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      final mouse = await tester.createGesture(kind: kind);
       await mouse.addPointer(location: Offset.zero);
       addTearDown(mouse.removePointer);
       await mouse.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
@@ -425,14 +434,14 @@ void main() {
     expect(shape().minorRadius, closeTo(shape().majorRadius, 1e-6));
   });
 
-  testWidgets('the fill bucket and its cursor-hiding region mount together', (
+  testWidgets('the fill bucket and its cursor region mount together', (
     tester,
   ) async {
     // 🐛The canvas Stack's short-circuit listed every cursor predicate but
     // this one, and with fill armed every other conjunct holds: the tap
     // handler is null (R22-A puts the dab through the stroke pipeline) and
     // `canvasToolPaints(fill)` is false. So the Stack was skipped whole,
-    // taking the bucket AND the `SystemMouseCursors.none` region with it —
+    // taking the bucket AND the region that says the cursor with it —
     // in the conte, the cut envelope and the timesheet, which pass no
     // underlay or overlay and therefore sit in that branch permanently.
     final frameKeys = BrushCanvasFixture.createFrameKeys();
@@ -463,16 +472,24 @@ void main() {
 
     expect(
       RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
-      SystemMouseCursors.none,
-      reason: 'the system cursor steps aside under the pointer',
+      LookMouseCursor(fillCursorLook(), devicePixelRatio: 3),
+      reason: 'the region asks the system for the bucket under a mouse',
     );
+
+    // A pen hovering, which the system shows none of it (`appDrawsLook`).
+    final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+    await pen.addPointer(location: Offset.zero);
+    addTearDown(pen.removePointer);
+    await pen.moveTo(canvasGlobalOffset(tester, const Offset(8, 8)));
+    await tester.pump();
     expect(
       toolCursorShownAt(
         tester,
         find.byKey(const ValueKey<String>('fill-cursor-icon')),
       ),
       isNotNull,
-      reason: 'and the bucket that replaces the system cursor',
+      reason: 'and the bucket the app draws for a pointer the system '
+          'shows none',
     );
   });
 }

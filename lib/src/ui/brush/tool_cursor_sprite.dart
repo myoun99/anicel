@@ -159,9 +159,14 @@ class RenderToolCursorSprite extends RenderBox {
 
   /// The aim moved. Appearing and vanishing change the picture, so they
   /// paint; a move between two aims is an offset on the layer and a
-  /// compositing-only frame.
+  /// compositing-only frame; and a sprite that showed nothing and still
+  /// shows nothing — the aim of a pointer the system shows its own cursor
+  /// (`appDrawsLook`) — costs no frame at all.
   void _aimMoved() {
     final at = _position.value;
+    if (at == null && _shownAt == null) {
+      return;
+    }
     if (at == null || _shownAt == null) {
       markNeedsPaint();
       return;
