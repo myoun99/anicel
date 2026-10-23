@@ -180,6 +180,13 @@ final List<BrushGroup> defaultBrushGroups = List.unmodifiable(<BrushGroup>[
 /// share)` — twenty of them (Soft Round at 24 px: share 0.417, 0.394 became
 /// 0.6992; Airbrush at 40 px: share 0.25, 0.062 became 0.2259). A brush at
 /// flow 1 keeps it: whole is whole at any share.
+///
+/// ↩️**AND SO DOES A 색 늘이기** (2026-10-24, board
+/// `mixing-strength-follows-the-dab-spacing`): the mixer lifts its share of
+/// a stamp's pickup as well, so every mixing brush took the stretch that
+/// pulls, at its own size, what it pulled per dab before — the same
+/// `1 − (1 − stretch)^(1 / share)`, eight of them (Oil Brush at 26 px: share
+/// 0.385, 0.4 became 0.7349). Pastel lays whole and keeps its 0.4.
 /// The ランダム rows a preset throws (F-176-Q2): each amount is how far below
 /// its base a throw may land — what the brush's jitter slider said before the
 /// row replaced it — so the row's 最小値 is one minus it.
@@ -841,7 +848,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       // does. Both halves of that are correct here; neither is a bug.
       blendMode: BrushBlendMode.multiply,
       mixesGroundColor: true,
-      colorStretch: 0.4,
+      colorStretch: 0.64,
       paintAmount: 0.9,
       paintDensity: 0.6,
       opacityPressureCurve: BrushPressureCurve.identity(),
@@ -858,7 +865,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       opacity: 0.9,
       spacing: BrushShape.minSpacing,
       mixesGroundColor: true,
-      colorStretch: 0.3,
+      colorStretch: 0.5441,
       paintAmount: 0.95,
       paintDensity: 0.95,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.5),
@@ -879,7 +886,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       roundness: 0.2,
       rotationMode: BrushTipRotationMode.fixed,
       mixesGroundColor: true,
-      colorStretch: 0.35,
+      colorStretch: 0.8494,
       paintAmount: 0.9,
       paintDensity: 0.7,
       opacityPressureCurve: BrushPressureCurve.identity(),
@@ -935,7 +942,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       curves: _randomRows(roundness: 0.2),
       // Loaded paint picks up what it crosses.
       mixesGroundColor: true,
-      colorStretch: 0.4,
+      colorStretch: 0.7349,
       paintAmount: 0.9,
       paintDensity: 1.0,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.55),
@@ -957,7 +964,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       textureMaskSource: canvasWeaveTextureMask,
       textureDensity: 0.25,
       mixesGroundColor: true,
-      colorStretch: 0.5,
+      colorStretch: 0.75,
       paintAmount: 0.95,
       paintDensity: 1.0,
     ),
@@ -1037,7 +1044,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       // so the deposit is the colour that was already there: a provable
       // identity, i.e. an invisible brush. The smear IS the reservoir's lag,
       // so the stretch has to stay moderate.
-      colorStretch: 0.35,
+      colorStretch: 0.5775,
       paintAmount: 1.0,
       paintDensity: 0.9,
       opacityPressureCurve: BrushPressureCurve.identity(),
@@ -1056,7 +1063,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       textureScale: 2.6,
       textureDensity: 0.6,
       mixesGroundColor: true,
-      colorStretch: 0.3,
+      colorStretch: 0.51,
       paintAmount: 1.0,
       paintDensity: 0.45,
       // ⚠️The ABSENCE of a pressure curve is load-bearing: the preview drives
@@ -1077,7 +1084,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       textureScale: 1.3,
       textureDensity: 0.5,
       mixesGroundColor: true,
-      colorStretch: 0.35,
+      colorStretch: 0.4531,
       paintAmount: 1.0,
       paintDensity: 0.6,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.5),

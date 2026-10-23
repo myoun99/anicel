@@ -1,6 +1,7 @@
 import '../models/brush_dab.dart';
 import '../core/argb_channels.dart';
 import '../models/brush_shape.dart';
+import 'brush_dab_share.dart';
 
 /// The colour already on the cel under a dab, as the mixer needs it.
 ///
@@ -78,7 +79,7 @@ class BrushGroundColorMixer {
         _reservoir = _lerpRgb(
           _reservoir!,
           ground.rgb,
-          stretch * ground.coverage,
+          _pickedUp(dab, stretch * ground.coverage),
         );
       }
       // What lands is the reservoir pulled back toward the ground by however
@@ -91,6 +92,22 @@ class BrushGroundColorMixer {
     }
     return mixed;
   }
+}
+
+/// How much of the ground [dab] lifts into the reservoir where a whole
+/// stamp would lift [pull]: its share of that stamp ([stampShareOf]).
+///
+/// 🚨THE STRETCH DRAGS AS FAR AT EVERY SPACING — the flow's law, through the
+/// flow's own numbers (유저 2026-10-01 「엔진이 쌓임을 환산 — 크기와 무관하게
+/// (클튜처럼)」 · 「모든 브러시」; board `mixing-strength-follows-the-dab-spacing`).
+/// A pickup compounds dab after dab exactly as a laid alpha piles, and it
+/// was taken whole by every dab: a brush laid a pixel apart lifted its
+/// stretch several times over the length one laid a tenth of its size apart
+/// lifts it once, so one 색 늘이기 dragged a different distance at every
+/// size and spacing.
+double _pickedUp(BrushDab dab, double pull) {
+  final share = stampShareOf(dab);
+  return share >= 1.0 ? pull : evenedLaid(eveningTableFor(share), pull);
 }
 
 /// Channel-wise linear blend of two 0xRRGGBB colours.
