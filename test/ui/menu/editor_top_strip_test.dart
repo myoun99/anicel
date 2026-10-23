@@ -643,8 +643,11 @@ void main() {
     );
   });
 
-  testWidgets('the ERASER locks the blend — a lock chip, no flyout, and the '
-      'bars do not move', (tester) async {
+  // 🗣️F-442 (유저 2026-10-23): 「다른 도구랑 법 통일해서 지우기 모드인채로
+  // 비활성화만」 — the law every tool's control keeps for what does not
+  // apply (TP2), where the eraser had a padlock box of its own.
+  testWidgets('the ERASER dims the blend on its one mode — the same button, '
+      'no padlock, and the bars do not move', (tester) async {
     await pumpHomeWithBars(tester);
 
     final sizeBar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
@@ -653,17 +656,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('tool-eraser-button')));
     await tester.pumpAndSettle();
 
+    final button = find.byKey(_blendButton);
     expect(
-      find.byKey(const ValueKey<String>('brush-tool-blend-locked')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('brush-tool-blend-menu-button')),
-      findsNothing,
+      tester.widget<PanelFlyoutButton>(button).enabled,
+      isFalse,
       reason: 'the eraser IS the erase blend; there is nothing to choose',
     );
-    // The chip has to occupy exactly what the flyout button did — otherwise
-    // picking up the eraser slides every bar left.
+    expect(
+      find.descendant(of: button, matching: find.text('Erase')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.lock_outline), findsNothing);
     expect(tester.getTopLeft(sizeBar).dx, barLeftWithBrush);
   });
 

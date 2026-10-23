@@ -964,14 +964,14 @@ class BrushToolState {
   /// 위/아래 붙여넣기 pair was already spelling `color`/`behind` by hand.
   bool get toolHasBlendMode => supports(ToolParameter.blend);
 
-  /// Whether the active tool's blend is FIXED rather than chosen: the ERASER
-  /// is the erase blend, so the strip shows it with a padlock (유저 확정
-  /// 2026-08-15, see [supports]).
-  bool get blendIsFixed => tool == CanvasTool.eraser;
-
   /// Whether the active tool's blend is there to CHOOSE — the one question
-  /// the strip's blend chooser and the blend shortcuts (I-31) both ask.
-  bool get blendIsAChoice => toolHasBlendMode && !blendIsFixed;
+  /// the strip's blend chooser and the blend shortcuts (I-31) both ask. The
+  /// ERASER is the erase blend, so it has one and no choice: its chooser
+  /// stands dimmed on 消去/Erase, by the law every tool's control keeps for
+  /// what does not apply (TP2). 🗣️F-442 (유저 2026-10-23 「다른 도구랑 법
+  /// 통일해서 지우기 모드인채로 비활성화만」). ↩️It was a padlock box of its
+  /// own (2026-08-15).
+  bool get blendIsAChoice => toolHasBlendMode && tool != CanvasTool.eraser;
 
   /// Whether [parameter] means anything for the active tool (TP2).
   ///

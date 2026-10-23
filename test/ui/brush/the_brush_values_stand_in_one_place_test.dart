@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/project_scratch_folder.dart';
@@ -271,13 +272,14 @@ void main() {
       reason: 'the rule between the blend and the bars lies across',
     );
 
-    // The eraser's blend is fixed — its box stands as the button does.
+    // The eraser's blend is the same button, dimmed on its one mode (F-442).
     await tester.tap(find.byKey(const ValueKey<String>('tool-eraser-button')));
     await tester.pumpAndSettle();
-    final locked = inPill('brush-tool-blend-locked');
-    expect(tester.getSize(locked).width, 20);
+    final dimmed = inPill('brush-tool-blend-menu-button');
+    expect(tester.widget<PanelFlyoutButton>(dimmed).enabled, isFalse);
+    expect(tester.getSize(dimmed).width, 20);
     expect(
-      find.descendant(of: locked, matching: find.byType(VerticalWritingText)),
+      find.descendant(of: dimmed, matching: find.byType(VerticalWritingText)),
       findsOneWidget,
     );
   });

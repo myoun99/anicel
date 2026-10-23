@@ -11,8 +11,6 @@ import '../shortcuts/editor_action_registry.dart' show blendModeActionId;
 import '../sliced_value_listenable_builder.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
-import '../text/vertical_writing_text.dart';
-import '../theme/app_theme.dart';
 import '../timeline/axis_turn.dart' show alongBox, sizedAlong;
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
@@ -418,9 +416,6 @@ class BrushBlendModeControl extends StatelessWidget {
 
   /// Wider than the label needs on average, so the common modes read whole
   /// and only the long ones are cut.
-  ///
-  /// ONE width for BOTH states, so picking up the eraser — which shows a
-  /// fixed 消去 instead of a chooser — does not slide the bars sideways.
   static const double buttonWidth = 116;
 
   @override
@@ -435,73 +430,21 @@ class BrushBlendModeControl extends StatelessWidget {
     // pick reads the notifier when it happens, never the builder's state.
     return SlicedValueListenableBuilder<
       BrushToolState,
-      (bool, CanvasTool, BrushBlendMode)
+      (bool, BrushBlendMode)
     >(
       valueListenable: brushTool,
-      slice: (state) => (
-        state.supports(ToolParameter.blend),
-        state.tool,
-        state.activeBlendMode,
-      ),
+      slice: (state) => (state.blendIsAChoice, state.activeBlendMode),
       builder: (context, state) {
-        final theme = Theme.of(context);
         final language = AppText.settings.value.programLanguage;
         // TP2: tools that composite nothing get the control DIMMED, not an
         // empty gap. It used to be shown for every one of them (a dropdown
         // answering a question nobody downstream asked), then reserved as
         // blank space — and blank space says nothing about why. Dim says
         // "this exists and does not apply here", which is the question the
-        // user actually had: 뭐가 적용되고 뭐가 적용안되는지.
-        final blendOn = state.supports(ToolParameter.blend);
-        // The ERASER tool fixes it to 消去/Erase — the eraser IS the erase
-        // blend — and that is not a blend CHOICE, so the flyout stands down.
-        final toolLocked = state.blendIsFixed;
+        // user actually had: 뭐가 적용되고 뭐가 적용안되는지. The eraser's
+        // stands dimmed on its one mode ([BrushToolState.blendIsAChoice]).
+        final blendOn = state.blendIsAChoice;
         final mode = state.activeBlendMode;
-        if (toolLocked) {
-          final style = theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          );
-          final label = mode.labelFor(language);
-          return fixed(
-            Container(
-              key: const ValueKey<String>('brush-tool-blend-locked'),
-              padding: stood
-                  ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
-                  : const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: ShapeDecoration(
-                shape: AppShapes.container(
-                  AppShapes.wellRadius,
-                  side: BorderSide(color: theme.colorScheme.outlineVariant),
-                ),
-              ),
-              child: Flex(
-                direction: axis,
-                children: [
-                  Expanded(
-                    child: stood
-                        ? Center(
-                            child: VerticalWritingText(
-                              text: label,
-                              style: style,
-                            ),
-                          )
-                        : Text(
-                            label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: style,
-                          ),
-                  ),
-                  Icon(
-                    Icons.lock_outline,
-                    size: 14,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
         return fixed(
           PanelFlyoutButton(
             key: const ValueKey<String>('brush-tool-blend-menu-button'),
@@ -522,8 +465,8 @@ class BrushBlendModeControl extends StatelessWidget {
             // 「블렌드모드가 존재한다면 다 공통이야. 지우개만 이레이저만
             // 남기는거고. 나머지는 이레이저 포함 다 있어.」 The stamp
             // joining `toolHasBlendMode` is all it took: the eraser's
-            // single-entry case is the `toolLocked` box above, so this
-            // list needs no per-tool filter to obey that law.
+            // one mode is the button dimmed on it, so this list needs no
+            // per-tool filter to obey that law.
             entriesBuilder: () => BrushBlendMode.values.asFlyoutValueChoices(
               current: mode,
               // 🗣️I-31 made every mode an action (F1–F12); the row it is
