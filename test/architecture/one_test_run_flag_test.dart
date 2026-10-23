@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨THE APP ASKS 「IS THIS A TEST RUN」 IN ONE PLACE
 /// (`lib/src/services/flutter_test_run.dart`, board
@@ -18,12 +19,13 @@ void main() {
       for (final file in dartFilesUnder('lib'))
         if (_readsTheFlag(file.readAsStringSync())) libPath(file),
     };
-    expect(
+    expectSetMatchesLedger(
       readers,
-      {home},
-      reason:
+      const [home],
+      unledgered:
           'ask `underFlutterTest`; the audio device comes through '
           '`audioDeviceUnlessTesting`',
+      paidOff: 'the one place no longer reads it — name where it moved',
     );
   });
 
@@ -41,8 +43,5 @@ void main() {
   });
 }
 
-bool _readsTheFlag(String source) => source.split('\n').any((line) {
-  final comment = line.indexOf('//');
-  final code = comment < 0 ? line : line.substring(0, comment);
-  return code.contains('FLUTTER_TEST');
-});
+bool _readsTheFlag(String source) =>
+    codeOfLines(source).contains('FLUTTER_TEST');

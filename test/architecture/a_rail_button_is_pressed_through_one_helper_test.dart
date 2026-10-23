@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨**A TEST FINDS A RAIL GROUP'S BUTTON THROUGH ONE HELPER** —
 /// `railGroupButton` (`test/helpers/rail_group_button.dart`), and opens the
@@ -30,12 +31,11 @@ void main() {
   final buttonKey = RegExp(r'''['"]rail-group-(\$|rail-)''');
   final settingsSlot = RegExp(r'railGroupId\(\s*right: false,\s*slot: 2\b');
 
-  List<String> hits(RegExp spelling, Set<String> allowed) => [
+  List<String> hits(RegExp spelling) => [
     for (final file in dartFilesUnder('test'))
       if (file.path.replaceAll(r'\', '/') case final path
-          when !path.endsWith(itself) &&
-              !path.endsWith(helper) &&
-              !allowed.any(path.endsWith) &&
+          when path != itself &&
+              path != helper &&
               spelling.hasMatch(file.readAsStringSync()))
         path,
   ];
@@ -60,7 +60,7 @@ void main() {
 
   test('no test spells a rail group button\'s key by hand', () {
     expect(
-      hits(buttonKey, const {}),
+      hits(buttonKey),
       isEmpty,
       reason: 'find it with `railGroupButton(railId)` — or, for a helper '
           'that presses a key by name, `railGroupButtonKey(railId)`',
@@ -68,21 +68,13 @@ void main() {
   });
 
   test('no test works out the tool settings\' group, outside the ledger', () {
-    expect(
-      hits(settingsSlot, slotLedger.keys.toSet()),
-      isEmpty,
-      reason: 'open them with `pressToolSettingsButton(tester)`; their id '
-          'is `toolSettingsGroupId`',
+    expectSetMatchesLedger(
+      hits(settingsSlot),
+      slotLedger.keys,
+      unledgered: 'open them with `pressToolSettingsButton(tester)`; their '
+          'id is `toolSettingsGroupId`',
+      paidOff: 'these no longer spell the slot — take them off slotLedger',
     );
-  });
-
-  test('every ledger entry still spells the slot', () {
-    for (final path in slotLedger.keys) {
-      expect(
-        hits(settingsSlot, const {}),
-        contains(endsWith(path)),
-        reason: '$path no longer needs its place in the ledger',
-      );
-    }
+    expectEveryEntrySaysWhy(slotLedger);
   });
 }
