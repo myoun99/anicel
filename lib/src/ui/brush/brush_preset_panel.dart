@@ -14,6 +14,7 @@ import '../../models/brush_group_icon.dart';
 import '../../models/brush_group_id.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
+import '../../models/brush_library_tabs.dart';
 import '../../models/reorder_target.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
@@ -350,11 +351,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   BrushGroupId? _ownerGroupId(BrushPreset preset) =>
       preset.groupShownAmong(widget.groups);
 
-  /// Whether the root section gets a tab: only when something is actually
-  /// in it. A library whose brushes are all filed shows no leftovers tab.
-  bool get _hasRootTab =>
-      widget.presets.any((preset) => _ownerGroupId(preset) == null);
-
   /// The group the rail is standing in, or null for the ROOT section.
   ///
   /// The panel's group verbs act on this — the tab you are looking at is the
@@ -367,15 +363,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         : widget.groups.where((group) => group.id == id).firstOrNull;
   }
 
-  /// The rail's tabs, in order: the groups as the library lists them, then
-  /// the root section last — folders first, loose items after, the way a
-  /// file tree reads.
-  ///
-  /// A library with no groups shows NO rail: a lone "Default" tab would be a
-  /// control with nothing to choose between, taking width from the brushes.
-  List<BrushGroup?> get _tabs => widget.groups.isEmpty
-      ? const <BrushGroup?>[]
-      : [...widget.groups, if (_hasRootTab) null];
+  /// The rail's tabs ([brushLibraryTabs]) — none, and so no rail, for a
+  /// library with no groups.
+  List<BrushGroup?> get _tabs =>
+      brushLibraryTabs(widget.presets, widget.groups);
 
   /// The tab the held brush shows in — a record, since the root section's
   /// is a null group — or null while the hand holds no brush the library

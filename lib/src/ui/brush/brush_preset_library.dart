@@ -4,12 +4,14 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/item_beside.dart';
 import '../../core/mapped_or_same.dart';
 import '../../models/brush_group.dart';
 import '../../models/brush_group_icon.dart';
 import '../../models/brush_group_id.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
+import '../../models/brush_library_tabs.dart';
 import '../../models/brush_settings.dart';
 import '../../services/abr/abr_decoder.dart';
 import '../../services/brush_preset_defaults.dart';
@@ -428,20 +430,28 @@ class BrushPresetLibrary extends ChangeNotifier {
     return tab.firstOrNull?.id;
   }
 
-  /// The preset beside [id] in the tab it shows in — the next one, or the
-  /// one before when it is the last — or null when it stands alone: what a
-  /// hand holding [id] takes up when it is deleted (F-250).
+  /// The preset beside [id] in the tab it shows in ([itemBeside]), or null
+  /// when it stands alone: what a hand holding [id] takes up when it is
+  /// deleted (F-250).
   BrushPresetId? presetBeside(BrushPresetId id) {
     final preset = _presets.where((each) => each.id == id).firstOrNull;
     if (preset == null) {
       return null;
     }
     final tab = presetsInGroup(preset.groupShownAmong(_groups));
-    final at = tab.indexWhere((each) => each.id == id);
-    if (at + 1 < tab.length) {
-      return tab[at + 1].id;
-    }
-    return at > 0 ? tab[at - 1].id : null;
+    return itemBeside(tab, tab.indexWhere((each) => each.id == id))?.id;
+  }
+
+  /// The tab beside group [id]'s in the rail ([brushLibraryTabs],
+  /// [itemBeside]) — a record, since the root section's is a null group —
+  /// or null when it stands alone: the tab a hand holding a brush of [id]
+  /// enters when the group is deleted (F-426).
+  ({BrushGroupId? group})? groupBeside(BrushGroupId id) {
+    final tabs = [
+      for (final tab in brushLibraryTabs(_presets, _groups)) (group: tab?.id),
+    ];
+    final at = tabs.indexOf((group: id));
+    return at < 0 ? null : itemBeside(tabs, at);
   }
 
   String _groupNameFor(Set<BrushGroupId?> groupIds) {

@@ -374,6 +374,82 @@ void main() {
       expect(library.presetEntering(library.groups.last.id), isNull);
     });
 
+    // 🗣️F-426 (유저 2026-10-21): 「선택한 브러시 그룹 삭제시, 다른 그룹
+    // 선택하도록 … 최대한 법 통일」 — the brush's law, a tab over.
+    test('🚨the tab beside a group is the next in the rail, the one before '
+        'for the last — the root section a tab like any other — and none '
+        'for a group alone', () async {
+      const sketch = BrushGroupId('sketch');
+      final library = await seeded(
+        groups: const [
+          BrushGroup(id: _ink, name: 'Ink'),
+          BrushGroup(id: _paint, name: 'Paint'),
+          BrushGroup(id: sketch, name: 'Sketch'),
+        ],
+        presets: [
+          _preset('i1', groupId: _ink),
+          _preset('p1', groupId: _paint),
+          _preset('s1', groupId: sketch),
+          _preset('s2', groupId: sketch),
+        ],
+      );
+      addTearDown(library.dispose);
+
+      expect(library.groupBeside(_ink), (group: _paint));
+      expect(library.groupBeside(_paint), (group: sketch));
+      expect(library.groupBeside(sketch), (group: _paint), reason: 'the last');
+      expect(library.groupBeside(const BrushGroupId('gone')), isNull);
+
+      library.arrange(
+        brushLibraryArrangementOf([
+          for (final preset in library.presets)
+            if (preset.id.value == 's2')
+              preset.copyWith(groupId: null)
+            else
+              preset,
+        ], library.groups),
+      );
+      expect(
+        library.groupBeside(sketch),
+        (group: null),
+        reason: 'the root section is the rail\'s last tab once a brush is '
+            'in it',
+      );
+
+      library.deleteGroup(_ink);
+      library.deleteGroup(_paint);
+      expect(
+        library.groupBeside(sketch),
+        (group: null),
+        reason: 'a group with only the root section beside it',
+      );
+      library.deleteGroup(sketch);
+      expect(library.groups, isEmpty, reason: '⛔premise');
+      library.createGroup('Alone');
+      library.arrange(
+        brushLibraryArrangementOf([
+          for (final preset in library.presets)
+            preset.copyWith(groupId: library.groups.single.id),
+        ], library.groups),
+      );
+      expect(
+        library.groupBeside(library.groups.single.id),
+        isNull,
+        reason: 'no tab beside it',
+      );
+    });
+
+    test('🚨the brush beside a deleted one is the next in its tab, the one '
+        'before for the last, none for a brush alone', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+
+      expect(library.presetBeside(const BrushPresetId('i1'))?.value, 'i2');
+      expect(library.presetBeside(const BrushPresetId('i2'))?.value, 'i1');
+      expect(library.presetBeside(const BrushPresetId('p1')), isNull);
+      expect(library.presetBeside(const BrushPresetId('gone')), isNull);
+    });
+
     // F-250: a move is undone by laying the old arrangement back, and the
     // library may have changed in ways that are not on the stack since.
     test('🚨an old arrangement laid back keeps a delete and an import made '

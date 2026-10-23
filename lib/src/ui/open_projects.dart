@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/item_beside.dart';
 import '../models/project.dart';
 import '../services/persistence/same_file.dart';
 import 'editor_session_manager.dart';
@@ -97,8 +98,8 @@ class OpenProjects extends ChangeNotifier {
 
   /// Closes [session]'s tab and lets the session go — the shell asked about
   /// unsaved work BEFORE this; nothing here asks anything. Closing the
-  /// shown tab shows the one that took its place, or the one before it at
-  /// the end of the row.
+  /// shown tab shows the one beside it ([itemBeside]): the one that takes
+  /// its place, or the one before it at the end of the row.
   ///
   /// The LAST tab closing leaves an untitled project from [fresh] (유저
   /// 2026-09-26, board I-7-Q1: 「닫으면 이름 없는 새 프로젝트가 남는다」),
@@ -119,10 +120,12 @@ class OpenProjects extends ChangeNotifier {
     if (identical(shown, session)) {
       _stopBehind(session);
     }
+    // Never null: the last tab closing has just opened [fresh] beside it.
+    final showing = identical(shown, session)
+        ? itemBeside(_sessions, index)!
+        : shown;
     _sessions.removeAt(index);
-    _active = identical(shown, session)
-        ? (index < _sessions.length ? index : _sessions.length - 1)
-        : _indexOf(shown);
+    _active = _indexOf(showing);
     _untitledNumbers.remove(session);
     _shareTheAllowance();
     notifyListeners();
