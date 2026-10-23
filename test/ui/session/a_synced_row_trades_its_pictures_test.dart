@@ -76,6 +76,7 @@ void main() {
     final mirror = mirrors.single;
     final before = reds(s, [base, mirror]);
     final rowsBefore = s.requireActiveCut.layers;
+    s.selectLayer(base);
     s.updateFrameRangeSelectionDrag(
       layerId: base,
       anchorIndex: 0,
@@ -138,6 +139,12 @@ void main() {
           'link moved',
     );
     expect(s.frameRangeSelection.value!.layerId, mirror);
+    expect(
+      s.activeLayer!.id,
+      mirror,
+      reason: 'the row the hand let go on stands picked, as any row move '
+          'leaves it',
+    );
 
     s.undo();
     expect(reds(s, [base, mirror]), before);
