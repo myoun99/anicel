@@ -59,7 +59,8 @@ void main() {
       'through the shell keeps it', () {
     // Through the shell cmd walks PATH itself, and cuts a quoted path with a
     // space (the board's relaunch, 2026-10-24).
-    final bare = RegExp(r"Process\.(start|run|runSync)\(\s*'bash'[^;]*");
+    // Any call handed `bash` first — `Process` or a tool's own wrapper.
+    final bare = RegExp(r"\(\s*'bash'\s*,[^;]*");
     final starts = [
       for (final file in dartFilesUnder('tool'))
         for (final call in bare.allMatches(file.readAsStringSync()))
