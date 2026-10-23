@@ -393,6 +393,39 @@ void main() {
     );
   });
 
+  testWidgets('F-456: the graph draws the line joining its points, which '
+      'pull the curve from off it — Clip Studio\'s graph', (tester) async {
+    await pumpButton(
+      tester,
+      curve: BrushPressureCurve(const [
+        BrushCurvePoint(0.0, 0.0),
+        BrushCurvePoint(0.5, 0.8),
+        BrushCurvePoint(1.0, 1.0),
+      ]),
+      onChanged: (_) {},
+    );
+    await openPopup(tester);
+
+    final painter = find.descendant(
+      of: graph,
+      matching: find.byType(CustomPaint),
+    );
+    final size = tester.getSize(painter);
+    Offset at(double x, double y) =>
+        Offset(x * size.width, (1.0 - y) * size.height);
+    // The grid is drawn in lines too: each edge is the first line between
+    // its two points, the grid's passed over.
+    PaintPatternPredicate edge(Offset from, Offset to) =>
+        (method, arguments) =>
+            method == #drawLine && arguments[0] == from && arguments[1] == to;
+    expect(
+      tester.renderObject(painter),
+      paints
+        ..something(edge(at(0.0, 0.0), at(0.5, 0.8)))
+        ..something(edge(at(0.5, 0.8), at(1.0, 1.0))),
+    );
+  });
+
   testWidgets('reset restores the identity line', (tester) async {
     BrushPressureCurve? received;
     // ↩️A bent SHAPE, not `linearFrom(0.6)`: since F-176 that is a straight

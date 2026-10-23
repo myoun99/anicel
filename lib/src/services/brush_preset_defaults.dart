@@ -228,14 +228,21 @@ Map<BrushDynamicsKey, BrushPressureCurve> _leanRows({
 };
 
 /// A lean's response, all of it by 0.65 ([_leanRows]): rising, and falling.
+///
+/// ⚠️Two points at the far height, 0.5 and 0.8: the points pull the curve
+/// ([BrushPressureCurve]), and it reaches their height only between two of
+/// them — from the middle of their edge, 0.65, on. ↩️One point at 0.65 was
+/// the curve's own point while the curve ran through its points (F-456).
 const _leaningIn = [
   BrushCurvePoint(0.0, 0.0),
-  BrushCurvePoint(0.65, 1.0),
+  BrushCurvePoint(0.5, 1.0),
+  BrushCurvePoint(0.8, 1.0),
   BrushCurvePoint(1.0, 1.0),
 ];
 const _leaningOut = [
   BrushCurvePoint(0.0, 1.0),
-  BrushCurvePoint(0.65, 0.0),
+  BrushCurvePoint(0.5, 0.0),
+  BrushCurvePoint(0.8, 0.0),
   BrushCurvePoint(1.0, 0.0),
 ];
 

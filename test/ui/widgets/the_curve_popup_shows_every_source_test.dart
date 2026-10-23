@@ -58,10 +58,12 @@ void main() {
     await open(tester, const {});
 
     for (final source in BrushInputSource.values) {
-      // ランダム has a tick and a 最小値 and no graph — Clip Studio's own row.
+      // 筆圧 and 傾き have a graph; 速度 and ランダム a tick and a 最小値
+      // alone — Clip Studio's own window (F-456-Q3).
+      const graphed = {BrushInputSource.pressure, BrushInputSource.tilt};
       expect(
         find.byKey(ValueKey<String>('pressure-curve-graph-${source.name}')),
-        source == BrushInputSource.random ? findsNothing : findsOneWidget,
+        graphed.contains(source) ? findsOneWidget : findsNothing,
         reason: source.name,
       );
       expect(

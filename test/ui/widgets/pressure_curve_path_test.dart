@@ -44,9 +44,12 @@ void main() {
 
   test('the step count is the sampling density, so a kink needs enough '
       'steps to show', () {
+    // The apex is the middle of the top edge: the points pull the curve,
+    // and it reaches their height only between two of them (F-456).
     final tent = BrushPressureCurve(const [
       BrushCurvePoint(0, 0),
-      BrushCurvePoint(0.5, 1),
+      BrushCurvePoint(0.4, 1),
+      BrushCurvePoint(0.6, 1),
       BrushCurvePoint(1, 0),
     ]);
     final two = pressureCurvePath(tent, size, steps: 2);
