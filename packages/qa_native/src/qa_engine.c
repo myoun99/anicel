@@ -6239,4 +6239,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // and every flood takes its seed as one packed RGBA pixel, the coverage
 // a lane like the colours (F-416). qa_fill_paper_rect becomes
 // qa_fill_clear_rect; qa_fill_compose_batch loses the paper.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 54; }
+// v55: qa_audio_device_play returns the run it starts (it returned 1), and
+// qa_audio_device_stop_run silences unless another run holds the device -
+// a player's end stops only its own sound.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 55; }

@@ -147,6 +147,21 @@ int main(void) {
   expect_int("a lead is handed silent", pull(kFrames), 0);
   expect_int("…and counted", qa_audio_device_position(), 1000);
 
+  // 🚨A PLAYER'S END SILENCES ONLY ITS OWN RUN (board
+  // a-cue-ending-silences-a-viewer-sound-it-did-not-make): another's run
+  // taken onto the device since plays on.
+  const int32_t cue = qa_audio_device_play(0, 0, 0, 0);
+  const int32_t viewer = qa_audio_device_play(5000, 0, 0, 0);
+  expect_int("premise: every run is its own", cue != viewer && cue != 0, 1);
+  qa_audio_device_stop_run(cue);
+  expect_int("another's run plays on", qa_audio_device_is_playing(), 1);
+  qa_audio_device_stop_run(viewer);
+  expect_int("its own run stops", qa_audio_device_is_playing(), 0);
+  g_audio.peak_left_bits = 7;
+  qa_audio_device_stop_run(cue);
+  expect_int("a device playing nothing is stopped as before — its meter too",
+             g_audio.peak_left_bits, 0);
+
   free(g_audio.scratch);
   if (g_failures > 0) {
     printf("%d failure(s)\n", g_failures);

@@ -1479,10 +1479,30 @@ void main() {
       addTearDown(() => device.letGo(another));
       transport.openAhead();
       await pumpEventQueue();
-      expect(device.play(startSample: 0), isTrue, reason: 'another\'s sound');
+      expect(device.play(startSample: 0), isNonZero, reason: 'another\'s sound');
 
       transport.dispose();
       expect(device.isPlaying, isTrue);
+    }, skip: skip);
+
+    test('🚨a run ending after another player took the output leaves that '
+        'sound alone — its end silences its own run only', () async {
+      final device = aBenchDevice();
+      final transport = buildTransport(await resident());
+      final another = Object();
+      device.keep(another);
+      addTearDown(() => device.letGo(another));
+      controller.play(scope: PlaybackScope.activeCut);
+      transport.clockStatus(); // the clock's first look starts the device
+      expect(device.isPlaying, isTrue, reason: 'fixture: the run sounds');
+      expect(device.play(startSample: 0), isNonZero, reason: 'another\'s');
+
+      controller.stop();
+      expect(
+        device.isPlaying,
+        isTrue,
+        reason: '↩️the run\'s end stopped the output whatever played',
+      );
     }, skip: skip);
   });
 }

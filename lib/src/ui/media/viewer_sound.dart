@@ -117,6 +117,10 @@ class ViewerSound {
   /// back at a press.
   int _startSample = 0;
 
+  /// The run the latest start put on the device — all this sound silences
+  /// ([QaAudioDevice.stopRun]).
+  int _run = 0;
+
   /// Whether sound is actually coming out for the current file.
   bool get isCarrying => _device != null;
 
@@ -235,7 +239,7 @@ class ViewerSound {
     );
     _start.arm((frameTime) {
       _heard.arm(deviceRate: _deviceRate, carriesFor: device.latencySamples);
-      device.play(
+      _run = device.play(
         startSample: startSample,
         stopSample: _endSample,
         // Heard as the look's frame is shown — the canvas's law
@@ -253,7 +257,7 @@ class ViewerSound {
   /// Silence — and a sound started but not looked at yet never starts.
   void _silence() {
     _start.disarm();
-    _device?.stop();
+    _device?.stopRun(_run);
   }
 
   /// Moves the streaming window along with the sound — asked every tick of

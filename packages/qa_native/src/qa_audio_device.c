@@ -942,6 +942,8 @@ QA_EXPORT int32_t qa_audio_device_set_schedule(
 // or below the start for "no end". A loop wraps to [start_sample]: the
 // lead is the run's first lap's alone. ⛔No floor here: a lead is never
 // below none by `HeardOnTheDevice.leadFor`, the one place that says so.
+// Returns the RUN it starts - a number no run before it on this device had,
+// never 0 - or 0 when the device is not open ([qa_audio_device_stop_run]).
 QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
                                        int64_t stop_sample,
                                        int32_t looping,
@@ -963,7 +965,7 @@ QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
   qa_audio_begin_arm();
   g_audio.runs = g_audio.runs == UINT32_MAX ? 1 : g_audio.runs + 1;
   qa_transport_store_32(&g_audio.playing, (int32_t)g_audio.runs);
-  return 1;
+  return (int32_t)g_audio.runs;
 }
 
 // The last mixed block's PRE-CLIP bus peak for [channel] (0 = left,
@@ -988,6 +990,23 @@ QA_EXPORT void qa_audio_device_stop(void) {
   // last audible block.
   qa_transport_store_32(&g_audio.peak_left_bits, 0);
   qa_transport_store_32(&g_audio.peak_right_bits, 0);
+}
+
+// A player's own end: [qa_audio_device_stop], unless ANOTHER run than [run]
+// (what the player's [qa_audio_device_play] returned) holds the device - a
+// sound that player did not start plays on. A device playing nothing is
+// stopped as before: its points and its meter are the ending run's.
+// ↩️Each player stopped the device whatever played, and a cue's end
+// silenced a viewer's sound pressed during it (board
+// a-cue-ending-silences-a-viewer-sound-it-did-not-make). Played and
+// stopped on the control thread alone, so nothing starts between the read
+// and the stop; a run running out meanwhile ends itself either way.
+QA_EXPORT void qa_audio_device_stop_run(int32_t run) {
+  const int32_t playing = qa_transport_load_32(&g_audio.playing);
+  if (playing != 0 && playing != run) {
+    return;
+  }
+  qa_audio_device_stop();
 }
 
 QA_EXPORT int32_t qa_audio_device_is_playing(void) {

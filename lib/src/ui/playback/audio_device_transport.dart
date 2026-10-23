@@ -97,6 +97,10 @@ class AudioDeviceTransport {
   /// ([_soundMayHaveCome]).
   bool _carrying = false;
 
+  /// The run the latest arm put on the device — all this transport
+  /// silences ([QaAudioDevice.stopRun]).
+  int _run = 0;
+
   /// The run's sound on its way ([soundIsComing]), heard landing by
   /// [_soundMayHaveCome].
   late final _SoundOnItsWay _coming = _SoundOnItsWay(
@@ -501,7 +505,7 @@ class AudioDeviceTransport {
         // A device loops from the top or not at all ([_needsLoopRearm]).
         lapSamples: looping ? _stopSample : 0,
       );
-      device.play(
+      _run = device.play(
         startSample: startSample,
         stopSample: _stopSample,
         looping: looping,
@@ -518,7 +522,7 @@ class AudioDeviceTransport {
   /// Silence — and a run armed but not looked at yet never starts.
   void _stopDevice() {
     _start.disarm();
-    _device?.stop();
+    _device?.stopRun(_run);
   }
 
   /// The run's end on the device: the first sample past its last frame.

@@ -416,21 +416,24 @@ class EditorVoiceRecording {
     return _cueDevice = device;
   }
 
-  /// The device a cue keeps while it sounds.
+  /// The device a cue keeps while it sounds, and the run it put on it.
   QaAudioDevice? _cueDevice;
+  int _cueRun = 0;
 
-  /// A cue's end: silence, unless the transport has started on the device
-  /// meanwhile — and the cue lets it go, which closes it only where nobody
-  /// else keeps it open.
+  /// A cue's end: its own sound's silence — a run another player started
+  /// on the device meanwhile (the transport's roll, a viewer's sound) plays
+  /// on ([QaAudioDevice.stopRun]) — and the cue lets the device go, which
+  /// closes it only where nobody else keeps it open. ↩️It stopped the
+  /// device unless the canvas ran, and a viewer's sound pressed during a
+  /// cue went silent at its end, its picture running on (board
+  /// a-cue-ending-silences-a-viewer-sound-it-did-not-make).
   void _endCue() {
     final device = _cueDevice;
     _cueDevice = null;
     if (device == null) {
       return;
     }
-    if (!playback.isActive) {
-      device.stop();
-    }
+    device.stopRun(_cueRun);
     device.letGo(this);
   }
 
@@ -463,7 +466,7 @@ class EditorVoiceRecording {
       ],
       sources: [AudioMixSource(samples: pcm, channels: channels)],
     );
-    device.play(
+    _cueRun = device.play(
       startSample: 0,
       stopSample: (seconds - 1) * sampleRate + toneSamples,
     );
@@ -552,7 +555,7 @@ class EditorVoiceRecording {
       ],
       sources: [AudioMixSource(samples: pcm, channels: channels)],
     );
-    device.play(startSample: 0, stopSample: toneSamples);
+    _cueRun = device.play(startSample: 0, stopSample: toneSamples);
     _testToneTimer?.cancel();
     _testToneTimer = Timer(
       const Duration(milliseconds: 700),

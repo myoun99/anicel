@@ -160,7 +160,7 @@ void main() {
         'viewer\'s sound, which the tone\'s schedule would cut', () async {
       final (:session, :device) = sessionOver(withSound());
       await opened(session);
-      expect(device.play(startSample: 0), isTrue, reason: 'fixture');
+      expect(device.play(startSample: 0), isNonZero, reason: 'fixture');
 
       expect(session.voiceRecording.playOutputTestTone(), isFalse);
       device.stop();
@@ -215,10 +215,31 @@ void main() {
       addTearDown(playback.stop);
       device.keep(playback);
       addTearDown(() => device.letGo(playback));
-      expect(device.play(startSample: 0), isTrue, reason: 'fixture');
+      expect(device.play(startSample: 0), isNonZero, reason: 'fixture');
 
       await Future<void>.delayed(pastTheTone);
       expect(device.isPlaying, isTrue);
+    }, skip: skip);
+
+    test('🚨a cue ending under another player\'s sound — a viewer\'s, no run '
+        'anywhere — leaves it alone too', () async {
+      final (:session, :device) = sessionOver(createDefaultProject());
+      expect(session.voiceRecording.playOutputTestTone(), isTrue);
+      // The media viewer pressed while the tone sounds: it takes the
+      // output for its own sound, and no canvas run is going.
+      final viewer = Object();
+      device.keep(viewer);
+      addTearDown(() => device.letGo(viewer));
+      expect(device.play(startSample: 0), isNonZero, reason: 'fixture');
+      expect(session.playbackRig.playback.isActive, isFalse, reason: 'premise');
+
+      await Future<void>.delayed(pastTheTone);
+      expect(
+        device.isPlaying,
+        isTrue,
+        reason: '↩️the cue stopped the output unless the canvas ran: the '
+            'viewer\'s sound went silent, its picture running on',
+      );
     }, skip: skip);
 
     test('a session going lets its cue go — the output the cue opened '

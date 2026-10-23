@@ -66,7 +66,7 @@ void main() {
       'the one it is open for', () async {
     final device = aBenchDevice();
     await ahead(device, null);
-    expect(device.play(startSample: 0), isTrue, reason: 'fixture');
+    expect(device.play(startSample: 0), isNonZero, reason: 'fixture');
 
     await ahead(device, null);
     expect(device.isPlaying, isTrue, reason: 'the same output: not opened again');
@@ -120,7 +120,7 @@ void main() {
     final device = aBenchDevice();
     await openAudioOutputAhead(device, sampleRate: 44100, preferredName: null);
     expect(device.openedAtRate, 44100, reason: 'fixture');
-    expect(device.play(startSample: 0), isTrue, reason: 'fixture');
+    expect(device.play(startSample: 0), isNonZero, reason: 'fixture');
 
     await ahead(device, null);
     expect(device.isPlaying, isTrue, reason: 'any rate, ahead of a run');

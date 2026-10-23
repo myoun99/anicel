@@ -279,7 +279,11 @@ import '../core/on_a_worker.dart';
 ///   and every flood takes its seed as one packed RGBA pixel, the coverage
 ///   a lane like the colours (board F-416). `qa_fill_paper_rect` becomes
 ///   `qa_fill_clear_rect`; `qa_fill_compose_batch` loses the paper.
-const int kQaEngineAbiVersion = 54;
+/// - v55: `qa_audio_device_play` returns the run it starts (it returned 1),
+///   and `qa_audio_device_stop_run` silences unless another run holds the
+///   device — a player's end stops only its own sound (board
+///   a-cue-ending-silences-a-viewer-sound-it-did-not-make).
+const int kQaEngineAbiVersion = 55;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

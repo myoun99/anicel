@@ -180,6 +180,10 @@ final class QaAudioDevice {
       >('qa_audio_device_play');
   late final _stop = _library
       .lookupFunction<Void Function(), void Function()>('qa_audio_device_stop');
+  late final _stopRun = _library
+      .lookupFunction<Void Function(Int32), void Function(int)>(
+        'qa_audio_device_stop_run',
+      );
   late final _isPlaying = _library
       .lookupFunction<Int32 Function(), int Function()>(
         'qa_audio_device_is_playing',
@@ -522,14 +526,27 @@ final class QaAudioDevice {
   /// before [startSample] (`HeardOnTheDevice.leadFor` has why). [stopSample]
   /// is exclusive; pass a value at or below the start for "no end". A loop
   /// wraps to [startSample]: the lead is its first lap's alone.
-  bool play({
+  ///
+  /// Returns the RUN it starts — a number no earlier run on this device
+  /// had, never 0 — or 0 when the device is not open: what the player
+  /// hands [stopRun] at its end.
+  int play({
     required int startSample,
     int stopSample = -1,
     bool looping = false,
     int leadSamples = 0,
-  }) => _play(startSample, stopSample, looping ? 1 : 0, leadSamples) != 0;
+  }) => _play(startSample, stopSample, looping ? 1 : 0, leadSamples);
 
+  /// Silence, whoever's run plays — what the arm that takes the device for
+  /// a new run does (`armAudioOutput`).
   void stop() => _stop();
+
+  /// A player's own end: silence, unless ANOTHER run than [run] (its
+  /// [play]'s) holds the device — a sound this player did not start plays
+  /// on. A device playing nothing is stopped as [stop] stops it. Every
+  /// player's end goes through here (the transport, the viewer, the
+  /// scrubber, the recorder's cues).
+  void stopRun(int run) => _stopRun(run);
   bool get isPlaying => _isPlaying() != 0;
 
   /// Samples handed to the device — **the clock**. The picture reads this
