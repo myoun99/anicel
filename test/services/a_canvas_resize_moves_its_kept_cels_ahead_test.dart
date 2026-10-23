@@ -177,6 +177,20 @@ void main() {
         expect(identical(store.hotBakedSurfaceOrNull(drawnCel), worked), isTrue);
         expect(store.movedAheadOf(otherCel), isNull);
       });
+
+      // 🗣️Card a-thawed-cel-is-walled-again-on-the-ui-thread: a kept cel a
+      // worker thawed and moved came back standing behind no wall, and was
+      // walled again here — every tile the wall crosses, copied twice.
+      test('🚨thawed and moved behind the wall on its worker — walled here '
+          'not at all, a move of whole tiles too', () async {
+        for (final (dx, dy) in [(dx, dy), (-tileSize, 0)]) {
+          final store = kept();
+          final walled = store.celsWalledHere;
+          await moveAhead(store, dx: dx, dy: dy);
+          resize(store, dx: dx, dy: dy);
+          expect(store.celsWalledHere, walled, reason: 'moved by $dx, $dy');
+        }
+      });
     });
   }
 

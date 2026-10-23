@@ -123,8 +123,26 @@ class BrushFrameStore {
   bool wallShrinksTo(PasteboardReach reach) =>
       reach.quartersPerEdge < _pasteboardReach.quartersPerEdge;
 
-  BitmapSurface _behind(BitmapSurface surface) =>
-      surfaceBehindReach(surface, _pasteboardReach);
+  BitmapSurface _behind(BitmapSurface surface) {
+    if (surface.pasteboardReach != _pasteboardReach) {
+      celsWalledHere += 1;
+    }
+    return surfaceBehindReach(surface, _pasteboardReach);
+  }
+
+  /// How many pictures [_behind] has put behind this store's wall here, on
+  /// this isolate — none that a worker laid behind it already
+  /// ([_adoptedBehind]).
+  @visibleForTesting
+  int celsWalledHere = 0;
+
+  /// [laid] — a kept cel a worker laid behind [standsBehind], the wall it
+  /// was asked for ([layCelInWorker]) — adopted here behind this store's
+  /// wall: as it came, unless the wall moved while it was worked out.
+  BitmapSurface _adoptedBehind(
+    AnicelLaidCel laid,
+    PasteboardReach standsBehind,
+  ) => _behind(laidCelSurface(laid, standsBehind: standsBehind));
 
   /// Moves every picture's wall to [reach] (I-109) — in every tier, hot,
   /// parked and saved, one cel at a time as a resize walks them, so a
@@ -283,6 +301,7 @@ class BrushFrameStore {
       if (blob == null) {
         return;
       }
+      final standsBehind = _pasteboardReach;
       final cut = await cutCelInWorker(
         key,
         blob,
@@ -291,12 +310,13 @@ class BrushFrameStore {
           _scratchNamespace,
           '${anicelCelEntryName(key)}-ahead$round',
         ),
+        standsBehind: standsBehind,
       );
       ahead.answers[ref] = cut == null
           ? null
           : (
               kept: _parkedRef(cut.path, cut.blob),
-              was: laidCelSurface(cut.was),
+              was: laidCelSurface(cut.was, standsBehind: standsBehind),
             );
       if (!identical(_cutAhead?.answers, ahead.answers)) {
         _dropCutAhead(ahead);
@@ -948,9 +968,15 @@ class BrushFrameStore {
     }
   });
 
-  /// [blob] thawed on a worker as a read here would thaw it.
-  Future<BitmapSurface> _layThawed(AnicelCelBlob blob) async =>
-      _behind(laidCelSurface(await layCelInWorker(blob, BitmapTile.blocks)));
+  /// [blob] thawed on a worker as a read here would thaw it — behind the
+  /// wall there too.
+  Future<BitmapSurface> _layThawed(AnicelCelBlob blob) async {
+    final reach = _pasteboardReach;
+    return _adoptedBehind(
+      await layCelInWorker(blob, BitmapTile.blocks, reach: reach),
+      reach,
+    );
+  }
 
   /// 🚨Through the SESSION'S handle, not a fresh open per cel.
   ///
@@ -1847,15 +1873,16 @@ class BrushFrameStore {
     final from = await _thawOnAWorker(key, () => _kept(key)?.ref, (
       blob,
     ) async {
+      final reach = _pasteboardReach;
       final laid = await moveCelInWorker(
         key,
         blob,
-        reach: _pasteboardReach,
+        reach: reach,
         move: move,
       );
       final laidMoved = laid.moved;
-      moved = laidMoved == null ? null : _behind(laidCelSurface(laidMoved));
-      return _behind(laidCelSurface(laid.was));
+      moved = laidMoved == null ? null : _adoptedBehind(laidMoved, reach);
+      return _adoptedBehind(laid.was, reach);
     });
     final worked = moved;
     if (from != null && worked != null) {
