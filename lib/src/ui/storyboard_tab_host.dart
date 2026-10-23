@@ -915,6 +915,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         storyboardReadyRuns(_session, start, end),
                     thumbnails: widget.thumbnails,
                     audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
+                    soundCannotPlay: _session.playbackRig.soundCannotPlay,
                     // The tooltip string doubles as the clip-marker switch
                     // (REC1-D), matching the timeline host: null while the
                     // clipping notice setting is off.

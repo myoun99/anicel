@@ -98,6 +98,8 @@ class FramePanelSillControls extends StatelessWidget {
               toggleVoiceRecordingWithFeedback(context, session),
           voiceRecordClipLit: session.voiceRecording.voiceRecordClipLit,
           resolveStrings: () => session.uiStrings,
+          playsWithout:
+              session.playbackRig.audioDeviceTransport.playsWithout,
         ),
         CameraViewToggleButton(
           view: session.cameraViewMode,

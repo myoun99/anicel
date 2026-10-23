@@ -84,13 +84,13 @@ void main() {
                 ),
                 crossAxisExtent: cross,
                 axis: axis,
-                children: timelineRowClipMarkerOverlays(
+                children: timelineRowSoundWarningOverlays(
                   layer: clipped(),
                   frameStartIndex: 0,
                   frameEndIndexExclusive: 20,
                   crossAxisExtent: cross,
                   axis: axis,
-                  tooltip: 'clipped take',
+                  warnings: (clipped: 'clipped take', cannotPlay: null),
                   color: AppColors.danger,
                 ),
               ),
@@ -99,7 +99,7 @@ void main() {
         ),
       );
       return tester.getRect(
-        find.byKey(const ValueKey<String>('timeline-clip-marker-se-warn-b2')),
+        find.byKey(const ValueKey<String>('timeline-block-warning-se-warn-b2')),
       );
     }
 

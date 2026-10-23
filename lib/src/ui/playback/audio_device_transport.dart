@@ -26,6 +26,8 @@ library;
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
+
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
@@ -36,6 +38,7 @@ import '../../services/playback/first_look_start.dart';
 import '../../services/playback/heard_on_the_device.dart';
 import '../../services/playback/take_head.dart';
 import '../audio/audio_conform_store.dart';
+import '../audio/sound_cannot_play.dart';
 import 'audio_playback_schedule.dart';
 import 'audio_recorder.dart';
 import '../../models/audio_sync_settings.dart';
@@ -101,19 +104,24 @@ class AudioDeviceTransport {
     _soundMayHaveCome,
   );
 
-  /// The sources the run plays without ([OutputArmed.cannotPlay]).
-  Set<String> _cannotPlay = const {};
-
-  /// Whether the run plays without any sound: no output, or one that would
-  /// not open or take the schedule ([OutputRefused]).
-  bool _outputRefused = false;
+  /// What the run plays without: the sources of [OutputArmed.cannotPlay],
+  /// or every sound when there is no output or it would not open or take
+  /// the schedule ([OutputRefused]) — told to the screen as it changes.
+  final ValueNotifier<PlaysWithout> _without = ValueNotifier(
+    PlaysWithout.nothing,
+  );
 
   /// The output this transport keeps open ([QaAudioDevice.keep]) — from
   /// when it opened it ahead or first played on it, to [dispose].
   QaAudioDevice? _device;
   ProjectFrameRate _rate = ProjectFrameRate.fps24;
-  int _deviceRate = 0;
   int _totalFrames = 0;
+
+  /// The rate the output plays at, once a run has armed it — 0 before. The
+  /// sound cells hear it: a sound brought to one rate may not be to another
+  /// ([soundRate]).
+  final ValueNotifier<int> _armedRate = ValueNotifier(0);
+  int get _deviceRate => _armedRate.value;
 
   /// The streaming window this run plays out of — the activation's mix,
   /// whether it streams, and where the window sits. The scrubber owns one
@@ -149,13 +157,26 @@ class AudioDeviceTransport {
   /// picture (`PlaybackWait`), and stands on the frame it was put on for.
   bool get soundIsComing => _coming.isComing;
 
-  /// The sources the run plays without: nothing will make them ready to
-  /// play — undecodable, failed, not readable yet.
-  Set<String> get cannotPlay => _cannotPlay;
+  /// What the run plays without, as it changes — what the sound cells, the
+  /// meter's seat and the transport's front warning read
+  /// (playback-says-the-sound-it-cannot-play).
+  ValueListenable<PlaysWithout> get playsWithout => _without;
+
+  /// The sources the run plays without, and why: nothing will make them
+  /// ready to play ([AudioConformStore.cannotPlayAt]).
+  Map<String, SoundCannotPlay> get cannotPlay => _without.value.sounds;
 
   /// Whether the run plays without any sound: no native binary, or an
   /// output that would not open or take the schedule.
-  bool get outputRefused => _outputRefused;
+  bool get outputRefused => _without.value.output;
+
+  /// The rate a sound is asked to play at ([AudioConformStore.cannotPlayAt])
+  /// — the output's, once a run has armed it, and the project's before.
+  int get soundRate =>
+      _deviceRate > 0 ? _deviceRate : conformStore.projectSampleRate;
+
+  /// Fires when [soundRate] may have moved.
+  ValueListenable<int> get armedRate => _armedRate;
 
   /// The output this transport plays on, as it resolves it — the one the
   /// cues ring too (the take's count-in, the settings' test tone).
@@ -196,6 +217,8 @@ class AudioDeviceTransport {
     }
     _device?.letGo(this);
     _device = null;
+    _without.dispose();
+    _armedRate.dispose();
   }
 
   /// Opens the output ahead of a run, off the UI thread, for the setting
@@ -252,7 +275,7 @@ class AudioDeviceTransport {
     if (_uploadWindow(device.positionSamples) case OutputArmed(
       :final cannotPlay,
     )) {
-      _cannotPlay = cannotPlay;
+      _without.value = PlaysWithout(sounds: cannotPlay);
     }
   }
 
@@ -367,11 +390,9 @@ class AudioDeviceTransport {
   void _activate({required int from}) {
     _carrying = false;
     _coming.isComing = false;
-    _cannotPlay = const {};
-    _outputRefused = false;
     final device = _resolveDevice();
     if (device == null) {
-      _outputRefused = true;
+      _without.value = const PlaysWithout(output: true);
       return;
     }
     // The device stays open across runs (opening tears down and rebuilds an
@@ -381,6 +402,7 @@ class AudioDeviceTransport {
     // reopened here, where the open held the UI thread.
     final desiredName = resolveOutputDeviceName?.call();
     if (device.isOpen && device.openedFor != desiredName) {
+      _without.value = PlaysWithout.nothing;
       openAhead();
       _coming.waitOn(device);
       return;
@@ -400,6 +422,7 @@ class AudioDeviceTransport {
       preferredDeviceName: desiredName,
     )) {
       case OutputComing():
+        _without.value = PlaysWithout.nothing;
         _keep(device);
         _coming.waitOn(device);
       case OutputRefused():
@@ -411,11 +434,11 @@ class AudioDeviceTransport {
         // a schedule the app never builds (a negative count, a buffer it did
         // not make). The reachable half — no output at all — is pinned in
         // `audio_device_transport_test` ("no device → …").
-        _outputRefused = true;
+        _without.value = const PlaysWithout(output: true);
       case OutputArmed(:final deviceRate, :final cannotPlay):
         _keep(device);
-        _deviceRate = deviceRate;
-        _cannotPlay = cannotPlay;
+        _armedRate.value = deviceRate;
+        _without.value = PlaysWithout(sounds: cannotPlay);
         // The run's own length — ↩️this kept a copy of the controller's
         // arithmetic, which answered nothing for a track with no cut (F-341).
         _totalFrames = controller.totalFrames;

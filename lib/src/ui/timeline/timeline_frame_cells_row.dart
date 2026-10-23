@@ -6,6 +6,7 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../audio/sound_cannot_play.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
@@ -63,6 +64,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.instructionDefById,
     this.instructionCrossingTooltip,
     this.audioPeaksFor,
+    this.soundCannotPlay,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.onDropMediaAssetOnLayer,
     this.acceptsMediaAssetOnLayer,
@@ -180,6 +182,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
 
   /// Waveform peaks resolver for SE rows' audio clips; null hides them.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// Why an SE row's sound cannot be played — a red warning line on its
+  /// block saying why ([TimelineGridHooks.soundCannotPlay]); null warns of
+  /// none.
+  final SoundCannotPlay? Function(String filePath)? soundCannotPlay;
   final ProjectFrameRate projectFrameRate;
 
   /// A media-browser row dropped on THIS drawing layer. Null on the rows
@@ -256,6 +263,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             spillInLeadFrames: spillInLeadFrames,
             coverageIdentity: ByIdentity(coverageIdentity),
             seAudioPeaks: const ByList([]),
+            seSoundsCannotPlay: const ByList([]),
           ),
     );
   }
@@ -461,11 +469,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// SE rows: audio clips painted over the paper cells (clipped to the
   /// row's drawing blocks — no block, no waveform), the sheet's writing on
   /// the blocks (name box at the block start plus the dialogue fitted across
-  /// the span), the clipped-take markers (REC1-D — the tooltip string
-  /// doubles as the switch), the cut-boundary `~` marks (UI-R7 #6: a sound
-  /// running past the cut end / spilling in from the previous cut announces
-  /// its other half), and the media-browser drop targets (sound → block
-  /// frame).
+  /// the span), the block warnings — a take that clipped (REC1-D — the
+  /// tooltip string doubles as the switch) and a sound that cannot be
+  /// played ([soundCannotPlay]) — the cut-boundary `~` marks (UI-R7 #6: a
+  /// sound running past the cut end / spilling in from the previous cut
+  /// announces its other half), and the media-browser drop targets (sound →
+  /// block frame).
   List<Widget> _seOverlays(
     BuildContext context,
     _Shows shows,
@@ -498,17 +507,16 @@ class TimelineFrameCellsRow extends StatelessWidget {
         spillInLeadFrames: spillInLeadFrames,
         keyPrefix: keyPrefix,
       ),
-      if (clipTooltip != null)
-        ...timelineRowClipMarkerOverlays(
-          layer: layer,
-          frameStartIndex: frames.frameStartIndex,
-          frameEndIndexExclusive: frames.frameEndIndexExclusive,
-          crossAxisExtent: crossAxisExtent,
-          axis: axis,
-          tooltip: clipTooltip,
-          color: Theme.of(context).colorScheme.error,
-          keyPrefix: keyPrefix,
-        ),
+      ...timelineRowSoundWarningOverlays(
+        layer: layer,
+        frameStartIndex: frames.frameStartIndex,
+        frameEndIndexExclusive: frames.frameEndIndexExclusive,
+        crossAxisExtent: crossAxisExtent,
+        axis: axis,
+        warnings: (clipped: clipTooltip, cannotPlay: soundCannotPlay),
+        color: Theme.of(context).colorScheme.error,
+        keyPrefix: keyPrefix,
+      ),
       ...timelineRowSeContinuationMarks(
         layer: layer,
         drawnFrameCount: shows.world.drawnFrameCount,

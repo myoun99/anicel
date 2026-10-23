@@ -619,6 +619,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // growing envelope (REC1-C), everything else to the conform
             // store's peaks.
             audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
+            soundCannotPlay: _session.playbackRig.soundCannotPlay,
             // The tooltip string doubles as the marker switch (REC1-D):
             // null while the clipping notice is off.
             seClipMarkerTooltip: _session.appSettings.audioSyncSettings.value.clippingNotice

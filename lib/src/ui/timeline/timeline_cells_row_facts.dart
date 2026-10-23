@@ -8,6 +8,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../audio/sound_cannot_play.dart';
 import '../widgets/tick_layer.dart';
 import 'berth_row.dart';
 import 'lane_row_slice.dart';
@@ -85,6 +86,7 @@ typedef TimelineCellsRowFacts = ({
   // again, the resolver with it — now it rebuilds the pictures alone, and
   // they ask the resolver the row was built with.
   AudioPeaks? Function(String filePath)? audioPeaksFor,
+  SoundCannotPlay? Function(String filePath)? soundCannotPlay,
   CameraInstructionDef? Function(String instructionId)? instructionDefById,
   PropertyLaneRow? Function(Layer layer)? unionLaneFor,
   ByIdentity<ValueListenable<TimelineDragPreview?>?> dragPreview,
@@ -158,6 +160,7 @@ TimelineCellsRowFacts timelineCellsRowFacts(
     hasRangeGesture: grid.rangeGesture != null,
     hasActivateCell: hooks.onActivateCell != null,
     audioPeaksFor: hooks.audioPeaksFor,
+    soundCannotPlay: hooks.soundCannotPlay,
     instructionDefById: hooks.instructionDefById,
     unionLaneFor: hooks.unionLaneForLayer,
     dragPreview: ByIdentity(hooks.dragPreview),
@@ -193,6 +196,9 @@ BerthWorld timelineCellsRowWorld(
     // rebuild after handed that blank row back until an edit replaced the
     // layer — 「이름/대사 지정하니까 보이네」 (유저 09-25, card `F-178` ⑥).
     seAudioPeaks: ByList(_seAudioPeaksOf(row.layer, hooks)),
+    // And why each cannot be played, as it moves: a conform landing or
+    // failing rebuilds the host as a waveform landing does.
+    seSoundsCannotPlay: ByList(_seSoundsCannotPlayOf(row.layer, hooks)),
   );
 }
 
@@ -212,16 +218,23 @@ Object? timelineRowCoverageIdentity(Layer layer, TimelineRowMemoAux aux) {
   return null;
 }
 
-/// What an SE row's waveform strips paint, one per sound it draws
-/// ([seAudioSpans]) — nothing for every other row.
-List<AudioPeaks?> _seAudioPeaksOf(Layer layer, TimelineGridHooks hooks) {
-  final peaksFor = hooks.audioPeaksFor;
-  if (peaksFor == null || !layerKindUsesSeSheetCells(layer.kind)) {
+/// What an SE row's waveform strips paint, one per sound it draws.
+List<AudioPeaks?> _seAudioPeaksOf(Layer layer, TimelineGridHooks hooks) =>
+    _perSound(layer, hooks.audioPeaksFor);
+
+/// Why each sound an SE row draws cannot be played.
+List<SoundCannotPlay?> _seSoundsCannotPlayOf(
+  Layer layer,
+  TimelineGridHooks hooks,
+) => _perSound(layer, hooks.soundCannotPlay);
+
+/// What [ask] answers of each sound an SE row draws ([seAudioSpans]) —
+/// nothing for every other row, nor where nothing asks.
+List<T?> _perSound<T>(Layer layer, T? Function(String filePath)? ask) {
+  if (ask == null || !layerKindUsesSeSheetCells(layer.kind)) {
     return const [];
   }
-  return [
-    for (final span in seAudioSpans(layer)) peaksFor(span.clip.filePath),
-  ];
+  return [for (final span in seAudioSpans(layer)) ask(span.clip.filePath)];
 }
 
 /// [row]'s cells row as [grid] builds it — for the layer it stands for
@@ -253,6 +266,7 @@ Widget timelineCellsRowFrom(TimelineDisplayRow row, TimelineCellsRowGrid grid) {
     instructionDefById: hooks.instructionDefById,
     instructionCrossingTooltip: hooks.instructionCrossingTooltip,
     audioPeaksFor: hooks.audioPeaksFor,
+    soundCannotPlay: hooks.soundCannotPlay,
     seClipMarkerTooltip: hooks.seClipMarkerTooltip,
     projectFrameRate: hooks.projectFrameRate,
     showSeconds: hooks.showSeconds,

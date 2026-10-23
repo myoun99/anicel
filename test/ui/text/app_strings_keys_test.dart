@@ -60,6 +60,7 @@ void main() {
     'recordMicPermissionDenied': (s) => s.recordMicPermissionDenied,
     'recordTakeClipped': (s) => s.recordTakeClipped,
     'recordClipMarkerTooltip': (s) => s.recordClipMarkerTooltip,
+    'playbackOutputRefused': (s) => s.playbackOutputRefused,
     // D26: the crossing-fade refusal warning (red corner marker).
     'tlTransitionCrossingWarning': (s) => s.tlTransitionCrossingWarning,
     // F-229: the word an O.L prints as, in the sheet's language.

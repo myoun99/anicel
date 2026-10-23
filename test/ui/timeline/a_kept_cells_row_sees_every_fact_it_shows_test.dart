@@ -13,6 +13,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
+import 'package:anicel/src/ui/audio/sound_cannot_play.dart';
 import 'package:anicel/src/ui/timeline/berth_row.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -79,6 +80,8 @@ void main() {
   String? named(Layer layer, int frame) => '$frame';
   AudioPeaks? landedA(String path) => peaksA;
   AudioPeaks? landedB(String path) => peaksB;
+  SoundCannotPlay? plays(String path) => null;
+  SoundCannotPlay? gone(String path) => SoundCannotPlay.missing;
   CameraInstructionDef? noTerm(String id) => null;
   PropertyLaneRow? noUnion(Layer layer) => null;
   final commaDrag = TimelineCommaDragCallbacks(
@@ -118,6 +121,7 @@ void main() {
     Map<LayerId, int> spillInLeadFrames = const {},
     String? seClipMarkerTooltip,
     AudioPeaks? Function(String)? peaksFor,
+    SoundCannotPlay? Function(String)? cannotPlay,
     CameraInstructionDef? Function(String)? defById,
     PropertyLaneRow? Function(Layer)? unionLaneFor,
     bool showSeconds = false,
@@ -147,6 +151,7 @@ void main() {
         spillInLeadFrames: spillInLeadFrames,
         seClipMarkerTooltip: seClipMarkerTooltip,
         audioPeaksFor: peaksFor ?? landedA,
+        soundCannotPlay: cannotPlay,
         instructionDefById: defById,
         unionLaneForLayer: unionLaneFor,
         showSeconds: showSeconds,
@@ -238,6 +243,7 @@ void main() {
     'showSeconds': (told(), told(showSeconds: true)),
     // What a kept row's pictures ask again when the world moves (I-57).
     'audioPeaksFor': (told(), told(peaksFor: landedB)),
+    'soundCannotPlay': (told(), told(cannotPlay: plays)),
     'instructionDefById': (told(), told(defById: noTerm)),
     'unionLaneFor': (told(), told(unionLaneFor: noUnion)),
   };
@@ -276,6 +282,12 @@ void main() {
     'seAudioPeaks': (
       told(row: se, peaksFor: landedA),
       told(row: se, peaksFor: landedB),
+    ),
+    // playback-says-the-sound-it-cannot-play: a sound that went missing is
+    // a red cell on a row kept as it was.
+    'seSoundsCannotPlay': (
+      told(row: se, cannotPlay: plays),
+      told(row: se, cannotPlay: gone),
     ),
   };
   for (final change in worlds.entries) {

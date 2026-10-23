@@ -254,18 +254,18 @@ void main() {
           frameEndIndexExclusive: frames,
           axis: axis,
         ),
-        ...timelineRowClipMarkerOverlays(
+        ...timelineRowSoundWarningOverlays(
           layer: layer,
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
           crossAxisExtent: row,
           axis: axis,
-          tooltip: 'clipped take',
+          warnings: (clipped: 'clipped take', cannotPlay: null),
           color: AppColors.danger,
         ),
       ]);
       final marker = find.byKey(
-        const ValueKey<String>('timeline-clip-marker-se-b0'),
+        const ValueKey<String>('timeline-block-warning-se-b0'),
       );
       final shape = _laidUnder(tester, find.byType(SePaperSpan)).rrects.first;
       final name = _laidUnder(tester, find.byType(SeSpanVisual));

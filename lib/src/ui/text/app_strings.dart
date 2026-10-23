@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../models/timesheet_info.dart' show WorkPicture;
 import '../../models/timesheet_sheet_kind.dart';
+import '../audio/sound_cannot_play.dart' show SoundCannotPlay;
 
 /// The LIVE program/notation languages, app-wide — the same shape
 /// [AppColors.accentSettings] uses, and for the same reason: widgets deep
@@ -1188,6 +1189,19 @@ enum AppStrings {
   /// (T29) — said as the mode that skips them is named.
   String playbackDroppedCount(int count) =>
       _count('playbackDroppedCount', count);
+
+  /// The sounds a run plays without, in the same slot as the drops
+  /// (playback-says-the-sound-it-cannot-play, 유저 2026-10-17: 「재생 중 재생
+  /// 버튼 줄 맨 앞에 빨간 경고 문구」).
+  String playbackSilentCount(int count) =>
+      _count('playbackSilentCount', count);
+
+  /// The meter's seat, red, when the output would not open.
+  String get playbackOutputRefused => _s('playbackOutputRefused');
+
+  /// Why a sound cannot be played — the tooltip on its red cell.
+  String soundCannotPlay(SoundCannotPlay why) =>
+      _s('soundCannotPlay.${why.name}');
   String get sheetPreviousPage => _s('sheetPreviousPage');
   String get sheetNextPage => _s('sheetNextPage');
   String get sheetPageDrag => _s('sheetPageDrag');
@@ -2552,6 +2566,17 @@ enum AppStrings {
     'playbackModeRenderFirst': 'Render first',
     'playbackDroppedCount': '{n} dropped',
     'playbackDroppedCountOne': '{n} dropped',
+    'playbackSilentCount': '{n} silent',
+    'playbackSilentCountOne': '{n} silent',
+    'playbackOutputRefused': 'No sound — the output would not open.',
+    'soundCannotPlay.missing': 'Cannot play — the file is not there.',
+    'soundCannotPlay.notReadYet':
+        'Cannot play yet — the file could not be read (a cloud copy may still be coming down).',
+    'soundCannotPlay.format': 'Cannot play — no decoder reads this format.',
+    'soundCannotPlay.conform':
+        'Cannot play — converting it for playback failed.',
+    'soundCannotPlay.deviceRate':
+        "Cannot play — it could not be brought to the output's sample rate.",
     'playbackStop': 'Stop',
     'sheetPreviousPage': 'Previous page',
     'sheetNextPage': 'Next page',
@@ -4007,6 +4032,16 @@ enum AppStrings {
     'playbackModeRenderFirst': '再生前にレンダリング',
     'playbackDroppedCount': '{n}コマ落ち',
     'playbackDroppedCountOne': '{n}コマ落ち',
+    'playbackSilentCount': '音声{n}件 再生不可',
+    'playbackSilentCountOne': '音声{n}件 再生不可',
+    'playbackOutputRefused': '音が出ません — 出力デバイスを開けませんでした。',
+    'soundCannotPlay.missing': '再生できません — ファイルがありません。',
+    'soundCannotPlay.notReadYet':
+        'まだ再生できません — ファイルを読めませんでした（クラウドのファイルがまだダウンロード中かもしれません）。',
+    'soundCannotPlay.format': '再生できません — この形式を読めるデコーダーがありません。',
+    'soundCannotPlay.conform': '再生できません — 再生用の変換に失敗しました。',
+    'soundCannotPlay.deviceRate':
+        '再生できません — 出力のサンプルレートに変換できませんでした。',
     'playbackStop': '停止',
     'sheetPreviousPage': '前のページ',
     'sheetNextPage': '次のページ',
@@ -5656,6 +5691,16 @@ enum AppStrings {
     'playbackModeRenderFirst': '재생 전 렌더링',
     'playbackDroppedCount': '{n} 건너뜀',
     'playbackDroppedCountOne': '{n} 건너뜀',
+    'playbackSilentCount': '소리 {n}개 못 냄',
+    'playbackSilentCountOne': '소리 {n}개 못 냄',
+    'playbackOutputRefused': '소리가 안 납니다 — 출력 장치를 열지 못했습니다.',
+    'soundCannotPlay.missing': '재생할 수 없음 — 파일이 없습니다.',
+    'soundCannotPlay.notReadYet':
+        '아직 재생할 수 없음 — 파일을 읽지 못했습니다(클라우드 파일을 아직 내려받는 중일 수 있습니다).',
+    'soundCannotPlay.format': '재생할 수 없음 — 이 형식을 읽는 디코더가 없습니다.',
+    'soundCannotPlay.conform': '재생할 수 없음 — 재생용 변환에 실패했습니다.',
+    'soundCannotPlay.deviceRate':
+        '재생할 수 없음 — 출력 장치의 샘플레이트로 바꾸지 못했습니다.',
     'playbackStop': '정지',
     'sheetPreviousPage': '이전 페이지',
     'sheetNextPage': '다음 페이지',
@@ -7354,6 +7399,18 @@ enum AppStrings {
     'playbackModeRenderFirst': 'Rendu avant lecture',
     'playbackDroppedCount': '{n} sautées',
     'playbackDroppedCountOne': '{n} sautée',
+    'playbackSilentCount': '{n} sons muets',
+    'playbackSilentCountOne': '{n} son muet',
+    'playbackOutputRefused': "Pas de son — la sortie ne s'est pas ouverte.",
+    'soundCannotPlay.missing': 'Lecture impossible — le fichier est introuvable.',
+    'soundCannotPlay.notReadYet':
+        "Lecture impossible pour l'instant — le fichier n'a pas pu être lu (une copie cloud est peut-être encore en téléchargement).",
+    'soundCannotPlay.format':
+        'Lecture impossible — aucun décodeur ne lit ce format.',
+    'soundCannotPlay.conform':
+        'Lecture impossible — la conversion pour la lecture a échoué.',
+    'soundCannotPlay.deviceRate':
+        "Lecture impossible — impossible de l'amener à la fréquence d'échantillonnage de la sortie.",
     'playbackStop': 'Arrêter',
     'sheetPreviousPage': 'Page précédente',
     'sheetNextPage': 'Page suivante',
@@ -9022,6 +9079,14 @@ enum AppStrings {
     'playbackModeRenderFirst': '播放前渲染',
     'playbackDroppedCount': '跳过{n}帧',
     'playbackDroppedCountOne': '跳过{n}帧',
+    'playbackSilentCount': '{n}个音频无法播放',
+    'playbackSilentCountOne': '{n}个音频无法播放',
+    'playbackOutputRefused': '没有声音 — 无法打开输出设备。',
+    'soundCannotPlay.missing': '无法播放 — 文件不存在。',
+    'soundCannotPlay.notReadYet': '暂时无法播放 — 无法读取文件（云端副本可能仍在下载）。',
+    'soundCannotPlay.format': '无法播放 — 没有能读取此格式的解码器。',
+    'soundCannotPlay.conform': '无法播放 — 播放用的转换失败。',
+    'soundCannotPlay.deviceRate': '无法播放 — 无法转换为输出的采样率。',
     'playbackStop': '停止',
     'sheetPreviousPage': '上一页',
     'sheetNextPage': '下一页',

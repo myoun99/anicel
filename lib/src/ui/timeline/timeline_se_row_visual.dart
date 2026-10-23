@@ -11,11 +11,13 @@ import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/track_se_window.dart' show seSoundRunsPast;
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../audio/sound_cannot_play.dart';
 import '../audio/waveform_painter.dart';
 import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../media/media_asset_drop_target.dart';
 import '../text/dialogue_fit_layout.dart' show dialogueGlyphsShownIn;
 import '../text/dialogue_fit_paint.dart' show dialogueNaturalExtent;
+import '../text/app_strings.dart' show AppText;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
@@ -298,23 +300,45 @@ List<SeRowAudioStrip> seRowAudioStrips(
   return strips;
 }
 
-/// Red warning lines for takes that CLIPPED (REC1-D), tooltip-explained.
-/// Callers mount these only while the clipping notice is enabled — the
+/// What an SE row warns of on its blocks: a take that CLIPPED (REC1-D) —
+/// [clipped] its tooltip, null while the clipping notice is off, so the
 /// quiet default stays quiet (user decision: an animator who does not care
-/// must not see red marks all day).
-List<Widget> timelineRowClipMarkerOverlays({
+/// must not see red marks all day) — and a sound a run plays without, by
+/// [cannotPlay]'s answer, always (playback-says-the-sound-it-cannot-play,
+/// 유저 2026-10-17: 「재생하지 않을 때도 늘」).
+typedef SeSoundWarnings = ({
+  String? clipped,
+  SoundCannotPlay? Function(String filePath)? cannotPlay,
+});
+
+/// The tooltip [span]'s block warns with — a line per warning — or null
+/// where it warns of nothing ([SeSoundWarnings]).
+String? seSoundWarningsOf(SeAudioSpan span, SeSoundWarnings warnings) {
+  final why = warnings.cannotPlay?.call(span.clip.filePath);
+  final clipped = span.clip.clipped ? warnings.clipped : null;
+  final lines = [
+    if (why != null) AppText.strings.soundCannotPlay(why),
+    ?clipped,
+  ];
+  return lines.isEmpty ? null : lines.join('\n');
+}
+
+/// Red warning lines on an SE row's blocks, tooltip-explained — one per
+/// block that has anything to warn of ([seSoundWarningsOf]).
+List<Widget> timelineRowSoundWarningOverlays({
   required Layer layer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
   required double crossAxisExtent,
   required Axis axis,
-  required String tooltip,
+  required SeSoundWarnings warnings,
   required Color color,
   String keyPrefix = 'timeline',
 }) {
   final overlays = <Widget>[];
   for (final span in seAudioSpans(layer)) {
-    if (!span.clip.clipped) {
+    final tooltip = seSoundWarningsOf(span, warnings);
+    if (tooltip == null) {
       continue;
     }
     final blockEnd = span.startFrame + span.lengthFrames;
@@ -335,7 +359,7 @@ List<Widget> timelineRowClipMarkerOverlays({
         tooltip: tooltip,
         color: color,
         markerKey: ValueKey<String>(
-          '$keyPrefix-clip-marker-${layer.id}-b${span.startFrame}',
+          '$keyPrefix-block-warning-${layer.id}-b${span.startFrame}',
         ),
       ),
     );

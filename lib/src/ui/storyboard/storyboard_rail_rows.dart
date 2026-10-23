@@ -2878,6 +2878,7 @@ class _StoryboardRailRows {
       viewportWidth: _state._stripViewportWidth,
       showSeconds: _state.widget.showSeconds,
       audioPeaksFor: _state.widget.audioPeaksFor,
+      soundCannotPlay: _state.widget.soundCannotPlay,
       seClipMarkerTooltip: _state.widget.seClipMarkerTooltip,
       onRowFramePress: _state.widget.onRowFramePress,
       onDropMediaAsset: _state.widget.onDropMediaAsset,

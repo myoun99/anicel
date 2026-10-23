@@ -12,7 +12,7 @@
 // and if the rig reached back out for `selectCut` neither could be built.
 
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 
 import '../../services/flutter_test_run.dart';
 import '../../models/cut.dart';
@@ -22,6 +22,7 @@ import '../../models/storyboard_timeline_layout.dart';
 import '../../native/qa_audio_device.dart'
     show QaAudioDevice, audioDeviceUnlessTesting;
 import '../audio/audio_conform_store.dart';
+import '../audio/sound_cannot_play.dart';
 import '../playback/audio_device_transport.dart';
 import '../playback/audio_scrubber.dart';
 import '../../services/playback/frame_demand.dart';
@@ -319,6 +320,21 @@ class PlaybackRig implements PlaybackRun {
     resolveOutputDeviceName: () =>
         _appSettings.audioSyncSettings.value.outputDeviceName,
   );
+
+  /// Why the sound at [filePath] cannot be played — the one verdict
+  /// ([AudioConformStore.cannotPlayAt]) at the rate a run plays at
+  /// ([AudioDeviceTransport.soundRate]): what a sound's cell shows, before
+  /// any run as well as during one (playback-says-the-sound-it-cannot-play,
+  /// 유저 2026-10-17: 「재생하지 않을 때도 늘」).
+  SoundCannotPlay? soundCannotPlay(String filePath) => _audioConformStore
+      .cannotPlayAt(filePath, audioDeviceTransport.soundRate);
+
+  /// Fires when [soundCannotPlay]'s answers may have moved: a conform or a
+  /// conversion landed, or a run armed the output at another rate.
+  late final Listenable soundsMoved = Listenable.merge([
+    _audioConformStore,
+    audioDeviceTransport.armedRate,
+  ]);
 
   /// The output/input device lists for the Preferences pickers (AUDIO-PRO
   /// R4); empty without a native binary (widget tests, engine-less runs).

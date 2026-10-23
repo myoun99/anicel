@@ -4,6 +4,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../audio/sound_cannot_play.dart';
 import 'memo_token.dart';
 
 /// THE LAYER A KEPT ROW STANDS FOR NOW — handed down past the row's memo.
@@ -129,6 +130,10 @@ typedef BerthWorld = ({
   /// The waveforms an SE row's strips paint — each by identity, null while
   /// extracting.
   ByList<AudioPeaks?> seAudioPeaks,
+
+  /// Why each sound an SE row draws cannot be played — null where it can
+  /// (playback-says-the-sound-it-cannot-play).
+  ByList<SoundCannotPlay?> seSoundsCannotPlay,
 });
 
 /// What a reader of [BerthRow] is rebuilt for.

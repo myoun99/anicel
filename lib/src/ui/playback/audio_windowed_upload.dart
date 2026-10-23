@@ -8,6 +8,7 @@ import '../../native/qa_audio_device.dart';
 import '../../services/audio/audio_mixer_reference.dart'
     show AudioMixSource;
 import '../audio/audio_conform_store.dart';
+import '../audio/sound_cannot_play.dart';
 import 'audio_playback_schedule.dart';
 
 /// How far a streaming window reaches behind where it is centred and ahead
@@ -378,8 +379,9 @@ final class OutputArmed extends OutputArm {
 
   final int deviceRate;
 
-  /// The sources the run plays without ([WindowedUploadPlan.cannotPlay]).
-  final Set<String> cannotPlay;
+  /// The sources the run plays without, and why
+  /// ([WindowedUploadPlan.cannotPlay]).
+  final Map<String, SoundCannotPlay> cannotPlay;
 }
 
 /// Not yet: the output being opened ([QaAudioDevice.opening]) or a source

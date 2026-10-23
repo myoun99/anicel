@@ -270,7 +270,7 @@ void main() {
     expect(
       find.byKey(
         ValueKey<String>(
-          'storyboard-${_seId.value}-clip-marker-${_seId.value}-b0',
+          'storyboard-${_seId.value}-block-warning-${_seId.value}-b0',
         ),
       ),
       findsOneWidget,

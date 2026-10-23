@@ -8,6 +8,7 @@ import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../audio/sound_cannot_play.dart';
 import 'layer_label_controls.dart' show LayerMarkEdit;
 import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
 import 'layer_row_drag.dart';
@@ -84,6 +85,7 @@ class TimelineGridHooks {
     this.instructionDefById,
     this.instructionCrossingTooltip,
     this.audioPeaksFor,
+    this.soundCannotPlay,
     this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
@@ -251,6 +253,12 @@ class TimelineGridHooks {
 
   /// Waveform peaks for SE rows' audio clips + the removal hook.
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// Why an SE row's sound cannot be played (`PlaybackRig.soundCannotPlay`)
+  /// — a red warning line on its block saying so
+  /// (playback-says-the-sound-it-cannot-play). Its paper goes red by the
+  /// cel content source's [TimelineCelContentSource.cannotRead].
+  final SoundCannotPlay? Function(String filePath)? soundCannotPlay;
 
   /// Clipped-take marker tooltip (REC1-D); null = markers off.
   final String? seClipMarkerTooltip;

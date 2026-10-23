@@ -11,6 +11,7 @@ import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../audio/sound_cannot_play.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
 import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
@@ -80,6 +81,7 @@ class TimelinePanel extends StatefulWidget {
     this.instructionDefById,
     this.instructionCrossingTooltip,
     this.audioPeaksFor,
+    this.soundCannotPlay,
     this.seClipMarkerTooltip,
     this.audioLane,
     this.onDropMediaAssetOnLayer,
@@ -262,6 +264,10 @@ class TimelinePanel extends StatefulWidget {
   /// Waveform peaks for SE rows' audio clips + the removal hook (both
   /// orientations; frames↔seconds via [projectFrameRate]).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// Why an SE row's sound cannot be played
+  /// ([TimelineGridHooks.soundCannotPlay]).
+  final SoundCannotPlay? Function(String filePath)? soundCannotPlay;
 
   /// Clipped-take marker tooltip (REC1-D); null = markers off. Horizontal
   /// rows only for now — the xsheet's marker joins with its page work.
@@ -674,6 +680,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       instructionDefById: widget.instructionDefById,
       instructionCrossingTooltip: widget.instructionCrossingTooltip,
       audioPeaksFor: widget.audioPeaksFor,
+      soundCannotPlay: widget.soundCannotPlay,
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,

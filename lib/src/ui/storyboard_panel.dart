@@ -56,6 +56,7 @@ import 'canvas/flip_hud_rows.dart';
 import 'canvas/view_hand.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
+import 'audio/sound_cannot_play.dart' show SoundCannotPlay, soundCannotPlayIn;
 import 'storyboard_cut_blocks_painter.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_layer_policy.dart';
@@ -175,7 +176,8 @@ import 'timeline/timeline_cell_style.dart'
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecorationAt,
         timelineSelectedFrameBorderColor,
-        timelineStandingWashDecorationAt;
+        timelineStandingWashDecorationAt,
+        timelineUnreadableCelPaperColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -247,7 +249,7 @@ import 'timeline/timeline_se_row_visual.dart'
         SeSpanVisual,
         seFramesFreeBefore,
         seRowAudioStrips,
-        timelineRowClipMarkerOverlays;
+        timelineRowSoundWarningOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
@@ -632,6 +634,7 @@ class StoryboardPanel extends StatefulWidget {
     this.readyRunsIn,
     this.thumbnails,
     this.audioPeaksFor,
+    this.soundCannotPlay,
     this.seClipMarkerTooltip,
     this.seLanePreview,
     this.trackLaneEditFor,
@@ -1129,6 +1132,10 @@ class StoryboardPanel extends StatefulWidget {
   /// OWNED BY THE RESOLVER — blocks paint it without disposing. Null hides
   /// the thumbnail strip.
   final StoryboardThumbnails? thumbnails;
+
+  /// Why an SE row's sound cannot be played — its block red, with a
+  /// warning line saying why (`PlaybackRig.soundCannotPlay`).
+  final SoundCannotPlay? Function(String filePath)? soundCannotPlay;
 
   /// Waveform peaks per audio file for the SE rows (null hides waveforms).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
@@ -3975,6 +3982,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     required this.viewportWidth,
     required this.showSeconds,
     this.audioPeaksFor,
+    this.soundCannotPlay,
     this.seClipMarkerTooltip,
     this.onRowFramePress,
     this.onDropMediaAsset,
@@ -4013,6 +4021,10 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
   @override
   final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// Why a sound of the row cannot be played
+  /// ([StoryboardPanel.soundCannotPlay]).
+  final SoundCannotPlay? Function(String filePath)? soundCannotPlay;
 
   /// The recorded-take clipping warning (REC1-D): non-null mounts the red
   /// block-corner marker on clipped spans, where the timeline's SE row
@@ -4084,6 +4096,12 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
         for (final span in seAudioSpans(layer))
           audioPeaksFor?.call(span.clip.filePath),
     ]),
+    // And why each cannot be played: its block's paper and warning line.
+    ByList([
+      if (layer case final layer?)
+        for (final span in seAudioSpans(layer))
+          soundCannotPlay?.call(span.clip.filePath),
+    ]),
     seClipMarkerTooltip,
     onRowFramePress != null,
     onDropMediaAsset != null,
@@ -4103,10 +4121,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
       final blocks = drawingBlocks(layer.timeline);
       spans.addAll(_contentSpans(context, layer, blocks));
       spans.addAll(_interactionLayers(context, layer, blocks));
-      final clipTooltip = seClipMarkerTooltip;
-      if (clipTooltip != null) {
-        spans.add(_clipMarkerLayer(context, layer, clipTooltip));
-      }
+      spans.add(_warningLayer(context, layer));
     }
 
     return SizedBox(
@@ -4117,27 +4132,27 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     );
   }
 
-  /// Clipped takes' red corners (REC1-D) on the ROW, where the timeline's SE
-  /// row mounts them. ↩️They rode the twirled-down Audio lane here, so a
-  /// clipped take showed only while its row was open (F-101).
-  Positioned _clipMarkerLayer(
-    BuildContext context,
-    Layer layer,
-    String tooltip,
-  ) {
+  /// The blocks' warning lines — a take that clipped (REC1-D), a sound that
+  /// cannot be played — on the ROW, where the timeline's SE row mounts
+  /// them. ↩️The clipped takes rode the twirled-down Audio lane here, so
+  /// one showed only while its row was open (F-101).
+  Positioned _warningLayer(BuildContext context, Layer layer) {
     final frames = _rowFrames;
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
         geometry: frames,
         crossAxisExtent: height,
         axis: Axis.horizontal,
-        children: timelineRowClipMarkerOverlays(
+        children: timelineRowSoundWarningOverlays(
           layer: layer,
           frameStartIndex: 0,
           frameEndIndexExclusive: frames.frameEndIndexExclusive,
           crossAxisExtent: height,
           axis: Axis.horizontal,
-          tooltip: tooltip,
+          warnings: (
+            clipped: seClipMarkerTooltip,
+            cannotPlay: soundCannotPlay,
+          ),
           color: Theme.of(context).colorScheme.error,
           keyPrefix: 'storyboard-${layer.id}',
         ),
@@ -4158,10 +4173,9 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     // underneath, so each block paints its own paper span (SePaperSpan)
     // at its TRUE global extent; waveforms go above the paper, the
     // writing on top.
+    final sounds = seAudioSpans(layer);
     for (final block in blocks) {
-      spans.add(
-        _paperSpan(block, layer),
-      );
+      spans.add(_paperSpan(block, layer, sounds));
     }
     // Waveforms above the paper (painted UNDER the SE writing): the
     // timeline SE row's own strips — each carrying block windows its
@@ -4515,20 +4529,34 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     );
   }
 
-  Positioned _paperSpan(TimelineDrawingBlock block, Layer layer) => _frameSpan(
-    startFrame: block.startIndex,
-    endExclusive: block.endIndexExclusive,
-    key: ValueKey<String>(
-      'storyboard-se-paper-${layer.id}-${block.startIndex}',
-    ),
-    child: SePaperSpan(
-      axis: Axis.horizontal,
-      frameCellExtent: timelineScale.pixelsPerFrame,
+  /// [block]'s paper: its layer's colour label (⑲) — red where a sound it
+  /// carries cannot be played, as the timeline's block is
+  /// (`LayerStack.soundCannotPlayAt`) and a cel that cannot be read.
+  Positioned _paperSpan(
+    TimelineDrawingBlock block,
+    Layer layer,
+    List<SeAudioSpan> sounds,
+  ) {
+    final cannotPlay = soundCannotPlay;
+    final silent =
+        cannotPlay != null &&
+        soundCannotPlayIn(sounds, block.startIndex, cannotPlay) != null;
+    return _frameSpan(
       startFrame: block.startIndex,
-      // ⑲: the block is its layer's colour label.
-      paper: layerMarkColor(layer.mark),
-    ),
-  );
+      endExclusive: block.endIndexExclusive,
+      key: ValueKey<String>(
+        'storyboard-se-paper-${layer.id}-${block.startIndex}',
+      ),
+      child: SePaperSpan(
+        axis: Axis.horizontal,
+        frameCellExtent: timelineScale.pixelsPerFrame,
+        startFrame: block.startIndex,
+        paper: silent
+            ? timelineUnreadableCelPaperColor
+            : layerMarkColor(layer.mark),
+      ),
+    );
+  }
 }
 
 /// One lane's frame band on the shared substrate — the timeline grid's own

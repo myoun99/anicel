@@ -183,13 +183,13 @@ void main() {
             ),
             crossAxisExtent: 28,
             axis: Axis.horizontal,
-            children: timelineRowClipMarkerOverlays(
+            children: timelineRowSoundWarningOverlays(
               layer: layer,
               frameStartIndex: 0,
               frameEndIndexExclusive: 24,
               crossAxisExtent: 28,
               axis: Axis.horizontal,
-              tooltip: 'clipped take',
+              warnings: (clipped: 'clipped take', cannotPlay: null),
               color: const Color(0xFFE24B4A),
             ),
           ),
@@ -197,11 +197,11 @@ void main() {
       ),
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-clip-marker-se-marks-b0')),
+      find.byKey(const ValueKey<String>('timeline-block-warning-se-marks-b0')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-clip-marker-se-marks-b6')),
+      find.byKey(const ValueKey<String>('timeline-block-warning-se-marks-b6')),
       findsNothing,
       reason: 'the clean take shows no red corner',
     );
