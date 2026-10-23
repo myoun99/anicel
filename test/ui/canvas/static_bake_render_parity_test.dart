@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
+import '../../helpers/make_the_rows_first.dart';
 import '../../helpers/stack_as_the_plan_hands_it.dart';
 
 /// 🚨★★★ (v) 1단계의 진짜 계약 — **더 빨라도 되고, 다르게 그리면 안 된다.**
@@ -130,6 +131,25 @@ void main() {
     required LayerFrameImageCache cache,
     required bool disableBake,
   }) async {
+    final view = CanvasLayerStackView(
+      nodes: stackAsThePlanHandsIt(nodes),
+      imageCache: cache,
+      canvasSize: canvasSize,
+      viewport: CanvasViewport(),
+      activeSurfacePainter: surfacePainter,
+      paintPaper: true,
+      paperBackground: const ProjectBackground.color(0xFF00FF00),
+      debugDisableBake: disableBake,
+    );
+    // 🚨WARM FIRST, THEN LOOK. A cold `LayerFrameImageCache` resolves some
+    // rows on a later pass, so the first pump of a tree and the second draw
+    // different numbers of rows — measured: with the bake OFF on BOTH sides
+    // these comparisons still failed until a settle went in. That is the
+    // instrument disagreeing with itself, and taking it for a finding about
+    // the bake is exactly the mistake [[canvas-raster-perf-round]] records.
+    // ↩️The settle alone waited on the pumped clock, which finishes no
+    // decode: a busy machine still rastered a side with a row missing.
+    await makeTheRowsFirst(tester, view);
     await tester.pumpWidget(
       MaterialApp(
         // A distinct key per render, so the second pump builds a FRESH
@@ -137,30 +157,11 @@ void main() {
         key: ValueKey<bool>(disableBake),
         home: Scaffold(
           body: Center(
-            child: SizedBox(
-              width: 4,
-              height: 4,
-              child: CanvasLayerStackView(
-                nodes: stackAsThePlanHandsIt(nodes),
-                imageCache: cache,
-                canvasSize: canvasSize,
-                viewport: CanvasViewport(),
-                activeSurfacePainter: surfacePainter,
-                paintPaper: true,
-                paperBackground: const ProjectBackground.color(0xFF00FF00),
-                debugDisableBake: disableBake,
-              ),
-            ),
+            child: SizedBox(width: 4, height: 4, child: view),
           ),
         ),
       ),
     );
-    // 🚨WARM FIRST, THEN LOOK. A cold `LayerFrameImageCache` resolves some
-    // rows on a later pass, so the first pump of a tree and the second draw
-    // different numbers of rows — measured: with the bake OFF on BOTH sides
-    // these comparisons still failed until this settle went in. That is the
-    // instrument disagreeing with itself, and taking it for a finding about
-    // the bake is exactly the mistake [[canvas-raster-perf-round]] records.
     await tester.pumpAndSettle();
     final painted = tester
         .widgetList<CustomPaint>(
