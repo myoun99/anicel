@@ -28,6 +28,8 @@ final List<BrushTipEntry> defaultBrushTipEntries = List.unmodifiable([
   _entry(pencilSideBrushTipMask, 'Pencil Side'),
   _entry(graphiteToothTextureMask, 'Graphite Tooth'),
   _entry(colorClumpBrushTipMask, 'Color Clumps'),
+  for (final (step, lead) in pencilLeadBrushTipMasks.indexed)
+    _entry(lead, 'Pencil Lead ${step + 1}'),
 ]);
 
 BrushTipEntry _entry(BrushTipMask mask, String name) => BrushTipEntry(

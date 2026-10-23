@@ -9,6 +9,8 @@ import '../models/brush_preset_id.dart';
 import '../models/brush_pressure_curve.dart';
 import '../models/brush_settings.dart';
 import '../models/brush_shape.dart';
+import '../models/brush_texture_mode.dart';
+import '../models/brush_tip_order.dart';
 import '../models/brush_tip_rotation_mode.dart';
 import 'brush_tip_mask_defaults.dart';
 
@@ -237,6 +239,17 @@ const _leaningOut = [
   BrushCurvePoint(1.0, 0.0),
 ];
 
+/// 🚨HOW DEEP A LEAD REACHES INTO THE TOOTH, by the pen's pressure (유저
+/// F-451, 2026-10-23: 「진짜연필 다시한번 참고해서 다시한번 제대로 구현」):
+/// pressed lightly, a lead catches only the paper's peaks; pressed hard, it
+/// fills towards the valleys. Under the paper's height
+/// (`BrushTextureMode.height`) the density IS that reach, so the row bends
+/// the density — [lightest] is what the faintest touch keeps of it.
+Map<BrushDynamicsKey, BrushPressureCurve> _reachRow(double lightest) => {
+  (BrushPressureTarget.textureDensity, BrushInputSource.pressure):
+      BrushPressureCurve.linearFrom(lightest),
+};
+
 final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // ---- Basic -----------------------------------------------------------
   // 🚨THE TWO ROUNDS ARE OLD BRUSHES UNDER NEW NAMES (board F-218): the ids
@@ -286,6 +299,15 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // tooth ([graphiteToothTextureMask]), which stays a pixel or two at any
   // size. With no grain in the tip, the gap between stamps is no longer what
   // they look like, so they lay at the finest spacing like any general brush.
+  //
+  // ↩️THE TIP IS THE LEAD, UPRIGHT TO FLAT, AND THE PAPER CUTS ITS EDGE (유저
+  // F-451, 2026-10-23: 「팁 사각형인채로 질감만 얼버무려서 연필느낌내는건 너무
+  // 구현도가 낮음」). The side was one block at every lean; now each wears
+  // the six footprints of [pencilLeadBrushTipMasks], taken by the pen's
+  // lean — round upright, square laid flat — and the tooth works by its
+  // HEIGHT, not by multiplying, so where the lead barely touches the paper
+  // breaks the silhouette. Each density is the reach a full press has, and
+  // [_reachRow] the reach a light one keeps.
   BrushPreset(
     id: const BrushPresetId('builtin-hard-pencil'),
     name: '2H Pencil',
@@ -297,13 +319,15 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       opacity: 0.65,
       spacing: BrushShape.minSpacing,
       rotationMode: BrushTipRotationMode.penTilt,
-      tips: [pencilSideBrushTipMask],
+      tips: pencilLeadBrushTipMasks,
+      tipOrder: BrushTipOrder.lean,
       textureMaskSource: graphiteToothTextureMask,
+      textureMode: BrushTextureMode.height,
       textureScale: 1.0,
-      textureDensity: 0.55,
+      textureDensity: 0.8,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.75),
       opacityPressureCurve: BrushPressureCurve.linearFrom(0.6),
-      curves: _leanRows(widest: 1.6, narrowest: 0.6),
+      curves: {..._leanRows(widest: 1.6, narrowest: 0.6), ..._reachRow(0.55)},
     ),
   ),
   BrushPreset(
@@ -317,13 +341,15 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       opacity: 0.8,
       spacing: BrushShape.minSpacing,
       rotationMode: BrushTipRotationMode.penTilt,
-      tips: [pencilSideBrushTipMask],
+      tips: pencilLeadBrushTipMasks,
+      tipOrder: BrushTipOrder.lean,
       textureMaskSource: graphiteToothTextureMask,
+      textureMode: BrushTextureMode.height,
       textureScale: 1.2,
-      textureDensity: 0.7,
+      textureDensity: 0.86,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.6),
       opacityPressureCurve: BrushPressureCurve.linearFrom(0.5),
-      curves: _leanRows(widest: 1.6, narrowest: 0.6),
+      curves: {..._leanRows(widest: 1.6, narrowest: 0.6), ..._reachRow(0.5)},
     ),
   ),
   BrushPreset(
@@ -337,13 +363,15 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       opacity: 0.9,
       spacing: BrushShape.minSpacing,
       rotationMode: BrushTipRotationMode.penTilt,
-      tips: [pencilSideBrushTipMask],
+      tips: pencilLeadBrushTipMasks,
+      tipOrder: BrushTipOrder.lean,
       textureMaskSource: graphiteToothTextureMask,
+      textureMode: BrushTextureMode.height,
       textureScale: 1.3,
-      textureDensity: 0.8,
+      textureDensity: 0.92,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.45),
       opacityPressureCurve: BrushPressureCurve.linearFrom(0.45),
-      curves: _leanRows(widest: 1.6, narrowest: 0.6),
+      curves: {..._leanRows(widest: 1.6, narrowest: 0.6), ..._reachRow(0.45)},
     ),
   ),
   BrushPreset(
@@ -356,12 +384,14 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       flow: 0.9,
       spacing: BrushShape.minSpacing,
       rotationMode: BrushTipRotationMode.penTilt,
-      tips: [pencilSideBrushTipMask],
+      tips: pencilLeadBrushTipMasks,
+      tipOrder: BrushTipOrder.lean,
       textureMaskSource: graphiteToothTextureMask,
+      textureMode: BrushTextureMode.height,
       textureScale: 1.4,
-      textureDensity: 0.9,
+      textureDensity: 0.97,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.35),
-      curves: _leanRows(widest: 1.6, narrowest: 0.6),
+      curves: {..._leanRows(widest: 1.6, narrowest: 0.6), ..._reachRow(0.4)},
     ),
   ),
   // 🚨THE USER'S OWN SHARP (유저 F-433, 2026-10-21: 「프리셋 기본 샤프 연필,
@@ -402,12 +432,14 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       flow: 0.55,
       spacing: BrushShape.minSpacing,
       rotationMode: BrushTipRotationMode.penTilt,
-      tips: [pencilSideBrushTipMask],
+      tips: pencilLeadBrushTipMasks,
+      tipOrder: BrushTipOrder.lean,
       textureMaskSource: graphiteToothTextureMask,
+      textureMode: BrushTextureMode.height,
       textureScale: 1.4,
-      textureDensity: 0.7,
+      textureDensity: 0.88,
       opacityPressureCurve: BrushPressureCurve.identity(),
-      curves: _leanRows(widest: 1.6, narrowest: 0.6),
+      curves: {..._leanRows(widest: 1.6, narrowest: 0.6), ..._reachRow(0.5)},
     ),
   ),
   // 🚨THE USER'S COLOURING PENCIL (유저 F-433: 「색연필 샤프도 내가 만든거
@@ -474,19 +506,21 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       flow: 0.9,
       spacing: BrushShape.minSpacing,
       rotationMode: BrushTipRotationMode.penTilt,
-      tips: [pencilSideBrushTipMask],
+      tips: pencilLeadBrushTipMasks,
+      tipOrder: BrushTipOrder.lean,
       textureMaskSource: graphiteToothTextureMask,
+      textureMode: BrushTextureMode.height,
       textureScale: 1.0,
-      textureDensity: 0.85,
+      textureDensity: 0.94,
       curves: {
         (BrushPressureTarget.size, BrushInputSource.pressure):
             BrushPressureCurve.linearFrom(0.8),
         (BrushPressureTarget.opacity, BrushInputSource.pressure):
             BrushPressureCurve.linearFrom(0.15),
-        // Light pressure catches only the tooth's peaks; a heavy one fills
-        // towards its valleys — the grain thins out as it darkens.
-        (BrushPressureTarget.flow, BrushInputSource.pressure):
-            BrushPressureCurve.linearFrom(0.2),
+        // ↩️It paled its FLOW by pressure, 「light pressure catches only the
+        // tooth's peaks」 — which flow cannot do: it thins every pixel alike.
+        // The reach into the tooth does (F-451).
+        ..._reachRow(0.4),
         (BrushPressureTarget.size, BrushInputSource.tilt): BrushPressureCurve(
           _leaningIn,
           minimum: 0.08,

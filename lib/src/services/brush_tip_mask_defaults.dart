@@ -119,6 +119,28 @@ final BrushTipMask graphiteToothTextureMask = _generateGraphiteToothMask();
 /// purpose.
 final BrushTipMask colorClumpBrushTipMask = _generateColorClumpMask();
 
+/// 🚨THE LEAD, UPRIGHT TO FLAT (유저 F-451, 2026-10-23: 「세웠을땐 사각형이
+/// 아니라 진짜 연필처럼 적어도 6각형이라던가 둥글다던가」, while 「눕혀서
+/// 쓸땐 실루엣이 직각으로 떨어져졌으면 하는건 좋은데」). Six footprints of
+/// one lead: the disc its point leaves upright, squarer step by step to the
+/// block its side lays flat. A pencil takes them by the pen's lean
+/// (`BrushTipOrder.lean`) — one footprint cannot be both, and squashing one
+/// only stretches it.
+///
+/// 🚨EACH IS HOW HARD THE LEAD PRESSES, not where it inks: whole in the
+/// middle, easing to nothing at the rim. Under the paper's height
+/// (`BrushTextureMode.height`) that is what lets the paper break the edge —
+/// where the lead barely touches, only the tooth's peaks take graphite, so
+/// the line loses a pixel here and there instead of keeping a stamped
+/// outline (「중간중간 아예 형태가 선이 일부분? 1px이나 그정도 없다던가」).
+///
+/// 256 texels, like [pencilSideBrushTipMask]: the edge is the point, and at
+/// 64 a laid dab of a few dozen pixels would blur it.
+final List<BrushTipMask> pencilLeadBrushTipMasks = List.unmodifiable([
+  for (var step = 0; step < _leadSquareness.length; step += 1)
+    _generatePencilLeadMask(step),
+]);
+
 const int _maskSize = 64;
 
 /// Every round tip is one disc about the mask centre, a pixel short of the
@@ -572,6 +594,68 @@ BrushTipMask _generatePencilSideMask() {
     final cover = ((rim - reach) * radius / 1.5 + 0.5).clamp(0.0, 1.0);
     return 255 * cover * (0.9 + mottle[index] * 0.1);
   });
+}
+
+/// How far from the disc towards the block each lead lies
+/// ([pencilLeadBrushTipMasks]), along the superellipses [_superReach] draws:
+/// 0 the disc, 1 the fourth power, 2 the eighth, 3 the sixteenth, and
+/// between two of them their reaches mixed. A pen held as one writes leans
+/// about 0.4 and a Wacom pen reports little past 0.65 (`_leanRows`), so the
+/// first three stay near round and the block arrives where the lean runs
+/// out.
+const _leadSquareness = [0.0, 0.3, 0.75, 1.6, 2.4, 3.0];
+
+/// How much of a lead's reach presses whole before it eases to the rim
+/// ([pencilLeadBrushTipMasks]): the band left is where the paper's height
+/// breaks the silhouette.
+const _leadWhole = 0.9;
+
+/// One lead ([pencilLeadBrushTipMasks]): its reach on the superellipse
+/// [_leadSquareness] names, whole out to [_leadWhole] of it, then easing as
+/// `(1 - s²)²` to the rim.
+BrushTipMask _generatePencilLeadMask(int step) {
+  const size = 256;
+  const centre = size / 2.0;
+  const radius = size / 2.0 - 1.0;
+  final along = _leadSquareness[step];
+  final lower = math.min(along.floor(), 2);
+  final mix = along - lower;
+  return _textureMask('builtin-pencil-lead-$step', size: size, (x, y, index) {
+    final u = (x + 0.5 - centre) / radius;
+    final v = (y + 0.5 - centre) / radius;
+    final reach =
+        _superReach(u, v, lower) * (1.0 - mix) +
+        _superReach(u, v, lower + 1) * mix;
+    if (reach >= 1.0) {
+      return 0.0;
+    }
+    if (reach <= _leadWhole) {
+      return 255.0;
+    }
+    final s = (reach - _leadWhole) / (1.0 - _leadWhole);
+    final ease = 1.0 - s * s;
+    return 255.0 * ease * ease;
+  });
+}
+
+/// Where ([u], [v]) lies on the superellipse of power `2^(order + 1)` — 1
+/// on its rim: [order] 0 the circle, 1 the fourth power, 2 the eighth, 3 the
+/// sixteenth.
+///
+/// ⚠️`sqrt` only, no `pow`: the bytes are pinned by their sum, and `sqrt` is
+/// the one root every platform rounds alike.
+double _superReach(double u, double v, int order) {
+  var across = u * u;
+  var down = v * v;
+  for (var square = 0; square < order; square += 1) {
+    across *= across;
+    down *= down;
+  }
+  var reach = across + down;
+  for (var root = 0; root <= order; root += 1) {
+    reach = math.sqrt(reach);
+  }
+  return reach;
 }
 
 /// Graphite tooth ([graphiteToothTextureMask]): per texel a hashed speck

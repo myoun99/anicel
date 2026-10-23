@@ -14,10 +14,13 @@ import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
+import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_tip_defaults.dart';
+import 'package:anicel/src/services/brush_tip_mask_defaults.dart';
 
 void main() {
   test('⛔no eraser group, and no preset smuggling one in', () {
@@ -146,8 +149,6 @@ void main() {
           curves[(BrushPressureTarget.opacity, BrushInputSource.pressure)]!;
       expect(opacity.evaluate(1.0), greaterThan(opacity.evaluate(0.2)));
       expect(tilted.hardness, 1.0);
-      expect(tilted.tipMask?.id, 'builtin-pencil-side');
-      expect(tilted.textureMaskSource?.id, 'builtin-graphite-tooth');
     });
 
     test('🚨and its mark follows the pen: the point upright, a strip four '
@@ -195,12 +196,37 @@ void main() {
         expect(size.evaluate(0.0), 1.0, reason: '$id upright');
         expect(size.evaluate(0.65), greaterThan(1.0), reason: '$id leaned');
         expect(roundness.evaluate(0.65), lessThan(1.0), reason: '$id leaned');
-        expect(settings.tipMask?.id, 'builtin-pencil-side', reason: id);
+      }
+    });
+
+    test('🚨every graphite pencil wears the lead upright to flat, and its '
+        'paper cuts by height — deeper the harder it presses (F-451)', () {
+      // 유저: 「팁 사각형인채로 질감만 얼버무려서 연필느낌내는건 너무
+      // 구현도가 낮음」 · 「진짜 연필처럼 중간중간 아예 형태가 선이 일부분?
+      // 1px이나 그정도 없다던가」.
+      for (final id in [
+        'builtin-hard-pencil',
+        'builtin-pencil',
+        'builtin-soft-pencil',
+        'builtin-dark-pencil',
+        'builtin-colored-pencil',
+        'builtin-shading-pencil',
+      ]) {
+        final settings = byId(id).settings;
+        expect(settings.tips, pencilLeadBrushTipMasks, reason: id);
+        expect(settings.tipOrder, BrushTipOrder.lean, reason: id);
         expect(
           settings.textureMaskSource?.id,
           'builtin-graphite-tooth',
           reason: id,
         );
+        expect(settings.textureMode, BrushTextureMode.height, reason: id);
+        final reach = settings.shape.curves[(
+          BrushPressureTarget.textureDensity,
+          BrushInputSource.pressure,
+        )]!;
+        expect(reach.evaluate(1.0), 1.0, reason: '$id pressed whole');
+        expect(reach.evaluate(0.0), lessThan(0.6), reason: '$id touched');
       }
     });
 

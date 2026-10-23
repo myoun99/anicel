@@ -27,19 +27,22 @@ void main() {
     pencilSideBrushTipMask,
     graphiteToothTextureMask,
     colorClumpBrushTipMask,
+    ...pencilLeadBrushTipMasks,
   ];
 
   test('every bundled mask is 64 a side with an alpha per cell — but the '
-      'four that need 256', () {
+      'ten that need 256', () {
     // Board F-218: a 64-texel tile scaled up to read as paper repeats every
     // couple of centimetres of a stroke (see `coldPressTextureMask`). F-433:
     // the lead's side is a hard edge at any dab size, the graphite tooth a
-    // speck of a pixel or two, and the flecks a few texels long.
-    const wide = {
+    // speck of a pixel or two, and the flecks a few texels long. F-451: the
+    // lead's six footprints, whose edge is where the paper breaks it.
+    final wide = {
       'builtin-cold-press',
       'builtin-pencil-side',
       'builtin-graphite-tooth',
       'builtin-color-clumps',
+      for (final lead in pencilLeadBrushTipMasks) lead.id,
     };
     for (final mask in masks) {
       final side = wide.contains(mask.id) ? 256 : 64;
@@ -84,6 +87,13 @@ void main() {
       'builtin-graphite-tooth': 9601082,
       // Measured 2026-10-23 as it first shipped (F-449).
       'builtin-color-clumps': 807546,
+      // Measured 2026-10-23 as they first shipped (F-451).
+      'builtin-pencil-lead-0': 11749572,
+      'builtin-pencil-lead-1': 12303160,
+      'builtin-pencil-lead-2': 13258856,
+      'builtin-pencil-lead-3': 14313164,
+      'builtin-pencil-lead-4': 14729444,
+      'builtin-pencil-lead-5': 14872924,
     };
 
     expect(
