@@ -570,10 +570,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           keys: keys,
           title: AppText.strings.brDeleteGroup,
           titleIcon: Icons.delete_outline,
-          message: memberCount == 0
-              ? 'Delete the empty group "${group.name}"?'
-              : 'Delete "${group.name}" and the $memberCount '
-                    '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
+          message: AppText.strings.brDeleteGroupBody(group.name, memberCount),
         ),
         accept: ConfirmChoice(AppText.strings.commonDelete),
       ),

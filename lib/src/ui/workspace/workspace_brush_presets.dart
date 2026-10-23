@@ -44,30 +44,20 @@ class _WorkspaceBrushPresets {
   /// that explanatory notices are noise — but deleting is destructive and
   /// unlike a stroke it has no undo behind it. Photoshop and Clip Studio
   /// both ask here too.
+  ///
+  /// The app's yes/no window ([askConfirm]), as a preset's delete asks —
+  /// ↩️it was an `AlertDialog` of its own whose sentence never went
+  /// through the string tables, so it spoke English in every language.
   Future<void> _deleteTip(BrushTipEntry tip) async {
-    final confirmed = await showDialog<bool>(
-      context: _state.context,
-      builder: (dialogContext) => AlertDialog(
-        key: const ValueKey<String>('delete-tip-dialog'),
-        title: Text(AppText.strings.brDeleteTip),
-        content: Text('“${tip.name}” will be removed from the library.'),
-        actions: [
-          ControlPressClaim(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: TextButton(
-              onPressed: silentPress(
-                () => Navigator.of(dialogContext).pop(false),
-              ),
-              child: Text(AppText.strings.commonCancel),
-            ),
-          ),
-          FilledButton(
-            key: const ValueKey<String>('delete-tip-confirm'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(AppText.strings.commonDelete),
-          ),
-        ],
+    final confirmed = await askConfirm(
+      _state.context,
+      ConfirmQuestion(
+        keys: confirmDialogKeys('delete-tip'),
+        title: AppText.strings.brDeleteTip,
+        titleIcon: Icons.delete_outline,
+        message: AppText.strings.brDeleteTipBody(tip.name),
       ),
+      accept: ConfirmChoice(AppText.strings.commonDelete),
     );
     if (confirmed ?? false) {
       await _state._tipLibrary.delete(tip.id);

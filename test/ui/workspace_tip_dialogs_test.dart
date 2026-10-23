@@ -6,6 +6,7 @@ import 'package:file_selector_platform_interface/file_selector_platform_interfac
     show FileSelectorPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
@@ -116,6 +117,48 @@ void main() {
     expect(
       toolSettings(tester).tips.firstWhere((t) => t.id == tip.id).name,
       'New name',
+    );
+  });
+
+  // 🔎brush-tip-delete-question-speaks-english (10-19): the question was an
+  // English sentence in every language, in a window of its own.
+  testWidgets('deleting a tip asks in the program language, and its yes '
+      'takes the tip out of the library', (tester) async {
+    await tester.runAsync(() async {
+      final entry = await tips.writeImage(
+        BrushTipMask(
+          id: 'user-tip',
+          size: 8,
+          alpha: Uint8List.fromList(List<int>.filled(64, 200)),
+        ),
+        name: 'Old name',
+      );
+      await tips.saveIndex([entry]);
+    });
+    await pumpWorkspace(tester);
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    AppText.settings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ko,
+    );
+    final tip = toolSettings(tester).tips.firstWhere((t) => !t.builtIn);
+
+    toolSettings(tester).onDeleteTip!(tip);
+    await tester.pumpAndSettle();
+    expect(
+      find.text(AppText.strings.brDeleteTipBody('Old name')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('delete-tip-confirm-button')),
+    );
+    expect(
+      await settleAsync(
+        tester,
+        () => toolSettings(tester).tips.every((t) => t.id != tip.id),
+      ),
+      isTrue,
+      reason: 'the yes deletes it',
     );
   });
 

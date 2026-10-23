@@ -1436,6 +1436,31 @@ void main() {
     expect(find.text('Delete the empty group "Ink"?'), findsOneWidget);
   });
 
+  // 🔎brush-tip-delete-question-speaks-english (10-19): the question was
+  // written in English beside the string tables, its plural too.
+  testWidgets('the group question speaks the program language', (
+    tester,
+  ) async {
+    final before = AppText.settings.value;
+    addTearDown(() => AppText.settings.value = before);
+    AppText.settings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ko,
+    );
+    await _pumpPanel(
+      tester,
+      groups: const [BrushGroup(id: _ink, name: 'Ink')],
+      presets: [_calligraphy().copyWith(groupId: _ink)],
+      onGroupDeleted: (_) {},
+    );
+
+    await _openGroupMenu(tester, AppText.strings.brDeleteGroup);
+
+    expect(
+      find.text(AppText.strings.brDeleteGroupBody('Ink', 1)),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the ROOT section has no group verbs — it is not a group', (
     tester,
   ) async {

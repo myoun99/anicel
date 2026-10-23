@@ -107,6 +107,7 @@ import 'dialogs/app_confirm_dialog.dart'
         ConfirmQuestion,
         NoticeDetails,
         askConfirm,
+        confirmDialogKeys,
         showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';

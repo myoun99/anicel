@@ -1688,6 +1688,8 @@ enum AppStrings {
   String get brAddTipImage => _s('brAddTipImage');
   String get brRenameTip => _s('brRenameTip');
   String get brDeleteTip => _s('brDeleteTip');
+  String brDeleteTipBody(String name) =>
+      _s('brDeleteTipBodyTemplate').replaceAll('{name}', name);
   String get brTipRotation => _s('brTipRotation');
   String get brRotationFixed => _s('brRotationFixed');
   String get brRotationDirection => _s('brRotationDirection');
@@ -1746,6 +1748,14 @@ enum AppStrings {
   String get brNewPresetName => _s('brNewPresetName');
   String get brRenameGroup => _s('brRenameGroup');
   String get brDeleteGroup => _s('brDeleteGroup');
+
+  /// The question 「delete this group」 asks: of an empty group, or of one
+  /// with [brushes] inside it, which go with it.
+  String brDeleteGroupBody(String name, int brushes) =>
+      (brushes == 0
+              ? _s('brDeleteEmptyGroupTemplate')
+              : _count('brDeleteGroupTemplate', brushes))
+          .replaceAll('{name}', name);
   String get brRenameSelected => _s('brRenameSelected');
   String get brDeleteSelected => _s('brDeleteSelected');
   String get brSaveAsPreset => _s('brSaveAsPreset');
@@ -2890,6 +2900,7 @@ enum AppStrings {
     'brAddTipImage': 'Add a tip from an image',
     'brRenameTip': 'Rename tip',
     'brDeleteTip': 'Delete tip',
+    'brDeleteTipBodyTemplate': '“{name}” will be removed from the library.',
     'brStabilizer': 'Stabilizer',
     'brStabilizerOn': 'Apply stabilizer',
     'brStabilizerBySpeed': 'By speed',
@@ -2931,6 +2942,9 @@ enum AppStrings {
     'brNewPresetName': 'Preset {n}',
     'brRenameGroup': 'Rename group',
     'brDeleteGroup': 'Delete group',
+    'brDeleteEmptyGroupTemplate': 'Delete the empty group "{name}"?',
+    'brDeleteGroupTemplateOne': 'Delete "{name}" and the brush inside it?',
+    'brDeleteGroupTemplate': 'Delete "{name}" and the {n} brushes inside it?',
     'brRenameSelected': 'Rename selected brush',
     'brDeleteSelected': 'Delete selected brush',
     'brSaveAsPreset': 'Save current settings as preset',
@@ -4420,6 +4434,7 @@ enum AppStrings {
     'brAddTipImage': '画像から先端を追加',
     'brRenameTip': '先端の名前を変更',
     'brDeleteTip': '先端を削除',
+    'brDeleteTipBodyTemplate': '「{name}」をライブラリから削除します。',
     'brStabilizer': '手ブレ補正',
     'brStabilizerOn': '手ブレ補正を適用',
     'brStabilizerBySpeed': '速度で補正',
@@ -4544,6 +4559,9 @@ enum AppStrings {
     'builtinTip.builtin-pencil-lead-5': '鉛筆の芯 6',
     'brRenameGroup': 'グループ名を変更',
     'brDeleteGroup': 'グループを削除',
+    'brDeleteEmptyGroupTemplate': '空のグループ「{name}」を削除しますか？',
+    'brDeleteGroupTemplateOne': 'グループ「{name}」と中のブラシ1個を削除しますか？',
+    'brDeleteGroupTemplate': 'グループ「{name}」と中のブラシ{n}個を削除しますか？',
     'brRenameSelected': '選択中のブラシ名を変更',
     'brDeleteSelected': '選択中のブラシを削除',
     'brSaveAsPreset': '現在の設定をプリセットとして保存',
@@ -6058,6 +6076,7 @@ enum AppStrings {
     'brAddTipImage': '이미지에서 끝 추가',
     'brRenameTip': '끝 이름 변경',
     'brDeleteTip': '끝 삭제',
+    'brDeleteTipBodyTemplate': '「{name}」 끝을 라이브러리에서 삭제합니다.',
     'brStabilizer': '손떨림 보정',
     'brStabilizerOn': '손떨림 보정 적용',
     'brStabilizerBySpeed': '속도에 따라',
@@ -6183,6 +6202,9 @@ enum AppStrings {
     'builtinTip.builtin-pencil-lead-5': '연필심 6',
     'brRenameGroup': '그룹 이름 변경',
     'brDeleteGroup': '그룹 삭제',
+    'brDeleteEmptyGroupTemplate': '「{name}」 빈 그룹을 삭제할까요?',
+    'brDeleteGroupTemplateOne': '「{name}」 그룹과 안의 브러시 1개를 삭제할까요?',
+    'brDeleteGroupTemplate': '「{name}」 그룹과 안의 브러시 {n}개를 삭제할까요?',
     'brRenameSelected': '선택한 브러시 이름 변경',
     'brDeleteSelected': '선택한 브러시 삭제',
     'brSaveAsPreset': '현재 설정을 프리셋으로 저장',
@@ -7832,6 +7854,7 @@ enum AppStrings {
     'brAddTipImage': 'Ajouter une pointe depuis une image',
     'brRenameTip': 'Renommer la pointe',
     'brDeleteTip': 'Supprimer la pointe',
+    'brDeleteTipBodyTemplate': '« {name} » sera retirée de la bibliothèque.',
     'brStabilizer': 'Stabilisateur',
     'brStabilizerOn': 'Appliquer le stabilisateur',
     'brStabilizerBySpeed': 'Selon la vitesse',
@@ -7964,6 +7987,11 @@ enum AppStrings {
     'builtinTip.builtin-pencil-lead-5': 'Mine 6',
     'brRenameGroup': 'Renommer le groupe',
     'brDeleteGroup': 'Supprimer le groupe',
+    'brDeleteEmptyGroupTemplate': 'Supprimer le groupe vide « {name} » ?',
+    'brDeleteGroupTemplateOne':
+        'Supprimer « {name} » et le pinceau qu’il contient ?',
+    'brDeleteGroupTemplate':
+        'Supprimer « {name} » et les {n} pinceaux qu’il contient ?',
     'brRenameSelected': 'Renommer le pinceau sélectionné',
     'brDeleteSelected': 'Supprimer le pinceau sélectionné',
     'brSaveAsPreset': 'Enregistrer les réglages comme préréglage',
@@ -9402,6 +9430,7 @@ enum AppStrings {
     'brAddTipImage': '从图像添加笔尖',
     'brRenameTip': '重命名笔尖',
     'brDeleteTip': '删除笔尖',
+    'brDeleteTipBodyTemplate': '将从库中删除“{name}”。',
     'brStabilizer': '防抖',
     'brStabilizerOn': '应用防抖',
     'brStabilizerBySpeed': '按速度',
@@ -9523,6 +9552,9 @@ enum AppStrings {
     'builtinTip.builtin-pencil-lead-5': '铅芯 6',
     'brRenameGroup': '重命名分组',
     'brDeleteGroup': '删除分组',
+    'brDeleteEmptyGroupTemplate': '要删除空分组“{name}”吗？',
+    'brDeleteGroupTemplateOne': '要删除“{name}”及其中的 1 个笔刷吗？',
+    'brDeleteGroupTemplate': '要删除“{name}”及其中的 {n} 个笔刷吗？',
     'brRenameSelected': '重命名所选画笔',
     'brDeleteSelected': '删除所选画笔',
     'brSaveAsPreset': '将当前设置保存为预设',
