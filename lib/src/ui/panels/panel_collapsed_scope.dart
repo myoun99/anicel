@@ -14,8 +14,9 @@ import 'package:flutter/widgets.dart';
 ///
 /// A panel that reads this promises ONE thing: at [EditorPanelTab.collapsedExtent]
 /// pixels it lays out without overflowing. The frame panels keep their
-/// command bar and offstage the grid — 「접으면 버튼행만 남는다」 (유저 확정,
-/// 2026-08-10). A panel that declares no extent is never asked: the shell
+/// command bar and build no grid — 「접으면 버튼행만 남는다」 (유저 확정,
+/// 2026-08-10; built only while open since 10-14). A panel that declares
+/// no extent is never asked: the shell
 /// shows nothing at all and the region is its sill alone.
 ///
 /// A plain `bool` and not a listenable, unlike [PanelVisibilityScope]:

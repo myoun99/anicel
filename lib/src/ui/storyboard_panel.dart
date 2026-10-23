@@ -141,6 +141,7 @@ import 'input/control_press_claim.dart' show PressFire, PressFireScope;
 import 'input/hit_gate.dart';
 import 'input/panel_pan.dart';
 import 'input/two_axis_drag.dart';
+import 'panels/panel_collapsed_scope.dart';
 import 'timeline/transform_lane_policy.dart'
     show
         cameraPropertyLanes,
@@ -1560,20 +1561,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// frames are the storyboard: one sheet, dragged both ways at once
   /// (F-351).
   late final TwoAxisScrollController _verticalController =
-      TwoAxisScrollController(initialScrollOffset: _keptLayerAxis?.value ?? 0);
+      TwoAxisScrollController(bornAt: _keptLayerAxis);
 
   /// Lets go of [_keptLayerAxis] ([followKeptAxis]).
   late final VoidCallback _letGoOfKeptRows;
 
-  /// 🚨Born where the axis stands, not at zero (F-143) — a fold remounted
-  /// this panel until 09-28, and a newborn 0 was read back after layout and
-  /// recorded as a scroll over the position the host had kept. A panel
-  /// built afresh is still born there. The timeline grids' controllers are
-  /// born the same way.
+  /// Born where the axis stands ([TwoAxisScrollController.bornAt]), as the
+  /// timeline grids' controllers are.
   late final TwoAxisScrollController _horizontalController =
-      TwoAxisScrollController(
-        initialScrollOffset: _horizontalScrollOffset.value,
-      );
+      TwoAxisScrollController(bornAt: _horizontalScrollOffset);
 
   /// The fallback rail extent for hosts that keep none of their own.
   LayerRailExtent? _ownedRailExtent;
@@ -1902,6 +1898,16 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   @override
   Widget build(BuildContext context) {
+    // ★FOLDED, NO BODY (유저 2026-10-14: 「열려있을때만 지어지는게
+    // 맞는구조」 · 「이건 모든 패널 공통적인 사항이야」). The State stays for
+    // the rows it hands the folded row and the walk ([_bindSheet]), and the
+    // table they are read from goes with this build as with a laid one
+    // ([_StoryboardRailRows.forgetLaneSeating]). Opened, the body is built
+    // where the kept axes stand ([TwoAxisScrollController.bornAt]).
+    if (PanelCollapsedScope.of(context)) {
+      _railRows.forgetLaneSeating();
+      return const SizedBox.shrink();
+    }
     // The splitter's value is read at the TOP here and nowhere deeper:
     // the strip viewport's width is the first thing this build derives
     // from it, and the rail rows keep stating their natural width.

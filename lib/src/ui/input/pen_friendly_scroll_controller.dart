@@ -16,10 +16,7 @@ import 'package:flutter/widgets.dart';
 /// hit-tests under a scrolling finger protects cells from accidental
 /// presses, and pens hover while fingers scroll.
 class PenFriendlyScrollController extends ScrollController {
-  /// [initialScrollOffset] is where a NEW position is born — see the frame
-  /// grids, which are built afresh while the axis they share stands
-  /// elsewhere (an orientation switch) and must not be born at zero.
-  PenFriendlyScrollController({super.initialScrollOffset});
+  PenFriendlyScrollController();
 
   @override
   ScrollPosition createScrollPosition(

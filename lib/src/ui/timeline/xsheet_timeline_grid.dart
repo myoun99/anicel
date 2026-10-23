@@ -390,14 +390,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     // PEN-10: pen-friendly positions — while a stylus is nearby, a
     // coasting fling stops hiding the cells from hit-testing.
     // Born where the axis stands, as on the rail (F-143) — an orientation
-    // switch builds this sheet afresh (a fold did too, until 09-28), and a
-    // newborn 0 would be recorded as a scroll.
+    // switch or an unfold builds this sheet afresh, and a newborn 0 would be
+    // recorded as a scroll.
     _frameScrollController = TwoAxisScrollController(
-      initialScrollOffset: _frameAxisOffset.value,
+      bornAt: _frameAxisOffset,
     );
     // The columns too, where the project left them (F-267).
     _layerScrollController = TwoAxisScrollController(
-      initialScrollOffset: _keptLayerAxis?.value ?? 0,
+      bornAt: _keptLayerAxis,
     );
     _frameScrollController.addListener(_frameAxis.handleScroll);
     _letGoOfKeptColumns = followKeptAxis(

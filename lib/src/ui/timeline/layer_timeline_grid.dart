@@ -244,22 +244,23 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     //
     // 🚨★★BORN WHERE THE AXIS STANDS, NOT AT ZERO (F-143). Folding and
     // unfolding the panel remounted this grid (measured: a new controller
-    // each time) until the workspace keyed the region (09-28); switching
-    // the orientation still builds it afresh while the axis it shares stands
+    // each time) until the workspace keyed the region (09-28), and builds it
+    // afresh again since it is built only while open (10-23); switching
+    // the orientation builds it afresh too, while the axis it shares stands
     // elsewhere. A controller born at 0 has no clients in its first layout, so
     // the sync there cannot pull it anywhere — and then the follower's
     // after-layout re-read (F-95) found the newborn 0 and recorded it as a
     // scroll, over the position the host had kept. Born at the kept offset,
     // the re-read reads back what was kept and records nothing.
     _horizontalScrollController = TwoAxisScrollController(
-      initialScrollOffset: _frameAxisOffset.value,
+      bornAt: _frameAxisOffset,
     );
     // The rows too, where the project left them (F-267) — and the row
     // window is cut there from the first build, which runs before the
     // scrollable it windows has a position to read.
     final keptRows = _keptLayerAxis?.value ?? 0;
     _verticalScrollController = TwoAxisScrollController(
-      initialScrollOffset: keptRows,
+      bornAt: _keptLayerAxis,
     );
     _scroll.standAt(keptRows);
     _letGoOfKeptRows = followKeptAxis(
