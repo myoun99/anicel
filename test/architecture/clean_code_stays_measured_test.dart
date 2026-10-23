@@ -1255,7 +1255,16 @@ void main() {
   /// base (`fdbdd1a3d`) names this one and no other class. ⛔Not split to
   /// fit: the half ahead asks its step's own question of the cut the step
   /// reads in one place (`ActiveCutEdits`), so the two are read side by side.
-  const longClasses = 71;
+  ///
+  /// ⚠️71 → 72 on 2026-10-24, ONE name: `QaAudioDevice` crossed (584 → 601)
+  /// when a recording cue's end silenced a viewer's sound it did not make
+  /// (card `a-cue-ending-silences-a-viewer-sound-it-did-not-make`): `play`
+  /// now hands back the run it starts, and every player's end silences its
+  /// own run alone (`stopRun`, bound beside `stop`). 🔬`clean_code_diff`
+  /// against the lane's base (`d719704c1`) names this one and no other
+  /// class. ⛔Not split to fit: the class is the engine's audio surface, one
+  /// binding a native call, and the run's end is one more native call.
+  const longClasses = 72;
 
   late CleanCodeScan scan;
   setUpAll(() {
