@@ -411,7 +411,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(AppInput.settings.value.touchIgnored, isFalse);
 
-    await tester.tap(row);
+    await tester.pressRingIn(row);
     await tester.pumpAndSettle();
 
     expect(AppInput.settings.value.touchIgnored, isTrue);
