@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/ui_scale_binding.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/settle_async.dart';
+import '../helpers/rail_group_button.dart';
 
 /// 🚨**H30 — 「그리다가 언두하고 빠르게 다음 스트로크 그리면 렉이 심하거든?
 /// 0.1초정도 끊긴다해야하나?」** (유저 실기 2026-09-10).
@@ -157,10 +158,7 @@ void main() {
     // a pick rebuilds with the new brush's values — is not even mounted, and
     // its share of the pick never shows up in the numbers.
     if (Platform.environment['H30_OPEN_SETTINGS'] == '1') {
-      final settingsGroup = EditorWorkspace.railGroupId(right: false, slot: 2);
-      await tester.tap(
-        find.byKey(ValueKey<String>('rail-group-$settingsGroup')),
-      );
+      await pressToolSettingsButton(tester);
       await tester.pumpAndSettle();
     }
 

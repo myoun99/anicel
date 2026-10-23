@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// 🚨F-73 ① (유저 2026-09-11): 「브러시 탭 그룹 이름이나 스트로크 프리뷰 상태가
 /// 저장안됨. 그룹 이름을 해제하거나 스트로크 이름이랑 프리뷰 해제하고 패널닫고
@@ -23,9 +24,7 @@ import '../../helpers/settle_async.dart';
 /// (the app's ring, dotted when on) is the State that used to forget. ⚠️Not off the rows: in a widget test the
 /// workspace's library opens with none, so a row count would pass either way.
 void main() {
-  final libraryGroup = find.byKey(
-    const ValueKey<String>('rail-group-${EditorWorkspace.leftGroupId}'),
-  );
+  final libraryGroup = railGroupButton(EditorWorkspace.leftGroupId);
 
   Future<void> tapKey(WidgetTester tester, String keyValue) async {
     final target = find.byKey(ValueKey<String>(keyValue));

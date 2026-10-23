@@ -5,6 +5,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 
+import '../../helpers/rail_group_button.dart';
+
 /// F-103, the SECOND report (유저 2026-09-16): 「같은띠에서 뷰어패널이랑
 /// 컬러패널 연 상태에서, 컬러패널을 닫으면 뷰어패널이 리빌드되는건지
 /// 뷰어패널쪽이 파일 열렸습니다라는 반짝반짝 ui와 함께 내용물이 흰색됬다가
@@ -25,7 +27,7 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 /// holds for every panel that has a State worth keeping.
 void main() {
   Future<void> tapRailGroup(WidgetTester tester, String railId) async {
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$railId')));
+    await tester.tap(railGroupButton(railId));
     await tester.pumpAndSettle();
   }
 

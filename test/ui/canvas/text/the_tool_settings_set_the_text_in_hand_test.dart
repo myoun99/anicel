@@ -11,7 +11,6 @@ import 'package:anicel/src/ui/brush/tool_settings_section.dart'
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
     show ToolSettingAction, ToolSettingChoiceRow, ToolSettingRow;
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/shortcuts/panel_keys.dart' show PanelKeysBinding;
 import 'package:anicel/src/ui/text/cel_text_layout.dart' show celTextBoxOf;
 import 'package:anicel/src/ui/text/readout_text.dart' show columnValueText;
@@ -36,6 +35,7 @@ import '../../../helpers/boolean_dot_probe.dart';
 import '../../../helpers/cel_text_tool_harness.dart';
 import '../../../helpers/frame_census.dart';
 import '../../../helpers/tool_setting_action_probe.dart';
+import '../../../helpers/rail_group_button.dart';
 
 /// 🚨★★★THE TOOL SETTINGS AND THE TEXT ON THE CANVAS (R9-rest) — the real
 /// app, the real panel, a real mouse.
@@ -72,8 +72,7 @@ void main() {
       project: project,
     );
     await takeTextTool(tester);
-    final settingsGroup = EditorWorkspace.railGroupId(right: false, slot: 2);
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$settingsGroup')));
+    await pressToolSettingsButton(tester);
     await pumpFrames(tester);
     expect(find.byType(ToolSettingsPanel), findsOneWidget, reason: '⛔fixture');
     expect(row('bold'), findsOneWidget, reason: '⛔fixture');

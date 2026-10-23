@@ -5,6 +5,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/rail_group_button.dart';
+
 /// The left dock stacks TWO sections by default now (R26 #31: the Tool
 /// Library over the Tool Settings), so each gets about half the dock's
 /// height — and the Color panel's adaptive layout drops its control strip
@@ -186,7 +188,7 @@ void main() {
 
     // The tool settings are their own sub-strip button now (유저, R3 #10),
     // under the library's, and they ship closed.
-    await tester.tap(find.byKey(const ValueKey<String>('rail-group-rail-L2')));
+    await pressToolSettingsButton(tester);
     await tester.pumpAndSettle();
     final tab = find.byKey(const ValueKey<String>('panel-tab-brush-settings'));
     await tester.ensureVisible(tab);

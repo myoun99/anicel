@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
 
+import '../../helpers/rail_group_button.dart';
+
 /// The top strip that replaced the seven-menu bar: a Project button, a
 /// Settings button, and the work's name.
 ///
@@ -212,7 +214,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
-    final leftGroup = find.byKey(const ValueKey<String>('rail-group-rail-L1'));
+    final leftGroup = railGroupButton('rail-L1');
     expect(
       find.byKey(const ValueKey<String>('panel-tab-brushes')),
       findsOneWidget,

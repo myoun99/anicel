@@ -7,7 +7,6 @@ import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/font_file_reader.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_chrome.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
 import 'package:file_selector/file_selector.dart' show XFile, XTypeGroup;
 import 'package:file_selector_platform_interface/file_selector_platform_interface.dart'
@@ -20,6 +19,7 @@ import '../../../helpers/font_file_fixture.dart';
 import '../../../helpers/font_library_in_memory.dart';
 import '../../../helpers/project_scratch_folder.dart';
 import '../../../helpers/settle_async.dart';
+import '../../../helpers/rail_group_button.dart';
 
 /// R9-rest (the text tool's faces): THE REAL APP KEEPS THE DEVICE'S FONTS
 /// — the workspace reads their index, stands them as the run's faces, and
@@ -49,8 +49,7 @@ void main() {
       fonts: library,
     );
     await takeTextTool(tester);
-    final settingsGroup = EditorWorkspace.railGroupId(right: false, slot: 2);
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$settingsGroup')));
+    await pressToolSettingsButton(tester);
     await pumpFrames(tester);
     expect(find.byType(ToolSettingsPanel), findsOneWidget, reason: '⛔fixture');
   }

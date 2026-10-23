@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/frame_census.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// 🚨I-57 ㉢ (10-13, measured on the user's project): every tool's settings
 /// panel is kept alive, and each one rebuilt on EVERY session notify — a
@@ -104,8 +105,7 @@ Future<EditorSessionManager> _open(WidgetTester tester) async {
     ),
   );
   await tester.pumpAndSettle();
-  final settings = EditorWorkspace.railGroupId(right: false, slot: 2);
-  await tester.tap(find.byKey(ValueKey<String>('rail-group-$settings')));
+  await pressToolSettingsButton(tester);
   await tester.pumpAndSettle();
   final session = tester
       .widget<EditorWorkspace>(find.byType(EditorWorkspace))

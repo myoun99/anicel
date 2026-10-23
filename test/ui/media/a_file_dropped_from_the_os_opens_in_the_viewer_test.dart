@@ -14,6 +14,7 @@ import '../../helpers/os_file_drop.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// 🗣️F-378 (유저 2026-10-17): 「윈도우등 os에서 드래그앤 드롭으로 파일을
 /// 뷰어패널에 떨어트리면 바로 뷰어패널에서 열리도록. 서브뷰어던
@@ -48,7 +49,7 @@ void main() {
     await tester.pumpAndSettle();
     for (final key in [
       'top-strip-floor-$mainViewer',
-      'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 5)}',
+      railGroupButtonKey(EditorWorkspace.railGroupId(right: true, slot: 5)),
     ]) {
       await tester.tap(find.byKey(ValueKey<String>(key)));
       await tester.pumpAndSettle();

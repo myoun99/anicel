@@ -28,6 +28,8 @@ import '../helpers/home_page_probes.dart';
 import '../helpers/panel_finders.dart';
 import 'brush_canvas_test_helpers.dart';
 
+import '../helpers/rail_group_button.dart';
+
 /// 🚨**F-130 — 「브러시 커서 프리뷰가 일반 OS 커서보다 느리다 — 일반 커서가
 /// 60fps 면 프리뷰는 30fps 느낌」** (유저 2026-09-14/15).
 ///
@@ -233,8 +235,7 @@ void main() {
     if (arms.contains('settings')) {
       // The tool settings group ships CLOSED on the left rail (slot 2);
       // H30's `H30_OPEN_SETTINGS` opened it the same way.
-      final group = EditorWorkspace.railGroupId(right: false, slot: 2);
-      final groupButton = find.byKey(ValueKey<String>('rail-group-$group'));
+      final groupButton = railGroupButton(toolSettingsGroupId);
       await tester.tap(groupButton);
       await tester.pumpAndSettle();
       await hoverArm(

@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart';
 
 import '../helpers/panel_finders.dart';
 import '../helpers/settings_flyout.dart';
+import '../helpers/rail_group_button.dart';
 
 /// A rail button is a GROUP of panels, and the rail is a column of them.
 ///
@@ -36,9 +37,6 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
-
-  Finder groupButton(String railId) =>
-      find.byKey(ValueKey<String>('rail-group-$railId'));
 
   group('the strips', () {
     testWidgets('BOTH exist — the sub-strip is no longer a 0px dock', (
@@ -70,7 +68,7 @@ void main() {
       expect(
         find.descendant(
           of: right,
-          matching: groupButton(EditorWorkspace.rightGroupId),
+          matching: railGroupButton(EditorWorkspace.rightGroupId),
         ),
         findsOneWidget,
       );
@@ -81,19 +79,19 @@ void main() {
     ) async {
       await pumpApp(tester);
 
-      expect(groupButton(EditorWorkspace.leftGroupId), findsOneWidget);
-      expect(groupButton(EditorWorkspace.rightGroupId), findsOneWidget);
+      expect(railGroupButton(EditorWorkspace.leftGroupId), findsOneWidget);
+      expect(railGroupButton(EditorWorkspace.rightGroupId), findsOneWidget);
       // The tool settings hold the left rail's second slot (유저, R3 #10),
       // so that one is a button too — and it is a button whether or not its
       // group is open.
       expect(
-        groupButton(EditorWorkspace.railGroupId(right: false, slot: 2)),
+        railGroupButton(toolSettingsGroupId),
         findsOneWidget,
       );
       // An empty slot is not a button you can press — it appears only as a
       // drop target, and only while something is in flight.
       expect(
-        groupButton(EditorWorkspace.railGroupId(right: false, slot: 3)),
+        railGroupButton(EditorWorkspace.railGroupId(right: false, slot: 3)),
         findsNothing,
       );
     });
@@ -109,10 +107,10 @@ void main() {
         find.byKey(const ValueKey<String>('tools-panel')),
       );
       final leftButton = tester.getRect(
-        groupButton(EditorWorkspace.leftGroupId),
+        railGroupButton(EditorWorkspace.leftGroupId),
       );
       final rightButton = tester.getRect(
-        groupButton(EditorWorkspace.rightGroupId),
+        railGroupButton(EditorWorkspace.rightGroupId),
       );
 
       // The sub-strip has always started at the top; the tool strip's
@@ -217,7 +215,7 @@ void main() {
       // A strip inside a strip asked "which panel" and "how am I picking"
       // in the same place twice (유저, R2 #8).
       await pumpApp(tester);
-      await tester.tap(groupButton(EditorWorkspace.rightGroupId));
+      await tester.tap(railGroupButton(EditorWorkspace.rightGroupId));
       await tester.pumpAndSettle();
 
       for (final id in ['color-wheel', 'color-rgb', 'color-palette']) {
@@ -265,7 +263,7 @@ void main() {
           .width;
       expect(railWidth, greaterThan(0));
 
-      await tester.tap(groupButton(sheetGroup));
+      await tester.tap(railGroupButton(sheetGroup));
       await tester.pumpAndSettle();
       expect(find.byType(TimesheetTabHost), findsNothing);
       // The rail's column is gone, so the drawing gets the width back.
@@ -276,9 +274,9 @@ void main() {
       // …and the BUTTON is still there. Closing a group is not closing the
       // panels: the grouping survives, which is the whole point of a fixed
       // slot pool.
-      expect(groupButton(sheetGroup), findsOneWidget);
+      expect(railGroupButton(sheetGroup), findsOneWidget);
 
-      await tester.tap(groupButton(sheetGroup));
+      await tester.tap(railGroupButton(sheetGroup));
       await tester.pumpAndSettle();
       expect(find.byType(TimesheetTabHost), findsOneWidget);
     });
@@ -291,9 +289,7 @@ void main() {
 
       // The tool SETTINGS are the left rail's second group now (유저, R3
       // #10) — one button under the library's, closed until pressed.
-      await tester.tap(
-        groupButton(EditorWorkspace.railGroupId(right: false, slot: 2)),
-      );
+      await pressToolSettingsButton(tester);
       await tester.pumpAndSettle();
 
       // Both groups are open and both are on screen.
@@ -383,9 +379,7 @@ void main() {
       expect(railThumb(), findsNothing, reason: 'and no bar says otherwise');
 
       // Open the left rail's second group (the tool settings).
-      await tester.tap(
-        groupButton(EditorWorkspace.railGroupId(right: false, slot: 2)),
-      );
+      await pressToolSettingsButton(tester);
       await tester.pumpAndSettle();
 
       // Two 320px panels and a gap need 648; the rail has ~589.
@@ -522,7 +516,7 @@ void main() {
       // Close the rail: the bar takes the width back, and its centre along
       // the edge has not moved.
       await tester.tap(
-        groupButton(EditorWorkspace.railGroupId(right: true, slot: 2)),
+        railGroupButton(EditorWorkspace.railGroupId(right: true, slot: 2)),
       );
       await tester.pumpAndSettle();
       final closed = panbar();

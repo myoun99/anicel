@@ -11,12 +11,12 @@ import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import '../helpers/settle_async.dart';
 import '../helpers/temp_dir.dart';
+import '../helpers/rail_group_button.dart';
 
 /// THE WORKSPACE'S TIP AND BRUSH-FILE DIALOGS — MEASURED.
 ///
@@ -55,8 +55,7 @@ void main() {
               .isNotEmpty,
     );
     await tester.pumpAndSettle();
-    final settingsGroup = EditorWorkspace.railGroupId(right: false, slot: 2);
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$settingsGroup')));
+    await pressToolSettingsButton(tester);
     await tester.pumpAndSettle();
     expect(find.byType(ToolSettingsPanel), findsOneWidget, reason: 'premise');
   }

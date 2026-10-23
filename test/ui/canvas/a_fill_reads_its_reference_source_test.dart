@@ -31,6 +31,7 @@ import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// 🚨I-36 (유저 2026-09-24): 「범위를 보여주고, 활성 레이어의 참조 버튼을
 /// 둔다」 + 「모드 세개. 참조(보이는거 전부), 참조(참조 설정한 레이어만, 없으면
@@ -184,7 +185,7 @@ void main() {
   /// The tool settings ship closed, behind the second button of the left
   /// sub-strip; a second press closes them again, off the canvas.
   Future<void> toggleToolSettings(WidgetTester tester) async {
-    await tester.tap(find.byKey(const ValueKey<String>('rail-group-rail-L2')));
+    await pressToolSettingsButton(tester);
     await tester.pumpAndSettle();
   }
 

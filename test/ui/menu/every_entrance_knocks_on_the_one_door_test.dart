@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// F-282 (유저 2026-10-09): every entrance a file comes in through, pressed
 /// the way a person presses it, reaches the ONE door — the menu's 「파일
@@ -141,7 +142,7 @@ void main() {
 
     await tapKey(
       tester,
-      'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 3)}',
+      railGroupButtonKey(EditorWorkspace.railGroupId(right: true, slot: 3)),
     );
     await tapToTheWindow(tester, 'media-import-button');
 
@@ -158,7 +159,7 @@ void main() {
 
     await tapKey(
       tester,
-      'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 3)}',
+      railGroupButtonKey(EditorWorkspace.railGroupId(right: true, slot: 3)),
     );
     await tapKey(tester, 'media-import-button');
 

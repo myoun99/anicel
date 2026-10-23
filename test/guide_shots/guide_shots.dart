@@ -70,6 +70,8 @@ import '../helpers/project_scratch_folder.dart' show deleteAfterSessionEnds;
 import '../helpers/settle_async.dart';
 import 'guide_shortcut_table.dart';
 
+import '../helpers/rail_group_button.dart';
+
 final outRoot = Platform.environment['GUIDE_OUT'] ?? 'build/guide';
 
 late String outDir;
@@ -953,7 +955,7 @@ void guideShots(AppLanguage language) {
       await closeWindow(tester);
 
       // The media pool, down to its last file.
-      await tester.tap(byKey('rail-group-rail-R3'));
+      await tester.tap(byKey(railGroupButtonKey('rail-R3')));
       await settleReal(tester);
       final pool = tester.getRect(byKey('rail-group-body-rail-R3'));
       final files = keyed(tester, ['media-asset-row-']);
@@ -963,7 +965,7 @@ void guideShots(AppLanguage language) {
         rect: Rect.fromLTRB(pool.left, pool.top, pool.right, files.bottom + 8),
         ratio: 2,
       );
-      await tester.tap(byKey('rail-group-rail-R3'));
+      await tester.tap(byKey(railGroupButtonKey('rail-R3')));
       await settleReal(tester, 4);
 
       // The storyboard: the cuts in a row, each with its conte — taken

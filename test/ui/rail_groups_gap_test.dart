@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart';
 
+import '../helpers/rail_group_button.dart';
+
 const _corner = DockEdgeSplitter.endInset;
 
 void main() {
@@ -34,7 +36,7 @@ void main() {
 
     final first = EditorWorkspace.railGroupId(right: false, slot: 1);
     final second = EditorWorkspace.railGroupId(right: false, slot: 2);
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$second')));
+    await tester.tap(railGroupButton(second));
     await tester.pumpAndSettle();
 
     final firstSide = find.byKey(ValueKey<String>('dock-resize-$first'));

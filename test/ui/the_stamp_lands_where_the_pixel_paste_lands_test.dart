@@ -41,6 +41,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/panel_finders.dart';
+import '../helpers/rail_group_button.dart';
 
 /// 🚨★★★**THE CUT TOOL'S STAMP LANDS WHERE 픽셀 붙여넣기 LANDS** (F-293).
 ///
@@ -246,8 +247,7 @@ void main() {
       const ValueKey<String>('cut-paste-at-origin-button'),
     );
     if (button.evaluate().isEmpty) {
-      final settings = EditorWorkspace.railGroupId(right: false, slot: 2);
-      await tester.tap(find.byKey(ValueKey<String>('rail-group-$settings')));
+      await pressToolSettingsButton(tester);
       await pumpFrames(tester, 30);
     }
     await tester.ensureVisible(button);

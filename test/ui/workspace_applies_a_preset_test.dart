@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../helpers/brush_values_on_strip.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/settle_async.dart';
+import '../helpers/rail_group_button.dart';
 
 /// APPLYING A PRESET FROM THE WORKSPACE — MEASURED.
 ///
@@ -150,8 +151,7 @@ void main() {
 
   /// Opens the brush settings — their own rail slot, which ships closed.
   Future<void> openBrushSettings(WidgetTester tester) async {
-    final group = EditorWorkspace.railGroupId(right: false, slot: 2);
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$group')));
+    await pressToolSettingsButton(tester);
     await tester.pumpAndSettle();
   }
 
