@@ -6,6 +6,8 @@ import 'package:anicel/src/ui/widgets/settings_rows.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/boolean_dot_probe.dart';
+
 /// 🗣️R9-rest, the tool settings 유저 took on 2026-10-06: 「고른 범위에 값이
 /// 섞여 있으면 그 칸은 「—」로 보입니다」 — letters some bold and some not,
 /// letters of several colours.
@@ -83,7 +85,7 @@ void main() {
         isTrue,
       );
 
-      await tester.tap(find.byKey(const ValueKey<String>('probe-row')));
+      await tester.pressRingIn(find.byKey(const ValueKey<String>('probe-row')));
       await tester.pump();
 
       expect(heard, [true]);
