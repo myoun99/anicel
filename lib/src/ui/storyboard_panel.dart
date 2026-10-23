@@ -64,7 +64,7 @@ import 'theme/app_theme.dart';
 import 'timeline/timeline_frame_axis_follower.dart';
 import 'timeline/layer_label_controls.dart';
 import 'timeline/timeline_cut_end_handle.dart'
-    show timelineCutEndPreviewFrameCount;
+    show EndLineGrip, timelineCutEndPreviewFrameCount;
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/berth_row.dart' show BerthRow;
 import 'timeline/rail_eyes.dart' show RailEyes;
@@ -82,7 +82,6 @@ import 'timeline/timeline_section_runs.dart'
 import 'timeline/timeline_swipe_columns.dart'
     show RailSwipeHooks, timelineSwipeColumns;
 import 'widgets/dock_edge_splitter.dart';
-import 'widgets/owning_axis_grip.dart';
 import 'widgets/drag_chip.dart' show DragChipItem;
 import 'widgets/tick_layer.dart';
 import 'timeline/property_lane_model.dart'
@@ -4854,7 +4853,7 @@ class StoryboardTrackLabelRow extends KeptPiece {
 /// the strips' movie-end line; dragging it edits the movie's FINAL
 /// LENGTH (the project's trailing gap) through the session channel —
 /// live preview, ONE undo on release. It never touches the cuts.
-class _StoryboardEndLineHandle extends StatefulWidget {
+class _StoryboardEndLineHandle extends StatelessWidget {
   const _StoryboardEndLineHandle({
     required this.dragPreview,
     required this.committedTotalFrames,
@@ -4875,58 +4874,17 @@ class _StoryboardEndLineHandle extends StatefulWidget {
   final StoryboardMovieEndCallbacks movieEnd;
 
   @override
-  State<_StoryboardEndLineHandle> createState() =>
-      _StoryboardEndLineHandleState();
-}
-
-class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
-  double _dx = 0;
-  bool _dragging = false;
-
-  void _start() {
-    if (!widget.movieEnd.onBegin()) {
-      return;
-    }
-    _dragging = true;
-    _dx = 0;
-  }
-
-  void _update(double delta) {
-    if (!_dragging) {
-      return;
-    }
-    _dx += delta;
-    widget.movieEnd.onUpdate((_dx / widget.pixelsPerFrame).round());
-  }
-
-  void _end() {
-    if (!_dragging) {
-      return;
-    }
-    _dragging = false;
-    widget.movieEnd.onEnd();
-  }
-
-  void _cancel() {
-    if (!_dragging) {
-      return;
-    }
-    _dragging = false;
-    widget.movieEnd.onCancel();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<TimelineDragPreview?>(
-      valueListenable: widget.dragPreview ?? _noDragPreview,
+      valueListenable: dragPreview ?? _noDragPreview,
       builder: (context, preview, child) => Positioned(
         key: const ValueKey<String>('storyboard-cut-end-handle'),
-        left: widget.scale.leftForFrame(
+        left: scale.leftForFrame(
           timelineCutEndPreviewFrameCount(
             preview: preview,
             cutId: null,
-            playbackFrameCount: widget.committedTotalFrames,
-            movieEndUnder: widget.movieEndUnder,
+            playbackFrameCount: committedTotalFrames,
+            movieEndUnder: movieEndUnder,
           ),
         ),
         top: 0,
@@ -4934,22 +4892,14 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
         width: 12,
         child: child!,
       ),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.resizeColumn,
-        // 🗣️F-445 (유저 2026-10-23): 「엔드라인 손으로 드래그할때 가끔
-        // 프레임영역 가로 스크롤 작동함. 엔드라인은 조작 위젯이니까 작동안하게
-        // 제대로 다른위젯처럼 강한클레임으로 법 통일」 — the timeline's cut-end
-        // grip's law ([TimelineCutEndDragHandle]). ↩️A plain one-axis drag,
-        // which the frame area's scroller beat to a finger.
-        child: OwningAxisGrip(
-          axis: Axis.horizontal,
-          configure: (recognizer) => recognizer
-            ..dragStartBehavior = DragStartBehavior.down
-            ..onStart = ((_) => _start())
-            ..onUpdate = ((details) => _update(details.primaryDelta!))
-            ..onEnd = ((_) => _end())
-            ..onCancel = _cancel,
-        ),
+      // F-445: the timeline's end line's grip ([EndLineGrip]).
+      child: EndLineGrip(
+        axis: Axis.horizontal,
+        cellExtent: pixelsPerFrame,
+        onBegin: movieEnd.onBegin,
+        onUpdate: movieEnd.onUpdate,
+        onEnd: movieEnd.onEnd,
+        onCancel: movieEnd.onCancel,
       ),
     );
   }
