@@ -305,12 +305,11 @@ class BrushFrameStore {
       final cut = await cutCelInWorker(
         key,
         blob,
-        ahead.reach,
+        (from: standsBehind, to: ahead.reach),
         parkAt: ScratchCelFiles.pathFor(
           _scratchNamespace,
           '${anicelCelEntryName(key)}-ahead$round',
         ),
-        standsBehind: standsBehind,
       );
       ahead.answers[ref] = cut == null
           ? null

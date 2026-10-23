@@ -315,22 +315,17 @@ Map<TileCoord, BitmapTile> tilesBehindWall(
   required int tileSize,
 }) => _BehindWall(wall: wall, laid: null, tileSize: tileSize).tilesOf(tiles);
 
-/// [tiles] — a cel's, as plain bytes — behind the wall of [reach] on
-/// [canvasSize], a file's picture [laid] left whole: [surfaceBehindReach]'s
-/// cut, made of the bytes before they are laid into tiles
-/// (`layCelInWorker`), so a tile the wall keeps whole is laid as it came
-/// and only one it crosses is copied.
-List<({int x, int y, Uint8List pixels})> tileBytesBehindReach(
+/// [tiles] — a cel's, as plain bytes, on a grid of [tileSize] — behind
+/// [wall], a file's picture [laid] left whole: [surfaceBehindReach]'s cut,
+/// made of the bytes before they are laid into tiles (`layCelInWorker`), so
+/// a tile the wall keeps whole is laid as it came and only one it crosses
+/// is copied.
+List<({int x, int y, Uint8List pixels})> tileBytesBehindWall(
   List<({int x, int y, Uint8List pixels})> tiles, {
-  required CanvasSize canvasSize,
-  required PasteboardReach reach,
-  required int tileSize,
+  required DirtyRegion wall,
   required DirtyRegion? laid,
-}) => _BehindWall(
-  wall: canvasSize.pasteboardAt(reach).region,
-  laid: laid,
-  tileSize: tileSize,
-).recordsOf(tiles);
+  required int tileSize,
+}) => _BehindWall(wall: wall, laid: laid, tileSize: tileSize).recordsOf(tiles);
 
 /// What of a tile is kept behind a [wall] — inside it, or inside where a
 /// file was [laid].
