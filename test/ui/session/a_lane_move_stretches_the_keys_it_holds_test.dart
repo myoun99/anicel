@@ -125,7 +125,7 @@ void main() {
         track,
         laneIds: const ['rotation'],
         lensOf: transformLaneLens,
-        move: (
+        moveOn: (_) => (
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 9,
           to: (frame) => frame,
@@ -145,5 +145,76 @@ void main() {
     expect(rotation(), {0: 10, 8: 20});
     expect(s.dragPreview.value, isNull);
     expect(s.canUndo, undoable);
+  });
+
+  // graph-box-handles-more ⓐ — a box corner gone alone moves each key by
+  // as much as it stood near it, so the move says where each lands.
+  group('where each key lands is the landings\'', () {
+    void land(List<Map<String, Map<int, int>>> steps) {
+      expect(s.laneMove.beginLaneRangeMoveDrag(), isTrue);
+      for (final step in steps) {
+        s.laneMove.updateLaneRangeMoveDrag(frameDelta: 0, landings: step);
+      }
+      s.laneMove.endLaneRangeMoveDrag();
+    }
+
+    Map<int, double> opacity() => {
+      for (final MapEntry(key: frame, value: key)
+          in transform().opacity.keys.entries)
+        frame: key.value,
+    };
+
+    test('each key goes where its lane\'s landing says — the same frame '
+        'on another lane goes elsewhere, or stays', () {
+      keyed(
+        TransformTrack.empty().copyWith(
+          rotation: keys({0: 10, 8: 20}),
+          opacity: keys({0: 0.5, 8: 1}),
+        ),
+      );
+      pick(['rotation', 'opacity'], 0, 8);
+
+      land([
+        {
+          'rotation': {8: 12},
+          'opacity': {0: 2},
+        },
+      ]);
+
+      expect(rotation(), {0: 10, 12: 20});
+      expect(opacity(), {2: 0.5, 8: 1});
+    });
+
+    test('the outline keeps its ends and holds every key landed past them',
+        () {
+      keyed(TransformTrack.empty().copyWith(rotation: keys({2: 10, 6: 20})));
+      pick(['rotation'], 2, 6);
+
+      land([
+        {
+          'rotation': {6: 9},
+        },
+      ]);
+
+      final picked = s.laneRangeSelection.value!;
+      expect((picked.startIndex, picked.endIndexExclusive), (2, 10));
+    });
+
+    test('a step that lands two keys of a lane on one frame is refused, and '
+        'the step before it holds', () {
+      keyed(TransformTrack.empty().copyWith(rotation: keys({0: 1, 4: 2})));
+      pick(['rotation'], 0, 4);
+
+      land([
+        {
+          'rotation': {4: 6},
+        },
+        {
+          'rotation': {4: 0},
+        },
+      ]);
+
+      expect(rotation(), {0: 1, 6: 2});
+    });
   });
 }

@@ -261,7 +261,7 @@ void main() {
                 onTapAt: (_, _, _) => heard.add('stand'),
                 onTapClear: () => heard.add('clear'),
                 onMoveBegin: () => false,
-                onMoveUpdate: (_, {stretch, values}) {},
+                onMoveUpdate: (_, {stretch, values, landings}) {},
                 onMoveEnd: () {},
                 onMoveCancel: () {},
                 onCreateKeys: plus ? () => heard.add('＋') : null,

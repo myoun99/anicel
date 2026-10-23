@@ -60,7 +60,7 @@ void main() {
     onTapAt: (_, _, _) {},
     onTapClear: () {},
     onMoveBegin: () => false,
-    onMoveUpdate: (_, {stretch, values}) {},
+    onMoveUpdate: (_, {stretch, values, landings}) {},
     onMoveEnd: () {},
     onMoveCancel: () {},
   );

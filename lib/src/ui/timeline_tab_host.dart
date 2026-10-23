@@ -790,11 +790,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onTapClear: _session.clearLaneRangeSelection,
               onCreateKeys: _session.cellInstances.createInstancesForSelection,
               onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
-              onMoveUpdate: (frameDelta, {stretch, values}) =>
+              onMoveUpdate: (frameDelta, {stretch, values, landings}) =>
                   _session.laneMove.updateLaneRangeMoveDrag(
                     frameDelta: frameDelta,
                     stretch: stretch,
                     values: values,
+                    landings: landings,
                   ),
               onMoveEnd: _session.laneMove.endLaneRangeMoveDrag,
               onMoveCancel: _session.laneMove.cancelLaneRangeMoveDrag,

@@ -6,7 +6,8 @@ import '../../../models/key_range_shift.dart'
     show FrameStretch, frameStretched;
 import '../../../models/layer_effect.dart';
 import '../../../models/timeline_frame_range.dart';
-import '../../timeline/property_lane_model.dart' show LaneKeyValues;
+import '../../timeline/property_lane_model.dart'
+    show LaneKeyLandings, LaneKeyValues;
 import '../../timeline/timeline_drag_preview.dart';
 import '../lane_edit_subject.dart';
 import '../lane_homes.dart';
@@ -111,18 +112,22 @@ class LaneRangeMoveDrag {
   }
 
   /// Moves every spanned lane's ranged keys [frameDelta] frames on — after
-  /// [stretch], where a graph's box stretches them (I-3 ⑥) — their [values]
-  /// written first, where a graph's key or box carries them, and previews
-  /// the result. A blocked landing returns having changed nothing, which is
-  /// what makes the last valid preview and outline hold.
+  /// [stretch], where a graph's box stretches them (I-3 ⑥), and each where
+  /// its [landings] say, where one corner of the box goes alone
+  /// (graph-box-handles-more ⓐ) — their [values] written first, where a
+  /// graph's key or box carries them, and previews the result. A blocked
+  /// landing returns having changed nothing, which is what makes the last
+  /// valid preview and outline hold.
   void update({
     required int frameDelta,
     FrameStretch? stretch,
     LaneKeyValues? values,
+    LaneKeyLandings? landings,
   }) {
-    int to(int frame) =>
+    int to(String laneId, int frame) =>
+        landings?[laneId]?[frame] ??
         (stretch == null ? frame : frameStretched(stretch, frame)) +
-        frameDelta;
+            frameDelta;
     final written = values == null ? null : _write(_subject, values);
     final moved = _movedBy(
       written == null ? _subject : _subject.after(written),
@@ -147,18 +152,22 @@ class LaneRangeMoveDrag {
     }
     _shifted = edit;
     _preview.value = shown;
-    _rideSelection(to);
+    _rideSelection((frame) => to(_selectionBefore.laneId, frame), landings);
   }
 
-  /// [row]'s span of keys, each moved to the frame [to] gives it, home by
-  /// home: ONE rigid group, so a home whose landing is blocked blocks the
-  /// move, and a home with no key moving rides along. Null when blocked;
-  /// empty where nothing moves.
-  LaneEdit? _movedBy(LaneEditSubject row, int Function(int frame) to) {
+  /// [row]'s span of keys, each moved to the frame [to] gives it on its
+  /// lane, home by home: ONE rigid group, so a home whose landing is
+  /// blocked blocks the move, and a home with no key moving rides along.
+  /// Null when blocked; empty where nothing moves.
+  LaneEdit? _movedBy(
+    LaneEditSubject row,
+    int Function(String laneId, int frame) to,
+  ) {
     var blocked = false;
     T? moved<T>(LaneHome<T> home) {
-      if (!home.keyedWhere(
-        (frame) => _selectionBefore.contains(frame) && to(frame) != frame,
+      if (!home.keyedOnWhere(
+        (laneId, frame) =>
+            _selectionBefore.contains(frame) && to(laneId, frame) != frame,
       )) {
         return null;
       }
@@ -172,12 +181,24 @@ class LaneRangeMoveDrag {
   }
 
   /// The step's selection ride: the outline follows the span's ends where
-  /// [to] takes them — turned about, where a stretch turns them — and never
-  /// below 0.
-  void _rideSelection(int Function(int frame) to) {
-    final first = to(_selectionBefore.startIndex);
-    final last = to(_selectionBefore.endIndexExclusive - 1);
-    final newStart = math.min(first, last);
+  /// [to] takes them — turned about, where a stretch turns them — and holds
+  /// every key [landings] put down; never below 0.
+  ///
+  /// ⚖️Mine (graph-box-handles-more ⓐ): a corner gone alone moves the keys
+  /// by as much as each stood near it, so no one frame's move is the
+  /// span's — the outline keeps its ends and widens to the keys landed
+  /// past them.
+  void _rideSelection(
+    int Function(int frame) to,
+    LaneKeyLandings? landings,
+  ) {
+    final ends = [
+      to(_selectionBefore.startIndex),
+      to(_selectionBefore.endIndexExclusive - 1),
+      for (final frames in landings?.values ?? const <Map<int, int>>[])
+        ...frames.values,
+    ];
+    final newStart = ends.reduce(math.min);
     if (newStart < 0) {
       return;
     }
@@ -185,7 +206,7 @@ class LaneRangeMoveDrag {
       layerId: _selectionBefore.layerId,
       laneId: _selectionBefore.laneId,
       startIndex: newStart,
-      endIndexExclusive: math.max(first, last) + 1,
+      endIndexExclusive: ends.reduce(math.max) + 1,
       laneIds: _selectionBefore.laneIds,
     );
   }

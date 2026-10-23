@@ -39,7 +39,7 @@ T? laneSpanKeysShifted<T>(
   track,
   laneIds: laneIds,
   lensOf: lensOf,
-  move: (
+  moveOn: (_) => (
     rangeStartIndex: rangeStartIndex,
     rangeEndIndexExclusive: rangeEndIndexExclusive,
     to: (frame) => frame + frameDelta,
@@ -55,10 +55,12 @@ typedef LaneSpanMove = ({
   int Function(int frame) to,
 });
 
-/// A track with every lane in [laneIds] moved as [move] says through
-/// [LaneKeysShift.keysMoved], all-or-nothing ACROSS lanes: a lane none of
-/// whose keys [move] moves rides along; a lane whose landing is blocked
-/// vetoes the WHOLE move. Null when blocked, or when no lane moves a key.
+/// A track with every lane in [laneIds] moved as [moveOn] says for each
+/// through [LaneKeysShift.keysMoved], all-or-nothing ACROSS lanes: a lane
+/// none of whose keys its move moves rides along; a lane whose landing is
+/// blocked vetoes the WHOLE move. Null when blocked, or when no lane moves
+/// a key. Every lane moves alike but where a graph's box corner goes alone
+/// (graph-box-handles-more ⓐ).
 ///
 /// 🚨ONE law for the transform track and the SE name-tag track. Each
 /// carried this loop over its own lane functions (the audit's clone scan,
@@ -68,13 +70,14 @@ T? laneSpanKeysMoved<T>(
   T track, {
   required List<String> laneIds,
   required LaneLens<T>? Function(String laneId) lensOf,
-  required LaneSpanMove move,
+  required LaneSpanMove Function(String laneId) moveOn,
 }) {
-  final (:rangeStartIndex, :rangeEndIndexExclusive, :to) = move;
   var current = track;
   var movedAny = false;
   for (final laneId in laneIds) {
     final lens = lensOf(laneId);
+    final move = moveOn(laneId);
+    final (:rangeStartIndex, :rangeEndIndexExclusive, :to) = move;
     final movesAKey =
         lens != null &&
         lens

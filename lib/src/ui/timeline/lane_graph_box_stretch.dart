@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart' show Axis, Offset, Rect;
 
 import 'axis_turn.dart' show offsetAlong, partAcross, partAlong;
+import 'property_lane_model.dart' show LaneKeyLandings;
 
 /// A HANDLE of a header graph's box round the keys it has picked (I-3 ⑥,
 /// AE's transform box): the end of the box it stands at along the frames,
@@ -90,10 +91,12 @@ typedef LaneGraphBoxKeys = ({bool control, bool alt, bool shift});
 /// them and the highest go at the box's first frames and at its last —
 /// the two alike while the box stays a box, apart where one side of it is
 /// pulled ([laneGraphBoxAcrossOf]; the highest under the lowest where it
-/// is turned over).
+/// is turned over); and, where one [corner] of it goes alone, how far [by]
+/// along the frames that corner has gone ([laneGraphBoxTimeOf]).
 typedef LaneGraphBoxPull = ({
   ({double anchor, double factor}) time,
   ({LaneGraphSpan first, LaneGraphSpan last}) across,
+  ({LaneGraphBoxHandle corner, double by})? alone,
 });
 
 /// What [held]'s handle pulled to [now] makes of the keys it holds (I-3 ⑥,
@@ -102,7 +105,8 @@ typedef LaneGraphBoxPull = ({
 /// point with Ctrl held — and a corner with Shift held both ways by the one
 /// that has gone further. A side's middle stretches the one way alone;
 /// past the other end, the factor goes under 0 and turns them about. A
-/// corner with Ctrl and Alt held pulls its side alone ([_sidePulled]).
+/// corner with Ctrl and Alt held pulls its side alone ([_sidePulled]), and
+/// with Alt alone goes alone itself ([_cornerPulled]).
 LaneGraphBoxPull laneGraphBoxPulled(
   LaneGraphBoxHeld held,
   LaneGraphBoxNow now,
@@ -112,6 +116,9 @@ LaneGraphBoxPull laneGraphBoxPulled(
   final corner = handle.along != 0 && handle.across != 0;
   if (corner && keys.control && keys.alt) {
     return _sidePulled(held, now.across, together: keys.shift);
+  }
+  if (corner && keys.alt) {
+    return _cornerPulled(held, now);
   }
   final time = _pulled(
     handle.along,
@@ -139,6 +146,7 @@ LaneGraphBoxPull laneGraphBoxPulled(
   return (
     time: (anchor: time.anchor, factor: factor ?? time.factor),
     across: (first: spread, last: spread),
+    alone: null,
   );
 }
 
@@ -169,7 +177,70 @@ LaneGraphBoxPull _sidePulled(
     across: handle.along > 0
         ? (first: across, last: pulled)
         : (first: pulled, last: across),
+    alone: null,
   );
+}
+
+/// A corner pulled with Alt held alone (graph-box-handles-more ⓐ): that
+/// corner goes with the hand, along the frames and across the graph, and
+/// the box's other three stay — AE's 「Alt-drag a corner」, the box as four
+/// corners. Each mark goes as much of the corner's way as it stood near it
+/// ([laneGraphBoxAcrossOf] · [laneGraphBoxTimeOf]); Shift goes unread.
+LaneGraphBoxPull _cornerPulled(LaneGraphBoxHeld held, LaneGraphBoxNow now) {
+  final (:handle, :times, :across, pivot: _) = held;
+  final rise = now.across - (handle.across > 0 ? across.high : across.low);
+  final side = handle.across > 0
+      ? (low: across.low, high: across.high + rise)
+      : (low: across.low + rise, high: across.high);
+  return (
+    time: (anchor: times.low, factor: 1),
+    across: handle.along > 0
+        ? (first: across, last: side)
+        : (first: side, last: across),
+    alone: (
+      corner: handle,
+      by: now.time - (handle.along > 0 ? times.high : times.low),
+    ),
+  );
+}
+
+/// Where along the frames a mark that stood at [time], [across] the graph,
+/// in [held]'s box goes once [pull]ed: as far from the stretch's anchor as
+/// it stood, times its factor — and on, where a corner went alone, by as
+/// much of that corner's way as the mark stood near it: all of it on the
+/// corner, none on the far side or the far end ([_nearness]).
+double laneGraphBoxTimeOf(
+  LaneGraphBoxHeld held,
+  LaneGraphBoxPull pull, {
+  required double time,
+  required double across,
+}) {
+  final (:anchor, :factor) = pull.time;
+  final stretched = anchor + (time - anchor) * factor;
+  final alone = pull.alone;
+  return alone == null
+      ? stretched
+      : stretched +
+            alone.by *
+                _nearness(held, alone.corner, time: time, across: across);
+}
+
+/// How near [corner] of [held]'s box a mark that stood at [time], [across]
+/// the graph stood: 1 on it, 0 anywhere on the side or the end away from
+/// it — as far of the way to it along the frames, times as far across.
+/// Keys all on one frame stand at the corner's end, keys all as high in the
+/// middle of its side, as [laneGraphBoxAcrossOf] places them.
+double _nearness(
+  LaneGraphBoxHeld held,
+  LaneGraphBoxHandle corner, {
+  required double time,
+  required double across,
+}) {
+  final along =
+      laneGraphSpanOf(held.times, time) ?? (corner.along > 0 ? 1.0 : 0.0);
+  final of = laneGraphSpanOf(held.across, across) ?? 0.5;
+  return (corner.along > 0 ? along : 1 - along) *
+      (corner.across > 0 ? of : 1 - of);
 }
 
 /// Where across the graph a mark that stood [across] at [time] in [held]'s
@@ -196,6 +267,46 @@ double laneGraphBoxAcrossOf(
     high: laneGraphSpanAt(last, of),
   );
   return laneGraphSpanAt(ends, along);
+}
+
+/// A MARK of a key a box holds: the key's lane and frame, and where the
+/// mark stood — at what time on the graph's frames, and how far across it.
+typedef LaneGraphBoxMark = ({
+  String laneId,
+  int frame,
+  double time,
+  double across,
+});
+
+/// Where each key [marks] stand for lands once [pull]ed
+/// ([laneGraphBoxTimeOf]): moved along the frames as far as the one of its
+/// marks that goes the furthest, on the nearest whole frame.
+///
+/// 🗣️graph-box-handles-more-Q1 (유저 2026-10-23): 「더 많이 움직이는 표식을
+/// 따른다」 — a key of two numbers (a position's x and y) stands at two
+/// heights, and a corner gone alone asks its one time of each.
+LaneKeyLandings laneGraphBoxLandings(
+  LaneGraphBoxHeld held,
+  LaneGraphBoxPull pull,
+  Iterable<LaneGraphBoxMark> marks,
+) {
+  final furthest = <String, Map<int, double>>{};
+  for (final (:laneId, :frame, :time, :across) in marks) {
+    final by =
+        laneGraphBoxTimeOf(held, pull, time: time, across: across) - time;
+    final frames = furthest[laneId] ??= {};
+    final was = frames[frame];
+    if (was == null || by.abs() > was.abs()) {
+      frames[frame] = by;
+    }
+  }
+  return {
+    for (final MapEntry(key: laneId, value: frames) in furthest.entries)
+      laneId: {
+        for (final MapEntry(key: frame, value: by) in frames.entries)
+          frame: frame + by.round(),
+      },
+  };
 }
 
 /// One way of [laneGraphBoxPulled]: [span]'s [end] pulled to [now] — about

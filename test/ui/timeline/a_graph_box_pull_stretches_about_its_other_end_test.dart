@@ -305,6 +305,116 @@ void main() {
     });
   });
 
+  // graph-box-handles-more ⓐ — AE's 「Alt-drag a corner」: that corner
+  // alone goes, the box as four corners.
+  group('a corner with Alt held alone goes alone', () {
+    const alone = (control: false, alt: true, shift: false);
+
+    /// Where a mark that stood at [time], [across] the graph, goes once
+    /// [held] is pulled to [now] with [keys] held — along and across.
+    (double, double) placed(
+      LaneGraphBoxHeld held,
+      LaneGraphBoxNow now, {
+      required double time,
+      required double across,
+      LaneGraphBoxKeys keys = alone,
+    }) {
+      final pull = laneGraphBoxPulled(held, now, keys);
+      return (
+        laneGraphBoxTimeOf(held, pull, time: time, across: across),
+        laneGraphBoxAcrossOf(held, pull, time: time, across: across),
+      );
+    }
+
+    test('the mark on the corner goes with the hand, both ways; the three '
+        'other corners stay', () {
+      const now = (time: 12.0, across: 260.0);
+      expect(placed(held(1, 1), now, time: 8, across: 200), (12, 260));
+      expect(placed(held(1, 1), now, time: 0, across: 100), (0, 100));
+      expect(placed(held(1, 1), now, time: 8, across: 100), (8, 100));
+      expect(placed(held(1, 1), now, time: 0, across: 200), (0, 200));
+      expect(
+        placed(held(-1, -1), (time: -4, across: 40), time: 0, across: 100),
+        (-4, 40),
+      );
+    });
+
+    test('a mark between goes as much of the way as it stood near the '
+        'corner — half along and half across, a quarter of it', () {
+      expect(
+        placed(held(1, 1), (time: 12, across: 260), time: 4, across: 150),
+        (5, 165),
+      );
+      expect(
+        placed(held(-1, 1), (time: -8, across: 300), time: 2, across: 200),
+        (-4, 275),
+        reason: 'three quarters along to the start, all the way up: '
+            'three quarters of 8 back and of 100 up',
+      );
+    });
+
+    test('Shift goes unread, and a side\'s middle has no corner to pull: '
+        'it stretches as without Alt', () {
+      const now = (time: 12.0, across: 260.0);
+      expect(
+        laneGraphBoxPulled(
+          held(1, 1),
+          now,
+          (control: false, alt: true, shift: true),
+        ),
+        laneGraphBoxPulled(held(1, 1), now, alone),
+      );
+      expect(
+        laneGraphBoxPulled(held(1, 0), now, alone),
+        laneGraphBoxPulled(held(1, 0), now, plain),
+      );
+      expect(
+        laneGraphBoxPulled(held(1, 1), now, plain).alone,
+        isNull,
+        reason: '⛔전제: a box stretched goes as one',
+      );
+    });
+
+    test('keys all on one frame stand at the corner\'s end — they go along '
+        'as far as they stand near it across', () {
+      const oneFrame = (
+        handle: (along: -1, across: 1),
+        times: (low: 4.0, high: 4.0),
+        across: (low: 100.0, high: 200.0),
+        pivot: laneGraphBoxMiddle,
+      );
+      expect(
+        placed(oneFrame, (time: 0, across: 220), time: 4, across: 200),
+        (0, 220),
+      );
+      expect(
+        placed(oneFrame, (time: 0, across: 220), time: 4, across: 100),
+        (4, 100),
+      );
+    });
+
+    // 🗣️graph-box-handles-more-Q1 (유저 2026-10-23): 「더 많이 움직이는
+    // 표식을 따른다」.
+    test('a key lands as far along as the one of its marks that goes the '
+        'furthest — a position\'s x on the corner takes its y with it', () {
+      final box = held(1, 1);
+      final pull = laneGraphBoxPulled(box, (time: 12, across: 260), alone);
+
+      expect(
+        laneGraphBoxLandings(box, pull, [
+          (laneId: 'position', frame: 8, time: 8, across: 100),
+          (laneId: 'position', frame: 8, time: 8, across: 200),
+          (laneId: 'position', frame: 0, time: 0, across: 200),
+          (laneId: 'rotation', frame: 4, time: 4, across: 150),
+        ]),
+        {
+          'position': {8: 12, 0: 0},
+          'rotation': {4: 5},
+        },
+      );
+    });
+  });
+
   test('a box stretched still places each mark as far from the anchor '
       'times as far as it stood', () {
     final pull = laneGraphBoxPulled(

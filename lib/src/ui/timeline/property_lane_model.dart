@@ -375,6 +375,11 @@ typedef LaneKeyValues = ({
   bool scaleLinked,
 });
 
+/// Where a header graph's box puts down each key it holds where they do
+/// not all go alike — one corner of it pulled alone (graph-box-handles-more
+/// ⓐ): by lane and by frame, the frame each key lands on.
+typedef LaneKeyLandings = Map<String, Map<int, int>>;
+
 /// Lane key edit hooks — layer-generic on purpose: the camera routes them
 /// into its transform track today, and every layer (and FX property) plugs
 /// into the same signatures with the layer-transform work.

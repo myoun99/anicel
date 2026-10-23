@@ -930,9 +930,11 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// box's other end — its anchor point with Ctrl held (⌘ on a Mac) — and
   /// across a value graph; a corner with Shift held keeps the box's shape,
   /// and one with Ctrl and Alt held (⌥) tapers its side, or with Shift too
-  /// moves it (graph-box-handles-more ⓑ ⓒ) — each mark going where the
-  /// box pulled puts it ([laneGraphBoxAcrossOf]). The view pans where the
-  /// hand reaches its edge, as under a key carried.
+  /// moves it (graph-box-handles-more ⓑ ⓒ), and one with Alt alone goes
+  /// alone, each key along the frames as far as the one of its marks that
+  /// goes the furthest (ⓐ, [laneGraphBoxLandings]) — each mark going where
+  /// the box pulled puts it ([laneGraphBoxAcrossOf]). The view pans where
+  /// the hand reaches its edge, as under a key carried.
   void _stretchTo(
     _KeyInHand inHand,
     LaneGraphBoxHeld held,
@@ -969,7 +971,20 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final shift = TimelineLaneGraphPainter._shiftOf(inHand.key.line);
     widget.lanes!.onMoveUpdate(
       0,
-      stretch: (anchor: anchor - shift, factor: factor),
+      stretch: pull.alone == null
+          ? (anchor: anchor - shift, factor: factor)
+          : null,
+      landings: pull.alone == null
+          ? null
+          : laneGraphBoxLandings(held, pull, [
+              for (final (:lifted, :time, :across) in inHand.marks)
+                (
+                  laneId: lifted.laneId,
+                  frame: lifted.frame,
+                  time: time,
+                  across: across,
+                ),
+            ]),
       values: _lift.valuesOf([
         for (final (:lifted, :time, across: at) in inHand.marks)
           (

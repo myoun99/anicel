@@ -980,12 +980,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onActivateAt: (_, _, globalFrame) =>
                           unawaited(_activateLaneCell(globalFrame)),
                       onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
-                      onMoveUpdate: (frameDelta, {stretch, values}) =>
-                          _session.laneMove.updateLaneRangeMoveDrag(
-                            frameDelta: frameDelta,
-                            stretch: stretch,
-                            values: values,
-                          ),
+                      onMoveUpdate:
+                          (frameDelta, {stretch, values, landings}) =>
+                              _session.laneMove.updateLaneRangeMoveDrag(
+                                frameDelta: frameDelta,
+                                stretch: stretch,
+                                values: values,
+                                landings: landings,
+                              ),
                       onMoveEnd: _session.laneMove.endLaneRangeMoveDrag,
                       onMoveCancel: _session.laneMove.cancelLaneRangeMoveDrag,
                     ),

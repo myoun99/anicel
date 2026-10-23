@@ -3,7 +3,8 @@ import 'drags/lane_range_move_drag.dart';
 import '../../models/key_range_shift.dart' show FrameStretch;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
-import '../timeline/property_lane_model.dart' show LaneKeyValues;
+import '../timeline/property_lane_model.dart'
+    show LaneKeyLandings, LaneKeyValues;
 import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'session_roles.dart';
 import 'lane_verbs.dart';
@@ -78,7 +79,8 @@ class LaneRangeMoveDragVerbs {
 
   /// A lane-move drag step: moves EVERY spanned lane's ranged keys
   /// [frameDelta] frames on, after [stretch] where a graph's box stretches
-  /// them (R26 #3 — one rigid group, all-or-nothing across lanes),
+  /// them (R26 #3 — one rigid group, all-or-nothing across lanes) — each
+  /// where its [landings] say, where one corner of the box goes alone —
   /// their [values] written first where a graph's key carries them (I-3 ②),
   /// and previews via [_dragPreview]. A blocked landing HOLDS the last valid
   /// preview (UI-R23 #10 — no snap-back).
@@ -86,10 +88,12 @@ class LaneRangeMoveDragVerbs {
     required int frameDelta,
     FrameStretch? stretch,
     LaneKeyValues? values,
+    LaneKeyLandings? landings,
   }) => _laneMoveDrag?.update(
     frameDelta: frameDelta,
     stretch: stretch,
     values: values,
+    landings: landings,
   );
 
   /// Commits the lane move as ONE undo step; the selection stays on the

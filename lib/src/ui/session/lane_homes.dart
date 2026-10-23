@@ -41,9 +41,18 @@ class LaneHome<T> {
   final LaneLens<T>? Function(String laneId) lensOf;
 
   /// Whether a lane here holds a key at a frame [covers] takes.
-  bool keyedWhere(bool Function(int frame) covers) => laneIds.any(
-    (laneId) => lensOf(laneId)?.keyFrames(keys).any(covers) ?? false,
-  );
+  bool keyedWhere(bool Function(int frame) covers) =>
+      keyedOnWhere((_, frame) => covers(frame));
+
+  /// Whether a lane here holds a key at a frame [covers] takes on it.
+  bool keyedOnWhere(bool Function(String laneId, int frame) covers) =>
+      laneIds.any(
+        (laneId) =>
+            lensOf(laneId)?.keyFrames(keys).any(
+              (frame) => covers(laneId, frame),
+            ) ??
+            false,
+      );
 
   /// The keys every lane here holds at a frame [covers] takes, lane by lane
   /// — a lane with none there as an empty map.
@@ -123,17 +132,20 @@ class LaneHome<T> {
   });
 
   /// The keys of every lane here that [span] covers, each moved to the
-  /// frame [to] gives it — ONE rigid group ([laneSpanKeysMoved]): null when
-  /// a landing is blocked, and when no key here moves.
-  T? moved(TimelineLaneSelection span, int Function(int frame) to) =>
+  /// frame [to] gives it on its lane — ONE rigid group ([laneSpanKeysMoved]):
+  /// null when a landing is blocked, and when no key here moves.
+  T? moved(
+    TimelineLaneSelection span,
+    int Function(String laneId, int frame) to,
+  ) =>
       laneSpanKeysMoved(
         keys,
         laneIds: laneIds,
         lensOf: lensOf,
-        move: (
+        moveOn: (laneId) => (
           rangeStartIndex: span.startIndex,
           rangeEndIndexExclusive: span.endIndexExclusive,
-          to: to,
+          to: (frame) => to(laneId, frame),
         ),
       );
 }

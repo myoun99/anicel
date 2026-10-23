@@ -493,7 +493,8 @@ void main() {
               heard.begins.add(heard.steps.length);
               return true;
             },
-            onMoveUpdate: (step, {stretch, values}) => heard.steps.add(step),
+            onMoveUpdate: (step, {stretch, values, landings}) =>
+                heard.steps.add(step),
             onMoveEnd: () => heard.ends += 1,
             onMoveCancel: () {},
           ),

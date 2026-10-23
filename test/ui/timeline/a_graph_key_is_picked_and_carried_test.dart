@@ -1115,6 +1115,65 @@ void main() {
       );
     });
 
+    // graph-box-handles-more ⓐ — AE's 「Alt-drag a corner」: that corner
+    // alone goes, each key as much of its way as it stood near it.
+    testWidgets('with Alt held, a corner pulled goes alone: the key between '
+        'at its top goes half its way along and up, the keys at the bottom '
+        'stay', (tester) async {
+      final s = await _pump(
+        tester,
+        transform: TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>()
+              .withKey(0, 0)
+              .withKey(4, 45)
+              .withKey(8, 0),
+        ),
+      );
+      await _openTheGraph(tester, s);
+      await _pick(tester, s);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await _carry(
+        tester,
+        handleOnScreen(tester, (along: 1, across: -1)),
+        Offset(_cellExtent(tester) * 4, 0) + _up30,
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+
+      expect(_keyedFrames(s), [0, 6, 8]);
+      expect((_rotationAt(s, 0), _rotationAt(s, 8)), (0, 0));
+      expect(_rotationAt(s, 6), greaterThan(45));
+    });
+
+    // 🗣️graph-box-handles-more-Q1 (유저 2026-10-23): 「더 많이 움직이는
+    // 표식을 따른다」.
+    testWidgets('of a line of two numbers, a key goes along as far as its '
+        'mark nearest the corner: 8\'s x on it, its y away', (tester) async {
+      final s = await _pump(
+        tester,
+        transform: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>()
+              .withKey(0, CanvasPoint(x: 100, y: 300))
+              .withKey(8, CanvasPoint(x: 200, y: 50)),
+        ),
+      );
+      await _openTheGraph(tester, s, lane: 'position');
+      await _pick(tester, s, lane: 'position');
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await _carry(
+        tester,
+        handleOnScreen(tester, (along: 1, across: -1)),
+        Offset(_cellExtent(tester) * 4, 0),
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+
+      final keys = _transformOf(s).position.keys;
+      expect(keys.keys.toList()..sort(), [0, 12]);
+      expect(
+        (keys[0]!.value, keys[12]!.value),
+        (CanvasPoint(x: 100, y: 300), CanvasPoint(x: 200, y: 50)),
+      );
+    });
+
     // 🗣️graph-box-handles-scale-keys-Q1 (유저 2026-10-22): 「둘 다 (AE
     // 그대로)」.
     testWidgets('of a line of two numbers, the top\'s handle stretches both: '

@@ -682,11 +682,13 @@ class TimelineLaneRangeHooks {
   /// A move step: the selection [frameDelta] frames along — after
   /// [stretch], where a header graph's box stretches its keys (I-3 ⑥) —
   /// and, carried by a header graph's key or box, its keys' [values]
-  /// (I-3 ②).
+  /// (I-3 ②) — each key where its [landings] say, where one corner of the
+  /// box goes alone (graph-box-handles-more ⓐ).
   final void Function(
     int frameDelta, {
     FrameStretch? stretch,
     LaneKeyValues? values,
+    LaneKeyLandings? landings,
   })
   onMoveUpdate;
   final VoidCallback onMoveEnd;
@@ -795,11 +797,13 @@ class TimelineLaneRangeCallbacks {
   /// A move step: the selection [frameDelta] frames along — after
   /// [stretch], where a header graph's box stretches its keys (I-3 ⑥) —
   /// and, carried by a header graph's key or box, its keys' [values]
-  /// (I-3 ②).
+  /// (I-3 ②) — each key where its [landings] say, where one corner of the
+  /// box goes alone (graph-box-handles-more ⓐ).
   final void Function(
     int frameDelta, {
     FrameStretch? stretch,
     LaneKeyValues? values,
+    LaneKeyLandings? landings,
   })
   onMoveUpdate;
   final VoidCallback onMoveEnd;
