@@ -52,6 +52,26 @@ void main() {
       expect(tip.inverseRoundness, 1.0);
     });
 
+    test('a quarter-turned tip turns by the table — exactly, no 6e-17', () {
+      // The C kernel takes these same two numbers, so a residue here would
+      // be a 90° tip that misses its lattice on both engines alike — the
+      // parity suites cannot see it.
+      final mask = BrushTipMask(id: 't', size: 2, alpha: Uint8List(4));
+      for (final (degrees, cos, sin) in [
+        (90.0, 0.0, 1.0),
+        (180.0, -1.0, 0.0),
+        (270.0, 0.0, -1.0),
+      ]) {
+        for (final tip in [
+          brushTipGeometry(round(roundness: 0.5, angleDegrees: degrees)),
+          brushTipGeometry(round(tipMask: mask, angleDegrees: degrees)),
+        ]) {
+          expect(tip.tipCos, cos, reason: '$degrees°');
+          expect(tip.tipSin, sin, reason: '$degrees°');
+        }
+      }
+    });
+
     test('roundness below one makes it an ellipse, and the minor radius '
         'follows the roundness', () {
       final tip = brushTipGeometry(round(roundness: 0.5));
