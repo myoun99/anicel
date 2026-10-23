@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/turn_trig.dart';
 import '../models/brush_anti_alias.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
@@ -15,8 +16,7 @@ typedef BrushDabTipGeometry = ({
   bool isRound,
   BrushTipMask? tipMask,
   bool isEllipse,
-  double tipCos,
-  double tipSin,
+  PlaneTurn turn,
   double inverseRoundness,
 });
 
@@ -54,15 +54,9 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
   final isRound = tip.tipShape == BrushTipShape.round;
   final tipMask = tip.tipMask;
   final isEllipse = tipMask == null && isRound && tip.roundness < 1.0;
-  var tipCos = 1.0;
-  var tipSin = 0.0;
-  var inverseRoundness = 1.0;
-  if (isEllipse || tipMask != null) {
-    final angleRadians = tip.angleDegrees * (math.pi / 180.0);
-    tipCos = math.cos(angleRadians);
-    tipSin = math.sin(angleRadians);
-    inverseRoundness = 1.0 / tip.roundness;
-  }
+  // A circle and a square do not turn; the others turn by the one table,
+  // exact at the quarter turns ([PlaneTurn]).
+  final turns = isEllipse || tipMask != null;
   return (
     radius: radius,
     minorRadius: radius * tip.roundness,
@@ -70,9 +64,8 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
     isRound: isRound,
     tipMask: tipMask,
     isEllipse: isEllipse,
-    tipCos: tipCos,
-    tipSin: tipSin,
-    inverseRoundness: inverseRoundness,
+    turn: PlaneTurn(turns ? tip.angleDegrees : 0),
+    inverseRoundness: turns ? 1.0 / tip.roundness : 1.0,
   );
 }
 
@@ -134,12 +127,15 @@ double brushEdgeApplied(BrushEdgeLaw law, double coverage) {
 /// and the coverage list each picked raster, round or square themselves
 /// until 2026-10-01, and this is now the one place the choice is made. The
 /// three are one body so the per-pixel loop still makes one call.
+/// ↩️The tile kernel's loop (`blendDabTilesDart`) wrote the cascade out a
+/// fourth time; it calls this now wherever it does not read an unrotated
+/// raster tip off its lattices (board
+/// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`).
 double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
   final mask = tip.tipMask;
   if (mask != null) {
     // A ROTATED raster tip: nothing outside the mask's square.
-    final tipU = dx * tip.tipCos - dy * tip.tipSin;
-    final tipV = (dx * tip.tipSin + dy * tip.tipCos) * tip.inverseRoundness;
+    final (x: tipU, y: tipV) = _inTipSpace(tip, dx, dy);
     if (tipU.abs() > tip.radius || tipV.abs() > tip.radius) {
       return 0.0;
     }
@@ -158,8 +154,7 @@ double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
   }
   final double distance;
   if (tip.isEllipse) {
-    final tipU = dx * tip.tipCos - dy * tip.tipSin;
-    final tipV = (dx * tip.tipSin + dy * tip.tipCos) * tip.inverseRoundness;
+    final (x: tipU, y: tipV) = _inTipSpace(tip, dx, dy);
     distance = math.sqrt(tipU * tipU + tipV * tipV);
   } else {
     distance = math.sqrt(dx * dx + dy * dy);
@@ -172,4 +167,16 @@ double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
     return 1.0;
   }
   return (1.0 - ((distance - tip.hardRadius) / edgeSpan)).clamp(0.0, 1.0);
+}
+
+/// Where the offset ([dx], [dy]) from a dab's centre lands in its tip's own
+/// space: turned by the tip's angle ([PlaneTurn]), then pressed along the
+/// minor axis by its roundness.
+({double x, double y}) _inTipSpace(
+  BrushDabTipGeometry tip,
+  double dx,
+  double dy,
+) {
+  final (:x, :y) = tip.turn.apply(dx, dy);
+  return (x: x, y: y * tip.inverseRoundness);
 }

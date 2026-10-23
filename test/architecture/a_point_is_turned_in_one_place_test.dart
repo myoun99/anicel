@@ -19,20 +19,14 @@ import '../helpers/source_ledger.dart';
 /// at most. One alone is a point read along a direction
 /// (`projectOntoAxis`), which is not a turn.
 ///
-/// This is a RATCHET, not a ban: the files that still turn a point by hand
-/// are listed, the list only shrinks, and a file not on it that starts
-/// doing so is red. Remove a file's line when its last turn goes.
+/// ↩️It was a RATCHET until 2026-10-23: the files that still turned a point
+/// by hand stood on a ledger that only shrank. The last two — a brush
+/// dab's pixel turned into tip space, in the coverage law and again in the
+/// tile kernel's loop — turn by [PlaneTurn] now (board
+/// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`), so it is
+/// a ban.
 void main() {
   const home = 'lib/src/core/turn_trig.dart';
-
-  /// Files that still turn a point by hand. Only shrinks.
-  const stillByHand = <String>{
-    // A pixel turned into tip space, four times over, in the dab's
-    // per-pixel loop — the brush session's (브러시/렌더링), and timed
-    // against the native kernel; handed over there.
-    'lib/src/services/brush_dab_kernel.dart',
-    'lib/src/services/brush_dab_tip_geometry.dart',
-  };
 
   /// A cosine or a sine as the code names one — `cos`, `turn.sin`,
   /// `tipCos`, `affine.cosTheta`, `math.cos(radians)` — and not `cosine`,
@@ -161,22 +155,13 @@ void main() {
     }
   });
 
-  test('no file outside the ledger turns a point by hand, and the ledger '
-      'holds no file that has stopped', () {
-    final turns = <String, List<int>>{
+  test('no file but the home turns a point by hand', () {
+    final offenders = <String>[
       for (final file in dartFilesUnder('lib'))
         if (libPath(file) != home)
-          if (turnsIn(file.readAsStringSync()) case final lines
-              when lines.isNotEmpty)
-            libPath(file): lines,
-    };
-    expectSetMatchesLedger(
-      turns.keys,
-      stillByHand,
-      unledgered: 'reach for PlaneTurn',
-      paidOff: 'delete these lines from stillByHand',
-      hits: turns,
-    );
-    expect(stillByHand, hasLength(2));
+          for (final line in turnsIn(file.readAsStringSync()))
+            '${libPath(file)}:$line',
+    ];
+    expect(offenders, isEmpty, reason: 'reach for PlaneTurn');
   });
 }

@@ -12,11 +12,11 @@ import 'package:anicel/src/services/brush_dab_tip_geometry.dart';
 /// oracle and the brush preview), the tile kernel, and the stamp cache that
 /// renders a tip ONCE into a mask. So a falloff changed in one place made
 /// the same brush paint two different edges depending on what happened to
-/// be cached. The coverage list and the cache call this law now; the tile
-/// kernel keeps writing it out on purpose (its own decision comment:
-/// nothing in the per-pixel loop becomes indirect, because nothing inlines
-/// in a debug build) and the commit parity suite pins it byte-exact
-/// against the oracle.
+/// be cached. The coverage list and the cache call this law, and so does
+/// the tile kernel wherever it does not read an unrotated raster tip off
+/// its lattices — ↩️it wrote the law out a fourth time until 2026-10-23
+/// (board `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`);
+/// the commit parity suite pins it byte-exact against the oracle.
 void main() {
   BrushTipNumbers round({
     double size = 20,
@@ -42,13 +42,13 @@ void main() {
       expect(tip.isRound, isTrue);
       expect(tip.isEllipse, isFalse);
       expect(
-        tip.tipCos,
+        tip.turn.cos,
         1.0,
         reason:
             'the rotation terms stay identity when nothing rotates — the '
             'pixel loop reads them either way',
       );
-      expect(tip.tipSin, 0.0);
+      expect(tip.turn.sin, 0.0);
       expect(tip.inverseRoundness, 1.0);
     });
 
