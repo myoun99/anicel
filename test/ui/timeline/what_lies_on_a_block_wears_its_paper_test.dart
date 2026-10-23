@@ -13,9 +13,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
-    show endAcross, offsetAlong, rectAlong, sizeAlong, startAcross, startAlong;
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show layerMarkColor;
+    show endAcross, rectAlong, sizeAlong, startAcross, startAlong;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt;
@@ -33,7 +31,7 @@ import '../../helpers/raster_parity.dart';
 /// ([timelineBlockPaperShape]); the SE paper draws it, and the name chip's
 /// tint and the warning line are cut by it — so neither has a silhouette of
 /// its own to get wrong. A chip with room before its block stands there
-/// (F-358, 10-19), on a paper of its own: the same shape, for its length.
+/// (F-358, 10-19), its words alone on the row (F-444, 10-23).
 ///
 /// They are painters, so they are pinned by PIXELS, through the row's own
 /// overlay builders. ⚠️At an 8px cell, where the corner law gives 4: at 100%
@@ -294,12 +292,10 @@ void main() {
     });
 
     // 🗣️F-358 (유저 2026-10-19): 「블록 앞부분 왼쪽에 이름두자. 블록 밖으로
-    // 나가게되는거지」 · 「이름칸 색, 뒤가 밝은걸 기준으로 정한색이니까
-    // 그부분 잘 해결해주고」.
-    testWidgets('🚨with room before its block the chip stands there, in the '
-        'block\'s shape, and lays nothing on the block ($axis)', (
-      tester,
-    ) async {
+    // 나가게되는거지」. 🗣️F-444 (유저 2026-10-23): 「배경 바탕색 삭제하고,
+    // 심플하게 하얀색 텍스트 고정으로 텍스트만」.
+    testWidgets('🚨with room before its block the name stands there, its '
+        'words alone, and lays nothing on the block ($axis)', (tester) async {
       // Two free frames of 8 before it: room for the chip's 16.
       final shot = await shoot(
         tester,
@@ -317,9 +313,14 @@ void main() {
         paper,
         from: startAlong(axis, paper) - seNameBoxExtent,
       );
-      expect(shot.alphaAt(chip.center), greaterThan(0), reason: '⛔전제');
-      expect(shot.painted, chip, reason: 'just before the block, and only');
-      expect(shot.cornersOf(chip), (0, 0, 0, 0), reason: 'a block\'s corner');
+      final words = shot.painted;
+      expect(shot.alphaAt(words.center), greaterThan(0), reason: '⛔전제');
+      expect(
+        chip.expandToInclude(words),
+        chip,
+        reason: 'just before the block, and only',
+      );
+      expect(words, isNot(chip), reason: 'no ground fills the chip');
     });
 
     testWidgets('one frame short of that room, it is the head\'s again '
@@ -339,10 +340,8 @@ void main() {
       expect(shot.painted, chip, reason: 'the head\'s stretch of the paper');
     });
 
-    testWidgets('outside, the chip lays the colour its tint gives the block\'s '
-        'paper — its layer\'s mark — as a paper of its own ($axis)', (
-      tester,
-    ) async {
+    testWidgets('outside, the name lays no ground of its own — not even a '
+        'marked layer\'s ($axis)', (tester) async {
       const mark = LayerMark(process: LayerProcess.key);
       await shoot(
         tester,
@@ -355,28 +354,9 @@ void main() {
         ),
       );
       final name = _laidUnder(tester, find.byType(SeSpanVisual));
-      final shape = timelineBlockPaperShape(
-        axis: axis,
-        along: seNameBoxExtent,
-        rowExtent: row,
-        frameCellExtent: cell,
-      );
       expect(name.clips, isEmpty, reason: 'nothing laid on the block');
       expect(name.rects, isEmpty);
-      expect(name.rrects, [
-        shape.shift(offsetAlong(axis, along: -seNameBoxExtent, across: 0)),
-      ]);
-      expect(
-        name.colors,
-        [
-          Color.alphaBlend(
-            AppColors.accent.withValues(alpha: 0.3),
-            layerMarkColor(mark),
-          ).toARGB32(),
-        ],
-        reason: 'opaque: the dark row under it does not show through',
-      );
-      expect(layerMarkColor(mark), isNot(layerMarkColor(LayerMark.none)));
+      expect(name.rrects, isEmpty, reason: 'and no paper before it');
     });
   }
 }
