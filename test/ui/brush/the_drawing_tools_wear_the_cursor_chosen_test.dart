@@ -565,13 +565,17 @@ void main() {
           reason: tool.name,
         );
         expect(drawn(tester, ValueKey<String>(sprite)), isFalse);
-        await settleAsync(
-          tester,
-          () => named('setCustomCursor/windows').any(
-            (call) =>
-                (call.arguments as Map<Object?, Object?>)['name'] ==
-                'anicel-${look.key}-66',
+        expect(
+          await settleAsync(
+            tester,
+            () => named('setCustomCursor/windows').any(
+              (call) =>
+                  (call.arguments as Map<Object?, Object?>)['name'] ==
+                  'anicel-${look.key}-66',
+            ),
           ),
+          isTrue,
+          reason: '${tool.name} is set by its own name',
         );
       }
       expect(
