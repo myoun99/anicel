@@ -65,6 +65,7 @@ library;
 import 'dart:collection';
 import 'dart:math' as math;
 
+import '../../core/neighbour_pairs.dart';
 import '../../models/attached_layer_resolve.dart'
     show attachedLayerNameAmong, attachedMirrorCelId;
 import '../../models/attached_mode.dart';
@@ -1061,7 +1062,7 @@ final class _Planner {
           if (line.visible) at[line]!,
       ];
       return [
-        for (var i = 1; i < shown.length; i += 1) shown[i - 1] > shown[i],
+        for (final (upper, lower) in neighbourPairs(shown)) upper > lower,
       ].any((crossed) => crossed);
     }
 
@@ -1097,8 +1098,8 @@ final class _Planner {
   static List<_Line> _ordered(List<_Line> lines, List<List<_Line>> stacks) {
     final above = {for (final line in lines) line: <_Line>{}};
     for (final stack in stacks) {
-      for (var i = 1; i < stack.length; i += 1) {
-        above[stack[i]]!.add(stack[i - 1]);
+      for (final (upper, lower) in neighbourPairs(stack)) {
+        above[lower]!.add(upper);
       }
     }
     final made = {for (final (i, line) in lines.indexed) line: i};
