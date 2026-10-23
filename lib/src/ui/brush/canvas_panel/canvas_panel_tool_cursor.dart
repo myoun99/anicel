@@ -144,8 +144,8 @@ class _CanvasPanelToolCursor {
   }) {
     // R26 #22 · #23: the eyedropper and the fill wear their OWN icons, not
     // a crosshair — as the system's cursor where the system takes a picture
-    // (F-441), riding the aim as the app's anywhere else (유저, F-130:
-    // 「앱 커서만 최대한 가볍게」).
+    // (F-441), riding the aim as the app's for a pointer the system shows
+    // none (유저, F-130: 「앱 커서만 최대한 가볍게」).
     if (eyedropperCursorActive) {
       return lookSystemCursor(
         eyedropperCursorLook(),

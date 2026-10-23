@@ -129,8 +129,9 @@ class BucketCursorPainter extends CustomPainter with RepaintOnProps {
 }
 
 /// I-54: the pen the drawing tools wear when the user chose it — 「펜 모양
-/// 아이콘」, one size; its point is the hot spot. Windows wears it as the
-/// system's cursor (`lookSystemCursor`), every other platform as a sprite.
+/// 아이콘」, one size; its point is the hot spot. The system wears it as its
+/// cursor (`lookSystemCursor`); the app draws it, a sprite, for a pointer
+/// the system shows none (`appDrawsDrawingCursor`).
 ToolCursorLook penCursorLook() => const ToolCursorLook(
   key: 'pen',
   painter: ToolIconCursorPainter(icon: Icons.edit),
