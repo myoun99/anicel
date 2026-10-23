@@ -78,6 +78,18 @@ void main() {
     expect(s.selectedRow, vRow);
   });
 
+  test('a row made in the timeline is stood on in the storyboard too — Add '
+      'Layer seats it with no stand of its own', () {
+    final s = session();
+    s.selectLayer(conteSeId);
+
+    s.layerStack.addLayer();
+
+    final made = s.activeLayerId!;
+    expect(made, isNot(conteSeId), reason: 'a second S row, made above S1');
+    expect(s.selectedRow, LayerRowAddress(made));
+  });
+
   test('⛔a stand made in the storyboard is its own: where the timeline has '
       'no such row it keeps its own (F-187), and that writes nothing back', () {
     final s = session();
