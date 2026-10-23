@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
@@ -131,14 +133,50 @@ class PressFireWatch extends InheritedWidget {
   bool updateShouldNotify(PressFireWatch oldWidget) => false;
 }
 
-/// What an inner button keeps so it still LOOKS like a button.
+/// What an inner button keeps so it still LOOKS like a button — silent to
+/// the POINTER, and the press of everything else.
 ///
 /// ⛔The ink, the hover and the disabled look all come from the widget having
 /// a callback, and the disabled look comes from it being null — so the inner
-/// widget keeps the shape of [real] and loses only the firing, which
-/// [ControlPressClaim] does instead. Handing it `real` itself would fire
-/// twice on the devices where Flutter's tap still gets through.
-VoidCallback? silentPress(VoidCallback? real) => real == null ? null : () {};
+/// widget keeps the shape of [real]. A pointer's press is
+/// [ControlPressClaim]'s to fire, and a still click reaches the inner
+/// button's own tap as well, in the same dispatch as the lift the claim
+/// fired on: that call is the same press again, and it is dropped
+/// ([_aClaimedLiftIsBeingDispatched]).
+///
+/// 🚨★Everything else that calls it is not a pointer, and the claim never
+/// hears it: Enter or Space on a focused button (`ActivateIntent`), a screen
+/// reader's tap. Those fire [real]. ↩️It fired nothing at all (2026-08-30 to
+/// 2026-10-23), and so no key pressed any claimed button — which nobody
+/// decided: F-450 (유저 2026-10-23), on the close prompt's 「저장」:
+/// 「엔터하면 엔터한것처럼 반응해서 버튼 흰색되지만 아무런 반응없었음」.
+/// ⚠️The icon buttons stay deaf to keys by 유저's own call (2026-09-10) —
+/// that answer is theirs, kept on `AppIconButton`, not here.
+VoidCallback? silentPress(VoidCallback? real) => real == null
+    ? null
+    : () {
+        if (!_aClaimedLiftIsBeingDispatched) {
+          real();
+        }
+      };
+
+/// Whether the pointer event being dispatched right now is the lift of a
+/// press a [ControlPressClaim] heard.
+///
+/// Set by the claim's own pointer-up — which a `Listener` hears DURING the
+/// dispatch, before the arena sweeps the pointer and a still click's tap
+/// lands — and cleared once that dispatch is over: the next microtask runs
+/// only after the whole synchronous pointer flush, and a key or a screen
+/// reader always arrives in a later one.
+bool _aClaimedLiftIsBeingDispatched = false;
+
+void _noteAClaimedLift() {
+  if (_aClaimedLiftIsBeingDispatched) {
+    return;
+  }
+  _aClaimedLiftIsBeingDispatched = true;
+  scheduleMicrotask(() => _aClaimedLiftIsBeingDispatched = false);
+}
 
 /// 🚨★★★A PRESS THAT LANDS ON A CONTROL BELONGS TO THAT CONTROL.
 ///
@@ -308,6 +346,7 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
                 }
               },
         onPointerUp: (event) {
+          _noteAClaimedLift();
           releaseTapForControl(event.pointer);
           if (_mine.remove(event.pointer) == null) {
             return;

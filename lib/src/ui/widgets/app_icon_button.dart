@@ -250,6 +250,9 @@ class AppIconButton extends StatelessWidget {
   /// colour for a different question.
   final bool danger;
 
+  /// The face's callback: an enabled look, and nothing a key can press.
+  static void _deafToKeys() {}
+
   @override
   Widget build(BuildContext context) {
     final box = appIconButtonBoxOnGrid(context, size);
@@ -284,7 +287,10 @@ class AppIconButton extends StatelessWidget {
         // 필요없을거같고」). ⚠️Never wire the face's POINTER path to a real
         // callback: the claim already fires every press, and a face that
         // fired too would fire twice.
-        onPressed: silentPress(onPressed),
+        // ⚠️Not [silentPress]: since F-450 (2026-10-23) that one fires for a
+        // key, which every other claimed button wants and this one was
+        // decided against.
+        onPressed: onPressed == null ? null : _deafToKeys,
         // 🚨…but a screen reader is not a pointer: its activation arrives as
         // SemanticsAction.tap, which the claim never hears, so the node gets
         // the REAL callback (「스크린리더만 있으면좋을까싶은데」). Measured
