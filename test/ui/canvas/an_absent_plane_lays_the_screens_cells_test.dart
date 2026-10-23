@@ -341,6 +341,71 @@ void main() {
       }
     }
   });
+
+  group('an absent plane keeps the edge the plane has', () {
+    // A zoom that cuts the pasteboard's wall part-way through a pixel,
+    // where a cut that is not the plane's own shows.
+    final view = CanvasViewport(zoom: 1.37, panX: 10.3, panY: 7.65);
+    const backdropOf = [0x20, 0x40, 0xC0, 0xFF];
+    const pasteboardOf = [0x20, 0xA0, 0x40, 0xFF];
+    for (final ratio in ratios) {
+      testWidgets('🚨at ratio $ratio turning the pasteboard off moves no '
+          'edge', (tester) async {
+        tester.view.devicePixelRatio = ratio;
+        addTearDown(tester.view.resetDevicePixelRatio);
+        Widget planes({required bool none}) => CustomPaint(
+          painter: StagePlanesPainter(
+            backdrop: (color: backdrop, none: false),
+            pasteboard: (color: pasteboard, none: none),
+            pasteboardReach: reach,
+            paperNone: false,
+            canvasSize: canvasSize,
+            viewport: view,
+            devicePixelRatio: ratio,
+          ),
+        );
+
+        await pump(tester, planes(none: false));
+        final present = await onScreen(tester);
+        await pump(tester, planes(none: true));
+        final absent = await onScreen(tester);
+
+        // How much of a pixel the pasteboard covers, read off its green.
+        // ⚠️Only a clear part: a sliver a 255th of a level wide falls on
+        // either side of it as a fill or as a clip rounds it.
+        double covered(List<int> rgba) =>
+            (rgba[1] - backdropOf[1]) / (pasteboardOf[1] - backdropOf[1]);
+        var cut = 0;
+        final moved = <String>[];
+        for (var y = 0; y < present.height; y += 1) {
+          for (var x = 0; x < present.width; x += 1) {
+            final share = covered(pixelAt(present, x, y));
+            if (share < 0.25 || share > 0.75) {
+              continue;
+            }
+            cut += 1;
+            final off = pixelAt(absent, x, y);
+            if ((listEquals(off, backdropOf) || aCell(off)) &&
+                moved.length < 8) {
+              moved.add('($x, $y): the pasteboard covers '
+                  '${(share * 100).round()}% of it, absent $off');
+            }
+          }
+        }
+        expect(
+          cut,
+          greaterThan((50 * ratio).round()),
+          reason: 'LIVENESS: the pasteboard\'s wall cuts pixels part-way',
+        );
+        expect(
+          moved,
+          isEmpty,
+          reason: 'an absent pasteboard\'s checkerboard is cut where the '
+              'pasteboard is cut, so turning it off and on moves no edge',
+        );
+      });
+    }
+  });
 }
 
 /// A screen shot in device pixels.
