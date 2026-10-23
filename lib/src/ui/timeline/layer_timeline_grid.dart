@@ -733,7 +733,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// The frame cells and everything layered on them, in the width the rail
   /// left over.
   ///
-  /// The fourth slot of `TimelineLayerFrameBodyLayout`. It is composition:
+  /// The last slot of `TimelineLayerFrameBodyLayout`. It is composition:
   /// it sizes the area, then hands the rows body, the grid sheet and the
   /// playhead to `TimelineFrameGridStack`. ⚠️Five parameters, and every
   /// one is passed straight through to a slot below — this method owns
@@ -1312,6 +1312,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                       child: TimelineGridBodyRow(
                                         barWidth:
                                             _metrics.verticalScrollbarWidth,
+                                        railWindowExtent: railWindowExtent,
                                         bar: TimelineVerticalScrollbarRail(
                                           controller:
                                               _verticalScrollController,
@@ -1357,12 +1358,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                                   swipeColumns,
                                                                 ),
                                                           ),
-                                                      railSplitterSlot:
-                                                          const SizedBox(
-                                                            width:
-                                                                LayerRailSplitter
-                                                                    .thickness,
-                                                          ),
+                                                      railGap: TimelineGridRailGap(
+                                                        barWidth: _metrics
+                                                            .verticalScrollbarWidth,
+                                                      ),
                                                       frameGridArea:
                                                           _buildFrameGridArea(
                                                             drawnRows,

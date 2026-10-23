@@ -2067,8 +2067,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     // bar, and that inset was exactly the odd top-left padding that made
     // the two rails read differently. The body is the timeline's THREE ROWS
     // (UI-R10 #21), laid by the same widgets (`timeline_grid_frame.dart`,
-    // F-409): legend, ruler and the corner on top; the rail, the strips
-    // and the layer-axis bar in the middle; the two horizontal bars pinned
+    // F-459): legend, corner and ruler on top; the rail, the layer-axis
+    // bar and the strips in the middle; the two horizontal bars pinned
     // on the bottom.
     final availableRailWidth = _availableRailWidth;
     final railWindowExtent = _railRows._railExtent.windowExtent(
@@ -2192,6 +2192,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               : 0.0;
           return TimelineGridBodyRow(
             barWidth: StoryboardPanel._scrollbarLaneWidth,
+            railWindowExtent: frame.railWindowExtent,
             bar: TimelineVerticalScrollbarRail(
               key: const ValueKey<String>('storyboard-vertical-scrollbar'),
               controller: _verticalController,
@@ -2314,9 +2315,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                             ),
                           ),
                         ),
-                        // Reserves the gap the rail splitter floats over.
-                        const SizedBox(
-                          width: LayerRailSplitter.thickness,
+                        const TimelineGridRailGap(
+                          barWidth: StoryboardPanel._scrollbarLaneWidth,
                         ),
                         Expanded(
                           child: ScrollConfiguration(

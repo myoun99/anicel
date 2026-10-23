@@ -580,7 +580,7 @@ class LayerRailSplitter extends KeptPiece {
   }
 }
 
-/// The grid's corner cell, over the layer-axis bar at the top right
+/// The grid's corner cell, over the layer-axis bar past the splitter
 /// (`timeline_grid_frame.dart`): the frames↔seconds toggle.
 ///
 /// It used to sit in the command bar between the frame counter and the

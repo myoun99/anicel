@@ -21,11 +21,11 @@ void main() {
 
       final row = tester.widget<Row>(find.byType(Row));
 
-      // The rail, the splitter's gap, the cells — the layer-axis bar is
-      // beside the scroll body, at the frame area's far right (F-409).
+      // The rail, the gap after it, the cells — the layer-axis bar stands
+      // still over the gap, outside the scroll body (F-459).
       expect(row.children.length, 3);
       expect(row.children[0].key, _layerControlsRailKey);
-      expect(row.children[1].key, _railSplitterSlotKey);
+      expect(row.children[1].key, _railGapKey);
 
       final frameGridArea = row.children[2];
       expect(frameGridArea, isA<Expanded>());
@@ -46,7 +46,7 @@ void main() {
       await tester.pumpWidget(_layoutHarness());
 
       expect(find.byKey(_layerControlsRailKey), findsOneWidget);
-      expect(find.byKey(_railSplitterSlotKey), findsOneWidget);
+      expect(find.byKey(_railGapKey), findsOneWidget);
       expect(find.byKey(_frameGridAreaKey), findsOneWidget);
 
       for (final key in _productionStableKeys) {
@@ -57,7 +57,7 @@ void main() {
 }
 
 const _layerControlsRailKey = ValueKey<String>('test-layer-controls-rail');
-const _railSplitterSlotKey = ValueKey<String>('test-rail-splitter-slot');
+const _railGapKey = ValueKey<String>('test-rail-gap');
 const _frameGridAreaKey = ValueKey<String>('test-frame-grid-area');
 
 const _productionStableKeys = <String>[
@@ -78,7 +78,7 @@ Widget _layoutHarness() {
             width: 120,
             height: 120,
           ),
-          railSplitterSlot: SizedBox(key: _railSplitterSlotKey, width: 5),
+          railGap: SizedBox(key: _railGapKey, width: 21),
           frameGridArea: Expanded(
             child: SizedBox(key: _frameGridAreaKey, height: 120),
           ),

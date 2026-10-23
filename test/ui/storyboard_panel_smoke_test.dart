@@ -209,8 +209,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      // MIDDLE: the timeline's pinned rail — at the frame area's far
-      // right, the corner over it (F-409: 「타임라인/콘티패널 동일함」).
+      // MIDDLE: the timeline's pinned rail — past the splitter, before
+      // the frames, the corner over it (F-459: 「예전처럼 역시
+      // 레이어영역이랑 프레임 사이에 … 위치는 현재 레이어영역 스플리터의
+      // 오른쪽」 — ↩️F-409 had it at the far right).
       final verticalRail = find.byKey(
         const ValueKey<String>('storyboard-vertical-scrollbar'),
       );
@@ -219,7 +221,6 @@ void main() {
         find.byKey(const ValueKey<String>('storyboard-panel')),
       );
       final bar = tester.getRect(verticalRail);
-      expect(bar.right, panel.right, reason: 'the layer-axis bar');
       expect(
         tester.getRect(
           find.byKey(
@@ -239,6 +240,11 @@ void main() {
         reason:
             'the splitter follows the 461px rail — the timeline\'s number '
             'since 2026-08-04, though still this panel\'s own constant',
+      );
+      expect(
+        bar.left,
+        tester.getRect(splitter).right,
+        reason: 'the layer-axis bar stands right past the splitter',
       );
       expect(
         find.byKey(const ValueKey<String>('storyboard-rail-scrollbar')),
@@ -269,7 +275,12 @@ void main() {
       expect(
         [room.left, room.right],
         [bar.left, bar.right],
-        reason: 'the room under the bar closes the bottom row',
+        reason: 'the room under the bar stands before the frame bar',
+      );
+      expect(
+        tester.getRect(horizontalRail).left,
+        room.right,
+        reason: 'the frame bar starts where the frames do',
       );
     });
   });

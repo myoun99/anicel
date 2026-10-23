@@ -142,7 +142,8 @@ const double timelineSectionLabelGutterWidth = 0;
 /// 14 → 16 (rail-window round): the lane has to be comfortable to grab
 /// because it stopped being a leftover gap between the rail and the cells.
 /// It went to the far left so the splitter could have that gap, and it
-/// stands at the frame area's far right since F-409 (`timeline_grid_frame`);
+/// stood at the frame area's far right for F-409, and past the splitter
+/// again since F-459 (`timeline_grid_frame`);
 /// the x-sheet's column carries two bars, the rail's above the splitter
 /// and the frame's below it.
 ///

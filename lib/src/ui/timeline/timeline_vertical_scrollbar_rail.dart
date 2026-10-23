@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../widgets/app_scrollbar.dart';
 import 'memo_token.dart' show KeptPiece;
 
-/// A grid's layer-axis bar, at the frame area's far right
+/// A grid's layer-axis bar, between the splitter and the frames
 /// (`timeline_grid_frame.dart`): the shared [AppControllerScrollbar] on the
 /// panel's own surface, as wide as the lane its parent gives it.
 class TimelineVerticalScrollbarRail extends KeptPiece {
