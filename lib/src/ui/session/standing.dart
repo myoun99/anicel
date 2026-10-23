@@ -910,7 +910,6 @@ class Standing {
       case LaneRowAddress():
         _selection.clearFrameRangeSelection();
         _timelineRow = swallower;
-        _railFollowsTheTimeline();
         publishCurrentRow();
       case TrackRowAddress():
         break;
