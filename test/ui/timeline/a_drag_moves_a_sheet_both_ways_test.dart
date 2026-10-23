@@ -620,6 +620,29 @@ void main() {
         );
       });
 
+      // ↩️F-159's listener took every notch over the x-sheet's headers and
+      // moved the layers by its downward part — a sideways one moved them
+      // by nothing, and nothing else had it.
+      testWidgets('⛔a notch that comes sideways — a tilting wheel\'s — goes '
+          'the way it comes, no Shift held', (tester) async {
+        final rail = await pumpNarrowed(tester);
+        final windowGoesAcross = shiftAlongTheWindow(tester);
+
+        final pointer = TestPointer(1, PointerDeviceKind.mouse);
+        await tester.sendEventToBinding(
+          pointer.hover(tester.getCenter(sheet.aLayerName)),
+        );
+        await tester.sendEventToBinding(pointer.scroll(const Offset(120, 0)));
+        await tester.pumpAndSettle();
+
+        expect(
+          [rail.offset.value > 0, positionOf(tester, sheet.outer).pixels > 0],
+          [windowGoesAcross, !windowGoesAcross],
+          reason: 'a notch across: the window where it slides across, else '
+              'the layers',
+        );
+      });
+
       testWidgets('⛔where its window has nowhere to go, a notch along it '
           'moves nothing — not out to the scroller around the sheet', (
         tester,
