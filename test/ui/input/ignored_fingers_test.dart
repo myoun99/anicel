@@ -100,6 +100,12 @@ void main() {
       );
     });
 
+    test('a finger the door never saw press follows the switch', () {
+      const stray = PointerHoverEvent(pointer: 8, kind: finger);
+      expect(fingers.admit(stray, ignoring: true), isFalse);
+      expect(fingers.admit(stray, ignoring: false), isTrue);
+    });
+
     test('a finger\'s arrival and removal always come in — they are no '
         'contact', () {
       expect(
