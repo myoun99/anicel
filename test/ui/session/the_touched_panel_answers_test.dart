@@ -497,29 +497,27 @@ void main() {
     });
 
     test('🚨each panel hands on only what it showed: a fold of a row the '
-        'storyboard does not show leaves its lane, and the S row\'s fold '
+        'storyboard does not show leaves its stand, and the S row\'s fold '
         'shuts it there too', () {
       final s = session();
-      // ↩️F-187: a storyboard stand seats the timeline too, so the timeline's
-      // lane is stood on AFTER it — a timeline pick leaves the storyboard's
-      // row alone (2026-07-27) — and the storyboard is touched again.
+      // ↩️I-126: a timeline stand stands the storyboard too — on the V row
+      // for a cel's lane, which no row of it shows. The two stood apart
+      // (2026-07-27), so the storyboard's S lane stood beside it here.
+      s.standOnRow(const LaneRowAddress(celA, 'opacity'));
+
+      s.handOffCurrentRowOnFold(celA);
+      expect(s.currentRow, const LayerRowAddress(celA), reason: 'its own');
+      s.claimStoryboardRow();
+      expect(
+        s.currentRow,
+        const TrackRowAddress(trackId),
+        reason: 'the storyboard shows no lane of that row',
+      );
+
       s.standOnRow(
         const LaneRowAddress(seId, 'position'),
         panel: WorkingPanel.storyboard,
       );
-      s.standOnRow(const LaneRowAddress(celA, 'opacity'));
-      s.claimStoryboardRow();
-
-      s.handOffCurrentRowOnFold(celA);
-      expect(
-        s.currentRow,
-        const LaneRowAddress(seId, 'position'),
-        reason: 'the storyboard shows no lane of that row',
-      );
-      s.claimTimelineRow();
-      expect(s.currentRow, const LayerRowAddress(celA), reason: 'its own');
-
-      s.claimStoryboardRow();
       s.handOffCurrentRowOnFold(seId);
       expect(
         s.currentRow,

@@ -180,6 +180,7 @@ class Standing {
     if (railRow != null) {
       _storyboardRow = railRow;
     }
+    _railFollowsTheTimeline();
     publishCurrentRow();
   }
 
@@ -193,6 +194,48 @@ class Standing {
     final projection = _projectionRowShowing(layerId);
     return projection == null ? null : LayerRowAddress(projection);
   }
+
+  /// 🗣️I-126 (유저 2026-10-23): 「기본적으로 서로 서있는거 동기화되도록 …
+  /// 글로벌에도 있는 행이면 같은곳에 서있고, 아니면 비디오행에 서있도록」 —
+  /// where the TIMELINE stands, the rail stands: on the rail's row that shows
+  /// the timeline's ([_railRowShowing]), or on that row's lane where the
+  /// timeline stands on one ([_storyboardRowShowing]), and on the V row
+  /// where the rail shows none. Returns whether the rail's lit row
+  /// ([selectedRow]) moved.
+  ///
+  /// The other half is F-187's ([_seatTimelineOnStoryboardStand]). A stand
+  /// is the panel's it is made in ([_working]): one made in the storyboard
+  /// seats the timeline, and where the timeline has no such row it keeps
+  /// its own (「…그냥 그대로둠. 아무것도 안하고」) — that keeping is no stand
+  /// of the timeline's, so it moves nothing here.
+  ///
+  /// ↩️The rail kept its own row whatever the timeline stood on (2026-07-27):
+  /// an S row or a conte stood on in the timeline found the storyboard on
+  /// the V row, or wherever it had been left.
+  bool _railFollowsTheTimeline() {
+    if (_working.value != WorkingPanel.timeline) {
+      return false;
+    }
+    final before = selectedRow;
+    _storyboardRow =
+        switch (_timelineRow) {
+          LaneRowAddress(:final layerId, :final laneId) => switch (
+            _storyboardRowShowing(layerId)
+          ) {
+            final shown? => LaneRowAddress(shown, laneId),
+            null => null,
+          },
+          LayerRowAddress(:final layerId) => _railRowShowing(layerId),
+          _ => null,
+        } ??
+        TrackRowAddress(_selection.selectedTrackId);
+    return selectedRow != before;
+  }
+
+  /// Whether [panel] is on the screen ([panelInSight]). A panel is built
+  /// only while it shows (유저 2026-10-14), so one off it hears nothing — it
+  /// reads where it stands when it opens.
+  bool _inSight(WorkingPanel panel) => _surfacesInSight[panel]!.isNotEmpty;
 
   /// 🗣️F-322: the rail's stand on a conte row follows its rows to the seat
   /// an edit moved them to — a drag, a delete, an undo — and goes where the
@@ -370,6 +413,8 @@ class Standing {
   /// ↩️F-187 (09-26): the storyboard's stands seat the timeline once they
   /// land ([_seatTimelineOnStoryboardStand]); this row is still its own
   /// store, and picking it ([selectRow]) is still not seating anything.
+  /// ↩️I-126 (10-23): the timeline's stands write it in their turn
+  /// ([_railFollowsTheTimeline]) — the two panels stand alike.
   ///
   /// A stored row that the rail no longer shows (its track's SE slot went
   /// away) falls back to the track row rather than lighting nothing.
@@ -512,7 +557,7 @@ class Standing {
       WorkingPanel.timeline => WorkingPanel.storyboard,
       WorkingPanel.storyboard => WorkingPanel.timeline,
     };
-    if (_surfacesInSight[other]!.isNotEmpty) {
+    if (_inSight(other)) {
       _engage(other);
     }
   }
@@ -865,6 +910,7 @@ class Standing {
       case LaneRowAddress():
         _selection.clearFrameRangeSelection();
         _timelineRow = swallower;
+        _railFollowsTheTimeline();
         publishCurrentRow();
       case TrackRowAddress():
         break;
@@ -890,10 +936,11 @@ class Standing {
   ///
   /// ↩️For those it reverses 2026-07-27's 「the row you stand on and the
   /// layer you draw on are separate states here」. What stays separate is
-  /// the STORE: [selectedRow] is still which rail row is lit, and a timeline
-  /// pick still leaves it alone. The seat is the program's ([_seatLayer]) —
-  /// the drawing target and the timeline's row move, and the panel being
-  /// worked in stays the storyboard.
+  /// the STORE: [selectedRow] is still which rail row is lit — ↩️and a
+  /// timeline pick moves it now too (I-126, [_railFollowsTheTimeline]), the
+  /// same answer from the other side. The seat is the program's
+  /// ([_seatLayer]) — the drawing target and the timeline's row move, and
+  /// the panel being worked in stays the storyboard.
   ///
   /// Asked ONCE, after the stand and its frame have landed, against
   /// [before] — the layer the stand found: an S row (or one of its lanes)
@@ -1137,9 +1184,10 @@ class Standing {
   }
 
   /// Selects the CUT's row — the active layer, which is the drawing target
-  /// and what the timeline's rail highlights. It does not touch the
-  /// storyboard rail's own [selectedRow]: the two row selections are
-  /// separate (user decision 2026-07-27).
+  /// and what the timeline's rail highlights — and the storyboard rail's own
+  /// [selectedRow] follows it there (I-126, [_railFollowsTheTimeline]).
+  /// ↩️It left the rail alone: the two row selections were separate (user
+  /// decision 2026-07-27).
   ///
   /// Picking a layer is working in the timeline, so it engages it — R10 #13:
   /// the flip counts this layer's blocks from here.
@@ -1199,10 +1247,14 @@ class Standing {
       // door passes ([followActiveLayer]).
       changed = true;
     }
-    // R10 #13: the TIMELINE's row moves with the layer. It does NOT touch the
-    // rail's row — that stays where the user put it (2026-07-27), and it is
-    // a different question: which row of the FILM is lit.
+    // R10 #13: the TIMELINE's row moves with the layer — and the rail's row
+    // with it, where the stand is the timeline's ([_railFollowsTheTimeline]).
+    // ↩️It did NOT touch the rail's row (2026-07-27: 「that stays where the
+    // user put it」) until I-126.
     _timelineRow = row ?? LayerRowAddress(layerId);
+    if (_railFollowsTheTimeline() && _inSight(WorkingPanel.storyboard)) {
+      changed = true;
+    }
     // The drawn row rides its own notifier, so leaving a property lane for
     // its layer row repaints the rail even when nothing else changed —
     // "already active is free" stays true for the session notify.
