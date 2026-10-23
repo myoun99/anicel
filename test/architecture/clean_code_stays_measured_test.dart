@@ -1264,7 +1264,17 @@ void main() {
   /// against the lane's base (`d719704c1`) names this one and no other
   /// class. ⛔Not split to fit: the class is the engine's audio surface, one
   /// binding a native call, and the run's end is one more native call.
-  const longClasses = 72;
+  ///
+  /// ⚠️72 → 73 on 2026-10-24, ONE name: `_StoryboardSeRow` crossed
+  /// (590 → 624) when it came to build the pieces of its window's sounds
+  /// alone (card `frame-panels-build-in-one-frame` — the row spans the whole
+  /// film and built every sound's paper, waveform, words, grips and drop
+  /// places, about a fifth of reopening the storyboard on the AMMI OP): the
+  /// window is read where the row builds, and each kind of piece is held to
+  /// it. 🔬`clean_code_diff` against master (`f6c483e4d`) names this one and
+  /// no other class. ⛔Not split to fit: the window is the row's own panel
+  /// window, and every piece of the row is held to it in the one build.
+  const longClasses = 73;
 
   late CleanCodeScan scan;
   setUpAll(() {

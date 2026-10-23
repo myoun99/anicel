@@ -3,8 +3,11 @@
 // on every build: 🔬a fifth of reopening the storyboard on the AMMI OP
 // (frame-panels-build-in-one-frame, 2026-10-24). It builds those of the
 // panel's window now, as the painters beside it draw theirs.
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -14,18 +17,25 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 
 /// One cut [frames] long under a track whose S row holds a sound at frame 2
-/// and one [far] on — each named after its words.
-Project _project({required int far, int frames = 4000}) => Project(
+/// and one [far] on — each named after its words, and carrying
+/// [audioClips].
+Project _project({
+  required int far,
+  int frames = 4000,
+  List<AudioClip> audioClips = const [],
+}) => Project(
   id: const ProjectId('s-row-window'),
   name: 'S row window',
   createdAt: DateTime.utc(2026, 10, 24),
@@ -74,6 +84,7 @@ Project _project({required int far, int frames = 4000}) => Project(
             2: const TimelineExposure.drawing(FrameId('near'), length: 6),
             far: const TimelineExposure.drawing(FrameId('far'), length: 40),
           },
+          audioClips: audioClips,
         ),
       ],
     ),
@@ -198,6 +209,45 @@ void main() {
       chip.left,
       lessThan(rowLeft + offset + viewportWidth),
       reason: 'its name stands in the view, so its words are built',
+    );
+  });
+
+  // The waveforms are the window's too — the overlay that draws them takes
+  // the window (an_se_row_draws_the_sounds_over_its_window_test); this is
+  // the row handing it over.
+  testWidgets('and only the window\'s sounds draw their waveforms', (
+    tester,
+  ) async {
+    final peaks = AudioPeaks(
+      bucketsPerSecond: 80,
+      peaks: Float32List.fromList(List.filled(80, 0.5)),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StoryboardPanel(
+            project: _project(
+              far: 3000,
+              audioClips: [
+                for (final sound in ['near', 'far'])
+                  AudioClip(filePath: 'voice.wav', frameId: FrameId(sound)),
+              ],
+            ),
+            activeCutId: const CutId('cut-1'),
+            pixelsPerFrame: 2,
+            projectFrameRate: ProjectFrameRate.fps24,
+            audioPeaksFor: (path) => path == 'voice.wav' ? peaks : null,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_key('storyboard-audio-clip-se-row-1-0-b2'), findsOneWidget);
+    expect(
+      _key('storyboard-audio-clip-se-row-1-1-b3000'),
+      findsNothing,
+      reason: 'a sound far past the view draws no waveform',
     );
   });
 }

@@ -4575,16 +4575,18 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
         startIndex: block.startIndex,
         endIndexExclusive: block.endIndexExclusive,
       ),
-      child: SePaperSpan(
+      child: KeyedSubtree(
         key: ValueKey<String>(
           'storyboard-se-paper-${layer.id}-${block.startIndex}',
         ),
-        axis: Axis.horizontal,
-        frameCellExtent: timelineScale.pixelsPerFrame,
-        startFrame: block.startIndex,
-        paper: silent
-            ? timelineUnreadableCelPaperColor
-            : layerMarkColor(layer.mark),
+        child: SePaperSpan(
+          axis: Axis.horizontal,
+          frameCellExtent: timelineScale.pixelsPerFrame,
+          startFrame: block.startIndex,
+          paper: silent
+              ? timelineUnreadableCelPaperColor
+              : layerMarkColor(layer.mark),
+        ),
       ),
     );
   }
