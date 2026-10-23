@@ -99,4 +99,23 @@ void main() {
       reason: 'the last frame counted is a picture: ${decoder.lastError}',
     );
   }, skip: skip);
+
+  test('a movie whose last picture ends a tick short of a whole frame still '
+      'counts that frame', () {
+    final decoder = QaVideoDecoder.instance;
+    if (decoder == null || !decoder.isSupported) {
+      return;
+    }
+    // Twelve pictures at 24, whose end Media Foundation hands over as
+    // 4999999 hundred-nanosecond ticks — rounded, a tick short of twelve.
+    final document = decoder.openDocument(
+      File('test/fixtures/tone_with_video.mp4').absolute.path,
+    );
+    expect(document, isNotNull, reason: decoder.lastError);
+    expect(
+      document!.info.frameCount,
+      12,
+      reason: 'counted to the nearest frame — truncated, it is eleven',
+    );
+  }, skip: skip);
 }
