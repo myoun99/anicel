@@ -135,6 +135,12 @@ class _StoryboardRailSweep {
 
   /// Whether [row] folds rows of its own, as its label is told: a conte
   /// row by its seat ([_conteHeadFolds]); no other row of this rail folds.
+  ///
+  /// ⛔MUTANT SURVIVES (F-454, 2026-10-23): answering false here reddens
+  /// nothing — the sweep asks it only to step past a GRAPH, and no conte
+  /// row heads one. It answers truly anyway: the hook's question is 「does
+  /// this row fold」, and a false answer would be the one wrong the day a
+  /// conte row wears a graph.
   bool _folds(TimelineDisplayRow row) {
     final rowId = row.layer.id;
     return switch ((
