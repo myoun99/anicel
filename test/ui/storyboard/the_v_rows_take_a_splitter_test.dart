@@ -268,8 +268,11 @@ void main() {
       'the edge stays under the hand — the one splitter pans the scroll it '
       'stands in, as a header graph\'s grip does (I-89 ③)', (tester) async {
     await _openStoryboard(tester, await _store(tester));
-    // Tall enough that the view stops growing with the rows and scrolls.
-    await _dragSplitter(tester, 150);
+    // Tall enough that the view stops growing with the rows and scrolls —
+    // by 4px, with the edge 4.5px short of the band where a drag pans.
+    // ↩️150 while the bar under the rows stood 16: F-440 made it the thin
+    // one, and the view took the 8 it left.
+    await _dragSplitter(tester, 158);
     final viewport = find.byKey(
       const ValueKey<String>('storyboard-vertical-viewport'),
     );
