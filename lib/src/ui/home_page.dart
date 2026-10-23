@@ -22,7 +22,8 @@ import '../services/font_library_service.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
-import '../services/persistence/folder_grant.dart' show handedPath;
+import '../services/persistence/folder_grant.dart'
+    show FolderGrant, handedPath;
 import '../services/persistence/save_failure.dart' show SaveFailure;
 import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_camera_path_settings_store.dart';
@@ -542,18 +543,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     // What the OS opened the app with goes through the one door, as a drop
     // on the window does — after the first frame, once the workspace that
-    // holds the door has bound it.
+    // holds the door has bound it ([_openHanded]).
     final handed = widget.handedAtLaunch;
     if (handed.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _workspaceDoor.openHanded([
-          for (final path in handed) handedPath(path),
-        ]),
+        (_) => _openHanded([for (final path in handed) handedPath(path)]),
       );
     }
     // And what the platform hands the running app, while this window is
     // here — a second Anicel's files, another app's share ([HandedFiles]).
-    HandedFiles.listen(_workspaceDoor.openHanded);
+    HandedFiles.listen(_openHanded);
     // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with
@@ -567,6 +566,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // that, so the notifier's seam and the notice hook this line wired went
     // too (2026-09-16).
   }
+
+  /// [handed] through the one door once the saved language is back
+  /// ([EditorAppSettings.languageRestored]) — the door says what it did in
+  /// notices whose words are written as they open, and the launch knocks in
+  /// the first frame, before the language the app was left in has been
+  /// read (F-170). ↩️It knocked at once: a file nothing opens was refused
+  /// in English under a Japanese list of it (서피스 AI 실기 2026-10-23,
+  /// card open-door-windows-open-with).
+  void _openHanded(List<FolderGrant> handed) => unawaited(
+    _appSettings.languageRestored.then(
+      (_) => _workspaceDoor.openHanded(handed),
+    ),
+  );
 
   /// R9-rest: this device's font library is about to let go of [files].
   /// Every open project that carries one of them — in front or behind —

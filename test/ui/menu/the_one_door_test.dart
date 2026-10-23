@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/persistence/file_type_groups.dart'
+    show openableExtensions;
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/menu/opened_files_door.dart';
@@ -23,6 +25,9 @@ void main() {
 
   setUp(() => folder = Directory.systemTemp.createTempSync('qa_one_door_'));
   tearDown(() => deleteTempQuietly(folder));
+
+  /// [path] as a pick spells it — and so a drop ([handedPath]).
+  String spelled(String path) => path.replaceAll(r'\', '/');
 
   /// A file named [name] holding [bytes], handed over as a drop hands it.
   FolderGrant fileNamed(String name, [List<int> bytes = const [1, 2, 3]]) {
@@ -195,27 +200,35 @@ void main() {
   testWidgets('🎯a file nothing opens is named — and goes nowhere, the '
       'import window least of all', (tester) async {
     List<String>? named;
+    String? said;
     await knock(
       tester,
       [fileNamed('notes.docx'), fileNamed('A1.png')],
-      onNotice: () => named ??= tester
-          .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
-          .details
-          .single
-          .lines,
+      onNotice: () {
+        final notice = tester.widget<AppConfirmDialog>(
+          find.byType(AppConfirmDialog),
+        );
+        named ??= notice.details.single.lines;
+        said ??= notice.message;
+      },
     );
 
     expect(
       named,
-      ['${folder.path}/notes.docx'],
+      [spelled('${folder.path}/notes.docx')],
       reason: 'named as every pick names a refusal — a file by its path',
+    );
+    expect(
+      said,
+      AppText.strings.unsupportedFileMessage(openableExtensions),
+      reason: 'the sentence names what the door takes, and no file',
     );
     expect(
       find.byKey(const ValueKey<String>('unsupported-file-notice')),
       findsNothing,
     );
     expect([for (final grant in windowGot) grant.path], [
-      '${folder.path}/A1.png',
+      spelled('${folder.path}/A1.png'),
     ], reason: 'what CAN come in still does');
     expect(done, ['notice', 'window']);
   });
@@ -227,7 +240,7 @@ void main() {
 
     await knock(tester, [handedPath(cut.path)]);
 
-    expect([for (final grant in windowGot) grant.path], [cut.path]);
+    expect([for (final grant in windowGot) grant.path], [spelled(cut.path)]);
     expect(windowGot.single.kind, GrantKind.folder);
   });
 

@@ -16,6 +16,7 @@ import '../../services/brush_preset_defaults.dart';
 import '../../services/brush_preset_file_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/sut/sut_decoder.dart';
+import '../dialogs/open_file_flow.dart' show fileIsSupported;
 import 'brush_import_merge.dart';
 import 'brush_tip_library.dart';
 import 'picked_file.dart';
@@ -462,16 +463,13 @@ class BrushPresetLibrary extends ChangeNotifier {
     // 🚨The picker shows every file (유저 2026-08-29), so THIS is where a
     // wrong one is refused — by name, before any decoder sees the bytes.
     // ⛔It used to fall through to the ABR decoder, which failed with
-    // whatever ABR happened to say about a JPEG's first bytes.
-    if (!FileTypeGroups.brushes.extensions!.any(
-      (extension) => lowerName.endsWith('.$extension'),
-    )) {
-      return AppText.strings.unsupportedFileMessageTemplate.replaceAll(
-        '{kinds}',
-        FileTypeGroups.brushes.extensions!
-            .map((extension) => '.$extension')
-            .join(', '),
-      );
+    // whatever ABR happened to say about a JPEG's first bytes. Judged and
+    // said as every picker's refusal is ([fileIsSupported]); ↩️this kept a
+    // judgement and a sentence of its own, and the sentence showed its
+    // `{name}` (card open-door-windows-open-with, 2026-10-23).
+    final kinds = FileTypeGroups.brushes.extensions!;
+    if (!fileIsSupported(pick.name, kinds)) {
+      return AppText.strings.unsupportedFileMessage(kinds);
     }
     final List<BrushPreset> imported;
     final List<String> warnings;

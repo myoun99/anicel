@@ -1062,10 +1062,23 @@ enum AppStrings {
   /// notice.
   String get unsupportedFileTitle => _s('unsupportedFileTitle');
 
-  /// '{name}' is the picked file's name, '{kinds}' the extensions this
-  /// particular opening accepts.
-  String get unsupportedFileMessageTemplate =>
-      _s('unsupportedFileMessageTemplate');
+  /// What that notice says, whatever was refused and however many: the
+  /// formats this particular opening accepts, [extensions] lower-case and
+  /// without dots.
+  ///
+  /// ⛔It names no file — the files go in the list beneath it (유저
+  /// 2026-08-29: 「지원하지 않는 파일이 감지되었습니다. 라는 안내창으로
+  /// 두번째줄에 해당 파일들이라는 항목으로 … 파일주소,이름들 표시」).
+  /// ↩️It was born with a `{name}` beside the formats, and every caller
+  /// filled the formats alone: the placeholder showed in every refusal, in
+  /// every language (서피스 AI 실기 2026-10-23, card
+  /// open-door-windows-open-with). So the sentence is filled here, where
+  /// its placeholders are written.
+  String unsupportedFileMessage(Iterable<String> extensions) =>
+      _s('unsupportedFileMessageTemplate').replaceAll(
+        '{kinds}',
+        extensions.map((extension) => '.$extension').join(', '),
+      );
 
   /// The gear on every canvas pill. Not "view settings" — the host puts its
   /// own verbs in the same list (유저 확정 2026-08-13: 등록·맞바꾸기는 ⚙ 안으로).
@@ -2447,7 +2460,7 @@ enum AppStrings {
         'This sound could not be read — no waveform to show.',
     'unsupportedFileTitle': 'Unsupported file',
     'unsupportedFileMessageTemplate':
-        '"{name}" cannot be opened here. Usable formats: {kinds}.',
+        'Unsupported files were detected. Usable formats: {kinds}.',
     'mediaViewerSwap': 'Swap with the other viewer',
     'mediaViewerRegisterAsset': 'Add to Media',
     'panelMediaViewer': 'Viewer',
@@ -3897,7 +3910,8 @@ enum AppStrings {
     'mediaViewerNoAudioDecoder': 'この音声を読み込めませんでした — 波形を表示できません。',
     'mediaViewerSwap': 'もう一方のビューアと入れ替え',
     'unsupportedFileTitle': 'サポートされていないファイル',
-    'unsupportedFileMessageTemplate': '「{name}」はここでは開けません。使用できる形式: {kinds}。',
+    'unsupportedFileMessageTemplate':
+        'サポートされていないファイルが検出されました。使用できる形式: {kinds}。',
     'mediaViewerRegisterAsset': 'メディアに登録',
     'panelMediaViewer': 'ビューア',
     'panelMediaViewerSub': 'サブビューア',
@@ -5544,7 +5558,7 @@ enum AppStrings {
     'mediaViewerSwap': '반대쪽 뷰어와 맞바꾸기',
     'unsupportedFileTitle': '지원하지 않는 파일',
     'unsupportedFileMessageTemplate':
-        '「{name}」은(는) 여기서 열 수 없습니다. 사용 가능한 형식: {kinds}.',
+        '지원하지 않는 파일이 감지되었습니다. 사용 가능한 형식: {kinds}.',
     'mediaViewerRegisterAsset': '미디어에 등록',
     'panelMediaViewer': '뷰어',
     'panelMediaViewerSub': '서브 뷰어',
@@ -7230,8 +7244,8 @@ enum AppStrings {
         'Ce son n\'a pas pu être lu — aucune forme d\'onde à afficher.',
     'unsupportedFileTitle': 'Fichier non pris en charge',
     'unsupportedFileMessageTemplate':
-        '« {name} » ne peut pas être ouvert ici. Formats acceptés : '
-        '{kinds}.',
+        'Des fichiers non pris en charge ont été détectés. Formats '
+        'acceptés : {kinds}.',
     'mediaViewerSwap': "Échanger avec l'autre visionneuse",
     'mediaViewerRegisterAsset': 'Ajouter aux médias',
     'panelMediaViewer': 'Visionneuse',
@@ -8902,7 +8916,7 @@ enum AppStrings {
     'mediaViewerNoAudioDecoder': '无法读取此声音 — 没有可显示的波形。',
     'mediaViewerSwap': '与另一个查看器互换',
     'unsupportedFileTitle': '不支持的文件',
-    'unsupportedFileMessageTemplate': '无法在此处打开「{name}」。可用格式：{kinds}。',
+    'unsupportedFileMessageTemplate': '检测到不支持的文件。可用格式：{kinds}。',
     'mediaViewerRegisterAsset': '添加到媒体',
     'panelMediaViewer': '查看器',
     'panelMediaViewerSub': '副查看器',

@@ -16,6 +16,8 @@ import 'package:anicel/src/services/brush_pack_file.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
+import 'package:anicel/src/services/persistence/file_type_groups.dart'
+    show openableExtensions;
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
@@ -24,22 +26,25 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/settle_async.dart';
 import '../helpers/wait_window.dart';
 
-/// No saved language, said only when the test says so — and the brush
-/// library's read waits for it.
+/// The [saved] language — none unless the test gives one — said only when
+/// the test says so; the brush library's read waits for it.
 class _LateLanguage extends AppLanguageSettingsStore {
-  _LateLanguage() : super(filePath: 'unused');
+  _LateLanguage([this.saved]) : super(filePath: 'unused');
+
+  final AppLanguageSettings? saved;
 
   final gate = Completer<void>();
 
   @override
   Future<AppLanguageSettings?> load() async {
     await gate.future;
-    return null;
+    return saved;
   }
 
   @override
@@ -158,6 +163,67 @@ void main() {
       find.byKey(const ValueKey<String>('unsupported-file-notice')),
       findsOneWidget,
     );
+  });
+
+  // Card open-door-windows-open-with (서피스 AI 실기 2026-10-23): an app
+  // started cold with a file nothing opens refused it in English — the
+  // language it starts in — under a Japanese list of it. The launch knocks
+  // in the first frame and a notice's words are written as it opens, while
+  // the language the app was left in is read after that frame (F-170).
+  testWidgets('🎯a file handed at launch is said in the language the app '
+      'was left in, which is read after the first frame', (tester) async {
+    AppText.settings.value = const AppLanguageSettings();
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    final ja = AppStrings.of(AppLanguage.ja);
+    final language = _LateLanguage(
+      const AppLanguageSettings(programLanguage: AppLanguage.ja),
+    );
+    final path = nothingOpens();
+
+    await pumpApp(
+      tester,
+      HomePage(
+        initialProject: createDefaultProject(),
+        languageSettingsStore: language,
+        handedAtLaunch: [path],
+      ),
+    );
+    // Long enough for a door that did NOT wait to have knocked.
+    await lendBothClocks(
+      tester,
+      rounds: 10,
+      beat: const Duration(milliseconds: 50),
+    );
+    expect(
+      AppText.strings.unsupportedFileTitle,
+      isNot(ja.unsupportedFileTitle),
+      reason: 'LIVENESS — the app starts in another language',
+    );
+    language.gate.complete();
+    await tester.pumpAndSettle();
+
+    final said = tester.widget<AppConfirmDialog>(find.byType(AppConfirmDialog));
+    expect(said.title, ja.unsupportedFileTitle);
+    expect(said.message, ja.unsupportedFileMessage(openableExtensions));
+    expect(named(tester), [path]);
+  });
+
+  // The same card's 덤: the import window named a file Windows opened the
+  // app with `C:\Users\…`, where 「開く」 named the same file `C:/Users/…`.
+  testWidgets('a file handed in Windows\' spelling is named as a pick names '
+      'it', (tester) async {
+    final path = nothingOpens();
+
+    await pumpApp(
+      tester,
+      HomePage(
+        initialProject: createDefaultProject(),
+        handedAtLaunch: [path.replaceAll('/', r'\')],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(named(tester), [path]);
   });
 
   testWidgets('the app hands its shell what it was opened with', (

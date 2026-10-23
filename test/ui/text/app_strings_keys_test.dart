@@ -37,7 +37,6 @@ void main() {
     'commonClose': (s) => s.commonClose,
     'commonAffectedFiles': (s) => s.commonAffectedFiles,
     'unsupportedFileTitle': (s) => s.unsupportedFileTitle,
-    'unsupportedFileMessageTemplate': (s) => s.unsupportedFileMessageTemplate,
     'commonNotice': (s) => s.commonNotice,
     'tlSharedColourEdit': (s) => s.tlSharedColourEdit,
     'exportNoCuts': (s) => s.exportNoCuts,

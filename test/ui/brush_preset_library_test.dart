@@ -17,6 +17,7 @@ import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/ui/brush/brush_tip_library.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
+import 'package:anicel/src/services/persistence/file_type_groups.dart';
 import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 import 'package:anicel/src/ui/brush/brush_import_merge.dart';
 import 'package:anicel/src/ui/brush/brush_preset_library.dart';
@@ -211,9 +212,17 @@ void main() {
       addTearDown(library.dispose);
 
       final message = await library.importFromFile();
-      expect(message, isNotNull);
+      expect(
+        message,
+        AppText.strings.unsupportedFileMessage(
+          FileTypeGroups.brushes.extensions!,
+        ),
+        reason: 'said as every picker\'s refusal is, with the brush kinds',
+      );
       expect(message, contains('.abr'));
-      expect(message, isNot(contains('{kinds}')));
+      // ↩️This asked after `{kinds}` alone, and the sentence's `{name}`
+      // showed in every refusal (card open-door-windows-open-with).
+      expect(message, isNot(contains('{')), reason: 'no placeholder left');
       expect(library.presets, isEmpty);
     });
   });

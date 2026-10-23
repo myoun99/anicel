@@ -230,9 +230,13 @@ class FolderGrant {
 
 /// A path handed over with nothing granted for it — a drop on the window,
 /// the file the viewer is showing, a file the OS opened the app with: a
-/// folder or a file, as the disk says.
+/// folder or a file, as the disk says, spelled as a pick of it is
+/// ([FolderPicker._normalize]). ↩️It kept the spelling it came in, and the
+/// import window named a file Windows opened the app with `C:\Users\…`
+/// where 「開く」 named the same file `C:/Users/…` (서피스 AI 실기
+/// 2026-10-23, card open-door-windows-open-with).
 FolderGrant handedPath(String path) => FolderGrant.granted(
-  path: path,
+  path: FolderPicker._normalize(path),
   kind: FileSystemEntity.isDirectorySync(path)
       ? GrantKind.folder
       : GrantKind.file,
