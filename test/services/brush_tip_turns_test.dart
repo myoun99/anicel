@@ -2,8 +2,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_tip_turns.dart';
 
 /// F-176-Q3 (「클튜 여섯 전부 + 끌어서 순서」): which tip each dab of one
@@ -15,6 +18,19 @@ void main() {
 
   final abc = [tip('a'), tip('b'), tip('c')];
 
+  /// A dab held as no pen reports — only [BrushTipOrder.lean] reads it.
+  final upright = BrushDab(
+    center: CanvasPoint(x: 0, y: 0),
+    color: 0xFF000000,
+    size: 10,
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.round,
+    pressure: 1,
+    sequence: 0,
+  );
+
   /// The tips [count] dabs take, one letter each — `-` for a dab that is
   /// not drawn.
   String taken(
@@ -25,7 +41,7 @@ void main() {
   }) {
     final turns = BrushTipTurns.of(tips, order, random: math.Random(seed))!;
     return [
-      for (var dab = 0; dab < count; dab += 1) turns.next()?.id ?? '-',
+      for (var dab = 0; dab < count; dab += 1) turns.next(upright)?.id ?? '-',
     ].join();
   }
 
@@ -93,6 +109,7 @@ void main() {
       BrushTipOrder.pingPong,
       BrushTipOrder.holdLast,
       BrushTipOrder.random,
+      BrushTipOrder.lean,
     ]) {
       expect(
         BrushTipTurns.of([tip('a')], order, random: random),

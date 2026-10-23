@@ -81,7 +81,7 @@ class BrushStrokeDynamics {
       for (var copy = 0; copy < copies; copy += 1) {
         // Every dab takes a turn — each of a spray's too (F-176-Q3: 「dab
         // 하나마다 다음 장으로」).
-        final tip = tipTurns == null ? dab.tipMask : tipTurns.next();
+        final tip = tipTurns == null ? dab.tipMask : tipTurns.next(dab);
         if (tip == null && tipTurns != null) {
           continue;
         }

@@ -5,8 +5,9 @@ import '../models/brush_input_source.dart';
 import '../models/brush_pressure_curve.dart';
 import '../models/brush_shape.dart';
 
-/// Scales a dab's size, opacity, flow, hardness and roundness by its INPUTS,
-/// through the per-(setting, source) response curves.
+/// Scales a dab's size, opacity, flow, hardness, roundness and texture
+/// density by its INPUTS, through the per-(setting, source) response
+/// curves.
 ///
 /// The dab is expected to still carry the base tool values in those fields,
 /// with the inputs it was sampled with beside them. Applied as a
@@ -68,6 +69,9 @@ BrushDab applyBrushInputDynamics(
       0.01,
       1.0,
     ),
+    textureDensity:
+        (dab.textureDensity * factor(BrushPressureTarget.textureDensity))
+            .clamp(0.0, 1.0),
   );
 }
 

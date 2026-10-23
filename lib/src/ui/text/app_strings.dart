@@ -1687,6 +1687,7 @@ enum AppStrings {
   String get brTipOrderRandom => _s('brTipOrderRandom');
   String get brTipOrderOneLap => _s('brTipOrderOneLap');
   String get brTipOrderShuffledLap => _s('brTipOrderShuffledLap');
+  String get brTipOrderLean => _s('brTipOrderLean');
   String get brStabilizer => _s('brStabilizer');
   String get brStabilizerOn => _s('brStabilizerOn');
   String get brStabilizerBySpeed => _s('brStabilizerBySpeed');
@@ -1707,6 +1708,8 @@ enum AppStrings {
   String get brBlend => _s('brBlend');
   String get brBlendMode => _s('brBlendMode');
   String get brDualBlend => _s('brDualBlend');
+  String get brTextureMode => _s('brTextureMode');
+  String get brTextureModeHeight => _s('brTextureModeHeight');
   String get brEditGroup => _s('brEditGroup');
   String get brFolderIcon => _s('brFolderIcon');
   String get brFolderName => _s('brFolderName');
@@ -2862,6 +2865,7 @@ enum AppStrings {
     'brTipOrderRandom': 'Random',
     'brTipOrderOneLap': 'Once Through',
     'brTipOrderShuffledLap': 'Random Once Through',
+    'brTipOrderLean': 'Pen Lean',
     'brBrushTip': 'Brush Tip',
     'brTipNone': 'None',
     'brDualTip': 'Dual Tip',
@@ -2892,6 +2896,8 @@ enum AppStrings {
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
     'brDualBlend': 'Dual blend',
+    'brTextureMode': 'Texture mode',
+    'brTextureModeHeight': 'Height',
     'brEditGroup': 'Edit group',
     'brFolderIcon': 'Folder icon',
     'brFolderName': 'Folder name',
@@ -4388,6 +4394,7 @@ enum AppStrings {
     'brTipOrderRandom': 'ランダム',
     'brTipOrderOneLap': '一巡のみ',
     'brTipOrderShuffledLap': 'ランダムに一巡',
+    'brTipOrderLean': 'ペンの傾き',
     'brBrushTip': 'ブラシ先端',
     'brTipNone': 'なし',
     'brDualTip': 'デュアル先端',
@@ -4419,6 +4426,8 @@ enum AppStrings {
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
     'brDualBlend': 'デュアルの合成',
+    'brTextureMode': 'テクスチャ合成',
+    'brTextureModeHeight': '高さ',
     'brEditGroup': 'グループを編集',
     'brFolderIcon': 'フォルダーのアイコン',
     'brFolderName': 'フォルダー名',
@@ -6017,6 +6026,7 @@ enum AppStrings {
     'brTipOrderRandom': '랜덤',
     'brTipOrderOneLap': '한 바퀴만',
     'brTipOrderShuffledLap': '랜덤 한 바퀴',
+    'brTipOrderLean': '펜 기울기',
     'brBrushTip': '브러시 끝',
     'brTipNone': '없음',
     'brDualTip': '듀얼 끝',
@@ -6048,6 +6058,8 @@ enum AppStrings {
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
     'brDualBlend': '듀얼 합성',
+    'brTextureMode': '텍스처 합성',
+    'brTextureModeHeight': '높이',
     'brEditGroup': '그룹 편집',
     'brFolderIcon': '폴더 아이콘',
     'brFolderName': '폴더 이름',
@@ -7783,11 +7795,14 @@ enum AppStrings {
     'brTipOrderRandom': 'Aléatoire',
     'brTipOrderOneLap': 'Un seul tour',
     'brTipOrderShuffledLap': 'Un tour aléatoire',
+    'brTipOrderLean': 'Inclinaison du stylet',
     'brBrushTip': 'Pointe',
     'brTipNone': 'Aucune',
     'brDualTip': 'Pointe double',
     'brTexture': 'Texture',
     'brTextureDensity': 'Densité',
+    'brTextureMode': 'Mode de texture',
+    'brTextureModeHeight': 'Hauteur',
     'brAddTipImage': 'Ajouter une pointe depuis une image',
     'brRenameTip': 'Renommer la pointe',
     'brDeleteTip': 'Supprimer la pointe',
@@ -9344,11 +9359,14 @@ enum AppStrings {
     'brTipOrderRandom': '随机',
     'brTipOrderOneLap': '仅一轮',
     'brTipOrderShuffledLap': '随机一轮',
+    'brTipOrderLean': '笔的倾斜',
     'brBrushTip': '笔尖',
     'brTipNone': '无',
     'brDualTip': '双重笔尖',
     'brTexture': '纹理',
     'brTextureDensity': '浓度',
+    'brTextureMode': '纹理合成',
+    'brTextureModeHeight': '高度',
     'brAddTipImage': '从图像添加笔尖',
     'brRenameTip': '重命名笔尖',
     'brDeleteTip': '删除笔尖',

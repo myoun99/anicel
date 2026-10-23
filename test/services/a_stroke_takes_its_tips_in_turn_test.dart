@@ -104,6 +104,22 @@ void main() {
     expect(sprayOf(BrushTipOrder.random), sprayOf(BrushTipOrder.repeat));
   });
 
+  test('🚨by the pen\'s lean: upright the first tip, flat the last, the '
+      'list cut evenly between — and no lean is upright (F-451)', () {
+    final six = [for (final id in 'uvwxyz'.split('')) tip(id)];
+    final stroke = strokeOf(BrushTipOrder.lean, tips: six);
+    // tiltAltitude is how UPRIGHT the pen is; the lean is its complement.
+    final held = [1.0, 0.9, 0.62, 0.5, 0.2, 0.0, null];
+
+    final laid = stroke.apply([
+      for (var index = 0; index < held.length; index += 1)
+        dab(index).copyWith(tiltAltitude: held[index]),
+    ], firstSequence: 0);
+
+    // Leans 0 · 0.1 · 0.38 · 0.5 · 0.8 · 1 → sixths 0 · 0 · 2 · 3 · 4 · 5.
+    expect(tipsOf(laid), 'uuwxyzu');
+  });
+
   test('a brush whose tips take no turns passes its dabs through', () {
     final stroke = strokeOf(BrushTipOrder.random, tips: [abc.first]);
     final unchanged = dabs(3);

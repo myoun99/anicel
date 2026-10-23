@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_correction.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
@@ -515,6 +517,65 @@ void main() {
         findsNothing,
       );
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the paper\'s 高さ is picked by its row and reaches the '
+        'canvas — and the row is DEAD with no paper (F-451)', (tester) async {
+      final height = find.byKey(
+        const ValueKey<String>('brush-tool-texture-mode-height'),
+      );
+
+      final bare = await _pumpPanel(tester);
+      expect(bare().textureMask, isNull, reason: 'fixture premise');
+      expect(height, findsOneWidget, reason: 'the row must keep its place');
+      await tester.ensureVisible(height);
+      await tester.tap(height);
+      await tester.pumpAndSettle();
+      expect(
+        bare().textureMode,
+        BrushTextureMode.multiply,
+        reason: 'no paper, nothing to cut',
+      );
+
+      final paper = BrushTipMask(
+        id: 'paper-row-test',
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 200, 255]),
+      );
+      final read = await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.withMask(BrushMaskSlot.texture, paper),
+      );
+      expect(read().textureMode, BrushTextureMode.multiply);
+      await tester.ensureVisible(height);
+      await tester.tap(height);
+      await tester.pumpAndSettle();
+
+      expect(read().toInputSettings().textureMode, BrushTextureMode.height);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the paper\'s density takes a pen curve of its own — the '
+        'lead\'s reach into the tooth (F-451)', (tester) async {
+      final read = await _pumpPanel(tester);
+      final curveButton = find.byKey(
+        const ValueKey<String>('brush-tool-pressure-textureDensity'),
+      );
+      await tester.ensureVisible(curveButton);
+      await tester.tap(curveButton);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('curve-source-pressure')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        read().toInputSettings().shape.curveFor(
+          BrushPressureTarget.textureDensity,
+          BrushInputSource.pressure,
+        ),
+        BrushPressureCurve.identity(),
+      );
     });
 
     testWidgets('the angle\'s random turn reaches the engine — from the '
