@@ -7,6 +7,7 @@ library;
 
 import 'dart:collection';
 
+import '../core/collection_equality.dart' show listEquals;
 import '../core/mapped_or_same.dart';
 import '../core/signed_memo.dart';
 import 'attached_mode.dart';
@@ -507,9 +508,135 @@ String attachedLayerNameAmong(
   String baseName,
   Set<String> used,
   AttachedPlacement placement,
+) => firstUnusedName(
+  used,
+  (index) => _defaultAttachName(baseName, placement, index),
+);
+
+/// What a default attach name puts between the base's name and the number
+/// on [placement]'s side.
+String _signOf(AttachedPlacement placement) =>
+    placement == AttachedPlacement.above ? '+' : '-';
+
+/// `B+2`: the [index]th default name on [placement]'s side of a base named
+/// [baseName].
+String _defaultAttachName(
+  String baseName,
+  AttachedPlacement placement,
+  int index,
+) => '$baseName${_signOf(placement)}$index';
+
+/// The number [name] wears as a default attach name on [placement]'s side
+/// of a base named [baseName] — 2 for `B+2` above `B` — or null when it is
+/// a name of its own.
+int? _defaultAttachNumber(
+  String name,
+  String baseName,
+  AttachedPlacement placement,
 ) {
-  final sign = placement == AttachedPlacement.above ? '+' : '-';
-  return firstUnusedName(used, (index) => '$baseName$sign$index');
+  final prefix = '$baseName${_signOf(placement)}';
+  if (!name.startsWith(prefix)) {
+    return null;
+  }
+  final number = int.tryParse(name.substring(prefix.length));
+  return number != null &&
+          number > 0 &&
+          name == _defaultAttachName(baseName, placement, number)
+      ? number
+      : null;
+}
+
+/// 🗣️I-122 (유저 2026-10-22): 「어태치 레이어 드래그로 순서 바꿀때 이름
+/// 기본값인 상태 그대로라면 … 이름의 +1 +2같은 숫자도 새 순서에 맞춰서
+/// 바뀌도록」 — and F-436 ③ (same day): 「어태치 레이어를 다른 기준 레이어에
+/// 어태치 시키는등에도 레이어이름+4등 기본값인 상태면 … 장착하려는 대상에
+/// 맞춰서 변경되도록」.
+///
+/// The renames a write that moved attach rows' SEATS owes. On each side of
+/// a group whose seats changed, the rows that wore a default name where
+/// they stood BEFORE the write take the numbers that side already wore,
+/// plus a fresh one — the first unused, as a new row's is
+/// ([attachedLayerNameAmong]) — for each row that arrived from another
+/// base or the other side; and they are handed out again by seat, the
+/// nearest the base wearing the lowest. A name of the user's own stays as
+/// written, and a side whose seats did not change is not touched: the
+/// numbers move with the rows, they are not packed — a deleted row's gap
+/// stays a gap, as a base's rename keeps its riders' numbers.
+Map<LayerId, String> attachNamesForMovedSeats(
+  List<Layer> before,
+  List<Layer> after,
+) {
+  final was = {for (final layer in before) layer.id: layer};
+  final renames = <LayerId, String>{};
+  for (final base in after) {
+    for (final placement in AttachedPlacement.values) {
+      final seats = _seatsOf(base.id, placement, after);
+      final seatsBefore = _seatsOf(base.id, placement, before);
+      if (seats.isEmpty ||
+          listEquals(
+            [for (final row in seats) row.id],
+            [for (final row in seatsBefore) row.id],
+          )) {
+        continue;
+      }
+      final kept = <int>[];
+      final named = <Layer>[];
+      var arrived = 0;
+      for (final row in seats) {
+        final old = was[row.id];
+        final oldBase = was[old?.attachedToLayerId];
+        if (old == null || oldBase == null) {
+          continue;
+        }
+        final number = _defaultAttachNumber(
+          old.name,
+          oldBase.name,
+          old.attachedPlacement,
+        );
+        if (number == null) {
+          continue;
+        }
+        named.add(row);
+        if (oldBase.id == base.id && old.attachedPlacement == placement) {
+          kept.add(number);
+        } else {
+          arrived += 1;
+        }
+      }
+      final numbers = [...kept];
+      for (var number = 1; arrived > 0; number += 1) {
+        if (!kept.contains(number)) {
+          numbers.add(number);
+          arrived -= 1;
+        }
+      }
+      numbers.sort();
+      for (final (seat, row) in named.indexed) {
+        final name = _defaultAttachName(base.name, placement, numbers[seat]);
+        if (name != row.name) {
+          renames[row.id] = name;
+        }
+      }
+    }
+  }
+  return renames;
+}
+
+/// [baseId]'s attach rows on [placement]'s side, nearest the base first —
+/// the stack runs `[below…, base, above…]`, so an above row's seat counts up
+/// it and a below row's down it.
+List<Layer> _seatsOf(
+  LayerId baseId,
+  AttachedPlacement placement,
+  List<Layer> layers,
+) {
+  final side = [
+    for (final row in attachedLayersOf(baseId, layers))
+      if (row.attachedPlacement == placement) row,
+  ];
+  return placement == AttachedPlacement.above
+      ? side
+      : side.reversed.toList();
 }
 
 /// Whether [layer] wears its BASE's composite instead of authoring its own

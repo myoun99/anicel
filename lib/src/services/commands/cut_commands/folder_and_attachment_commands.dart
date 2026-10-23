@@ -289,13 +289,16 @@ class _FolderAndAttachmentCommands {
   }
 
   /// Commits an attach change on its own — the Layer menu's 장착·해제, where
-  /// no row moves. Empty input is a no-op rather than an empty undo entry.
+  /// no row is dragged. Its rows still change seats, so the default names
+  /// follow them as a drag's do. Empty input is a no-op rather than an
+  /// empty undo entry.
   void setLayerAttachment({
     required CutId cutId,
     required LayerAttachDrop attach,
     String description = 'Attach layer',
   }) {
-    _coordinator.historyManager.executeAsOneStep(
+    _coordinator._executeMovingSeats(
+      cutId,
       description,
       layerAttachmentCommands(
         cutId: cutId,
