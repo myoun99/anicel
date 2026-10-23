@@ -8,7 +8,6 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart';
-import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/raster_picture.dart';
 import 'package:anicel/src/ui/canvas/tile_blocks.dart';
@@ -16,15 +15,12 @@ import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/awaited_uploads.dart';
 import '../../helpers/one_piece.dart';
+import '../../helpers/premultiplied_canvas_bytes.dart';
 
-/// The per-tile GPU compose must be byte-identical to the CPU assembly
-/// path ([bitmapSurfaceToImage]) — with and without cache reuse — and turn
-/// the post-stroke rebuild into cache-hit draws.
+/// The per-tile GPU compose must be byte-identical to the tiles' own bytes
+/// where they stand ([premultipliedCanvasBytes]) — with and without cache
+/// reuse — and turn the post-stroke rebuild into cache-hit draws.
 void main() {
-  tearDown(() {
-    debugUploadOffloadPixelThreshold = null;
-  });
-
   BitmapSurface patternedSurface(CanvasSize canvasSize) {
     var surface = BitmapSurface(canvasSize: canvasSize, tileSize: 256);
     final columns = (canvasSize.width + 255) ~/ 256;
@@ -93,7 +89,7 @@ void main() {
     }
   }
 
-  testWidgets('tile compose is byte-identical to the CPU assembly, with '
+  testWidgets('tile compose is byte-identical to the tiles\' own bytes, with '
       'and without cache reuse', (tester) async {
     await tester.runAsync(() async {
       // Partial edge tiles on both axes.
@@ -101,8 +97,7 @@ void main() {
         const CanvasSize(width: 300, height: 200),
       );
 
-      debugUploadOffloadPixelThreshold = 1 << 62; // CPU path stays sync
-      final reference = await bytesOf(await bitmapSurfaceToImage(surface));
+      final reference = premultipliedCanvasBytes(surface);
 
       final cold = await bytesOf((await composeTiledSurfaceImage(surface))!);
       expect(cold, reference, reason: 'transient pictures, made in turn');
@@ -124,8 +119,7 @@ void main() {
       final surface = patternedSurface(
         const CanvasSize(width: 300, height: 200),
       );
-      debugUploadOffloadPixelThreshold = 1 << 62; // CPU path stays sync
-      final reference = await bytesOf(await bitmapSurfaceToImage(surface));
+      final reference = premultipliedCanvasBytes(surface);
 
       final cache = BitmapTileImageCache();
       expect(
@@ -271,8 +265,7 @@ void main() {
         final surface = patternedSurface(
           const CanvasSize(width: 512, height: 256),
         );
-        debugUploadOffloadPixelThreshold = 1 << 62;
-        final reference = await bytesOf(await bitmapSurfaceToImage(surface));
+        final reference = premultipliedCanvasBytes(surface);
 
         final positioned = (await composePositionedSurfaceImage(surface))!;
         expect(positioned.worldRect, const ui.Rect.fromLTRB(0, 0, 512, 256));
@@ -394,9 +387,12 @@ void main() {
 
   // BENCHMARK-tagged (skipped by default, see dart_test.yaml): this case
   // compares two WALL-CLOCK measurements, so running it beside the rest of
-  // the suite reports CPU contention rather than compose cost. Measured:
-  // alone it reads 38ms vs 10ms (a 3.8x margin); inside the suite the same
-  // code produced 70ms vs 78ms and failed. Run it deliberately with
+  // the suite reports CPU contention rather than compose cost. Measured
+  // against the CPU assembly it then stood beside: alone 38ms vs 10ms (a
+  // 3.8x margin); inside the suite the same code produced 70ms vs 78ms and
+  // failed. ↩️Against the cold compose since the CPU assembly left the app
+  // (card `cpu-assembly-has-no-caller`): alone 3683ms vs 16ms (Surface,
+  // 2026-10-23). Run it deliberately with
   //   flutter test --run-skipped --tags benchmark
   testWidgets('warm compose skips every upload (documented timing)', (
     tester,
@@ -406,10 +402,10 @@ void main() {
         const CanvasSize(width: 1920, height: 1080),
       );
 
-      debugUploadOffloadPixelThreshold = 1 << 62;
-      final cpuWatch = Stopwatch()..start();
-      (await bitmapSurfaceToImage(surface)).dispose();
-      cpuWatch.stop();
+      // A frame no tile of which has a picture — every block uploaded.
+      final coldWatch = Stopwatch()..start();
+      (await composeTiledSurfaceImage(surface))!.dispose();
+      coldWatch.stop();
 
       // The editing canvas keeps the active frame's tiles decoded — the
       // post-stroke rebuild is the warm case.
@@ -421,13 +417,14 @@ void main() {
 
       // ignore: avoid_print
       print(
-        'layer image rebuild @1920x1080 — CPU assembly+upload: '
-        '${cpuWatch.elapsedMilliseconds}ms, warm per-tile GPU compose: '
-        '${warmWatch.elapsedMilliseconds}ms (active-frame post-stroke case)',
+        'layer image rebuild @1920x1080 — cold compose (every block '
+        'uploaded): ${coldWatch.elapsedMilliseconds}ms, warm per-tile GPU '
+        'compose: ${warmWatch.elapsedMilliseconds}ms (active-frame '
+        'post-stroke case)',
       );
       expect(
         warmWatch.elapsedMilliseconds,
-        lessThanOrEqualTo(cpuWatch.elapsedMilliseconds),
+        lessThanOrEqualTo(coldWatch.elapsedMilliseconds),
       );
     });
   }, tags: 'benchmark');
@@ -702,8 +699,8 @@ void main() {
 
     testWidgets('🚨the blocks show what the tiles show — 1:1, canvas-sized '
         'and positioned, against the cel pictured a tile at a time and the '
-        'CPU assembly; a block whose tiles all have pictures drawn from '
-        'them, one that has some pictured whole', (tester) async {
+        'tiles\' own bytes; a block whose tiles all have pictures drawn '
+        'from them, one that has some pictured whole', (tester) async {
       await tester.runAsync(() async {
         final surface = celOf(coords);
         final tileAt = surface.tileAt;
@@ -713,8 +710,7 @@ void main() {
           ..pictureFor(tileAt(TileCoord(x: 0, y: 0))!)
           ..pictureFor(tileAt(TileCoord(x: 3, y: 2))!);
 
-        debugUploadOffloadPixelThreshold = 1 << 62; // CPU path stays sync
-        final reference = await bytesOf(await bitmapSurfaceToImage(surface));
+        final reference = premultipliedCanvasBytes(surface);
         expect(
           await bytesOf((await composeTiledSurfaceImage(surface))!),
           reference,

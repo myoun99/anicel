@@ -1,13 +1,9 @@
-import 'dart:isolate';
-import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
 import '../../core/point_bounds.dart';
-import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
@@ -21,7 +17,6 @@ import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_paint.dart' show applyCameraProjection;
-import '../../services/straight_rgba_image.dart';
 import '../../services/viewport_transform_matrix.dart'
     show viewportOfSimilarity;
 import '../canvas/display_resample.dart';
@@ -33,102 +28,10 @@ import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';
 import '../playback/camera_shot.dart' show outlineAtLevel, shotClipOnScreen;
 
-/// Surfaces with at least this many pixels assemble their upload buffer in
-/// a background isolate; smaller ones stay synchronous (the spawn/copy
-/// overhead would dominate, and fake-async widget tests never pump real
-/// isolates — production canvases are far above, test fixtures far below).
-const int _uploadOffloadPixelThreshold = 512 * 512;
-
-/// Test override for the isolate cutoff; null = [_uploadOffloadPixelThreshold].
-@visibleForTesting
-int? debugUploadOffloadPixelThreshold;
-
 /// Test hatch: every row composed whole — what the byte-for-byte pins
 /// render the ink against (`a_row_drawn_from_its_ink_is_the_same_bytes_test`).
 @visibleForTesting
 bool debugComposesRowsWhole = false;
-
-/// Converts a tiled [BitmapSurface] into one [ui.Image].
-///
-/// Tile bytes are straight (unpremultiplied) alpha but raw rgba8888 uploads
-/// are interpreted as premultiplied, so the copy premultiplies with the same
-/// mul-div-255 rounding the tile image cache uses. On canvas-sized surfaces
-/// that per-pixel pass is the largest post-stroke chunk left on the UI
-/// thread (debug builds especially), so it runs in a background isolate.
-Future<ui.Image> bitmapSurfaceToImage(BitmapSurface surface) async {
-  final width = surface.canvasSize.width;
-  final height = surface.canvasSize.height;
-  // Sendable snapshot: tile pixel buffers are copies already (the tile
-  // getter clones), so the isolate borrows plain records.
-  final tiles = [
-    for (final entry in surface.tiles.entries)
-      (
-        originX: entry.key.x * entry.value.size,
-        originY: entry.key.y * entry.value.size,
-        size: entry.value.size,
-        pixels: entry.value.pixels,
-      ),
-  ];
-  final threshold =
-      debugUploadOffloadPixelThreshold ?? _uploadOffloadPixelThreshold;
-  final buffer = width * height >= threshold
-      ? await Isolate.run(
-          () => _assemblePremultipliedRgba(tiles, width, height),
-        )
-      : _assemblePremultipliedRgba(tiles, width, height);
-
-  // 🚨Through [uploadRawRgba], not `ui.decodeImageFromPixels`: the SDK
-  // function reports no failure to anyone, so the `Completer` that stood here
-  // could only ever succeed. This is the whole-canvas upload — the exact size
-  // at which an engine allocation is most likely to be refused — and its
-  // callers are exports and bakes that would have waited on it forever.
-  return uploadRawRgba(buffer, width: width, height: height);
-}
-
-/// The full-canvas premultiplied upload buffer, assembled from straight-
-/// alpha tile snapshots. Pure bytes → bytes so it runs identically on the
-/// UI thread and in the offload isolate.
-Uint8List _assemblePremultipliedRgba(
-  List<({int originX, int originY, int size, Uint8List pixels})> tiles,
-  int width,
-  int height,
-) {
-  final buffer = Uint8List(width * height * 4);
-  for (final tile in tiles) {
-    final pixels = tile.pixels;
-    // Clip BOTH sides to the canvas raster: pasteboard tiles sit at
-    // negative origins (and past the right/bottom edge) — the canvas
-    // image simply crops them.
-    final startX = math.max(0, -tile.originX);
-    final startY = math.max(0, -tile.originY);
-    final copyWidth = math.min(tile.size, width - tile.originX);
-    final copyHeight = math.min(tile.size, height - tile.originY);
-    if (copyWidth <= startX || copyHeight <= startY) {
-      continue;
-    }
-    for (var localY = startY; localY < copyHeight; localY += 1) {
-      var source = (localY * tile.size + startX) * 4;
-      var target =
-          ((tile.originY + localY) * width + tile.originX + startX) * 4;
-      for (var localX = startX; localX < copyWidth; localX += 1) {
-        final alpha = pixels[source + 3];
-        if (alpha == 255) {
-          buffer[target] = pixels[source];
-          buffer[target + 1] = pixels[source + 1];
-          buffer[target + 2] = pixels[source + 2];
-        } else if (alpha != 0) {
-          buffer[target] = mul255Round(pixels[source], alpha);
-          buffer[target + 1] = mul255Round(pixels[source + 1], alpha);
-          buffer[target + 2] = mul255Round(pixels[source + 2], alpha);
-        }
-        buffer[target + 3] = alpha;
-        source += 4;
-        target += 4;
-      }
-    }
-  }
-  return buffer;
-}
 
 /// What a render lays over its picture, in CANVAS space under the camera's
 /// projection — handed the scale that projection rasters a canvas pixel at,
