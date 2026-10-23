@@ -77,7 +77,8 @@ void main() {
   });
 
   testWidgets('a click still presses it ONCE — the claim fires it, and the '
-      'inner button\'s own tap on the same lift does not', (tester) async {
+      'inner button\'s own tap on the same lift does not — and a key after '
+      'it is heard again', (tester) async {
     var presses = 0;
     await tester.pumpWidget(
       app(
@@ -90,9 +91,15 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey<String>('save')));
+    final save = find.byKey(const ValueKey<String>('save'));
+    await tester.tap(save);
     await tester.pump();
     expect(presses, 1);
+
+    await tabTo(tester, save);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(presses, 2, reason: 'the click\'s silence ends with its own lift');
   });
 
   testWidgets('a button that acts on the DOWN is not pressed again by its '
