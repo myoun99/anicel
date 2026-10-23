@@ -777,38 +777,24 @@ BrushPressureCurve _effectorSourceCurve(
   final stored = effector is Uint8List && block != null
       ? _effectorGraphPoints(effector, block)
       : null;
-  if (stored == null || stored.isEmpty) {
+  if (stored == null) {
     return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
   // 傾き設定 runs 水平 → 垂直 left to right (the window's own axis labels),
   // and a 傾き input is how far the pen LEANS ([brushInputValue]), so its
   // graph comes in mirrored.
-  final ordered = source == BrushInputSource.tilt
+  final points = source == BrushInputSource.tilt
       ? [
           for (final point in stored.reversed)
             BrushCurvePoint(1.0 - point.x, point.y),
         ]
       : stored;
-  final points = <BrushCurvePoint>[];
-  for (final point in ordered) {
-    // The engine wants strictly increasing x inside the unit square; Clip
-    // Studio pads unused slots by repeating the last point.
-    if (point.x < 0.0 ||
-        point.x > 1.0 ||
-        (points.isNotEmpty && point.x <= points.last.x)) {
-      continue;
-    }
-    points.add(BrushCurvePoint(point.x, point.y.clamp(0.0, 1.0).toDouble()));
-  }
-  if (points.isEmpty) {
-    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
-  }
-  if (points.first.x > 0.0) {
-    points.insert(0, BrushCurvePoint(0.0, points.first.y));
-  }
-  if (points.last.x < 1.0) {
-    points.add(BrushCurvePoint(1.0, points.last.y));
-  }
+  // 📏Every graph in the eleven reference files runs from x 0 to x 1,
+  // rising, inside the unit square (119 of them, 2026-10-23) — what a curve
+  // asks of its points — so one that does not is not read: it comes in
+  // straight, below. ↩️Its ends were padded — to (1, 1), then flat — and
+  // its points sifted for a repeat 「Clip Studio pads unused slots」 with,
+  // on no file's word: that reader scanned the tail for the block.
   try {
     return BrushPressureCurve(points, minimum: minimum, maximum: maximum);
   } on ArgumentError {

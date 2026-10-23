@@ -707,6 +707,21 @@ void main() {
     ]);
   });
 
+  test('a graph that does not run from 0 to 1 comes in straight — no file '
+      'has one, so nothing says how to finish it', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      sizeEffectorMinimum: 59,
+      sizePressureGraph: const [(0.2, 0.0), (0.7, 0.9), (1.0, 1.0)],
+    );
+    final curve = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings.sizePressureCurve;
+
+    expect(curve, BrushPressureCurve.linearFrom(0.59));
+  });
+
   group('🚨傾き (F-456 — Clip Studio\'s 影響元設定 window and the user\'s '
       'pencils)', () {
     const pressureGraph = [(0.0, 0.0), (0.5, 0.9), (1.0, 1.0)];
