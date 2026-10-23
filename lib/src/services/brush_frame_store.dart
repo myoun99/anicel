@@ -197,7 +197,6 @@ class BrushFrameStore {
         stands: (ref) => _standsBehind[ref] = reach,
       );
       for (final key in kept.keys) {
-        _editTicks[key] = ++_editTick;
         crossed = _recordCelContent(key) || crossed;
       }
       cut.addAll(kept);
@@ -641,25 +640,36 @@ class BrushFrameStore {
   int _hotBytes = 0;
   int _coldBytes = 0;
 
-  /// Cels edited since the last successful save (donations/removals, not
-  /// mere promotions) — exactly the set an incremental save must write.
-  final Set<BrushFrameKey> _dirtySinceSave = {};
-
-  /// Monotonic edit clock + per-key last-edit marks, for the one question
-  /// the dirty SET cannot answer: "was this cel edited AFTER the save
-  /// snapshot was taken?" The set survives the whole save untouched, so at
-  /// adoption time a key that was dirty when the snapshot was captured and
-  /// a key that went dirty DURING the save look identical — and treating
-  /// them the same is how an in-flight stroke used to vanish: adoption
-  /// re-installed the pre-edit file ref, the wholesale clear() wiped the
-  /// mark, and cooling then "free-dropped" the only copy of the new
-  /// pixels. Marks are removed when their edit is adopted into a save, so
-  /// the map holds only unsaved work.
+  /// Cels edited since the last successful save (donations, removals,
+  /// moves and rewrites — not mere promotions) — exactly the set an
+  /// incremental save must write — each with the tick of its last edit.
+  ///
+  /// The tick answers the one question the set cannot: "was this cel
+  /// edited AFTER the save snapshot was taken?" The marks survive the
+  /// whole save, so at adoption time a key that was dirty when the
+  /// snapshot was captured and a key that went dirty DURING the save look
+  /// identical without it — and treating them the same is how an in-flight
+  /// stroke used to vanish: adoption re-installed the pre-edit file ref,
+  /// the wholesale clear() wiped the mark, and cooling then "free-dropped"
+  /// the only copy of the new pixels. Marks are removed when their edit is
+  /// adopted into a save, so the map holds only unsaved work.
+  ///
+  /// 🚨ONE MAP, ONE WAY IN ([_markDirty]). The mark and its tick were two
+  /// fields, and five of the eight places that marked a cel set only the
+  /// mark — a resize, an anchored resize, a kept cel's rewrite, a cel
+  /// moved to another frame, a cel an undo laid back where it had been
+  /// emptied. Each, landing while a save ran, was adopted as the save's
+  /// own: the cel went clean on the bytes from before (card
+  /// a-resize-during-a-save-can-lose-the-resize, 2026-10-21). A mark
+  /// without its tick cannot be written now.
+  final Map<BrushFrameKey, int> _dirtySinceSave = {};
   int _editTick = 0;
-  final Map<BrushFrameKey, int> _editTicks = {};
+
+  /// [key] edited now — dirty, at a tick no earlier edit carries.
+  void _markDirty(BrushFrameKey key) => _dirtySinceSave[key] = ++_editTick;
 
   Set<BrushFrameKey> get dirtyCelKeysSinceSave =>
-      Set.unmodifiable(_dirtySinceSave);
+      Set.unmodifiable(_dirtySinceSave.keys);
 
   /// Hot-tier byte budget. Cels beyond it cool (encode + compress) in LRU
   /// order in a background isolate. Test-settable; the session seeds it
@@ -1089,8 +1099,7 @@ class BrushFrameStore {
     if (estimate != null) {
       _hotBytes -= estimate;
     }
-    _dirtySinceSave.add(key);
-    _editTicks[key] = ++_editTick;
+    _markDirty(key);
     _noteCelContent(key);
   }
 
@@ -1116,8 +1125,7 @@ class BrushFrameStore {
     _dropCold(key);
     _fileCels.remove(key);
     _storeHot(key, surface);
-    _dirtySinceSave.add(key);
-    _editTicks[key] = ++_editTick;
+    _markDirty(key);
     _noteCelContent(key);
     _scheduleCooling();
   }
@@ -1167,7 +1175,7 @@ class BrushFrameStore {
       // The dirty keys WITH their edit marks — what [adoptSavedFile] needs
       // to tell "written by this save" apart from "edited while it ran".
       dirtyTicks: {
-        for (final key in _dirtySinceSave) key: _editTicks[key] ?? 0,
+        ..._dirtySinceSave,
       },
     );
   }
@@ -1206,7 +1214,6 @@ class BrushFrameStore {
     _hotBytes = 0;
     _coldBytes = 0;
     _dirtySinceSave.clear();
-    _editTicks.clear();
     _dropCutAhead(_cutAhead);
     _cutAhead = null;
     _movedAhead = null;
@@ -1283,7 +1290,7 @@ class BrushFrameStore {
     required Map<BrushFrameKey, int> dirtyTicksAtSnapshot,
   }) {
     bool editedSinceSnapshot(BrushFrameKey key) =>
-        (_editTicks[key] ?? 0) > (dirtyTicksAtSnapshot[key] ?? 0);
+        (_dirtySinceSave[key] ?? 0) > (dirtyTicksAtSnapshot[key] ?? 0);
     for (final entry in saved.entries) {
       if (editedSinceSnapshot(entry.key)) {
         continue;
@@ -1303,7 +1310,6 @@ class BrushFrameStore {
     for (final entry in dirtyTicksAtSnapshot.entries) {
       if (!editedSinceSnapshot(entry.key)) {
         _dirtySinceSave.remove(entry.key);
-        _editTicks.remove(entry.key);
       }
     }
   }
@@ -1725,8 +1731,8 @@ class BrushFrameStore {
         // [to] must be rewritten under its own key (the saver re-keys
         // moved blobs/refs — pixels are identical, only the label
         // changes, so reads through a moved ref stay valid meanwhile).
-        _dirtySinceSave.add(from);
-        _dirtySinceSave.add(to);
+        _markDirty(from);
+        _markDirty(to);
       }
       // R27 #13, rekey edition: the move crosses the empty ↔ has-picture
       // line at BOTH ends ([from] always empties; [to] usually gains its
@@ -1770,7 +1776,7 @@ class BrushFrameStore {
       // Cold cels of the cut materialize first (cut-scoped = bounded).
       _storeHot(key, _moved(key, bakedSurfaceOrNull(key)!, move));
       _fileCels.remove(key);
-      _dirtySinceSave.add(key);
+      _markDirty(key);
       // Per-cel signature bump WITHOUT the per-cel global notify: the
       // global signal fires as often as the user draws and its
       // listeners are honed for single strokes — N cels × N listener
@@ -2007,7 +2013,7 @@ class BrushFrameStore {
       }
       _storeHot(key, resizeBitmapSurfaceCanvas(surface, canvasSize));
       _fileCels.remove(key);
-      _dirtySinceSave.add(key);
+      _markDirty(key);
       // A crop can take every line with it.
       crossed = _recordCelContent(key) || crossed;
     }
@@ -2077,7 +2083,7 @@ class BrushFrameStore {
         }
         _keepCold(key, next.kept);
         stands?.call(next.kept);
-        _dirtySinceSave.add(key);
+        _markDirty(key);
         rewritten[key] = next.was;
       }
     }
@@ -2157,7 +2163,7 @@ class BrushFrameStore {
     for (final entry in snapshot.entries) {
       _storeHot(entry.key, entry.value);
       _fileCels.remove(entry.key);
-      _dirtySinceSave.add(entry.key);
+      _markDirty(entry.key);
       // The display caches follow the restored truth.
       storeRebuiltDisplayCache(key: entry.key, previewSurface: entry.value);
       // The removal above crossed each drawn cel to empty; this crosses it
