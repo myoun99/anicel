@@ -418,10 +418,15 @@ typedef KeptTimelineCellsRows = KeptByBerth<TimelineCellsRowFacts>;
 /// a play made built every row again. On a commit, only the rows the edit
 /// touched draw anew.
 ///
-/// The gate stands OUTSIDE the keep, given this pass's layer and world:
-/// inside it, a kept row would have kept the gate's last layer too. The
-/// row's tick layer stands INSIDE ([TickLayer]): a new one per pass would
-/// lay out every row again.
+/// The BERTH stands OUTSIDE the keep, given this pass's layer and world:
+/// inside it, a kept row would have kept its last layer too. The row's
+/// tick layer stands INSIDE ([TickLayer]): a new one per pass would lay out
+/// every row again. And the gate stands on that tick layer, reading the
+/// pass from the berth above it — 🚨F-446 (10-24): a drag step is a tick
+/// (F-244), and the gate's rebuild is laid out there, alone.
+/// ↩️It stood with the berth, in the grid's layout scope (I-57): a cut-end
+/// trim on the user's cut derived again every row its length draws a
+/// ghost on, and each step laid out and repainted the rows' viewport.
 ///
 /// The sheet shows what the timeline shows: a file held over a column
 /// draws the cells it would author there. ⛔Not the sheet's own rule — the
@@ -445,8 +450,7 @@ Widget keptTimelineCellsRow(
   RowBerthMap berths,
   TimelineDisplayRow row,
   TimelineCellsRowGrid grid,
-) => TimelineDragPreviewRowGate.shows(
-  dragPreview: grid.hooks.dragPreview,
+) => BerthRow(
   layer: row.layer,
   world: timelineCellsRowWorld(row, grid),
   child: kept.keep(
@@ -458,6 +462,12 @@ Widget keptTimelineCellsRow(
     // press policy — the playhead can be put on it at last — and the tile
     // bake, while staying non-editable for free: every edit affordance
     // gates on `LayerKind.holdsDrawings`, which a folder fails.
-    () => TickLayer(child: timelineCellsRowFrom(row, grid)),
+    () => TickLayer(
+      child: TimelineDragPreviewRowGate.shows(
+        dragPreview: grid.hooks.dragPreview,
+        layer: row.layer,
+        child: timelineCellsRowFrom(row, grid),
+      ),
+    ),
   ),
 );

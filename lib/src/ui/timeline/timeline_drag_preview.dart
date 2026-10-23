@@ -901,21 +901,30 @@ class TimelineDragPreviewRowGate extends StatefulWidget {
     this.rowBuilder,
     this.useGlobalForm = false,
     this.slice,
-  }) : child = null,
-       world = null;
+  }) : child = null;
 
   /// A row that reads what it shows where it draws it ([BerthRow.shows]):
   /// [child] is built once, and the gate hands the preview down past it.
   ///
-  /// 🚨I-57 (10-13): a KEPT cells row is kept by its shape, so the gate
-  /// stands OUTSIDE the keep — given the layer its berth stands for at
-  /// every pass — and a drag step, like a cut switch, rebuilds only the
-  /// pieces of the row that draw what changed.
+  /// 🚨I-57 (10-13): a KEPT cells row is kept by its shape, so the layer
+  /// its berth stands for at every pass, and the world it draws, reach it
+  /// from OUTSIDE the keep — the [BerthRow] standing above this gate
+  /// ([keptTimelineCellsRow]) — and a drag step, like a cut switch,
+  /// rebuilds only the pieces of the row that draw what changed. [layer]
+  /// is the one the row was built for, which answers only where no berth
+  /// stands above.
+  ///
+  /// 🚨F-446 (10-24): the gate stands INSIDE the keep, on the row's own
+  /// tick layer, where a drag step's rebuild is laid out alone (F-244 —
+  /// [timelineGatedRow]). ↩️It stood outside, in the grid's layout scope:
+  /// a cut-end trim derives again every row whose ghost the cut's length
+  /// draws, and each step's gates laid the grid's frame area out again and
+  /// repainted the rows' whole viewport around them — on the user's cut,
+  /// at every step.
   const TimelineDragPreviewRowGate.shows({
     super.key,
     required this.dragPreview,
     required this.layer,
-    required BerthWorld this.world,
     required Widget this.child,
   }) : rowBuilder = null,
        useGlobalForm = false,
@@ -949,9 +958,6 @@ class TimelineDragPreviewRowGate extends StatefulWidget {
   /// that builds its row ([rowBuilder]).
   final Widget? child;
 
-  /// What else [child] draws of the cut it stands in ([BerthRow.world]).
-  final BerthWorld? world;
-
   @override
   State<TimelineDragPreviewRowGate> createState() =>
       _TimelineDragPreviewRowGateState();
@@ -971,10 +977,26 @@ class _TimelineDragPreviewRowGateState
   /// because nothing on the row moves — and the row never rebuilt to draw it.
   ({int startIndex, int endIndexExclusive})? _silhouette;
 
+  /// The berth above a kept row's gate ([TimelineDragPreviewRowGate.shows])
+  /// — what the row stands for at this pass, and the world it draws.
+  BerthRow? _berth;
+
+  /// The layer the row stands for: its berth's, else the one it was built
+  /// for.
+  Layer get _layer => _berth?.layer ?? widget.layer;
+
   @override
   void initState() {
     super.initState();
     widget.dragPreview?.addListener(_handlePreviewChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.child != null) {
+      _berth = BerthRow.shows(context);
+    }
     _previewLayer = _resolvePreviewLayer();
     _silhouette = _resolveSilhouette();
   }
@@ -1002,16 +1024,16 @@ class _TimelineDragPreviewRowGateState
   Layer? _resolvePreviewLayer() => widget.useGlobalForm
       ? timelineDragPreviewGlobalLayerFor(
           widget.dragPreview?.value,
-          widget.layer.id,
+          _layer.id,
         )
-      : timelineRowPreviewLayer(widget.dragPreview?.value, widget.layer);
+      : timelineRowPreviewLayer(widget.dragPreview?.value, _layer);
 
   /// Track-global hosts draw no silhouette ([timelineDragSilhouetteFor] is
   /// the active-cut rows' question).
   ({int startIndex, int endIndexExclusive})? _resolveSilhouette() =>
       widget.useGlobalForm
       ? null
-      : timelineDragSilhouetteFor(widget.dragPreview?.value, widget.layer.id);
+      : timelineDragSilhouetteFor(widget.dragPreview?.value, _layer.id);
 
   void _handlePreviewChanged() {
     final next = _resolvePreviewLayer();
@@ -1020,14 +1042,14 @@ class _TimelineDragPreviewRowGateState
       return;
     }
     final slice = widget.slice;
-    final shown = _previewLayer ?? widget.layer;
+    final shown = _previewLayer ?? _layer;
     final silhouetteMoved = silhouette != _silhouette;
     // Held either way, so any rebuild from elsewhere builds the newest.
     _previewLayer = next;
     _silhouette = silhouette;
     if (!silhouetteMoved &&
         slice != null &&
-        identical(slice(next ?? widget.layer), slice(shown))) {
+        identical(slice(next ?? _layer), slice(shown))) {
       return;
     }
     setState(() {});
@@ -1035,16 +1057,16 @@ class _TimelineDragPreviewRowGateState
 
   @override
   Widget build(BuildContext context) {
-    final shown = _previewLayer ?? widget.layer;
+    final shown = _previewLayer ?? _layer;
     final child = widget.child;
     if (child == null) {
       return widget.rowBuilder!(context, shown);
     }
     return BerthRow(
-      layer: widget.layer,
+      layer: _layer,
       shown: shown,
       silhouette: _silhouette,
-      world: widget.world,
+      world: _berth?.world,
       child: child,
     );
   }

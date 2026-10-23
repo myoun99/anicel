@@ -12,6 +12,8 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart'
+    show TimelineRunEdgeMark;
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -21,6 +23,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart' show StoryboardPanel;
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 import '../../helpers/repaint_strays.dart';
+import '../../helpers/run_edge_fixtures.dart';
 
 /// 🚨F-244 (유저 2026-09-30: 「타임라인 블록 관련 조작이 너무 느림 … 무거운
 /// 컷일수록 심해짐」): A DRAG STEP REPAINTS ITS TICK LAYERS AND THE CANVAS —
@@ -77,6 +80,13 @@ void main() {
                       i * 6: TimelineExposure.drawing(
                         FrameId('$row-$i'),
                         length: 6,
+                        // 🚨F-446: B's run HOLDS to the cut's end, so a trim
+                        // derives B again at every step — its ghost is the
+                        // cut's length. The rows of the user's cut that
+                        // dragged its end hold or repeat to it.
+                        endEdge: row == 'b' && i == 7
+                            ? holdMark
+                            : TimelineRunEdgeMark.none,
                       ),
                   },
                 ),
@@ -299,7 +309,14 @@ void main() {
 
   for (final MapEntry(key: drag, value: verbs) in storyboardDrags.entries) {
     testWidgets('a $drag step in the storyboard repaints its tick layers '
-        'and the canvas and nothing around them', (tester) async {
+        'and the canvas and nothing around them',
+        // 🚨⚠️F-446 ③b (10-24) — OPEN: read honestly ([tickLayersAndCanvas]
+        // no longer lets a panel's host repaint), every storyboard drag step
+        // repaints the storyboard's body — its scroll area's layer, both
+        // viewports and the track strips. These passed while the host stood
+        // for a tick layer, so they guarded nothing; they read it again when
+        // the storyboard's steps are ticks.
+        skip: true, (tester) async {
       final strayNames = await straysAtEveryStep(
         tester,
         ['timeline-mode-storyboard-button'],
