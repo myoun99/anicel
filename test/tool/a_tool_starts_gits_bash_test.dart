@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/bash_executable.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨A tool that starts bash starts the one PATH names, not Windows' own.
 ///
@@ -59,10 +58,8 @@ void main() {
   test('⛔no tool starts a bare `bash` — they ask `bashExecutable`', () {
     final bare = RegExp(r"Process\.(start|run|runSync)\(\s*'bash'");
     final starts = [
-      for (final file in Directory('tool').listSync(recursive: true))
-        if (file is File &&
-            file.path.endsWith('.dart') &&
-            bare.hasMatch(file.readAsStringSync()))
+      for (final file in dartFilesUnder('tool'))
+        if (bare.hasMatch(file.readAsStringSync()))
           file.path.replaceAll(r'\', '/'),
     ];
     expect(starts, isEmpty);
