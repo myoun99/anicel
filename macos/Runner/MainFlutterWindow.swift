@@ -720,6 +720,105 @@ final class WindowPlaceKeeper: NSObject {
   }
 }
 
+/// I-54 ⓔ · F-441: the cursors of one size — the pen, the fill's bucket, the
+/// eyedropper — as the system's own, so they move at the system's speed with
+/// nothing of the app's frame in their way (user 2026-09-30: 「os커서를
+/// 바꿈으로서 앱이랑 관계없이 빠르게」). This engine takes no picture for a
+/// cursor — its `flutter/mousecursor` handler wears the system's kinds alone
+/// — so the runner does, over 'anicel/cursor' with the two calls Windows's
+/// engine takes (lib/src/ui/brush/drawing_cursor.dart): a picture is made
+/// once a look and size and answered with its name, then worn by that name.
+/// It comes as premultiplied RGBA in the screen's pixels, with the screen's
+/// `scale`; the cursor is that picture at the points it makes.
+///
+/// ⚠️The engine's view puts back the cursor ITS handler wore last on a
+/// `cursorUpdate:`, which only a platform view's tracking area sends it
+/// (FlutterMutatorView). This app shows no platform view; one that did
+/// would see the picture give way there to the cursor worn before it.
+///
+/// UNVERIFIED-ON-DEVICE: authored on the Windows workstation.
+final class PictureCursors {
+  private let channel: FlutterMethodChannel
+  private var cursors: [String: NSCursor] = [:]
+
+  init(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(
+      name: "anicel/cursor", binaryMessenger: messenger)
+    channel.setMethodCallHandler { [weak self] call, result in
+      // Answered whatever happens: a call never answered leaves Dart
+      // waiting for good.
+      guard let self else {
+        result(nil)
+        return
+      }
+      self.handle(call, result)
+    }
+  }
+
+  private func handle(_ call: FlutterMethodCall, _ result: FlutterResult) {
+    guard let arguments = call.arguments as? [String: Any],
+      let name = arguments["name"] as? String
+    else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    switch call.method {
+    case "createCustomCursor":
+      guard let cursor = PictureCursors.cursor(of: arguments) else {
+        result(
+          FlutterError(
+            code: "argument", message: "not a cursor's picture", details: nil))
+        return
+      }
+      cursors[name] = cursor
+      result(name)
+    case "setCustomCursor":
+      guard let cursor = cursors[name] else {
+        result(
+          FlutterError(
+            code: "argument", message: "no cursor is named \(name)",
+            details: nil))
+        return
+      }
+      cursor.set()
+      result(nil)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  /// The picture handed over, as a cursor at the screen's points.
+  private static func cursor(of arguments: [String: Any]) -> NSCursor? {
+    guard let buffer = arguments["buffer"] as? FlutterStandardTypedData,
+      let width = arguments["width"] as? Int,
+      let height = arguments["height"] as? Int,
+      let hotX = arguments["hotX"] as? Double,
+      let hotY = arguments["hotY"] as? Double,
+      let scale = arguments["scale"] as? Double,
+      width > 0, height > 0, scale > 0,
+      buffer.data.count == width * height * 4,
+      // Alpha last and premultiplied: the order the picture comes in.
+      let picture = NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+        isPlanar: false, colorSpaceName: .deviceRGB,
+        bytesPerRow: width * 4, bitsPerPixel: 32),
+      let pixels = picture.bitmapData
+    else {
+      return nil
+    }
+    buffer.data.copyBytes(to: pixels, count: buffer.data.count)
+    let points = NSSize(
+      width: Double(width) / scale, height: Double(height) / scale)
+    picture.size = points
+    let image = NSImage(size: points)
+    image.addRepresentation(picture)
+    // The hot spot from the picture's top left, as NSCursor reads it.
+    return NSCursor(
+      image: image, hotSpot: NSPoint(x: hotX / scale, y: hotY / scale))
+  }
+}
+
 /// The picture that stands in the middle of the screen from the moment the
 /// app is launched until its first frame (I-106-Q3/Q4/Q5, user 2026-10-20:
 /// the teal A and the white name, nothing behind them — the desktop shows
@@ -913,6 +1012,7 @@ class MainFlutterWindow: NSWindow {
   /// Held for the channel's sake, like the handlers beside it.
   private var fullScreenSwitch: FullScreenSwitch?
   private var windowPlaceKeeper: WindowPlaceKeeper?
+  private var pictureCursors: PictureCursors?
 
   /// Held as a property for the same reason `penStreamHandler` is: the
   /// channel keeps no strong reference, and this object owns the open
@@ -948,6 +1048,10 @@ class MainFlutterWindow: NSWindow {
     // I-116: where the window stands, kept and put back.
     windowPlaceKeeper = WindowPlaceKeeper(
       window: self,
+      messenger: flutterViewController.engine.binaryMessenger)
+
+    // I-54 ⓔ · F-441: the cursors of one size, worn as the system's.
+    pictureCursors = PictureCursors(
       messenger: flutterViewController.engine.binaryMessenger)
 
     // PICK-2: the storage channel. macOS had none — `AppStorage` early

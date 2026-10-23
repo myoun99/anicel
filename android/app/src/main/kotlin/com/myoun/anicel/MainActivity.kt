@@ -189,6 +189,7 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        wearPictureCursors(flutterEngine)
     }
 
     // The battery as DeviceBattery.readingOf reads it - "percent", and
