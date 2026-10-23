@@ -26,7 +26,7 @@ void main() {
     coldPressTextureMask,
     pencilSideBrushTipMask,
     graphiteToothTextureMask,
-    colorFleckBrushTipMask,
+    colorClumpBrushTipMask,
   ];
 
   test('every bundled mask is 64 a side with an alpha per cell — but the '
@@ -39,7 +39,7 @@ void main() {
       'builtin-cold-press',
       'builtin-pencil-side',
       'builtin-graphite-tooth',
-      'builtin-color-flecks',
+      'builtin-color-clumps',
     };
     for (final mask in masks) {
       final side = wide.contains(mask.id) ? 256 : 64;
@@ -82,7 +82,8 @@ void main() {
       // Measured 2026-10-21 as they first shipped (F-433).
       'builtin-pencil-side': 14553373,
       'builtin-graphite-tooth': 9601082,
-      'builtin-color-flecks': 1085497,
+      // Measured 2026-10-23 as it first shipped (F-449).
+      'builtin-color-clumps': 807546,
     };
 
     expect(

@@ -415,7 +415,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // flow, step, both pressure rows and the dab turned at random every stamp
   // are what their `色鉛筆シャープ.anibrush` carried. ⛔ITS TIP IS NOT: theirs
   // was taken from another program's brush, so this one wears a scumble
-  // generated here to the same purpose ([colorFleckBrushTipMask]).
+  // generated here to the same purpose ([colorClumpBrushTipMask]).
   BrushPreset(
     id: const BrushPresetId('builtin-coloring-pencil'),
     name: 'Coloring Pencil',
@@ -425,7 +425,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 1.0,
       spacing: 0.0398,
       angleJitter: 1.0,
-      tips: [colorFleckBrushTipMask],
+      tips: [colorClumpBrushTipMask],
       sizePressureCurve: BrushPressureCurve(const [
         BrushCurvePoint(0.0, 0.1488),
         BrushCurvePoint(0.5247, 0.3274),

@@ -107,15 +107,17 @@ final BrushTipMask pencilSideBrushTipMask = _generatePencilSideMask();
 final BrushTipMask graphiteToothTextureMask = _generateGraphiteToothMask();
 
 /// A colouring pencil's scumble (F-433: the user's 「色鉛筆シャープ」 made into
-/// a built-in). Short wax flecks laid one way inside a wide ellipse, denser
-/// in clumps — a brush that turns every dab at random builds them into a
-/// soft, fibrous fill.
+/// a built-in). Soft wax clumps laid one way inside a wide ellipse, mostly
+/// bare between them — a brush that turns every dab at random builds them
+/// into a cloudy, grained fill. ↩️It was short strokes a few texels long
+/// (`builtin-color-flecks`, 10-21), which the user found far finer than
+/// their own brush (F-449): a new look is a new id.
 ///
 /// ⛔Not the tip the user's own brush wore: that one was taken from another
 /// program's brush (`tvpaint_色鉛筆_シャープ`), and a third party's brush may
 /// not ship here (`ip-review-clean`). This is generated afresh to the same
 /// purpose.
-final BrushTipMask colorFleckBrushTipMask = _generateColorFleckMask();
+final BrushTipMask colorClumpBrushTipMask = _generateColorClumpMask();
 
 const int _maskSize = 64;
 
@@ -595,22 +597,31 @@ int _texelHash(int x, int y) {
   return (hash ^ (hash >> 16)) & 0xFFFF;
 }
 
-/// Colour flecks ([colorFleckBrushTipMask]): 1,800 short strokes, each four
-/// to twenty-two texels long, nearly level, fading to its ends. Where one
-/// lands is drawn against the ellipse's falloff and a slow envelope, how
-/// strongly against clumps — so the patch is denser in places, the way wax
-/// catches on paper.
-BrushTipMask _generateColorFleckMask() {
+/// Colour clumps ([colorClumpBrushTipMask]): soft wax clumps laid one way
+/// inside a wide ellipse — each a flattened oval, fading from its middle,
+/// mottled by a fine noise within, sparse in most of the patch and heavy
+/// where they pile up. Where one lands is drawn against the ellipse's
+/// falloff and a slow envelope.
+///
+/// 🔬Sized against the tip the user's own brush wore (F-449, 2026-10-23:
+/// 「기존 tvp해당브러시 팁에 비해 … 분자들이 너무 작음. 그래서 너무 해칭이
+/// 세세해진느낌」), by its statistics, not its pixels: the length at which a
+/// texel stops resembling its neighbour (1/e of the autocorrelation) was 17
+/// along and 5 across there, against 5 and 1 for the strokes this replaced;
+/// the middle of the patch was mostly bare (four in five texels under a
+/// quarter) round a few dense clumps.
+BrushTipMask _generateColorClumpMask() {
   const size = 256;
   const centre = size / 2.0;
   const radius = size / 2.0 - 4.0;
-  const aspect = 2.2;
+  const aspect = 1.8;
   final envelope = _seamlessValueNoise(6, 0x1234567, size: size);
-  final clumps = _seamlessValueNoise(22, 0x0C0FFEE, size: size);
+  final mottle = _seamlessValueNoise(64, 0x0C0FFEE, size: size);
+  final fine = _seamlessValueNoise(128, 0x5EEDF1, size: size);
   final laid = List<double>.filled(size * size, 0);
   final draw = _Draws(0x5EED).next;
   var placed = 0;
-  while (placed < 1800) {
+  while (placed < 95) {
     final across = draw() * 2.0 - 1.0;
     final down = draw() * 2.0 - 1.0;
     final reach = across * across + down * down;
@@ -620,27 +631,40 @@ BrushTipMask _generateColorFleckMask() {
     final centreX = centre + across * radius;
     final centreY = centre + down / aspect * radius;
     final cell = centreY.floor() * size + centreX.floor();
-    if (draw() > (1.0 - reach) * (0.3 + 0.7 * envelope[cell])) {
+    if (draw() > (1.0 - reach * reach) * (0.3 + 0.7 * envelope[cell])) {
       continue;
     }
     placed += 1;
-    final length = 4.0 + draw() * 18.0;
-    final slope = (draw() * 2.0 - 1.0) * 0.25;
-    final clump = clumps[cell];
-    final strength = (0.1 + draw() * 0.45) * (0.35 + 1.3 * clump * clump);
-    for (var along = -length / 2.0; along <= length / 2.0; along += 0.5) {
-      final x = (centreX + along).round();
-      final y = (centreY + along * slope).round();
-      if (x < 0 || y < 0 || x >= size || y >= size) {
-        continue;
+    final halfLength = 13.0 + draw() * 26.0;
+    final halfHeight = halfLength * (0.2 + draw() * 0.1);
+    final slope = (draw() * 2.0 - 1.0) * 0.2;
+    final strength = 0.15 + draw() * 0.85;
+    final left = math.max(0, (centreX - halfLength).floor());
+    final right = math.min(size - 1, (centreX + halfLength).ceil());
+    for (var x = left; x <= right; x += 1) {
+      final dx = x - centreX;
+      final middle = centreY + dx * slope;
+      final top = math.max(0, (middle - halfHeight).floor());
+      final bottom = math.min(size - 1, (middle + halfHeight).ceil());
+      for (var y = top; y <= bottom; y += 1) {
+        final u = dx / halfLength;
+        final v = (y - middle) / halfHeight;
+        final reachIn = u * u + v * v;
+        if (reachIn >= 1.0) {
+          continue;
+        }
+        final index = y * size + x;
+        final fall = (1.0 - reachIn) * (1.0 - reachIn);
+        // The mottle read at half the column: twice as long as it is tall,
+        // as the clumps are.
+        final textured = mottle[y * size + x ~/ 2] * 0.75 + fine[index] * 0.25;
+        final grain = ((textured - 0.3) / (1.0 - 0.3)).clamp(0.0, 1.0);
+        laid[index] += strength * fall * grain * (1.0 - laid[index]);
       }
-      final fade = 1.0 - (2.0 * along / length).abs();
-      final index = y * size + x;
-      laid[index] += strength * fade * (1.0 - laid[index]);
     }
   }
   return _textureMask(
-    'builtin-color-flecks',
+    'builtin-color-clumps',
     size: size,
     (x, y, index) => 255 * laid[index].clamp(0.0, 1.0),
   );

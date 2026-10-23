@@ -221,7 +221,7 @@ void main() {
       // The user's own wore a tip taken from another program's brush; a
       // third party's brush may not ship (`ip-review-clean`).
       final coloring = byId('builtin-coloring-pencil').settings;
-      expect(coloring.tipMask?.id, 'builtin-color-flecks');
+      expect(coloring.tipMask?.id, 'builtin-color-clumps');
       expect(coloring.angleJitter, 1.0);
       expect(coloring.size, 454);
     });
