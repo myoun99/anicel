@@ -16,11 +16,13 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/painted_glyph_boxes.dart';
 import '../../helpers/run_edge_fixtures.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
@@ -57,12 +59,15 @@ void main() {
     return cel == null ? null : layer.frameById(cel)?.name;
   }
 
-  Layer rowOf(Map<int, TimelineExposure> timeline) => rederiveRunBehaviors(
+  Layer rowOf(
+    Map<int, TimelineExposure> timeline, {
+    (String, String) names = ('1', '2'),
+  }) => rederiveRunBehaviors(
     Layer(
       id: const LayerId('row'),
       name: 'A',
       frames: [
-        for (final (id, name) in [('a', '1'), ('b', '2')])
+        for (final (id, name) in [('a', names.$1), ('b', names.$2)])
           Frame(id: FrameId(id), duration: 1, strokes: const [], name: name),
       ],
       timeline: timeline,
@@ -72,14 +77,15 @@ void main() {
 
   // A run of two blocks, 0..3, that REPEATS to the cut's end: its ghost
   // prints the names 1 · 2 · 1 · 2 … from 4, and the X closes it at 16.
-  final repeated = rowOf({
+  Layer repeatedAs((String, String) names) => rowOf({
     0: const TimelineExposure.drawing(FrameId('a'), length: 2),
     2: const TimelineExposure.drawing(
       FrameId('b'),
       length: 2,
       endEdge: repeatMark,
     ),
-  });
+  }, names: names);
+  final repeated = repeatedAs(('1', '2'));
   // A block over 2..4 that HOLDS to the cut's end: its cells write nothing,
   // and the X closes it at 16.
   final held = rowOf({
@@ -93,6 +99,7 @@ void main() {
   TimelineRowCellsPainter painterFor(
     Layer layer, {
     TimelineGridTileStore? store,
+    ValueNotifier<int>? bucket,
   }) => TimelineRowCellsPainter(
     layer: layer,
     geometry: testFrameGeometry(
@@ -106,6 +113,8 @@ void main() {
     baseTextStyle: const TextStyle(fontSize: 11),
     tileStore: store,
     substrateGeneration: 'p:cut',
+    windowBucket: bucket,
+    viewportMainExtent: bucket == null ? 0 : 96,
   );
 
   group('which cells ink a ghost', () {
@@ -153,6 +162,37 @@ void main() {
         painter.bakedWordGrowingInto(5),
         isNull,
         reason: 'the ghost\'s 1 at 4 is laid over the tiles whole',
+      );
+    });
+
+    test('a ghost\'s name that grows into the window from before it is laid '
+        'by the row, whole', () {
+      final bucket = ValueNotifier<int>(2);
+      addTearDown(bucket.dispose);
+      // Wider than a cell, narrower than the two its ghost runs through.
+      final painter = painterFor(
+        repeatedAs(('1-2', '2-3')),
+        bucket: bucket,
+      );
+      final window = painter.visibleFrameWindow();
+      expect(window.startIndex, 6, reason: 'fixture');
+      final model = painter.cellModelAt(4);
+      final width = laidOutGlyph(
+        model.glyph,
+        painter.glyphStyleFor(model),
+      ).width;
+      expect(width, inExclusiveRange(24, 48), reason: 'fixture');
+      expect(
+        painter.bakedWordGrowingInto(6),
+        isNull,
+        reason: 'premise: the window\'s lead is a tile\'s, and no tile '
+            'lays a ghost\'s word',
+      );
+      final spy = _PaintSpy();
+      painter.paint(spy, const Size(built * 24, 28));
+      expect(
+        spy.boxes.map((box) => box.left),
+        anyElement(closeTo(painter.cellRectFor(4).left, 0.5)),
       );
     });
   });
@@ -208,29 +248,20 @@ void main() {
       painter.paint(spy, size);
       expect(spy.tiles, built ~/ 4, reason: 'premise: every span is tiled');
       expect(
-        spy.words,
-        painter.ghostInkCellsIn(0, built).length,
+        spy.boxes,
+        hasLength(painter.ghostInkCellsIn(0, built).length),
         reason: 'the six names and the X, and no word a tile holds',
       );
     });
   });
 }
 
-/// Counts what a paint lays: tiles, and the words it sets itself.
-class _PaintSpy implements Canvas {
+/// The words a paint sets itself, and the tiles it lays.
+class _PaintSpy extends PaintedGlyphBoxes {
   int tiles = 0;
-  int words = 0;
 
   @override
   void drawImageRect(ui.Image image, Rect src, Rect dst, Paint paint) {
     tiles += 1;
   }
-
-  @override
-  void drawParagraph(ui.Paragraph paragraph, Offset offset) {
-    words += 1;
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => null;
 }
