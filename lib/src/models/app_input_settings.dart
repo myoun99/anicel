@@ -62,6 +62,7 @@ class AppInputSettings {
     this.zoomCeilingPercent = defaultZoomCeilingPercent,
     // 🗣️I-54 (유저 2026-10-16): 「기본값은 십자가로 하잿나」.
     this.drawingCursor = DrawingCursor.crosshair,
+    this.touchIgnored = false,
   });
 
   /// The finger-count drag slots (PEN-7b), all user-assignable. PEN-12
@@ -266,6 +267,16 @@ class AppInputSettings {
   /// The cursor the drawing tools wear on the canvas.
   final DrawingCursor drawingCursor;
 
+  /// Every finger on the glass is nobody's — not a stroke, not a pan, not
+  /// a press on a button.
+  ///
+  /// 🗣️I-124 (유저 2026-10-22): 「터치 존재하는 태블릿으로 사용시, 키보드 써서
+  /// 터치 쓸일없는데 터치가 쓸데없이 작동해서 방해하는 일이 있음. 그럴때를 위해
+  /// 모든 터치입력 무시하는 옵션」. The fingers stay out at the one door the
+  /// platform's pointers come in by (`UiScaleBinding`), so no reader of a
+  /// pointer's kind has to ask this again. OFF by default.
+  final bool touchIgnored;
+
   AppInputSettings copyWith({
     TabletService? tabletService,
     double? pressureCurveGamma,
@@ -287,6 +298,7 @@ class AppInputSettings {
     bool? zoomCeilingOn,
     double? zoomCeilingPercent,
     DrawingCursor? drawingCursor,
+    bool? touchIgnored,
   }) => AppInputSettings(
     tabletService: tabletService ?? this.tabletService,
     pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
@@ -311,6 +323,7 @@ class AppInputSettings {
     zoomCeilingOn: zoomCeilingOn ?? this.zoomCeilingOn,
     zoomCeilingPercent: zoomCeilingPercent ?? this.zoomCeilingPercent,
     drawingCursor: drawingCursor ?? this.drawingCursor,
+    touchIgnored: touchIgnored ?? this.touchIgnored,
   );
 
   Map<String, dynamic> toJson() => {
@@ -334,6 +347,7 @@ class AppInputSettings {
     'zoomCeilingOn': zoomCeilingOn,
     'zoomCeilingPercent': zoomCeilingPercent,
     'drawingCursor': drawingCursor.name,
+    'touchIgnored': touchIgnored,
   };
 
   /// [json] as a number above zero, or [fallback] — a lock at nothing, or
@@ -427,6 +441,7 @@ class AppInputSettings {
     drawingCursor:
         DrawingCursor.values.asNameMap()[json['drawingCursor']] ??
         DrawingCursor.crosshair,
+    touchIgnored: json['touchIgnored'] as bool? ?? false,
   );
 
   @override
@@ -451,10 +466,11 @@ class AppInputSettings {
       listEquals(other.zoomSnapPercents, zoomSnapPercents) &&
       other.zoomCeilingOn == zoomCeilingOn &&
       other.zoomCeilingPercent == zoomCeilingPercent &&
-      other.drawingCursor == drawingCursor;
+      other.drawingCursor == drawingCursor &&
+      other.touchIgnored == touchIgnored;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     tabletService,
     pressureCurveGamma,
     speedReferencePixelsPerSecond,
@@ -475,7 +491,8 @@ class AppInputSettings {
     zoomCeilingOn,
     zoomCeilingPercent,
     drawingCursor,
-  );
+    touchIgnored,
+  ]);
 }
 
 /// The tablet backend choice (PEN-2). CSP's '사용할 태블릿 서비스'

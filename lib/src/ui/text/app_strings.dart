@@ -598,6 +598,7 @@ enum AppStrings {
   String get inputWheelClick => _s('inputWheelClick');
   String get inputPenTail => _s('inputPenTail');
   String get inputCanvasTouchHeading => _s('inputCanvasTouchHeading');
+  String get inputIgnoreTouch => _s('inputIgnoreTouch');
   String get inputDragOneFinger => _s('inputDragOneFinger');
   String get inputDragTwoFingers => _s('inputDragTwoFingers');
   String get inputDragThreeFingers => _s('inputDragThreeFingers');
@@ -2183,6 +2184,7 @@ enum AppStrings {
     'inputWheelClick': 'Wheel click / pen upper button',
     'inputPenTail': 'Pen tail (turn the pen over)',
     'inputCanvasTouchHeading': 'Canvas touch',
+    'inputIgnoreTouch': 'Ignore all touch',
     'inputDragOneFinger': '1-finger drag',
     'inputDragTwoFingers': '2-finger drag',
     'inputDragThreeFingers': '3-finger drag',
@@ -3488,6 +3490,7 @@ enum AppStrings {
     'inputWheelClick': 'ホイールクリック / ペンの上ボタン',
     'inputPenTail': 'ペンのお尻（ペンを裏返す）',
     'inputCanvasTouchHeading': 'カンバスのタッチ',
+    'inputIgnoreTouch': 'タッチをすべて無視',
     'inputDragOneFinger': '1本指ドラッグ',
     'inputDragTwoFingers': '2本指ドラッグ',
     'inputDragThreeFingers': '3本指ドラッグ',
@@ -5127,6 +5130,7 @@ enum AppStrings {
     'inputWheelClick': '휠 클릭 / 펜 위쪽 버튼',
     'inputPenTail': '펜 엉덩이(펜을 뒤집기)',
     'inputCanvasTouchHeading': '캔버스 터치',
+    'inputIgnoreTouch': '모든 터치 무시',
     'inputDragOneFinger': '한 손가락 드래그',
     'inputDragTwoFingers': '두 손가락 드래그',
     'inputDragThreeFingers': '세 손가락 드래그',
@@ -6777,6 +6781,7 @@ enum AppStrings {
     'inputWheelClick': 'Clic molette / bouton supérieur du stylet',
     'inputPenTail': 'Talon du stylet (retourner le stylet)',
     'inputCanvasTouchHeading': 'Toucher sur le canevas',
+    'inputIgnoreTouch': 'Ignorer tout le tactile',
     'inputDragOneFinger': 'Glissement à 1 doigt',
     'inputDragTwoFingers': 'Glissement à 2 doigts',
     'inputDragThreeFingers': 'Glissement à 3 doigts',
@@ -8497,6 +8502,7 @@ enum AppStrings {
     'inputWheelClick': '滚轮点击 / 笔上键',
     'inputPenTail': '笔尾（把笔倒过来）',
     'inputCanvasTouchHeading': '画布触摸',
+    'inputIgnoreTouch': '忽略所有触摸',
     'inputDragOneFinger': '单指拖动',
     'inputDragTwoFingers': '双指拖动',
     'inputDragThreeFingers': '三指拖动',

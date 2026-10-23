@@ -6,7 +6,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import '../models/app_input_settings.dart';
 import 'debug/input_inspector.dart';
+import 'input/ignored_fingers.dart';
 import 'input/pen_echoes.dart';
 import 'look_only_frames.dart';
 import 'platform_semantics_gate.dart';
@@ -126,6 +128,10 @@ mixin UiScaleViewConfiguration on RendererBinding {
   /// told from one the app dropped.
   final PenEchoes _penEchoes = PenEchoes();
 
+  /// The fingers, while the user has them ignored (I-124,
+  /// [AppInputSettings.touchIgnored]) — on every platform, at the same door.
+  final IgnoredFingers _ignoredFingers = IgnoredFingers();
+
   /// 🚨F-427 — the window hears again ([windowHearsAgainChannel]): every
   /// pen in range left while it could not hear, and leaves now, as a pen's
   /// own leave does.
@@ -139,6 +145,12 @@ mixin UiScaleViewConfiguration on RendererBinding {
   }
 
   bool _letIn(PointerEvent event) {
+    if (!_ignoredFingers.admit(
+      event,
+      ignoring: AppInput.settings.value.touchIgnored,
+    )) {
+      return false;
+    }
     if (defaultTargetPlatform != TargetPlatform.windows ||
         _penEchoes.admit(event)) {
       return true;

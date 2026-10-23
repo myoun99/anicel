@@ -401,4 +401,19 @@ void main() {
     expect(AppInput.settings.value.strokeFingerModifier, isTrue);
     expect(AppInput.settings.value.extraFingerModifier, navigation);
   });
+
+  // 🗣️I-124 (유저 2026-10-22): 「모든 터치입력 무시하는 옵션」.
+  testWidgets('ignoring every finger is a switch in the touch section: off '
+      'as it comes, and pressed it is on', (tester) async {
+    await pumpDialog(tester);
+    final row = find.byKey(const ValueKey<String>('settings-ignore-touch'));
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    expect(AppInput.settings.value.touchIgnored, isFalse);
+
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+
+    expect(AppInput.settings.value.touchIgnored, isTrue);
+  });
 }

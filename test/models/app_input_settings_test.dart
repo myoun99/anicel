@@ -73,6 +73,15 @@ void main() {
     expect(AppInputSettings.fromJson(before).strokeFingerModifier, isFalse);
   });
 
+  // 🗣️I-124 (유저 2026-10-22): 「모든 터치입력 무시하는 옵션」 — an option, so
+  // the fingers work until the user says otherwise, and a file written
+  // before the switch was there reads them working too.
+  test('the fingers are heard until the switch says otherwise', () {
+    expect(const AppInputSettings().touchIgnored, isFalse);
+    final before = const AppInputSettings().toJson()..remove('touchIgnored');
+    expect(AppInputSettings.fromJson(before).touchIgnored, isFalse);
+  });
+
   test('json + store round-trips', () async {
     const settings = AppInputSettings(
       touchDragOneFinger: CanvasTouchDragAction.flip,
@@ -319,6 +328,7 @@ void main() {
         navigationModifierRotationLock: !base.navigationModifierRotationLock,
       ),
       'zoomCeilingOn': base.copyWith(zoomCeilingOn: !base.zoomCeilingOn),
+      'touchIgnored': base.copyWith(touchIgnored: !base.touchIgnored),
       // Not a bool, and held to the same rule: a lock whose NUMBER was not
       // in `==` could be typed and never stored.
       'zoomCeilingPercent': base.copyWith(

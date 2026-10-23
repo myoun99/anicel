@@ -130,6 +130,16 @@ class InputSettingsSection extends StatelessWidget {
               strings.inputCanvasTouchHeading,
               style: Theme.of(context).textTheme.labelLarge,
             ),
+            // 🗣️I-124 (유저 2026-10-22): 「모든 터치입력 무시하는 옵션」 —
+            // above the rows it would leave with nothing to answer.
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-ignore-touch'),
+              label: strings.inputIgnoreTouch,
+              value: settings.touchIgnored,
+              onChanged: (ignored) => session.setInputSettings(
+                settings.copyWith(touchIgnored: ignored),
+              ),
+            ),
             _EnumChoiceRow<CanvasTouchDragAction>(
               rowKey: 'settings-touch-slot-1',
               label: strings.inputDragOneFinger,
