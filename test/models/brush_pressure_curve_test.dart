@@ -42,6 +42,19 @@ void main() {
       );
     });
 
+    test('a full press lands ON the last point, not a hair short', () {
+      // Solved for t, this last span arrives at 0.9999999999999989: the
+      // root lands a rounding off 1 for about one curve in six (📏 F-456,
+      // 100,000 random spans).
+      final curve = BrushPressureCurve(const [
+        BrushCurvePoint(0.0, 0.0),
+        BrushCurvePoint(0.4, 0.1),
+        BrushCurvePoint(0.9, 0.2),
+        BrushCurvePoint(1.0, 1.0),
+      ]);
+      expect(curve.evaluate(1.0), 1.0);
+    });
+
     test('🚨one point bends it ONE way — an S takes two (유저 F-456: 「우리는 '
         '포인트 하나라도 s자로 고정인데, 클튜는 s자만드려면 두 포인트」)', () {
       // ↩️Through the point, the monotone Hermite bent this one into an S:
