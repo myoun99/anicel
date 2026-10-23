@@ -42,6 +42,7 @@ class ProjectResume {
     this.storyboardZoom,
     this.frameAxisOffsets = const {},
     this.layerAxisOffsets = const {},
+    this.showSeconds = false,
     this.laneGraphs = LaneGraphsView.none,
     this.mediaFileViews = const {},
   });
@@ -83,6 +84,12 @@ class ProjectResume {
   /// pixels (F-267); a rail left at its start is not here.
   final Map<String, double> layerAxisOffsets;
 
+  /// Whether the frame panels write a frame as seconds+frames (초+코마 표시,
+  /// F-354 — `PanelViewMemory.showSeconds`): a view setting kept here as the
+  /// zooms are. Turning it is no edit, and the file still keeps it; a file
+  /// that says nothing writes frames.
+  final bool showSeconds;
+
   /// The header graphs standing open — how tall, plotting what, enlarged or
   /// not, their pen up or not — and the lanes pinned to them (I-89 ③): a
   /// view setting kept here as the zooms are (유저 답 F-360-Q1 「보기 설정처럼
@@ -110,6 +117,7 @@ class ProjectResume {
     if (storyboardZoom != null) 'storyboardZoom': storyboardZoom,
     if (frameAxisOffsets.isNotEmpty) 'frameAxisOffsets': frameAxisOffsets,
     if (layerAxisOffsets.isNotEmpty) 'layerAxisOffsets': layerAxisOffsets,
+    if (showSeconds) 'showSeconds': true,
     if (laneGraphs.open.isNotEmpty)
       'laneGraphs': {
         for (final MapEntry(:key, value: graph) in laneGraphs.open.entries)
@@ -153,6 +161,7 @@ class ProjectResume {
       storyboardZoom: _positive(json['storyboardZoom']),
       frameAxisOffsets: _positiveByName(json['frameAxisOffsets']),
       layerAxisOffsets: _positiveByName(json['layerAxisOffsets']),
+      showSeconds: json['showSeconds'] == true,
       laneGraphs: LaneGraphsView(
         open: {
           for (final MapEntry(:key, :value)

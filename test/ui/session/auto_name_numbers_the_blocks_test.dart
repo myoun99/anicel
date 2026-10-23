@@ -296,13 +296,13 @@ void main() {
       ['$where · 3 · 3', '$where · 4 · 4'],
       reason: 'both collisions listed',
     );
-    s.appSettings.showSecondsDisplay.value = true;
+    s.panelViews.showSeconds.value = true;
     expect(
       naming.plan(naming.timelineTargets!, from: 1).joinLines,
       ['$where · 3 · 0+3', '$where · 4 · 0+4'],
       reason: 'the notice follows the seconds display',
     );
-    s.appSettings.showSecondsDisplay.value = false;
+    s.panelViews.showSeconds.value = false;
     expect(plan.rows.single.joins, {three: one, four: two});
     expect(reads(s, row, 4), ['1', '2', '3', '4'], reason: 'nothing written');
 

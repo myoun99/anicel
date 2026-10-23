@@ -1356,7 +1356,7 @@ class EditorSessionManager extends ChangeNotifier
   String framePlaceLabel(int frameIndex) => timelineFramePlaceLabel(
     frameIndex: frameIndex,
     framesPerSecond: projectSettings.projectFrameRate.countingBase,
-    showSeconds: appSettings.showSecondsDisplay.value,
+    showSeconds: panelViews.showSeconds.value,
   );
 
   // ── the track SE display: its own object, in its own file ───────────

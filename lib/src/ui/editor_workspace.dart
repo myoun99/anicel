@@ -987,9 +987,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       );
 
   /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation) —
-  /// the app's ([EditorAppSettings.showSecondsDisplay]).
+  /// the PROJECT's, held by the session and saved beside its file
+  /// (`PanelViewMemory.showSeconds`, F-354). ↩️It was the window's, one for
+  /// every tab.
   ValueNotifier<bool> get _showSecondsDisplay =>
-      widget.session.appSettings.showSecondsDisplay;
+      widget.session.panelViews.showSeconds;
 
   /// Each frame panel's layer-rail WINDOW size, set by its splitter.
   ///

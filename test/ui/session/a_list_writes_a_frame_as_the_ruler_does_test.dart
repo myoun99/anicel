@@ -94,13 +94,13 @@ void main() {
           'ruler over it',
     );
 
-    session.appSettings.showSecondsDisplay.value = true;
+    session.panelViews.showSeconds.value = true;
     expect(uses(), ['Video · S1 · 0+15']);
 
     session.projectSettings.setProjectFps(12);
     expect(uses(), ['Video · S1 · 1+3'], reason: 'a second is twelve now');
 
-    session.appSettings.showSecondsDisplay.value = false;
+    session.panelViews.showSeconds.value = false;
     expect(uses(), ['Video · S1 · 15']);
   });
 }

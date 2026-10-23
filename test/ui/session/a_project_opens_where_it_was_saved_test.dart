@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
+import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart'
+    show timelineFramePlaceLabel;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
@@ -343,6 +345,61 @@ void main() {
     reopened.dispose();
   });
 
+  test('🚨the frames↔seconds display comes back with the file — through the '
+      'append, and turned back too — and turning it is no edit (F-354, 유저 '
+      '2026-10-13: 「초+코마 표시 설정한게 저장되도록. 파일안에. 열렸을때 '
+      '같은상태 유지하고싶어서」)', () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    final steps = s.historyManager.undoCount;
+    s.panelViews.showSeconds.value = true;
+    expect(
+      s.historyManager.undoCount,
+      steps,
+      reason: 'no undo step takes the display back',
+    );
+    expect(
+      s.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'and turning it marks nothing unsaved',
+    );
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    expect(reopened.panelViews.showSeconds.value, isTrue);
+    expect(
+      reopened.framePlaceLabel(30),
+      timelineFramePlaceLabel(
+        frameIndex: 30,
+        framesPerSecond: reopened.projectSettings.projectFrameRate.countingBase,
+        showSeconds: true,
+      ),
+      reason: 'a list that names a frame writes it as the ruler does',
+    );
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+    reopened.panelViews.showSeconds.value = false;
+    await reopened.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    reopened.dispose();
+
+    final again = await openedSession(projectPath);
+    expect(
+      again.panelViews.showSeconds.value,
+      isFalse,
+      reason: 'turned back to frames, the file keeps that too',
+    );
+    again.dispose();
+  });
+
   test('🚨each file comes back at the page and the framing it was left at in '
       'the viewers — through the append too — and none of it is an edit '
       '(F-382, 유저 2026-10-17: 「해당 파일에 저장한단느낌」)', () async {
@@ -403,6 +460,11 @@ void main() {
     ]) {
       expect(offset.value, 0);
     }
+    expect(
+      reopened.panelViews.showSeconds.value,
+      isFalse,
+      reason: 'frames, as a new project writes them',
+    );
     reopened.dispose();
   });
 

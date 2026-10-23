@@ -223,7 +223,8 @@ void main() {
 
     // F-284 (유저 2026-10-04: 「이런 표기는 초+코마 표기로 바꾼거에
     // 대응하도록 법 통일」): the lists that name a frame are written by the
-    // session, and this button is what they follow — one toggle, the app's.
+    // session, and this button is what they follow — one toggle, the
+    // project's (F-354).
     String placeInALine() => tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session

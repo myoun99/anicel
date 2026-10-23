@@ -5,7 +5,8 @@ import '../timeline/layer_rail_window.dart' show LayerRailId;
 /// WHERE THIS PROJECT'S PANELS WERE LEFT — the conte's zoom, and how far each
 /// frame panel is scrolled along both of its axes (F-267, 유저 2026-10-01:
 /// 「콘티패널,타임라인패널 스크롤상태, 콘티패널, 그리고 각 컷들 줌 상태도
-/// 프로젝트 파일에 기록해서 다시 열면 그대로 열리도록」).
+/// 프로젝트 파일에 기록해서 다시 열면 그대로 열리도록」) — and how they write
+/// a frame (F-354).
 ///
 /// The PROJECT's, as `TimelineZoomMemory` and the canvas framing are (I-7, a
 /// project per tab). ↩️The window held these, one set for every tab: a
@@ -21,6 +22,19 @@ class PanelViewMemory {
   );
 
   static const double defaultStoryboardPixelsPerFrame = 8;
+
+  /// The frames↔seconds DISPLAY (초+코마 표시): how a frame's place and a
+  /// length are written — the rulers, the block words, and every list that
+  /// names a frame (`ProjectAccess.framePlaceLabel`).
+  ///
+  /// 🗣️F-354 (유저 2026-10-13): 「초+코마 표시 설정한게 저장되도록. 파일안에.
+  /// 열렸을때 같은상태 유지하고싶어서」 — so it is the project's, saved beside
+  /// it as the zoom is. ↩️It was the window's (`EditorAppSettings`), one
+  /// for every tab and forgotten at every restart; before that, until F-284
+  /// (유저 2026-10-04: 「이런 표기는 초+코마 표기로 바꾼거에 대응하도록 법
+  /// 통일」), the workspace's — where the lists the session's verbs write
+  /// could not read it. The session holds this, so they still can.
+  final ValueNotifier<bool> showSeconds = ValueNotifier(false);
 
   /// Where each frame grid's FRAME axis is scrolled to, in pixels at that
   /// grid's own zoom, one per rail ([LayerRailId]): the grid and its folded
@@ -57,6 +71,7 @@ class PanelViewMemory {
 
   void dispose() {
     storyboardPixelsPerFrame.dispose();
+    showSeconds.dispose();
     for (final offset in [
       ...frameAxisOffsets.values,
       ...layerAxisOffsets.values,
