@@ -1,4 +1,5 @@
 ﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_texture_mode.dart';
@@ -106,6 +107,33 @@ void main() {
       final brush = BrushSettings(textureMode: BrushTextureMode.height);
       expect(BrushSettings.fromJson(brush.toJson()), brush);
       expect(BrushSettings().toJson().containsKey('textureMode'), isFalse);
+    });
+
+    test('🚨pressure on a target with no legacy key survives the round trip '
+        '— the pencil pressing into the tooth (F-451)', () {
+      final curve = BrushPressureCurve.linearFrom(0.5);
+      final brush = BrushSettings(
+        sizePressureCurve: curve,
+        curves: {
+          for (final target in [
+            BrushPressureTarget.textureDensity,
+            BrushPressureTarget.roundness,
+            BrushPressureTarget.spacing,
+          ])
+            (target, BrushInputSource.pressure): curve,
+        },
+      );
+      final json = brush.toJson();
+      expect(BrushSettings.fromJson(json), brush);
+      expect(
+        (json['curves'] as Map).keys,
+        unorderedEquals([
+          'textureDensity.pressure',
+          'roundness.pressure',
+          'spacing.pressure',
+        ]),
+        reason: 'the four legacy keys are not written twice',
+      );
     });
 
     test('fromJson supports legacy color/size/opacity JSON', () {

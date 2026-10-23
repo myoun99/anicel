@@ -174,11 +174,24 @@ class BrushSettings {
   /// How hard this brush's edge lands — see [BrushShape.antiAlias].
   BrushAntiAlias get antiAlias => shape.antiAlias;
 
-  /// The curves the four legacy JSON keys cannot express.
-  Map<BrushDynamicsKey, BrushPressureCurve> get _nonPressureCurves => {
-    for (final entry in shape.curves.entries)
-      if (entry.key.$2 != BrushInputSource.pressure) entry.key: entry.value,
-  };
+  /// The curves the four legacy JSON keys cannot express — read off the map
+  /// those four keys are written from ([brushPressureCurves]).
+  ///
+  /// ↩️It kept every source but pressure, so pressure on any other target —
+  /// roundness, spacing, the texture's density (F-451, the pencil pressing
+  /// into the tooth) — was written nowhere and lost on the next save.
+  Map<BrushDynamicsKey, BrushPressureCurve> get _curvesNoLegacyKeyHolds {
+    final legacy = brushPressureCurves(
+      size: sizePressureCurve,
+      opacity: opacityPressureCurve,
+      flow: flowPressureCurve,
+      hardness: hardnessPressureCurve,
+    );
+    return {
+      for (final entry in shape.curves.entries)
+        if (!legacy.containsKey(entry.key)) entry.key: entry.value,
+    };
+  }
 
   /// Ground-colour mixing — see [BrushShape.mixesGroundColor].
   bool get mixesGroundColor => shape.mixesGroundColor;
@@ -306,7 +319,7 @@ class BrushSettings {
     if (hardnessPressureCurve != null)
       'hardnessPressureCurve': hardnessPressureCurve!.toJson(),
     // Every OTHER source — see [_curvesToJson].
-    ..._curvesToJson(_nonPressureCurves),
+    ..._curvesToJson(_curvesNoLegacyKeyHolds),
     'roundness': roundness,
     'angleDegrees': angleDegrees,
     if (withMasks && tips.isNotEmpty) 'tipMask': tips.first.toJson(),
@@ -586,7 +599,8 @@ void _validateNonNegativeFinite(double value, String fieldName) {
 /// the exact defect that round set out to end. Found by adversarial review
 /// 2026-09-09, after the round had already claimed to have fixed it.
 ///
-/// ⚠️Pressure entries stay in the four legacy keys and are NOT repeated here.
+/// ⚠️The four legacy pressure entries stay in their keys and are NOT repeated
+/// here; pressure on any other target has no key of its own and is.
 ///
 /// Paired with [_curvesFromJson] on purpose: one place spells the
 /// `"<target>.<source>"` key, one place reads it, and they sit together.
