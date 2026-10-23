@@ -1,7 +1,7 @@
 import 'app_tooltip.dart';
 import 'package:flutter/material.dart';
 
-import '../input/control_press_claim.dart';
+import 'app_icon_button.dart';
 import 'boolean_dot.dart';
 
 /// THE settings row pair — a label, a control, and the explanation as a
@@ -22,13 +22,20 @@ import 'boolean_dot.dart';
 /// 유저 2026-09-24 (board `one-boolean-row-shape-Q1`): 「설정 줄 하나로」.
 /// The brush settings panel's switches pressed only at the ring, and the
 /// export and import windows' put the ring on the LEFT and pressed only
-/// there; they are this row now — the whole row presses, the ring sits on
-/// the right, 「라벨을 눌러도 켜지고 꺼진다」. `one_boolean_control_test`
-/// holds the line.
+/// there; they are this row now — the ring sits on the right.
+/// `one_boolean_control_test` holds the line.
+///
+/// 🚨★★★ONLY THE RING PRESSES; THE LABEL IS WORDS — 유저 2026-10-23 (board
+/// `F-439-Q1`): 「링만 컨트롤, 라벨은 글자」. A drag that starts on the label
+/// scrolls the window under it, and a press there does nothing. ↩️09-24 made
+/// the whole row the control (「라벨을 눌러도 켜지고 꺼진다」), and with the
+/// press law a drag that began anywhere on a row was the row's: a window of
+/// switch rows (Preferences ▸ Input) left a pen almost nowhere to start a
+/// scroll (F-439).
 ///
 /// [tileKey] goes on the TILE, not on the wrapper: a key that lands on the
-/// `Tooltip` would still FIND the row and no longer reach it, so a tap on it
-/// would hit the tooltip.
+/// `Tooltip` would still FIND the row and no longer reach it. A test that
+/// presses the row presses its ring (`pressRingIn`).
 ///
 /// ⚠️The row holds no value of its own — it is a plain `ListTile` around a
 /// [BooleanDot]. Read the value where it lives:
@@ -76,46 +83,59 @@ class SettingsSwitchRow extends StatelessWidget {
   /// See [BooleanDot.inPickOneGroup].
   final bool inPickOneGroup;
 
-  /// 🚨★★★The row CLAIMS ITS PRESS, like every other control in the app —
-  /// the Preferences window scrolls, and a mouse is hardcoded to a ONE PIXEL
-  /// drag threshold, so a click that wobbled here used to be handed to the
-  /// window and the toggle cancelled. 유저 answered the shape on board
-  /// `press-law-switches`: **탭만**. The claim sits INSIDE the tooltip: a
-  /// wrapper outside one is not the thing the pointer lands on.
+  /// The ring's key — the tile's, said of its ring, where the tile has one
+  /// a test can read.
+  String get _ringKeyValue => switch (tileKey) {
+    ValueKey<String>(:final value) => '$value-ring',
+    _ => '$label-ring',
+  };
+
+  /// 🚨★★★The ring CLAIMS ITS PRESS, like every other control in the app —
+  /// a mouse is hardcoded to a ONE PIXEL drag threshold, so a click that
+  /// wobbled used to be handed to the scrolling window and the toggle
+  /// cancelled. 유저 answered the shape on board `press-law-switches`:
+  /// **탭만**. The ring is the app's ring as a button of its own
+  /// ([BooleanDotButton], guide-sym ⑥⑧: 「앞으로 이런 불리언값 바꾸는 버튼은
+  /// 이걸 공통적으로 사용」), so it claims as every button does.
   @override
   Widget build(BuildContext context) {
-    final enabled = onChanged != null;
+    final changed = onChanged;
+    final enabled = changed != null;
     return settingsHelpTooltip(
       help,
-      ControlPressClaim(
-        onPressed: enabled ? () => onChanged!(!value) : null,
-        // 🚨THE SHARED BOOLEAN (guide-sym ⑥⑧: 「앞으로 이런 불리언값 바꾸는
-        // 버튼은 이걸 공통적으로 사용」): the ring, dotted when on. The row
-        // draws it and keeps the press — the whole row is the control, as
-        // it always was, and a button of its own in here would fire twice.
-        child: ListTile(
-          key: tileKey,
-          // Flush — unless the surface keeps a column at the end of its
-          // rows (a tool's settings: its ring stands where the boxes end).
-          contentPadding:
-              ListTileTheme.of(context).contentPadding ?? EdgeInsets.zero,
-          // Dense — unless the surface it stands on says otherwise. A dense
-          // tile sets its name at 13 whatever its theme says, so a surface
-          // whose rows are named in a style of its own (the tool settings
-          // panel, tool-settings-panel-tidy 2026-10-10: 「이름 글자 하나」)
-          // takes the density off with that style.
-          dense: ListTileTheme.of(context).dense ?? true,
-          enabled: enabled,
-          leading: leading,
-          minLeadingWidth: leading == null ? null : 0,
-          horizontalTitleGap: leading == null ? null : 6,
-          title: Text(label),
-          trailing: BooleanDot(
-            value: value,
-            mixed: mixed,
-            inPickOneGroup: inPickOneGroup,
-            enabled: enabled,
+      ListTile(
+        key: tileKey,
+        // Flush — unless the surface keeps a column at the end of its
+        // rows (a tool's settings: its ring stands where the boxes end).
+        contentPadding:
+            ListTileTheme.of(context).contentPadding ?? EdgeInsets.zero,
+        // Dense — unless the surface it stands on says otherwise. A dense
+        // tile sets its name at 13 whatever its theme says, so a surface
+        // whose rows are named in a style of its own (the tool settings
+        // panel, tool-settings-panel-tidy 2026-10-10: 「이름 글자 하나」)
+        // takes the density off with that style.
+        dense: ListTileTheme.of(context).dense ?? true,
+        enabled: enabled,
+        leading: leading,
+        minLeadingWidth: leading == null ? null : 0,
+        horizontalTitleGap: leading == null ? null : 6,
+        title: Text(label),
+        trailing: BooleanDotButton(
+          keyValue: _ringKeyValue,
+          tooltip: label,
+          value: value,
+          mixed: mixed,
+          inPickOneGroup: inPickOneGroup,
+          // The ring drawn where and as it was before it pressed: a box its
+          // glyph wide, so its right edge stays on the grid's end (ONE
+          // GRID), and no taller than the shortest row it stands in (a
+          // tool's settings row).
+          size: AppIconButtonBox(
+            width: IconTheme.of(context).size!,
+            height: AppIconButtonSize.bar.height,
+            iconSize: IconTheme.of(context).size!,
           ),
+          onChanged: changed,
         ),
       ),
     );

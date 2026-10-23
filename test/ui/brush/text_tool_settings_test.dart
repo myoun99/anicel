@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/cel_text_hand.dart';
 import '../../helpers/tool_setting_action_probe.dart';
 
@@ -287,7 +288,7 @@ void main() {
     testWidgets('a row pressed sets the NEXT text', (tester) async {
       final hand = await pumpSettings(tester);
 
-      await tester.tap(row('bold'));
+      await tester.pressRingIn(row('bold'));
       await tester.pump();
       await tester.tap(row('align-right'));
       await tester.pump();
@@ -504,7 +505,7 @@ void main() {
 
       await tester.ensureVisible(row('antialias'));
       await tester.pump();
-      await tester.tap(row('antialias'));
+      await tester.pressRingIn(row('antialias'));
       await tester.pump();
 
       expect(
@@ -560,7 +561,7 @@ void main() {
 
         await tester.ensureVisible(row(name));
         await tester.pump();
-        await tester.tap(row(name));
+        await tester.pressRingIn(row(name));
         await tester.pump();
 
         final spans = landedOn(hand.cel).spans;
@@ -583,7 +584,7 @@ void main() {
         );
         await tester.ensureVisible(row(name));
         await tester.pump();
-        await tester.tap(row(name));
+        await tester.pressRingIn(row(name));
         await tester.pump();
         final worn = landedOn(hand.cel);
         // One run of them bare again, by hand: the two disagree.
@@ -599,7 +600,7 @@ void main() {
 
         await tester.ensureVisible(row(name));
         await tester.pump();
-        await tester.tap(row(name));
+        await tester.pressRingIn(row(name));
         await tester.pump();
 
         expect(
@@ -623,7 +624,7 @@ void main() {
 
       await tester.ensureVisible(row('antialias'));
       await tester.pump();
-      await tester.tap(row('antialias'));
+      await tester.pressRingIn(row('antialias'));
       await tester.pump();
 
       expect(landedOn(hand.cel).spans.single.style.antialias, isTrue);
@@ -698,7 +699,7 @@ void main() {
         ]),
       );
 
-      await tester.tap(row('bold'));
+      await tester.pressRingIn(row('bold'));
       await tester.pump();
 
       expect(

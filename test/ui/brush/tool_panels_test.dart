@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 
+import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/tool_setting_action_probe.dart';
 
 /// R11-④: the Tool Library / Tool Settings panels follow the active tool.
@@ -885,7 +886,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(
+      await tester.pressRingIn(
         find.byKey(const ValueKey<String>('fill-anti-alias-switch')),
       );
       await tester.pump();

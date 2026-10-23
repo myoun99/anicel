@@ -6,6 +6,8 @@ import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 
+import '../helpers/boolean_dot_probe.dart';
+
 /// R26 (C2): the Select tool's mask knobs — sliders/switch render and
 /// plumb SelectionMaskOptions changes back out.
 void main() {
@@ -39,7 +41,7 @@ void main() {
     );
     expect(find.textContaining('+3 px'), findsOneWidget);
 
-    await tester.tap(
+    await tester.pressRingIn(
       find.byKey(const ValueKey<String>('selection-anti-alias-switch')),
     );
     await tester.pump();

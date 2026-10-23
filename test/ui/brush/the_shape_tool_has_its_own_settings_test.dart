@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
+import '../../helpers/boolean_dot_probe.dart';
+
 /// I-69 — the shape tool's own settings, as 유저 answered them
 /// (2026-10-08): Q1 「일반」 · Q5 「설정 스위치 + Shift」 · Q7 「새
 /// 도형도구에서도 선/채움을 고르는 줄」 · Q8 「모서리: 각지게 | 둥글게」,
@@ -395,7 +397,7 @@ void main() {
       expect(pill(tester, 'corners-round').selected, isTrue);
 
       expect(row(tester, 'anti-alias').value, isTrue);
-      await tester.tap(
+      await tester.pressRingIn(
         find.byKey(const ValueKey('shape-tool-anti-alias-switch')),
       );
       await tester.pump();
@@ -463,7 +465,7 @@ void main() {
         final tools = await pump(tester, state);
         expect(row(tester, 'ratio-lock').value, isFalse);
 
-        await tester.tap(
+        await tester.pressRingIn(
           find.byKey(const ValueKey('shape-tool-ratio-lock-switch')),
         );
         await tester.pump();

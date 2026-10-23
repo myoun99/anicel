@@ -18,6 +18,8 @@ import 'package:anicel/src/ui/panels/editor_panel_frame.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import 'package:anicel/src/ui/widgets/tip_direction_popup.dart';
 
+import '../helpers/boolean_dot_probe.dart';
+
 void main() {
   testWidgets('EditorPanelFrame renders toolbar and body at small sizes', (
     tester,
@@ -181,6 +183,13 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    Future<void> press(String key) async {
+      final row = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(row);
+      await tester.pressRingIn(row);
+      await tester.pumpAndSettle();
+    }
+
     final read = await _pumpPanel(
       tester,
       initial: BrushToolState.defaults.copyWith(
@@ -188,7 +197,7 @@ void main() {
       ),
     );
     const off = BrushCorrection(steadies: false, stabilization: 40);
-    await tap('brush-tool-stabilizer-on');
+    await press('brush-tool-stabilizer-on');
     expect(read().correction, off);
 
     final slider = find.byKey(
@@ -200,7 +209,7 @@ void main() {
     await tap('brush-tool-steadying-by-speed-slow');
     expect(read().correction, off, reason: 'dim: neither moves');
 
-    await tap('brush-tool-stabilizer-on');
+    await press('brush-tool-stabilizer-on');
     expect(read().correction, const BrushCorrection(stabilization: 40));
   });
 
@@ -580,7 +589,7 @@ void main() {
         const ValueKey<String>('brush-tool-mixing-toggle'),
       );
       await tester.ensureVisible(toggle);
-      await tester.tap(toggle);
+      await tester.pressRingIn(toggle);
       await tester.pumpAndSettle();
 
       expect(read().mixesGroundColor, isTrue);
@@ -621,7 +630,7 @@ void main() {
         const ValueKey<String>('brush-tool-scatter-both-axes-toggle'),
       );
       await tester.ensureVisible(axes);
-      await tester.tap(axes);
+      await tester.pressRingIn(axes);
       await tester.pumpAndSettle();
 
       expect(read().scatterRadiusRatio, greaterThan(0));
@@ -686,6 +695,13 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    Future<void> press(String key) async {
+      final row = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(row);
+      await tester.pressRingIn(row);
+      await tester.pumpAndSettle();
+    }
+
     const toggles = [
       'brush-tool-post-by-speed-toggle',
       'brush-tool-post-by-view-scale-toggle',
@@ -700,7 +716,7 @@ void main() {
     );
     await tap('brush-tool-steadying-by-speed-slow');
     for (final key in toggles) {
-      await tap(key);
+      await press(key);
     }
     expect(
       read().correction,
@@ -709,12 +725,12 @@ void main() {
     );
     // 角をとがらせる sits under no switch in Clip Studio's group: it is
     // never dim (F-418-Q11).
-    await tap('brush-tool-sharpen-corners');
+    await press('brush-tool-sharpen-corners');
     expect(
       read().correction,
       BrushCorrection.none.copyWith(sharpenCorners: true),
     );
-    await tap('brush-tool-sharpen-corners');
+    await press('brush-tool-sharpen-corners');
     expect(read().correction, BrushCorrection.none, reason: 'and off again');
 
     read = await _pumpPanel(
@@ -723,10 +739,10 @@ void main() {
         correction: const BrushCorrection(postStrength: 20),
       ),
     );
-    await tap('brush-tool-sharpen-corners');
+    await press('brush-tool-sharpen-corners');
     await tap('brush-tool-steadying-by-speed-fast');
     for (final key in toggles) {
-      await tap(key);
+      await press(key);
     }
     expect(
       read().correction,

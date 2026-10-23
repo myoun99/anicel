@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/ui_scale.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/boolean_dot_probe.dart';
+
 void main() {
   late EditorSessionManager session;
 
@@ -128,11 +130,11 @@ void main() {
     testWidgets('a press flips the live setting, and a second one puts it '
         'back', (tester) async {
       await pump(tester);
-      await tester.tap(find.byKey(row));
+      await tester.pressRingIn(find.byKey(row));
       await tester.pump();
       expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);
       expect(shown(tester), isTrue);
-      await tester.tap(find.byKey(row));
+      await tester.pressRingIn(find.byKey(row));
       await tester.pump();
       expect(AppFrameGridSettings.settings.value.blockFrameLines, isFalse);
       expect(shown(tester), isFalse);

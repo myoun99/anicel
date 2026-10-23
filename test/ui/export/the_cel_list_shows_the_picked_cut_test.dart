@@ -122,7 +122,7 @@ void main() {
     await tester.pressInCelsBoard(
       find.byKey(ValueKey<String>('export-cels-stand-$row')),
     );
-    await tester.pressInCelsBoard(tester.celsStackSwitch(row));
+    await tester.pressCelsStackSwitch(row);
   }
 
   Future<void> pick(WidgetTester tester, CutId cut) async {

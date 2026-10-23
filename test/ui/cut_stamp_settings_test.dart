@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../helpers/boolean_dot_probe.dart';
 import '../helpers/settle_async.dart';
 import '../helpers/tool_setting_action_probe.dart';
 
@@ -96,7 +97,7 @@ void main() {
     );
     expect(find.text(AppText.strings.toolCutDeletesSource), findsOneWidget);
 
-    await tester.tap(find.byKey(toggle));
+    await tester.pressRingIn(find.byKey(toggle));
     await tester.pump();
     expect(changes.single.cutDeletesSource, isTrue);
     expect(changes.single.tool, CanvasTool.cut, reason: 'the rest stays');
@@ -110,7 +111,7 @@ void main() {
       cutDeletesSource: true,
       onChanged: changes.add,
     );
-    await tester.tap(find.byKey(toggle));
+    await tester.pressRingIn(find.byKey(toggle));
     await tester.pump();
     expect(changes.single.cutDeletesSource, isFalse);
   });
@@ -183,7 +184,7 @@ void main() {
     final slot = CutPieceSlot()..hold(_piece());
     final bytes = slot.piece!.image;
     await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
-    await tester.tap(
+    await tester.pressRingIn(
       find.byKey(const ValueKey<String>('cut-flip-horizontal-switch')),
     );
     await tester.pump();

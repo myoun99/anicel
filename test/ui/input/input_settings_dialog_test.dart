@@ -55,11 +55,11 @@ void main() {
     // The dialog scrolls now (PEN-7a grew it) — bring the row into view.
     await tester.ensureVisible(wintab);
     await tester.pumpAndSettle();
-    await tester.tap(wintab);
+    await tester.pressRingIn(wintab);
     await tester.pumpAndSettle();
     expect(AppInput.settings.value.tabletService, TabletService.wintab);
 
-    await tester.tap(
+    await tester.pressRingIn(
       find.byKey(const ValueKey<String>('settings-tablet-standard')),
     );
     await tester.pumpAndSettle();
@@ -68,7 +68,7 @@ void main() {
     // A press SELECTS — pressing the one that is on leaves it on: there is
     // always a service, and the radio this pair used to be never let go of
     // one either.
-    await tester.tap(
+    await tester.pressRingIn(
       find.byKey(const ValueKey<String>('settings-tablet-standard')),
     );
     await tester.pumpAndSettle();
@@ -127,7 +127,7 @@ void main() {
       await tester.ensureVisible(lockSwitch);
       await tester.pumpAndSettle();
 
-      await tester.tap(lockSwitch);
+      await tester.pressRingIn(lockSwitch);
       await tester.pumpAndSettle();
       expect(AppInput.settings.value.zoomCeiling, 100);
       expect(tester.widget<TextField>(lockNumber).enabled, isTrue);
@@ -135,7 +135,7 @@ void main() {
       await type(tester, '250');
       expect(AppInput.settings.value.zoomCeiling, 250);
 
-      await tester.tap(lockSwitch);
+      await tester.pressRingIn(lockSwitch);
       await tester.pumpAndSettle();
       expect(AppInput.settings.value.zoomCeiling, isNull);
       expect(tester.widget<TextField>(lockNumber).controller!.text, '250');
@@ -395,7 +395,7 @@ void main() {
     final navigation = AppInput.settings.value.extraFingerModifier;
     expect(AppInput.settings.value.strokeFingerModifier, isFalse);
 
-    await tester.tap(row);
+    await tester.pressRingIn(row);
     await tester.pumpAndSettle();
 
     expect(AppInput.settings.value.strokeFingerModifier, isTrue);

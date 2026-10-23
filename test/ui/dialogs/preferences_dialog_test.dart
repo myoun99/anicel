@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 
+import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/ime_draft.dart';
 
 /// SAVE-1: the unified Preferences dialog — sections switch in place and
@@ -242,7 +243,7 @@ void main() {
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
+    await tester.pressRingIn(
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
     await tester.pumpAndSettle();
@@ -265,7 +266,7 @@ void main() {
     );
 
     // Off again, and the number goes with it.
-    await tester.tap(
+    await tester.pressRingIn(
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
     await tester.pumpAndSettle();

@@ -705,7 +705,7 @@ void main() {
     final pictureBefore = tester.exportPreviewImage;
     expect(pictureBefore, isNotNull, reason: '⛔전제: a picture is up');
 
-    await tester.pressInCelsBoard(tester.celsStackSwitch('a-color'));
+    await tester.pressCelsStackSwitch('a-color');
     expect(deltaOf(session)?.layerOverrides, {const LayerId('a-color'): false});
     expect(tester.celsStackLines, [('a-color', false), ('a', true)]);
     expect(
@@ -732,7 +732,7 @@ void main() {
     await pumpCels(tester, session);
     await standOn(tester, 'a');
 
-    await tester.pressInCelsBoard(tester.celsStackSwitch('a'));
+    await tester.pressCelsStackSwitch('a');
     expect(deltaOf(session)?.layerOverrides, {const LayerId('a'): false});
     expect(tester.celsStackLines, [('a-color', true), ('a', false)]);
     expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
@@ -750,8 +750,8 @@ void main() {
     await pumpCels(tester, session);
     await standOn(tester, 'a');
 
-    await tester.pressInCelsBoard(tester.celsStackSwitch('a-color'));
-    await tester.pressInCelsBoard(tester.celsStackSwitch('a'));
+    await tester.pressCelsStackSwitch('a-color');
+    await tester.pressCelsStackSwitch('a');
     expect(tester.celsStackLines, [('a-color', false), ('a', false)]);
     expect(tester.celsBoardRowIds, contains('a'));
     expect(tester.celsBoardSwitchState('a'), BooleanMix.off);

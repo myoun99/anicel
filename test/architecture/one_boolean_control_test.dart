@@ -79,7 +79,7 @@ void main() {
   test('a ring beside a label is the settings row', () {
     final builders = {
       for (final file in dartFilesUnder('lib'))
-        if (libPath(file) != 'lib/src/ui/widgets/boolean_dot.dart' &&
+        if (!_ringsMade.contains(libPath(file)) &&
             _hits(libPath(file), file.readAsStringSync(), _ringButton)
                 .isNotEmpty)
           libPath(file),
@@ -88,8 +88,8 @@ void main() {
       builders,
       _ringsOfTheirOwn.keys.toSet(),
       reason:
-          'a labelled boolean is ONE row — the whole row presses and the '
-          'ring sits on the right: `SettingsSwitchRow`. A ring is a button '
+          'a labelled boolean is ONE row — the ring on the right presses '
+          'and the label is words: `SettingsSwitchRow`. A ring is a button '
           'of its own only where the row around it already means something '
           'else; add a line to _ringsOfTheirOwn saying what',
     );
@@ -147,6 +147,14 @@ final _materialBoolean = RegExp(
 /// over several things wears (`BooleanMixDotButton`, F-289-Q13).
 final _ringButton = RegExp(r'\bBoolean(Mix)?DotButton\(');
 
+/// Where the ring is made a button: its own file, and the settings row —
+/// whose ring is the row's one control, its label words (유저 2026-10-23,
+/// board `F-439-Q1`: 「링만 컨트롤, 라벨은 글자」).
+const _ringsMade = {
+  'lib/src/ui/widgets/boolean_dot.dart',
+  'lib/src/ui/widgets/settings_rows.dart',
+};
+
 /// 🚨THE RINGS THAT ARE BUTTONS OF THEIR OWN, and why the row around each
 /// cannot be the control.
 ///
@@ -155,7 +163,9 @@ final _ringButton = RegExp(r'\bBoolean(Mix)?DotButton\(');
 /// switches were a ring beside a label that pressed only at the ring, and
 /// they became the settings row: the whole row presses, the ring on the
 /// right, 「라벨을 눌러도 켜지고 꺼진다」. Measured that day: one file keeps
-/// a ring of its own.
+/// a ring of its own. ↩️10-23 (F-439-Q1): the settings row presses at its
+/// ring alone and its label is words — what sets these rows apart is a row
+/// that MEANS something when pressed.
 const _ringsOfTheirOwn = <String, String>{
   'lib/src/ui/brush/guide_panels.dart':
       'a guide row: a press on the row SELECTS that guide, so the ring '

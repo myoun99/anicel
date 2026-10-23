@@ -46,6 +46,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -568,7 +569,7 @@ void main() {
       await tester.ensureVisible(
         find.byKey(const ValueKey<String>('export-audio-toggle')),
       );
-      await tester.tap(
+      await tester.pressRingIn(
         find.byKey(const ValueKey<String>('export-audio-toggle')),
       );
       await tester.pump();

@@ -4,6 +4,8 @@ import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 
+import 'boolean_dot_probe.dart';
+
 /// Reads the export window's Cels list ([ExportCelsBoard]) the way a test
 /// asks about it: which rows it draws, what a row's switch says, and what a
 /// drawing's block looks like.
@@ -125,6 +127,16 @@ extension ExportCelsBoardProbe on WidgetTester {
     await ensureVisible(control);
     await pump();
     await tap(control, warnIfMissed: false);
+    await pump();
+  }
+
+  /// Presses the ring of [rowId]'s line in the attach column after bringing
+  /// it into view. Only the ring presses (F-439-Q1, 2026-10-23).
+  Future<void> pressCelsStackSwitch(String rowId) async {
+    final line = celsStackSwitch(rowId);
+    await ensureVisible(line);
+    await pump();
+    await pressRingIn(line);
     await pump();
   }
 }
