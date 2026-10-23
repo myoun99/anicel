@@ -745,26 +745,45 @@ void main() {
     expect(wrapper(tester, s2).drawsTheGapAfter, isTrue);
   });
 
+  /// Turns cut a's conte rows [off] the sheet and the others on, as their
+  /// head's switch does: a conte row's flag is its head's, one for every cut
+  /// (I-89-Q22), so it is written through the session's verb, which lays it
+  /// on the cut b rows of the same seats too.
+  Future<void> resheetConte(
+    WidgetTester tester,
+    EditorSessionManager session,
+    Set<String> off,
+  ) async {
+    for (final id in const ['a-conte', 'a-conte+1', 'a-conte+2']) {
+      final row = LayerId(id);
+      if (session.layerSwitches.isLayerOnTimesheet(row) == off.contains(id)) {
+        session.layerSwitches.toggleLayerTimesheet(row);
+      }
+    }
+    await tester.pump();
+  }
+
   testWidgets('🚨a conte row the filter shows somewhere else builds its '
       'wrapper again — its caret at the seat it shows at, last or not as it '
       'is', (tester) async {
     final session = await pumpPanel(
       tester,
-      sheetedOff(film(attachRows: 2), {'a-conte'}),
+      film(attachRows: 2),
       rowFilter: onTheSheet,
     );
+    await resheetConte(tester, session, {'a-conte'});
     final seat1 = key('storyboard-conte+1-label-t1');
     // +2 over +1: +1 the lower of the two shown.
     expect(wrapper(tester, seat1).slotBefore, 1, reason: 'premise');
     expect(wrapper(tester, seat1).drawsTheGapAfter, isTrue, reason: 'premise');
 
     // +1 over the conte: the upper of two.
-    await resheet(tester, session, {'a-conte+2'});
+    await resheetConte(tester, session, {'a-conte+2'});
     expect(wrapper(tester, seat1).slotBefore, 0);
     expect(wrapper(tester, seat1).drawsTheGapAfter, isFalse);
 
     // +1 alone: the upper, and the last.
-    await resheet(tester, session, {'a-conte', 'a-conte+2'});
+    await resheetConte(tester, session, {'a-conte', 'a-conte+2'});
     expect(wrapper(tester, seat1).slotBefore, 0);
     expect(wrapper(tester, seat1).drawsTheGapAfter, isTrue);
   });

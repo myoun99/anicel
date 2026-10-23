@@ -103,8 +103,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Presses the label [key] on its [name] — the row's own ground: a button
+  /// in the label is the button's (the SE speaker stands among the name's).
+  Future<void> tapNameOf(WidgetTester tester, String key, String name) async {
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(ValueKey<String>(key)),
+        matching: find.text(name),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   Future<void> standOnS1ByItsLabel(WidgetTester tester) =>
-      tapKeyed(tester, 'storyboard-se-label-${conteTrackId.value}-1');
+      tapNameOf(tester, 'storyboard-se-label-${conteTrackId.value}-1', 'S1');
 
   /// Where the TIMELINE stands: the layer it draws on, and its row.
   void expectTimelineOn(
@@ -265,7 +277,11 @@ void main() {
       final session = await pumpStoryboard(tester);
       await standOnS1ByItsLabel(tester);
 
-      await tapKeyed(tester, 'storyboard-conte-label-${conteTrackId.value}');
+      await tapNameOf(
+        tester,
+        'storyboard-conte-label-${conteTrackId.value}',
+        'Conte',
+      );
 
       expect(session.storyboardStandingRow, conteRow);
       expectTimelineOn(

@@ -56,6 +56,31 @@ void main() {
     return total + 2;
   }
 
+  /// Presses S1's label on its NAME — the row's own ground: a button in the
+  /// label is the button's (the SE speaker stands among the name's).
+  Future<void> tapS1Label(
+    WidgetTester tester,
+    EditorSessionManager manager,
+  ) async {
+    final trackId = manager.selectedTrackId;
+    final seId = seLayerIdForTrack(trackId, 1);
+    final se = manager.repository
+        .requireProject()
+        .tracks
+        .singleWhere((track) => track.id == trackId)
+        .seLayers
+        .singleWhere((layer) => layer.id == seId);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(
+          ValueKey<String>('storyboard-se-label-${trackId.value}-1'),
+        ),
+        matching: find.text(se.name),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('tapping an S row\'s LABEL selects the row and KEEPS the cut '
       'the index names — the row moved, the cut did not', (tester) async {
     final manager = await pumpHost(tester);
@@ -66,10 +91,7 @@ void main() {
     final cutBefore = manager.activeCutId;
     expect(cutBefore, isNotNull);
 
-    await tester.tap(
-      find.byKey(ValueKey<String>('storyboard-se-label-${trackId.value}-1')),
-    );
-    await tester.pumpAndSettle();
+    await tapS1Label(tester, manager);
 
     expect(manager.selectedRow, LayerRowAddress(seId));
     expect(
@@ -90,10 +112,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(manager.activeCutId, isNull);
 
-    await tester.tap(
-      find.byKey(ValueKey<String>('storyboard-se-label-${trackId.value}-1')),
-    );
-    await tester.pumpAndSettle();
+    await tapS1Label(tester, manager);
 
     expect(manager.selectedRow, LayerRowAddress(seLayerIdForTrack(trackId, 1)));
     expect(manager.activeCutId, isNull, reason: 'the gap has no cut to take');
