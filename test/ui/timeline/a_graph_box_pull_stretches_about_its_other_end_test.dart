@@ -406,11 +406,14 @@ void main() {
           (laneId: 'position', frame: 8, time: 8, across: 200),
           (laneId: 'position', frame: 0, time: 0, across: 200),
           (laneId: 'rotation', frame: 4, time: 4, across: 150),
+          (laneId: 'opacity', frame: 4, time: 4, across: 190),
         ]),
         {
           'position': {8: 12, 0: 0},
           'rotation': {4: 5},
+          'opacity': {4: 6},
         },
+        reason: 'the opacity\'s mark goes 1.8 frames — on the NEAREST frame',
       );
     });
   });

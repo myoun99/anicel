@@ -188,16 +188,20 @@ void main() {
     test('the outline keeps its ends and holds every key landed past them',
         () {
       keyed(TransformTrack.empty().copyWith(rotation: keys({2: 10, 6: 20})));
-      pick(['rotation'], 2, 6);
+      pick(['rotation'], 0, 8);
 
       land([
         {
-          'rotation': {6: 9},
+          'rotation': {6: 12},
         },
       ]);
 
       final picked = s.laneRangeSelection.value!;
-      expect((picked.startIndex, picked.endIndexExclusive), (2, 10));
+      expect(
+        (picked.startIndex, picked.endIndexExclusive),
+        (0, 13),
+        reason: 'no key stands on its ends to take them along',
+      );
     });
 
     test('a step that lands two keys of a lane on one frame is refused, and '
