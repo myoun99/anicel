@@ -34,6 +34,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'bash_executable.dart';
 import 'import_graph.dart';
 import 'test_seconds.dart';
 
@@ -327,7 +328,7 @@ Future<Set<String>> _redsAt(String root, String lane, List<String> args) async {
   final out = File('${Directory.systemTemp.path}/master-check-$pid.reds');
   if (out.existsSync()) out.deleteSync();
   final run = await Process.start(
-    'bash',
+    bashExecutable,
     [
       '$root/tool/run.sh', 'affected_tests', kWideCheckStandsFirst, //
       '--reds-to', out.path, ...args,
@@ -370,7 +371,7 @@ String _lanePath(String root) =>
     '$root/.claude/worktrees/lane-$kCheckLane';
 
 Future<void> _bash(String root, List<String> args) =>
-    _run('bash', args, root);
+    _run(bashExecutable, args, root);
 
 Future<void> _run(
   String exe,

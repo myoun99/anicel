@@ -52,6 +52,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'bash_executable.dart';
+
 // 🚨The card model lives in ONE place — see [board_model.dart]. The gate
 // reads the same file, so it cannot judge the board by different rules.
 import 'board_check.dart';
@@ -228,7 +230,7 @@ Never _relaunch() {
   final up = File('$_gitRoot/tool/session_hooks/board_up.sh');
   if (up.existsSync()) {
     unawaited(Process.start(
-      'bash',
+      bashExecutable,
       [up.path, File(_recordsPath).parent.path],
       mode: ProcessStartMode.detached,
       runInShell: true,
