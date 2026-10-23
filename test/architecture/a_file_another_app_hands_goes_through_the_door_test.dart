@@ -148,5 +148,10 @@ void main() {
     ]) {
       expect(item, contains(step));
     }
+    // What an app old enough to share a file: URI hands over is the path
+    // it names — no picker answers with one, so this is the share's alone.
+    final real = sourceBodyOf(source, 'private fun realPathFor(');
+    expect(real, contains('uri.scheme == ContentResolver.SCHEME_FILE'));
+    expect(real, contains('uri.path?.let { existingFile(it) }'));
   });
 }
