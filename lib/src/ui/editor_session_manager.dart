@@ -2982,7 +2982,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/drawing_block_move_drag.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final DrawingBlockMoveDragVerbs drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, retime: this, dragPreview: dragPreview);
+  late final DrawingBlockMoveDragVerbs drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, pixelEditing: pixelEditing, retime: this, dragPreview: dragPreview);
 
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
 

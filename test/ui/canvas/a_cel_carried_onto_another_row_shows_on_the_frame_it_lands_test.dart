@@ -29,7 +29,7 @@ import '../../helpers/settle_async.dart';
 /// 로직 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」.
 ///
 /// A move that carries a cel onto another row shows it, until the release,
-/// under the row it came from (`celPixelsRowOf`); the release re-keys its
+/// under the row it came from (`celPixelsOf`); the release re-keys its
 /// pixels onto the row it lands on. The picture does not change — only the
 /// key the canvas asks with does — so the frame it lands on shows it as the
 /// frame before did, whichever way it arrives there.

@@ -31,7 +31,7 @@ import '../../services/commands/cut_command_input_planner.dart'
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/editing/default_layer_helpers.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, celPixelsRowOf, timelineDragPreviewLayerFor;
+    show TimelineDragPreview, celPixelsOf, timelineDragPreviewLayerFor;
 import 'folder_bands.dart';
 import 'layer_verbs.dart';
 import 'render_caches.dart';
@@ -370,22 +370,25 @@ class LayerStack {
         _liveStrokeCel == (row, cel)) {
       return true;
     }
-    return _storeHoldsAPicture(cut, _pixelsRowOf(row, cel), cel);
+    final pixels = _pixelsOf(row, cel);
+    return _storeHoldsAPicture(cut, pixels.row, pixels.cel);
   }
 
   /// Whether [row]'s cel [cel] in [cut] could not be read
   /// ([LayerFrameImageCache.unreadable]) — the fact of the red block, for
   /// one cel of any cut, as [celHoldsAPicture] is the grey's.
-  bool celCannotBeRead(Cut cut, LayerId row, FrameId cel) =>
-      _renderCaches.layerFrameImageCache.unreadable.has(
-        _project.brushFrameKeyForCut(cut, _pixelsRowOf(row, cel), cel),
-      );
+  bool celCannotBeRead(Cut cut, LayerId row, FrameId cel) {
+    final pixels = _pixelsOf(row, cel);
+    return _renderCaches.layerFrameImageCache.unreadable.has(
+      _project.brushFrameKeyForCut(cut, pixels.row, pixels.cel),
+    );
+  }
 
-  /// The row [row]'s cel [cel] has its pixels under: a cel a drag carries
-  /// onto [row] is drawn where its pixels still are — under the row it came
-  /// from ([celPixelsRowOf]).
-  LayerId _pixelsRowOf(LayerId row, FrameId cel) =>
-      celPixelsRowOf(_dragPreview.value, row, cel);
+  /// Where [row]'s cel [cel] has its pixels: a cel a drag carries onto
+  /// [row], or a picture it hangs there, is drawn where its pixels still
+  /// are ([celPixelsOf]).
+  ({LayerId row, FrameId cel}) _pixelsOf(LayerId row, FrameId cel) =>
+      celPixelsOf(_dragPreview.value, row, cel);
 
   /// The cel a live stroke counts as drawn: the active row's selected
   /// frame. Null when there is none, and then no block can be it.

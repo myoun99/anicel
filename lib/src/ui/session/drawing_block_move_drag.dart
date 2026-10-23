@@ -8,12 +8,14 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/drawing_block_move.dart';
 import '../../services/command.dart';
+import '../../services/commands/move_cel_pictures_command.dart';
 import '../../services/commands/rekey_brush_frames_command.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../models/timeline_repeat.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'folders_and_attachments.dart';
+import 'pixel_editing.dart';
 import 'render_caches.dart';
 
 /// The DRAWING BLOCK MOVE DRAG — picking up a drawing block and landing
@@ -31,13 +33,15 @@ class DrawingBlockMoveDragVerbs {
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required FoldersAndAttachments folders,
     required RenderCaches renderCaches,
+    required PixelEditing pixelEditing,
   }) : _project = project,
        _changes = changes,
        _controllers = controllers,
        _retime = retime,
        _dragPreview = dragPreview,
        _folders = folders,
-       _renderCaches = renderCaches;
+       _renderCaches = renderCaches,
+       _pixelEditing = pixelEditing;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
@@ -46,6 +50,7 @@ class DrawingBlockMoveDragVerbs {
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final FoldersAndAttachments _folders;
   final RenderCaches _renderCaches;
+  final PixelEditing _pixelEditing;
 
   /// The drag in flight, or null — held by the verbs that start, steer and
   /// close it. Its mid-drag state lives on the object and dies with the
@@ -193,4 +198,29 @@ class DrawingBlockMoveDragVerbs {
             ),
         ],
       );
+
+  /// What hangs [moves]' pictures in the cels of [cut] they go to, the cels
+  /// staying (F-330) — from the list its drag showed them by
+  /// ([BlockMoveDragPreview.picturesMoved]). Null while no canvas has built
+  /// the editing coordinator, the one door a picture is written through.
+  MoveCelPicturesCommand? pictureMoveCommand(
+    Cut cut,
+    List<CelPictureMove> moves,
+  ) {
+    final coordinator = _pixelEditing.coordinator;
+    if (coordinator == null) {
+      return null;
+    }
+    return MoveCelPicturesCommand(
+      coordinator: coordinator,
+      moves: [
+        for (final move in moves)
+          (
+            _project.brushFrameKeyForCut(cut, move.fromRow, move.fromCel),
+            _project.brushFrameKeyForCut(cut, move.toRow, move.toCel),
+          ),
+      ],
+      cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+    );
+  }
 }

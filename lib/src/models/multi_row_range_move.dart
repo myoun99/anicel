@@ -38,7 +38,7 @@ class MultiRowRangeMovePlan {
 /// The blocks they land on go back across the moved rows, to the rows the
 /// move left empty, each on its own frames ([LandingSwapsThem], F-384-Q1:
 /// 「여러 행을 함께 옮기면 덮인 블록이 그 묶음을 건너 반대편 행으로」) —
-/// see [_MultiRowRangeMovePlanner.returnRowOf]. ↩️An incoming block that
+/// see [rowLandedOnGoesBackTo]. ↩️An incoming block that
 /// met a block staying on its row voided the whole move.
 ///
 /// [orderedLayers] is the display-ordered lattice of move-eligible rows
@@ -229,9 +229,9 @@ class _MultiRowRangeMovePlanner {
 
   /// Phase 2: every affected row rebuilt — sources lose their selected
   /// blocks, targets receive the mapped source's, and the blocks those land
-  /// on go back to the rows the move left ([returnRowOf]). Null when an
-  /// incoming block dips below frame 0, or a cel going back is one another
-  /// lane of its row still shows (F-136).
+  /// on go back to the rows the move left ([rowLandedOnGoesBackTo]). Null
+  /// when an incoming block dips below frame 0, or a cel going back is one
+  /// another lane of its row still shows (F-136).
   MultiRowRangeMovePlan? rebuild() {
     // Every SOURCE: its own selected blocks (and cels) leave.
     for (final sourceIndex in sourceIndexes) {
@@ -301,8 +301,8 @@ class _MultiRowRangeMovePlanner {
   }
 
   /// The blocks [landedOn] holds, by the row they were landed on, go back
-  /// to the rows the move left ([returnRowOf]) — the rows the move enters
-  /// first, whose blocks have a row left empty each.
+  /// to the rows the move left ([rowLandedOnGoesBackTo]) — the rows the
+  /// move enters first, whose blocks have a row left empty each.
   void _sendBack(Map<int, _LandedOn> landedOn) {
     final entered = _entered;
     final order = [...landedOn.keys]
@@ -317,7 +317,13 @@ class _MultiRowRangeMovePlanner {
       if (blocks.isEmpty) {
         continue;
       }
-      final back = _rowAt(returnRowOf(targetIndex));
+      final back = _rowAt(
+        rowLandedOnGoesBackTo(
+          targetIndex,
+          sources: sourceIndexes,
+          rowDelta: rowDelta,
+        ),
+      );
       back.takeBack(blocks, cels: cels);
       for (final frame in cels.frames) {
         rekeys.add((
@@ -336,32 +342,6 @@ class _MultiRowRangeMovePlanner {
 
   /// The rows the move enters — landed on, and no source of its own.
   Set<int> get _entered => _targets.difference(sourceIndexes);
-
-  /// The row the blocks landed on at [target] go back to (F-384-Q1:
-  /// 「여러 행을 함께 옮기면 덮인 블록이 그 묶음을 건너 반대편 행으로 갑니다
-  /// — 좌우에서 「지나간 블록이 반대편으로 가는」 것과 같은 모양」): across the
-  /// moved rows, to a row the move left empty. The rows it enters hand
-  /// theirs to the rows it leaves in order — the first entered to the first
-  /// left — as blocks passed along one row keep their order on its other
-  /// side.
-  ///
-  /// ⚖️Mine, not the user's: a row the moved rows still stand on is landed
-  /// on only by a move that also slides along the frames. It hands its
-  /// blocks back the way their lander came — to the row that one left, and
-  /// on while that row is landed on too — until a row left empty.
-  int returnRowOf(int target) {
-    final entered = [..._entered]..sort();
-    final left = [...sourceIndexes.difference(_targets)]..sort();
-    final place = entered.indexOf(target);
-    if (place >= 0) {
-      return left[place];
-    }
-    var row = target - rowDelta;
-    while (_targets.contains(row)) {
-      row -= rowDelta;
-    }
-    return row;
-  }
 }
 
 /// The cels a row gives up, and the sounds anchored to them.

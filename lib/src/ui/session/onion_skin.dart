@@ -12,7 +12,7 @@ import '../../services/commands/link_mirror.dart' show conteHeadTargets;
 import '../../services/onion_skin_plan.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, celPixelsRowOf, cutShowingDragPreview;
+    show TimelineDragPreview, celPixelsOf, cutShowingDragPreview;
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
@@ -236,7 +236,7 @@ class OnionSkin {
   /// Planned from the cut as a drag in flight shows it, like the picture
   /// they ghost around (canvas-follows-block-moves) — a block moved past the
   /// playhead moves its ghost with it, and one carried onto another row
-  /// ghosts the pixels still under the row it came from ([celPixelsRowOf]).
+  /// ghosts the pixels where they still are ([celPixelsOf]).
   List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
     final pegs = settings.value;
     final committed = _project.activeCutOrNull;
@@ -261,12 +261,10 @@ class OnionSkin {
             frameIndex: _controllers.timelineController.currentFrameIndex,
             settings: pegs,
           ))
+            if (celPixelsOf(dragPreview, layer.id, plan.frameId)
+                case (:final row, :final cel))
             CanvasLayerImageRequest(
-              frameKey: _project.brushFrameKeyForCut(
-                cut,
-                celPixelsRowOf(dragPreview, layer.id, plan.frameId),
-                plan.frameId,
-              ),
+              frameKey: _project.brushFrameKeyForCut(cut, row, cel),
               opacity: plan.opacity,
               tint: plan.tint,
               // ✅유저 2026-08-27 (I-8-Q5): a ghost shows the pixels the

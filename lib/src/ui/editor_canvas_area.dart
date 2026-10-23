@@ -76,6 +76,7 @@ import 'timeline/layer_label_controls.dart';
 import 'timeline/memo_token.dart' show ByIdentity, ByList;
 import 'timeline/timeline_drag_preview.dart'
     show
+        BlockMoveDragPreview,
         TimelineDragPreview,
         timelineDragPreviewGlobalLayerFor,
         timelineDragPreviewLayerFor;
@@ -682,9 +683,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 
   /// Every row of the open cut and of its track as a drag shows it, in both
-  /// forms, and the camera the canvas draws — equal while the drag changes
-  /// none of them (a movie's end, a sound's silhouette on an SE cell, a V
-  /// track's chain, another cut's rows).
+  /// forms, the pictures it moves among cels with no row changing (F-330,
+  /// [celPixelsOf]) and the camera the canvas draws — equal while the drag
+  /// changes none of them (a movie's end, a sound's silhouette on an SE
+  /// cell, a V track's chain, another cut's rows).
   ///
   /// ⚠️A new reader of the channel on the canvas reads rows by the same two
   /// functions ([timelineDragPreviewLayerFor], [timelineDragPreviewGlobalLayerFor])
@@ -704,6 +706,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         timelineDragPreviewLayerFor(preview, row.id),
         timelineDragPreviewGlobalLayerFor(preview, row.id),
       ],
+      if (preview case BlockMoveDragPreview(:final picturesMoved))
+        picturesMoved,
       session.camera.activeCutCameraTrack,
     ]);
   }

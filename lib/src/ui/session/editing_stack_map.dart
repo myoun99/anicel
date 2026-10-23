@@ -12,7 +12,7 @@ import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, pictureMoved;
 import '../canvas/canvas_layer_stack_view.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, celPixelsRowOf;
+    show TimelineDragPreview, celPixelsOf;
 import 'opacity_verbs.dart';
 import 'session_roles.dart';
 
@@ -48,8 +48,9 @@ class EditingStackMap {
   final int frameIndex;
   final LayerId? activeLayerId;
 
-  /// The drag [stackCut] shows, if any: a cel it carries onto another row
-  /// shows the pixels still under the row it came from ([celPixelsRowOf]).
+  /// The drag [stackCut] shows, if any: a cel it carries onto another row,
+  /// or a picture it hangs in another cel, shows the pixels where they still
+  /// are ([celPixelsOf]).
   final TimelineDragPreview? dragPreview;
 
   /// Where a movie cel's picture was laid, while one is installed
@@ -185,12 +186,12 @@ class EditingStackMap {
             );
       activeSourceEffects = splitSourceEffects(entry.effects).source;
     }
-    final key = _project.brushFrameKeyForCut(
-      cut,
-      celPixelsRowOf(dragPreview, entry.layer.id, entry.frame.id),
-      entry.frame.id,
-    );
-    if (!active || entry.frame.id != _heldCel) {
+    final pixels = celPixelsOf(dragPreview, entry.layer.id, entry.frame.id);
+    final key = _project.brushFrameKeyForCut(cut, pixels.row, pixels.cel);
+    // The brush's cel with a picture a drag is bringing it from another
+    // (F-330) is another picture at the playhead all the same.
+    final itsOwnPicture = pixels == (row: entry.layer.id, cel: entry.frame.id);
+    if (!active || entry.frame.id != _heldCel || !itsOwnPicture) {
       return CanvasLayerImageRequest(
         frameKey: key,
         opacity: entry.opacity,
@@ -207,7 +208,7 @@ class EditingStackMap {
       // image on the spot, so the row does not go blank for the frames an
       // asynchronous build takes ([CanvasActiveLayerRow.frameKey]). A drag
       // that carries the cel onto another row keeps it: the image there is
-      // asked under the row the cel came from ([celPixelsRowOf]).
+      // asked where its pixels still are ([celPixelsOf]).
       frameKey: key,
       // The SAME entry the image branch above reads it from. It was
       // dropped right here — five fields arrived and four were forwarded,

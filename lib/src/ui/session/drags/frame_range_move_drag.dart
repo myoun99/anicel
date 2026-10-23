@@ -1,14 +1,17 @@
-import 'package:flutter/foundation.dart' show ValueNotifier;
+import 'package:flutter/foundation.dart' show ValueNotifier, listEquals;
 import 'dart:collection' show SplayTreeMap;
 
+import '../../../models/attach_picture_trade.dart';
 import '../../../models/attached_layer_resolve.dart'
     show isSyncedAttachedLayer;
 import '../../../models/block_row_swap.dart';
 import '../../../models/camera_instruction.dart';
 import '../../../models/cel_bank_lanes.dart';
+import '../../../models/cel_rekey.dart';
 import '../../../models/cut.dart';
 import '../../../models/cut_camera.dart';
 import '../../../models/drawing_block_move.dart';
+import '../../../models/frame_id.dart';
 import '../../../models/key_range_move.dart';
 import '../../../models/layer.dart';
 import '../../../models/layer_folder.dart' show LayerFolderIndex;
@@ -147,6 +150,39 @@ LayerId _seatRowOf(ProjectAccess project, LayerId id) =>
         layer.attachedToLayerId ?? id,
       _ => id,
     };
+
+/// The attach group a span trades pictures in (F-330): the base and its
+/// SYNCED rows, in the order the rows show them, and the base's cels the
+/// span covers ([picturesTradedInAttachGroup]).
+typedef _AttachTrade = ({List<Layer> group, List<FrameId> baseCels});
+
+/// [span]'s [_AttachTrade] — null when its rows are not all of one attach
+/// group, or it covers no whole block of the base. Every row of the group
+/// shows the base's blocks, so the span covers the same ones on each.
+_AttachTrade? _attachTradeOf(
+  TimelineFrameRangeSelection span,
+  ProjectAccess project,
+) {
+  final seats = {for (final id in span.spanLayerIds) _seatRowOf(project, id)};
+  final base = seats.length == 1 ? project.layerById(seats.single) : null;
+  if (base == null) {
+    return null;
+  }
+  final group = [
+    for (final layer in sectionedLayerOrder(project.layers))
+      if (layer.id == base.id ||
+          (isSyncedAttachedLayer(layer) && layer.attachedToLayerId == base.id))
+        layer,
+  ];
+  final baseCels = [
+    for (final block in drawingBlocks(base.timeline))
+      if (_wholeBlockIn(block, span.startIndex, span.endIndexExclusive))
+        block.frameId,
+  ];
+  return group.length < 2 || baseCels.isEmpty
+      ? null
+      : (group: group, baseCels: baseCels);
+}
 
 /// The display→commit offset a move applies to [layerId]'s span. ZERO on
 /// the track axis: the span is already stated in commit keys, and
@@ -443,6 +479,8 @@ class FrameRangeMoveDrag {
     required ({TransformTrack before, LayerId layerId})? cameraKeys,
     required List<Layer>? blockRiders,
     required List<TransitionRider> transitionRiders,
+    _AttachTrade? attachTrade,
+    void Function()? refuseUntraded,
   }) : _project = roles.project,
        _selection = roles.selection,
        _changes = roles.changes,
@@ -455,14 +493,14 @@ class FrameRangeMoveDrag {
        _trackSe = roles.trackSe,
        _selectionBefore = selectionBefore,
        _trackSelectionBefore = trackSelectionBefore,
-       _grabLayerId = grabLayerId == null
-           ? null
-           : _seatRowOf(roles.project, grabLayerId),
+       _grabbedRow = grabLayerId,
        _singleRow = singleRow,
        _multiSources = multiSources,
        _cameraKeys = cameraKeys,
        _blockRiders = blockRiders,
-       _transitionRiders = transitionRiders;
+       _transitionRiders = transitionRiders,
+       _attachTrade = attachTrade,
+       _refuseUntraded = refuseUntraded;
 
   /// A range-move drag on the TRACK axis — the storyboard's S rows. Null
   /// when the track selection is gone, names no owning layer, or covers
@@ -558,7 +596,6 @@ class FrameRangeMoveDrag {
             span,
             keys,
             trackSe: roles.trackSe,
-            folders: folders,
             rangeSelections: rangeSelections,
           )
         : _singleRowSubjects(
@@ -567,8 +604,17 @@ class FrameRangeMoveDrag {
             project: roles.project,
             rowSpans: rowSpans,
           );
+    final attachTrade = _attachTradeOf(span, roles.project);
     if (subjects == null) {
-      return null;
+      return singleRowId == null
+          ? _tradingMirrors(
+              roles,
+              span,
+              attachTrade,
+              folders: folders,
+              grabLayerId: grabLayerId,
+            )
+          : null;
     }
     return FrameRangeMoveDrag._(
       roles: roles,
@@ -582,6 +628,7 @@ class FrameRangeMoveDrag {
           ? keys.blockRiders
           : null,
       transitionRiders: keys.transitionRiders,
+      attachTrade: attachTrade,
     );
   }
 
@@ -619,11 +666,13 @@ class FrameRangeMoveDrag {
   /// an SE row or a span carrying KEY sources: every eligible row's COMMIT
   /// form becomes a source, planned with the same delta as one rigid
   /// group.
+  ///
+  /// Null when the span moves nothing — a span of nothing but SYNCED attach
+  /// rows among them ([_tradingMirrors]).
   static _MoveSubjects? _multiSourceSubjects(
     TimelineFrameRangeSelection span,
     KeySources keys, {
     required TrackSeDisplay trackSe,
-    required FoldersAndAttachments folders,
     required RangeSelections rangeSelections,
   }) {
     final sources = <({Layer commit, int offset})>[];
@@ -654,17 +703,50 @@ class FrameRangeMoveDrag {
         keys.camera == null &&
         keys.blockRiders.isEmpty &&
         keys.transitionRiders.isEmpty) {
-      // A span of nothing but SYNCED attach rows dies here. Their blocks
-      // are borrowed exposures — the move refuses with the "edit the
-      // owner" pill (the synced-block UI made the row look grabbable;
-      // before it, the all-ghost timeline fell out of the block scan on
-      // its own). One mirror or several: this is the one place that says
-      // so — a mirror is no row of its own, so a span of them never takes
-      // the single row's path ([_singleRowOf]), which used to say it too.
-      folders.noticeSyncedAttachRefusal(span.layerId);
       return null;
     }
     return (singleRow: null, multiSources: sources);
+  }
+
+  /// The drag of a span that moves no block — a span of nothing but SYNCED
+  /// attach rows: it trades their pictures inside their group, and nothing
+  /// else (F-330, [_picturesTradedTo]). Null where there is no trade to
+  /// make.
+  ///
+  /// Their blocks are borrowed exposures, so a move of them is refused with
+  /// the "edit the owner" pill (the synced-block UI made the row look
+  /// grabbable; before it, the all-ghost timeline fell out of the block scan
+  /// on its own). One mirror or several: this is the one place that says
+  /// so — a mirror is no row of its own, so a span of them never takes the
+  /// single row's path ([_singleRowOf]), which used to say it too.
+  ///
+  /// ⚖️Mine, not the user's: the pill came at the press, when nothing could
+  /// come of the drag. A trade can, so it comes at the release that traded
+  /// nothing ([commit]).
+  static FrameRangeMoveDrag? _tradingMirrors(
+    FrameRangeMoveRoles roles,
+    TimelineFrameRangeSelection span,
+    _AttachTrade? attachTrade, {
+    required FoldersAndAttachments folders,
+    required LayerId? grabLayerId,
+  }) {
+    if (attachTrade == null) {
+      folders.noticeSyncedAttachRefusal(span.layerId);
+      return null;
+    }
+    return FrameRangeMoveDrag._(
+      roles: roles,
+      selectionBefore: span,
+      trackSelectionBefore: null,
+      grabLayerId: grabLayerId ?? span.layerId,
+      singleRow: null,
+      multiSources: const [],
+      cameraKeys: null,
+      blockRiders: null,
+      transitionRiders: const [],
+      attachTrade: attachTrade,
+      refuseUntraded: () => folders.noticeSyncedAttachRefusal(span.layerId),
+    );
   }
 
   /// The single-row move's subject on [rowId] — the one row of its own
@@ -738,14 +820,22 @@ class FrameRangeMoveDrag {
   /// them differ), and using it made "this block lands on that row" come
   /// out shifted by however far the two were apart.
   ///
-  /// Held as its SEAT ([_seatRowOf], F-276): a block grabbed by its mirror
-  /// is the base's block, and the hop starts where that block lives.
-  final LayerId? _grabLayerId;
+  /// Held as the row the hand is on, mirror or not: a trade of pictures
+  /// counts its hop among the rows of an attach group (F-330), where a
+  /// mirror is a row.
+  final LayerId? _grabbedRow;
 
   /// The row a step's row hop is measured FROM — and the row a step with no
   /// frame delta has come back to: the row grabbed, or the selection's
   /// anchor for a caller that names none.
-  LayerId get _hopOrigin => _grabLayerId ?? _selectionBefore.layerId;
+  ///
+  /// The grabbed row read as its SEAT ([_seatRowOf], F-276): a block
+  /// grabbed by its mirror is the base's block, and the hop starts where
+  /// that block lives.
+  LayerId get _hopOrigin => switch (_grabbedRow) {
+    final row? => _seatRowOf(_project, row),
+    null => _selectionBefore.layerId,
+  };
 
   /// The row [row] — the span's ONE moving row — lands on while the hand
   /// points at [pointedAt]: carried as far as the hand has moved from the
@@ -806,6 +896,15 @@ class FrameRangeMoveDrag {
   final List<Layer>? _blockRiders;
 
   final List<TransitionRider> _transitionRiders;
+
+  /// The attach group the span trades pictures in on the same frames
+  /// (F-330), or null when its rows are not one group's ([_attachTradeOf]).
+  final _AttachTrade? _attachTrade;
+
+  /// The "edit the owner" pill a span of nothing but mirrors says when its
+  /// release traded nothing ([_tradingMirrors]) — and so the fact that the
+  /// span moves no block: non-null exactly for such a span.
+  final void Function()? _refuseUntraded;
 
   DrawingBlockMovePlan? _plan;
 
@@ -1635,6 +1734,23 @@ class FrameRangeMoveDrag {
   /// the session's `dragPreview` (repository untouched), the selection
   /// outline riding the previewed landing.
   void update({required int frameDelta, LayerId? targetLayerId}) {
+    // F-330: on the same frames, a hop among the rows of the span's attach
+    // group trades their pictures — counted on the rows themselves, where a
+    // mirror is one.
+    final trade = frameDelta == 0 ? _picturesTradedTo(targetLayerId) : null;
+    if (trade != null) {
+      _publishPictureTrade(trade.moves, trade.hop, landedOn: targetLayerId!);
+      return;
+    }
+    if (_refuseUntraded != null) {
+      // Mirrors alone move no block: a step that trades nothing HOLDS the
+      // last trade (UI-R23 #10), and back on the row grabbed is the origin.
+      if (frameDelta == 0 &&
+          (targetLayerId == null || targetLayerId == _grabbedRow)) {
+        _resetPreviewToOrigin();
+      }
+      return;
+    }
     // 🚨F-276: the row pointed at is read as its SEAT — over a mirror, the
     // hand is over its base ([_seatRowOf]). Every step below reads this.
     final pointedAt = targetLayerId == null
@@ -1678,6 +1794,71 @@ class FrameRangeMoveDrag {
       return;
     }
     _publishSingleRowMove(plan, source, singleRow.groupStart);
+  }
+
+  /// The pictures a step on the same frames trades with the hand on
+  /// [pointedAt] (F-330): the span's rows carried as many rows of its attach
+  /// group as the hand is from the row it grabbed ([_attachTrade]), and that
+  /// hop. Null when the span holds no group, the hand is on the row it
+  /// grabbed or on none of the group, or the carry trades nothing
+  /// ([picturesTradedInAttachGroup]) — or no picture can be written yet,
+  /// so the release could not land what the step would show.
+  ({List<CelPictureMove> moves, int hop})? _picturesTradedTo(
+    LayerId? pointedAt,
+  ) {
+    final trade = _attachTrade;
+    final cut = _project.activeCutOrNull;
+    if (trade == null || pointedAt == null || cut == null) {
+      return null;
+    }
+    final hop = layerIndexDelta(
+      trade.group,
+      _grabbedRow ?? _selectionBefore.layerId,
+      pointedAt,
+    );
+    if (hop == null || hop == 0) {
+      return null;
+    }
+    final moves = picturesTradedInAttachGroup(
+      group: trade.group,
+      sources: _selectionBefore.spanLayerIds,
+      rowDelta: hop,
+      baseCels: trade.baseCels,
+    );
+    return moves == null || _blockMove.pictureMoveCommand(cut, moves) == null
+        ? null
+        : (moves: moves, hop: hop);
+  }
+
+  /// Publishes a trade of [moves]: no row changes, so none is previewed —
+  /// a cel a picture goes to reads it where it still is
+  /// ([BlockMoveDragPreview.picturesMoved]) — and the selection follows the
+  /// pictures [hop] rows of the group on, anchored where the hand is
+  /// ([landedOn]).
+  void _publishPictureTrade(
+    List<CelPictureMove> moves,
+    int hop, {
+    required LayerId landedOn,
+  }) {
+    // A step of the hand that trades the same pictures shows the same
+    // preview, so what reads it by identity (the canvas) sleeps through it.
+    if (_dragPreview.value case BlockMoveDragPreview(:final picturesMoved)
+        when listEquals(picturesMoved, moves)) {
+      return;
+    }
+    _resetPreviewToOrigin();
+    _dragPreview.value = BlockMoveDragPreview(
+      previewLayers: const {},
+      picturesMoved: moves,
+    );
+    final group = [for (final row in _attachTrade!.group) row.id];
+    LayerId carried(LayerId row) => group[group.indexOf(row) + hop];
+    _slideSelectionOutline(
+      _selectionBefore,
+      landedLayerId: landedOn,
+      shift: 0,
+      layerIds: [for (final row in _selectionBefore.spanLayerIds) carried(row)],
+    );
   }
 
   /// [source]'s span [frameDelta] frames along, onto the row the hand is
@@ -2048,7 +2229,20 @@ class FrameRangeMoveDrag {
   /// field" list is gone.
   void commit() {
     final landedSelection = _liveSpan;
+    final shown = _dragPreview.value;
     _dropPreviewChannels();
+    // F-330: a trade lands the very pictures its step showed moving — asked
+    // of the preview, which a later step of another kind replaced.
+    if (shown case BlockMoveDragPreview(:final picturesMoved)
+        when picturesMoved.isNotEmpty) {
+      _commitPictureTrade(picturesMoved, landedSelection);
+      return;
+    }
+    if (_refuseUntraded case final refuse?) {
+      refuse();
+      _liveSpan = _selectionBefore;
+      return;
+    }
     // ROW-CHANGE commits (P3b-4): the planned pair replaces both rows in
     // one composite undo; the selection follows the landing row.
     if (_seRowChange != null) {
@@ -2095,6 +2289,27 @@ class FrameRangeMoveDrag {
     _liveSpan = landedSelection;
     if (plan.isCrossLayer) {
       _controllers.layerController.selectLayer(plan.targetAfter!.id);
+    }
+    _changes.warmActiveCut();
+    _changes.notifyChanged();
+  }
+
+  /// Lands a trade of [moves] as ONE undo step — the pictures change cels,
+  /// and no row, cel or name does (F-330) — and stands on the row the hand
+  /// carried the selection's anchor to.
+  void _commitPictureTrade(
+    List<CelPictureMove> moves,
+    TimelineFrameRangeSelection? landedSelection,
+  ) {
+    final cut = _project.activeCutOrNull;
+    final land = cut == null
+        ? null
+        : _blockMove.pictureMoveCommand(cut, moves);
+    if (!_commitRangeMoveCommands([?land], landedSelection)) {
+      return;
+    }
+    if (landedSelection != null) {
+      _controllers.layerController.selectLayer(landedSelection.layerId);
     }
     _changes.warmActiveCut();
     _changes.notifyChanged();

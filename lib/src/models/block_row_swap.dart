@@ -53,6 +53,41 @@ List<TimelineDrawingBlock> blocksLandedOn(
       block,
 ];
 
+/// The row the blocks landed on at row [target] go back to, when the rows
+/// [sources] are carried [rowDelta] rows on (F-384-Q1: 「여러 행을 함께
+/// 옮기면 덮인 블록이 그 묶음을 건너 반대편 행으로 갑니다 — 좌우에서 「지나간
+/// 블록이 반대편으로 가는」 것과 같은 모양」): across the moved rows, to a row
+/// the move left empty. The rows it enters hand theirs to the rows it leaves
+/// in order — the first entered to the first left — as blocks passed along
+/// one row keep their order on its other side.
+///
+/// ⚖️Mine, not the user's: a row the moved rows still stand on is landed
+/// on only by a move that also slides along the frames. It hands its
+/// blocks back the way their lander came — to the row that one left, and
+/// on while that row is landed on too — until a row left empty.
+///
+/// The one answer for blocks and for pictures: a rows' hop on the same
+/// frames inside an attach group trades the pictures by it (F-330,
+/// [picturesTradedInAttachGroup]).
+int rowLandedOnGoesBackTo(
+  int target, {
+  required Set<int> sources,
+  required int rowDelta,
+}) {
+  final targets = {for (final source in sources) source + rowDelta};
+  final entered = [...targets.difference(sources)]..sort();
+  final left = [...sources.difference(targets)]..sort();
+  final place = entered.indexOf(target);
+  if (place >= 0) {
+    return left[place];
+  }
+  var row = target - rowDelta;
+  while (targets.contains(row)) {
+    row -= rowDelta;
+  }
+  return row;
+}
+
 /// [row] taking [returned] back, each on its own frames: a block of the
 /// row one reaches makes way past it, and the push runs on as an
 /// insertion's does ([startsClearingFrontier]) — the empty space absorbs it
