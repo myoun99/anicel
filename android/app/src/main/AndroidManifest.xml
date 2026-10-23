@@ -58,20 +58,32 @@
             <!-- open-door-android-share: what another app opens Anicel
                  with (VIEW) or shares with it (SEND, SEND_MULTIPLE) goes
                  through the one door a drop goes through - MainActivity
-                 says it to Dart as a pick says it. EVERY type: the door's
-                 one judgement (openedAs) says what Anicel opens and names
-                 what it does not, as for a file the Explorer opens Anicel
-                 with. A type with no scheme takes content: and file: alike. -->
+                 says it to Dart as a pick says it. A file of EVERY type
+                 opens with it: the door's one judgement (openedAs) says
+                 what Anicel opens and names what it does not, as for a
+                 file the Explorer opens Anicel with. A type with no scheme
+                 takes content: and file: alike. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="*/*"/>
             </intent-filter>
+            <!-- A share is every type but words (text/*): a link or a
+                 sentence shared is text, with no file in it for the door
+                 (open-door-android-share-Q1, 유저 2026-10-23: 「글 공유에는
+                 안 뜨게」). A file shared as text - a program's shortcut
+                 list (.txt) - opens with 「다음으로 열기」 instead. An item
+                 typed */* still matches. ↩️Every type until then, as VIEW
+                 takes. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <action android:name="android.intent.action.SEND_MULTIPLE"/>
                 <category android:name="android.intent.category.DEFAULT"/>
-                <data android:mimeType="*/*"/>
+                <data android:mimeType="image/*"/>
+                <data android:mimeType="video/*"/>
+                <data android:mimeType="audio/*"/>
+                <data android:mimeType="application/*"/>
+                <data android:mimeType="font/*"/>
             </intent-filter>
             <!-- A VIEW's data is the file it opens, not a route in the app:
                  Flutter reads it as one when this is absent (deep linking

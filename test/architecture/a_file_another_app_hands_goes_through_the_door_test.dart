@@ -43,8 +43,8 @@ void main() {
     return fail('no filter takes $action');
   }
 
-  test('the activity takes 「다음으로 열기」 and 「공유」 of every type, stands '
-      'once, and reads no route out of a file', () {
+  test('the activity takes 「다음으로 열기」 of every type and 「공유」 of every '
+      'type but words, stands once, and reads no route out of a file', () {
     final activity = activityElement();
     final view = filterTaking(activity, 'android.intent.action.VIEW');
     final send = filterTaking(activity, 'android.intent.action.SEND');
@@ -58,8 +58,15 @@ void main() {
         contains('<category android:name="android.intent.category.DEFAULT"/>'),
         reason: 'an implicit intent reaches no activity without it',
       );
-      expect(filter, contains('<data android:mimeType="*/*"/>'));
     }
+    expect(view, contains('<data android:mimeType="*/*"/>'));
+    // 🗣️open-door-android-share-Q1 (유저 2026-10-23: 「글 공유에는 안
+    // 뜨게」): a link or a sentence is shared as text, with no file in it.
+    for (final kind in ['image', 'video', 'audio', 'application', 'font']) {
+      expect(send, contains('<data android:mimeType="$kind/*"/>'));
+    }
+    expect(send, isNot(contains('*/*')), reason: 'every type takes words');
+    expect(send, isNot(contains('mimeType="text/')));
     expect(
       activity,
       contains('android:launchMode="singleTask"'),
