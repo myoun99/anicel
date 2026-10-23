@@ -654,13 +654,20 @@ void main() {
   group('on Windows the cursors of one size are the system\'s', () {
     late List<MethodCall> calls;
 
-    void listen(WidgetTester tester) {
+    // The first [refusals] pictures are refused, as an engine refuses one
+    // that is no bitmap.
+    void listen(WidgetTester tester, {int refusals = 0}) {
+      var refused = 0;
       calls = [];
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         SystemChannels.mouseCursor,
         (call) async {
           calls.add(call);
           if (call.method == 'createCustomCursor/windows') {
+            if (refused < refusals) {
+              refused++;
+              throw PlatformException(code: 'Argument error');
+            }
             return (call.arguments as Map<Object?, Object?>)['name'];
           }
           return null;
@@ -757,6 +764,38 @@ void main() {
             as Map<Object?, Object?>)['kind'],
         'precise',
       );
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+    testWidgets('🚨a picture the system refused is not kept — the next '
+        'wearing hands it over again', (tester) async {
+      // A size of its own, so the picture is not already made.
+      tester.view.devicePixelRatio = 1.5;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      listen(tester, refusals: 1);
+      choose(DrawingCursor.pen);
+      await pumpPanel(tester);
+      await hover(tester, const Offset(40, 40));
+      await settleAsync(
+        tester,
+        () => named('createCustomCursor/windows').isNotEmpty,
+      );
+      await lendBothClocks(tester, rounds: 10);
+      expect(
+        named('setCustomCursor/windows'),
+        isEmpty,
+        reason: '⛔CONTROL: refused, nothing to wear',
+      );
+
+      choose(DrawingCursor.crosshair);
+      await tester.pump();
+      choose(DrawingCursor.pen);
+      await tester.pump();
+      await settleAsync(
+        tester,
+        () => named('setCustomCursor/windows').isNotEmpty,
+      );
+      expect(named('createCustomCursor/windows'), hasLength(2));
+      expect(named('setCustomCursor/windows'), hasLength(1));
     }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
     // 🗣️F-441 (유저 2026-10-23): 「크기를 크게 키울 필요가 없는 고정크기
