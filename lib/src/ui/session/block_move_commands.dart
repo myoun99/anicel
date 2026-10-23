@@ -7,7 +7,6 @@ import '../../services/command.dart';
 import '../../services/commands/move_cel_pictures_command.dart';
 import '../../services/commands/rekey_brush_frames_command.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
-import '../../models/timeline_repeat.dart';
 import 'session_roles.dart';
 import 'pixel_editing.dart';
 import 'render_caches.dart';
@@ -46,6 +45,10 @@ class BlockMoveCommands {
   /// ↩️It took the undo LABEL: the drawing-block drag and the frame-range
   /// drag both landed exactly this way and differed in that and nothing
   /// else. One drag is left, so one label.
+  /// ↩️And it derived the rows' run-edge ghosts itself. The plan's rows are
+  /// ghost-free, and the repository derives every run edge at write time
+  /// (its fifth invariant, which took over from each edit deriving its own)
+  /// — so taking these away changed nothing a test could see (2026-10-24).
   Command singleRowMoveCommand(
     DrawingBlockMovePlan plan, {
     required Layer source,
@@ -54,19 +57,13 @@ class BlockMoveCommands {
       UpdateLayerTimelineCommand(
         repository: _project.repository,
         before: source,
-        after: rederiveRunBehaviors(
-          plan.sourceAfter,
-          drawnFrameCount: _project.activeCutDrawnFrameCount,
-        ),
+        after: plan.sourceAfter,
       ),
       if (plan.targetBefore != null)
         UpdateLayerTimelineCommand(
           repository: _project.repository,
           before: plan.targetBefore!,
-          after: rederiveRunBehaviors(
-            plan.targetAfter!,
-            drawnFrameCount: _project.activeCutDrawnFrameCount,
-          ),
+          after: plan.targetAfter!,
         ),
     ];
     if (plan.rekeys.isNotEmpty) {
