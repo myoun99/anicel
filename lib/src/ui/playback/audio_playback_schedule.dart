@@ -358,9 +358,11 @@ AudioMixSchedule audioMixScheduleFrom({
 typedef _StreamWindow = ({int centerSample, int backSamples, int aheadSamples});
 
 /// The sources that are already conformed and resident, in upload order,
-/// with the mix's source index mapped onto that order — and the paths
-/// nothing is making ready ([AudioConformStore.isLanding]), which the
-/// upload leaves out ([WindowedUploadPlan.cannotPlay]).
+/// with the mix's source index mapped onto that order — and every source,
+/// resident or streamed, that cannot be played and why, which the upload
+/// leaves out ([WindowedUploadPlan.cannotPlay]). ⛔Asked here once per
+/// source: the clip loop that windows the streams reads this answer, it
+/// does not ask again.
 ///
 /// Null when one of them is still landing — the caller uploads nothing
 /// and any old schedule keeps playing. ⛔Every lookup runs even after a
@@ -382,13 +384,13 @@ _residentSources({
   var landing = false;
   for (var index = 0; index < mix.sourcePaths.length; index += 1) {
     final path = mix.sourcePaths[index];
-    if (conformStore.isStreaming(path)) {
-      continue; // windowed per clip by the caller
-    }
     final why = conformStore.cannotPlayAt(path, deviceRate);
     if (why != null) {
       cannotPlay[path] = why;
       continue;
+    }
+    if (conformStore.isStreaming(path)) {
+      continue; // windowed per clip by the caller
     }
     final samples = conformStore.samplesAtRate(path, deviceRate);
     final entry = conformStore.resultFor(path);
@@ -550,7 +552,7 @@ WindowedUploadPlan? planWindowedMixUpload({
     return null;
   }
 
-  final cannotPlay = {...resident.cannotPlay};
+  final cannotPlay = resident.cannotPlay;
   final clips = <AudioMixClip>[];
   final reads = <StreamWindowRead>[];
   final at = (
@@ -567,9 +569,7 @@ WindowedUploadPlan? planWindowedMixUpload({
       }
       continue;
     }
-    final why = conformStore.cannotPlayAt(path, deviceRate);
-    if (why != null) {
-      cannotPlay[path] = why;
+    if (cannotPlay.containsKey(path)) {
       continue;
     }
     final reader = conformStore.streamReaderFor(path)!;
