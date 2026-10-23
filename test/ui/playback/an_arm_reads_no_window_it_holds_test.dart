@@ -42,8 +42,8 @@ import '../../helpers/temp_dir.dart';
 /// the window read it off the disk and copied it twice: 🔬66ms and a GC on
 /// the AMMI OP press.
 ///
-/// The store counts the windows read; the device is the null backend at
-/// 8 kHz, so a sound past the threshold stays small on disk.
+/// The conform's bytes count the windows read; the device is the null
+/// backend at 8 kHz, so a sound past the threshold stays small on disk.
 void main() {
   final libraryPath = nativeEngineLibraryPathOrNull();
   final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
@@ -52,6 +52,7 @@ void main() {
   const soundFrames = deviceRate * (conformStreamingThresholdSeconds + 1);
 
   late Directory directory;
+  late _WindowCountingBytes conform;
 
   setUp(() async {
     QaAudioDevice.debugResetForTests();
@@ -71,8 +72,8 @@ void main() {
   });
 
   /// The null device open at [deviceRate], and a store whose `long.wav`
-  /// streams from disk.
-  Future<_WindowCountingStore> streamingStore() async {
+  /// streams from disk — out of [conform].
+  Future<AudioConformStore> streamingStore() async {
     final device = QaAudioDevice.instance!;
     expect(
       device.open(sampleRate: deviceRate, channels: 2, useNullBackend: true),
@@ -87,12 +88,13 @@ void main() {
         sampleRate: deviceRate,
       ),
     );
-    final store = _WindowCountingStore(
+    conform = _WindowCountingBytes(conformPath);
+    final store = AudioConformStore(
       resolveConformPath: (_) => conformPath,
       projectSampleRate: deviceRate,
       runner: (request) async => ConformResult(
         outcome: ConformOutcome.built,
-        conformBytes: mediaAppFileSource(conformPath),
+        conformBytes: conform,
         channels: 1,
         sampleRate: deviceRate,
         frames: soundFrames,
@@ -128,16 +130,16 @@ void main() {
 
     controller.play(scope: PlaybackScope.activeCut);
     expect(transport.carryingPlayback, isTrue, reason: 'fixture');
-    expect(store.windowsRead, 1, reason: 'the press centres it, once');
+    expect(conform.windowsRead, 1, reason: 'the press centres it, once');
 
     controller.seekToGlobalFrame(100); // 10 s — inside its near half
-    expect(store.windowsRead, 1, reason: 'it holds ten seconds in');
+    expect(conform.windowsRead, 1, reason: 'it holds ten seconds in');
 
     controller.seekToGlobalFrame(300); // 30 s — past its near half
-    expect(store.windowsRead, 2, reason: 'thirty seconds in, it reads there');
+    expect(conform.windowsRead, 2, reason: 'thirty seconds in, it reads there');
 
     controller.seekToGlobalFrame(290); // a second behind the new centre
-    expect(store.windowsRead, 2, reason: 'a step back inside reads nothing');
+    expect(conform.windowsRead, 2, reason: 'a step back inside reads nothing');
     controller.stop();
   }, skip: skip);
 
@@ -156,14 +158,14 @@ void main() {
       isA<OutputArmed>(),
       reason: 'fixture',
     );
-    expect(store.windowsRead, 1, reason: 'the press centres it, once');
+    expect(conform.windowsRead, 1, reason: 'the press centres it, once');
 
     sound.resume(59); // a second back — a run going on, a short put-back
-    expect(store.windowsRead, 1, reason: 'it holds a second back');
+    expect(conform.windowsRead, 1, reason: 'it holds a second back');
 
     sound.resume(50); // a run put back as far as the app was late
     expect(
-      store.windowsRead,
+      conform.windowsRead,
       2,
       reason: 'ten seconds back is past its trailing two: ↩️it played out of '
           'the window as it stood — silence',
@@ -213,21 +215,25 @@ final Project _project = Project(
   ],
 );
 
-/// A store that counts the windows read out of its streaming conforms — a
-/// window upload asks for the reader once for each streaming clip.
-class _WindowCountingStore extends AudioConformStore {
-  _WindowCountingStore({
-    required super.resolveConformPath,
-    super.runner,
-    super.projectSampleRate,
-    super.log,
-  });
+/// A conform's bytes that count the windows read out of them: a reader
+/// reads its header once, at the start, and every window in one read past
+/// it ([ConformPcmStreamReader.readWindow]).
+///
+/// ↩️The store counted its `streamReaderFor` calls, on the word that an
+/// upload asks for the reader once for each streaming clip — until the
+/// upload asked `AudioConformStore.cannotPlayAt` first
+/// (playback-says-the-sound-it-cannot-play), which opens the same cached
+/// reader and reads nothing. Counted there, every arm read two windows.
+class _WindowCountingBytes extends MediaAppFileBytes {
+  _WindowCountingBytes(String path) : super(path: path, framed: false);
 
   int windowsRead = 0;
 
   @override
-  ConformPcmStreamReader? streamReaderFor(String sourcePath) {
-    windowsRead += 1;
-    return super.streamReaderFor(sourcePath);
+  int readIntoSync(Uint8List buffer, int position, int size) {
+    if (position > 0) {
+      windowsRead += 1;
+    }
+    return super.readIntoSync(buffer, position, size);
   }
 }
