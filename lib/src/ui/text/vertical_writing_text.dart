@@ -7,6 +7,8 @@ import 'vertical_writing.dart';
 import 'word_bake.dart' show RepaintOnWordBakes;
 import 'word_condensation.dart';
 import '../repaint_props.dart';
+import '../timeline/memo_token.dart' show ByList;
+import '../widgets/ground_ink_writing.dart' show GroundInkRun;
 
 // Hosts pick a Latin form when they mount the widget, so the choice has to
 // travel with the renderer they already import — the table itself stays a
@@ -325,6 +327,8 @@ class VerticalWritingText extends StatelessWidget {
     this.latinForm = VerticalLatinForm.sideways,
     this.mainAlignment = 0.5,
     this.overflow = VerticalTextOverflow.ellipsis,
+    this.endInset = 0,
+    this.inks,
   });
 
   final String text;
@@ -357,17 +361,53 @@ class VerticalWritingText extends StatelessWidget {
   /// packs, and it goes through [paintVerticalText] directly.
   final VerticalTextOverflow overflow;
 
+  /// What the column keeps clear at each end of the box — a stood bar's
+  /// track inset; the box itself, and so [inks], still runs the whole
+  /// length.
+  final double endInset;
+
+  /// The ground under the column, top to bottom ([GroundInkRun], as
+  /// fractions of the box's height), each stretch of the column taking its
+  /// run's ink — the text-on-ground law ([GroundInkWriting]) standing up.
+  /// Null: one ink, the style's.
+  ///
+  /// ⚠️Not the gradient a lying writing wears: a column sets each glyph at
+  /// its own cell, so a shader would start again in every cell. The column
+  /// is set once per run instead, clipped to its stretch.
+  final List<GroundInkRun>? inks;
+
+  /// The style the column is set in where [context] shows it.
+  ///
+  /// Accessibility scaling has to reach the FIT, not just the glyphs: the
+  /// old widget was a FittedBox and got this for free, and scaling only the
+  /// TextPainters would grow the letters inside cells that stayed the same
+  /// height. The style carries the scaled size from here on.
+  TextStyle _styleIn(BuildContext context) {
+    final merged = DefaultTextStyle.of(context).style.merge(style);
+    return merged.copyWith(
+      fontSize: MediaQuery.textScalerOf(context).scale(merged.fontSize ?? 12),
+    );
+  }
+
+  /// The box the column asks for where [context] shows it — its natural
+  /// leading and its [endInset]s: what a host that sizes itself around the
+  /// column measures before it builds one.
+  Size naturalSizeIn(BuildContext context) {
+    final natural = verticalWritingNaturalBox(
+      verticalTextCells(
+        text,
+        tateChuYokoDigits: tateChuYokoDigits,
+        latinForm: latinForm,
+      ),
+      fontSize: _styleIn(context).fontSize!,
+      lineHeight: lineHeight,
+    ).size;
+    return Size(natural.width, natural.height + endInset * 2);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final merged = DefaultTextStyle.of(context).style.merge(style);
-    // Accessibility scaling has to reach the FIT, not just the glyphs: the
-    // old widget was a FittedBox and got this for free, and scaling only
-    // the TextPainters would grow the letters inside cells that stayed the
-    // same height. The style carries the scaled size from here on.
-    final fontSize = MediaQuery.textScalerOf(
-      context,
-    ).scale(merged.fontSize ?? 12);
-    final resolved = merged.copyWith(fontSize: fontSize);
+    final resolved = _styleIn(context);
 
     return Semantics(
       label: text,
@@ -378,15 +418,7 @@ class VerticalWritingText extends StatelessWidget {
         // one no longer throws — `SectionBandZone` passes a null extent and
         // is saved today only by the Positioned around it.
         child: CustomPaint(
-          size: verticalWritingNaturalBox(
-            verticalTextCells(
-              text,
-              tateChuYokoDigits: tateChuYokoDigits,
-              latinForm: latinForm,
-            ),
-            fontSize: fontSize,
-            lineHeight: lineHeight,
-          ).size,
+          size: naturalSizeIn(context),
           painter: _VerticalWritingPainter(
             text: text,
             style: resolved,
@@ -396,6 +428,8 @@ class VerticalWritingText extends StatelessWidget {
             latinForm: latinForm,
             mainAlignment: mainAlignment,
             overflow: overflow,
+            endInset: endInset,
+            inks: inks,
           ),
         ),
       ),
@@ -453,6 +487,8 @@ class _VerticalWritingPainter extends CustomPainter
     required this.latinForm,
     required this.mainAlignment,
     required this.overflow,
+    required this.endInset,
+    required this.inks,
   });
 
   final String text;
@@ -465,17 +501,43 @@ class _VerticalWritingPainter extends CustomPainter
   final VerticalLatinForm latinForm;
   final double mainAlignment;
   final VerticalTextOverflow overflow;
+  final double endInset;
+  final List<GroundInkRun>? inks;
 
   @override
   void paintWords(Canvas canvas, Size size) {
+    final inks = this.inks;
+    if (inks == null) {
+      _paintColumn(canvas, size, style);
+      return;
+    }
+    var start = 0.0;
+    for (final run in inks) {
+      canvas
+        ..save()
+        ..clipRect(
+          Rect.fromLTRB(
+            0,
+            start * size.height,
+            size.width,
+            run.end * size.height,
+          ),
+        );
+      _paintColumn(canvas, size, style.copyWith(color: run.ink));
+      canvas.restore();
+      start = run.end;
+    }
+  }
+
+  void _paintColumn(Canvas canvas, Size size, TextStyle style) {
     final fontSize = style.fontSize ?? 12;
     paintVerticalText(
       canvas,
       text,
       style: style,
       centerX: size.width / 2,
-      top: 0,
-      mainExtent: size.height,
+      top: endInset,
+      mainExtent: math.max(0, size.height - endInset * 2),
       naturalCellExtent: fontSize * lineHeight,
       setWord: paintFittedText,
       // The leading is proportional here, unlike the timesheet's fixed-row
@@ -501,5 +563,7 @@ class _VerticalWritingPainter extends CustomPainter
     latinForm,
     mainAlignment,
     overflow,
+    endInset,
+    inks == null ? null : ByList(inks!),
   );
 }

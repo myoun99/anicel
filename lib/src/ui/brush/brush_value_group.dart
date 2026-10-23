@@ -140,11 +140,13 @@ class BrushValueBars extends StatelessWidget {
     // F-325 (유저 2026-10-09): the +/− and the wheel step through the tool
     // size panel's rack, as it is.
     stops: ToolSizePresetPanel.presets,
-    unit: ' px',
+    // 🗣️I-125-Q1 (유저 2026-10-23): standing, 「px는 필요없어보임」.
+    unit: layout.stood ? '' : ' px',
     height: thickness,
     axis: layout.axis,
     // 🗣️I-34 (유저 2026-10-18): 「숫자만으로 하자」 — the pill's bars.
     nameInside: !layout.stood,
+    upright: layout.stood,
     onChanged: onChanged,
   );
 
@@ -161,6 +163,8 @@ class BrushValueBars extends StatelessWidget {
     height: thickness,
     axis: layout.axis,
     nameInside: !layout.stood,
+    // …and 「%는 괜찮은데」: `100` in one cell, `%` in the next.
+    upright: layout.stood,
     onChanged: onChanged,
   );
 

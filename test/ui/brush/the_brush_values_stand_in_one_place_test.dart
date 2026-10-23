@@ -22,14 +22,12 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
-import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settings_flyout.dart';
 import '../../helpers/settle_async.dart';
-import '../../helpers/words_cut_off.dart';
 
 const pill = ValueKey<String>('canvas-brush-pill');
 const row = 'menu-window-brush-values-on-strip';
@@ -321,8 +319,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // Typed as it writes: the field's row turned a quarter clockwise, its
-    // start at the bar's right and its length down the bar.
+    // Typed in the row turned a quarter clockwise — a field types a line,
+    // not a column — its start at the bar's right and its length down it.
     final input = find.byKey(const ValueKey<String>('field-slider-type-input'));
     final start = tester.getTopLeft(input);
     final end = tester.getBottomRight(input);
@@ -340,17 +338,23 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
-    // The NUMBER each bar writes, which this is about. Its hands are glyphs:
-    // on a bar this thick the ± glyph's box runs past its cell across the
-    // pair while its ink stays inside (value_hands.dart, `ValueSteps`).
+    // The NUMBER each bar writes, which this is about — standing (I-125-Q1),
+    // so whole means its column has the room it asks for down the bar. Its
+    // hands are glyphs: on a bar this thick the ± glyph's box runs past its
+    // cell across the pair while its ink stays inside (value_hands.dart,
+    // `ValueSteps`).
     for (final bar in ['brush-pill-size-bar', 'brush-pill-opacity-bar']) {
       final number = find.descendant(
         of: inPill(bar),
-        matching: find.byType(GroundInkWriting),
+        matching: find.byType(VerticalWritingText),
       );
       expect(number, findsOneWidget, reason: '⛔fixture premise: $bar writes');
-      expect(wordsCutOff(number), isEmpty, reason: bar);
-      expect(wordsCutAcross(number), isEmpty, reason: bar);
+      final asks = tester
+          .widget<VerticalWritingText>(number)
+          .naturalSizeIn(tester.element(number));
+      final has = tester.getSize(number);
+      expect(has.height, greaterThanOrEqualTo(asks.height), reason: bar);
+      expect(has.width, greaterThanOrEqualTo(asks.width), reason: bar);
     }
   });
 }
