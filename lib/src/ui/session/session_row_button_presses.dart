@@ -419,7 +419,12 @@ class SessionRowButtonPresses {
       //
       // ↩️F-169: that rule is gone (nothing stands inside a shut group), so
       // this hand-off is what keeps the fold from shutting over you.
-      session.handOffCurrentRowOnAttachFold(baseId);
+      //
+      // Every use the fold shuts hands on, as every use folds (F-302) — the
+      // conte pressed in one cut shuts the group in the cut you stand in.
+      for (final use in session.rowsFoldingWith(baseId)) {
+        session.handOffCurrentRowOnAttachFold(use);
+      }
     }
     // F-302: every use of a linked base folds its group with it.
     session.folders.toggleAttachGroup(baseId);

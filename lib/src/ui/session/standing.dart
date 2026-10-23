@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import '../../services/editing/active_cut_helpers.dart';
 import '../../services/editing/layer_standing_after_change.dart'
     show conteRowAfterChange, conteRowHandedOff;
+import '../../models/cut.dart' show Cut;
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -748,10 +749,16 @@ class Standing {
   /// of its cut's track for its camera, a conte row for a row of its conte
   /// group ([projectionRowIdOf]) — or null for every other layer.
   LayerId? _projectionRowShowing(LayerId layerId) {
+    final home = _homeOf(layerId);
+    return home == null ? null : projectionRowIdOf(home.$1, home.$2, layerId);
+  }
+
+  /// The track and the cut [layerId] stands in, or null.
+  (TrackId, Cut)? _homeOf(LayerId layerId) {
     for (final track in _project.repository.requireProject().tracks) {
       for (final cut in track.cuts) {
         if (cut.layers.byId(layerId) != null) {
-          return projectionRowIdOf(track.id, cut, layerId);
+          return (track.id, cut);
         }
       }
     }
@@ -768,23 +775,46 @@ class Standing {
   /// whether the ACTIVE row was an attach row of the base, so the organizer
   /// folder — and a nested one — stayed standing after the fold took them off
   /// the screen.
+  ///
+  /// 🔎The group shuts on the storyboard's rail too — the fold state is one
+  /// for both panels — so the conte rows it holds hand the storyboard on to
+  /// the base's conte row (board
+  /// `conte-attach-fold-leaves-the-conte-panel-standing-inside`). ↩️Only the
+  /// timeline was handed on, and the conte panel went on standing in a row
+  /// the fold had taken off its rail.
   void handOffCurrentRowOnAttachFold(LayerId baseId) {
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
+    final home = _homeOf(baseId);
+    if (home == null) {
       return;
     }
-    bool inGroup(LayerId layerId) {
-      final layer = cut.layers.byId(layerId);
-      return layer != null && attachGroupBaseOf(layer, cut.layers) == baseId;
-    }
+    final (trackId, cut) = home;
+    final group = {
+      for (final layer in cut.layers)
+        if (attachGroupBaseOf(layer, cut.layers) == baseId) layer.id,
+    };
+    bool holds(TimelineRowAddress address, Set<LayerId> rows) =>
+        switch (address) {
+          LayerRowAddress(:final layerId) => rows.contains(layerId),
+          LaneRowAddress(:final layerId) => rows.contains(layerId),
+          _ => false,
+        };
 
     handOffOnFold(
       swallower: LayerRowAddress(baseId),
-      vanished: (address) => switch (address) {
-        LayerRowAddress(:final layerId) => inGroup(layerId),
-        LaneRowAddress(:final layerId) => inGroup(layerId),
-        _ => false,
-      },
+      vanished: (address) => holds(address, group),
+    );
+    final shownBase = projectionRowIdOf(trackId, cut, baseId);
+    if (shownBase == null) {
+      return;
+    }
+    final shown = group
+        .map((layerId) => projectionRowIdOf(trackId, cut, layerId))
+        .whereType<LayerId>()
+        .toSet();
+    handOffOnFold(
+      swallower: LayerRowAddress(shownBase),
+      vanished: (address) => holds(address, shown),
+      panel: WorkingPanel.storyboard,
     );
   }
 
