@@ -302,8 +302,9 @@ class PlaybackRig implements PlaybackRun {
   /// 🗣️유저 2026-10-16 (se-fallback-opens-the-original-path-Q2): 「대체
   /// 재생을 안 쓰고, 소리가 준비될 때까지 기다린다」. ↩️A run the device did
   /// not carry stood down onto the platform players (`AudioPlaybackSync`),
-  /// on the wall clock — the stack is the 저장 lane's to delete
-  /// (playback-waits-for-its-sound).
+  /// on the wall clock — playback stopped calling them in
+  /// playback-waits-for-its-sound, and the stack and its `audioplayers`
+  /// went with se-fallback-opens-the-original-path (2026-10-23).
   late final AudioDeviceTransport audioDeviceTransport = AudioDeviceTransport(
     controller: playback,
     resolveFrameRate: () => _settings.projectFrameRate,

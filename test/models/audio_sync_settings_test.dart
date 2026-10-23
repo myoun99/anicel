@@ -224,7 +224,7 @@ void main() {
     test('a closed device says so instead of reporting zeros', () {
       const report = AudioSyncReport(deviceOpen: false);
       expect(report.summary, contains('not open'));
-      expect(report.summary, contains('platform player'));
+      expect(report.summary, contains('no sound'));
     });
 
     test('the summary is one pasteable line', () {

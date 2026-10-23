@@ -41,13 +41,6 @@ const _ledger = <String, ({int calls, String why})>{
         'Same BRUSH_LAB_PROFILE probe, for the warm-up path (the site says '
         'so with its own ignore comment).',
   ),
-  'lib/src/ui/playback/audioplayers_clip_player.dart': (
-    calls: 3,
-    why:
-        'Audio failure logs (load / start / volume). The audio lane owns '
-        'this file; routing those failures to a user-visible surface is that '
-        'lane\'s call, not the audit\'s (2026-09-03).',
-  ),
 };
 
 /// A `print(` or `debugPrint(` call at the start of a statement or after an

@@ -37,7 +37,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  audioplayers: ^6.1.0
   file_selector: ^1.1.0
   sqlite3: ^3.3.4
   sqlite3_flutter_libs: ^0.6.0+eol

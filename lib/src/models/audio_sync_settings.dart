@@ -349,8 +349,7 @@ class AudioSyncReport {
   /// inspector is that this can be pasted somewhere.
   String get summary {
     if (!deviceOpen) {
-      return 'audio device: not open (playback falls back to the platform '
-          'player)';
+      return 'audio device: not open (playback has no sound until it opens)';
     }
     final frames = appliedOffsetFrames.toStringAsFixed(2);
     return 'audio device: ${deviceSampleRate}Hz ${deviceChannels}ch · '

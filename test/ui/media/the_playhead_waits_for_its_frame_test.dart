@@ -32,13 +32,13 @@ import '../../helpers/fake_pdf_document.dart';
 /// on that frame.
 ///
 /// ⚠️The CANVAS is the opposite and is also right. It judges timing against
-/// sound, so it holds real time and drops frames — `AudioPlaybackSync` says
+/// sound, so it holds real time and drops frames — `AudioPlaybackSync` said
 /// so in one line: 「frames drop, time never stretches」. A player looking at
 /// reference has nothing riding on the clock, so it buffers. ↩️The canvas
 /// waits too now, under one law with this viewer (F-365,
 /// viewer-plays-by-the-one-playback-law) — for its sound as well
 /// (playback-waits-for-its-sound), and the fallback that line was written
-/// in plays nothing.
+/// in is gone.
 void main() {
   late EditorSessionManager session;
   late MediaViewerSlot slot;
