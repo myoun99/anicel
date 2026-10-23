@@ -543,9 +543,9 @@ class _KeyInHand {
   final LaneGraphBoxHeld? box;
 
   /// The marks a stretch raises across a value graph, as they stood when
-  /// the handle was taken, and where across it each stood
-  /// ([_LaneGraphLift.marksOf]).
-  final List<({_KeyLifted lifted, double across})> marks;
+  /// the handle was taken, and where each stood — at what time on the
+  /// graph's frames, and how far across it ([_LaneGraphLift.marksOf]).
+  final List<({_KeyLifted lifted, double time, double across})> marks;
   bool moving = false;
   int frames = 0;
 
@@ -863,8 +863,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   _KeyInHand _boxTaken(LaneGraphBoxHandle handle, Offset position, Size size) {
     final picked = _painter.pickedIn(size);
     final times = picked.keys.map(
-      (key) =>
-          (key.frame + TimelineLaneGraphPainter._shiftOf(key.line)).toDouble(),
+      (key) => TimelineLaneGraphPainter._timeOf(key.line, key.frame).toDouble(),
     );
     final fits = _painter.fits;
     return _KeyInHand(
@@ -929,8 +928,11 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// The keys the box holds STRETCHED as far as its handle in hand has
   /// been pulled (I-3 ⑥, AE's transform box): along the frames about the
   /// box's other end — its anchor point with Ctrl held (⌘ on a Mac) — and
-  /// across a value graph; a corner with Shift held keeps the box's shape.
-  /// The view pans where the hand reaches its edge, as under a key carried.
+  /// across a value graph; a corner with Shift held keeps the box's shape,
+  /// and one with Ctrl and Alt held (⌥) tapers its side, or with Shift too
+  /// moves it (graph-box-handles-more ⓑ ⓒ) — each mark going where the
+  /// box pulled puts it ([laneGraphBoxAcrossOf]). The view pans where the
+  /// hand reaches its edge, as under a key carried.
   void _stretchTo(
     _KeyInHand inHand,
     LaneGraphBoxHeld held,
@@ -946,7 +948,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final moved = details.localPosition - inHand.press;
     final (:handle, :times, :across, pivot: _) = held;
     final edge = handle.along > 0 ? times.high : times.low;
-    final (time: (:anchor, :factor), across: crossed) = laneGraphBoxPulled(
+    final pull = laneGraphBoxPulled(
       held,
       (
         time: laneGraphTimeAt(
@@ -958,17 +960,22 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
             partAcross(axis, moved),
       ),
       (
-        pivoted: ModifierKeys.isControlOrCommandPressed,
-        square: ModifierKeys.isShiftPressed,
+        control: ModifierKeys.isControlOrCommandPressed,
+        alt: ModifierKeys.isAltPressed,
+        shift: ModifierKeys.isShiftPressed,
       ),
     );
+    final (:anchor, :factor) = pull.time;
     final shift = TimelineLaneGraphPainter._shiftOf(inHand.key.line);
     widget.lanes!.onMoveUpdate(
       0,
       stretch: (anchor: anchor - shift, factor: factor),
       values: _lift.valuesOf([
-        for (final (:lifted, across: at) in inHand.marks)
-          (lifted: lifted, rise: (at - crossed.anchor) * (crossed.factor - 1)),
+        for (final (:lifted, :time, across: at) in inHand.marks)
+          (
+            lifted: lifted,
+            rise: laneGraphBoxAcrossOf(held, pull, time: time, across: at) - at,
+          ),
       ]),
     );
   }
@@ -1159,7 +1166,7 @@ class _LaneGraphPicks {
               each.lane.laneId == picked.laneId,
         )
         .firstOrNull;
-    final drawn = frame + TimelineLaneGraphPainter._shiftOf(line);
+    final drawn = TimelineLaneGraphPainter._timeOf(line, frame);
     final at = anchor == null ? drawn : _ownFrameOf(anchor, drawn);
     lanes.onSelectRows!(
       {
@@ -1307,7 +1314,7 @@ class _LaneGraphLift {
   /// 그대로)」 — a line of two numbers (a position, a Scale) is stretched
   /// mark by mark, each number on its own range, though a carry moves the
   /// one number in hand (「한 번에 숫자 하나」).
-  List<({_KeyLifted lifted, double across})> marksOf(
+  List<({_KeyLifted lifted, double time, double across})> marksOf(
     List<LaneGraphKey> picked,
     Map<String, LaneGraphFit> fits,
   ) {
@@ -1327,6 +1334,10 @@ class _LaneGraphLift {
               part: key.part,
               range: fit.ranges[key.part],
             ),
+            time: TimelineLaneGraphPainter._timeOf(
+              key.line,
+              key.frame,
+            ).toDouble(),
             across: partAcross(axis, key.at),
           ),
     ];
@@ -2280,6 +2291,10 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// along: a cut's lane's on its track's ([LaneGraphReach]), none for a
   /// lane on the axis its own frames are counted on.
   static int _shiftOf(LaneGraphLine line) => line.reach?.start ?? 0;
+
+  /// Where [line]'s own [frame] stands on the frames its graph is laid
+  /// along ([_shiftOf]).
+  static int _timeOf(LaneGraphLine line, int frame) => frame + _shiftOf(line);
 
   /// Whether [line] is drawn at [time], one of its own: everywhere on the
   /// axis its own frames are counted on — on a track's, a cut's lane from

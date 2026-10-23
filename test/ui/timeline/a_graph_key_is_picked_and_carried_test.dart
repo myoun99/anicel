@@ -1044,6 +1044,77 @@ void main() {
       expect(rotations(s), {0: 45, 4: 0});
     });
 
+    // graph-box-handles-more ⓑ ⓒ — AE's 「To taper keyframe values
+    // vertically, Ctrl+Alt-drag」 · 「To move one side of the bounding box
+    // up or down, Ctrl+Alt+Shift-drag」. Three keys, so that a side pulled
+    // alone is told from the box stretched: 0 and 8 at the bottom, 4 at the
+    // top.
+    Future<EditorSessionManager> sidePulled(
+      WidgetTester tester,
+      List<LogicalKeyboardKey> held,
+    ) async {
+      final s = await _pump(
+        tester,
+        transform: TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>()
+              .withKey(0, 0)
+              .withKey(4, 45)
+              .withKey(8, 0),
+        ),
+      );
+      await _openTheGraph(tester, s);
+      await _pick(tester, s);
+      for (final key in held) {
+        await tester.sendKeyDownEvent(key);
+      }
+      await _carry(
+        tester,
+        handleOnScreen(tester, (along: 1, across: -1)),
+        _up30,
+      );
+      for (final key in held.reversed) {
+        await tester.sendKeyUpEvent(key);
+      }
+      return s;
+    }
+
+    testWidgets('with Ctrl and Alt held, a corner pulled up tapers its '
+        'side about its middle: the key at its bottom goes down as far as '
+        'the hand goes up, the one between half as far up, the other end '
+        'stays — and none moves along the frames', (tester) async {
+      final s = await sidePulled(tester, [
+        LogicalKeyboardKey.controlLeft,
+        LogicalKeyboardKey.altLeft,
+      ]);
+
+      expect(_keyedFrames(s), [0, 4, 8]);
+      expect(_rotationAt(s, 0), 0);
+      expect(_rotationAt(s, 8), lessThan(0));
+      expect(_rotationAt(s, 4), greaterThan(45));
+      expect(
+        _rotationAt(s, 8) / (_rotationAt(s, 4) - 45),
+        closeTo(-2, 0.1),
+      );
+    });
+
+    testWidgets('with Ctrl, Alt and Shift held, the side goes up with the '
+        'hand: its key as far, the one between half as far, the other end '
+        'stays', (tester) async {
+      final s = await sidePulled(tester, [
+        LogicalKeyboardKey.controlLeft,
+        LogicalKeyboardKey.altLeft,
+        LogicalKeyboardKey.shiftLeft,
+      ]);
+
+      expect(_keyedFrames(s), [0, 4, 8]);
+      expect(_rotationAt(s, 0), 0);
+      expect(_rotationAt(s, 8), greaterThan(0));
+      expect(
+        _rotationAt(s, 8) / (_rotationAt(s, 4) - 45),
+        closeTo(2, 0.1),
+      );
+    });
+
     // 🗣️graph-box-handles-scale-keys-Q1 (유저 2026-10-22): 「둘 다 (AE
     // 그대로)」.
     testWidgets('of a line of two numbers, the top\'s handle stretches both: '
