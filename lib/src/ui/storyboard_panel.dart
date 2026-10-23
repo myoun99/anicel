@@ -82,6 +82,7 @@ import 'timeline/timeline_section_runs.dart'
 import 'timeline/timeline_swipe_columns.dart'
     show RailSwipeHooks, timelineSwipeColumns;
 import 'widgets/dock_edge_splitter.dart';
+import 'widgets/owning_axis_grip.dart';
 import 'widgets/drag_chip.dart' show DragChipItem;
 import 'widgets/tick_layer.dart';
 import 'timeline/property_lane_model.dart'
@@ -4935,13 +4936,19 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
       ),
       child: MouseRegion(
         cursor: SystemMouseCursors.resizeColumn,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          dragStartBehavior: DragStartBehavior.down,
-          onHorizontalDragStart: (_) => _start(),
-          onHorizontalDragUpdate: (details) => _update(details.delta.dx),
-          onHorizontalDragEnd: (_) => _end(),
-          onHorizontalDragCancel: _cancel,
+        // 🗣️F-445 (유저 2026-10-23): 「엔드라인 손으로 드래그할때 가끔
+        // 프레임영역 가로 스크롤 작동함. 엔드라인은 조작 위젯이니까 작동안하게
+        // 제대로 다른위젯처럼 강한클레임으로 법 통일」 — the timeline's cut-end
+        // grip's law ([TimelineCutEndDragHandle]). ↩️A plain one-axis drag,
+        // which the frame area's scroller beat to a finger.
+        child: OwningAxisGrip(
+          axis: Axis.horizontal,
+          configure: (recognizer) => recognizer
+            ..dragStartBehavior = DragStartBehavior.down
+            ..onStart = ((_) => _start())
+            ..onUpdate = ((details) => _update(details.primaryDelta!))
+            ..onEnd = ((_) => _end())
+            ..onCancel = _cancel,
         ),
       ),
     );
