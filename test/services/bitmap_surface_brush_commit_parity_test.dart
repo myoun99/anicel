@@ -11,6 +11,7 @@ import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_pixel_blend_operation.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -129,6 +130,7 @@ BrushDab dab({
   BrushTipMask? textureMask,
   double textureScale = 1.0,
   double textureDensity = 1.0,
+  BrushTextureMode textureMode = BrushTextureMode.multiply,
   BrushAntiAlias antiAlias = BrushAntiAlias.high,
 }) {
   return BrushDab(
@@ -154,6 +156,7 @@ BrushDab dab({
     textureMask: textureMask,
     textureScale: textureScale,
     textureDensity: textureDensity,
+    textureMode: textureMode,
   );
 }
 
@@ -601,6 +604,60 @@ void main() {
       }
     });
 
+
+    test('🚨the paper\'s HEIGHT agrees across all three transcriptions', () {
+      // v53 (F-451). The paper cuts the coverage instead of multiplying it:
+      // a soft round, a sampled tip turned and squashed, and one under a
+      // dual mask too, so the height runs after the dual's blend as the
+      // multiply does. ⛔NEITHER DENSITY IS 0 OR 1: the reach is the
+      // density times the coverage, and only a partial one moves the
+      // paper's floor through the texels that the band then grades.
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(
+            x: 40.4,
+            y: 40.6,
+            size: 22,
+            hardness: 0.3,
+            textureMask: _testTipMask,
+            textureScale: 1.3,
+            textureDensity: 0.85,
+            textureMode: BrushTextureMode.height,
+            sequence: 0,
+          ),
+          dab(
+            x: 55.7,
+            y: 47.2,
+            size: 26,
+            tipMask: _testTipMask,
+            roundness: 0.4,
+            angleDegrees: 33,
+            textureMask: _testTipMask,
+            textureScale: 0.7,
+            textureDensity: 0.55,
+            textureMode: BrushTextureMode.height,
+            sequence: 1,
+          ),
+          dab(
+            x: 47.1,
+            y: 58.3,
+            size: 20,
+            dualMask: _testTipMask,
+            dualMaskScale: 0.6,
+            dualDensity: 0.7,
+            dualOffsetU: 0.41,
+            dualOffsetV: 0.13,
+            textureMask: _testTipMask,
+            textureScale: 1.1,
+            textureDensity: 0.7,
+            textureMode: BrushTextureMode.height,
+            sequence: 2,
+          ),
+        ]),
+        reason: 'the paper\'s height must be one law in all three',
+      );
+    });
 
     test('dual-brush textured stroke across tip shapes', () {
       expectParity(

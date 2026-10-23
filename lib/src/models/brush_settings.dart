@@ -8,6 +8,7 @@ import 'brush_settings_group.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_order.dart';
+import 'brush_texture_mode.dart';
 import 'brush_tip_rotation_mode.dart';
 
 class BrushSettings {
@@ -46,6 +47,7 @@ class BrushSettings {
     double textureContrast = 0.0,
     double textureScale = 1.0,
     double textureDensity = 1.0,
+    BrushTextureMode textureMode = BrushTextureMode.multiply,
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
     bool mixesGroundColor = false,
@@ -89,6 +91,7 @@ class BrushSettings {
          textureContrast: textureContrast,
          textureScale: textureScale,
          textureDensity: textureDensity,
+         textureMode: textureMode,
          blendMode: blendMode,
          antiAlias: antiAlias,
          mixesGroundColor: mixesGroundColor,
@@ -162,6 +165,7 @@ class BrushSettings {
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
+  BrushTextureMode get textureMode => shape.textureMode;
 
 
   /// How this brush composites — see [BrushShape.blendMode].
@@ -219,6 +223,7 @@ class BrushSettings {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
+    BrushTextureMode? textureMode,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     bool? mixesGroundColor,
@@ -269,6 +274,7 @@ class BrushSettings {
       textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      textureMode: textureMode ?? this.textureMode,
       blendMode: blendMode ?? this.blendMode,
       antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
@@ -335,6 +341,8 @@ class BrushSettings {
     if (textureContrast != 0.0) 'textureContrast': textureContrast,
     'textureScale': textureScale,
     'textureDensity': textureDensity,
+    if (textureMode != BrushTextureMode.multiply)
+      'textureMode': textureMode.name,
     // Ground-colour mixing writes only when ON, so presets saved before it
     // existed round-trip byte-identically.
     if (mixesGroundColor) ...{
@@ -425,6 +433,7 @@ class BrushSettings {
       textureContrast: (json['textureContrast'] as num?)?.toDouble() ?? 0.0,
       textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
       textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
+      textureMode: BrushTextureMode.fromName(json['textureMode']),
       mixesGroundColor: json['mixesGroundColor'] as bool? ?? false,
       paintAmount: (json['paintAmount'] as num?)?.toDouble() ?? 1.0,
       paintDensity: (json['paintDensity'] as num?)?.toDouble() ?? 1.0,

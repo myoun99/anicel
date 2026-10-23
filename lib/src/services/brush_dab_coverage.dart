@@ -1,5 +1,6 @@
 import '../models/brush_dab.dart';
 import '../models/separable_blend_mode.dart';
+import '../models/brush_texture_mode.dart';
 import 'brush_stroke_blend.dart';
 import '../models/brush_pixel_coverage.dart';
 import 'brush_dab_dirty_region.dart';
@@ -86,7 +87,14 @@ void forEachBrushPixelCoverage(
         offsetU: 0.0,
         offsetV: 0.0,
       );
-      result *= (1.0 - dab.textureDensity) + dab.textureDensity * textureSample;
+      // ⛔MULTIPLY KEEPS ITS OWN LINE, as the dual's does: every brush that
+      // shipped before F-451 multiplies, and its bytes stay as written.
+      if (dab.textureMode == BrushTextureMode.height) {
+        result = paperHeightCoverage(result, textureSample, dab.textureDensity);
+      } else {
+        result *=
+            (1.0 - dab.textureDensity) + dab.textureDensity * textureSample;
+      }
     }
     return result;
   }

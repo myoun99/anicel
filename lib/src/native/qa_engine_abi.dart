@@ -275,7 +275,7 @@ import '../core/on_a_worker.dart';
 ///   list's fifth pixel verb: a byte under it is written 0 and the rest the
 ///   incoming byte, forward only (`CelPixelStage.threshold`, board I-13).
 ///   Sizeof moves.
-const int kQaEngineAbiVersion = 52;
+const int kQaEngineAbiVersion = 53;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

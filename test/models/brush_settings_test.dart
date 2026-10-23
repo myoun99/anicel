@@ -1,6 +1,7 @@
 ﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_texture_mode.dart';
 
 void main() {
   group('BrushSettings', () {
@@ -98,6 +99,13 @@ void main() {
       );
 
       expect(BrushSettings.fromJson(brush.toJson()), brush);
+    });
+
+    test('the paper\'s height survives the round trip, and a multiplied '
+        'paper writes nothing new (F-451)', () {
+      final brush = BrushSettings(textureMode: BrushTextureMode.height);
+      expect(BrushSettings.fromJson(brush.toJson()), brush);
+      expect(BrushSettings().toJson().containsKey('textureMode'), isFalse);
     });
 
     test('fromJson supports legacy color/size/opacity JSON', () {

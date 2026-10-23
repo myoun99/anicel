@@ -11,6 +11,7 @@ import '../../models/brush_settings_group.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_order.dart';
+import '../../models/brush_texture_mode.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
@@ -346,6 +347,7 @@ class BrushToolState {
     double textureContrast = 0.0,
     double textureScale = 1.0,
     double textureDensity = 1.0,
+    BrushTextureMode textureMode = BrushTextureMode.multiply,
     CanvasTool tool = CanvasTool.brush,
     CanvasShapeKind selectShape = CanvasShapeKind.rect,
     CanvasShapeKind cutShape = CanvasShapeKind.rect,
@@ -392,6 +394,7 @@ class BrushToolState {
       textureContrast: textureContrast,
       textureScale: textureScale,
       textureDensity: textureDensity,
+      textureMode: textureMode,
       tool: tool,
       selectShape: selectShape,
       cutShape: cutShape,
@@ -501,6 +504,7 @@ class BrushToolState {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
+    BrushTextureMode? textureMode,
     bool? mixesGroundColor,
     double? paintAmount,
     double? paintDensity,
@@ -555,6 +559,7 @@ class BrushToolState {
         textureContrast: textureContrast ?? 0.0,
         textureScale: textureScale ?? 1.0,
         textureDensity: textureDensity ?? 1.0,
+        textureMode: textureMode ?? BrushTextureMode.multiply,
         mixesGroundColor: mixesGroundColor ?? false,
         paintAmount: paintAmount ?? 1.0,
         paintDensity: paintDensity ?? 1.0,
@@ -731,6 +736,9 @@ class BrushToolState {
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
+
+  /// See [BrushShape.textureMode].
+  BrushTextureMode get textureMode => shape.textureMode;
   bool get mixesGroundColor => shape.mixesGroundColor;
   double get paintAmount => shape.paintAmount;
   double get paintDensity => shape.paintDensity;
@@ -1171,6 +1179,7 @@ class BrushToolState {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
+    BrushTextureMode? textureMode,
     bool? mixesGroundColor,
     double? paintAmount,
     double? paintDensity,
@@ -1238,6 +1247,7 @@ class BrushToolState {
           textureContrast: textureContrast,
           textureScale: textureScale,
           textureDensity: textureDensity,
+          textureMode: textureMode,
           mixesGroundColor: mixesGroundColor,
           paintAmount: paintAmount,
           paintDensity: paintDensity,

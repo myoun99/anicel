@@ -8,6 +8,7 @@ import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_order.dart';
+import 'brush_texture_mode.dart';
 import 'brush_tip_rotation_mode.dart';
 
 /// What a response curve is FOR: the setting it drives, and the input that
@@ -66,6 +67,7 @@ class BrushShape {
     this.textureContrast = 0.0,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
+    this.textureMode = BrushTextureMode.multiply,
     this.antiAlias = BrushAntiAlias.high,
     this.blendMode = BrushBlendMode.color,
     this.mixesGroundColor = false,
@@ -244,6 +246,10 @@ class BrushShape {
   final double textureScale;
   final double textureDensity;
 
+  /// How the paper texture meets each dab's coverage — see
+  /// [BrushTextureMode].
+  final BrushTextureMode textureMode;
+
   /// How this brush composites. Every brush states one; [BrushBlendMode.color]
   /// IS 通常, so "normal" is a value here rather than an absence.
   ///
@@ -409,6 +415,7 @@ class BrushShape {
       textureContrast: textureContrast,
       textureScale: textureScale,
       textureDensity: textureDensity,
+      textureMode: textureMode,
     );
   }
 
@@ -439,6 +446,7 @@ class BrushShape {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
+    BrushTextureMode? textureMode,
     bool? mixesGroundColor,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
@@ -474,6 +482,7 @@ class BrushShape {
       textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      textureMode: textureMode ?? this.textureMode,
       blendMode: blendMode ?? this.blendMode,
       antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
@@ -516,6 +525,7 @@ class BrushShape {
           other.textureContrast == textureContrast &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
+          other.textureMode == textureMode &&
           other.blendMode == blendMode &&
           other.antiAlias == antiAlias &&
           other.mixesGroundColor == mixesGroundColor &&
@@ -553,6 +563,7 @@ class BrushShape {
     textureContrast,
     textureScale,
     textureDensity,
+    textureMode,
     blendMode,
     antiAlias,
     mixesGroundColor,
@@ -578,6 +589,7 @@ class BrushShape {
       'textureBrightness: $textureBrightness, '
       'textureContrast: $textureContrast, '
       'textureScale: $textureScale, textureDensity: $textureDensity, '
+      'textureMode: $textureMode, '
       'correction: $correction)';
 }
 

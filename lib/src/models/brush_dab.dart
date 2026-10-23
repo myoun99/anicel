@@ -1,6 +1,7 @@
 import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
 import 'brush_stamp_image.dart';
+import 'brush_texture_mode.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_shape.dart';
 import 'canvas_point.dart';
@@ -33,6 +34,7 @@ class BrushDab {
     this.textureMask,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
+    this.textureMode = BrushTextureMode.multiply,
     this.antiAlias = BrushAntiAlias.high,
     this.erase = false,
     this.stamp,
@@ -182,6 +184,11 @@ class BrushDab {
   final double textureScale;
   final double textureDensity;
 
+  /// How [textureMask] meets the coverage — the multiply above, or the
+  /// paper's height cutting the silhouette (F-451) — see
+  /// [BrushTextureMode].
+  final BrushTextureMode textureMode;
+
   /// How hard this dab's edge lands — see [BrushAntiAlias]. Resolved at
   /// placement from the brush, so the rasterizers never look it up.
   final BrushAntiAlias antiAlias;
@@ -249,6 +256,7 @@ class BrushDab {
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
+    BrushTextureMode? textureMode,
     BrushAntiAlias? antiAlias,
     bool? erase,
     BrushStampImage? stamp,
@@ -280,6 +288,7 @@ class BrushDab {
       textureMask: textureMask ?? this.textureMask,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      textureMode: textureMode ?? this.textureMode,
       antiAlias: antiAlias ?? this.antiAlias,
       erase: erase ?? this.erase,
       stamp: stamp ?? this.stamp,
@@ -318,6 +327,8 @@ class BrushDab {
     if (textureMask != null) 'textureMask': textureMask!.toJson(),
     'textureScale': textureScale,
     'textureDensity': textureDensity,
+    if (textureMode != BrushTextureMode.multiply)
+      'textureMode': textureMode.name,
     if (antiAlias != BrushAntiAlias.high) 'antiAlias': antiAlias.name,
     if (erase) 'erase': true,
     if (stamp != null) 'stamp': stamp!.toJson(),
@@ -364,6 +375,7 @@ class BrushDab {
           : BrushTipMask.fromJson(json['textureMask'] as Map<String, dynamic>),
       textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
       textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
+      textureMode: BrushTextureMode.fromName(json['textureMode']),
       antiAlias:
           BrushAntiAlias.named(json['antiAlias'] as String?) ??
           BrushAntiAlias.high,
@@ -404,6 +416,7 @@ class BrushDab {
           other.textureMask == textureMask &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
+          other.textureMode == textureMode &&
           other.antiAlias == antiAlias &&
           other.erase == erase &&
           other.stamp == stamp &&
@@ -436,6 +449,7 @@ class BrushDab {
     textureMask,
     textureScale,
     textureDensity,
+    textureMode,
     antiAlias,
     erase,
     stamp,

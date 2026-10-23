@@ -798,6 +798,7 @@ class _InteractiveBrushEditCanvasViewState
       textureMask: settings.textureMask,
       textureScale: settings.textureScale,
       textureDensity: settings.textureDensity,
+      textureMode: settings.textureMode,
       // 🚨THE EDGE STEP AND THE DUAL DENSITY WERE NOT HERE, and the panel
       // has been writing both for a while: 아웃 오브 the brush's settings,
       // into the shape, and no further. The only producer that ever carried

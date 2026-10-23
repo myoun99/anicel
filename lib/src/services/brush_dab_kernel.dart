@@ -7,6 +7,7 @@ import '../core/floor_math.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/separable_blend_mode.dart';
+import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
@@ -113,6 +114,7 @@ class BrushDabPlan {
     required this.dualCompositeMode,
     required this.textureDensity,
     required this.textureOneMinusDensity,
+    required this.textureMode,
     required this.tipULattice,
     required this.tipVLattice,
     required this.dualULattice,
@@ -189,6 +191,9 @@ class BrushDabPlan {
   final SeparableBlendMode dualCompositeMode;
   final double textureDensity;
   final double textureOneMinusDensity;
+
+  /// How the paper meets the coverage — see [BrushDab.textureMode].
+  final BrushTextureMode textureMode;
 
   final BrushTipMaskAxisLattice? tipULattice;
   final BrushTipMaskAxisLattice? tipVLattice;
@@ -305,6 +310,7 @@ class BrushDabPlan {
       dualCompositeMode: dab.dualCompositeMode,
       textureDensity: textureDensity,
       textureOneMinusDensity: 1.0 - textureDensity,
+      textureMode: dab.textureMode,
       tipULattice: unrotatedTip
           ? BrushTipMaskAxisLattice.compute(
               mask: tipMask,
@@ -542,7 +548,10 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
         (plan.isRound ? QaNativeEngine.dabFlagRound : 0) |
         (plan.isEllipse ? QaNativeEngine.dabFlagEllipse : 0) |
         (plan.unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0) |
-        (plan.aaThreshold ? QaNativeEngine.dabFlagAaThreshold : 0),
+        (plan.aaThreshold ? QaNativeEngine.dabFlagAaThreshold : 0) |
+        (plan.textureMode == BrushTextureMode.height
+            ? QaNativeEngine.dabFlagTextureHeight
+            : 0),
     regionLeft: plan.left,
     regionTop: plan.top,
     tipAlpha: plan.tipMask?.alphaNormalized,
@@ -642,6 +651,7 @@ void blendDabTilesDart(
   final dualCompositeMode = plan.dualCompositeMode;
   final textureDensity = plan.textureDensity;
   final textureOneMinusDensity = plan.textureOneMinusDensity;
+  final textureHeight = plan.textureMode == BrushTextureMode.height;
   final left = plan.left;
   final top = plan.top;
   final rightExclusive = plan.rightExclusive;
@@ -797,7 +807,15 @@ void blendDabTilesDart(
             vAxis: textureVLattice!,
             vIndex: vIndex,
           );
-          coverage *= textureOneMinusDensity + textureDensity * textureSample;
+          if (textureHeight) {
+            coverage = paperHeightCoverage(
+              coverage,
+              textureSample,
+              textureDensity,
+            );
+          } else {
+            coverage *= textureOneMinusDensity + textureDensity * textureSample;
+          }
           if (coverage <= 0.0) {
             continue;
           }

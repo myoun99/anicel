@@ -213,7 +213,14 @@ enum {
   // 없음: the edge is a hard cut at half coverage. Set INSTEAD of an
   // aa_contrast; the two never both apply (see BrushAntiAlias).
   QA_DAB_FLAG_AA_THRESHOLD = 32,
+  // 高さ: the paper texture's height cuts the coverage instead of
+  // multiplying it (BrushTextureMode.height, F-451). v53.
+  QA_DAB_FLAG_TEXTURE_HEIGHT = 64,
 };
+
+/* paperHeightBand (brush_stroke_blend.dart): how far above a dab's floor
+   the paper must stand to take the dab fully. */
+#define QA_PAPER_HEIGHT_BAND 0.25
 
 // Mode ids: a fixed FFI contract - the Dart side maps BrushBlendMode
 // through `strokeBlendModeNativeId` with EXACTLY these values. color and
@@ -1033,6 +1040,7 @@ QA_EXPORT int32_t qa_dab_blend_tile(
   const int has_dual = s->dual_alpha != NULL;
   const int has_tex = s->tex_alpha != NULL;
   const int aa_threshold = (flags & QA_DAB_FLAG_AA_THRESHOLD) != 0;
+  const int texture_height = (flags & QA_DAB_FLAG_TEXTURE_HEIGHT) != 0;
   const double aa_contrast = s->aa_contrast;
 #if defined(QA_DAB_PAIRS)
   const int pairs = has_tip && unrotated_tip && !has_dual && !has_tex;
@@ -1177,8 +1185,18 @@ QA_EXPORT int32_t qa_dab_blend_tile(
             s->tex_u_fraction, s->tex_u_one_minus, s->tex_v_texel0,
             s->tex_v_texel1, s->tex_v_fraction, s->tex_v_one_minus,
             x - s->region_left, v_index);
-        coverage *= s->texture_one_minus_density +
-                    s->texture_density * texture_sample;
+        /* paperHeightCoverage (brush_stroke_blend.dart), same grouping.
+           ⛔MULTIPLY KEEPS ITS OWN LINE: every brush before F-451 drew it,
+           and its bytes stay as written. */
+        if (texture_height) {
+          const double touched =
+              (texture_sample + s->texture_density * coverage - 1.0) /
+              QA_PAPER_HEIGHT_BAND;
+          coverage = touched <= 0.0 ? 0.0 : (touched >= 1.0 ? 1.0 : touched);
+        } else {
+          coverage *= s->texture_one_minus_density +
+                      s->texture_density * texture_sample;
+        }
         if (coverage <= 0.0) {
           continue;
         }
@@ -6418,4 +6436,6 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // older engine would take an id it does not know for exclusion.
 // v52: qa_cel_pixel_spec gains threshold - 2치화: a byte under it is written
 // 0 and the rest the incoming byte, forward only. Sizeof moves.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 52; }
+// v53: QA_DAB_FLAG_TEXTURE_HEIGHT - the paper's height cuts a dab's
+// coverage (F-451). An older engine would multiply it.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 53; }

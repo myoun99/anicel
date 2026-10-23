@@ -8,6 +8,7 @@ import '../models/bitmap_surface.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/non_separable_blend_mode.dart';
 import '../models/separable_blend_mode.dart';
+import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
 import 'brush_stamp_span_kernel.dart';
 
@@ -679,3 +680,24 @@ double blendDualCoverage(
   }
   return blendSeparableChannel(mode, dual, coverage);
 }
+
+/// What a dab lays where the paper stands [sample] high, under the
+/// [BrushTextureMode.height] texture: its [coverage] times the [density] is
+/// how deep it reaches into the paper, and it touches where the paper rises
+/// above that floor — fully once the paper stands [paperHeightBand] above
+/// it.
+///
+/// 🚨The C mirror is the texture block of `qa_dab_blend_spans`, written
+/// with this grouping, and the parity suite pins the pair.
+double paperHeightCoverage(double coverage, double sample, double density) {
+  final touched = (sample + density * coverage - 1.0) / paperHeightBand;
+  if (touched <= 0.0) {
+    return 0.0;
+  }
+  return touched >= 1.0 ? 1.0 : touched;
+}
+
+/// How far above a dab's floor the paper must stand to take the dab fully
+/// ([paperHeightCoverage]): narrow, so the dab's edge is the paper's edge —
+/// a grain one texel across stays one texel, not a soft blur of it.
+const double paperHeightBand = 0.25;

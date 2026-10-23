@@ -2309,6 +2309,10 @@ class QaNativeEngine {
   /// [aaContrast]; the two never both apply (see `BrushAntiAlias`).
   static const int dabFlagAaThreshold = 32;
 
+  /// 高さ — the paper texture's height cuts the coverage
+  /// (`BrushTextureMode.height`) instead of multiplying it. v53.
+  static const int dabFlagTextureHeight = 64;
+
   /// Stages dab [index] of the batch ([beginDabBatch]) for
   /// [dabBlendBatch]: fills its spec and its clip, and uploads masks
   /// (identity-cached) and lattices (arena). All values mirror the Dart
