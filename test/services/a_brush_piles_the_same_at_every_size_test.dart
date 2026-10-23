@@ -213,8 +213,10 @@ void main() {
       'builtin-hatching': 0.9,
       'builtin-concrete': 0.85,
       // F-433 (10-22): the pencil laid on its lead's side, made since — what
-      // it lays at its own size, not what it laid before.
-      'builtin-shading-pencil': 0.3806,
+      // it lays at its own size, not what it laid before. ↩️F-456 (10-24):
+      // its flow fell from 0.9 to 0.35 with the other pencils', so the paper
+      // still shows through a stroke laid once.
+      'builtin-shading-pencil': 0.0857,
     };
     final byId = {for (final p in defaultBrushPresets) p.id.value: p};
     for (final preset in defaultBrushPresets) {

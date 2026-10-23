@@ -840,6 +840,7 @@ void main() {
     'brTipOrderOneLap': (s) => s.brTipOrderOneLap,
     'brTipOrderShuffledLap': (s) => s.brTipOrderShuffledLap,
     'brTipOrderLean': (s) => s.brTipOrderLean,
+    'brTipsPerTurn': (s) => s.brTipsPerTurn,
     'brTipRotation': (s) => s.brTipRotation,
     'brRotationFixed': (s) => s.brRotationFixed,
     'brRotationDirection': (s) => s.brRotationDirection,
