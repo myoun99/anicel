@@ -52,8 +52,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'bash_executable.dart';
-
 // 🚨The card model lives in ONE place — see [board_model.dart]. The gate
 // reads the same file, so it cannot judge the board by different rules.
 import 'board_check.dart';
@@ -229,8 +227,11 @@ bool _sourceMoved() {
 Never _relaunch() {
   final up = File('$_gitRoot/tool/session_hooks/board_up.sh');
   if (up.existsSync()) {
+    // ⚠️A bare `bash`, not [bashExecutable]: through the shell, cmd walks
+    // PATH itself, and it cuts a quoted path with a space at the space —
+    // `C:\Program Files\…` would start nothing (measured 2026-10-24).
     unawaited(Process.start(
-      bashExecutable,
+      'bash',
       [up.path, File(_recordsPath).parent.path],
       mode: ProcessStartMode.detached,
       runInShell: true,

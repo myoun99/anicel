@@ -9,7 +9,8 @@ import 'dart:io';
 /// carry it — 2026-10-24 `parityTests` answered null on the runner and green
 /// on the main PC, which has no launcher. A shell asked for `bash` walks
 /// PATH, and that is the bash the scripts are written for (Git's), so the
-/// tools walk it the same way.
+/// tools walk it the same way. ⚠️Not through the shell (`runInShell`): cmd
+/// walks PATH itself there, and cuts this path at its space.
 String get bashExecutable => Platform.isWindows
     ? bashOnPath(
         (Platform.environment['PATH'] ?? '').split(';'),

@@ -55,12 +55,16 @@ void main() {
     );
   });
 
-  test('⛔no tool starts a bare `bash` — they ask `bashExecutable`', () {
-    final bare = RegExp(r"Process\.(start|run|runSync)\(\s*'bash'");
+  test('⛔no tool starts a bare `bash` — they ask `bashExecutable`; a start '
+      'through the shell keeps it', () {
+    // Through the shell cmd walks PATH itself, and cuts a quoted path with a
+    // space (the board's relaunch, 2026-10-24).
+    final bare = RegExp(r"Process\.(start|run|runSync)\(\s*'bash'[^;]*");
     final starts = [
       for (final file in dartFilesUnder('tool'))
-        if (bare.hasMatch(file.readAsStringSync()))
-          file.path.replaceAll(r'\', '/'),
+        for (final call in bare.allMatches(file.readAsStringSync()))
+          if (!call[0]!.contains('runInShell: true'))
+            file.path.replaceAll(r'\', '/'),
     ];
     expect(starts, isEmpty);
   });
