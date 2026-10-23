@@ -250,9 +250,6 @@ class AppIconButton extends StatelessWidget {
   /// colour for a different question.
   final bool danger;
 
-  /// The face's callback: an enabled look, and nothing a key can press.
-  static void _deafToKeys() {}
-
   @override
   Widget build(BuildContext context) {
     final box = appIconButtonBoxOnGrid(context, size);
@@ -281,16 +278,16 @@ class AppIconButton extends StatelessWidget {
       child: AppIconButtonFace(
         key: ValueKey<String>(keyValue),
         tooltip: shortcutTooltip(context, tooltip, shortcuts),
-        // ⛔The face keeps a SILENT callback. It decides the enabled look,
-        // and it is what the keyboard's Enter/Space reach — silent by
-        // 유저's call (2026-09-10: 「탭은 다른 숏컷 쓸수도있어서 굳이
-        // 필요없을거같고」). ⚠️Never wire the face's POINTER path to a real
+        // ⛔The face keeps the callback every claimed button keeps: silent to
+        // the pointer, the press of a key. It decides the enabled look, and
+        // the keyboard's Enter/Space reach it — and press, as on any other
+        // button (유저 2026-10-23, board `F-450-Q1`: 「통일 — 아이콘 버튼도
+        // Enter · Space 로 눌린다」). ↩️It fired nothing for a key from
+        // 2026-09-10 (「탭은 다른 숏컷 쓸수도있어서 굳이 필요없을거같고」)
+        // until then. ⚠️Never wire the face's POINTER path to a real
         // callback: the claim already fires every press, and a face that
         // fired too would fire twice.
-        // ⚠️Not [silentPress]: since F-450 (2026-10-23) that one fires for a
-        // key, which every other claimed button wants and this one was
-        // decided against.
-        onPressed: onPressed == null ? null : _deafToKeys,
+        onPressed: silentPress(onPressed),
         // 🚨…but a screen reader is not a pointer: its activation arrives as
         // SemanticsAction.tap, which the claim never hears, so the node gets
         // the REAL callback (「스크린리더만 있으면좋을까싶은데」). Measured
@@ -455,9 +452,9 @@ final class IconButtonInk {
 
 /// The part of an [AppIconButton] you can see and hear: its box, its glyph,
 /// its tooltip, its semantics node and the hover / pressed / focus layer.
-/// A press is the claim's to fire, never this; the one thing it does fire
-/// is a screen reader's activation ([onSemanticTap]), which no pointer
-/// carries.
+/// A pointer's press is the claim's to fire, never this; what it does fire
+/// is what no pointer carries — a key's Enter/Space ([onPressed]) and a
+/// screen reader's activation ([onSemanticTap]).
 ///
 /// Public because it is what [AppIconButton.keyValue] names: a test that
 /// finds a button by its key finds THIS, exactly where the Material
@@ -480,7 +477,8 @@ class AppIconButtonFace extends StatefulWidget {
 
   final String tooltip;
 
-  /// The SILENT callback [AppIconButton] hands down: non-null means enabled.
+  /// The callback [AppIconButton] hands down — silent to the pointer, the
+  /// press of a key ([silentPress]): non-null means enabled.
   final VoidCallback? onPressed;
 
   /// What a screen reader's activation calls: the REAL callback. Its

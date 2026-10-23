@@ -21,7 +21,8 @@ import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 ///
 /// The matrix: a key presses a claimed button ONCE; a click still presses
 /// it once, whether it acts on the release or on the down; and an icon
-/// button stays deaf to the keyboard, as 유저 decided for it (2026-09-10,
+/// button answers the keyboard as every other button does (유저 2026-10-23,
+/// `F-450-Q1` — ↩️it stayed deaf to keys from 2026-09-10,
 /// `screen-readers-cannot-press-app-buttons`).
 void main() {
   Widget app(Widget child) => MaterialApp(
@@ -159,35 +160,38 @@ void main() {
     expect(presses, 1);
   });
 
-  testWidgets('an icon button stays deaf to the keyboard, as decided — and '
-      'a click still presses it once', (tester) async {
-    var presses = 0;
-    await tester.pumpWidget(
-      app(
-        AppIconButton(
-          keyValue: 'icon',
-          tooltip: 'Add',
-          icon: const Icon(Icons.add),
-          onPressed: () => presses += 1,
+  // 유저 2026-10-23 (board `F-450-Q1`): 「통일 — 아이콘 버튼도 Enter · Space
+  // 로 눌린다」. ↩️This pinned the opposite, 2026-09-10's 「탭은 다른 숏컷
+  // 쓸수도있어서 굳이 필요없을거같고」.
+  for (final kind in const [PointerDeviceKind.mouse, PointerDeviceKind.touch]) {
+    testWidgets('an icon button is pressed by Enter and by Space, once each '
+        '— and a click still presses it once — ${kind.name}', (tester) async {
+      var presses = 0;
+      await tester.pumpWidget(
+        app(
+          AppIconButton(
+            keyValue: 'icon',
+            tooltip: 'Add',
+            icon: const Icon(Icons.add),
+            onPressed: () => presses += 1,
+          ),
         ),
-      ),
-    );
-    final icon = find.byKey(const ValueKey<String>('icon'));
-    await tabTo(tester, icon);
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.sendKeyEvent(LogicalKeyboardKey.space);
-    await tester.pump();
-    expect(
-      presses,
-      0,
-      reason:
-          '유저 2026-09-10: 「탭은 다른 숏컷 쓸수도있어서 굳이 필요없을거같고」',
-    );
+      );
+      final icon = find.byKey(const ValueKey<String>('icon'));
+      await tester.tap(icon, kind: kind);
+      await tester.pump();
+      expect(presses, 1, reason: 'the claim fires it, the face keeps quiet');
 
-    await tester.tap(icon);
-    await tester.pump();
-    expect(presses, 1);
-  });
+      await tabTo(tester, icon);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(presses, 2, reason: 'Enter on a focused icon button presses it');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(presses, 3, reason: 'and so does Space');
+    });
+  }
 
   testWidgets('🚨the close prompt: Enter on 「저장」 saves (F-450)', (
     tester,

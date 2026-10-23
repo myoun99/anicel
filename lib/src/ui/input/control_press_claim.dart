@@ -150,8 +150,9 @@ class PressFireWatch extends InheritedWidget {
 /// 2026-10-23), and so no key pressed any claimed button — which nobody
 /// decided: F-450 (유저 2026-10-23), on the close prompt's 「저장」:
 /// 「엔터하면 엔터한것처럼 반응해서 버튼 흰색되지만 아무런 반응없었음」.
-/// ⚠️The icon buttons stay deaf to keys by 유저's own call (2026-09-10) —
-/// that answer is theirs, kept on `AppIconButton`, not here.
+/// ★The icon buttons too, since 유저 2026-10-23 (board `F-450-Q1`: 「통일 —
+/// 아이콘 버튼도 Enter · Space 로 눌린다」). ↩️They were kept deaf to keys
+/// by 유저's own call of 2026-09-10 until then.
 VoidCallback? silentPress(VoidCallback? real) => real == null
     ? null
     : () {
