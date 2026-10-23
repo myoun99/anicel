@@ -1102,7 +1102,20 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   /// the widget that consumes each so a future button's owner is obvious.
   ///
   /// Flyout entries are deliberately absent (they rebuild lazily on open).
-  Object _deriveActionsToken() {
+  Object _deriveActionsToken() => (
+    _frameAxisGates(),
+    _promotedGates(),
+    // ⛔The two project-axis values LEFT this token with the dropdowns
+    // that printed them: they are entries of the settings pill on the
+    // 문턱 now, and a flyout's entries are built at open time.
+    //
+    // Button tooltips and menu labels print in the program language.
+    widget.session.languageSettings.value,
+  );
+
+  /// [_deriveActionsToken]'s frame group, comma buttons and shared pill —
+  /// the gates the playhead moves.
+  Object _frameAxisGates() {
     final session = widget.session;
     return (
       // Frame-group icons + comma buttons (playhead-sensitive enablement).
@@ -1125,6 +1138,14 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.exposureVerbs.canDecreaseSelectedExposure,
       session.exposureVerbs.canIncreaseSelectedExposure,
       session.storyboardCursor.canSetCommaForTimelineCursor,
+    );
+  }
+
+  /// [_deriveActionsToken]'s heads and promoted verbs — each pill's own,
+  /// each read where it comes from.
+  Object _promotedGates() {
+    final session = widget.session;
+    return (
       // 🚨F-75 (유저 2026-09-11): 「프레임 1을 색변환의 색삭제 누르고
       // 프레임2로 이동하면 색변환버튼이 비활성화 된 상태임. 다른 인덱스
       // 이동했다가 돌아오면 해결되있음」. The 색 편집 head asks whether the
@@ -1160,15 +1181,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // itself stayed lit; F-455 took the row away.
       // ⛔MUTANT SURVIVES (F-455, 2026-10-23): dropping this reddens
       // nothing — every band over a cut also moves a shared-pill gate
-      // above, so the bar is rebuilt anyway. It stays so the ＋ does not
-      // hang on that coincidence.
+      // ([_frameAxisGates]), so the bar is rebuilt anyway. It stays so the
+      // ＋ does not hang on that coincidence.
       session.cutPlacement.canCreateCut,
-      // ⛔The two project-axis values LEFT this token with the dropdowns
-      // that printed them: they are entries of the settings pill on the
-      // 문턱 now, and a flyout's entries are built at open time.
-      //
-      // Button tooltips and menu labels print in the program language.
-      session.languageSettings.value,
     );
   }
 
