@@ -208,6 +208,40 @@ void main() {
     expect(named(tester), [path]);
   });
 
+  // The channel's files can come as early: Android says the file that
+  // started the app there once Dart hears it, and a second Anicel may knock
+  // the moment the first is up.
+  testWidgets('what the platform says before the saved language is back is '
+      'said in that language too', (tester) async {
+    AppText.settings.value = const AppLanguageSettings();
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    final ja = AppStrings.of(AppLanguage.ja);
+    final language = _LateLanguage(
+      const AppLanguageSettings(programLanguage: AppLanguage.ja),
+    );
+    final path = nothingOpens();
+
+    await pumpApp(
+      tester,
+      HomePage(
+        initialProject: createDefaultProject(),
+        languageSettingsStore: language,
+      ),
+    );
+    await platformSays(tester, [path]);
+    await lendBothClocks(
+      tester,
+      rounds: 10,
+      beat: const Duration(milliseconds: 50),
+    );
+    language.gate.complete();
+    await tester.pumpAndSettle();
+
+    final said = tester.widget<AppConfirmDialog>(find.byType(AppConfirmDialog));
+    expect(said.title, ja.unsupportedFileTitle);
+    expect(named(tester), [path]);
+  });
+
   // The same card's 덤: the import window named a file Windows opened the
   // app with `C:\Users\…`, where 「開く」 named the same file `C:/Users/…`.
   testWidgets('a file handed in Windows\' spelling is named as a pick names '
