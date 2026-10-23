@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/widgets.dart';
 
+import '../input/control_press_claim.dart' show noteAnOwnedLift;
 import '../input/value_control_pointers.dart';
 
 /// A primary tap that does NOT wait out the double-tap window.
@@ -164,6 +165,9 @@ class _InstantTapRegionState extends State<InstantTapRegion> {
         }
       },
       onPointerUp: (event) {
+        // The press is this region's, so a silent button inside it stays
+        // silent for its lift.
+        noteAnOwnedLift();
         if (event.pointer != _pointer) {
           return;
         }

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,7 @@ import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
+import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 
 /// F-450 ② (유저 2026-10-23): on the close prompt, the arrow keys moved
 /// onto 「저장」 and Enter 「엔터한것처럼 반응해서 버튼 흰색되지만 아무런
@@ -101,6 +103,37 @@ void main() {
     await tester.pump();
     expect(presses, 2, reason: 'the click\'s silence ends with its own lift');
   });
+
+  // 🚨The first cut heard the claim's lift alone, and a click on a brush
+  // preset — an InstantTapRegion's press — applied it twice (2026-10-23).
+  for (final kind in const [PointerDeviceKind.mouse, PointerDeviceKind.touch]) {
+    testWidgets('a click on a button an InstantTapRegion owns is ONE press '
+        'too, and a key still presses it — ${kind.name}', (tester) async {
+      var presses = 0;
+      void press() => presses += 1;
+      await tester.pumpWidget(
+        app(
+          InstantTapRegion(
+            onTap: (_) => press(),
+            child: TextButton(
+              key: const ValueKey<String>('cell'),
+              onPressed: silentPress(press),
+              child: const Text('cell'),
+            ),
+          ),
+        ),
+      );
+      final cell = find.byKey(const ValueKey<String>('cell'));
+      await tester.tap(cell, kind: kind);
+      await tester.pump();
+      expect(presses, 1, reason: 'the region fires it, the button keeps quiet');
+
+      await tabTo(tester, cell);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(presses, 2, reason: 'Enter on the focused button presses it');
+    });
+  }
 
   testWidgets('a button that acts on the DOWN is not pressed again by its '
       'lift', (tester) async {

@@ -138,11 +138,11 @@ class PressFireWatch extends InheritedWidget {
 ///
 /// ⛔The ink, the hover and the disabled look all come from the widget having
 /// a callback, and the disabled look comes from it being null — so the inner
-/// widget keeps the shape of [real]. A pointer's press is
-/// [ControlPressClaim]'s to fire, and a still click reaches the inner
-/// button's own tap as well, in the same dispatch as the lift the claim
-/// fired on: that call is the same press again, and it is dropped
-/// ([_aClaimedLiftIsBeingDispatched]).
+/// widget keeps the shape of [real]. A pointer's press is its owner's to
+/// fire — [ControlPressClaim]'s, or an `InstantTapRegion`'s — and a still
+/// click reaches the inner button's own tap as well, in the same dispatch
+/// as the lift the owner heard: that call is the same press again, and it
+/// is dropped ([_anOwnedLiftIsBeingDispatched]).
 ///
 /// 🚨★Everything else that calls it is not a pointer, and the claim never
 /// hears it: Enter or Space on a focused button (`ActivateIntent`), a screen
@@ -155,27 +155,35 @@ class PressFireWatch extends InheritedWidget {
 VoidCallback? silentPress(VoidCallback? real) => real == null
     ? null
     : () {
-        if (!_aClaimedLiftIsBeingDispatched) {
+        if (!_anOwnedLiftIsBeingDispatched) {
           real();
         }
       };
 
 /// Whether the pointer event being dispatched right now is the lift of a
-/// press a [ControlPressClaim] heard.
+/// press an owner heard ([noteAnOwnedLift]).
 ///
-/// Set by the claim's own pointer-up — which a `Listener` hears DURING the
+/// Set by the owner's own pointer-up — which a `Listener` hears DURING the
 /// dispatch, before the arena sweeps the pointer and a still click's tap
 /// lands — and cleared once that dispatch is over: the next microtask runs
 /// only after the whole synchronous pointer flush, and a key or a screen
 /// reader always arrives in a later one.
-bool _aClaimedLiftIsBeingDispatched = false;
+bool _anOwnedLiftIsBeingDispatched = false;
 
-void _noteAClaimedLift() {
-  if (_aClaimedLiftIsBeingDispatched) {
+/// Says that the pointer-up being dispatched is the lift of a press this
+/// owner fires from the raw pointer, so a [silentPress] inside it stays
+/// silent for it.
+///
+/// 🚨EVERY OWNER CALLS IT. F-450 ②'s first cut heard the claim's lift alone,
+/// and a click on a brush preset or a brush tip — an `InstantTapRegion`'s
+/// press, its inner button silent — applied it twice (master red,
+/// `brush_preset_panel_test`, 2026-10-23).
+void noteAnOwnedLift() {
+  if (_anOwnedLiftIsBeingDispatched) {
     return;
   }
-  _aClaimedLiftIsBeingDispatched = true;
-  scheduleMicrotask(() => _aClaimedLiftIsBeingDispatched = false);
+  _anOwnedLiftIsBeingDispatched = true;
+  scheduleMicrotask(() => _anOwnedLiftIsBeingDispatched = false);
 }
 
 /// 🚨★★★A PRESS THAT LANDS ON A CONTROL BELONGS TO THAT CONTROL.
@@ -346,7 +354,7 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
                 }
               },
         onPointerUp: (event) {
-          _noteAClaimedLift();
+          noteAnOwnedLift();
           releaseTapForControl(event.pointer);
           if (_mine.remove(event.pointer) == null) {
             return;
