@@ -333,20 +333,10 @@ void main() {
       expect(panel.canCreateInstance, isFalse);
     });
 
-    test('a layer picked in the timeline since is that panel\'s subject, '
-        'not this row\'s', () {
-      final session = onTheConteRow(10)
-        ..standOnRow(const LayerRowAddress(LayerId('cel-a')));
-      expect(session.storyboardStandingRow, conteRow, reason: '⛔전제');
-      expect(session.activeLayerId, const LayerId('cel-a'), reason: '⛔전제');
-
-      expect(storyboardsAnswers(session), dark);
-      expect(
-        timelinesAnswers(session)['copy'],
-        isTrue,
-        reason: 'LIVENESS: the timeline\'s cel is there to copy',
-      );
-    });
+    // ↩️A layer picked in the timeline since left this row stood on, dark.
+    // I-126 (유저 2026-10-23: 「기본적으로 서로 서있는거 동기화되도록」): the
+    // pick stands the storyboard on the V row now
+    // (where_the_timeline_stands_the_storyboard_stands_test.dart).
   });
 
   // F-186 named 링크 독립 among the verbs a conte-block band takes from the

@@ -37,9 +37,9 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 /// row of the cut the session stands in, and the frame buttons are that
 /// row's: ＋ keys the cell, Delete takes its key, Edit opens it, the flip
 /// walks a frame at a time — every button answering as the timeline's camera
-/// row answers on the same cell. Where the row holds no camera — a gap, or
-/// once the timeline has picked another layer — they are dark, and no other
-/// row is touched.
+/// row answers on the same cell. Where the row holds no camera — a gap —
+/// they are dark, and no other row is touched (↩️and once the timeline had
+/// picked another layer, until I-126 stood the storyboard where it stands).
 ///
 /// Cuts a [0, 24) with camera keys 0 and 12, b [24, 48) with 2 and 6, four
 /// frames of gap, c [52, 64). Each cut's cel row holds one block of twelve.
@@ -270,21 +270,8 @@ void main() {
     expect(panel.editTarget, isNull);
   });
 
-  test('🚨once the timeline picks another layer, the row lends nothing — '
-      'and shoves no other row', () {
-    final session = onTheCameraRow(30)
-      ..selectLayer(const LayerId('b-cel'))
-      ..claimStoryboardRow();
-    final panel = StoryboardToolbarPanelContext(session);
-
-    expect(session.storyboardStandingRow, cameraRow, reason: '⛔전제');
-    expect(answersOf(panel, session), dark);
-    expect(
-      answersOf(TimelineToolbarPanelContext(session), session)['push'],
-      isTrue,
-      reason: 'LIVENESS: the timeline\'s own shove of the cel is there — '
-          'it is this row that refuses it',
-    );
-    expect(keysOf(session, b), [2, 6]);
-  });
+  // ↩️Once the timeline picked another layer, this row stood on lent
+  // nothing. I-126 (유저 2026-10-23: 「기본적으로 서로 서있는거
+  // 동기화되도록」): the pick stands the storyboard on the V row now
+  // (where_the_timeline_stands_the_storyboard_stands_test.dart).
 }

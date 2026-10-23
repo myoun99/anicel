@@ -368,23 +368,22 @@ void main() {
       for (final lane in manager.activeTrack.seLayers) lane.id,
     };
 
-    test('standing on an SE row the storyboard way records on THAT row — '
-        'the drawing layer staying active does not refuse it', () async {
+    test('standing on an SE row the storyboard way records on THAT row',
+        () async {
       final manager = session();
-      final drawing = manager.activeLayerId!;
       final laneId = manager.activeTrack.seLayers.first.id;
-      // The storyboard's rails stand on a row without taking the layer you
-      // draw on (유저 2026-07-27): this is the stand the refusal missed.
-      // ↩️F-187: a storyboard stand seats the timeline too now, so the
-      // drawing layer is taken back in the timeline — which leaves the
-      // storyboard's row where it was — and the storyboard is touched again.
+      // The storyboard's rails stood on a row without taking the layer you
+      // draw on (유저 2026-07-27) — the stand the refusal missed, with the
+      // drawing layer active. ↩️F-187 seated the timeline on the storyboard's
+      // stand, and I-126 (유저 2026-10-23: 「기본적으로 서로 서있는거
+      // 동기화되도록」) the storyboard on the timeline's, so the drawing layer
+      // taken back in the timeline takes the storyboard to the V row: the two
+      // stand on the row together now.
       manager.standing.standOnRow(
         LayerRowAddress(laneId),
         panel: WorkingPanel.storyboard,
       );
-      manager.selectLayer(drawing);
-      manager.claimStoryboardRow();
-      expect(manager.activeLayerId, isNot(laneId), reason: 'fixture');
+      expect(manager.storyboardStandingRow, LayerRowAddress(laneId));
       final lanesBefore = laneIdsOf(manager);
       manager.voiceRecording.debugVoiceRecorderFactory =
           () => CannedAudioRecorder(takeOfSeconds(0.5));
