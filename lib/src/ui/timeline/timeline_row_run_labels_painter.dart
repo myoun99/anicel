@@ -299,8 +299,13 @@ class TimelineRowRunLabelsPainter extends CustomPainter
     // One node per label — the `Text` widgets these replaced carried their
     // own, and dropping them would take the surface away from screen readers
     // and from every test that reads the row by semantics.
+    //
+    // Those the paint prints: the window's, as the cells' sentence and the
+    // cut blocks' nodes say theirs (I-57-Q3). ↩️They said every block of
+    // the row — on the storyboard's rows, every block of the film, made
+    // afresh whenever the row was.
     final nodes = <CustomPainterSemantics>[];
-    for (final label in runLabels()) {
+    for (final label in runLabelsInWindow()) {
       final blockStart = _edge(label.startIndex);
       final blockEnd = _edge(label.endIndexExclusive);
       nodes.add(
