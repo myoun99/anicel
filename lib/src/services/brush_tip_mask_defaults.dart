@@ -639,13 +639,11 @@ BrushTipMask _generateColorClumpMask() {
     final halfHeight = halfLength * (0.2 + draw() * 0.1);
     final slope = (draw() * 2.0 - 1.0) * 0.2;
     final strength = 0.15 + draw() * 0.85;
-    final left = math.max(0, (centreX - halfLength).floor());
-    final right = math.min(size - 1, (centreX + halfLength).ceil());
+    final (left, right) = _texelSpan(centreX, halfLength, size);
     for (var x = left; x <= right; x += 1) {
       final dx = x - centreX;
       final middle = centreY + dx * slope;
-      final top = math.max(0, (middle - halfHeight).floor());
-      final bottom = math.min(size - 1, (middle + halfHeight).ceil());
+      final (top, bottom) = _texelSpan(middle, halfHeight, size);
       for (var y = top; y <= bottom; y += 1) {
         final u = dx / halfLength;
         final v = (y - middle) / halfHeight;
@@ -742,10 +740,8 @@ void _stampDisc(
   double radius,
   _DiscLaw law,
 ) {
-  final left = math.max(0, (centerX - radius).floor());
-  final top = math.max(0, (centerY - radius).floor());
-  final right = math.min(_maskSize - 1, (centerX + radius).ceil());
-  final bottom = math.min(_maskSize - 1, (centerY + radius).ceil());
+  final (left, right) = _texelSpan(centerX, radius, _maskSize);
+  final (top, bottom) = _texelSpan(centerY, radius, _maskSize);
   for (var y = top; y <= bottom; y += 1) {
     for (var x = left; x <= right; x += 1) {
       final dx = x + 0.5 - centerX;
@@ -760,6 +756,15 @@ void _stampDisc(
     }
   }
 }
+
+/// The texels a shape reaching [reach] either side of [centre] covers,
+/// clipped to a mask [size] across — first and last, both inclusive. The
+/// disc stamp's box and each clump's columns and rows (F-449, the clone
+/// scan) are the one walk.
+(int, int) _texelSpan(double centre, double reach, int size) => (
+  math.max(0, (centre - reach).floor()),
+  math.min(size - 1, (centre + reach).ceil()),
+);
 
 /// A dot of [strength] that fades linearly to the rim.
 _DiscLaw _linearDot(int strength) =>
