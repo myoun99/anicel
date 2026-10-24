@@ -257,9 +257,15 @@ void main() {
     );
     return (await tester.runAsync(() async {
       final recorder = ui.PictureRecorder();
+      // As a consumer shows it: [FrameDrawing.outside] past the extent, and
+      // the drawing unclipped, so anything it draws past its extent shows.
       final canvas = Canvas(recorder)
         ..translate(-world.left, -world.top)
-        ..clipRect(world);
+        ..clipRect(world)
+        ..save()
+        ..clipRect(drawing.extent, clipOp: ui.ClipOp.difference)
+        ..drawColor(drawing.outside, BlendMode.src)
+        ..restore();
       drawing.draw(canvas);
       final image = await recorder.endRecording().toImage(
         world.width.toInt(),
