@@ -637,16 +637,26 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       sizePressureCurve: BrushPressureCurve.identity(),
     ),
   ),
+  // 🗣️A MARKER IS A TRANSPARENT INK ON A CHISEL NIB (the-gouache-is-a-
+  // round-with-a-weave-Q5, 유저 2026-10-24: 「곱하기 + 끌 촉(45°)」). Laid over
+  // another colour it darkens it — blue over yellow is a deep green — and the
+  // nib held at 45° draws wide one way and thin the other. ↩️It was a
+  // translucent round that let 30% of what lay under it through. The cost
+  // was said with the choice: a light colour does not show over a dark one,
+  // as with a real marker.
   BrushPreset(
     id: const BrushPresetId('builtin-marker'),
     name: 'Marker',
     groupId: _penGroup,
     settings: BrushSettings(
       size: 16,
-      hardness: 0.8,
-      opacity: 0.7,
+      hardness: 0.9,
+      opacity: 0.8,
       flow: 0.6,
       spacing: BrushShape.minSpacing,
+      blendMode: BrushBlendMode.multiply,
+      roundness: 0.45,
+      angleDegrees: 45,
     ),
   ),
   // 🚨KABURA PEN (カブラペン) IS CLIP STUDIO'S THIRD NIB and the roster had
@@ -885,7 +895,13 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       spacing: BrushShape.minSpacing,
       // A wide flat sable held square to the paper: the angle stays put so
       // the band keeps one width across the sweep.
+      //
+      // 🗣️Turned to 90° (the-gouache-is-a-round-with-a-weave-Q6, 유저
+      // 2026-10-24: 「90° 로 돌려 둔다」): a wash is swept sideways, and at 0°
+      // the flat lay along the sweep and drew a line a fifth of its size.
+      // A sideways sweep lays the wide band now, a downward one the line.
       roundness: 0.2,
+      angleDegrees: 90,
       rotationMode: BrushTipRotationMode.fixed,
       mixesGroundColor: true,
       colorStretch: 0.8494,
@@ -1171,6 +1187,13 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // whole brush: parallel lines that stay parallel however the hand turns,
   // which is what a hatching pass is. ⛔`rotationMode.direction` would defeat
   // it — the lines would follow the stroke and never cross.
+  //
+  // 🗣️ITS MARKS PART AT HALF ITS SIZE (the-gouache-is-a-round-with-a-weave-
+  // Q4, 유저 2026-10-24: 「털 팁 그대로, 간격만 벌림」). At 6% the bristles'
+  // marks filled each other in and the brush drew a plain thick line. The
+  // cost was said with the choice: the lines come in short, soft pieces — a
+  // mass of hatch marks more than long parallels. ⛔A canvas-fixed line
+  // texture was the other choice, and not taken.
   BrushPreset(
     id: const BrushPresetId('builtin-hatching'),
     name: 'Hatching',
@@ -1179,7 +1202,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 16,
       hardness: 1.0,
       flow: 0.9749,
-      spacing: 0.06,
+      spacing: 0.5,
       tips: [bristleBrushTipMask],
       rotationMode: BrushTipRotationMode.fixed,
       angleDegrees: 45,

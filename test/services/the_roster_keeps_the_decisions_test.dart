@@ -487,34 +487,69 @@ void main() {
     }
   });
 
-  test('🚨a grass blade stands up on a sideways sweep — taller than wide', () {
-    // Its own comment's law ("Blades stand UP"). ↩️It landed round dots:
-    // a roundness that squeezed the leaf along its length (10-24).
-    final grass = defaultBrushPresets
-        .firstWhere((preset) => preset.id.value == 'builtin-grass')
-        .settings;
-    // A sideways sweep heads at 0°, so the tip turns by its own angle.
-    final blade = BrushDab(
+  /// How wide and tall one dab of [settings] stands on a sideways sweep —
+  /// one heading at 0°, so the tip turns by its own angle.
+  ({int wide, int tall}) standsOnASidewaysSweep(BrushSettings settings) {
+    final dab = BrushDab(
       center: CanvasPoint(x: 64, y: 64),
       color: 0xFF000000,
-      size: grass.size,
+      size: settings.size,
       opacity: 1,
       flow: 1,
-      hardness: grass.hardness,
+      hardness: settings.hardness,
       pressure: 1,
       sequence: 0,
-      roundness: grass.roundness,
-      angleDegrees: grass.angleDegrees,
-      tipMask: grass.tipMask,
+      roundness: settings.roundness,
+      angleDegrees: settings.angleDegrees,
+      tipMask: settings.tipMask,
     );
     var (left, right, top, bottom) = (1 << 30, -1, 1 << 30, -1);
-    forEachBrushPixelCoverage(blade, (x, y, coverage) {
+    forEachBrushPixelCoverage(dab, (x, y, coverage) {
       if (coverage > 0.5) {
         (left, right) = (math.min(left, x), math.max(right, x));
         (top, bottom) = (math.min(top, y), math.max(bottom, y));
       }
     });
-    final (wide, tall) = (right - left + 1, bottom - top + 1);
+    return (wide: right - left + 1, tall: bottom - top + 1);
+  }
+
+  BrushSettings settingsOf(String id) => defaultBrushPresets
+      .firstWhere((preset) => preset.id.value == id)
+      .settings;
+
+  test('🚨a grass blade stands up on a sideways sweep — taller than wide', () {
+    // Its own comment's law ("Blades stand UP"). ↩️It landed round dots:
+    // a roundness that squeezed the leaf along its length (10-24).
+    final (:wide, :tall) = standsOnASidewaysSweep(
+      settingsOf('builtin-grass'),
+    );
     expect(tall, greaterThan(wide * 1.5), reason: '$wide wide, $tall tall');
+  });
+
+  // the-gouache-is-a-round-with-a-weave Q4–Q6 (유저 2026-10-24), each the
+  // option the user picked off its comparison picture.
+  test('🗣️the hatching keeps its bristles and parts them at half its size '
+      '(Q4)', () {
+    final hatching = settingsOf('builtin-hatching');
+    expect(hatching.spacing, 0.5);
+    expect(hatching.tips.single.id, bristleBrushTipMask.id);
+    expect(hatching.rotationMode, BrushTipRotationMode.fixed);
+    expect(hatching.angleDegrees, 45);
+  });
+
+  test('🗣️the marker multiplies, through a chisel nib at 45° (Q5)', () {
+    final marker = settingsOf('builtin-marker');
+    expect(marker.blendMode, BrushBlendMode.multiply);
+    expect(marker.roundness, 0.45);
+    expect(marker.angleDegrees, 45);
+    expect(marker.rotationMode, BrushTipRotationMode.fixed);
+  });
+
+  test('🗣️the flat wash lays its wide band on a sideways sweep (Q6)', () {
+    final wash = settingsOf('builtin-flat-wash');
+    expect(wash.rotationMode, BrushTipRotationMode.fixed);
+    // A sideways sweep paints as tall a band as one dab stands.
+    final (:wide, :tall) = standsOnASidewaysSweep(wash);
+    expect(tall, greaterThan(wide * 3), reason: '$wide wide, $tall tall');
   });
 }
