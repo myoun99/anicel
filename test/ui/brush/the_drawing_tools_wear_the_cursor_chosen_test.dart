@@ -185,7 +185,7 @@ void main() {
     final opens = <String, void Function(BuildContext anchor)>{
       'the label list': (context) => showPanelFlyout(
         context,
-        entries: [PanelFlyoutItem(keyValue: 'f274-pick', label: 'Pick')],
+        entries: [const PanelFlyoutItem(keyValue: 'f274-pick', label: 'Pick')],
       ),
       'the colour popover': (context) => showAnchoredPopup<void>(
         context,
