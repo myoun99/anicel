@@ -8,6 +8,7 @@ import 'package:anicel/src/models/frame.dart'
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import 'ui/storyboard_cut_block_probe.dart';
 import 'ui/timeline/timeline_row_chrome_probe.dart';
@@ -277,8 +278,10 @@ void main() {
       expect(gripIds, contains('block-edge-grip-start-default-layer-1-1'));
 
       // Lengthen A by 3: it consumes the X gap and pushes B from 3 to 4
-      // with B's comma preserved (24px slim cells). R10: the slop is
-      // TRAVEL, so the total is what counts — 19 + 53 = 72 = three cells.
+      // with B's comma preserved. R10: the slop is TRAVEL, so the total is
+      // what counts — 19 + the rest = three cells of the zoom a cut opens
+      // at (F-403).
+      const cell = TimelineZoomLimits.referencePixelsPerFrame;
       final gesture = await tester.startGesture(
         timelineRowChromeCenter(
           tester,
@@ -288,7 +291,7 @@ void main() {
       );
       await gesture.moveBy(const Offset(19, 0));
       await tester.pump();
-      await gesture.moveBy(const Offset(53, 0));
+      await gesture.moveBy(const Offset(3 * cell - 19, 0));
       await tester.pumpAndSettle();
       await gesture.up();
       await tester.pumpAndSettle();
@@ -315,9 +318,9 @@ void main() {
       );
       await frontDrag.moveBy(const Offset(-19, 0));
       await tester.pump();
-      await frontDrag.moveBy(const Offset(-24, 0));
+      await frontDrag.moveBy(const Offset(-cell, 0));
       await tester.pumpAndSettle();
-      await frontDrag.moveBy(const Offset(-24, 0));
+      await frontDrag.moveBy(const Offset(-cell, 0));
       await tester.pumpAndSettle();
       await frontDrag.up();
       await tester.pumpAndSettle();
