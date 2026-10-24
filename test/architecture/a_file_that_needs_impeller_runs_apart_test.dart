@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../tool/affected_tests.dart'
     show
         BatchKind,
+        NoContextWatch,
         flutterTestArguments,
         gcTag,
         gcTagMarker,
@@ -19,8 +20,7 @@ import '../../tool/affected_tests.dart'
         kRunOrder,
         partitionByTag,
         ranNowhere,
-        runInBatches,
-        saysNoTesterContext;
+        runInBatches;
 import '../../tool/native_engine_provenance.dart' show engineStampPath;
 
 /// 🖥️**A FILE THAT NEEDS IMPELLER RUNS ON IT, APART.**
@@ -171,15 +171,25 @@ void main() {
 
     test('is heard in the output — even when a chunk ends inside the line',
         () {
-      expect(saysNoTesterContext('', said).said, isTrue);
-      expect(saysNoTesterContext('', '00:01 +3: All tests passed!').said,
-          isFalse);
+      final whole = NoContextWatch()..heard(said);
+      expect(whole.said, isTrue);
+      final green = NoContextWatch()..heard('00:01 +3: All tests passed!');
+      expect(green.said, isFalse);
       final cut = said.indexOf('tester context');
-      final first = saysNoTesterContext('', said.substring(0, cut));
-      expect(first.said, isFalse);
-      expect(saysNoTesterContext(first.carry, said.substring(cut)).said,
-          isTrue);
-      expect(first.carry.length, lessThan(kNoTesterContext.length));
+      final split = NoContextWatch()..heard(said.substring(0, cut));
+      expect(split.said, isFalse);
+      split.heard(said.substring(cut));
+      expect(split.said, isTrue);
+    });
+
+    test('once said, said for the batch — the suites that fail after it '
+        'say other things', () {
+      final watch = NoContextWatch()
+        ..heard(said)
+        ..heard('00:00 +0 -1: loading test/a_test.dart [E]\n')
+        ..heard('00:00 +0 -1: Some tests failed.\n');
+      expect(watch.said, isTrue);
+      expect(kNoTesterContext, isNot(contains('\n')));
     });
 
     test('leaves its batch neither red nor green — but only a batch that '

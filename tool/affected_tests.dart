@@ -1233,16 +1233,22 @@ class _BatchResult {
 /// batch fails to load.
 const kNoTesterContext = 'Could not create tester context';
 
-/// Whether [output] holds [kNoTesterContext], when [carried] is the end of
-/// what came before it — a chunk may end inside the line. Returns the end
-/// of this one to carry into the next.
-({bool said, String carry}) saysNoTesterContext(String carried, String output) {
-  final seen = carried + output;
-  const keep = kNoTesterContext.length - 1;
-  return (
-    said: seen.contains(kNoTesterContext),
-    carry: seen.length > keep ? seen.substring(seen.length - keep) : seen,
-  );
+/// Hears a batch's output as it comes for [kNoTesterContext] — once said,
+/// said for the batch, and a chunk may end inside the line.
+class NoContextWatch {
+  String _carried = '';
+  bool _said = false;
+
+  /// Whether the batch has said [kNoTesterContext] in anything heard yet.
+  bool get said => _said;
+
+  /// [text] came from the batch.
+  void heard(String text) {
+    final seen = _carried + text;
+    _said = _said || seen.contains(kNoTesterContext);
+    const keep = kNoTesterContext.length - 1;
+    _carried = seen.length > keep ? seen.substring(seen.length - keep) : seen;
+  }
 }
 
 /// Whether a batch that exited [exitCode] having said [kNoTesterContext]
@@ -1431,8 +1437,7 @@ Future<_BatchResult> _flutterTest(
   );
   var ranTests = false;
   var skipped = 0;
-  var noContext = false;
-  var carried = '';
+  final context = NoContextWatch();
   final silence = BatchSilence(DateTime.now());
   var cut = false;
   final look = Timer.periodic(kLookForSilence, (_) {
@@ -1448,9 +1453,7 @@ Future<_BatchResult> _flutterTest(
       if (!ranTests && _testOutput.hasMatch(text)) {
         ranTests = true;
       }
-      final context = saysNoTesterContext(carried, text);
-      noContext = noContext || context.said;
-      carried = context.carry;
+      context.heard(text);
       final skips = lastSkipCount(text);
       if (skips != null) skipped = skips;
       silence.heard(text, DateTime.now());
@@ -1476,6 +1479,6 @@ Future<_BatchResult> _flutterTest(
     cut && code == 0 ? 1 : code,
     ranTests,
     skipped,
-    noContext: noContext,
+    noContext: context.said,
   );
 }
