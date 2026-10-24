@@ -437,6 +437,39 @@ void main() {
       store.dispose();
     });
 
+    test('of patches laid as one wait under the patches that came after '
+        'them', () async {
+      final gpu = _RecordingGpu()..holdWrites = true;
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        levelsQuiet: never,
+        levelsWaitAtMost: 2,
+      );
+      final picture = await _layed(store, 'a', 1024);
+      void patchAt(double left) => store.patch(
+        from: 'a',
+        to: 'a',
+        rect: ui.Rect.fromLTWH(left, 0, 8, 8),
+        draw: fill,
+      );
+      patchAt(0);
+      expect(await pollUntil(() => gpu.bases.length == 1), isTrue);
+      gpu.releaseWrite();
+      patchAt(100);
+      expect(await pollUntil(() => gpu.bases.length == 2), isTrue);
+      // Its base not in yet when the two before it are laid as one.
+      patchAt(200);
+      expect(await pollUntil(() => picture.landing.length == 3), isTrue);
+      gpu.releaseWrite();
+      expect(
+        await pollUntil(() => picture.landing.first.rect.width == 108),
+        isTrue,
+      );
+      expect(picture.landing.map((patch) => patch.rect.left), [0, 200]);
+      await _landAll(gpu, store);
+      store.dispose();
+    });
+
     test('land with the last of them once every patch drawn over the picture '
         'at most is one laid so, the pause or not', () async {
       final gpu = _RecordingGpu();
