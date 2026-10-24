@@ -437,6 +437,58 @@ void main() {
       store.dispose();
     });
 
+    test('of as many texels as wait at most are laid as one, and land once '
+        'as many wait all the same', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        levelsQuiet: never,
+        levelsWaitTexelsAtMost: 100,
+      );
+      final picture = await _layed(store, 'a', 1024);
+      Future<void> patchAt(double left) async {
+        final bases = gpu.bases.length;
+        store.patch(
+          from: 'a',
+          to: 'a',
+          rect: ui.Rect.fromLTWH(left, 0, 8, 8),
+          draw: fill,
+        );
+        expect(await pollUntil(() => gpu.bases.length == bases + 1), isTrue);
+      }
+
+      // 64 and 64 texels lay as one of 96: under the most, it waits.
+      await patchAt(0);
+      await patchAt(4);
+      expect(
+        await pollUntil(
+          () =>
+              picture.landing.length == 1 &&
+              picture.landing.single.rect.width == 12,
+        ),
+        isTrue,
+      );
+      await pumpEventQueue();
+      expect(gpu.levelWrites, isEmpty);
+      // 96 and 64, one of them left to lay as one: they land.
+      await patchAt(100);
+      expect(await pollUntil(() => picture.landing.isEmpty), isTrue);
+      expect(
+        [
+          for (final span in gpu.levelWrites.single.spans)
+            if (span.level == 1) span.x,
+        ],
+        [0, 50],
+      );
+      // 64 and 64 laid as one of 864, as many as before: they land.
+      await patchAt(200);
+      await patchAt(300);
+      expect(await pollUntil(() => gpu.levelWrites.length == 2), isTrue);
+      expect(await pollUntil(() => picture.landing.isEmpty), isTrue);
+      expect(gpu.levelWrites.last.spans.first.width, 54);
+      store.dispose();
+    });
+
     test('of patches laid as one wait under the patches that came after '
         'them', () async {
       final gpu = _RecordingGpu()..holdWrites = true;

@@ -83,10 +83,12 @@ class FramePictureStore<K extends Object> {
     QuietTurns? quietTurns,
     Duration levelsQuiet = _levelsQuiet,
     int levelsWaitAtMost = _levelsWaitAtMost,
+    int levelsWaitTexelsAtMost = _levelsWaitTexelsAtMost,
   }) : _gpu = gpu ?? FlutterGpuFramePictures(),
        _quietTurns = quietTurns ?? QuietTurns.instance,
        _levelsQuietFor = levelsQuiet,
-       _levelsWaitingAtMost = levelsWaitAtMost;
+       _levelsWaitingAtMost = levelsWaitAtMost,
+       _levelsWaitingTexelsAtMost = levelsWaitTexelsAtMost;
 
   final FramePictureGpu _gpu;
 
@@ -104,6 +106,7 @@ class FramePictureStore<K extends Object> {
 
   final Duration _levelsQuietFor;
   final int _levelsWaitingAtMost;
+  final int _levelsWaitingTexelsAtMost;
 
   final Map<K, _Entry> _entries = {};
 
@@ -362,8 +365,9 @@ class FramePictureStore<K extends Object> {
   /// Lands every patch that has texels and is not in yet at the BASE level,
   /// in one write — a later patch over an earlier — and leaves the levels
   /// under it to [_landLevels]: once patches stop coming for
-  /// [_levelsQuietFor], or at once when [_levelsWaitingAtMost] are drawn
-  /// over the picture and none of them is left to lay as one ([_layAsOne]).
+  /// [_levelsQuietFor], or at once when as much waits as may
+  /// ([_asMuchAsMayWait]) after the ones not laid as one yet are
+  /// ([_layAsOne]).
   ///
   /// 🔬A batch, not a write a patch (D7-2, 2026-10-24): on the Surface Pro
   /// 11 a 3840² picture took about 57 ms to land one patch — five waits on
@@ -404,17 +408,29 @@ class FramePictureStore<K extends Object> {
     ]);
     entry.levelsDue.addAll(batch);
     entry.quiet?.cancel();
-    if (entry.levelsDueAsOne.length + entry.levelsDue.length >=
-        _levelsWaitingAtMost) {
-      if (entry.levelsDue.length < 2) {
-        await _landLevels(entry);
-        return;
-      }
+    if (_asMuchAsMayWait(entry) && entry.levelsDue.length > 1) {
       await _layAsOne(entry);
+    }
+    if (_asMuchAsMayWait(entry)) {
+      await _landLevels(entry);
+      return;
     }
     entry.quiet = Timer(_levelsQuietFor, () {
       entry.writes = entry.writes.then((_) => _landLevels(entry));
     });
+  }
+
+  /// Whether as much is drawn over [entry]'s picture, waiting for the
+  /// levels under its base, as may be: [_levelsWaitingAtMost] patches, or
+  /// [_levelsWaitingTexelsAtMost] texels of them.
+  bool _asMuchAsMayWait(_Entry entry) {
+    final waiting = [...entry.levelsDueAsOne, ...entry.levelsDue];
+    var texels = 0.0;
+    for (final patch in waiting) {
+      texels += patch.rect.width * patch.rect.height;
+    }
+    return waiting.length >= _levelsWaitingAtMost ||
+        texels >= _levelsWaitingTexelsAtMost;
   }
 
   /// The patches of [_Entry.levelsDue] drawn over the picture as ONE, over
@@ -427,12 +443,18 @@ class FramePictureStore<K extends Object> {
   ///
   /// 🔬AT THE CAP, THE PATCHES AS ONE, NOT THE LEVELS (D7-2, 2026-10-24,
   /// the Surface Pro 11, release, a 3840² frame patched every vsync with no
-  /// pause): the levels' write at the cap held one frame every 64 patches —
-  /// 80–103 ms at a 200 px brush at 25%, 3–12 frames past 16.7 ms a 1.7 s
-  /// stroke; the 64 laid as one held none (0 past 16.7 ms, the longest
-  /// 7–10 ms), each in 1–6 ms. The levels are written once every patch
-  /// drawn over the picture is one so laid — 2,080 patches into a stroke
-  /// with no pause (64 + 63 + … + 1).
+  /// pause, the two taken in turn in one session): the levels' write at the
+  /// cap held one frame every 64 patches — at a 200 px brush at 25%, 2–12
+  /// frames past 16.7 ms a 1.6 s stroke, the longest 72–110 ms; laid as one,
+  /// 0–6, the longest 6–27 ms. At a 24 px brush at 100%, 4–65 a 2.6 s stroke
+  /// against 0–1 in the last three sessions (0–53 in the two before, the
+  /// machine busy). Each laid as one in 1–10 ms.
+  /// The levels are written once as much waits as may all the same
+  /// ([_asMuchAsMayWait]) — a 25 s stroke round and round at 200 px wrote
+  /// them 8 times, not 40: 51–66 frames past 16.7 ms, not 135. ⛔The ones
+  /// laid as one at a cap of their own, the patches as asked at theirs: 39
+  /// laid as one, not 101, but 88 MB drawn over the picture and held, not
+  /// 76, and 84–100 frames past 16.7 ms.
   Future<void> _layAsOne(_Entry entry) async {
     final turn = await _quietTurns.inAQuiet(
       _asOneSpan,
@@ -732,15 +754,29 @@ ui.Rect _scaled(ui.Rect rect, double scale) => ui.Rect.fromLTRB(
 /// late, 66–76 ms).
 ///
 /// Since the patches at the cap are laid as one
-/// ([FramePictureStore._layAsOne], the same day), that frame comes once in
-/// 2,080 patches of a stroke with no pause, not once in 64.
+/// ([FramePictureStore._layAsOne], the same day), the levels are written at
+/// the cap only once as much waits as may all the same — 8 times a 25 s
+/// stroke at a 200 px brush, not 40.
 const Duration _levelsQuiet = Duration(milliseconds: 200);
 
 /// The most patches drawn over a picture while the levels under their base
 /// wait: at that many, the ones not laid as one yet are laid as one
-/// ([FramePictureStore._layAsOne]); when none is left to, the levels are
-/// written at once ([_levelsQuiet] has the measurement).
+/// ([FramePictureStore._layAsOne]); when as many wait all the same, the
+/// levels are written at once ([_levelsQuiet] has the measurement).
 const int _levelsWaitAtMost = 64;
+
+/// The most texels of the patches drawn over a picture while the levels
+/// under their base wait, as [_levelsWaitAtMost] is of patches: 4 Mi, the
+/// 16 MiB of 64 patches 256 a side.
+///
+/// 🔬(D7-2, 2026-10-24, the Surface Pro 11, release, a 3840² frame, a
+/// 200 px brush at 25%): drawn over the picture, 64 patches of the brush
+/// (3.4 Mi texels) and two laid as one with the ones after them (4.0 Mi)
+/// cost nothing — raster p90 2.1–2.3 ms; laid as one with no bound, a 25 s
+/// stroke round and round held 25 Mi drawn over it (105 MB): 128 frames
+/// past 16.7 ms, raster p90 7.7 ms, and the levels' write at its end held
+/// one frame 299 ms.
+const int _levelsWaitTexelsAtMost = 4 << 20;
 
 /// The run's width ([FramePictureStore._run]): the widest texture every
 /// GPU the app runs on takes — OpenGL ES 3's floor.
