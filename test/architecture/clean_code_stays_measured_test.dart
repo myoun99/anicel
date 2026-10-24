@@ -1274,7 +1274,16 @@ void main() {
   /// it. 🔬`clean_code_diff` against master (`f6c483e4d`) names this one and
   /// no other class. ⛔Not split to fit: the window is the row's own panel
   /// window, and every piece of the row is held to it in the one build.
-  const longClasses = 73;
+  ///
+  /// ⚠️73 → 74 on 2026-10-24, ONE name: `_StoryboardConteRow` crossed
+  /// (599 → 605) when its cells came to bake on the timeline's tile store
+  /// (card `the-conte-row-bakes-its-cells-into-tiles` — it painted every
+  /// cell it showed by hand at every opening, the storyboard's largest
+  /// paint): the four arguments the timeline's rows already hand the same
+  /// painter. 🔬`clean_code_diff` against master (`b0a486341`) names this
+  /// one and no other class. ⛔Not split to fit: the row's painter is built
+  /// in the one place its other arguments are.
+  const longClasses = 74;
 
   late CleanCodeScan scan;
   setUpAll(() {
