@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/playback/audio_scrubber.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
 import 'package:anicel/src/ui/timeline/frame_panel_sill_controls.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../../helpers/device_paced.dart';
@@ -362,6 +363,17 @@ void main() {
       expect(bar.left, greaterThanOrEqualTo(meter.right));
       expect(bar.right, row.right, reason: 'nothing after it in the row');
       expect(tester.widget<FieldSlider>(find.byKey(barKey)).value, 0.4);
+      expect(
+        find.ancestor(
+          of: find.byKey(barKey),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is AppTooltip && widget.message == 'Playback volume',
+          ),
+        ),
+        findsOneWidget,
+        reason: 'it is named, in the program\'s language (English here)',
+      );
 
       final gesture = await tester.startGesture(
         Offset(bar.left + bar.width * 0.75, bar.center.dy),
@@ -398,6 +410,15 @@ void main() {
       );
       await tester.pump();
       expect(tester.widget<FieldSlider>(find.byKey(barKey)).value, 0.5);
+      final row = tester.widget<PlaybackTransportControls>(
+        find.byType(PlaybackTransportControls),
+      );
+      expect(
+        row.onPlaybackLevelSettled,
+        session.playbackRig.settlePlaybackLevel,
+        reason: 'where the hand lets go is the rig\'s settle — the step a '
+            'run hears (pinned on the rig above)',
+      );
 
       final bar = tester.getRect(find.byKey(barKey));
       final gesture = await tester.startGesture(
