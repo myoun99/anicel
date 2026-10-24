@@ -79,7 +79,7 @@ import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/panel_keys.dart';
 import 'shortcuts/shortcut_settings_store.dart';
-import 'timeline/frame_panel_sill_controls.dart' show panelTransportFor;
+import 'timeline/frame_panel_transport.dart' show panelTransportFor;
 import 'timeline/instance_editor_commands.dart'
     show autoNameWithWindow, editOnPanel;
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;

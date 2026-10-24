@@ -76,6 +76,105 @@ void main() {
     });
   }
 
+  group('with the transport pinned at its head (F-111-Q1)', () {
+    const transport = ValueKey<String>('transport');
+    const transportWidth = 236.0;
+    const transportHeight = 28.0;
+
+    Future<void> pumpBar(WidgetTester tester, double width) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: width,
+                  child: const TimelineCommandBar(
+                    transport: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          key: transport,
+                          width: transportWidth,
+                          height: transportHeight,
+                        ),
+                      ],
+                    ),
+                    leading: Row(
+                      children: [SizedBox(width: 600, height: 20)],
+                    ),
+                    cluster: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          key: cluster,
+                          width: clusterWidth,
+                          height: clusterHeight,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    testWidgets('where the bar holds them, the transport stands at its own '
+        'size at the bar\'s start and the pills\' scroller between it and '
+        'the cluster', (tester) async {
+      const width = 800.0;
+      await pumpBar(tester, width);
+
+      final shown = tester.getRect(find.byKey(transport));
+      expect(shown.size, const Size(transportWidth, transportHeight));
+      expect(shown.left, TimelineCommandBar.padding.left);
+      final scroller = tester.getRect(find.byType(SingleChildScrollView));
+      const insets = 2 * TimelineCommandBar.leadingInset;
+      expect(
+        scroller.width,
+        moreOrLessEquals(
+          width - sides - transportWidth - clusterWidth - 2 * gap - insets,
+        ),
+      );
+      expect(
+        scroller.left,
+        moreOrLessEquals(shown.right + gap + TimelineCommandBar.leadingInset),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(SingleChildScrollView),
+          matching: find.byKey(transport),
+        ),
+        findsNothing,
+        reason: 'outside the scroller: a scrolled pill row leaves it be',
+      );
+    });
+
+    testWidgets('🚨too narrow for both ends, the bar shows the transport and '
+        'the cluster all of each, smaller by one factor — none of it runs '
+        'off', (tester) async {
+      const width = 360.0;
+      await pumpBar(tester, width);
+
+      expect(tester.takeException(), isNull);
+      final factor =
+          (width - sides - 2 * gap) / (transportWidth + clusterWidth);
+      final shownTransport = tester.getRect(find.byKey(transport));
+      final shownCluster = tester.getRect(find.byKey(cluster));
+      expect(
+        shownTransport.width,
+        moreOrLessEquals(transportWidth * factor),
+      );
+      expect(shownCluster.width, moreOrLessEquals(clusterWidth * factor));
+      expect(shownTransport.left, TimelineCommandBar.padding.left);
+      expect(
+        shownCluster.right,
+        moreOrLessEquals(width - TimelineCommandBar.padding.right),
+      );
+    });
+  });
+
   testWidgets('where the bar holds it, nothing is scaled — the leading '
       'takes what is left, and both stand in the middle of the bar', (
     tester,

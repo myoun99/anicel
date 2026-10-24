@@ -18,7 +18,7 @@ typedef PanelTransport = ({
   VoidCallback skipToStart,
 });
 
-/// [panel]'s transport — ONE answer for its sill's buttons and their keys
+/// [panel]'s transport — ONE answer for its bar's buttons and their keys
 /// (F-261: a key presses the button on the panel being worked in, the panel
 /// the flip already follows).
 PanelTransport panelTransportFor(
@@ -37,53 +37,48 @@ PanelTransport panelTransportFor(
   ),
 };
 
-/// What a frame panel puts on the 문턱: its playback transport and the camera
-/// view toggle — right-aligned, ahead of the region's own collapse button.
-/// ↩️A ⚙ of the project's settings stood here too, until they went to the
-/// top strip's ⚙ beside the work's (답 playback-quality-home-Q1 「프로젝트
-/// 설정으로 같이」).
+/// A frame panel's transport, at the head of its command bar
+/// ([TimelineCommandBar.transport]): its playback buttons and the camera
+/// view toggle — what [panel]'s transport drives is [panelTransportFor]'s
+/// answer.
+/// ↩️A ⚙ of the project's settings stood beside them too, until they went
+/// to the top strip's ⚙ beside the work's (답 playback-quality-home-Q1
+/// 「프로젝트 설정으로 같이」).
 ///
-/// ★They live on the SILL rather than in the command bar for one reason
-/// (유저 확정, 2026-08-10): the sill's right edge does not move. Its tabs
-/// grow from the left, so adding a panel to the workspace shifts the tabs
-/// and nothing else — whereas a left-aligned transport in the command bar
-/// slid sideways every time the bar above it changed shape. 「존재할 거면
-/// 늘 그 자리에.」
+/// ↩️They stood on the region's 문턱 from 2026-08-10 to F-111 (유저
+/// 2026-10-08, F-111-Q1 「버튼행 맨 왼쪽에 고정 — 알약 칸 밖」). The sill's
+/// right edge does not move — its tabs grow from the left — whereas a
+/// transport leading the command bar's scrolling row slid sideways every
+/// time the row changed shape: 「존재할 거면 늘 그 자리에」. Pinned at the
+/// bar's head, outside its scroller, it keeps that.
 ///
-/// ★And the ZOOM and the x-sheet toggle deliberately did NOT come with them:
-/// those reach into the panel's own contents, so they stay on the panel's
-/// own row. What is on the sill is what means the same thing whichever
-/// panel is open.
-///
-/// Mounted by the WORKSPACE through [EditorPanelTab.sillTrailing], not by
-/// the tab host — only the active tab's is built, which is what lets one
-/// sill carry two panels' transports without either of them knowing.
-class FramePanelSillControls extends StatelessWidget {
-  const FramePanelSillControls({
+/// ★And the ZOOM and the x-sheet toggle are not part of it: those reach into
+/// the panel's own contents and stand at the bar's other end, in the view
+/// cluster. What is here means the same thing whichever panel is open.
+class FramePanelTransport extends StatelessWidget {
+  const FramePanelTransport({
     super.key,
     required this.session,
-    required this.scope,
-    required this.cameraViewKeyValue,
-    this.playbackStartFrame,
-    this.onSkipToStart,
+    required this.panel,
   });
 
   final EditorSessionManager session;
 
-  /// Which playlist this panel's transport drives: the timeline plays the
-  /// active cut, the storyboard the whole track.
-  final PlaybackScope scope;
+  /// Whose transport this is: the timeline plays the active cut, the
+  /// storyboard the whole track.
+  final WorkingPanel panel;
 
   /// R28 #1: camera view is a VIEW MODE, so every panel with a transport
   /// carries the toggle beside it — both entrances press the one switch,
   /// the project's camera row's eye ([EditorSessionManager.cameraViewMode]).
-  final String cameraViewKeyValue;
-
-  final int Function()? playbackStartFrame;
-  final VoidCallback? onSkipToStart;
+  String get _cameraViewKeyValue => switch (panel) {
+    WorkingPanel.timeline => 'timeline-camera-view-button',
+    WorkingPanel.storyboard => 'storyboard-camera-view-button',
+  };
 
   @override
   Widget build(BuildContext context) {
+    final transport = panelTransportFor(panel, session);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -91,9 +86,9 @@ class FramePanelSillControls extends StatelessWidget {
           valueListenable: session.appSettings.audioSyncSettings,
           builder: (context, audio, _) => PlaybackTransportControls(
             controller: session.playbackRig.playback,
-            scope: scope,
-            playbackStartFrame: playbackStartFrame,
-            onSkipToStart: onSkipToStart,
+            scope: transport.scope,
+            playbackStartFrame: transport.startFrame,
+            onSkipToStart: transport.skipToStart,
             resolveMeterPeaks: () =>
                 session.playbackRig.audioDeviceTransport.meterPeaks,
             isVoiceRecording: session.voiceRecording.isVoiceRecording,
@@ -110,9 +105,8 @@ class FramePanelSillControls extends StatelessWidget {
         ),
         CameraViewToggleButton(
           view: session.cameraViewMode,
-          keyValue: cameraViewKeyValue,
+          keyValue: _cameraViewKeyValue,
         ),
-        const SizedBox(width: 4),
       ],
     );
   }

@@ -17,6 +17,7 @@ import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_action_toolbar.dart';
+import 'timeline/frame_panel_transport.dart' show FramePanelTransport;
 import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_grid_metrics.dart'
     show timelineLayerRowGrowthIn;
@@ -172,6 +173,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// on it hears its own gates ([toolbarGateNews]).
   final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptToolbar = {};
 
+  /// The transport at the head of the bar (F-111-Q1), kept as the timeline
+  /// host keeps its own — what its buttons show, they hear themselves.
+  final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptTransport = {};
+
   // ⛔The storyboard's playhead channel is the SESSION's now
   // ([PlayheadCursors.trackFrame]): the row this panel folds into draws the
   // same playhead and turns the same pages, and that row is built by the
@@ -266,8 +271,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
 
   // ⛔"To start" (REC1-B) is a free function now
   // ([seekStoryboardPlayheadToTrackStart]): the button that calls it is the
-  // 문턱's, built by the workspace. One implementation, two possible
-  // callers, no host method to reach for.
+  // transport's, and so is its key ([panelTransportFor]). One
+  // implementation, two possible callers, no host method to reach for.
 
   // ↩️This rail's own twirls — its S rows', its V rows' and their groups —
   // were sets the host kept and turned here, handing the storyboard's
@@ -506,17 +511,27 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// copy of it: transport + cut group left, the shared view cluster right.
   Widget _commandBar(BuildContext context) {
     return TimelineCommandBar(
+      // The same transport the timeline's bar leads with — a different
+      // playlist and a different 「처음으로」, and nothing else.
+      transport: keptWhileSame(
+        _keptTransport,
+        FramePanelTransport,
+        ByIdentity(_session),
+        () => FramePanelTransport(
+          session: _session,
+          panel: WorkingPanel.storyboard,
+        ),
+      ),
       // ⑫: the inset and the overflow scroller are the BAR's. This row used
       // to bring its own — on top of the toolbar's — which is what put an
       // extra 2px in front of the cut button here and nowhere else.
       leading: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ⛔The TRANSPORT and the camera-view toggle left this bar (유저
-          // 확정, 2026-08-10): they are the 문턱's now, mounted by the
-          // workspace through `EditorPanelTab.sillTrailing` (see
-          // [FramePanelSillControls]). What stays here is what reaches into
-          // THIS panel's own contents.
+          // ⛔The TRANSPORT and the camera-view toggle are not in this row:
+          // the bar pins them at its head, outside this row's scroller
+          // (F-111-Q1). ↩️They stood on the 문턱 from 2026-08-10. What stays
+          // here is what reaches into THIS panel's own contents.
           //
           // ★THE SAME FOUR PILLS the timeline mounts — literally the same
           // widget (유저: 스토리보드 레이어의 프레임을 조절해야 하고 레이어도

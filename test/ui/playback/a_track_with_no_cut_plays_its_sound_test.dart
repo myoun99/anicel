@@ -20,7 +20,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
-import 'package:anicel/src/ui/timeline/frame_panel_sill_controls.dart';
+import 'package:anicel/src/ui/timeline/frame_panel_transport.dart';
 
 /// 🗣️F-341 (유저 2026-10-12): 「콘티패널에서 컷이 없으면 사운드행에 사운드
 /// 있어도 재생안됨. 분명 독립적인 글로벌 행이라고 했는데 아직도 연관시켜버린

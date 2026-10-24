@@ -141,20 +141,6 @@ class _WorkspaceTabs {
     ),
   );
 
-  /// A frame panel's 문턱: the transport [panel]'s keys press too
-  /// ([panelTransportFor]) and the camera-view toggle both panels share.
-  Widget _sill(WorkingPanel panel, {required String cameraViewKeyValue}) {
-    final session = _state.widget.session;
-    final transport = panelTransportFor(panel, session);
-    return FramePanelSillControls(
-      session: session,
-      scope: transport.scope,
-      cameraViewKeyValue: cameraViewKeyValue,
-      playbackStartFrame: transport.startFrame,
-      onSkipToStart: transport.skipToStart,
-    );
-  }
-
   /// Both viewers, built from one place: same panel, same code, different
   /// [MediaViewerSlot]. Anything that reads as "the main one does X"
   /// belongs in the slot or in the callbacks, never in a second copy of
@@ -908,18 +894,14 @@ class _WorkspaceTabs {
           locked: locked,
           // F-452: its bars are thick — the splitter may lie over them.
           sparesSplitters: false,
-          // 유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로. Only the
-          // ACTIVE tab's sill controls are mounted, so the timeline's
-          // active-cut transport and the storyboard's all-cuts one share
-          // the one strip without either knowing about the other.
+          // ↩️유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로 — the
+          // settings went to the top strip, and the transport to the head of
+          // the panel's own bar (F-111-Q1, 10-08), which its host seats
+          // (`FramePanelTransport`).
           // 접으면 버튼행만 (유저 확정): the panel keeps its command bar and
           // offstages the grid, so the fold is 문턱 30 + this 36 = 66 — and
           // every verb a rough pass needs is still on screen while folded.
           collapsedExtent: TimelineCommandBar.heightIn(_state.context),
-          sillTrailing: (context) => _sill(
-            WorkingPanel.timeline,
-            cameraViewKeyValue: 'timeline-camera-view-button',
-          ),
           builder: (context) => _panelHost(
             // The session subscription lives HERE now (HomePage no longer
             // setStates the world). Seeks are NOT session notifies — the
@@ -1023,13 +1005,7 @@ class _WorkspaceTabs {
           locked: locked,
           // F-452: as the timeline's.
           sparesSplitters: false,
-          // The same sill controls the timeline mounts — a different
-          // playlist and a different "to start", and nothing else.
           collapsedExtent: TimelineCommandBar.heightIn(_state.context),
-          sillTrailing: (context) => _sill(
-            WorkingPanel.storyboard,
-            cameraViewKeyValue: 'storyboard-camera-view-button',
-          ),
           builder: (context) => _panelHost(
             // Session subscription — the timeline tab's list exactly, and
             // for the same reason: seeks are NOT session notifies, so this

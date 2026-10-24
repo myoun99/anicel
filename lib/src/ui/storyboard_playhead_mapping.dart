@@ -33,10 +33,10 @@ List<StoryboardTimelineLayoutEntry> storyboardActiveTrackLayout(
 /// the only way to be in a gap), and the storyboard playhead follows the
 /// parking with no extra wiring.
 ///
-/// A free function because the storyboard's transport left its panel for
-/// the 문턱 (유저 확정, 2026-08-10): the button that calls this is built by
-/// the WORKSPACE, not by the storyboard host. One implementation, two
-/// callers.
+/// A free function because its callers are not the storyboard host: the
+/// transport's 「처음으로」 and its key, both through [panelTransportFor].
+/// One implementation, two callers. ↩️It left the host when the transport
+/// went to the 문턱 (유저 확정, 2026-08-10), built by the workspace.
 void seekStoryboardPlayheadToTrackStart(EditorSessionManager session) {
   // An EMPTY selected track displays the whole-layout fallback — re-aim
   // at the track actually on screen before seeking (the old body's

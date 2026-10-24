@@ -7,9 +7,9 @@ import '../widgets/kept_tail_row.dart';
 import '../widgets/tick_layer.dart';
 import 'timeline_view_cluster.dart';
 
-/// The ONE command-bar row both frame panels wear: the host's transport and
-/// action controls on the left, the shared `TimelineViewCluster` pinned
-/// right, in a row of a FIXED height.
+/// The ONE command-bar row both frame panels wear: the panel's transport
+/// pinned left, its action controls beside it, the shared
+/// `TimelineViewCluster` pinned right, in a row of a FIXED height.
 ///
 /// Fixed, and that is the whole point. The timeline and the storyboard used
 /// to MEASURE their own bars and land on different numbers — 54 against 36
@@ -24,7 +24,12 @@ import 'timeline_view_cluster.dart';
 /// is a size the next control has to fit into, which is what makes the two
 /// panels agree by construction instead of by two people measuring.
 class TimelineCommandBar extends StatelessWidget {
-  const TimelineCommandBar({super.key, this.leading, required this.cluster});
+  const TimelineCommandBar({
+    super.key,
+    this.transport,
+    this.leading,
+    required this.cluster,
+  });
 
   /// The row's height, padding included.
   ///
@@ -64,8 +69,21 @@ class TimelineCommandBar extends StatelessWidget {
   /// got it twice.
   static const double leadingInset = 2;
 
-  /// The host's own controls (transport, actions, cut group). Null leaves
-  /// the left side empty and still pins the cluster right.
+  /// The panel's transport, KEPT at the bar's start as the cluster is at its
+  /// end — outside the overflow scroller, so neither a narrower region nor
+  /// a scrolled pill row moves it, and the fold, which keeps the bar, keeps
+  /// it on screen (유저 2026-10-08, F-111-Q1 「버튼행 맨 왼쪽에 고정 — 알약 칸
+  /// 밖」). Where the bar cannot hold both ends, both are shown smaller
+  /// ([KeptTailRow]).
+  ///
+  /// ↩️It stood on the region's 문턱 from 2026-08-10 (「왼쪽 정렬이면 패널을
+  /// 추가할 때 재생 버튼이 밀린다」 — it had led this bar's scrolling row,
+  /// and slid as the row changed shape). Pinned outside the scroller, it is
+  /// where it was for that reason too: 「존재할 거면 늘 그 자리에」.
+  final Widget? transport;
+
+  /// The host's own controls (actions, cut group). Null leaves the room
+  /// between the transport and the cluster empty.
   ///
   /// Handed in as a plain ROW: the bar pads it and gives it the overflow
   /// scroller. That was the other half of ⑫ — a `leading` that scrolled
@@ -76,99 +94,120 @@ class TimelineCommandBar extends StatelessWidget {
 
   final Widget cluster;
 
-  /// The bar's FRAME — its tick layer, padding, row and overflow scroller —
-  /// one per shape, made once, so every build hands the same frame back;
-  /// the two pieces reach their seats in it through [_BarPieces].
-  ///
-  /// 🚨I-57 (10-13): the frame was made anew on every build, round a
-  /// toolbar its host makes anew on every notify, and the whole bar was
-  /// built again for it — the tick layer, the row and the overflow
-  /// scroller with its own LayoutBuilders — while the toolbar it held
-  /// handed back the same buttons. Now a new piece is its seat's rebuild.
-  /// ↩️The seat rebuilt inside the tick layer's build scope, so the layer
-  /// was still laid out and painted for it (counted 10-14: 24 render
-  /// objects on a notify that changed nothing) — the layer is a HEARD one
-  /// now, with no scope of its own, and the seat is built in the host's.
-  ///
-  /// 🚨The bar is a TICK LAYER (I-22 ③): the counter reads the cursor,
-  /// and its width moves the row — it grows into the room on its left
-  /// ([TimelineViewCluster]) — so a tick that widens it lays out and
-  /// paints THIS bar; one that keeps its width paints its line alone
-  /// ([TickText], I-57 10-14). Rebuilt bare, the counter laid out the
-  /// dock's panel scroller and repainted the panel and the dock around it
-  /// on every playback frame. Its lines hear their ticks, so nothing on
-  /// the bar is built for one ([TickLayer.heard]).
-  ///
-  /// The cluster is what the row KEEPS ([KeptTailRow]): at its own width
-  /// where the bar holds it, and where the bar is narrower than that, all
-  /// of it, smaller — the leading's scroller is the fold. In a 360px
-  /// window the timeline's bar had 248px for its 252
-  /// (`timeline-row-overflows-at-360`, measured 2026-10-14).
-  static const Widget _frame = TickLayer.heard(
-    child: Padding(
-      padding: padding,
-      child: KeptTailRow(
-        gap: _gap,
-        head: Padding(
-          padding: EdgeInsets.symmetric(horizontal: leadingInset),
-          // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
-          // 스크롤바」): the app's bar exists only while the row overflows
-          // and costs no layout when it does not.
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            // 🚨On a layer of its own (I-57, 10-14): a counter or a cut name
-            // that changed its width moved the row, and the scroller laid
-            // out at its new width painted the host's controls again —
-            // 🔬86 render objects of the storyboard's toolbar the frame
-            // after every crossing. Laid out with no width from the row,
-            // they are moved, not painted.
-            child: RepaintBoundary(child: _Seat(_Piece.leading)),
-          ),
-        ),
-        tail: _Seat(_Piece.cluster),
-      ),
-    ),
-  );
-
-  /// [_frame] with no leading: the cluster still pinned right.
-  static const Widget _frameWithoutLeading = TickLayer.heard(
-    child: Padding(
-      padding: padding,
-      child: KeptTailRow(tail: _Seat(_Piece.cluster)),
-    ),
-  );
-
-  /// Between the leading's scroller and the cluster.
+  /// Between each piece of the row and the next.
   static const double _gap = 8;
 
   @override
   Widget build(BuildContext context) => _BarPieces(
+    transport: transport,
     leading: leading,
     cluster: cluster,
     child: SizedBox(
       height: heightIn(context),
-      child: leading == null ? _frameWithoutLeading : _frame,
+      child: switch ((transport != null, leading != null)) {
+        (true, true) => const _BarFrame(transport: true, leading: true),
+        (true, false) => const _BarFrame(transport: true, leading: false),
+        (false, true) => const _BarFrame(transport: false, leading: true),
+        (false, false) => const _BarFrame(transport: false, leading: false),
+      },
     ),
   );
 }
 
-/// The two pieces a bar seats.
-enum _Piece { leading, cluster }
+/// The bar's FRAME — its tick layer, padding, row and overflow scroller —
+/// one per shape, made once (a const one), so every build hands the same
+/// frame back; the pieces reach their seats in it through [_BarPieces].
+///
+/// 🚨I-57 (10-13): the frame was made anew on every build, round a
+/// toolbar its host makes anew on every notify, and the whole bar was
+/// built again for it — the tick layer, the row and the overflow
+/// scroller with its own LayoutBuilders — while the toolbar it held
+/// handed back the same buttons. Now a new piece is its seat's rebuild.
+/// ↩️The seat rebuilt inside the tick layer's build scope, so the layer
+/// was still laid out and painted for it (counted 10-14: 24 render
+/// objects on a notify that changed nothing) — the layer is a HEARD one
+/// now, with no scope of its own, and the seat is built in the host's.
+///
+/// 🚨The bar is a TICK LAYER (I-22 ③): the counter reads the cursor,
+/// and its width moves the row — it grows into the room on its left
+/// ([TimelineViewCluster]) — so a tick that widens it lays out and
+/// paints THIS bar; one that keeps its width paints its line alone
+/// ([TickText], I-57 10-14). Rebuilt bare, the counter laid out the
+/// dock's panel scroller and repainted the panel and the dock around it
+/// on every playback frame. Its lines hear their ticks, so nothing on
+/// the bar is built for one ([TickLayer.heard]).
+///
+/// The cluster and the transport are what the row KEEPS ([KeptTailRow]):
+/// at their own widths where the bar holds them, and where the bar is
+/// narrower than that, all of both, smaller — the leading's scroller is
+/// the fold. In a 360px window the timeline's bar had 248px for its 252
+/// (`timeline-row-overflows-at-360`, measured 2026-10-14).
+class _BarFrame extends StatelessWidget {
+  const _BarFrame({required this.transport, required this.leading});
+
+  /// Whether the frame seats a transport, and a leading.
+  final bool transport;
+  final bool leading;
+
+  @override
+  Widget build(BuildContext context) => TickLayer.heard(
+    child: Padding(
+      padding: TimelineCommandBar.padding,
+      child: KeptTailRow(
+        gap: TimelineCommandBar._gap,
+        // On a layer of its own, as the leading is below: a counter or a
+        // cut name that changes its width moves the row, and the transport
+        // stands where it stood.
+        lead: transport
+            ? const RepaintBoundary(child: _Seat(_Piece.transport))
+            : null,
+        head: leading
+            ? const Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: TimelineCommandBar.leadingInset,
+                ),
+                // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
+                // 스크롤바」): the app's bar exists only while the row
+                // overflows and costs no layout when it does not.
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  // 🚨On a layer of its own (I-57, 10-14): a counter or a
+                  // cut name that changed its width moved the row, and the
+                  // scroller laid out at its new width painted the host's
+                  // controls again — 🔬86 render objects of the
+                  // storyboard's toolbar the frame after every crossing.
+                  // Laid out with no width from the row, they are moved,
+                  // not painted.
+                  child: RepaintBoundary(child: _Seat(_Piece.leading)),
+                ),
+              )
+            : null,
+        tail: const _Seat(_Piece.cluster),
+      ),
+    ),
+  );
+}
+
+/// The pieces a bar seats.
+enum _Piece { transport, leading, cluster }
 
 /// The pieces a [TimelineCommandBar] holds, handed to its frame's seats:
 /// a seat is built again when ITS piece is a new widget, and nothing else
 /// in the bar is.
 class _BarPieces extends InheritedModel<_Piece> {
   const _BarPieces({
+    required this.transport,
     required this.leading,
     required this.cluster,
     required super.child,
   });
 
+  final Widget? transport;
   final Widget? leading;
   final Widget cluster;
 
   bool _moved(_BarPieces old, _Piece piece) => switch (piece) {
+    _Piece.transport => !identical(old.transport, transport),
     _Piece.leading => !identical(old.leading, leading),
     _Piece.cluster => !identical(old.cluster, cluster),
   };
@@ -197,8 +236,9 @@ class _Seat extends StatelessWidget {
       aspect: piece,
     )!;
     return switch (piece) {
-      // Seated only in the frame that has a leading; a bar losing its
-      // leading swaps the frame, and this seat goes with the old one.
+      // Seated only in a frame that has the piece; a bar losing it swaps
+      // the frame, and this seat goes with the old one.
+      _Piece.transport => pieces.transport ?? const SizedBox.shrink(),
       _Piece.leading => pieces.leading ?? const SizedBox.shrink(),
       _Piece.cluster => pieces.cluster,
     };

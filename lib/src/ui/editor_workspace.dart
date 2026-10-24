@@ -162,7 +162,6 @@ import 'timeline/timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'timeline/timeline_lane_rows.dart' show TimelineLaneFrameRow;
 import 'timeline/timeline_layer_controls_row.dart'
     show TimelineLayerControlsRow;
-import 'timeline/frame_panel_sill_controls.dart';
 import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
 import 'timeline/layer_rail_window.dart';
 import 'canvas/flip_hud_controller.dart';

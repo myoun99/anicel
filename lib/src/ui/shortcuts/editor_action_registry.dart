@@ -740,7 +740,7 @@ abstract final class EditorActionIds {
   static const canvasLineHold = 'canvas-line-hold';
   static const playbackToggle = 'playback-toggle';
 
-  /// The sill transport's 「처음으로」 (F-261).
+  /// The frame panels' transport's 「처음으로」 (F-261).
   static const playbackToStart = 'playback-to-start';
 
   /// The playback bar's loop / play-once switch (I-40).
@@ -779,7 +779,7 @@ abstract final class EditorActionIds {
   static const selectionTransformCancel = 'selection-transform-cancel';
   static const onionSkinToggle = 'onion-skin-toggle';
 
-  /// The sill's camera view switch (I-40).
+  /// The frame panels' camera view switch, beside their transport (I-40).
   static const cameraViewToggle = 'camera-view-toggle';
 
   /// Buttons of panels (I-40), pressed through `PanelKeys` on a panel a key

@@ -124,6 +124,7 @@ class TimelinePanel extends StatefulWidget {
     this.readyRunsIn,
     required this.orientation,
     required this.onOrientationChanged,
+    this.transport,
     this.timelineActionToolbar,
     this.pixelsPerFrame = TimelinePanel.defaultPixelsPerFrame,
     this.onPixelsPerFrameChanged,
@@ -408,6 +409,11 @@ class TimelinePanel extends StatefulWidget {
 
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
+
+  /// The panel's transport, at the head of its bar
+  /// ([TimelineCommandBar.transport]).
+  final Widget? transport;
+
   final Widget? timelineActionToolbar;
 
   /// Frame-axis zoom, DaVinci/AE-style continuous slider value in pixels
@@ -779,10 +785,11 @@ class _TimelinePanelState extends State<TimelinePanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ONE command-bar row (R-toolbar round), and now literally the
-          // same widget the storyboard mounts: the host's transport +
-          // action toolbar on the left, the shared view cluster pinned
-          // right.
+          // same widget the storyboard mounts: the host's transport pinned
+          // left, its action toolbar beside it, the shared view cluster
+          // pinned right.
           TimelineCommandBar(
+            transport: widget.transport,
             leading: showToolbar ? widget.timelineActionToolbar : null,
             // The facts typed at the call: inferred, a field missing from
             // them compiles and throws at the first build instead.

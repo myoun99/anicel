@@ -20,6 +20,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
@@ -30,7 +31,7 @@ import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 import 'package:anicel/src/ui/playback/audio_scrubber.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
-import 'package:anicel/src/ui/timeline/frame_panel_sill_controls.dart';
+import 'package:anicel/src/ui/timeline/frame_panel_transport.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
@@ -387,8 +388,8 @@ void main() {
       expect(settled.single, steps.last);
     });
 
-    testWidgets('a frame panel\'s sill stands it at the app\'s level, and a '
-        'drag keeps where it is let go', (tester) async {
+    testWidgets('a frame panel\'s transport stands it at the app\'s level, '
+        'and a drag keeps where it is let go', (tester) async {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
@@ -399,10 +400,9 @@ void main() {
           home: Scaffold(
             body: Align(
               alignment: Alignment.topLeft,
-              child: FramePanelSillControls(
+              child: FramePanelTransport(
                 session: session,
-                scope: PlaybackScope.activeCut,
-                cameraViewKeyValue: 'camera-view',
+                panel: WorkingPanel.timeline,
               ),
             ),
           ),

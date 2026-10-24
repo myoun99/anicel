@@ -225,8 +225,8 @@ class PlaybackTransportControls extends StatelessWidget {
               _clipLight(),
             // ↩️The QUALITY selector left this row (유저 확정, 2026-08-10:
             // 품질도 설정에 두자) — a setting, not a transport control, and
-            // the transport is the one row on the 문턱 that has to stay
-            // readable at a glance. On 2026-10-08 it left the app (유저:
+            // the transport is the one row that has to stay readable at a
+            // glance. On 2026-10-08 it left the app (유저:
             // 「재생화질 옵션 자체가 … 그냥 없애고 원본재생으로만 두자」):
             // playback shows a cut's picture at its own size.
             // The level meter (AUDIO-PRO R2), only while THIS scope's

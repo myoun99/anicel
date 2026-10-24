@@ -40,6 +40,8 @@ import 'timeline/timeline_grid_hooks.dart' show TimelineRowMemoAux;
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
+import 'timeline/frame_panel_transport.dart' show FramePanelTransport;
+import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
 import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_frame_range_gesture.dart';
 import 'timeline/timeline_run_end_handles.dart';
@@ -470,9 +472,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         builder: (context, _) {
           // Zoom scoping (UI-R6 #4): the toolbar widget is built ONCE per
           // host rebuild and reused across zoom steps — the identical
-          // instance lets its transport + ~25 buttons skip rebuilding while
-          // the ValueListenableBuilder below re-lays-out just the panel.
+          // instance lets its ~25 buttons skip rebuilding while the
+          // ValueListenableBuilder below re-lays-out just the panel. The
+          // transport beside it, likewise.
           final timelineToolbar = _buildTimelineToolbar();
+          final timelineTransport = _buildTimelineTransport();
           Widget buildPanel(
             BuildContext context,
             double pixelsPerFrame,
@@ -905,6 +909,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // storyboard ask the same question.
             onResetLaneGroup: (layer, lane) =>
                 _session.laneVerbs.resetLaneGroup(layer.id, lane.laneId),
+            transport: timelineTransport,
             timelineActionToolbar: timelineToolbar,
           );
           // The GAP empty state (UI-R9 #3): no cut selected — no rows, no
@@ -914,17 +919,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 🚨The SAME overflow scroller [TimelineCommandBar] gives
-                // its leading (유저 2026-08-10: 「버튼 사라지기 시작하면
-                // 생기는 스크롤바」). This state is the one place the toolbar
-                // is mounted WITHOUT that bar, so it was the one place a bar
-                // too wide for the window overflowed instead of scrolling —
-                // and it only showed once ㉕ put three more buttons on it,
-                // which is to say the row had been one button from the edge
-                // for a while.
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: timelineToolbar,
+                // 🚨The SAME bar the panel wears ([TimelineCommandBar]), with
+                // nothing at its end: the transport stands where it stands
+                // with a cut, and the toolbar scrolls in the bar's overflow
+                // scroller (유저 2026-08-10: 「버튼 사라지기 시작하면 생기는
+                // 스크롤바」). ↩️This state mounted the toolbar WITHOUT that
+                // bar, so it was the one place a bar too wide for the window
+                // overflowed instead of scrolling — it only showed once ㉕ put
+                // three more buttons on it — and then the one place with a
+                // scroller of its own.
+                TimelineCommandBar(
+                  transport: timelineTransport,
+                  leading: timelineToolbar,
+                  cluster: const SizedBox.shrink(),
                 ),
                 Expanded(
                   child: ValueListenableBuilder(
@@ -973,12 +980,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _keptToolbar,
     TimelineActionToolbar,
     (ByIdentity(_session), BySet(widget.rail.hiddenSections)),
-    // ⛔The TRANSPORT and the camera-view toggle left this bar (유저 확정,
-    // 2026-08-10). They are the 문턱's now — see [FramePanelSillControls],
-    // mounted by the workspace through `EditorPanelTab.sillTrailing` —
-    // because the sill's right edge is the one place in this region that
-    // does not move when a panel is added. What is left here is what
-    // reaches into THIS panel's own contents.
+    // ⛔The TRANSPORT and the camera-view toggle are not on this toolbar:
+    // the bar pins them at its head, outside the toolbar's scroller
+    // ([_buildTimelineTransport]). What is here is what reaches into THIS
+    // panel's own contents.
     () => TimelineActionToolbar(
       session: _session,
       // B8: this panel's dispatch context — the session's cut-local
@@ -999,6 +1004,17 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       hiddenSections: widget.rail.hiddenSections,
       onToggleSection: widget.rail.toggleSection,
     ),
+  );
+
+  /// The transport at the head of the bar (F-111-Q1), kept while it is
+  /// built for this session — what its buttons show, they hear themselves.
+  final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptTransport = {};
+
+  Widget _buildTimelineTransport() => keptWhileSame(
+    _keptTransport,
+    FramePanelTransport,
+    ByIdentity(_session),
+    () => FramePanelTransport(session: _session, panel: WorkingPanel.timeline),
   );
 }
 

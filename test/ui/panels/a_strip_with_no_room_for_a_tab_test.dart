@@ -1,27 +1,19 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
-import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/timeline/frame_panel_sill_controls.dart';
 
-import '../../helpers/rail_group_button.dart';
-
-/// A tab strip whose sill leaves it no room for even one tab — the
-/// storyboard docked on its own in a rail, the rail narrowed until the
-/// sill's transport takes nearly all of it; a 340px window — keeps its
-/// overflow button (the one way to its tabs) WHOLE, and shows the sill all
-/// of it, smaller (`KeptTailRow`, the page turner's law).
+/// A tab strip whose sill leaves it no room for even one tab — a 340px
+/// window, a rail narrowed by hand — keeps its overflow button (the one way
+/// to its tabs) WHOLE, and shows the sill all of it, smaller (`KeptTailRow`,
+/// the page turner's law).
 ///
 /// ↩️The button was laid out past the edge, and the strip's Row threw 「A
 /// RenderFlex overflowed by 23 pixels」 (found 2026-09-25 while pinning the
 /// rail button as a door); then it was cut at the room's edge, and the sill
-/// itself still ran over — 10px at 340 (2026-10-15). The rail at its own
-/// width left no room then only while the project's ⚙ stood on the sill;
-/// it moved to the top strip (playback-quality-home), so the rail is
-/// narrowed by hand.
+/// itself still ran over — 10px at 340 (2026-10-15). The case in the app
+/// was the storyboard alone in a narrowed rail, while the frame panels'
+/// transport stood on the sill; it is the head of their bar now (F-111),
+/// and that case is the bar's (`the_transport_leads_the_bar_test`).
 void main() {
   testWidgets('🚨a strip narrower than its sill and one tab keeps the '
       'overflow button whole, clear of the sill, and shows the sill all of '
@@ -50,22 +42,16 @@ void main() {
                       label: id,
                       icon: Icons.abc,
                       builder: (context) => const SizedBox(),
-                      // A ROW, as a sill is: held narrower than itself it
-                      // runs over, where a plain box would only be clamped.
-                      sillTrailing: (context) => const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            key: sill,
-                            width: sillWidth,
-                            height: sillHeight,
-                          ),
-                        ],
-                      ),
                     ),
                 ],
                 activeTabId: 'a',
                 onTabSelected: (_) {},
+                // The group's own controls, which the strip lays in a ROW:
+                // held narrower than itself it runs over, where a plain box
+                // would only be clamped.
+                trailing: const [
+                  SizedBox(key: sill, width: sillWidth, height: sillHeight),
+                ],
               ),
             ),
           ),
@@ -96,96 +82,5 @@ void main() {
     );
     expect(shown.width, lessThan(sillWidth), reason: 'the sill, smaller');
     expect(shown.right, lessThanOrEqualTo(150), reason: 'none of it runs off');
-  });
-
-  testWidgets('the storyboard alone in a rail, narrowed until its sill '
-      'gives way, keeps its tab whole and runs nothing over', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
-    await tester.pumpAndSettle();
-
-    final railId = EditorWorkspace.railGroupId(right: true, slot: 6);
-    final freeSlot = railGroupButton(railId);
-    final gesture = await tester.startGesture(
-      tester.getCenter(
-        find.byKey(const ValueKey<String>('panel-grip-storyboard')),
-      ),
-    );
-    await tester.pump(const Duration(milliseconds: 20));
-    await gesture.moveBy(const Offset(30, 0));
-    await tester.pump();
-    expect(freeSlot, findsOneWidget, reason: 'premise: the free slot');
-    await gesture.moveTo(tester.getCenter(freeSlot));
-    await tester.pump();
-    await gesture.up();
-    await tester.pumpAndSettle();
-    expect(find.byType(StoryboardPanel), findsOneWidget, reason: 'premise');
-
-    // A right rail narrows as its inner edge moves right. The grip runs the
-    // group's height beside the panel's own controls, so it is taken where
-    // nothing lies over it.
-    final grip = find.byKey(ValueKey<String>('dock-resize-$railId'));
-    Offset? handle() {
-      final rect = tester.getRect(grip);
-      final box = tester.renderObject(grip);
-      for (var y = rect.top + 4; y < rect.bottom; y += 8) {
-        final at = Offset(rect.center.dx, y);
-        if (tester
-            .hitTestOnBinding(at)
-            .path
-            .any((entry) => entry.target == box)) {
-          return at;
-        }
-      }
-      return null;
-    }
-
-    // Narrowed a step at a time until the sill gives way — shown smaller
-    // than itself, the case this pins. Shown, it is scaled; laid out, it
-    // keeps its own size.
-    final tab = find.byKey(
-      const ValueKey<String>('timeline-mode-storyboard-button'),
-    );
-    final sill = find.descendant(
-      of: find.ancestor(of: tab, matching: find.byType(EditorPanelTabs)),
-      matching: find.byType(FramePanelSillControls),
-    );
-    bool givesWay() =>
-        tester.getRect(sill).width < tester.getSize(sill).width - 0.5;
-    Future<void> moveGrip(double dx, String step) async {
-      final at = handle();
-      expect(at, isNotNull, reason: 'premise: the rail\'s grip is free');
-      await tester.dragFrom(
-        at!,
-        Offset(dx, 0),
-        kind: PointerDeviceKind.mouse,
-      );
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull, reason: step);
-    }
-
-    // The rail opens at a share of the window (D37), and the storyboard's
-    // sill has outgrown that share since the canvas's level bar stood at
-    // its end (I-85): the rail is widened first, so the narrowing does
-    // narrow.
-    for (var step = 0; step < 60 && givesWay(); step += 1) {
-      await moveGrip(-8, 'widening, at step $step');
-    }
-    expect(
-      givesWay(),
-      isFalse,
-      reason: '⛔premise: a rail wide enough stands the sill whole',
-    );
-    for (var step = 0; step < 60 && !givesWay(); step += 1) {
-      await moveGrip(4, 'at step $step');
-    }
-
-    expect(givesWay(), isTrue, reason: '⛔LIVENESS: the sill gave way');
-    expect(
-      tester.getRect(tab).right,
-      lessThanOrEqualTo(tester.getRect(sill).left),
-      reason: 'the way to the panel stands whole, clear of the sill',
-    );
   });
 }
